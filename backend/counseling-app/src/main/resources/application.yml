@@ -11,7 +11,7 @@ spring:
 
   # 数据源（PostgreSQL 16 + pgvector）
   datasource:
-    url: jdbc:postgresql://localhost:5432/mindsafe
+    url: jdbc:postgresql://localhost:5433/mindsafe
     username: mindsafe
     password: ${DB_PASSWORD:mindsafe_dev}
     driver-class-name: org.postgresql.Driver
