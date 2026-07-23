@@ -664,3 +664,333 @@ WS /ws?token=<jwt>
 ---
 
 > **开发约定**：所有 API 使用 Spring MVC `@RestController` 实现，DTO 使用 `record` 类型（Java 16+），参数校验用 `jakarta.validation`，统一异常处理用 `@ControllerAdvice`。接口文档使用 SpringDoc OpenAPI 3 自动生成 Swagger UI。
+
+---
+
+## 9. Java DTO Record 定义（核心）
+
+> 以下为 MVP 核心接口的 Java record 定义，开发人员可直接复制到对应模块。
+
+### 9.1 通用
+
+```java
+// 统一响应包装
+public record ApiResponse<T>(
+    int code,
+    String message,
+    T data,
+    String traceId,
+    Instant timestamp
+) {
+    public static <T> ApiResponse<T> ok(T data) {
+        return new ApiResponse<>(0, "success", data, MDC.get("traceId"), Instant.now());
+    }
+    public static <T> ApiResponse<T> error(int code, String message) {
+        return new ApiResponse<>(code, message, null, MDC.get("traceId"), Instant.now());
+    }
+}
+
+// 分页请求
+public record PageRequest(
+    @Min(1) int page,
+    @Min(1) @Max(100) int size,
+    String sort  // 格式: "created_at,desc"
+) {}
+
+// 分页响应
+public record PageResponse<T>(
+    List<T> items,
+    int page,
+    int size,
+    long total,
+    int totalPages
+) {}
+```
+
+### 9.2 认证模块
+
+```java
+// 登录请求
+public record LoginRequest(
+    @NotBlank String username,
+    @NotBlank @Size(min = 6, max = 128) String password,
+    @NotBlank String tenantCode  // 学校编码
+) {}
+
+// 登录响应
+public record LoginResponse(
+    String accessToken,
+    String refreshToken,
+    long expiresIn,  // 秒
+    UserInfo user
+) {}
+
+public record UserInfo(
+    String userId,
+    String username,
+    String displayName,
+    String role,       // student | counselor | teacher | admin | platform_admin
+    String tenantId,
+    String grade,      // 学生专用
+    String className   // 学生专用
+) {}
+
+// 监护人授权请求
+public record GuardianConsentRequest(
+    @NotBlank String studentId,
+    @NotBlank String guardianName,
+    @NotBlank String relationship,  // father | mother | other
+    @AssertTrue boolean agreed
+) {}
+```
+
+### 9.3 学生对话模块
+
+```java
+// 创建会话
+public record CreateSessionRequest(
+    @NotNull EmotionType initialEmotion  // HAPPY | SAD | ANGRY | SCARED | NERVOUS
+) {}
+
+public record CreateSessionResponse(
+    String sessionId,
+    String greetingMessage,  // AI 开场白
+    int maxTurns             // 12
+) {}
+
+// 发送消息
+public record SendMessageRequest(
+    @NotBlank @Size(max = 200) String content
+) {}
+
+// SSE 流式消息事件
+public record StreamMessageEvent(
+    String type,       // "token" | "done" | "error" | "safety_alert"
+    String content,    // token 内容或完整消息
+    MessageMetadata metadata
+) {}
+
+public record MessageMetadata(
+    String role,           // user | ai | system
+    String cbtState,       // S0_START | S2_EMOTION_LABEL | ...
+    String emotionLabel,
+    Integer emotionIntensity,
+    String riskLevel,      // L0-L5
+    int remainingTurns,
+    boolean safetyMode     // true 时输入框禁用
+) {}
+
+// 会话历史
+public record SessionListItem(
+    String sessionId,
+    String emotionLabel,
+    String scenarioId,
+    String riskLevel,
+    Instant createdAt,
+    int turnCount
+) {}
+
+// 会话评价
+public record SessionFeedbackRequest(
+    @NotNull @Min(1) @Max(3) int rating,  // 1=没帮助 2=一般 3=有帮助
+    String comment  // 可选
+) {}
+```
+
+### 9.4 风险与预警模块
+
+```java
+// 风险评估结果（Safety Agent 输出）
+public record RiskAssessmentResult(
+    String riskLevel,          // L0-L5
+    List<String> riskDomains,
+    double confidence,
+    boolean needsClarification,
+    String clarifyingQuestion,
+    boolean needsHumanReview,
+    boolean needsImmediateEscalation,
+    String studentSafeReplyStrategy,
+    List<RiskEvidence> evidence,
+    NextAction nextAction
+) {}
+
+public record RiskEvidence(
+    @Size(max = 30) String quote,
+    String signal,
+    String severityReason
+) {}
+
+public record NextAction(
+    String notifyRole,     // none | psychology_teacher | duty_teacher | guardian | emergency
+    String responseLimit,  // normal | restricted | safety_only
+    String loggingLevel    // anonymous | summary | full_evidence
+) {}
+
+// 预警列表项
+public record AlertListItem(
+    String alertId,
+    String riskLevel,          // R4 | R3 | R2 | R1
+    String studentDesensitizedName,
+    String grade,
+    String className,
+    String triggerSource,
+    String triggerSummary,
+    List<String> evidenceSnippets,
+    double confidence,
+    Instant createdAt,
+    Instant slaDeadline,
+    long slaRemainingMinutes,
+    String status,             // pending | claimed | processing | closed | false_positive
+    String assignee
+) {}
+
+// 认领预警
+public record ClaimAlertRequest(
+    @NotBlank String alertId
+) {}
+
+// 标记误报
+public record MarkFalsePositiveRequest(
+    @NotBlank String alertId,
+    @NotBlank @Size(max = 500) String reason
+) {}
+
+// 预警处置记录
+public record AlertResolutionRequest(
+    @NotBlank String alertId,
+    @NotBlank @Size(max = 2000) String resolution,
+    String followupAction  // create_case | schedule_appointment | notify_guardian | observe
+) {}
+```
+
+### 9.5 个案管理模块
+
+```java
+// 创建个案
+public record CreateCaseRequest(
+    @NotBlank String studentId,
+    @NotBlank String triggerReason,
+    String relatedAlertId,     // 关联预警
+    String initialRiskLevel,
+    String interventionPlan    // 初始干预计划
+) {}
+
+// 个案列表项
+public record CaseListItem(
+    String caseId,
+    String studentDesensitizedName,
+    String grade,
+    String className,
+    String status,         // pending_assessment | in_intervention | observation | closed
+    String riskLevel,
+    String assignee,
+    Instant createdAt,
+    Instant lastFollowupAt
+) {}
+
+// 会谈记录
+public record SessionNoteRequest(
+    @NotBlank String caseId,
+    @NotBlank @Size(max = 2000) String issue,       // 问题
+    @Size(max = 2000) String observation,            // 观察
+    @Size(max = 2000) String strategy,               // 支持策略
+    @Size(max = 2000) String studentFeedback,        // 学生反馈
+    @Size(max = 2000) String nextStep                // 下一步
+) {}
+```
+
+### 9.6 教师摘要模块
+
+```java
+// 教师摘要（ReportAgent 输出）
+public record TeacherSummary(
+    String studentOverview,    // ≤80字
+    String riskLevel,
+    double confidence,
+    List<String> keyConcerns,  // ≤3
+    List<String> triggerEvidence,  // ≤2，每条≤30字
+    RecommendedActions recommendedActions,
+    String uncertainInfo,
+    String privacyNote,
+    boolean needsCollaboration,
+    String collaborationNote
+) {}
+
+public record RecommendedActions(
+    String today,
+    String thisWeek,
+    String ongoing
+) {}
+```
+
+---
+
+## 10. 字段校验规则汇总
+
+| DTO | 字段 | 校验 | 错误码 |
+|-----|------|------|--------|
+| LoginRequest | username | @NotBlank | 10001 |
+| LoginRequest | password | @NotBlank @Size(6,128) | 10001 |
+| LoginRequest | tenantCode | @NotBlank | 10001 |
+| SendMessageRequest | content | @NotBlank @Size(max=200) | 20001 |
+| CreateSessionRequest | initialEmotion | @NotNull, enum 校验 | 20002 |
+| GuardianConsentRequest | agreed | @AssertTrue | 10003 |
+| MarkFalsePositiveRequest | reason | @NotBlank @Size(max=500) | 30001 |
+| SessionNoteRequest | issue | @NotBlank @Size(max=2000) | 30002 |
+| AlertResolutionRequest | resolution | @NotBlank @Size(max=2000) | 30003 |
+| SessionFeedbackRequest | rating | @NotNull @Min(1) @Max(3) | 20003 |
+
+**全局校验规则**：
+- 所有 `@NotBlank` 校验失败 → 返回 `{code: 40001, message: "参数校验失败: {field}"}`
+- 所有 enum 校验失败 → 返回 `{code: 40002, message: "无效枚举值: {field}"}`
+- 请求体 JSON 解析失败 → 返回 `{code: 40003, message: "请求体格式错误"}`
+
+---
+
+## 11. 核心接口时序图
+
+### 11.1 学生发送消息（完整链路）
+
+```
+前端                Controller          Orchestrator       SafetyInput      LLM             SafetyOutput     DB
+ │                    │                    │                  │               │                  │              │
+ │─POST /messages────▶│                    │                  │               │                  │              │
+ │                    │─@Valid DTO────────▶│                  │               │                  │              │
+ │                    │                    │─assessRisk──────▶│               │                  │              │
+ │                    │                    │                  │─硬规则+LLM──▶│                  │              │
+ │                    │                    │◀─RiskResult──────│◀──────────────│                  │              │
+ │                    │                    │                  │               │                  │              │
+ │                    │                    │─[L4/L5短路]──────────────────────────────────────▶│              │
+ │                    │                    │  安全模板(§12)   │               │                  │              │
+ │◀─SSE: safety_alert─│◀───────────────────│                  │               │                  │              │
+ │                    │                    │                  │               │                  │              │
+ │                    │                    │─[L0-L3正常]──────│               │                  │              │
+ │                    │                    │  路由+组装Prompt │               │                  │              │
+ │                    │                    │─generate─────────│──────────────▶│                  │              │
+ │◀─SSE: token stream─│◀─SSE stream──────│◀─token stream────│──────────────│                  │              │
+ │                    │                    │                  │               │                  │              │
+ │                    │                    │─reviewReply──────│───────────────│─────────────────▶│              │
+ │                    │                    │◀─{decision:pass}─│───────────────│─────────────────│              │
+ │                    │                    │                  │               │                  │              │
+ │                    │                    │─INSERT message + UPDATE session────────────────────────────────▶│
+ │◀─SSE: [DONE]──────│◀───────────────────│                  │               │                  │              │
+```
+
+### 11.2 教师认领预警并创建个案
+
+```
+教师端              Controller          AlertService       CaseService      NotifyService    DB
+ │                    │                    │                  │                │              │
+ │─POST /alerts/{id}/claim───────────────▶│                  │                │              │
+ │                    │─claim─────────────▶│                  │                │              │
+ │                    │                    │─UPDATE status=processing, assignee=当前用户───▶│
+ │                    │                    │─INSERT audit_log──────────────────────────────▶│
+ │◀─{success}─────────│◀───────────────────│                  │                │              │
+ │                    │                    │                  │                │              │
+ │─POST /cases───────────────────────────▶│                  │                │              │
+ │  {alertId, ...}    │─createCase─────────│─────────────────▶│                │              │
+ │                    │                    │                  │─INSERT case───▶│              │
+ │                    │                    │                  │─UPDATE alert.status=case_created──▶│
+ │                    │                    │                  │─WS push───────▶│              │
+ │◀─{caseId}──────────│◀───────────────────│◀─────────────────│◀───────────────│              │
+```
