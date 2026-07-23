@@ -1,4 +1,50 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
+
+/** Web Speech API 语音识别 Hook */
+function useVoiceInput(onResult) {
+  const [listening, setListening] = useState(false)
+  const [supported, setSupported] = useState(true)
+  const recognitionRef = useRef(null)
+
+  useEffect(() => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
+    if (!SpeechRecognition) {
+      setSupported(false)
+      return
+    }
+    const recognition = new SpeechRecognition()
+    recognition.lang = 'zh-CN'
+    recognition.interimResults = true
+    recognition.continuous = false
+    recognition.maxAlternatives = 1
+
+    recognition.onresult = (event) => {
+      let transcript = ''
+      for (let i = 0; i < event.results.length; i++) {
+        transcript += event.results[i][0].transcript
+      }
+      onResult(transcript)
+    }
+    recognition.onend = () => setListening(false)
+    recognition.onerror = () => setListening(false)
+    recognitionRef.current = recognition
+
+    return () => recognition.abort()
+  }, [onResult])
+
+  const toggle = useCallback(() => {
+    if (!recognitionRef.current) return
+    if (listening) {
+      recognitionRef.current.stop()
+      setListening(false)
+    } else {
+      recognitionRef.current.start()
+      setListening(true)
+    }
+  }, [listening])
+
+  return { listening, supported, toggle }
+}
 
 export default function ChatRoom({ session, onEnd }) {
   const [messages, setMessages] = useState([
@@ -7,6 +53,12 @@ export default function ChatRoom({ session, onEnd }) {
   const [input, setInput] = useState('')
   const [streaming, setStreaming] = useState(false)
   const bottomRef = useRef(null)
+
+  const handleVoiceResult = useCallback((transcript) => {
+    setInput(transcript)
+  }, [])
+
+  const { listening, supported, toggle: toggleVoice } = useVoiceInput(handleVoiceResult)
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -125,19 +177,53 @@ export default function ChatRoom({ session, onEnd }) {
 
       {/* Input */}
       <footer className="p-4 bg-white border-t border-gray-100">
-        <div className="flex gap-3 max-w-lg mx-auto">
+        {/* 录音状态提示 */}
+        {listening && (
+          <div className="flex items-center justify-center gap-2 mb-3 text-sm text-indigo-600">
+            <span className="relative flex h-3 w-3">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-3 w-3 bg-indigo-500"></span>
+            </span>
+            正在听你说... 再点一下结束
+          </div>
+        )}
+        <div className="flex gap-2 max-w-lg mx-auto items-center">
+          {/* 语音按钮 */}
+          {supported && (
+            <button
+              onClick={toggleVoice}
+              disabled={streaming}
+              className={`flex-shrink-0 w-11 h-11 rounded-full flex items-center justify-center transition-all
+                ${listening
+                  ? 'bg-red-500 text-white shadow-lg shadow-red-200 scale-110'
+                  : 'bg-gray-100 text-gray-600 hover:bg-indigo-100 hover:text-indigo-600'
+                } disabled:opacity-40 disabled:cursor-not-allowed`}
+              title={listening ? '停止录音' : '语音输入'}
+            >
+              {listening ? (
+                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                  <rect x="6" y="6" width="12" height="12" rx="2" />
+                </svg>
+              ) : (
+                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
+                  <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
+                </svg>
+              )}
+            </button>
+          )}
           <input
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && sendMessage()}
-            placeholder="想说什么就说什么..."
+            placeholder={listening ? '正在聆听...' : '想说什么就说什么，也可以点麦克风说'}
             disabled={streaming}
             className="flex-1 px-4 py-3 rounded-full border border-gray-200 focus:outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100 text-sm disabled:bg-gray-50"
           />
           <button
             onClick={sendMessage}
             disabled={!input.trim() || streaming}
-            className="px-5 py-3 rounded-full bg-indigo-500 text-white text-sm font-medium
+            className="flex-shrink-0 px-5 py-3 rounded-full bg-indigo-500 text-white text-sm font-medium
               hover:bg-indigo-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
           >
             发送
