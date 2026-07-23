@@ -32,7 +32,7 @@ public class ChatController {
     public ApiResponse<SessionInfo> createSession(
             @Valid @RequestBody CreateSessionRequest request) {
         // TODO: 从 SecurityContext 获取当前学生 userId / tenantId
-        UUID studentUserId = UUID.fromString("00000000-0000-0000-0000-000000000099");
+        UUID studentUserId = UUID.fromString("20000000-0000-0000-0000-000000000001");
         UUID tenantId = UUID.fromString("00000000-0000-0000-0000-000000000001");
 
         SessionInfo response = conversationService.createSession(
