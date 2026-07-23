@@ -1,0 +1,37 @@
+ /Users/minjianq/Documents/AI-Counseling-System/PRD/AI心理辅导系统.docx
+      这是一个项目初步规划想法，并不完善，请帮我深度研究一下，输出一个建设方案，包括
+      1、小学生心理辅导这些方面实现的专业技能支撑，提示词设计，流程设计，这方面是主要的难点，我不专业
+      2、技术实现模式，和使用者接触面最优的解决方案有哪些
+      3、用户体系如何设计，特别是使用者和管理者。
+      4、涉及到的用户隐私，数据如何安全管理和保护
+      5、模型层面需要使用哪些才能满足。
+      6、整体技术方案如何实现
+      7、以及我没有想到的其他方面
+      
+      以上输出一份word给我。
+      
+      
+      
+      /Users/minjianq/Documents/AI-Counseling-System/PRD/ChatGPT/AI心理辅导系统.docx.  基于这份方案初稿，我输出了。/Users/minjianq/Documents/AI-Counseling-System/PRD/ChatGPT/AI小学生心理辅导系统建设方案.docx 这个建设方案初稿。
+      请结合上面两份材料，帮我分别输出如下详细的子主题方案，都输出为word文档，每个子主题单独启动一个angent：
+      
+      1、「心理辅导系统」完整产品架构图
+      2、Prompt 体系详细设计
+      3、CBT 对话流程树
+      4、风险识别规则库
+      5、老师后台设计
+      6、数据库结构设计
+      7、SaaS 多学校隔离架构
+      8、MVP 最小可行版本
+      9、商业模式与学校采购逻辑
+      10、中国政策与合规风险
+      11、竞品深度分析
+      12、技术架构图
+      13、Agent 工作流
+      14、儿童安全对话规范
+      15、心理知识库建设方案
+      
+      其中1、2、3 前期有部分成果，可供参考借鉴，但需要你更深度的的完善和细化。
+       1、借鉴/Users/minjianq/Documents/AI-Counseling-System/PRD/ChatGPT/AI小学生心理辅导系统架构图.png
+       2、借鉴/Users/minjianq/Documents/AI-Counseling-System/PRD/ChatGPT/AI心理辅导系统_Prompt体系详细设计.docx
+       3、借鉴/Users/minjianq/Documents/AI-Counseling-System/PRD/ChatGPT/AI心理辅导系统_CBT对话流程树设计.docx
