@@ -10,6 +10,7 @@ import com.mindsafe.domain.entity.CounselingSession;
 import com.mindsafe.domain.entity.RiskEvent;
 import com.mindsafe.domain.mapper.CounselingSessionMapper;
 import com.mindsafe.domain.mapper.RiskEventMapper;
+import com.mindsafe.service.notification.NotificationService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -33,6 +34,7 @@ public class ConversationServiceImpl implements ConversationService {
     private final RiskDetectorService riskDetectorService;
     private final CounselingSessionMapper sessionMapper;
     private final RiskEventMapper riskEventMapper;
+    private final NotificationService notificationService;
 
     /** 活跃会话内存缓存（emotionTag 等非 DB 字段 + 轮次计数） */
     private final Map<UUID, SessionState> activeSessions = new ConcurrentHashMap<>();
@@ -40,11 +42,13 @@ public class ConversationServiceImpl implements ConversationService {
     public ConversationServiceImpl(AiChatService aiChatService,
                                    RiskDetectorService riskDetectorService,
                                    CounselingSessionMapper sessionMapper,
-                                   RiskEventMapper riskEventMapper) {
+                                   RiskEventMapper riskEventMapper,
+                                   NotificationService notificationService) {
         this.aiChatService = aiChatService;
         this.riskDetectorService = riskDetectorService;
         this.sessionMapper = sessionMapper;
         this.riskEventMapper = riskEventMapper;
+        this.notificationService = notificationService;
     }
 
     @Override
@@ -147,6 +151,9 @@ public class ConversationServiceImpl implements ConversationService {
             );
             riskEventMapper.insert(event);
             log.info("风险事件已持久化: riskEventId={}, level={}", event.getRiskEventId(), riskResult.level());
+
+            // 触发教师通知
+            notificationService.notifyRiskEvent(event);
         } catch (Exception e) {
             log.error("风险事件持久化失败（不影响对话流）: sessionId={}", session.sessionId, e);
         }
