@@ -1,8 +1,11 @@
 package com.mindsafe.service.conversation;
 
 import com.mindsafe.ai.chat.AiChatService;
+import com.mindsafe.ai.risk.RiskDetectorService;
 import com.mindsafe.common.dto.chat.SessionInfo;
 import com.mindsafe.common.dto.chat.StreamMessageEvent;
+import com.mindsafe.common.dto.risk.RiskDetectionResult;
+import com.mindsafe.common.enums.RiskLevel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -15,7 +18,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * 对话服务实现（M1 最小闭环）
+ * 对话服务实现（M1 最小闭环 + 风险识别）
  * <p>
  * M1 阶段简化：会话状态存内存，不持久化（后续迭代加 DB）。
  */
@@ -25,12 +28,14 @@ public class ConversationServiceImpl implements ConversationService {
     private static final Logger log = LoggerFactory.getLogger(ConversationServiceImpl.class);
 
     private final AiChatService aiChatService;
+    private final RiskDetectorService riskDetectorService;
 
     /** M1 简化：内存会话存储（后续替换为 DB + Redis） */
     private final Map<UUID, SessionState> sessions = new ConcurrentHashMap<>();
 
-    public ConversationServiceImpl(AiChatService aiChatService) {
+    public ConversationServiceImpl(AiChatService aiChatService, RiskDetectorService riskDetectorService) {
         this.aiChatService = aiChatService;
+        this.riskDetectorService = riskDetectorService;
     }
 
     @Override
@@ -54,16 +59,40 @@ public class ConversationServiceImpl implements ConversationService {
         int turn = session.turnCount.incrementAndGet();
         log.debug("收到消息: sessionId={}, turn={}, length={}", sessionId, turn, content.length());
 
-        // 调用 AI 服务获取流式回复
-        return aiChatService.chat(sessionId, session.emotionTag, content)
-                .concatWith(Flux.defer(() -> {
-                    // 流结束后追加 done 事件
-                    return Flux.just(StreamMessageEvent.done(""));
-                }))
+        // 1. 风险检测（先于 AI 调用）
+        RiskDetectionResult riskResult = riskDetectorService.detect(content);
+        Flux<StreamMessageEvent> riskEvents = Flux.empty();
+
+        if (riskResult.isRisky()) {
+            log.warn("风险识别: sessionId={}, level={}, category={}, keywords={}",
+                    sessionId, riskResult.level(), riskResult.category(), riskResult.matchedKeywords());
+
+            // 发送风险事件给前端
+            riskEvents = Flux.just(
+                    StreamMessageEvent.risk(riskResult.level().severity(), riskResult.suggestion())
+            );
+
+            // 红色风险：追加“已通知老师”友好提示
+            if (riskResult.level() == RiskLevel.RED) {
+                riskEvents = riskEvents.concatWith(Flux.just(
+                        StreamMessageEvent.token("我很关心你现在的情况。我已经通知了老师，老师会来帮助你。你不是一个人。💙")
+                ));
+                // TODO M2: 实际发送通知给教师端（站内消息 + 短信）
+                log.error("🚨 红色风险预警: sessionId={}, student={}, category={}",
+                        sessionId, session.studentUserId, riskResult.category());
+            }
+        }
+
+        // 2. 调用 AI 服务获取流式回复
+        Flux<StreamMessageEvent> aiStream = aiChatService.chat(sessionId, session.emotionTag, content)
+                .concatWith(Flux.defer(() -> Flux.just(StreamMessageEvent.done(""))))
                 .onErrorResume(e -> {
                     log.error("AI 调用异常: sessionId={}", sessionId, e);
                     return Flux.just(StreamMessageEvent.error("小助手暂时走神了，请再说一次好吗？"));
                 });
+
+        // 3. 组合：风险事件 + AI 回复
+        return riskEvents.concatWith(aiStream);
     }
 
     @Override
