@@ -16,7 +16,7 @@ AI-Counseling-System/
 ├── STRUCTURE.md            # 本文件：目录结构约定
 ├── README.md               # 项目入口导航
 │
-├── design/                 # 设计层：BEACON.md + 总览/跟踪表 + 01~15 md 设计文档（单一事实源）
+├── design/                 # 设计层：BEACON.md + 总览/跟踪表 + 01~17 md 设计文档（单一事实源）
 ├── doc/                    # 归档层（只读留档，冲突以 design/*.md 为准）
 │   ├── 01~15_*.docx        #   设计文档原始 docx
 │   └── his/                #   早期需求/探索产物（原 prd/ + prompts/，已无活跃用途）
@@ -52,7 +52,7 @@ AI-Counseling-System/
   - `BEACON.md` — 项目明灯文件（设计决策、范围、当前状态），**唯一强制**
   - `DESIGN-OVERVIEW.md` — 15 份设计文档总览入口（目录导航 + 关键摘要）
   - `TASK-TRACKER.md` — 任务跟踪表（文档整合任务 + MVP 开发任务 + 决策/风险/里程碑）
-  - `01_*.md` ~ `15_*.md` — **当前设计文档（md 格式，单一事实源）**，由 `doc/*.docx` 整合而来，直接平铺在 design/ 根下
+  - `01_*.md` ~ `17_*.md` — **当前设计文档（md 格式，单一事实源）**，由 `doc/*.docx` 整合而来，直接平铺在 design/ 根下；16/17 为新增（API 接口 + 前端架构）
   - `*-PLAN.md` — Plan Mode 产出的执行计划（按 design-persistence.md §6 硬性要求）
   - `discussion/`（可选）多轮设计讨论摘要；`decisions/`（可选）ADR；`reference/`（可选）外部参考
 - **命名约定**：新增正式设计文档在 `design/` 根下沿用 `NN_主题.md` 编号制，接着 15 往后排

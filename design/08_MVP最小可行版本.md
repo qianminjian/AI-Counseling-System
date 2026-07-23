@@ -187,74 +187,59 @@
 
 ## 五、数据设计
 
-### 5.1 最小数据模型
+> **⚠️ 对齐说明**：本节 MVP 数据模型必须基于 06 文档的 20 张表设计，不得独立建表。以下列出 MVP 各阶段实际使用的表子集与字段裁剪。
 
-#### 5.1.1 用户表（User）
+### 5.1 MVP 表子集映射（对齐 06 文档）
 
-| 字段 | 类型 | 说明 | 必须 |
-|------|------|------|------|
-| id | bigint | 用户唯一标识 | 是 |
-| name | varchar(50) | 姓名 | 是 |
-| role | enum | student/teacher/admin | 是 |
-| grade | int | 年级（学生） | 否 |
-| class_name | varchar(20) | 班级（学生） | 否 |
-| school_id | bigint | 学校 ID | 是 |
-| created_at | datetime | 创建时间 | 是 |
+| 06 表名 | MVP 阶段 | 用途 | MVP 裁剪说明 |
+|------|:---:|------|------|
+| `tenants` | M1 | 租户隔离根 | 初始化默认租户 |
+| `schools` | M1 | 学校信息 | 试点 1-2 所学校 |
+| `users` | M1 | 统一用户（学生/教师/管理员） | 对应原 User 表 |
+| `roles` + `user_roles` | M1 | 角色权限 | student/counselor/teacher/admin 四种 |
+| `guardians` | M2 | 监护人关联 | M2 家校通知需要 |
+| `guardian_student_authorizations` | M2 | 监护人授权 | M2 家长知情同意 |
+| `counseling_sessions` | M1 | 对话会话 | 对应原 Conversation 表 |
+| `message_summaries` | M1 | 消息结构化摘要 | 对应原 Message 表（存摘要非原文） |
+| `risk_events` | M1 | 风险事件 | 对应原 RiskAlert 表，字段更丰富 |
+| `case_records` | M2 | 个案记录 | M2 教师端个案管理 |
+| `case_interventions` | M2 | 干预跟进 | M2 个案干预计划 |
+| `notifications` | M1 | 通知 | 预警通知推送 |
+| `audit_logs` | M1 | 审计日志 | 合规必需 |
+| `model_call_logs` | M1 | 模型调用日志 | Prompt/模型版本追踪 |
+| `knowledge_documents` + `knowledge_chunks` | M1 | 知识库 | RAG 检索 |
+| `assessment_scales` | M3 | 量表定义 | M3 测评功能 |
+| `assessment_results` | M3 | 测评结果 | M3 测评功能 |
+| `assessment_responses` | M3 | 测评逐题作答 | M3 测评功能 |
 
-#### 5.1.2 对话记录表（Conversation）
+> **不建表**：MVP 不建完整聊天原文表、生物识别表、数据湖。`message_summaries` 只存结构化摘要（情绪标签、风险信号、CBT 关键节点），不存原始消息明文。
 
-| 字段 | 类型 | 说明 | 必须 |
-|------|------|------|------|
-| id | bigint | 对话唯一标识 | 是 |
-| user_id | bigint | 学生 ID | 是 |
-| start_time | datetime | 开始时间 | 是 |
-| end_time | datetime | 结束时间 | 否 |
-| emotion_type | enum | 情绪类型 | 是 |
-| risk_flag | boolean | 是否触发风险 | 是 |
-| satisfaction | int | 满意度评分 | 否 |
+### 5.2 MVP 核心字段速查（M1 最小集）
 
-#### 5.1.3 消息表（Message）
+**users**：id, tenant_id, school_id, name, role(enum), grade, class_name, status, created_at
+**counseling_sessions**：id, tenant_id, student_id, emotion_type, risk_flag, state_path(jsonb), turn_count, start_time, end_time, satisfaction
+**message_summaries**：id, session_id, sender_type, emotion_label, risk_level, content_summary, cbt_fields(jsonb), created_at
+**risk_events**：id, tenant_id, student_id, session_id, risk_level, risk_domains(jsonb), confidence, evidence(jsonb), source, status, notified_role, created_at
 
-| 字段 | 类型 | 说明 | 必须 |
-|------|------|------|------|
-| id | bigint | 消息唯一标识 | 是 |
-| conversation_id | bigint | 所属对话 ID | 是 |
-| sender_type | enum | user/ai/system | 是 |
-| content | text | 消息内容 | 是 |
-| created_at | datetime | 发送时间 | 是 |
-
-#### 5.1.4 预警记录表（RiskAlert）
-
-| 字段 | 类型 | 说明 | 必须 |
-|------|------|------|------|
-| id | bigint | 预警唯一标识 | 是 |
-| user_id | bigint | 学生 ID | 是 |
-| conversation_id | bigint | 关联对话 ID | 是 |
-| alert_type | varchar(50) | 预警类型 | 是 |
-| content | text | 触发内容摘要 | 是 |
-| teacher_id | bigint | 接收教师 ID | 是 |
-| status | enum | pending/processed | 是 |
-| processed_at | datetime | 处理时间 | 否 |
-| process_note | text | 处理备注 | 否 |
-
-### 5.2 必须采集的数据项
+### 5.3 必须采集的数据项
 
 - 用户基础信息（姓名、角色、学校、班级）
-- 对话开始/结束时间
-- 用户选择情绪类型
-- 全部对话内容
-- 风险预警触发记录
-- 预警处理状态
+- 对话开始/结束时间、情绪类型、状态机路径
+- 消息结构化摘要（情绪标签、风险信号、CBT 关键节点）
+- 风险事件完整记录（risk_event JSON 结构，见 04 文档）
+- 模型调用日志（prompt_version、model_version、latency）
+- 审计日志（敏感访问、权限变更、风险处置）
 
-### 5.3 可延迟采集的数据项
+### 5.4 可延迟采集的数据项
 
 | 数据项 | 说明 | 延迟原因 |
 |--------|------|----------|
+| 监护人授权 | 家长知情同意记录 | M2 家校沟通启用 |
+| 个案干预 | 干预计划与跟进记录 | M2 个案管理启用 |
+| 测评数据 | 量表结果与逐题作答 | M3 测评功能启用 |
 | 设备信息 | 浏览器、IP 地址等 | 隐私合规考虑 |
-| 对话停留时长 | 学生在各话题的停留时间 | 暂不分析 |
-| 历史情绪分布 | 学生情绪变化趋势 | M3 阶段分析 |
-| 满意度详细评价 | 五星制详细评分 | M2 增加 |
-| 教师处理时长 | 从预警到处理的时间 | M2 增加统计 |
+| 对话停留时长 | 学生在各话题的停留时间 | M3 分析阶段 |
+| 历史情绪分布 | 学生情绪变化趋势 | M3 趋势分析 |
 
 ---
 

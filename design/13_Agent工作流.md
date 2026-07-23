@@ -370,3 +370,243 @@ Safety 决策链、情绪识别置信度、CBT 干预路径、升级决策推理
 | 资源消耗 | Token 消耗速率 | >预设上限 |
 
 > Java 可观测：Micrometer + Prometheus + Grafana；链路追踪 Spring 自带 Observation API。
+
+---
+
+## 九、Agent 接口定义（开发契约）
+
+> 每个 Agent 封装为独立 Spring Bean，实现统一接口，由 `ConversationOrchestrator` 编排调用。
+
+### 9.1 统一 Agent 接口
+
+```java
+// counseling-ai/agent/Agent.java
+public interface Agent<I extends AgentInput, O extends AgentOutput> {
+    String agentName();
+    O execute(I input, ConversationState state);
+    Duration timeout();
+    O fallback(I input, ConversationState state, Throwable cause);
+}
+```
+
+### 9.2 各 Agent 输入/输出定义
+
+| Agent | 输入类型 | 输出类型 | 核心字段 |
+|------|------|------|------|
+| SafetyAgent | `SafetyInput` | `SafetyResult` | riskLevel(L0-L5), riskDomains[], confidence, needsHumanReview, needsImmediateEscalation, evidence[], studentSafeReplyStrategy |
+| EmotionAgent | `EmotionInput` | `EmotionResult` | primaryEmotion, intensity(0-10), persistence, confidence |
+| SkillRouter | `RouterInput` | `RouterResult` | targetSkill(CBT/SEL/PFA/relaxation/companionship), routeReason, scenarioId |
+| CBTAgent | `CBTInput` | `CBTResult` | nextState(S0-S9), cbtFields(jsonb), microAction, balancedThought |
+| ConversationAgent | `ConversationInput` | `ConversationResult` | reply, languageLevel, turnCount |
+| EscalationAgent | `EscalationInput` | `EscalationResult` | escalationReason, notifiedRole, notificationStatus, crisisResources[] |
+| ReportAgent | `ReportInput` | `ReportResult` | teacherSummary, riskSummary, suggestedActions[] |
+| MemoryAgent | `MemoryInput` | `MemoryResult` | memoryContext, emotionTrend, riskTrend |
+
+### 9.3 ConversationOrchestrator 编排接口
+
+```java
+// counseling-ai/orchestrator/ConversationOrchestrator.java
+public interface ConversationOrchestrator {
+    /**
+     * 处理一轮对话，返回 AI 回复和更新后的状态。
+     * 内部流程：Safety → Emotion → Router → CBT/Conversation → OutputGuard
+     */
+    OrchestrationResult processTurn(String sessionId, String userInput, ConversationState currentState);
+}
+
+record OrchestrationResult(
+    String reply,
+    ConversationState updatedState,
+    SafetyResult safetyResult,
+    EmotionResult emotionResult,
+    RiskEvent riskEvent,      // nullable
+    TeacherSummary summary     // nullable，会话结束时生成
+) {}
+```
+
+---
+
+## 十、CBT 状态机实现
+
+### 10.1 状态机引擎
+
+```java
+// counseling-ai/state/CBTStateMachine.java
+public class CBTStateMachine {
+    // 状态转移表（对应 03 文档通用状态机）
+    private static final Map<CBTState, List<Transition>> TRANSITIONS = Map.of(
+        S0_START,    List.of(to(S1_SAFETY_PRECHECK, "user_engaged")),
+        S1_SAFETY_PRECHECK, List.of(
+            to(S2_EMOTION_LABEL, "risk_R0_or_R1"),
+            to(S9_ESCALATE, "risk_R3_or_R4")
+        ),
+        S2_EMOTION_LABEL, List.of(to(S3_SCENARIO_ROUTE, "emotion_obtained")),
+        S3_SCENARIO_ROUTE, List.of(to(S4_EVENT_FACT, "scenario_matched")),
+        S4_EVENT_FACT, List.of(to(S5_AUTO_THOUGHT, "event_confirmed")),
+        S5_AUTO_THOUGHT, List.of(to(S6_REFRAME, "thought_identified")),
+        S6_REFRAME, List.of(to(S7_MICRO_ACTION, "balanced_thought")),
+        S7_MICRO_ACTION, List.of(to(S8_RECHECK_CLOSE, "action_selected")),
+        S8_RECHECK_CLOSE, List.of(
+            to(END, "risk_stable"),
+            to(S9_ESCALATE, "risk_escalated")
+        ),
+        S9_ESCALATE, List.of(to(END, "notification_sent"))
+    );
+
+    public TransitionResult evaluate(CBTState current, String trigger, ConversationState state) {
+        // 全局风险覆盖：任意状态出现 R3/R4 → 强制转 S9
+        if (state.safetyResult().riskLevel() >= R3) {
+            return TransitionResult.force(S9_ESCALATE, "global_risk_override");
+        }
+        // 正常转移
+        return TRANSITIONS.getOrDefault(current, List.of())
+            .stream()
+            .filter(t -> t.trigger().equals(trigger))
+            .findFirst()
+            .map(TransitionResult::of)
+            .orElse(TransitionResult.stay(current, "no_matching_transition"));
+    }
+}
+```
+
+### 10.2 状态与 03 文档的映射
+
+| 状态机状态 | 03 文档状态 | 触发条件 | 退出条件 | 记录字段 |
+|------|------|------|------|------|
+| S0_START | 开始 | 会话创建 | 用户确认参与 | session_id, channel, grade |
+| S1_SAFETY_PRECHECK | 风险前置 | 每次用户输入后 | R0/R1 进入 CBT；R2 限制性支持；R3/R4 转人工 | initial_risk_level, risk_signals |
+| S2_EMOTION_LABEL | 情绪命名 | 风险检查通过 | 获得主情绪+强度 | emotion_label, emotion_intensity |
+| S3_SCENARIO_ROUTE | 场景路由 | 情绪已命名 | 匹配场景流程树 | scenario_id, route_confidence |
+| S4_EVENT_FACT | 事件确认 | 场景已路由 | 知道触发事件+安全状态 | trigger_event_summary |
+| S5_AUTO_THOUGHT | 自动想法 | 事件已确认 | 得到一个想法句子 | auto_thought, thinking_pattern |
+| S6_REFRAME | 认知重构 | 想法已识别 | 儿童说出替代想法 | balanced_thought, evidence |
+| S7_MICRO_ACTION | 微行动 | 重构完成 | 儿童选择行动 | micro_action, action_owner |
+| S8_RECHECK_CLOSE | 复检结束 | 行动已选 | 情绪降/风险稳定 | final_risk_level, emotion_after |
+| S9_ESCALATE | 转人工 | 任意状态 R3/R4 | 通知成功 | escalation_reason, notification_status |
+
+---
+
+## 十一、Advisor 实现规范
+
+### 11.1 Advisor 链顺序与职责
+
+| 序号 | Advisor | getOrder() | 职责 | 实现要点 |
+|:---:|------|:---:|------|------|
+| 1 | `SafetyInputAdvisor` | 100 | 输入安全预检 | 硬规则（正则+分类器）先于 LLM；命中即阻断；输出 RiskEvent |
+| 2 | `MemoryReadAdvisor` | 200 | 读取会话记忆 | 从 Redis 加载 ConversationState；拼接历史摘要到 Prompt |
+| 3 | `QuestionAnswerAdvisor` | 300 | RAG 检索 | pgvector 向量检索 + BM25 关键词；RRF 融合；仅检索已审核知识 |
+| 4 | *LLM 生成* | — | 模型调用 | ChatClient.call() |
+| 5 | `SafetyOutputAdvisor` | 400 | 输出审查 | 检查诊断/治疗承诺/保密/风险遗漏/儿童适龄；pass/rewrite/block/escalate |
+| 6 | `MemoryWriteAdvisor` | 500 | 写入会话记忆 | 更新 Redis 中的 ConversationState；提取情绪/风险标签 |
+| 7 | `LoggingAdvisor` | 600 | 审计日志 | 记录 prompt_version/model_version/latency/risk_level；写 model_call_logs |
+
+### 11.2 SafetyInputAdvisor 实现骨架
+
+```java
+// counseling-ai/advisor/SafetyInputAdvisor.java
+@Component
+public class SafetyInputAdvisor implements CallAroundAdvisor {
+    private final HardRuleMatcher hardRuleMatcher;  // 正则+关键词硬规则
+    private final ChatClient safetyClassifier;       // LLM 风险分类
+    private final RiskEventRepository riskEventRepo;
+
+    @Override
+    public int getOrder() { return 100; }
+
+    @Override
+    public AdvisedResponse aroundCall(AdvisedRequest request, CallAroundAdvisorChain chain) {
+        String userInput = request.userText();
+
+        // ① 硬规则快速匹配（不消耗 LLM Token）
+        HardRuleResult hardResult = hardRuleMatcher.match(userInput);
+        if (hardResult.isBlocked()) {
+            return buildSafetyBlockResponse(hardResult);
+        }
+
+        // ② LLM 风险分类（输出结构化 JSON）
+        SafetyResult safetyResult = safetyClassifier.prompt()
+            .system(SAFETY_SYSTEM_PROMPT)
+            .user(userInput)
+            .call()
+            .entity(SafetyResult.class);
+
+        // ③ 高风险立即触发 Escalation
+        if (safetyResult.riskLevel() >= L4) {
+            publishRiskEvent(safetyResult);
+            return buildEscalationResponse(safetyResult);
+        }
+
+        // ④ 将安全结果注入上下文供后续 Advisor 使用
+        request.adviseContext().put("safetyResult", safetyResult);
+        return chain.nextAroundCall(request);
+    }
+}
+```
+
+### 11.3 SafetyOutputAdvisor 实现骨架
+
+```java
+// counseling-ai/advisor/SafetyOutputAdvisor.java
+@Component
+public class SafetyOutputAdvisor implements CallAroundAdvisor {
+    private final ChatClient outputGuard;  // 输出审查 LLM
+
+    @Override
+    public int getOrder() { return 400; }
+
+    @Override
+    public AdvisedResponse aroundCall(AdvisedRequest request, CallAroundAdvisorChain chain) {
+        AdvisedResponse response = chain.nextAroundCall(request);
+        String candidateReply = response.response().getResult().getOutput().getContent();
+        SafetyResult safety = request.adviseContext().get("safetyResult");
+
+        // 输出审查：pass / rewrite / block / escalate
+        OutputGuardResult guard = outputGuard.prompt()
+            .system(OUTPUT_GUARD_PROMPT)
+            .user("候选回复：" + candidateReply + "\n风险上下文：" + safety)
+            .call()
+            .entity(OutputGuardResult.class);
+
+        return switch (guard.decision()) {
+            case PASS -> response;
+            case REWRITE -> rewriteResponse(response, guard.rewrittenReply());
+            case BLOCK -> buildSafetyTemplate(safety);
+            case ESCALATE -> {
+                publishRiskEvent(safety);
+                yield buildEscalationResponse(safety);
+            }
+        };
+    }
+}
+```
+
+---
+
+## 十二、Agent 间数据流图
+
+```
+学生输入
+  │
+  ▼
+SafetyInputAdvisor ──硬规则──▶ 阻断/放行
+  │ 放行
+  ├──▶ SafetyAgent.check() ──▶ SafetyResult{riskLevel, domains[], evidence[]}
+  ├──▶ EmotionAgent.recognize() ──▶ EmotionResult{emotion, intensity, confidence}
+  │   （并行执行，虚拟线程）
+  ▼
+Orchestrator 路由
+  ├─ risk ≥ R3 ──▶ EscalationAgent.handle() ──▶ 通知教师/家长
+  ├─ high_intensity ──▶ CBTAgent.intervene() ──▶ CBTResult{nextState, fields}
+  └─ low_intensity ──▶ ConversationAgent.reply() ──▶ 支持性回复
+  ▼
+ConversationAgent.generate() ──▶ 候选回复
+  │
+  ▼
+SafetyOutputAdvisor ──▶ pass/rewrite/block/escalate
+  │
+  ▼
+返回学生 + 异步旁路：
+  ├──▶ MemoryAgent.write() ──▶ 更新 Redis 会话状态
+  ├──▶ LoggingAdvisor.log() ──▶ 写 model_call_logs
+  └──▶ ReportAgent（会话结束时）──▶ 教师摘要 + risk_event
+```
