@@ -5,6 +5,10 @@
 tmp/*
 !tmp/.gitkeep
 
+# ===== 报告输出目录（测试/覆盖率/E2E 汇总，见 STRUCTURE.md §2.11）=====
+reports/*
+!reports/.gitkeep
+
 # ===== 密钥与环境（红线：永不提交）=====
 .env
 .env.*
@@ -32,6 +36,18 @@ venv/
 node_modules/
 dist/
 .next/
+coverage/
+
+# ===== Java / Maven =====
+target/
+*.class
+*.jar
+!deploy/**/*.jar
+
+# ===== Playwright / E2E =====
+tests/e2e/playwright-report/
+tests/e2e/test-results/
+tests/e2e/blob-report/
 
 # ===== 日志 =====
 *.log

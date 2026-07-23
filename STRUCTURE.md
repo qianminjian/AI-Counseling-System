@@ -24,12 +24,14 @@ AI-Counseling-System/
 │
 ├── backend/                # 后端源代码（Java 21 + Spring Boot 3 + Spring AI，Maven 多模块，详见 §2.5）
 ├── apps/                   # 前端应用组（React + TS + Vite，详见 §2.6）
-├── tests/                  # 跨模块测试目录（Java 单元测试在各模块 src/test/ 内，详见 §2.7）
+├── tests/                  # 跨模块测试（常规测试在模块/应用内，详见 §2.7）
 │   ├── unit/               #   跨模块单元测试（备用；常规单元测试在模块内）
 │   ├── integration/        #   集成测试：跨模块、含 DB/API/LLM 调用
-│   └── e2e/                #   端到端测试：完整用户场景
+│   └── e2e/                #   端到端测试：Playwright，完整用户场景
 │
-└── tmp/                    # 唯一临时目录（gitignore，不追踪）
+├── deploy/                 # 部署配置：Docker Compose、生产编排、基础设施初始化（详见 §2.9）
+├── reports/                # 报告输出目录（gitignore：测试/覆盖率/E2E 汇总报告，详见 §2.11）
+└── tmp/                    # 唯一临时目录（gitignore，不追踪，详见 §2.13）
 ```
 
 ---
@@ -94,7 +96,9 @@ backend/
 - **多租户**：Schema 级隔离（`tenant_{tenant_id}`，按 design/07），动态数据源路由在 `counseling-tenant/`
 - **LLM 接入**：供应商无关，Spring AI 配置驱动（决策 #7），任意国产合规 LLM 可接入，主备降级按 design/13 §6.2
 - **Agent 编排**：Spring AI ChatClient + Advisor 链 + 状态机（决策 #9），7 Agent 职责按 design/13
-- **测试**：各模块 `src/test/java`（JUnit 5 + Mockito），集成测试用 Testcontainers（PG/Redis）
+- **测试**：各模块 `src/test/java`（JUnit 5 + Mockito），集成测试用 Testcontainers（PG/Redis），命名与管理规则见 §2.7
+- **DB 脚本**：`backend/scripts/sql/`，Flyway 版本化命名（`V{n}__desc.sql`），详见 §2.10
+- **Prompt 资源**：`counseling-ai/src/main/resources/prompts/`（classpath 加载，与 design/18 一一对应），详见 §2.12
 
 ### 2.6 `apps/` — 前端应用组
 
@@ -109,20 +113,148 @@ apps/
 - 每个应用独立 `package.json`，共享配置放 `apps/shared/`（需要时再建，YAGNI）
 - 前端测试就近放置（`*.test.ts`），Vitest 运行
 
-### 2.7 测试约定
+### 2.7 测试约定（命名 / 目录 / 管理）
 
-- **后端单元测试**：在各 Maven 模块的 `src/test/java`，镜像主代码包结构（主位置）
-  - 单元测试：快（毫秒级）、无 IO、无网络、LLM 用 mock（JUnit 5 + Mockito）
-  - 集成测试：允许真实 DB/Redis（Testcontainers），LLM 用录制/桩
-- **跨模块测试**：根 `tests/`（`integration/` 跨模块集成、`e2e/` 端到端完整场景）；`tests/unit/` 仅作跨模块单元测试备用
-- **前端测试**：就近放置（`*.test.ts`），Vitest 运行
+#### 2.7.1 测试金字塔与位置
+
+| 层级 | 位置 | 框架 | 运行时机 |
+|------|------|------|----------|
+| 单元测试 | 各模块 `src/test/java/` | JUnit 5 + Mockito | 每次 commit 前 |
+| 集成测试 | 各模块 `src/test/java/`（`*IT.java` 后缀区分） | Testcontainers + Spring Boot Test | merge 前 / CI |
+| 跨模块集成 | `tests/integration/` | 同上 | M 里程碑验收 |
+| E2E | `tests/e2e/` | Playwright | 发布前 |
+| 前端单元/组件 | `apps/*/src/`（就近放置） | Vitest + React Testing Library | 每次 commit 前 |
+
+#### 2.7.2 后端测试命名规则
+
+| 类型 | 文件命名 | 示例 |
+|------|----------|------|
+| 单元测试 | `{被测类名}Test.java` | `SafetyAdvisorTest.java` |
+| 集成测试 | `{被测类名}IT.java` | `TenantRoutingIT.java` |
+| 测试方法 | `should_{预期行为}_when_{条件}()` | `should_returnSafetyResponse_when_L5Detected()` |
+| 测试 Fixture | `src/test/resources/fixtures/{module}/` | `fixtures/risk/l5_suicide_plan.json` |
+
+- 包结构镜像主代码：主 `com.mindsafe.ai.advisor.SafetyAdvisor` → 测 `com.mindsafe.ai.advisor.SafetyAdvisorTest`
+- 测试资源目录：`src/test/resources/fixtures/`（JSON/SQL 测试数据）、`src/test/resources/prompts/`（Prompt 测试变体）
+
+#### 2.7.3 测试运行与报告
+
+| 命令 | 作用 | 报告输出 |
+|------|------|----------|
+| `mvn test` | 单元测试（surefire，匹配 `*Test`） | `target/surefire-reports/` |
+| `mvn verify` | 单元 + 集成（failsafe，匹配 `*IT`） | `target/failsafe-reports/` |
+| `mvn test -Dtest=XxxTest` | 单个测试类 | 同上 |
+| `pnpm test` | 前端单元/组件（Vitest） | `apps/*/coverage/` |
+| `pnpm test:e2e` | E2E（Playwright，需先启动服务） | `tests/e2e/playwright-report/` |
+
+- 覆盖率：JaCoCo，报告 `target/site/jacoco/index.html`
+- 报告均为 gitignore 产物，CI 通过 artifacts 保留，本地直查 target 目录
+
+#### 2.7.4 测试数据管理
+
+- **铁律**：禁止使用生产数据或共享数据库跑测试
+- 集成测试：Testcontainers 启动临时 PG 16 + Redis 7 实例，测试类级别隔离
+- LLM 测试：录制回放（WireMock / fixtures/llm/ 目录），禁止测试消耗真实 API 调用
+- 数据库初始化：`@Sql` + Flyway 迁移脚本自动建表
+- 测试间无顺序依赖，可并行执行
+
+#### 2.7.5 前端测试命名规则
+
+| 类型 | 文件命名 | 位置 |
+|------|----------|------|
+| 单元/工具函数 | `{source}.test.ts` | 与源码同目录 |
+| 组件 | `{Component}.test.tsx` | 与源码同目录 |
+| E2E | `{scenario}.spec.ts` | `tests/e2e/`（项目根） |
+
+- E2E 按用户场景命名：`student-chat.spec.ts`、`alert-claim.spec.ts`
+- E2E 测试数据由 seed 脚本初始化（`tests/e2e/fixtures/`）
+
+#### 2.7.6 跨模块测试（`tests/`）
+
+- `tests/integration/`：跨 Maven 模块协作验证（租户路由 + 对话链路 + 预警链路联合）
+- `tests/e2e/`：Playwright 驱动浏览器的完整用户场景
+- `tests/unit/`：仅作备用，常规单元测试必须在模块内
+- `tests/` 不含可构建代码，仅为脚本/配置/fixture 容器
 - TDD 工作流见 `.qoder/rules/tdd-workflow.md`（@tdd-workflow）
 
-### 2.8 `tmp/` — 唯一临时目录
+### 2.8 构建产物与依赖管理
+
+| 产物 | 位置 | gitignore |
+|------|------|-----------|
+| Maven 构建 | `backend/**/target/` | ✅ |
+| Vite 构建 | `apps/*/dist/` | ✅ |
+| pnpm 依赖 | `**/node_modules/` | ✅ |
+| Playwright 产物 | `tests/e2e/playwright-report/`、`test-results/` | ✅ |
+
+- 构建产物永不入库，一律可通过 `mvn package` / `pnpm build` 再生
+- 依赖版本：后端由 parent pom `<dependencyManagement>` 统一管控，子模块不得自行指定版本；前端由 workspace 根 `package.json` + `pnpm-workspace.yaml` 管控
+- 新增依赖：须更新 design/12 技术栈文档并说明理由；YAGNI 清单（§4.6）内技术禁止引入
+
+### 2.9 Docker / 基础设施配置（`deploy/`）
+
+```
+deploy/
+├── docker-compose.yml          # 本地开发环境：PG 16 + pgvector、Redis 7
+├── docker-compose.prod.yml     # 生产 All-in-One（私有化交付用）
+└── init/                       # 基础设施初始化
+    ├── pg-init.sql             # 创建扩展（vector）、公共 schema
+    └── redis.conf              # Redis 最小配置（maxmemory/持久化策略）
+```
+
+- 应用 Dockerfile 随模块：`backend/counseling-app/Dockerfile`、`apps/*/Dockerfile`
+- 容器命名前缀 `mindsafe-`（如 `mindsafe-pg`、`mindsafe-redis`、`mindsafe-app`）
+- 本地开发端口约定：PG 5432、Redis 6379、后端 8080、学生端 5173、教师端 5174
+- 启动服务前必须执行端口检查（红线，见 AGENTS.md §6）
+
+### 2.10 数据库脚本（`backend/scripts/sql/`）
+
+- 命名：Flyway 规范 `V{版本}__{描述}.sql`（双下划线分隔）
+- 初始脚本：
+  - `V1__init_public_schema.sql` — 公共 Schema（租户注册表、全局配置）
+  - `V2__init_tenant_template.sql` — 租户 Schema 模板（design/06 全部 DDL）
+  - `V3__seed_data.sql` — 种子数据（角色、风险规则、情绪标签）
+- 后续变更：版本递增，由 Flyway 在应用启动时自动执行
+- 多租户迁移：`counseling-tenant` 模块的迁移执行器遍历所有租户 Schema 应用未执行版本
+- **红线**：DDL 变更必须走版本化脚本，禁止手工改库；脚本须向后兼容（支持灰度发布）
+
+### 2.11 日志与报告输出
+
+| 类型 | 输出位置 | gitignore | 说明 |
+|------|----------|-----------|------|
+| 应用日志 | 控制台（dev）/ 容器内 `/app/logs/`（prod） | — | logback-spring.xml 配置 |
+| 单元/集成测试报告 | `target/surefire-reports/`、`target/failsafe-reports/` | ✅ | Maven 自动生成 |
+| 覆盖率报告 | `target/site/jacoco/` | ✅ | JaCoCo |
+| 前端覆盖率 | `apps/*/coverage/` | ✅ | Vitest c8 |
+| E2E 报告 | `tests/e2e/playwright-report/` | ✅ | Playwright HTML 报告 |
+| 汇总报告 | `reports/`（项目根） | ✅ | CI 聚合产物、手工分析报告暂存 |
+
+- `reports/` 仅存机器生成产物，人工分析文档归 `design/` 或 `tmp/`
+- 日志/报告均不允许 commit（gitignore 已拦截）
+
+### 2.12 Prompt 资源文件
+
+- 位置：`backend/counseling-ai/src/main/resources/prompts/`
+- 目录结构与 design/18 Prompt 模板库一一对应：
+
+```
+prompts/
+├── system/         # SYS-001 系统提示词
+├── safety/         # SAF-001 风险识别、SAF-002 输出审查
+├── language/       # LANG-001~003 年级语言规则
+├── skills/         # SKL-001~003 CBT/SEL/PFA 微技能
+└── tasks/          # TSK-001~003 教师摘要/RAG改写/会话收束
+```
+
+- 格式：`.st`（Spring AI StringTemplate）或 `.txt`，由 PromptTemplateLoader 统一加载
+- 版本管理：随代码 git 管理；M3+ 管理端上线后可迁移至 DB 存储（热更新）
+- 禁止在 Java 代码中硬编码 Prompt 文本（安全回复模板除外，见 design/18 §12）
+
+### 2.13 `tmp/` — 唯一临时目录
 
 - **铁律**：本项目所有临时产物（调试输出、脚本预览、下载暂存、实验笔记草稿）**只允许**放这里
 - 已 gitignore（`tmp/*`，保留 `.gitkeep`），内容随时可清空
 - 不允许在项目根或桌面等处散落临时文件；脚本默认输出路径应指向 `tmp/`
+- Agent 工作中间产物（调研草稿、对比分析等）也归此目录
 
 ---
 
@@ -131,7 +263,7 @@ apps/
 | 路径 | 性质 | 规则 |
 |------|------|------|
 | `AGENTS.md`、`.qoder/rules/` | 中央库同步区 | **禁止写入项目特有内容**，会被 sync-rules.sh 覆盖/告警；改规则去中央库改 |
-| `STRUCTURE.md`、`README.md`、`design/`、`doc/`（含 `doc/his/`）、`scripts/`、`backend/`、`apps/`、`tests/`、`tmp/` | 项目自留区 | 项目特有内容全部放这里 |
+| `STRUCTURE.md`、`README.md`、`design/`、`doc/`（含 `doc/his/`）、`scripts/`、`backend/`、`apps/`、`tests/`、`deploy/`、`reports/`、`tmp/` | 项目自留区 | 项目特有内容全部放这里 |
 
 ---
 
@@ -143,6 +275,9 @@ apps/
 4. **密钥红线**：`.env` 等密钥文件禁止入库（gitignore 已挡），示例配置用 `.env.example`；LLM API Key 一律走环境变量，禁止硬编码
 5. **变更流程**：调整目录结构 → 先改本文件 → 再动目录 → commit 中说明
 6. **技术栈基线**（2026-07-23 定，详见 design/BEACON.md 决策 #5/#8/#9）：后端 Java 21 + Spring Boot 3 + Spring AI + MyBatis-Plus（Maven 多模块，模块化单体）；前端 React 18 + TS + Vite + Tailwind；数据库 PostgreSQL 16 + pgvector（信创期评估达梦/人大金仓）；缓存 Redis 7；构建 Maven + pnpm。**YAGNI 清单**（MVP 禁止引入）：K8s、Kafka、微服务拆分、API 网关、ELK、Milvus、语音/生物识别组件
+7. **构建产物红线**：`target/`、`dist/`、`node_modules/`、`coverage/`、`playwright-report/` 等机器产物永不入库（gitignore 已拦截）
+8. **报告输出红线**：所有测试/覆盖率/E2E 报告只输出到 §2.11 约定位置，汇总归 `reports/`，禁止散落到其他目录
+9. **包名约定**：后端统一 `com.mindsafe.{module}.*`（如 `com.mindsafe.ai`、`com.mindsafe.tenant`、`com.mindsafe.api`）；前端包名 `@mindsafe/student`、`@mindsafe/teacher`
 
 ---
 
@@ -156,3 +291,4 @@ apps/
 | 2026-07-23 | 文档整合完成：15 份 docx 全部转为 `design/docs/*.md`，原 docx 归档 `design/his/`，§2.2 更新 docs/his 拆分约定 | M0 文档整合里程碑收尾 |
 | 2026-07-23 | 目录结构纠偏：`design/docs/*.md` 拍平到 `design/`；`design/his/` 迁至项目根 `doc/`；§1/§2.2 同步 | 对齐钱敏健原意（md 直接在 design 下、docx 在 doc 下），消除多余中间层 |
 | 2026-07-23 | `prd/` + `prompts/` 归档至 `doc/his/`，删除原目录；§1/§2.1/§2.3/§3/§4 同步 | 内容已被 design/*.md 完全取代，无活跃用途，统一归入只读留档 |
+| 2026-07-23 | 开发规范制定：§2.7 测试命名/目录/管理规则、§2.8 构建产物、§2.9 deploy/、§2.10 DB 脚本、§2.11 报告输出、§2.12 Prompt 资源、§2.13 tmp 扩展；新增 deploy/ + reports/ 目录；§4 新增包名/产物/报告红线 | 钱敏健确认 MVP 范围 + Maven + MyBatis-Plus，开发启动前约束先行 |

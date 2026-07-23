@@ -93,8 +93,8 @@
 
 ## 待确认问题
 
-- [ ] MVP 范围以 design/08 为准的最终确认 — 钱敏健，首个 PLAN 前
-- [ ] Java 子选型确认：构建工具 Maven(推荐)/Gradle、ORM MyBatis-Plus(推荐)/JPA — 钱敏健
+- [x] MVP 范围以 design/08 为准 — 钱敏健确认 2026-07-23
+- [x] Java 子选型：Maven + MyBatis-Plus — 钱敏健确认 2026-07-23
 - [ ] 信创数据库：MVP 用 PG+pgvector，信创期(M3+)评估达梦/人大金仓 — 钱敏健，M3 前
 - [ ] 3 版建设方案的主版本确认与清理 — 钱敏健，随时
 - [ ] 首个 LLM Provider 实际接入哪家 — 钱敏健，M1 联调前
