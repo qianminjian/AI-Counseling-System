@@ -33,18 +33,20 @@
 | 2 | 文档分层：`prd/`（需求/早期产物）与 `design/`（正式设计）分离 | 需求与设计生命周期不同，避免混杂 | 2026-07-23 |
 | 3 | `tmp/` 为唯一临时目录并 gitignore | 杜绝临时文件散落 | 2026-07-23 |
 | 4 | 3 版建设方案全部保留（时间戳后缀） | md5 均不同，取舍需人工比对，不擅自删 | 2026-07-23 |
-| 5 | 技术栈：Python 3.12+FastAPI+LangGraph / PostgreSQL16+pgvector / Redis7 / React18+TS+Vite+Tailwind / uv+pnpm / Docker Compose；模块化单体 | 13号已定LangGraph；06号已定PG；MVP规模不支持微服务（砍K8s/Kafka/ELK/Go/Milvus） | 2026-07-23 |
+| 5 | 技术栈：**Java 21+Spring Boot 3+Spring AI** / PostgreSQL16+pgvector / Redis7 / React18+TS+Vite+Tailwind / Maven+pnpm / Docker Compose | 私有化/信创是主营（钱敏健决策）：Java 信创适配成熟、政企交付预期、用户银行背景；06号已定PG；前端不变 | 2026-07-23 |
 | 6 | 多租户用 Schema 级隔离（`tenant_{id}`） | 钱敏健决策：隔离强度优先（金融背景标准），与07号文档一致；代价是迁移运维复杂度，接受 | 2026-07-23 |
-| 7 | LLM 供应商无关化：core/ 统一 Provider 抽象，配置驱动接入任意国产合规 LLM，主备降级 | 钱敏健决策：不锁定供应商，避免单点绑定；合规候选 DeepSeek/通义/GLM | 2026-07-23 |
+| 7 | LLM 供应商无关化：Spring AI 配置驱动接入任意国产合规 LLM，主备降级 | 钱敏健决策：不锁定供应商；Spring AI 天然多 Provider；合规候选 DeepSeek/通义/GLM | 2026-07-23 |
+| 8 | 后端架构：**模块化单体（Maven 多模块）**，MVP 不上微服务 | 微服务运维税（注册/配置/链路/分布式事务）MVP 纯负担；Maven 模块隔离领域未来可拆；私有化单体容器化对学校机房更友好 | 2026-07-23 |
+| 9 | Agent 编排：**Spring AI（ChatClient+Advisor 链+状态机）替代 13 号的 LangGraph** | Java 下 LangGraph(Python) 不适用；7 Agent 职责划分(design/13)保留，仅替换实现技术；CBT 流程树本质是状态机 | 2026-07-23 |
 
 ---
 
 ## 当前状态
 
-- **阶段**：技术栈已定，进入实现准备
-- **最近动作**：技术栈选型完成（决策 #5-7），STRUCTURE.md 同步更新 src/apps 约定
+- **阶段**：技术栈已定（Java 路线），进入实现准备
+- **最近动作**：技术栈由 Python 改为 Java（决策 #5 重写、#8/#9 新增），STRUCTURE.md 同步更新 backend/apps 约定
 - **下一步**：确认 MVP 范围（design/08）→ 生成首个实现 PLAN（M1 骨架 + 对话最小闭环）
-- **阻塞项**：MVP 范围未最终确认
+- **阻塞项**：MVP 范围未最终确认；Java 子选型（构建工具/ORM）待确认
 
 ---
 
@@ -52,6 +54,7 @@
 
 | 日期 | 变更 | 原因 |
 |------|------|------|
+| 2026-07-23 | 技术栈由 Python 改为 Java（决策 #5 重写、#8/#9 新增）：私有化/信创是主营，Spring AI 替代 LangGraph，仍坚持模块化单体 | 钱敏健商业重心决策 |
 | 2026-07-23 | 技术栈选型定案（决策 #5-7），裁决文档冲突：06行级→Schema级、12微服务→单体、双语言→纯Python | 实现启动前提 |
 | 2026-07-23 | 创建 BEACON；目录重组（PRD→prd、reference 并入 design、promot→prompts、脚本入 scripts） | 从探索阶段转入开发准备 |
 | 2026-05-29 | 其他 agent 产出 15 份设计文档与多版方案 | 初始探索 |
@@ -61,6 +64,8 @@
 ## 待解决问题
 
 - [Q?] MVP 范围以 design/08 为准的最终确认 — 钱敏健，首个 PLAN 前
+- [Q?] Java 子选型确认：构建工具 Maven(推荐,信创/银行通用)/Gradle、ORM MyBatis-Plus(推荐,政企/信创主流)/Spring Data JPA — 钱敏健
+- [Q?] 信创数据库：MVP 用 PG+pgvector，信创期(M3+)评估达梦/人大金仓及向量能力替代方案 — 钱敏健，M3 前
 - [Q?] 3 版建设方案的主版本确认与清理 — 钱敏健，随时
 - [Q?] 首个 LLM Provider 实际接入哪家（开发期可用 mock，联调前需申请 API Key）— 钱敏健，M1 联调前
 
