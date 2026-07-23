@@ -42,12 +42,19 @@ public class ChatController {
 
     /**
      * 发送消息并获取 AI 流式回复（SSE）
+     * M2：支持语音情绪元数据
      */
     @PostMapping(value = "/sessions/{sessionId}/messages", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public Flux<StreamMessageEvent> sendMessage(
             @PathVariable UUID sessionId,
             @Valid @RequestBody SendMessageRequest request) {
         UUID tenantId = UUID.fromString("00000000-0000-0000-0000-000000000001");
+
+        if (request.hasVoiceEmotion()) {
+            return conversationService.sendMessageStream(
+                    tenantId, sessionId, request.content(),
+                    request.voiceEmotion(), request.voiceEmotionConfidence());
+        }
         return conversationService.sendMessageStream(tenantId, sessionId, request.content());
     }
 

@@ -7,7 +7,7 @@ import reactor.core.publisher.Flux;
 import java.util.UUID;
 
 /**
- * 对话服务接口（M1 核心链路）
+ * 对话服务接口（M1 核心链路 + M2 语音情绪融合）
  */
 public interface ConversationService {
 
@@ -17,9 +17,18 @@ public interface ConversationService {
     SessionInfo createSession(UUID tenantId, UUID studentUserId, String emotionTag, String channel);
 
     /**
-     * 发送消息并获取 AI 流式回复
+     * 发送消息并获取 AI 流式回复（纯文本）
      */
     Flux<StreamMessageEvent> sendMessageStream(UUID tenantId, UUID sessionId, String content);
+
+    /**
+     * 发送消息并获取 AI 流式回复（含语音情绪上下文）
+     *
+     * @param voiceEmotion           语音情绪标签（sad/fearful/angry 等）
+     * @param voiceEmotionConfidence 置信度 0~1
+     */
+    Flux<StreamMessageEvent> sendMessageStream(UUID tenantId, UUID sessionId, String content,
+                                               String voiceEmotion, Double voiceEmotionConfidence);
 
     /**
      * 结束会话

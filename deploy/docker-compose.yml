@@ -1,6 +1,6 @@
 # MindSafe 本地开发环境
 # 用法：docker compose up -d
-# 端口约定：PG 5432 / Redis 6379 / 后端 8080 / 学生端 5173 / 教师端 5174
+# 端口约定：PG 5433 / Redis 6379 / 后端 8080 / 学生端 3000 / 教师端 3001 / 语音服务 10095
 
 services:
   postgres:
@@ -33,5 +33,26 @@ services:
       timeout: 3s
       retries: 5
 
+  voice-service:
+    build:
+      context: ../backend/voice-service
+      dockerfile: Dockerfile
+    container_name: mindsafe-voice
+    ports:
+      - "10095:10095"
+    volumes:
+      - voice-models:/root/.cache/modelscope
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:10095/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+
 volumes:
   pgdata:
+  voice-models:
