@@ -8,7 +8,7 @@ const EMOTION_EMOJI = {
 }
 
 /**
- * MediaRecorder 录音 Hook（M2：录制真实音频用于情感分析）
+ * MediaRecorder 录音 Hook（录制真实音频用于情感分析）
  */
 function useAudioRecorder(onComplete) {
   const [recording, setRecording] = useState(false)
@@ -71,6 +71,37 @@ function useAudioRecorder(onComplete) {
   return { recording, analyzing, supported, toggle }
 }
 
+/** 消息气泡组件（手机/Pad 共用） */
+function MessageBubble({ msg, isLast, streaming }) {
+  if (msg.role === 'system') {
+    return (
+      <div className="flex justify-start lg:justify-center">
+        <div className={`w-full lg:w-auto text-center py-2 px-3 rounded-lg text-sm lg:text-base
+          ${msg.level >= 3 ? 'bg-red-50 text-red-600' : 'bg-amber-50 text-amber-600'}`}>
+          {msg.content}
+        </div>
+      </div>
+    )
+  }
+  return (
+    <div className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+      <div className={`max-w-[85%] lg:max-w-[70%] px-4 py-3 lg:px-5 lg:py-4 rounded-2xl lg:rounded-3xl
+        text-sm lg:text-lg leading-relaxed whitespace-pre-wrap
+        ${msg.role === 'user'
+          ? 'bg-indigo-500 text-white rounded-br-md'
+          : 'bg-white text-gray-700 border border-gray-100 shadow-sm rounded-bl-md'
+        }`}>
+        {msg.emotion && msg.emotion.labelEn !== 'unknown' && (
+          <span className="inline-block mr-1 text-xs lg:text-sm opacity-80">
+            {EMOTION_EMOJI[msg.emotion.labelEn] || '🎵'}
+          </span>
+        )}
+        {msg.content || (streaming && isLast ? '...' : '')}
+      </div>
+    </div>
+  )
+}
+
 export default function ChatRoom({ session, onEnd }) {
   const [messages, setMessages] = useState([
     { role: 'assistant', content: session.greeting },
@@ -108,12 +139,11 @@ export default function ChatRoom({ session, onEnd }) {
   /** 语音按钮点击（含授权检查） */
   const handleVoiceClick = useCallback(() => {
     if (recording) {
-      toggleVoice() // 停止录音不需要授权
+      toggleVoice()
     } else {
       if (requestConsent()) {
-        toggleVoice() // 已授权，直接开始
+        toggleVoice()
       }
-      // 未授权会弹出 dialog
     }
   }, [recording, toggleVoice, requestConsent])
 
@@ -131,7 +161,6 @@ export default function ChatRoom({ session, onEnd }) {
     const text = input.trim()
     if (!text || streaming) return
 
-    // 构建消息体（含语音情绪元数据）
     const body = { content: text }
     if (voiceEmotion) {
       body.voiceEmotion = voiceEmotion.labelEn
@@ -139,7 +168,7 @@ export default function ChatRoom({ session, onEnd }) {
       body.inputMode = 'voice'
     }
 
-    const msgEmotion = voiceEmotion // 保存当前情绪用于气泡显示
+    const msgEmotion = voiceEmotion
     setInput('')
     setVoiceEmotion(null)
     setMessages((prev) => [...prev, { role: 'user', content: text, emotion: msgEmotion }])
@@ -206,115 +235,142 @@ export default function ChatRoom({ session, onEnd }) {
     onEnd()
   }
 
+  /* ===== 语音大按钮（Pad 左栏 / 手机底部共用逻辑） ===== */
+  const voiceButton = (size) => {
+    const sizeClass = size === 'lg'
+      ? 'w-28 h-28 lg:w-36 lg:h-36'
+      : 'w-12 h-12'
+    const iconClass = size === 'lg' ? 'w-12 h-12 lg:w-14 lg:h-14' : 'w-5 h-5'
+
+    return (
+      <button
+        onClick={handleVoiceClick}
+        disabled={streaming || analyzing}
+        className={`${sizeClass} rounded-full flex items-center justify-center transition-all flex-shrink-0
+          ${recording
+            ? 'bg-red-500 text-white shadow-xl shadow-red-200 scale-110 animate-pulse'
+            : 'bg-indigo-500 text-white shadow-lg shadow-indigo-200 hover:bg-indigo-600 active:scale-95'
+          } disabled:opacity-40 disabled:cursor-not-allowed`}
+        title={recording ? '停止录音' : '按住说话'}
+      >
+        {recording ? (
+          <svg className={iconClass} fill="currentColor" viewBox="0 0 24 24">
+            <rect x="6" y="6" width="12" height="12" rx="2" />
+          </svg>
+        ) : (
+          <svg className={iconClass} fill="currentColor" viewBox="0 0 24 24">
+            <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
+            <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
+          </svg>
+        )}
+      </button>
+    )
+  }
+
   return (
     <div className="h-screen flex flex-col bg-gray-50">
-      {/* Header */}
-      <header className="flex items-center justify-between px-4 py-3 bg-white border-b border-gray-100 shadow-sm">
-        <div className="flex items-center gap-2">
-          <span className="text-2xl">🤗</span>
-          <span className="font-medium text-gray-800">心理小伙伴</span>
+      {/* ===== Header ===== */}
+      <header className="flex items-center justify-between px-4 lg:px-8 py-3 lg:py-4 bg-white border-b border-gray-100 shadow-sm">
+        <div className="flex items-center gap-2 lg:gap-3">
+          <span className="text-2xl lg:text-3xl">🤗</span>
+          <span className="font-medium text-gray-800 lg:text-xl">心理小伙伴</span>
         </div>
         <button
           onClick={handleEnd}
-          className="text-sm text-gray-400 hover:text-red-500 transition-colors"
+          className="text-sm lg:text-base px-4 py-2 lg:px-6 lg:py-3 rounded-full border border-gray-200
+            text-gray-500 hover:text-red-500 hover:border-red-200 transition-colors"
         >
           结束对话
         </button>
       </header>
 
-      {/* Messages */}
-      <main className="flex-1 overflow-y-auto p-4 space-y-4">
-        {messages.map((msg, i) => (
-          <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-            {msg.role === 'system' ? (
-              <div className={`w-full text-center py-2 px-3 rounded-lg text-sm
-                ${msg.level >= 3 ? 'bg-red-50 text-red-600' : 'bg-amber-50 text-amber-600'}`}>
-                {msg.content}
-              </div>
-            ) : (
-              <div className={`max-w-[80%] px-4 py-3 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap
-                ${msg.role === 'user'
-                  ? 'bg-indigo-500 text-white rounded-br-md'
-                  : 'bg-white text-gray-700 border border-gray-100 shadow-sm rounded-bl-md'
-                }`}>
-                {/* 语音情绪标签 */}
-                {msg.emotion && msg.emotion.labelEn !== 'unknown' && (
-                  <span className="inline-block mr-1 text-xs opacity-80">
-                    {EMOTION_EMOJI[msg.emotion.labelEn] || '🎵'}
-                  </span>
-                )}
-                {msg.content || (streaming && i === messages.length - 1 ? '...' : '')}
+      {/* ===== 主体：手机单栏 / Pad 双栏 ===== */}
+      <div className="flex-1 flex overflow-hidden">
+
+        {/* Pad 左栏：伙伴区 + 语音主按钮（仅 lg 显示） */}
+        <aside className="hidden lg:flex flex-col items-center justify-center w-[340px] xl:w-[400px]
+          bg-gradient-to-b from-indigo-50 to-purple-50 border-r border-indigo-100 p-8">
+          {/* 伙伴形象 */}
+          <div className={`text-8xl xl:text-9xl mb-6 transition-transform duration-300 ${streaming ? 'animate-bounce' : ''}`}>
+            {recording ? '👂' : streaming ? '🤔' : '🤗'}
+          </div>
+          <p className="text-lg text-indigo-400 mb-10">
+            {recording ? '我在认真听你说...' : analyzing ? '我在感受你的情绪...' : streaming ? '让我想想...' : '想说什么就说什么吧'}
+          </p>
+
+          {/* 语音大按钮 */}
+          {supported && voiceButton('lg')}
+          <p className="mt-4 text-sm text-gray-400">
+            {recording ? '再点一下结束录音' : '点麦克风，用说的更快哦'}
+          </p>
+
+          {/* 语音情绪预览 */}
+          {voiceEmotion && (
+            <div className="mt-6 flex items-center gap-2 px-4 py-2 bg-white rounded-full shadow-sm text-sm text-gray-600">
+              <span>{EMOTION_EMOJI[voiceEmotion.labelEn] || '🎵'}</span>
+              <span>我感觉到你有点{voiceEmotion.label}</span>
+            </div>
+          )}
+        </aside>
+
+        {/* 右栏（手机为全宽）：对话区 */}
+        <div className="flex-1 flex flex-col min-w-0">
+          {/* 消息列表 */}
+          <main className="flex-1 overflow-y-auto p-4 lg:p-8 space-y-4 lg:space-y-5">
+            {messages.map((msg, i) => (
+              <MessageBubble key={i} msg={msg} isLast={i === messages.length - 1} streaming={streaming} />
+            ))}
+            <div ref={bottomRef} />
+          </main>
+
+          {/* 输入区 */}
+          <footer className="p-4 lg:px-8 lg:py-5 bg-white border-t border-gray-100">
+            {/* 手机录音状态 */}
+            {(recording || analyzing) && (
+              <div className="flex lg:hidden items-center justify-center gap-2 mb-3 text-sm text-indigo-600">
+                <span className="relative flex h-3 w-3">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-3 w-3 bg-indigo-500"></span>
+                </span>
+                {recording ? '正在录音... 再点一下结束' : '正在分析语音情绪...'}
               </div>
             )}
-          </div>
-        ))}
-        <div ref={bottomRef} />
-      </main>
 
-      {/* Input */}
-      <footer className="p-4 bg-white border-t border-gray-100">
-        {/* 录音/分析状态提示 */}
-        {(recording || analyzing) && (
-          <div className="flex items-center justify-center gap-2 mb-3 text-sm text-indigo-600">
-            <span className="relative flex h-3 w-3">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-3 w-3 bg-indigo-500"></span>
-            </span>
-            {recording ? '正在录音... 再点一下结束' : '正在分析语音情绪...'}
-          </div>
-        )}
+            {/* 手机语音情绪预览 */}
+            {voiceEmotion && (
+              <div className="flex lg:hidden items-center justify-center gap-1 mb-2 text-xs text-gray-500">
+                <span>{EMOTION_EMOJI[voiceEmotion.labelEn] || '🎵'}</span>
+                <span>语音情绪：{voiceEmotion.label}（{Math.round(voiceEmotion.confidence * 100)}%）</span>
+              </div>
+            )}
 
-        {/* 语音情绪预览 */}
-        {voiceEmotion && (
-          <div className="flex items-center justify-center gap-1 mb-2 text-xs text-gray-500">
-            <span>{EMOTION_EMOJI[voiceEmotion.labelEn] || '🎵'}</span>
-            <span>语音情绪：{voiceEmotion.label}（{Math.round(voiceEmotion.confidence * 100)}%）</span>
-          </div>
-        )}
-
-        <div className="flex gap-2 max-w-lg mx-auto items-center">
-          {/* 语音按钮 */}
-          {supported && (
-            <button
-              onClick={handleVoiceClick}
-              disabled={streaming || analyzing}
-              className={`flex-shrink-0 w-11 h-11 rounded-full flex items-center justify-center transition-all
-                ${recording
-                  ? 'bg-red-500 text-white shadow-lg shadow-red-200 scale-110'
-                  : 'bg-gray-100 text-gray-600 hover:bg-indigo-100 hover:text-indigo-600'
-                } disabled:opacity-40 disabled:cursor-not-allowed`}
-              title={recording ? '停止录音' : '语音输入（含情绪分析）'}
-            >
-              {recording ? (
-                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                  <rect x="6" y="6" width="12" height="12" rx="2" />
-                </svg>
-              ) : (
-                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
-                  <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
-                </svg>
+            <div className="flex gap-3 max-w-lg lg:max-w-2xl mx-auto items-center">
+              {/* 手机端语音按钮（Pad 用左栏大按钮） */}
+              {supported && (
+                <div className="lg:hidden">{voiceButton('sm')}</div>
               )}
-            </button>
-          )}
-          <input
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && sendMessage()}
-            placeholder={recording ? '正在录音...' : analyzing ? '分析中...' : '点麦克风说话，或打字也行'}
-            disabled={streaming || analyzing}
-            className="flex-1 px-4 py-3 rounded-full border border-gray-200 focus:outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100 text-sm disabled:bg-gray-50"
-          />
-          <button
-            onClick={sendMessage}
-            disabled={!input.trim() || streaming || analyzing}
-            className="flex-shrink-0 px-5 py-3 rounded-full bg-indigo-500 text-white text-sm font-medium
-              hover:bg-indigo-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
-          >
-            发送
-          </button>
+              <input
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && sendMessage()}
+                placeholder={recording ? '正在录音...' : analyzing ? '分析中...' : '也可以打字告诉我'}
+                disabled={streaming || analyzing}
+                className="flex-1 px-5 py-3.5 lg:py-4 rounded-full border border-gray-200 focus:outline-none
+                  focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100 text-sm lg:text-lg disabled:bg-gray-50"
+              />
+              <button
+                onClick={sendMessage}
+                disabled={!input.trim() || streaming || analyzing}
+                className="flex-shrink-0 px-6 lg:px-10 py-3.5 lg:py-4 rounded-full bg-indigo-500 text-white
+                  text-sm lg:text-lg font-medium hover:bg-indigo-600 active:scale-95
+                  disabled:bg-gray-300 disabled:cursor-not-allowed transition-all"
+              >
+                发送
+              </button>
+            </div>
+          </footer>
         </div>
-      </footer>
+      </div>
 
       {/* 语音授权弹窗（合规） */}
       {showConsent && (
