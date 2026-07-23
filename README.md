@@ -10,9 +10,8 @@
 
 | 目录 | 内容 |
 |------|------|
-| [prd/](prd/) | 需求文档与早期方案 |
 | [design/](design/) | 正式设计文档（01~15）+ BEACON 项目明灯 |
-| [prompts/](prompts/) | Prompt 资产与探索记录 |
+| [doc/](doc/) | 归档层（原始 docx + 早期需求/探索产物） |
 | [scripts/](scripts/) | 工具脚本 |
 | [src/](src/) | 源代码（待启动） |
 | [tests/](tests/) | 测试（unit / integration / e2e） |

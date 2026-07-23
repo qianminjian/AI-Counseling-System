@@ -16,9 +16,10 @@ AI-Counseling-System/
 ├── STRUCTURE.md            # 本文件：目录结构约定
 ├── README.md               # 项目入口导航
 │
-├── prd/                    # 需求层：PRD、早期方案、探索产物
-├── design/                 # 设计层：正式设计文档 + BEACON.md（项目明灯）
-├── prompts/                # Prompt 资产：系统提示词、探索期 prompt 记录
+├── design/                 # 设计层：BEACON.md + 总览/跟踪表 + 01~15 md 设计文档（单一事实源）
+├── doc/                    # 归档层（只读留档，冲突以 design/*.md 为准）
+│   ├── 01~15_*.docx        #   设计文档原始 docx
+│   └── his/                #   早期需求/探索产物（原 prd/ + prompts/，已无活跃用途）
 ├── scripts/                # 工具脚本：文档生成、数据处理等一次性/辅助脚本
 │
 ├── backend/                # 后端源代码（Java 21 + Spring Boot 3 + Spring AI，Maven 多模块，详见 §2.5）
@@ -35,33 +36,36 @@ AI-Counseling-System/
 
 ## 2. 各目录职责与规则
 
-### 2.1 `prd/` — 需求层文档
+### 2.1 `doc/his/` — 早期需求与探索产物归档
 
-- **存什么**：原始需求、方案初稿、前期探索产物、竞品原始素材
-- **不存什么**：正式设计文档（去 `design/`）
+- **来源**：原 `prd/`（需求初稿、3 版建设方案、架构图）+ `prompts/`（探索期 prompt 记录），2026-07-23 归档
+- **性质**：只读留档，内容已被 `design/*.md` 完全取代，无活跃用途
 - **现状文件**：
-  - `AI心理辅导系统.docx` — 最初方案初稿（2026-05-29 17:47）
-  - `AI小学生心理辅导系统建设方案.docx` — 建设方案（05-29 20:57 版）
-  - `AI小学生心理辅导系统建设方案_20260529-2019.docx` — 建设方案早期稿
-  - `AI心理辅导系统建设方案_20260529-2106.docx` — 建设方案整合稿
-  - `AI心理辅导系统_Prompt体系详细设计.docx` / `_CBT对话流程树设计.docx` / `架构图.png` — 前期探索成果（已被 design/ 编号文档迭代取代）
-- **⚠️ 待办**：3 版建设方案内容有差异（md5 不同），需人工比对后确定主版本并清理
+  - `AI心理辅导系统.docx` — 最初方案初稿（2026-05-29）
+  - `AI小学生心理辅导系统建设方案.docx` / `_20260529-2019.docx` / `AI心理辅导系统建设方案_20260529-2106.docx` — 3 版建设方案（md5 不同，保留溯源）
+  - `AI心理辅导系统_Prompt体系详细设计.docx` / `_CBT对话流程树设计.docx` / `架构图.png` — 前期探索成果
+  - `20260529-初始探索prompt记录.md` — 探索期需求输入与 15 子主题任务拆解
 
 ### 2.2 `design/` — 设计层文档（对应 design-persistence.md 规则）
 
 - **存什么**：
   - `BEACON.md` — 项目明灯文件（设计决策、范围、当前状态），**唯一强制**
-  - `NN_主题.docx` — 编号正式设计文档（01~15，保持编号连续）
+  - `DESIGN-OVERVIEW.md` — 15 份设计文档总览入口（目录导航 + 关键摘要）
+  - `TASK-TRACKER.md` — 任务跟踪表（文档整合任务 + MVP 开发任务 + 决策/风险/里程碑）
+  - `01_*.md` ~ `15_*.md` — **当前设计文档（md 格式，单一事实源）**，由 `doc/*.docx` 整合而来，直接平铺在 design/ 根下
   - `*-PLAN.md` — Plan Mode 产出的执行计划（按 design-persistence.md §6 硬性要求）
   - `discussion/`（可选）多轮设计讨论摘要；`decisions/`（可选）ADR；`reference/`（可选）外部参考
-- **命名约定**：新增正式设计文档沿用 `NN_主题.docx` 编号制，接着 15 往后排
-- **读取时机**：任何新任务启动前，先读 `BEACON.md`
+- **命名约定**：新增正式设计文档在 `design/` 根下沿用 `NN_主题.md` 编号制，接着 15 往后排
+- **文档权威性**：以 `design/*.md` 为准；原始 docx 存于项目根 `doc/`，仅作溯源，二者冲突时以 md 为准（md 已按 Java 技术栈决策改写）
+- **读取时机**：任何新任务启动前，先读 `BEACON.md`；查设计细节先读 `DESIGN-OVERVIEW.md` 导航
 
-### 2.3 `prompts/` — Prompt 资产
+### 2.2.1 `doc/` — 原始 docx 归档
 
-- **存什么**：生产用系统提示词（后续开发）、探索期 prompt 历史记录
-- **命名约定**：`YYYYMMDD-用途说明.md`（历史记录）；生产 prompt 按模块命名
-- **现状文件**：`20260529-初始探索prompt记录.md`（其他 agent 探索期的需求输入与 15 子主题任务拆解）
+- **存什么**：15 份 `NN_主题.docx` 只读留档，供追溯早期原文
+- **不存什么**：新版设计文档（去 `design/`）、临时导出（去 `tmp/`）
+- **权威性**：低于 `design/*.md`；若发现 md 与 docx 有实质差异，以 md 为准（转换时已按 Java 技术栈重写）
+
+### 2.3 （已删除，原 `prompts/` 归档至 `doc/his/`）
 
 ### 2.4 `scripts/` — 工具脚本
 
@@ -127,13 +131,13 @@ apps/
 | 路径 | 性质 | 规则 |
 |------|------|------|
 | `AGENTS.md`、`.qoder/rules/` | 中央库同步区 | **禁止写入项目特有内容**，会被 sync-rules.sh 覆盖/告警；改规则去中央库改 |
-| `STRUCTURE.md`、`README.md`、`design/BEACON.md`、`prd/`、`prompts/`、`scripts/`、`backend/`、`apps/`、`tests/`、`tmp/` | 项目自留区 | 项目特有内容全部放这里 |
+| `STRUCTURE.md`、`README.md`、`design/`、`doc/`（含 `doc/his/`）、`scripts/`、`backend/`、`apps/`、`tests/`、`tmp/` | 项目自留区 | 项目特有内容全部放这里 |
 
 ---
 
 ## 4. 通用约定
 
-1. **命名**：目录一律小写（`prd/` 非 `PRD/`）；中文文档可用中文名 + 编号前缀；代码文件随技术栈惯例
+1. **命名**：目录一律小写；中文文档可用中文名 + 编号前缀；代码文件随技术栈惯例
 2. **macOS 注意**：本机 APFS 大小写不敏感，避免仅靠大小写区分的命名；`.DS_Store` 会被 Finder 反复重建，已 gitignore，不必追删
 3. **iCloud 注意**：项目位于 `~/Documents`（iCloud「桌面与文稿」同步范围），大文件/高频写入目录（如未来的 `node_modules`、`.venv`）已被 gitignore 且建议关注同步流量
 4. **密钥红线**：`.env` 等密钥文件禁止入库（gitignore 已挡），示例配置用 `.env.example`；LLM API Key 一律走环境变量，禁止硬编码
@@ -149,3 +153,6 @@ apps/
 | 2026-07-23 | 初始版本 | 项目从纯文档探索阶段转入开发准备阶段，建立统一结构 |
 | 2026-07-23 | 技术栈由 Python 改为 Java：`src/`→`backend/`（Maven 多模块），测试约定改为模块内 `src/test/` + 跨模块 `tests/`，YAGNI 清单更新 | 钱敏健决策私有化/信创主营，直接上 Java（Spring Boot + Spring AI） |
 | 2026-07-23 | 技术栈落定：`src/` 后端结构、`apps/` 前端组、YAGNI 清单 | 钱敏健确认 Schema 级隔离 + LLM 供应商无关化方案 |
+| 2026-07-23 | 文档整合完成：15 份 docx 全部转为 `design/docs/*.md`，原 docx 归档 `design/his/`，§2.2 更新 docs/his 拆分约定 | M0 文档整合里程碑收尾 |
+| 2026-07-23 | 目录结构纠偏：`design/docs/*.md` 拍平到 `design/`；`design/his/` 迁至项目根 `doc/`；§1/§2.2 同步 | 对齐钱敏健原意（md 直接在 design 下、docx 在 doc 下），消除多余中间层 |
+| 2026-07-23 | `prd/` + `prompts/` 归档至 `doc/his/`，删除原目录；§1/§2.1/§2.3/§3/§4 同步 | 内容已被 design/*.md 完全取代，无活跃用途，统一归入只读留档 |
