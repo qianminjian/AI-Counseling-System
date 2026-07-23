@@ -1,0 +1,23 @@
+# 知识卡导出索引文件
+schema_version: 1
+locale: zh-CN
+branch: main
+nodes_managed: true
+exported_at: "2026-07-23T01:51:40Z"
+modules:
+    "":
+        dir_name: 项目根目录与 Qoder Agent 规则同步体系
+        title: 项目根目录与 Qoder Agent 规则同步体系
+        scope:
+            - README.md
+            - STRUCTURE.md
+            - .gitignore
+            - sync-rules.sh
+            - design/
+            - prompts/
+            - scripts/
+            - AGENTS.md
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []

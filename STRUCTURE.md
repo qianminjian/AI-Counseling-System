@@ -21,8 +21,9 @@ AI-Counseling-System/
 ├── prompts/                # Prompt 资产：系统提示词、探索期 prompt 记录
 ├── scripts/                # 工具脚本：文档生成、数据处理等一次性/辅助脚本
 │
-├── src/                    # 源代码（技术栈待定，见 design/BEACON.md 待解决问题）
-├── tests/                  # 测试代码，目录镜像 src/ 结构
+├── src/                    # 后端源代码（Python + FastAPI + LangGraph，详见 §2.5）
+├── apps/                   # 前端应用组（React + TS + Vite，详见 §2.6）
+├── tests/                  # 后端测试代码（pytest），目录镜像 src/ 结构
 │   ├── unit/               #   单元测试：单函数/单类，无外部依赖
 │   ├── integration/        #   集成测试：跨模块、含 DB/API/LLM 调用
 │   └── e2e/                #   端到端测试：完整用户场景
@@ -68,12 +69,40 @@ AI-Counseling-System/
 - **规则**：脚本必须自包含可独立运行；涉及写操作的脚本默认输出到 `tmp/` 预览，确认后再落正式位置
 - **现状文件**：7 个 docx 生成脚本（design/ 编号文档的生成器，保留作再生成能力）
 
-### 2.5 `src/` — 源代码
+### 2.5 `src/` — 后端源代码（Python 包）
 
-- 技术栈选型完成前保持空骨架（`.gitkeep` 占位）
-- 选型确定后，在本文件 §1 更新目录树并补充子目录约定（约束先行）
+技术基线：Python 3.12 + FastAPI + LangGraph + SQLAlchemy 2.x + PostgreSQL 16（pgvector）+ Redis 7。
+包管理用 **uv**，依赖锁定在根 `pyproject.toml`。
 
-### 2.6 `tests/` — 测试
+```
+src/
+├── api/            # FastAPI 路由层（请求/响应模型，不含业务逻辑）
+├── agents/         # LangGraph 7 个 Agent（对应 design/13：Safety/Emotion/CBT/Conversation/Escalation/Report/Memory）
+├── core/           # 配置、安全、多租户中间件（Schema 路由）、LLM Provider 抽象
+├── models/         # SQLAlchemy 模型（落地 design/06 的 DDL）
+├── services/       # 业务服务层（对话编排、预警通知、档案）
+├── prompts/        # 生产用 prompt 模板（版本化，Jinja2/YAML）
+└── main.py         # FastAPI 应用入口
+```
+
+- **架构形态**：模块化单体（不建微服务）；模块边界按上述目录即领域边界
+- **多租户**：Schema 级隔离（`tenant_{tenant_id}`，按 design/07），租户路由中间件在 `core/`
+- **LLM 接入**：供应商无关，`core/` 内统一 Provider 抽象（LangChain `init_chat_model` 配置驱动），任意国产合规 LLM 可经配置接入，主备降级按 design/13 §6.2
+
+### 2.6 `apps/` — 前端应用组
+
+技术基线：React 18 + TypeScript + Vite + Tailwind CSS；包管理 **pnpm**（workspace）。
+
+```
+apps/
+├── student/        # 学生端 H5（M1）：儿童友好 UI，自绘轻组件
+└── teacher/        # 教师后台 Web（M2）：Ant Design
+```
+
+- 每个应用独立 `package.json`，共享配置放 `apps/shared/`（需要时再建，YAGNI）
+- 前端测试就近放置（`*.test.ts`），Vitest 运行
+
+### 2.7 `tests/` — 后端测试（pytest）
 
 - **镜像规则**：`tests/unit/` 目录结构镜像 `src/`（如 `src/agent/flow.py` → `tests/unit/agent/test_flow.py`）
 - **分层规则**：
@@ -83,7 +112,7 @@ AI-Counseling-System/
 - **命名**：`test_*.py` / `*.test.ts`（随技术栈定）
 - TDD 工作流见 `.qoder/rules/tdd-workflow.md`（@tdd-workflow）
 
-### 2.7 `tmp/` — 唯一临时目录
+### 2.8 `tmp/` — 唯一临时目录
 
 - **铁律**：本项目所有临时产物（调试输出、脚本预览、下载暂存、实验笔记草稿）**只允许**放这里
 - 已 gitignore（`tmp/*`，保留 `.gitkeep`），内容随时可清空
@@ -105,8 +134,9 @@ AI-Counseling-System/
 1. **命名**：目录一律小写（`prd/` 非 `PRD/`）；中文文档可用中文名 + 编号前缀；代码文件随技术栈惯例
 2. **macOS 注意**：本机 APFS 大小写不敏感，避免仅靠大小写区分的命名；`.DS_Store` 会被 Finder 反复重建，已 gitignore，不必追删
 3. **iCloud 注意**：项目位于 `~/Documents`（iCloud「桌面与文稿」同步范围），大文件/高频写入目录（如未来的 `node_modules`、`.venv`）已被 gitignore 且建议关注同步流量
-4. **密钥红线**：`.env` 等密钥文件禁止入库（gitignore 已挡），示例配置用 `.env.example`
+4. **密钥红线**：`.env` 等密钥文件禁止入库（gitignore 已挡），示例配置用 `.env.example`；LLM API Key 一律走环境变量，禁止硬编码
 5. **变更流程**：调整目录结构 → 先改本文件 → 再动目录 → commit 中说明
+6. **技术栈基线**（2026-07-23 定，详见 design/BEACON.md 决策 #5）：后端 Python 3.12 + FastAPI + LangGraph；前端 React 18 + TS + Vite + Tailwind；数据库 PostgreSQL 16 + pgvector；缓存 Redis 7；包管理 uv + pnpm。**YAGNI 清单**（MVP 禁止引入）：K8s、Kafka、微服务拆分、API 网关、ELK、Go、Milvus、语音/生物识别组件
 
 ---
 
@@ -115,3 +145,4 @@ AI-Counseling-System/
 | 日期 | 变更 | 原因 |
 |------|------|------|
 | 2026-07-23 | 初始版本 | 项目从纯文档探索阶段转入开发准备阶段，建立统一结构 |
+| 2026-07-23 | 技术栈落定：`src/` 后端结构、`apps/` 前端组、YAGNI 清单 | 钱敏健确认 Schema 级隔离 + LLM 供应商无关化方案 |

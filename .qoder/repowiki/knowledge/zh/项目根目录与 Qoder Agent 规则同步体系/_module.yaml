@@ -1,0 +1,15 @@
+schema_version: 1
+module_path: ""
+title: 项目根目录与 Qoder Agent 规则同步体系
+scope:
+    - README.md
+    - STRUCTURE.md
+    - .gitignore
+    - sync-rules.sh
+    - design/
+    - prompts/
+    - scripts/
+    - AGENTS.md
+source_files: []
+depends_on: []
+related_to: []
