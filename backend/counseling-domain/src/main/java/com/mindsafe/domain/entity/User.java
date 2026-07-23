@@ -26,8 +26,7 @@ public class User {
     private Instant createdAt;
     private Instant updatedAt;
 
-    /** M1 简化：明文密码哈希（后续迁移到加密字段） */
-    @TableField(exist = false)
+    /** 密码哈希（BCrypt） */
     private String passwordHash;
 
     public User() {
