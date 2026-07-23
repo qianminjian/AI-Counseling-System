@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.mindsafe</groupId>
+        <artifactId>counseling-parent</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>counseling-service</artifactId>
+    <name>counseling-service</name>
+    <description>业务服务：对话编排、预警通知、个案管理、档案</description>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.mindsafe</groupId>
+            <artifactId>counseling-ai</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.mindsafe</groupId>
+            <artifactId>counseling-domain</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-websocket</artifactId>
+        </dependency>
+    </dependencies>
+</project>
