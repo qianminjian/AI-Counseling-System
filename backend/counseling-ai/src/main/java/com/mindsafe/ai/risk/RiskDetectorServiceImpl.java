@@ -39,7 +39,7 @@ public class RiskDetectorServiceImpl implements RiskDetectorService {
             "想死", "跳楼", "割腕", "上吊", "遗书", "活着没意思",
             "不想活", "去死", "自杀", "杀了自己", "结束生命",
             "带刀", "放火", "炸",
-            "摸隐私部位", "脱衣服", "发裸照"
+            "摸隐私部位", "隐私部位", "脱衣服", "发裸照"
     );
 
     /** 橙色关键词（命中升级为橙色，需人工核验） */
@@ -60,9 +60,9 @@ public class RiskDetectorServiceImpl implements RiskDetectorService {
             "停不下来", "通宵游戏", "偷钱"
     );
 
-    /** 否定/误报修饰词（降低误报） */
-    private static final Pattern NEGATION_PATTERN = Pattern.compile(
-            "(不|没有|不会|不是|别|以前|曾经).{0,4}(想死|跳楼|割腕|自杀|不想活)"
+    /** 否定词列表（仅保留明确的多字否定词，避免单字误匹配） */
+    private static final List<String> NEGATION_WORDS = List.of(
+            "不想", "不会", "没有", "不是", "不能", "以前", "曾经", "别想", "别要"
     );
 
     /** 引用/假设语境（降低误报） */
@@ -121,12 +121,11 @@ public class RiskDetectorServiceImpl implements RiskDetectorService {
 
         String normalized = message.toLowerCase().trim();
 
-        // 1. 检查否定/误报语境
-        boolean hasNegation = NEGATION_PATTERN.matcher(normalized).find();
+        // 1. 检查引用/假设语境
         boolean hasContext = CONTEXT_PATTERN.matcher(normalized).find();
 
-        // 2. 红色硬规则检测（不可被否定降级）
-        List<String> redMatches = matchKeywords(normalized, RED_HARD_KEYWORDS);
+        // 2. 红色硬规则检测（不可被引用语境降级，但排除直接否定前缀）
+        List<String> redMatches = matchRedKeywords(normalized);
         if (!redMatches.isEmpty()) {
             log.warn("🚨 红色硬规则命中: keywords={}", redMatches);
             return new RiskDetectionResult(
@@ -142,8 +141,9 @@ public class RiskDetectorServiceImpl implements RiskDetectorService {
         // 3. 橙色关键词检测
         List<String> orangeMatches = matchKeywords(normalized, ORANGE_KEYWORDS);
         if (!orangeMatches.isEmpty()) {
-            // 否定/引用语境下降为黄色（但性侵/虐待除外）
-            if ((hasNegation || hasContext) && !isSensitiveCategory(orangeMatches)) {
+            // 检查每个命中关键词是否有否定前缀
+            boolean allNegated = orangeMatches.stream().allMatch(kw -> hasNegationPrefix(normalized, kw));
+            if ((allNegated || hasContext) && !isSensitiveCategory(orangeMatches)) {
                 log.info("橙色关键词命中但含否定/引用语境，降为黄色: keywords={}", orangeMatches);
                 return new RiskDetectionResult(
                         RiskLevel.YELLOW,
@@ -168,7 +168,8 @@ public class RiskDetectorServiceImpl implements RiskDetectorService {
         // 4. 黄色关键词检测
         List<String> yellowMatches = matchKeywords(normalized, YELLOW_KEYWORDS);
         if (!yellowMatches.isEmpty()) {
-            if (hasNegation || hasContext) {
+            boolean allNegated = yellowMatches.stream().allMatch(kw -> hasNegationPrefix(normalized, kw));
+            if (allNegated || hasContext) {
                 return RiskDetectionResult.safe();
             }
             log.debug("黄色风险命中: keywords={}", yellowMatches);
@@ -184,6 +185,40 @@ public class RiskDetectorServiceImpl implements RiskDetectorService {
 
         // 5. 无风险
         return RiskDetectionResult.safe();
+    }
+
+    /** 检查关键词前是否有否定词（支持「不想死」这类否定词与关键词重叠的情况） */
+    private boolean hasNegationPrefix(String text, String keyword) {
+        int idx = text.indexOf(keyword);
+        if (idx <= 0) return false;
+        // 取关键词前 6 个字符
+        String before = text.substring(Math.max(0, idx - 6), idx);
+        // 检查 before 是否以否定词结尾（如「我没有」+「离家出走」）
+        if (NEGATION_WORDS.stream().anyMatch(before::endsWith)) return true;
+        // 检查否定词是否与关键词开头重叠（如「不想」+「想死」，「不」在 before 中，「想」在 keyword 中）
+        for (String neg : NEGATION_WORDS) {
+            for (int i = 1; i < neg.length(); i++) {
+                if (before.endsWith(neg.substring(0, i)) && keyword.startsWith(neg.substring(i))) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /** 红色关键词匹配（排除否定前缀） */
+    private List<String> matchRedKeywords(String text) {
+        List<String> matches = new ArrayList<>();
+        for (String keyword : RED_HARD_KEYWORDS) {
+            if (text.contains(keyword)) {
+                // 检查关键词前是否有否定词（如「不想死」中的「想死」）
+                if (hasNegationPrefix(text, keyword)) {
+                    continue; // 否定表达，跳过
+                }
+                matches.add(keyword);
+            }
+        }
+        return matches;
     }
 
     /** 匹配关键词列表 */
