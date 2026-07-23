@@ -19,4 +19,11 @@ public interface AiChatService {
      * @return 流式事件
      */
     Flux<StreamMessageEvent> chat(UUID sessionId, String emotionTag, String message);
+
+    /**
+     * 清除会话记忆（会话结束时调用）
+     *
+     * @param sessionId 会话 ID
+     */
+    void clearMemory(UUID sessionId);
 }

@@ -4,8 +4,9 @@ import com.mindsafe.common.dto.chat.StreamMessageEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.chat.prompt.Prompt;
-import org.springframework.ai.chat.messages.SystemMessage;
+import org.springframework.ai.chat.memory.ChatMemory;
+import org.springframework.ai.chat.messages.AssistantMessage;
+import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
@@ -14,9 +15,9 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * AI 聊天服务实现（Spring AI ChatClient 流式调用）
+ * AI 聊天服务实现（Spring AI ChatClient 流式调用 + 多轮对话记忆）
  * <p>
- * M1 简化：单轮对话 + 基础系统提示词。
+ * M1：ChatMemory 维护上下文窗口（最近 20 条消息）。
  * 后续迭代：Advisor 链（Safety/Memory/RAG）+ CBT 状态机。
  */
 @Service
@@ -25,6 +26,7 @@ public class AiChatServiceImpl implements AiChatService {
     private static final Logger log = LoggerFactory.getLogger(AiChatServiceImpl.class);
 
     private final ChatClient chatClient;
+    private final ChatMemory chatMemory;
 
     /** M1 基础系统提示词（后续迁移至 prompts/system/SYS-001.st） */
     private static final String SYSTEM_PROMPT = """
@@ -53,23 +55,45 @@ public class AiChatServiceImpl implements AiChatService {
             请根据这个情绪调整你的语气和引导方向。
             """;
 
-    public AiChatServiceImpl(ChatClient.Builder chatClientBuilder) {
+    public AiChatServiceImpl(ChatClient.Builder chatClientBuilder, ChatMemory chatMemory) {
         this.chatClient = chatClientBuilder.build();
+        this.chatMemory = chatMemory;
     }
 
     @Override
     public Flux<StreamMessageEvent> chat(UUID sessionId, String emotionTag, String message) {
+        String conversationId = sessionId.toString();
         log.debug("AI 对话请求: sessionId={}, emotion={}, msgLength={}", sessionId, emotionTag, message.length());
 
+        // 1. 保存用户消息到记忆
+        chatMemory.add(conversationId, List.of(new UserMessage(message)));
+
+        // 2. 获取历史消息构建上下文（窗口大小由 MessageWindowChatMemory 配置控制）
+        List<Message> history = chatMemory.get(conversationId);
         String systemPrompt = SYSTEM_PROMPT.replace("{emotionTag}", emotionTag);
+
+        // 3. 流式调用 LLM（带历史上下文）
+        StringBuilder responseCollector = new StringBuilder();
 
         return chatClient.prompt()
                 .system(systemPrompt)
-                .user(message)
+                .messages(history)
                 .stream()
                 .content()
+                .doOnNext(responseCollector::append)
                 .map(StreamMessageEvent::token)
-                .doOnComplete(() -> log.debug("AI 回复完成: sessionId={}", sessionId))
+                .doOnComplete(() -> {
+                    // 4. 流结束后保存 AI 回复到记忆
+                    chatMemory.add(conversationId, List.of(new AssistantMessage(responseCollector.toString())));
+                    log.debug("AI 回复完成: sessionId={}, responseLength={}", sessionId, responseCollector.length());
+                })
                 .doOnError(e -> log.error("AI 流式调用失败: sessionId={}", sessionId, e));
+    }
+
+    /** 清除会话记忆（会话结束时调用） */
+    @Override
+    public void clearMemory(UUID sessionId) {
+        chatMemory.clear(sessionId.toString());
+        log.debug("会话记忆已清除: sessionId={}", sessionId);
     }
 }

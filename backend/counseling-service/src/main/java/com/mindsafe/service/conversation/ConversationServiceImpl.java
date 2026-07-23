@@ -12,6 +12,7 @@ import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * 对话服务实现（M1 最小闭环）
@@ -50,11 +51,11 @@ public class ConversationServiceImpl implements ConversationService {
             return Flux.just(StreamMessageEvent.error("会话不存在"));
         }
 
-        session.incrementTurn();
-        log.debug("收到消息: sessionId={}, turn={}, length={}", sessionId, session.turnCount(), content.length());
+        int turn = session.turnCount.incrementAndGet();
+        log.debug("收到消息: sessionId={}, turn={}, length={}", sessionId, turn, content.length());
 
         // 调用 AI 服务获取流式回复
-        return aiChatService.chat(sessionId, session.emotionTag(), content)
+        return aiChatService.chat(sessionId, session.emotionTag, content)
                 .concatWith(Flux.defer(() -> {
                     // 流结束后追加 done 事件
                     return Flux.just(StreamMessageEvent.done(""));
@@ -69,7 +70,9 @@ public class ConversationServiceImpl implements ConversationService {
     public void endSession(UUID tenantId, UUID sessionId) {
         SessionState session = sessions.remove(sessionId);
         if (session != null) {
-            log.info("会话结束: sessionId={}, turns={}", sessionId, session.turnCount());
+            // 清除 AI 对话记忆
+            aiChatService.clearMemory(sessionId);
+            log.info("会话结束: sessionId={}, turns={}", sessionId, session.turnCount.get());
         }
     }
 
@@ -84,21 +87,21 @@ public class ConversationServiceImpl implements ConversationService {
         };
     }
 
-    /** 内存会话状态（M1 简化） */
-    private record SessionState(
-            UUID sessionId,
-            UUID tenantId,
-            UUID studentUserId,
-            String emotionTag,
-            String channel,
-            int turnCount
-    ) {
-        SessionState(UUID sessionId, UUID tenantId, UUID studentUserId, String emotionTag, String channel) {
-            this(sessionId, tenantId, studentUserId, emotionTag, channel, 0);
-        }
+    /** 内存会话状态（M1 简化，可变计数器） */
+    private static class SessionState {
+        final UUID sessionId;
+        final UUID tenantId;
+        final UUID studentUserId;
+        final String emotionTag;
+        final String channel;
+        final AtomicInteger turnCount = new AtomicInteger(0);
 
-        void incrementTurn() {
-            // record 不可变，这里用外部计数器替代
+        SessionState(UUID sessionId, UUID tenantId, UUID studentUserId, String emotionTag, String channel) {
+            this.sessionId = sessionId;
+            this.tenantId = tenantId;
+            this.studentUserId = studentUserId;
+            this.emotionTag = emotionTag;
+            this.channel = channel;
         }
     }
 }
