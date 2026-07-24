@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTheme } from '../theme/ThemeProvider'
 
 const EMOTIONS = [
   { tag: 'happy', emoji: '😊', label: '开心', desc: '有好事发生', color: 'bg-yellow-100 border-yellow-400 text-yellow-800' },
@@ -11,6 +12,7 @@ const EMOTIONS = [
 export default function EmotionSelect({ onStart }) {
   const [selected, setSelected] = useState(null)
   const [loading, setLoading] = useState(false)
+  const { theme } = useTheme()
 
   const handleStart = async () => {
     if (!selected) return
@@ -37,9 +39,10 @@ export default function EmotionSelect({ onStart }) {
   }
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-6 lg:p-10 bg-gradient-to-b from-indigo-50 to-white">
+    <div className="min-h-screen flex flex-col items-center justify-center p-6 lg:p-10"
+      style={{ background: 'linear-gradient(to bottom, var(--bg-start), var(--bg-end))' }}>
       {/* 标题区 */}
-      <div className="text-6xl lg:text-8xl mb-4 lg:mb-6">🌈</div>
+      <div className="text-6xl lg:text-8xl mb-4 lg:mb-6">{theme.companion}</div>
       <h1 className="text-2xl lg:text-4xl font-bold text-gray-800 mb-2">嗨，同学！</h1>
       <p className="text-gray-500 lg:text-xl mb-8 lg:mb-12">今天你的心情怎么样呀？</p>
 
@@ -68,9 +71,10 @@ export default function EmotionSelect({ onStart }) {
         disabled={!selected || loading}
         className={`px-10 lg:px-16 py-4 lg:py-5 rounded-full text-white font-medium text-lg lg:text-2xl transition-all
           ${selected
-            ? 'bg-indigo-500 hover:bg-indigo-600 active:scale-95 shadow-lg shadow-indigo-200'
+            ? 'active:scale-95 shadow-lg'
             : 'bg-gray-300 cursor-not-allowed'
           }`}
+        style={selected ? { background: 'var(--primary)' } : undefined}
       >
         {loading ? '正在连接...' : '开始聊天 💬'}
       </button>

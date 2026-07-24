@@ -1,0 +1,10 @@
+fastapi>=0.104.0
+uvicorn>=0.24.0
+pydantic>=2.0.0
+torch>=2.0.0
+torchaudio>=2.0.0
+numpy>=1.24.0
+# CosyVoice2 依赖（本地部署时安装）
+# cosyvoice  # 需从源码安装: pip install -e CosyVoice2/
+# 降级方案
+edge-tts>=6.1.0

@@ -94,3 +94,6 @@ mindsafe:
   # 语音分析微服务（FunASR + emotion2vec+）
   voice-service:
     url: ${VOICE_SERVICE_URL:http://localhost:10095}
+  # TTS 语音合成微服务（CosyVoice2 / edge-tts）
+  tts-service:
+    url: ${TTS_SERVICE_URL:http://localhost:10096}

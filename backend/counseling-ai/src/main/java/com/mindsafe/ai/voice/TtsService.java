@@ -1,0 +1,107 @@
+package com.mindsafe.ai.voice;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.MediaType;
+import org.springframework.stereotype.Service;
+import org.springframework.web.reactive.function.client.WebClient;
+import reactor.core.publisher.Mono;
+
+import java.util.List;
+import java.util.Map;
+
+/**
+ * TTS 语音合成服务（调用 Python tts-service）
+ * <p>
+ * 功能：文本 → 情感语音（CosyVoice2 / edge-tts 降级）
+ * 支持：多音色人设 + 情绪自适应 + 语速年龄适配
+ */
+@Service
+public class TtsService {
+
+    private static final Logger log = LoggerFactory.getLogger(TtsService.class);
+
+    private final WebClient webClient;
+
+    public TtsService(@Value("${mindsafe.tts-service.url:http://localhost:10096}") String baseUrl) {
+        this.webClient = WebClient.builder()
+                .baseUrl(baseUrl)
+                .codecs(config -> config.defaultCodecs().maxInMemorySize(8 * 1024 * 1024))
+                .build();
+    }
+
+    /**
+     * 合成语音（返回音频二进制）
+     *
+     * @param text    要合成的文本
+     * @param persona 音色人设（xiaoxing/qiqiu/yueliang）
+     * @param emotion 孩子当前情绪
+     * @param speed   语速倍率
+     * @return 音频字节数组（wav/mp3）
+     */
+    public byte[] synthesize(String text, String persona, String emotion, double speed) {
+        try {
+            Map<String, Object> body = Map.of(
+                    "text", text,
+                    "persona", persona != null ? persona : "xiaoxing",
+                    "emotion", emotion != null ? emotion : "neutral",
+                    "speed", speed
+            );
+
+            byte[] audio = webClient.post()
+                    .uri("/api/v1/tts/synthesize")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .bodyValue(body)
+                    .retrieve()
+                    .bodyToMono(byte[].class)
+                    .block();
+
+            if (audio != null && audio.length > 0) {
+                log.debug("TTS 合成成功: text_len={}, audio_len={}", text.length(), audio.length);
+                return audio;
+            }
+            return null;
+        } catch (Exception e) {
+            log.error("TTS 合成失败（静默降级）: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * 获取可用音色列表
+     */
+    @SuppressWarnings("unchecked")
+    public List<Map<String, Object>> getPersonas() {
+        try {
+            Map<String, Object> response = webClient.get()
+                    .uri("/api/v1/tts/personas")
+                    .retrieve()
+                    .bodyToMono(Map.class)
+                    .block();
+            if (response != null && response.containsKey("data")) {
+                return (List<Map<String, Object>>) response.get("data");
+            }
+        } catch (Exception e) {
+            log.error("获取音色列表失败", e);
+        }
+        return List.of();
+    }
+
+    /**
+     * 检查 TTS 服务是否可用
+     */
+    @SuppressWarnings("unchecked")
+    public boolean isAvailable() {
+        try {
+            Map<String, Object> health = webClient.get()
+                    .uri("/health")
+                    .retrieve()
+                    .bodyToMono(Map.class)
+                    .block();
+            return health != null && "UP".equals(health.get("status"));
+        } catch (Exception e) {
+            return false;
+        }
+    }
+}

@@ -1,6 +1,6 @@
 # MindSafe 本地开发环境
 # 用法：docker compose up -d
-# 端口约定：PG 5433 / Redis 6379 / 后端 8080 / 学生端 3000 / 教师端 3001 / 语音服务 10095
+# 端口约定：PG 5433 / Redis 6379 / 后端 8080 / 学生端 3000 / 教师端 3001 / 语音分析 10095 / TTS 10096
 
 services:
   postgres:
@@ -52,6 +52,24 @@ services:
       resources:
         limits:
           memory: 4G
+
+  tts-service:
+    build:
+      context: ../backend/tts-service
+      dockerfile: Dockerfile
+    container_name: mindsafe-tts
+    ports:
+      - "10096:10096"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:10096/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 2G
 
 volumes:
   pgdata:
