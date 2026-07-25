@@ -1,5 +1,7 @@
 package com.mindsafe.ai.chat;
 
+import com.mindsafe.ai.safety.OutputContentFilter;
+import com.mindsafe.ai.safety.OutputReviewService;
 import com.mindsafe.common.dto.chat.StreamMessageEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -15,10 +17,11 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * AI 聊天服务实现（Spring AI ChatClient 流式调用 + 多轮对话记忆）
+ * AI 聊天服务实现（Spring AI ChatClient 流式调用 + 多轮对话记忆 + 双层输出安全审查）
  * <p>
  * M1：ChatMemory 维护上下文窗口（最近 20 条消息）。
- * 后续迭代：Advisor 链（Safety/Memory/RAG）+ CBT 状态机。
+ * 输出安全：Layer1 {@link OutputContentFilter} 流式实时硬过滤（命中即中断+安全话术）；
+ * Layer2 {@link OutputReviewService} 流结束后异步 SAF-002 语义审查（检测+留痕，不阻塞）。
  */
 @Service
 public class AiChatServiceImpl implements AiChatService {
@@ -27,6 +30,8 @@ public class AiChatServiceImpl implements AiChatService {
 
     private final ChatClient chatClient;
     private final ChatMemory chatMemory;
+    private final OutputContentFilter outputContentFilter;
+    private final OutputReviewService outputReviewService;
 
     /** M1 基础系统提示词（后续迁移至 prompts/system/SYS-001.st） */
     private static final String SYSTEM_PROMPT = """
@@ -55,9 +60,12 @@ public class AiChatServiceImpl implements AiChatService {
             请根据这个情绪调整你的语气和引导方向。
             """;
 
-    public AiChatServiceImpl(ChatClient.Builder chatClientBuilder, ChatMemory chatMemory) {
+    public AiChatServiceImpl(ChatClient.Builder chatClientBuilder, ChatMemory chatMemory,
+                             OutputContentFilter outputContentFilter, OutputReviewService outputReviewService) {
         this.chatClient = chatClientBuilder.build();
         this.chatMemory = chatMemory;
+        this.outputContentFilter = outputContentFilter;
+        this.outputReviewService = outputReviewService;
     }
 
     @Override
@@ -75,17 +83,27 @@ public class AiChatServiceImpl implements AiChatService {
         // 3. 流式调用 LLM（带历史上下文）
         StringBuilder responseCollector = new StringBuilder();
 
-        return chatClient.prompt()
+        Flux<String> rawTokens = chatClient.prompt()
                 .system(systemPrompt)
                 .messages(history)
                 .stream()
-                .content()
-                .doOnNext(responseCollector::append)
-                .map(StreamMessageEvent::token)
+                .content();
+
+        // 4. Layer1 实时过滤：命中 block 级敏感词时中断流并替换为安全话术
+        return outputContentFilter.apply(rawTokens, sessionId)
+                .doOnNext(evt -> {
+                    if ("token".equals(evt.type()) && evt.content() != null) {
+                        responseCollector.append(evt.content());
+                    }
+                })
                 .doOnComplete(() -> {
-                    // 4. 流结束后保存 AI 回复到记忆
-                    chatMemory.add(conversationId, List.of(new AssistantMessage(responseCollector.toString())));
-                    log.debug("AI 回复完成: sessionId={}, responseLength={}", sessionId, responseCollector.length());
+                    // 5. 流结束后保存 AI 回复到记忆（含被拦截时的安全话术，即孩子实际看到的内容）
+                    String fullReply = responseCollector.toString();
+                    chatMemory.add(conversationId, List.of(new AssistantMessage(fullReply)));
+                    log.debug("AI 回复完成: sessionId={}, responseLength={}", sessionId, fullReply.length());
+
+                    // 6. Layer2 异步 SAF-002 语义审查（fire-and-forget，不阻塞主流）
+                    outputReviewService.reviewAsync(sessionId, fullReply, emotionTag);
                 })
                 .doOnError(e -> log.error("AI 流式调用失败: sessionId={}", sessionId, e));
     }

@@ -2,6 +2,7 @@ package com.mindsafe.service.conversation;
 
 import com.mindsafe.ai.chat.AiChatService;
 import com.mindsafe.ai.risk.RiskDetectorService;
+import com.mindsafe.ai.safety.PiiDesensitizer;
 import com.mindsafe.common.dto.chat.SessionInfo;
 import com.mindsafe.common.dto.chat.StreamMessageEvent;
 import com.mindsafe.common.dto.risk.RiskDetectionResult;
@@ -34,6 +35,7 @@ public class ConversationServiceImpl implements ConversationService {
 
     private final AiChatService aiChatService;
     private final RiskDetectorService riskDetectorService;
+    private final PiiDesensitizer piiDesensitizer;
     private final CounselingSessionMapper sessionMapper;
     private final RiskEventMapper riskEventMapper;
     private final NotificationService notificationService;
@@ -43,11 +45,13 @@ public class ConversationServiceImpl implements ConversationService {
 
     public ConversationServiceImpl(AiChatService aiChatService,
                                    RiskDetectorService riskDetectorService,
+                                   PiiDesensitizer piiDesensitizer,
                                    CounselingSessionMapper sessionMapper,
                                    RiskEventMapper riskEventMapper,
                                    NotificationService notificationService) {
         this.aiChatService = aiChatService;
         this.riskDetectorService = riskDetectorService;
+        this.piiDesensitizer = piiDesensitizer;
         this.sessionMapper = sessionMapper;
         this.riskEventMapper = riskEventMapper;
         this.notificationService = notificationService;
@@ -135,15 +139,22 @@ public class ConversationServiceImpl implements ConversationService {
             }
         }
 
-        // 3. 调用 AI 服务获取流式回复
-        Flux<StreamMessageEvent> aiStream = aiChatService.chat(sessionId, session.emotionTag, content)
+        // 3. PII 服务端脱敏：风险检测已用原文完成（需捕获"地址+自伤"等组合），
+        //    脱敏后的内容才进入 LLM / 对话记忆，确保原始 PII 不被 AI 复述或残留
+        String safeContent = piiDesensitizer.desensitize(content);
+        if (!safeContent.equals(content)) {
+            log.info("PII 已脱敏: sessionId={}", sessionId);
+        }
+
+        // 4. 调用 AI 服务获取流式回复
+        Flux<StreamMessageEvent> aiStream = aiChatService.chat(sessionId, session.emotionTag, safeContent)
                 .concatWith(Flux.defer(() -> Flux.just(StreamMessageEvent.done(""))))
                 .onErrorResume(e -> {
                     log.error("AI 调用异常: sessionId={}", sessionId, e);
                     return Flux.just(StreamMessageEvent.error("小助手暂时走神了，请再说一次好吗？"));
                 });
 
-        // 4. 组合：风险事件 + AI 回复
+        // 5. 组合：风险事件 + AI 回复
         return riskEvents.concatWith(aiStream);
     }
 
