@@ -7,6 +7,8 @@ MindSafe 语音分析微服务
 
 import io
 import logging
+import re
+import subprocess
 import tempfile
 import os
 
@@ -116,25 +118,37 @@ async def analyze_voice(file: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail="音频文件不能超过 10MB")
 
     tmp_path = None
+    wav_path = None
     try:
-        # 写入临时文件（FunASR 需要文件路径）
+        # 写入原始格式临时文件
         suffix = os.path.splitext(file.filename or "audio.webm")[1] or ".webm"
         with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
             tmp.write(audio_bytes)
             tmp_path = tmp.name
 
-        # 读取音频获取时长
-        audio_data, sample_rate = sf.read(tmp_path)
+        # 用 ffmpeg 统一转为 16kHz 单声道 WAV
+        # soundfile 不认识 webm/opus（安卓录音格式），先转 WAV 才能解码
+        wav_path = tempfile.mktemp(suffix=".wav")
+        subprocess.run(
+            ["ffmpeg", "-y", "-i", tmp_path, "-ar", "16000", "-ac", "1", wav_path],
+            check=True,
+            capture_output=True,
+        )
+
+        # 读取 WAV 获取时长
+        audio_data, sample_rate = sf.read(wav_path)
         duration = len(audio_data) / sample_rate if sample_rate > 0 else 0.0
 
         # 1. ASR 转写
-        asr_result = asr_model.generate(input=tmp_path, language="zh", use_itn=True)
+        asr_result = asr_model.generate(input=wav_path, language="zh", use_itn=True)
         text = ""
         if asr_result and len(asr_result) > 0:
             text = asr_result[0].get("text", "")
+        # 清洗 SenseVoice 特殊标记（<|zh|><|HAPPY|><|Speech|><|withitn|> 等）
+        text = re.sub(r"<\|[^|]*\|>", "", text).strip()
 
         # 2. 情感识别
-        emo_result = emotion_model.generate(input=tmp_path)
+        emo_result = emotion_model.generate(input=wav_path)
         emotion = EmotionResult(label="未知", label_en="unknown", confidence=0.0, scores=[0.0] * 9)
         if emo_result and len(emo_result) > 0:
             emotion = parse_emotion_result(emo_result[0])
@@ -147,14 +161,18 @@ async def analyze_voice(file: UploadFile = File(...)):
             duration_seconds=round(duration, 2),
         )
 
+    except subprocess.CalledProcessError as e:
+        logger.error(f"音频转码失败: {e.stderr.decode(errors='ignore') if e.stderr else e}")
+        raise HTTPException(status_code=500, detail="音频格式转换失败")
     except Exception as e:
         logger.error(f"语音分析失败: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"语音分析失败: {str(e)}")
 
     finally:
         # 合规：立即删除临时文件（音频不落盘）
-        if tmp_path and os.path.exists(tmp_path):
-            os.unlink(tmp_path)
+        for p in (tmp_path, wav_path):
+            if p and os.path.exists(p):
+                os.unlink(p)
 
 
 if __name__ == "__main__":
