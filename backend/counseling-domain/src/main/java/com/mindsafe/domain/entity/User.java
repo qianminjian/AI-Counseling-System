@@ -29,6 +29,9 @@ public class User {
     /** 密码哈希（BCrypt） */
     private String passwordHash;
 
+    /** 首次登录强制改密标记（方案 B：临时密码 + 首次改密） */
+    private Boolean mustChangePassword;
+
     public User() {
     }
 
@@ -96,4 +99,7 @@ public class User {
 
     public String getPasswordHash() { return passwordHash; }
     public void setPasswordHash(String passwordHash) { this.passwordHash = passwordHash; }
+
+    public Boolean getMustChangePassword() { return mustChangePassword; }
+    public void setMustChangePassword(Boolean mustChangePassword) { this.mustChangePassword = mustChangePassword; }
 }

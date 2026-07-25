@@ -15,7 +15,12 @@ export default function Login({ onLogin }) {
       })
       setToken(data.token)
       message.success(`欢迎回来，${data.displayName}！`)
-      onLogin({ userId: data.userId, userType: data.userType, displayName: data.displayName })
+      onLogin({
+        userId: data.userId,
+        userType: data.userType,
+        displayName: data.displayName,
+        mustChangePassword: data.mustChangePassword,
+      })
     } catch (e) {
       message.error(e.message || '登录失败')
     } finally {

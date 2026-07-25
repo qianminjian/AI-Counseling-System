@@ -25,6 +25,11 @@ public enum ErrorCode {
     UNAUTHORIZED(20001, "未登录或 token 已过期"),
     FORBIDDEN(20002, "无权限访问"),
     CONSENT_REQUIRED(20003, "需要监护人授权"),
+    INVITE_CODE_INVALID(20004, "邀请码无效或已过期"),
+    INVITE_CODE_EXHAUSTED(20005, "邀请码已达使用上限"),
+    CONSENT_VERSION_MISMATCH(20006, "告知同意版本不匹配，请重新同意"),
+    PASSWORD_CHANGE_REQUIRED(20007, "首次登录需修改密码"),
+    NICKNAME_INVALID(20008, "昵称不合规（2-12 字，不含敏感词）"),
 
     // ===== 对话/会话 30xxx =====
     SESSION_NOT_FOUND(30001, "会话不存在"),

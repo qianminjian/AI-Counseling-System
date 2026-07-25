@@ -5,6 +5,7 @@ import { useTheme } from '../theme/ThemeProvider'
 import { useVoicePersona } from '../hooks/useVoicePersona'
 import { useTtsPlayer } from '../hooks/useTtsPlayer'
 import { getEmotionTypo } from '../theme/emotionTypography'
+import { getToken, api } from '../api'
 
 /** 情绪标签 → emoji 映射 */
 const EMOTION_EMOJI = {
@@ -274,7 +275,13 @@ export default function ChatRoom({ session, onEnd }) {
     formData.append('file', audioBlob, 'recording.webm')
 
     try {
-      const res = await fetch('/api/v1/voice/analyze', { method: 'POST', body: formData })
+      const res = await fetch('/api/v1/voice/analyze', {
+        method: 'POST',
+        headers: {
+          ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}),
+        },
+        body: formData,
+      })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const json = await res.json()
       if (json.success && json.data) {
@@ -462,7 +469,10 @@ export default function ChatRoom({ session, onEnd }) {
     try {
       const res = await fetch(`/api/v1/chat/sessions/${session.sessionId}/messages`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}),
+        },
         body: JSON.stringify(body),
       })
 
@@ -527,7 +537,7 @@ export default function ChatRoom({ session, onEnd }) {
   const handleEnd = async () => {
     tts.stop()
     try {
-      await fetch(`/api/v1/chat/sessions/${session.sessionId}/end`, { method: 'POST' })
+      await api(`/chat/sessions/${session.sessionId}/end`, { method: 'POST' })
     } catch { /* ignore */ }
     onEnd()
   }

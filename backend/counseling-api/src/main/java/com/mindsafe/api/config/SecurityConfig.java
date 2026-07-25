@@ -12,10 +12,11 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
 /**
- * Spring Security 配置（M1：JWT 认证）
+ * Spring Security 配置（JWT 认证）
  * <p>
- * 放行：/api/v1/auth/**、/actuator/**、/swagger-ui/**、/api-docs/**
- * 鉴权：其余 /api/** 需携带有效 JWT
+ * 放行：/api/v1/auth/login、/api/v1/auth/trial/register、/actuator/**、/swagger-ui/**
+ * 鉴权：/api/v1/chat/**（学生端，JWT）、/api/v1/teacher/**（教师端，JWT）、
+ *       /api/v1/auth/change-password（已登录用户改密）
  */
 @Configuration
 @EnableWebSecurity
@@ -33,15 +34,18 @@ public class SecurityConfig {
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        // 公开端点
-                        .requestMatchers("/api/v1/auth/**").permitAll()
+                        // 公开端点：登录 + 试用注册
+                        .requestMatchers("/api/v1/auth/login").permitAll()
+                        .requestMatchers("/api/v1/auth/trial/register").permitAll()
                         .requestMatchers("/actuator/**").permitAll()
                         .requestMatchers("/swagger-ui/**", "/api-docs/**").permitAll()
-                        // M1 过渡期：对话 API 暂时放行（前端未接入 JWT 前）
-                        .requestMatchers("/api/v1/chat/**").permitAll()
+                        // 改密需已登录
+                        .requestMatchers("/api/v1/auth/change-password").authenticated()
+                        // 学生对话 API 需认证（前端已接入 JWT）
+                        .requestMatchers("/api/v1/chat/**").authenticated()
                         // 教师端 API 需认证
                         .requestMatchers("/api/v1/teacher/**").authenticated()
-                        // 其余请求放行（M1 宽松）
+                        // 其余请求放行（语音/TTS 等辅助 API，M1 宽松）
                         .anyRequest().permitAll()
                 )
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);

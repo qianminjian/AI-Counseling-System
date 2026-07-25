@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useTheme } from '../theme/ThemeProvider'
+import { api } from '../api'
 
 const EMOTIONS = [
   { tag: 'happy', emoji: '😊', label: '开心', desc: '有好事发生', color: 'bg-yellow-100 border-yellow-400 text-yellow-800' },
@@ -9,7 +10,7 @@ const EMOTIONS = [
   { tag: 'nervous', emoji: '😰', label: '紧张', desc: '心跳加速', color: 'bg-orange-100 border-orange-400 text-orange-800' },
 ]
 
-export default function EmotionSelect({ onStart }) {
+export default function EmotionSelect({ onStart, userName, onLogout }) {
   const [selected, setSelected] = useState(null)
   const [loading, setLoading] = useState(false)
   const { theme } = useTheme()
@@ -18,19 +19,15 @@ export default function EmotionSelect({ onStart }) {
     if (!selected) return
     setLoading(true)
     try {
-      const res = await fetch('/api/v1/chat/sessions', {
+      const data = await api('/chat/sessions', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ emotionTag: selected, channel: 'h5' }),
       })
-      const json = await res.json()
-      if (json.success) {
-        onStart({
-          sessionId: json.data.sessionId,
-          greeting: json.data.greeting,
-          emotionTag: selected,
-        })
-      }
+      onStart({
+        sessionId: data.sessionId,
+        greeting: data.greeting,
+        emotionTag: selected,
+      })
     } catch (e) {
       console.error('创建会话失败', e)
     } finally {
@@ -43,7 +40,9 @@ export default function EmotionSelect({ onStart }) {
       style={{ background: 'linear-gradient(to bottom, var(--bg-start), var(--bg-end))' }}>
       {/* 标题区：儿童化圆体标题 + 伙伴漂浮动画 */}
       <div className="text-6xl lg:text-8xl mb-4 lg:mb-6 float-companion">{theme.companion}</div>
-      <h1 className="kid-title text-2xl lg:text-4xl text-gray-800 mb-2">嗨，同学！</h1>
+      <h1 className="kid-title text-2xl lg:text-4xl text-gray-800 mb-2">
+        嗨，{userName || '同学'}！
+      </h1>
       <p className="text-gray-500 lg:text-xl mb-8 lg:mb-12">今天你的心情怎么样呀？</p>
 
       {/* 情绪选择：手机 3+2 网格 / Pad 横排大卡片 */}

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { Layout, Menu, Badge, List, Tag, Card, Table, Button, Space, Typography, message } from 'antd'
 import {
   BellOutlined, WarningOutlined, TeamOutlined, LogoutOutlined, CheckOutlined,
@@ -12,14 +12,43 @@ const { Title, Text } = Typography
 const RISK_COLORS = { 3: 'red', 2: 'orange', 1: 'gold', 0: 'default' }
 const RISK_LABELS = { 3: '红色', 2: '橙色', 1: '黄色', 0: '绿色' }
 
+/** 轮询间隔（毫秒） */
+const POLL_INTERVAL = 15000
+
+/** 播放提示音（Web Audio API，无需外部文件） */
+function playAlertSound() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)()
+    const osc = ctx.createOscillator()
+    const gain = ctx.createGain()
+    osc.connect(gain)
+    gain.connect(ctx.destination)
+    osc.frequency.value = 880
+    osc.type = 'sine'
+    gain.gain.setValueAtTime(0.3, ctx.currentTime)
+    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.5)
+    osc.start(ctx.currentTime)
+    osc.stop(ctx.currentTime + 0.5)
+  } catch { /* 音频不可用时静默 */ }
+}
+
+/** 发送浏览器桌面通知 */
+function sendDesktopNotification(title, body) {
+  if (!('Notification' in window)) return
+  if (Notification.permission === 'granted') {
+    new Notification(title, { body, icon: '🛡️' })
+  }
+}
+
 export default function Dashboard({ user, onLogout }) {
   const [tab, setTab] = useState('notifications')
   const [notifications, setNotifications] = useState([])
   const [riskEvents, setRiskEvents] = useState([])
   const [students, setStudents] = useState([])
   const [unreadCount, setUnreadCount] = useState(0)
+  const prevUnreadRef = useRef(0)
 
-  const loadData = async () => {
+  const loadData = useCallback(async (silent = false) => {
     try {
       const [notifs, events, studs, unread] = await Promise.all([
         api('/teacher/notifications'),
@@ -31,12 +60,35 @@ export default function Dashboard({ user, onLogout }) {
       setRiskEvents(events)
       setStudents(studs)
       setUnreadCount(unread)
-    } catch (e) {
-      message.error('加载数据失败: ' + e.message)
-    }
-  }
 
-  useEffect(() => { loadData() }, [])
+      // 检测新增未读通知 → 桌面通知 + 提示音
+      if (unread > prevUnreadRef.current && prevUnreadRef.current >= 0) {
+        const newCount = unread - prevUnreadRef.current
+        playAlertSound()
+        sendDesktopNotification(
+          '🛡️ MindSafe 新预警',
+          `收到 ${newCount} 条新的风险预警通知，请及时查看。`
+        )
+      }
+      prevUnreadRef.current = unread
+    } catch (e) {
+      if (!silent) message.error('加载数据失败: ' + e.message)
+    }
+  }, [])
+
+  // 挂载时：请求桌面通知权限 + 首次加载
+  useEffect(() => {
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission()
+    }
+    loadData()
+  }, [loadData])
+
+  // P0 轮询：每 15 秒静默拉取 unread-count（纯前端增强，零后端改动）
+  useEffect(() => {
+    const timer = setInterval(() => loadData(true), POLL_INTERVAL)
+    return () => clearInterval(timer)
+  }, [loadData])
 
   const markRead = async (id) => {
     await api(`/teacher/notifications/${id}/read`, { method: 'PUT' })
