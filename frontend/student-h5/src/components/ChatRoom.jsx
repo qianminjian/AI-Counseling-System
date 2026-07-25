@@ -50,12 +50,33 @@ function useAudioRecorder(onComplete) {
     }
   }, [])
 
+  /** 预热麦克风：提前获取 MediaStream 并保持，避免录音时 getUserMedia 异步延迟（300-500ms）漏录开头 */
+  const warmingRef = useRef(false)
+  const warmUp = useCallback(async () => {
+    if (!navigator.mediaDevices?.getUserMedia) return
+    // 已有可用流则跳过
+    if (streamRef.current && streamRef.current.getTracks().some(t => t.readyState === 'live')) return
+    if (warmingRef.current) return // 预热进行中，避免重复获取流（StrictMode 双调用防护）
+    warmingRef.current = true
+    try {
+      streamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true })
+    } catch (err) {
+      console.warn('麦克风预热失败（将在录音时重试）', err.name)
+    } finally {
+      warmingRef.current = false
+    }
+  }, [])
+
   const startRecording = useCallback(async () => {
     setRecording(true)
     chunksRef.current = []
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      streamRef.current = stream
+      // 优先复用预热的麦克风流（秒开，避免 getUserMedia 异步延迟漏录开头的词）
+      let stream = streamRef.current
+      if (!stream || !stream.getTracks().some(t => t.readyState === 'live')) {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+        streamRef.current = stream
+      }
       const mimeType = getSupportedMimeType()
       mimeTypeRef.current = mimeType || 'audio/webm'
       const recorder = mimeType
@@ -65,7 +86,7 @@ function useAudioRecorder(onComplete) {
         if (e.data.size > 0) chunksRef.current.push(e.data)
       }
       recorder.onstop = async () => {
-        stream.getTracks().forEach(t => t.stop())
+        // 不停止麦克风流（保持预热供下次录音秒开），仅结束本次录音
         const blob = new Blob(chunksRef.current, { type: mimeTypeRef.current })
         setAnalyzing(true)
         try {
@@ -83,6 +104,7 @@ function useAudioRecorder(onComplete) {
     }
   }, [onComplete])
 
+  /** 松手发送：停止录音 → 触发 onstop → onComplete(blob) 上传识别 */
   const stopRecording = useCallback(() => {
     if (!recording) return
     setRecording(false)
@@ -97,12 +119,24 @@ function useAudioRecorder(onComplete) {
     }
   }, [recording, onComplete])
 
-  const toggle = useCallback(() => {
-    if (recording) stopRecording()
-    else startRecording()
-  }, [recording, startRecording, stopRecording])
+  /** 上滑取消：停止录音但丢弃音频，不触发 onComplete（先摘掉 onstop 再 stop，ref 置空保证幂等） */
+  const cancelRecording = useCallback(() => {
+    if (!recording) return
+    setRecording(false)
+    if (mediaRecorderRef.current) {
+      mediaRecorderRef.current.onstop = null
+      mediaRecorderRef.current.stop()
+      mediaRecorderRef.current = null
+    }
+  }, [recording])
 
-  return { recording, analyzing, supported, toggle }
+  /** 释放麦克风流（TTS 播放期间必须释放：安卓把"活跃麦克风"视为通话，会把音频路由到听筒） */
+  const releaseStream = useCallback(() => {
+    streamRef.current?.getTracks().forEach(t => t.stop())
+    streamRef.current = null
+  }, [])
+
+  return { recording, analyzing, supported, startRecording, stopRecording, cancelRecording, warmUp, releaseStream }
 }
 
 /** 消息气泡组件（含 TTS 播放按钮） */
@@ -172,17 +206,23 @@ export default function ChatRoom({ session, onEnd }) {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [speakingMsgIdx, setSpeakingMsgIdx] = useState(-1)
   const [voiceNotice, setVoiceNotice] = useState('')
+  const [cancelArmed, setCancelArmed] = useState(false) // 按住说话：上滑进入取消态
+  const [liveTranscript, setLiveTranscript] = useState('') // 录音中实时转写（浏览器识别，作反馈展示）
   const bottomRef = useRef(null)
   const browserTranscriptRef = useRef('')
   const speechRecRef = useRef(null)
   const greetingSpokenRef = useRef(false)
+  // 指向最新的 sendMessage（handleRecordingComplete 定义在前、sendMessage 定义在后，用 ref 避免 TDZ 与闭包过期）
+  const sendMessageRef = useRef(null)
+  const pointerStartYRef = useRef(0) // 按下时 Y 坐标（检测上滑取消）
+  const pointerDownTimeRef = useRef(0) // 按下时间戳（检测说话过短）
 
   // 主题 + 音色
   const { theme } = useTheme()
   const { personaId } = useVoicePersona()
 
   // 语音授权（合规）
-  const { showDialog: showConsent, requestConsent, grantConsent, denyConsent } = useVoiceConsent()
+  const { showDialog: showConsent, hasConsent, requestConsent, grantConsent, denyConsent } = useVoiceConsent()
 
   // TTS 播放器
   const tts = useTtsPlayer({
@@ -203,13 +243,14 @@ export default function ChatRoom({ session, onEnd }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  /** 录音完成 → 上传分析 → 填充文字 + 情绪（audioBlob 为 null 时直接用浏览器转写） */
+  /** 录音完成 → 上传分析 → 自动发送（audioBlob 为 null 时直接用浏览器转写） */
   const handleRecordingComplete = useCallback(async (audioBlob) => {
     // 无录音（麦克风不可用）→ 直接用浏览器识别结果
     if (!audioBlob) {
-      if (browserTranscriptRef.current) {
-        setInput(browserTranscriptRef.current)
+      const text = browserTranscriptRef.current
+      if (text) {
         setVoiceNotice('已用浏览器识别（语音情绪分析暂不可用）')
+        sendMessageRef.current?.(text, null).then((sent) => { if (!sent) setInput(text) })
       } else {
         setVoiceNotice('没有听清，请再说一次或打字告诉我 ✏️')
       }
@@ -227,17 +268,22 @@ export default function ChatRoom({ session, onEnd }) {
       if (json.success && json.data) {
         const { text, emotion } = json.data
         if (text) {
-          setInput(text)
-          return // 服务端成功，直接返回
+          // 自动发送：emotion 直接传给 sendMessage（修复此前情绪从未存入 state、预览不显示的问题）
+          // 不 await，避免 analyzing 状态覆盖整个 AI 回复过程；极端被拦截时回填输入框防丢字
+          sendMessageRef.current?.(text, emotion).then((sent) => {
+            if (!sent) setInput(text)
+          })
+          return
         }
       }
       throw new Error('服务端未返回文字')
     } catch (err) {
       console.warn('语音分析服务不可用，尝试浏览器识别', err.message)
       // 降级：使用浏览器 Web Speech API 实时识别结果
-      if (browserTranscriptRef.current) {
-        setInput(browserTranscriptRef.current)
+      const text = browserTranscriptRef.current
+      if (text) {
         setVoiceNotice('已用浏览器识别（语音情绪分析暂不可用）')
+        sendMessageRef.current?.(text, null).then((sent) => { if (!sent) setInput(text) })
       } else {
         setVoiceNotice('语音识别暂不可用，请打字告诉我吧 ✏️')
       }
@@ -245,12 +291,38 @@ export default function ChatRoom({ session, onEnd }) {
     }
   }, [])
 
-  const { recording, analyzing, supported, toggle: toggleVoice } = useAudioRecorder(handleRecordingComplete)
+  const { recording, analyzing, supported, startRecording, stopRecording, cancelRecording, warmUp: warmUpMic, releaseStream } = useAudioRecorder(handleRecordingComplete)
 
-  /** 启动一次语音会话：并行开启 MediaRecorder（上传情感分析）+ 浏览器 SpeechRecognition（降级转写） */
+  // 安卓音频路由保护：活跃麦克风会让 Chrome 切到"通话模式"（像打电话），把 TTS 路由到听筒且切不回扬声器。
+  // 对策：播放期间释放麦克风（保证走扬声器）；播放结束 600ms 后再预热（保证下次录音秒开）。
+  // 无问候语播放时，本 effect 在挂载后即完成首次预热（替代原"挂载即预热"，还避免与问候语抢路由）
+  useEffect(() => {
+    if (tts.playing) {
+      releaseStream()
+    } else if (hasConsent()) {
+      const timer = setTimeout(() => warmUpMic(), 600)
+      return () => clearTimeout(timer)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tts.playing])
+
+  // 录音 30 秒上限：到时自动停止并发送（等价于松手），防止长时间占用麦克风
+  // 用 ref 持有最新 stopRecording，计时器只随 recording 变化重置，不被每次渲染重置
+  const stopRecordingRef = useRef(null)
+  useEffect(() => {
+    stopRecordingRef.current = stopRecording
+  })
+  useEffect(() => {
+    if (!recording) return
+    const timer = setTimeout(() => stopRecordingRef.current?.(), 30000)
+    return () => clearTimeout(timer)
+  }, [recording])
+
+  /** 启动一次语音会话：并行开启 MediaRecorder（上传情感分析）+ 浏览器 SpeechRecognition（降级转写 + 实时展示） */
   const startVoiceSession = useCallback(() => {
-    // 并行启动浏览器 SpeechRecognition 作为降级转写
+    // 并行启动浏览器 SpeechRecognition 作为降级转写 + 录音遮罩实时展示
     browserTranscriptRef.current = ''
+    setLiveTranscript('')
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
     if (SpeechRecognition) {
       try {
@@ -264,6 +336,7 @@ export default function ChatRoom({ session, onEnd }) {
             transcript += e.results[i][0].transcript
           }
           browserTranscriptRef.current = transcript
+          setLiveTranscript(transcript) // 实时转写展示在录音遮罩内
         }
         rec.onerror = () => {}
         rec.start()
@@ -273,27 +346,63 @@ export default function ChatRoom({ session, onEnd }) {
       }
     }
     // 启动 MediaRecorder 录音
-    toggleVoice()
-  }, [toggleVoice])
+    startRecording()
+  }, [startRecording])
 
-  /** 语音按钮点击（含授权检查） */
-  const handleVoiceClick = useCallback(() => {
-    if (recording) {
-      toggleVoice()
-      // 停止浏览器识别
-      speechRecRef.current?.stop()
-    } else {
-      if (requestConsent()) {
-        startVoiceSession()
-      }
-    }
-  }, [recording, toggleVoice, requestConsent, startVoiceSession])
+  /* ===== 按住说话（微信同款）：按下录音、松开发送、上滑取消 ===== */
 
-  /** 授权通过后自动开始录音（同样启动 SpeechRecognition 降级） */
-  const handleConsentGrant = useCallback(() => {
-    grantConsent()
+  /** 按下：开始录音（含授权检查；未授权则弹授权框，暂不录音） */
+  const handleVoicePointerDown = useCallback((e) => {
+    if (streaming || analyzing || recording) return
+    if (!requestConsent()) return
+    tts.stop() // 打断播放：用户按住麦克风要说话时 AI 应立即停读（也避免录音期间 TTS 被路由到听筒）
+    e.currentTarget.setPointerCapture(e.pointerId)
+    pointerStartYRef.current = e.clientY
+    pointerDownTimeRef.current = Date.now()
+    setCancelArmed(false)
     startVoiceSession()
-  }, [grantConsent, startVoiceSession])
+  }, [streaming, analyzing, recording, requestConsent, startVoiceSession, tts.stop])
+
+  /** 移动：上滑超过阈值进入取消态（松手即取消） */
+  const handleVoicePointerMove = useCallback((e) => {
+    if (!recording) return
+    setCancelArmed(pointerStartYRef.current - e.clientY > 60)
+  }, [recording])
+
+  /** 松开：三分支——上滑取消 / 说话过短 / 正常发送（识别后自动发出） */
+  const handleVoicePointerUp = useCallback(() => {
+    if (!recording) return
+    speechRecRef.current?.stop()
+    const tooShort = Date.now() - pointerDownTimeRef.current < 1000
+    if (cancelArmed) {
+      cancelRecording()
+      setVoiceNotice('已取消')
+      setTimeout(() => setVoiceNotice(''), 2000)
+    } else if (tooShort) {
+      cancelRecording()
+      setVoiceNotice('说话时间太短，按住说久一点 🎤')
+      setTimeout(() => setVoiceNotice(''), 3000)
+    } else {
+      stopRecording() // → 识别 → 自动发送
+    }
+    setCancelArmed(false)
+  }, [recording, cancelArmed, cancelRecording, stopRecording])
+
+  /** 系统打断 / 指针捕获丢失：安全取消本次录音，避免卡在录音态 */
+  const handleVoicePointerCancel = useCallback(() => {
+    if (!recording) return
+    speechRecRef.current?.stop()
+    cancelRecording()
+    setCancelArmed(false)
+  }, [recording, cancelRecording])
+
+  /** 授权通过：预热麦克风（下次按住秒开）；按住说话模式下不自动录音，需用户再次按住 */
+  const handleConsentGrant = useCallback(async () => {
+    grantConsent()
+    await warmUpMic() // 先拿到麦克风流，首次录音也能秒开，避免漏录开头
+    setVoiceNotice('按住麦克风开始说话 🎤')
+    setTimeout(() => setVoiceNotice(''), 3000)
+  }, [grantConsent, warmUpMic])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -302,26 +411,33 @@ export default function ChatRoom({ session, onEnd }) {
   /** 重播单条消息 */
   const handleReplay = useCallback((text, idx) => {
     setSpeakingMsgIdx(idx)
+    releaseStream() // 释放麦克风，避免安卓把重播音频路由到听筒（合成窗口内完成扬声器切回）
     tts.speakSentence(text).then(() => setSpeakingMsgIdx(-1))
-  }, [tts])
+  }, [tts, releaseStream])
 
-  const sendMessage = async () => {
-    const text = input.trim()
-    if (!text || streaming) return
+  const sendMessage = async (autoText, autoEmotion) => {
+    const text = (autoText ?? input).trim()
+    if (!text || streaming) return false
 
     // 先停止当前播放，再在用户手势中解锁音频（避免 unlock 被 stop 打断）
     tts.stop()
     tts.unlock()
     setSpeakingMsgIdx(-1)
+    // 释放麦克风：安卓把活跃麦克风视为"通话"，会把 TTS 路由到听筒。
+    // 在发送时（AI 生成前）就释放，给系统留足切回扬声器的时间，确保整段回复走扩音
+    releaseStream()
+
+    // 语音自动发送时用传入的 emotion（修复此前服务端情绪从未存入 state 的问题）；手动打字时用当前 state
+    const emotion = autoEmotion !== undefined ? autoEmotion : voiceEmotion
 
     const body = { content: text }
-    if (voiceEmotion) {
-      body.voiceEmotion = voiceEmotion.labelEn
-      body.voiceEmotionConfidence = voiceEmotion.confidence
+    if (emotion) {
+      body.voiceEmotion = emotion.labelEn
+      body.voiceEmotionConfidence = emotion.confidence
       body.inputMode = 'voice'
     }
 
-    const msgEmotion = voiceEmotion
+    const msgEmotion = emotion
     setInput('')
     setVoiceEmotion(null)
     setMessages((prev) => [...prev, { role: 'user', content: text, emotion: msgEmotion }])
@@ -363,11 +479,11 @@ export default function ChatRoom({ session, onEnd }) {
                 return updated
               })
             } else if (event.type === 'risk') {
-              setMessages((prev) => [
-                ...prev.slice(0, -1),
-                { role: 'system', content: `⚠️ ${event.content}`, level: event.metadata?.riskLevel },
-                ...prev.slice(-1),
-              ])
+              // 风险事件是系统/心理老师的内部处理指令（如"允许继续 CBT 微干预，趋势观察"），
+              // 不能展示给学生：孩子看不懂临床术语，且会意识到"被监控"而破坏辅导信任。
+              // 风险数据由后端另行落库并推送教师后台；红色风险后端会单独下发孩子能懂的安抚语。
+              // 这里仅记录日志便于调试，不渲染到聊天界面。
+              console.info('[risk]', event.metadata?.riskLevel, event.content)
             }
           } catch { /* ignore parse errors */ }
         }
@@ -387,7 +503,13 @@ export default function ChatRoom({ session, onEnd }) {
     } finally {
       setStreaming(false)
     }
+    return true
   }
+
+  // 每次渲染后让 sendMessageRef 指向最新的 sendMessage（供定义在前的 handleRecordingComplete 调用）
+  useEffect(() => {
+    sendMessageRef.current = sendMessage
+  })
 
   const handleEnd = async () => {
     tts.stop()
@@ -397,7 +519,7 @@ export default function ChatRoom({ session, onEnd }) {
     onEnd()
   }
 
-  /* ===== 语音大按钮（Pad 左栏 / 手机底部共用逻辑） ===== */
+  /* ===== 语音大按钮（Pad 左栏 / 手机底部共用逻辑）— 按住说话 ===== */
   const voiceButton = (size) => {
     const sizeClass = size === 'lg'
       ? 'w-28 h-28 lg:w-36 lg:h-36'
@@ -406,14 +528,19 @@ export default function ChatRoom({ session, onEnd }) {
 
     return (
       <button
-        onClick={handleVoiceClick}
+        onPointerDown={handleVoicePointerDown}
+        onPointerMove={handleVoicePointerMove}
+        onPointerUp={handleVoicePointerUp}
+        onPointerCancel={handleVoicePointerCancel}
+        onLostPointerCapture={handleVoicePointerCancel}
         disabled={streaming || analyzing}
-        className={`${sizeClass} rounded-full flex items-center justify-center transition-all flex-shrink-0
+        style={{ touchAction: 'none' }}
+        className={`${sizeClass} rounded-full flex items-center justify-center transition-all flex-shrink-0 select-none
           ${recording
             ? 'bg-red-500 text-white shadow-xl shadow-red-200 scale-110 animate-pulse'
             : 'bg-[var(--voice-btn)] text-white shadow-lg hover:opacity-90 active:scale-95'
           } disabled:opacity-40 disabled:cursor-not-allowed`}
-        title={recording ? '停止录音' : '按住说话'}
+        title={recording ? '松开 发送，上滑 取消' : '按住 说话'}
       >
         {recording ? (
           <svg className={iconClass} fill="currentColor" viewBox="0 0 24 24">
@@ -499,7 +626,7 @@ export default function ChatRoom({ session, onEnd }) {
           {/* 语音大按钮 */}
           {supported && voiceButton('lg')}
           <p className="mt-4 text-sm text-gray-400">
-            {recording ? '再点一下结束录音' : '点麦克风，用说的更快哦'}
+            {recording ? '松开手指发送，上滑取消' : '按住麦克风，用说的更快哦'}
           </p>
 
           {/* 语音情绪预览 */}
@@ -538,14 +665,14 @@ export default function ChatRoom({ session, onEnd }) {
               </div>
             )}
 
-            {/* 手机录音状态 */}
-            {(recording || analyzing) && (
+            {/* 手机端识别状态（录音态由全屏遮罩接管） */}
+            {analyzing && (
               <div className="flex lg:hidden items-center justify-center gap-2 mb-3 text-sm" style={{ color: 'var(--primary)' }}>
                 <span className="relative flex h-3 w-3">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75" style={{ background: 'var(--primary)' }}></span>
                   <span className="relative inline-flex rounded-full h-3 w-3" style={{ background: 'var(--primary)' }}></span>
                 </span>
-                {recording ? '正在录音... 再点一下结束' : '正在分析语音情绪...'}
+                正在识别，马上发送...
               </div>
             )}
 
@@ -586,6 +713,31 @@ export default function ChatRoom({ session, onEnd }) {
           </footer>
         </div>
       </div>
+
+      {/* ===== 录音遮罩（按住说话，微信同款） ===== */}
+      {recording && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center pointer-events-none">
+          <div className={`flex flex-col items-center gap-4 px-10 py-8 rounded-3xl text-white shadow-2xl transition-colors w-[280px]
+            ${cancelArmed ? 'bg-red-500' : 'bg-gray-800/95'}`}>
+            {/* 麦克风图标（脉冲） */}
+            <div className={`w-16 h-16 rounded-full flex items-center justify-center ${cancelArmed ? 'bg-white/20' : 'bg-white/10 animate-pulse'}`}>
+              <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
+                <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
+              </svg>
+            </div>
+            {/* 实时转写（底部对齐：内容超出时始终露出最新部分） */}
+            <div className="h-16 w-full overflow-hidden flex items-end justify-center">
+              <p className="text-base text-center leading-relaxed break-all">{liveTranscript || '正在聆听...'}</p>
+            </div>
+            {/* 状态文案 */}
+            <div className="text-center">
+              <p className="text-sm font-medium">{cancelArmed ? '松开手指，取消发送' : '松开 发送'}</p>
+              {!cancelArmed && <p className="text-xs opacity-60 mt-1">上滑取消</p>}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 语音授权弹窗（合规） */}
       {showConsent && (
