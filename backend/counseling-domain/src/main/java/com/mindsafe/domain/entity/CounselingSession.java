@@ -25,6 +25,16 @@ public class CounselingSession {
     private Integer riskLevelSnapshot;
     private String transcriptPolicy;
     private String consentVersion;
+
+    /** CBT 状态机路径（jsonb，存储 CbtSessionState 序列化 JSON） */
+    private String statePath;
+
+    /** 满意度评分（1-5 星） */
+    private Integer satisfactionRating;
+
+    /** 满意度评价文字 */
+    private String satisfactionComment;
+
     private Instant createdAt;
     private Instant updatedAt;
 
@@ -102,6 +112,15 @@ public class CounselingSession {
 
     public String getConsentVersion() { return consentVersion; }
     public void setConsentVersion(String consentVersion) { this.consentVersion = consentVersion; }
+
+    public String getStatePath() { return statePath; }
+    public void setStatePath(String statePath) { this.statePath = statePath; }
+
+    public Integer getSatisfactionRating() { return satisfactionRating; }
+    public void setSatisfactionRating(Integer satisfactionRating) { this.satisfactionRating = satisfactionRating; }
+
+    public String getSatisfactionComment() { return satisfactionComment; }
+    public void setSatisfactionComment(String satisfactionComment) { this.satisfactionComment = satisfactionComment; }
 
     public Instant getCreatedAt() { return createdAt; }
     public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }

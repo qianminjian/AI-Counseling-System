@@ -1,10 +1,12 @@
 package com.mindsafe.ai.config;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.mindsafe.ai.memory.RedisChatMemoryRepository;
 import org.springframework.ai.chat.memory.ChatMemory;
-import org.springframework.ai.chat.memory.InMemoryChatMemoryRepository;
 import org.springframework.ai.chat.memory.MessageWindowChatMemory;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.data.redis.core.StringRedisTemplate;
 
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
@@ -12,8 +14,8 @@ import java.util.concurrent.Executors;
 /**
  * AI 模块配置
  * <p>
- * M1：MessageWindowChatMemory + InMemoryChatMemoryRepository（开发阶段，重启丢失）。
- * M2+：替换为 JDBC/Redis 持久化实现。
+ * ChatMemory：Redis 持久化（TTL=2h），重启不丢失对话上下文。
+ * 替代 M1 的 InMemoryChatMemoryRepository。
  */
 @Configuration
 public class AiConfig {
@@ -22,9 +24,15 @@ public class AiConfig {
     private static final int MEMORY_WINDOW = 20;
 
     @Bean
-    public ChatMemory chatMemory() {
+    public RedisChatMemoryRepository redisChatMemoryRepository(StringRedisTemplate redisTemplate,
+                                                               ObjectMapper objectMapper) {
+        return new RedisChatMemoryRepository(redisTemplate, objectMapper);
+    }
+
+    @Bean
+    public ChatMemory chatMemory(RedisChatMemoryRepository redisChatMemoryRepository) {
         return MessageWindowChatMemory.builder()
-                .chatMemoryRepository(new InMemoryChatMemoryRepository())
+                .chatMemoryRepository(redisChatMemoryRepository)
                 .maxMessages(MEMORY_WINDOW)
                 .build();
     }

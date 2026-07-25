@@ -45,6 +45,12 @@ public class SecurityConfig {
                         .requestMatchers("/api/v1/chat/**").authenticated()
                         // 教师端 API 需认证
                         .requestMatchers("/api/v1/teacher/**").authenticated()
+                        // 预警队列 API 需认证
+                        .requestMatchers("/api/v1/alerts/**").authenticated()
+                        // 会话 API 需认证
+                        .requestMatchers("/api/v1/sessions/**").authenticated()
+                        // 放松练习 API 需认证
+                        .requestMatchers("/api/v1/relaxation/**").authenticated()
                         // 其余请求放行（语音/TTS 等辅助 API，M1 宽松）
                         .anyRequest().permitAll()
                 )
