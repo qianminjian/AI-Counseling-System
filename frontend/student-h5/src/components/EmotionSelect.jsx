@@ -41,9 +41,9 @@ export default function EmotionSelect({ onStart }) {
   return (
     <div className="min-h-screen flex flex-col items-center justify-center p-6 lg:p-10"
       style={{ background: 'linear-gradient(to bottom, var(--bg-start), var(--bg-end))' }}>
-      {/* 标题区 */}
-      <div className="text-6xl lg:text-8xl mb-4 lg:mb-6">{theme.companion}</div>
-      <h1 className="text-2xl lg:text-4xl font-bold text-gray-800 mb-2">嗨，同学！</h1>
+      {/* 标题区：儿童化圆体标题 + 伙伴漂浮动画 */}
+      <div className="text-6xl lg:text-8xl mb-4 lg:mb-6 float-companion">{theme.companion}</div>
+      <h1 className="kid-title text-2xl lg:text-4xl text-gray-800 mb-2">嗨，同学！</h1>
       <p className="text-gray-500 lg:text-xl mb-8 lg:mb-12">今天你的心情怎么样呀？</p>
 
       {/* 情绪选择：手机 3+2 网格 / Pad 横排大卡片 */}

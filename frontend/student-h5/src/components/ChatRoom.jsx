@@ -4,6 +4,7 @@ import SettingsPanel from './SettingsPanel'
 import { useTheme } from '../theme/ThemeProvider'
 import { useVoicePersona } from '../hooks/useVoicePersona'
 import { useTtsPlayer } from '../hooks/useTtsPlayer'
+import { getEmotionTypo } from '../theme/emotionTypography'
 
 /** 情绪标签 → emoji 映射 */
 const EMOTION_EMOJI = {
@@ -153,16 +154,27 @@ function MessageBubble({ msg, isLast, streaming, onReplay, isSpeaking }) {
   }
 
   const isAi = msg.role === 'assistant'
+  // 情感化排印：AI 回复按孩子情绪调整字号/字重/底色/入场动效
+  // （语音情绪优先、会话情绪兜底、未知回退 neutral）；用户消息保持原有样式
+  const typo = isAi ? getEmotionTypo(msg.emotion) : null
 
   return (
     <div className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-      <div className={`group relative max-w-[85%] lg:max-w-[70%] px-4 py-3 lg:px-5 lg:py-4 rounded-2xl lg:rounded-3xl
-        text-sm lg:text-lg leading-relaxed whitespace-pre-wrap transition-colors
+      <div
+        className={`group relative max-w-[85%] lg:max-w-[70%] px-4 py-3 lg:px-5 lg:py-4 rounded-2xl lg:rounded-3xl
+        whitespace-pre-wrap transition-colors
         ${msg.role === 'user'
-          ? 'bg-[var(--primary)] text-white rounded-br-md'
-          : 'bg-[var(--bubble-ai)] text-gray-700 border border-gray-100 shadow-sm rounded-bl-md'
-        } ${isSpeaking ? 'ring-2 ring-[var(--primary)] ring-opacity-40' : ''}`}>
-        {msg.emotion && msg.emotion.labelEn !== 'unknown' && (
+          ? 'text-sm lg:text-lg leading-relaxed bg-[var(--primary)] text-white rounded-br-md'
+          : `ai-msg-text text-gray-700 border border-gray-100 shadow-sm rounded-bl-md ${typo.anim}`
+        } ${isSpeaking ? 'ring-2 ring-[var(--primary)] ring-opacity-40' : ''}`}
+        style={isAi ? {
+          '--typo-scale': typo.scale,
+          '--typo-weight': typo.weight,
+          background: typo.tint,
+          borderLeft: `4px solid ${typo.accent}`,
+        } : undefined}
+      >
+        {msg.role === 'user' && msg.emotion && msg.emotion.labelEn !== 'unknown' && (
           <span className="inline-block mr-1 text-xs lg:text-sm opacity-80">
             {EMOTION_EMOJI[msg.emotion.labelEn] || '🎵'}
           </span>
@@ -198,7 +210,7 @@ function MessageBubble({ msg, isLast, streaming, onReplay, isSpeaking }) {
 
 export default function ChatRoom({ session, onEnd }) {
   const [messages, setMessages] = useState([
-    { role: 'assistant', content: session.greeting },
+    { role: 'assistant', content: session.greeting, emotion: session.emotionTag },
   ])
   const [input, setInput] = useState('')
   const [streaming, setStreaming] = useState(false)
@@ -442,7 +454,8 @@ export default function ChatRoom({ session, onEnd }) {
     setVoiceEmotion(null)
     setMessages((prev) => [...prev, { role: 'user', content: text, emotion: msgEmotion }])
     setStreaming(true)
-    setMessages((prev) => [...prev, { role: 'assistant', content: '' }])
+    // AI 回复挂上孩子情绪（语音情绪优先、会话情绪兜底），驱动情感化排印
+    setMessages((prev) => [...prev, { role: 'assistant', content: '', emotion: msgEmotion || session.emotionTag }])
 
     let fullResponse = ''
 
