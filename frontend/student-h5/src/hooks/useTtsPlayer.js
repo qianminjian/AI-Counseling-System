@@ -42,6 +42,24 @@ function splitSentences(text) {
   return result
 }
 
+/** 合并过短的句子，避免"短句瞬间播完、下一句还没合成好"造成的句间间隔 */
+function mergeShortSentences(sentences, minLen = 10) {
+  const merged = []
+  let buffer = ''
+  for (const s of sentences) {
+    buffer += s
+    if (buffer.length >= minLen) {
+      merged.push(buffer)
+      buffer = ''
+    }
+  }
+  if (buffer) {
+    if (merged.length > 0) merged[merged.length - 1] += buffer
+    else merged.push(buffer)
+  }
+  return merged
+}
+
 export function useTtsPlayer({ persona = 'xiaoxing', emotion = 'neutral', speed = 1.0 } = {}) {
   const [playing, setPlaying] = useState(false)
   const [currentSentenceIdx, setCurrentSentenceIdx] = useState(-1)
@@ -137,29 +155,26 @@ export function useTtsPlayer({ persona = 'xiaoxing', emotion = 'neutral', speed 
     })
   }, [getAudio])
 
-  /** 播放完整 AI 回复（逐句队列 + 流水线预合成，消除句间停顿） */
+  /** 播放完整 AI 回复（短句合并 + 全句并行合成，消除句间停顿） */
   const speak = useCallback(async (text) => {
     if (muted) return
 
     stop()
 
-    const sentences = splitSentences(text)
+    const sentences = mergeShortSentences(splitSentences(text))
     if (sentences.length === 0) return
 
     abortRef.current = false
     setPlaying(true)
 
-    // 流水线：播放第 i 句时，后台已在合成第 i+1 句 → 句间无缝衔接
-    let nextPromise = synthesizeSentence(sentences[0])
-    for (let i = 0; i < sentences.length; i++) {
+    // 所有句子同时并行合成：播放第 i 句时，第 i+1..n 句早已在后台合成
+    // → 无论单句合成多慢，句间都零间隔（只有首句需等待一次合成）
+    const audioPromises = sentences.map(s => synthesizeSentence(s))
+
+    for (let i = 0; i < audioPromises.length; i++) {
       if (abortRef.current) break
       setCurrentSentenceIdx(i)
-      const currentPromise = nextPromise
-      // 提前启动下一句合成（与当前句播放并行）
-      if (i + 1 < sentences.length) {
-        nextPromise = synthesizeSentence(sentences[i + 1])
-      }
-      const audioBlob = await currentPromise
+      const audioBlob = await audioPromises[i]
       if (!audioBlob || abortRef.current) continue
       await playBlob(audioBlob)
     }
