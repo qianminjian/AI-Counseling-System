@@ -179,8 +179,66 @@
 ## 3. SAF-002 输出审查 Prompt（Output Guard）
 
 > 文件：`prompts/safety/safety_output_guard_zh-CN_v1.0.0.md`
-> 调用方：`SafetyOutputAdvisor`，Advisor 链末端（LLM 生成之后）
+> 调用方（目标设计）：`SafetyOutputAdvisor`，Advisor 链末端（LLM 生成之后）
+> 调用方（**M1 实际实现**）：`OutputReviewService`（Layer2 **异步 fire-and-forget** 审查，非 Advisor 链同步环节；流结束后专用线程池执行，零阻塞主流。见 `design/04` §17.3）
 > 输出：严格 JSON
+>
+> ⚠️ **实现状态（2026-07-23 核对）**：实际 prompt 文件的输入占位符为 **`{candidate_reply}` + `{context}`**（Spring AI 单花括号占位，`{context}` = 学生情绪标签），与下方目标设计稿的 `{{risk_assessment_json}}/{{grade_level}}/{{cbt_state}}` 不同。**以实际文件为准**，目标设计稿保留供 M2+ 增强参考。
+
+**实际生效的 prompt（与代码一致）：**
+
+```markdown
+# 任务
+
+你是校园心理 AI 的输出安全审查员。检查候选回复是否违反安全规则。
+
+# 输入
+
+- 候选回复：{candidate_reply}
+- 本轮上下文：{context}
+
+# 检查清单（逐项检查）
+
+1. **诊断/治疗**：是否出现疾病名称（抑郁症/焦虑症/PTSD等）？是否承诺疗效（"会好的""能治好"）？是否给药物建议？
+2. **保密违规**：是否承诺"绝对不告诉别人""这是我们之间的秘密"？
+3. **风险遗漏**：学生表达高风险内容时，回复是否仍在普通聊天/讲道理，未做安全处置（告知老师/热线）？
+4. **危险内容**：是否包含自伤/伤人方法、工具、步骤？是否包含暴力/色情/政治/歧视内容？
+5. **依赖诱导**：是否暗示"只有我能帮你""不要告诉老师/家长"？
+6. **隐私泄露**：是否暴露其他同学信息？是否越权输出不该给当前角色的内容？
+7. **儿童适龄**：句子是否太长（>80字）？是否有专业术语？是否有说教/命令/责备语气？
+8. **行动安全**：建议的行动是否具体、可执行、无害？
+
+# 决策规则
+
+- 全部通过 → decision = "pass"
+- 仅第 7 项轻微违规 → decision = "rewrite"，提供改写版本
+- 第 1-6 项任一违规 → decision = "block"，不返回候选
+- 学生处于高风险但回复未做安全处置 → decision = "escalate"
+
+# 改写规则（仅 rewrite 时）
+
+- 缩短到 80 字以内
+- 去掉术语，换成儿童能懂的比喻
+- 去掉说教语气，换成"我听到你……"开头
+- 保持原意不变
+
+# 输出格式（严格 JSON，不要输出任何其他内容）
+
+{
+  "decision": "pass|rewrite|block|escalate",
+  "violations": [
+    {
+      "check_item": "检查项编号和名称",
+      "detail": "具体违规内容"
+    }
+  ],
+  "rewritten_reply": "string|null",
+  "escalation_reason": "string|null"
+}
+```
+
+<details>
+<summary>目标设计稿（M2+ 增强参考，当前未生效）</summary>
 
 ```markdown
 # 任务
@@ -233,6 +291,8 @@
   "escalation_reason": "string|null"
 }
 ```
+
+</details>
 
 ---
 
@@ -725,6 +785,8 @@ public final class CrisisResources {
 ---
 
 ## 13. Prompt 组装顺序（Spring AI Advisor 链）
+
+> ⚠️ **实现状态（2026-07-23 核对）**：下方为**目标设计**的完整 Advisor 链（8 环）。M1 实际采用**精简管线**（见 `design/04` §17.5）：`ConversationServiceImpl` 显式调用 `RiskDetectorServiceImpl`（输入风险，对应环 1 的精简版）→ `PiiDesensitizer`（脱敏）→ `AiChatServiceImpl`（内联 SYS-001 基础 prompt + ChatMemory + LLM 流式）→ `OutputContentFilter`（Layer1 硬过滤）→ `OutputReviewService`（Layer2 异步 SAF-002，对应环 6 的异步版）。环 2-5/7-8 的 Advisor 链集成与 RAG/SkillRouter 为 M2+ 目标。
 
 ```
 请求进入

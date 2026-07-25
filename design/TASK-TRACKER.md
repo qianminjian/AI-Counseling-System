@@ -1,6 +1,6 @@
 # AI 小学生心理辅导系统 - 任务跟踪表
 
-> 创建：2026-07-23 | 更新：2026-07-23（决策确认 + 开发规范制定完成，M1 待启动）
+> 创建：2026-07-23 | 更新：2026-07-23（内容安全审查体系已实现 + 设计文档全面同步 + 新增认证试用准入设计 + 立文档代码一致底线规则）
 > 
 > 本表用于跟踪项目各阶段任务的进度和责任人。
 
@@ -123,6 +123,35 @@
 | **M1：核心对话+风险识别** | 最小闭环验证（100 真实用户） | 2026-09-23 | - | ⏳ 待开始 |
 | **M2：放松训练+教师后台** | 功能体验完善 | 2026-11-23 | - | ⏳ 待开始 |
 | **M3：测评+趋势分析** | 心理测量能力 | 2027-01-23 | - | ⏳ 待开始 |
+
+---
+
+## 八、内容安全审查体系（M1 已实现，2026-07-23 提交 commit 9ec5278）
+
+| 任务ID | 任务描述 | 模块 | 状态 | 备注 |
+|--------|----------|------|------|------|
+| SAF-001 | 输入侧风险识别（10 类信号关键词硬规则） | counseling-ai/risk/ | ✅ 完成 | `RiskDetectorServiceImpl` |
+| SAF-002 | 输入侧 PII 服务端脱敏（手机/身份证/邮箱） | counseling-ai/safety/ | ✅ 完成 | `PiiDesensitizer` |
+| SAF-003 | 输出 Layer1 流式关键词硬过滤（滑动窗口） | counseling-ai/safety/ | ✅ 完成 | `OutputContentFilter` + `SafetyKeywordLibrary` |
+| SAF-004 | 输出 Layer2 异步 SAF-002 语义审查 | counseling-ai/safety/ | ✅ 完成 | `OutputReviewService`（fire-and-forget） |
+| SAF-005 | 违规上报（依赖倒置，写 risk_events + 通知） | counseling-service/safety/ | ✅ 完成 | `OutputSafetyReporter` 端口 + `OutputSafetyReporterImpl` 适配器 |
+| SAF-006 | 单元测试（5 个测试类） | 各模块 src/test/ | ✅ 完成 | 见 design/04 §17.6 |
+
+---
+
+## 九、设计文档维护与试用准入（2026-07-23）
+
+| 任务ID | 任务描述 | 状态 | 备注 |
+|--------|----------|------|------|
+| DOC-025 | 新增 design/21 认证与试用准入设计（兼容认证+告知同意） | ✅ 完成 | 4 个决策点（D1-D4）待钱敏健拍板 |
+| DOC-026 | 同步内容安全审查到 design/04 §十七（已实现，真实类名） | ✅ 完成 | 输入风险/PII/输出双层/上报/测试 |
+| DOC-027 | 对齐 design/14 §11 实际类名（目标设计 vs M1 实现） | ✅ 完成 | 补输出审查/PII 行 |
+| DOC-028 | 对齐 design/18 §3 SAF-002 + §13 Advisor 链实现状态 | ✅ 完成 | 实际占位符 {candidate_reply}/{context} |
+| DOC-029 | 立"设计文档与代码一致"底线规则 | ✅ 完成 | core-red-lines §4.5 / AGENTS §3.5 / design-persistence §4.2 |
+| DOC-030 | 更新 BEACON / DESIGN-OVERVIEW / TASK-TRACKER | ✅ 完成 | 决策 #10-12、导航 21、版本 v1.5 |
+| AUTH-001 | 实施试用准入 P0（告知同意门控+试用注册+ChatController 接 SecurityContext） | ⏳ 待开始 | 依赖 D1-D4 决策 |
+| AUTH-002 | chat 端点收紧鉴权 + 前端接入 JWT | ⏳ 待开始 | 依赖 AUTH-001 |
+| AUTH-003 | consent_records / trial_invite_codes 表迁移脚本 | ⏳ 待开始 | ⚠️ 命中红线 #3（schema 变更需用户确认） |
 
 ---
 

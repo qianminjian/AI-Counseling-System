@@ -488,6 +488,8 @@ public class CBTStateMachine {
 
 ## 十一、Advisor 实现规范
 
+> ⚠️ **实现状态（2026-07-23 核对）**：本节（含 11.2/11.3 实现骨架）为**目标设计**，描述完整 Advisor 链架构。M1 **未采用** Advisor 链编排，实际以 Service 层显式调用实现安全管线：输入风险 `RiskDetectorServiceImpl` + `PiiDesensitizer`，输出 `OutputContentFilter`（Layer1）+ `OutputReviewService`（Layer2 异步 SAF-002）。**真实已实现类名与范围以 `design/04` §十七 为准**，本节骨架代码仅供 M2+ Advisor 链重构参考。
+
 ### 11.1 Advisor 链顺序与职责
 
 | 序号 | Advisor | getOrder() | 职责 | 实现要点 |

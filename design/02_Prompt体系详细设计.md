@@ -383,6 +383,8 @@ Prompt 体系的核心价值，是把校园心理 AI 从「会聊天」升级为
 ## 18. Spring AI 落地适配
 
 > 关联决策 #5/#7/#9。Prompt 与 LLM 供应商无关，通过 Spring AI 抽象层承载；分层 Prompt 映射到 Advisor 链与 PromptTemplate 资源。
+>
+> ⚠️ **实现状态（2026-07-23 核对）**：下表与下方 Advisor 链顺序为**目标设计**。M1 实际未用完整 Advisor 链：L2 输入安全由 `RiskDetectorServiceImpl`（Service 层显式调用）实现，L6 输出审查由 `OutputContentFilter`（Layer1 流式硬过滤）+ `OutputReviewService`（Layer2 异步 SAF-002）实现，SYS-001 当前为 `AiChatServiceImpl` 内联基础 prompt（尚未迁移至 `prompts/system/*.md`）。**已实现范围以 `design/04` §十七 为准**。
 
 | 设计要求 | Spring AI 实现方案 |
 |------|------|
