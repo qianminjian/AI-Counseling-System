@@ -11,19 +11,38 @@ const EMOTION_EMOJI = {
   neutral: '😐', surprised: '😲', disgusted: '🤢', unknown: '', other: '',
 }
 
+/** 检测浏览器支持的录音格式（iOS Safari 不支持 webm，只支持 mp4/aac） */
+function getSupportedMimeType() {
+  if (typeof MediaRecorder === 'undefined' || !MediaRecorder.isTypeSupported) return ''
+  const candidates = ['audio/webm', 'audio/mp4', 'audio/ogg', 'audio/aac']
+  for (const type of candidates) {
+    try {
+      if (MediaRecorder.isTypeSupported(type)) return type
+    } catch { /* ignore */ }
+  }
+  return '' // 让浏览器自行选择默认格式
+}
+
 /**
- * MediaRecorder 录音 Hook（录制真实音频用于情感分析）
+ * 语音录制 Hook
+ * - 优先用 MediaRecorder 录真实音频（上传做情感分析）
+ * - 麦克风不可用时降级为纯浏览器识别（SpeechRecognition，由父组件提供转写）
+ * - supported：麦克风 或 浏览器语音识别 任一可用即为 true
  */
 function useAudioRecorder(onComplete) {
   const [recording, setRecording] = useState(false)
   const [analyzing, setAnalyzing] = useState(false)
   const [supported, setSupported] = useState(true)
   const mediaRecorderRef = useRef(null)
+  const mimeTypeRef = useRef('audio/webm')
   const chunksRef = useRef([])
   const streamRef = useRef(null)
 
   useEffect(() => {
-    if (!navigator.mediaDevices?.getUserMedia) {
+    const hasMic = !!navigator.mediaDevices?.getUserMedia
+    const hasSpeechRec = !!(window.SpeechRecognition || window.webkitSpeechRecognition)
+    // 麦克风和浏览器识别都不可用才隐藏语音按钮
+    if (!hasMic && !hasSpeechRec) {
       setSupported(false)
     }
     return () => {
@@ -32,18 +51,22 @@ function useAudioRecorder(onComplete) {
   }, [])
 
   const startRecording = useCallback(async () => {
+    setRecording(true)
+    chunksRef.current = []
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       streamRef.current = stream
-      chunksRef.current = []
-
-      const recorder = new MediaRecorder(stream, { mimeType: 'audio/webm' })
+      const mimeType = getSupportedMimeType()
+      mimeTypeRef.current = mimeType || 'audio/webm'
+      const recorder = mimeType
+        ? new MediaRecorder(stream, { mimeType })
+        : new MediaRecorder(stream)
       recorder.ondataavailable = (e) => {
         if (e.data.size > 0) chunksRef.current.push(e.data)
       }
       recorder.onstop = async () => {
         stream.getTracks().forEach(t => t.stop())
-        const blob = new Blob(chunksRef.current, { type: 'audio/webm' })
+        const blob = new Blob(chunksRef.current, { type: mimeTypeRef.current })
         setAnalyzing(true)
         try {
           await onComplete(blob)
@@ -53,19 +76,26 @@ function useAudioRecorder(onComplete) {
       }
       recorder.start()
       mediaRecorderRef.current = recorder
-      setRecording(true)
     } catch (err) {
-      console.error('麦克风访问失败', err)
-      setSupported(false)
+      // 麦克风不可用（权限拒绝/非安全上下文）→ 降级为纯浏览器识别
+      console.warn('麦克风不可用，将仅用浏览器识别', err.name)
+      mediaRecorderRef.current = null
     }
   }, [onComplete])
 
   const stopRecording = useCallback(() => {
-    if (mediaRecorderRef.current && recording) {
+    if (!recording) return
+    setRecording(false)
+    if (mediaRecorderRef.current) {
+      // 有录音 → 停止后触发 onstop → onComplete(blob)
       mediaRecorderRef.current.stop()
-      setRecording(false)
+      mediaRecorderRef.current = null
+    } else {
+      // 无录音（纯浏览器识别）→ 直接用浏览器转写结果
+      setAnalyzing(true)
+      Promise.resolve(onComplete(null)).finally(() => setAnalyzing(false))
     }
-  }, [recording])
+  }, [recording, onComplete])
 
   const toggle = useCallback(() => {
     if (recording) stopRecording()
@@ -141,7 +171,11 @@ export default function ChatRoom({ session, onEnd }) {
   const [voiceEmotion, setVoiceEmotion] = useState(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [speakingMsgIdx, setSpeakingMsgIdx] = useState(-1)
+  const [voiceNotice, setVoiceNotice] = useState('')
   const bottomRef = useRef(null)
+  const browserTranscriptRef = useRef('')
+  const speechRecRef = useRef(null)
+  const greetingSpokenRef = useRef(false)
 
   // 主题 + 音色
   const { theme } = useTheme()
@@ -157,55 +191,113 @@ export default function ChatRoom({ session, onEnd }) {
     speed: 1.0,
   })
 
-  /** 录音完成 → 上传分析 → 填充文字 + 情绪 */
+  // 进入聊天室自动朗读打招呼语
+  // （此时仍处于"开始聊天"点击的用户激活窗口内，unlock 可成功预热音频元素）
+  useEffect(() => {
+    if (greetingSpokenRef.current) return // StrictMode 防重复
+    greetingSpokenRef.current = true
+    if (session.greeting && !tts.muted) {
+      tts.unlock()
+      tts.speak(session.greeting)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  /** 录音完成 → 上传分析 → 填充文字 + 情绪（audioBlob 为 null 时直接用浏览器转写） */
   const handleRecordingComplete = useCallback(async (audioBlob) => {
+    // 无录音（麦克风不可用）→ 直接用浏览器识别结果
+    if (!audioBlob) {
+      if (browserTranscriptRef.current) {
+        setInput(browserTranscriptRef.current)
+        setVoiceNotice('已用浏览器识别（语音情绪分析暂不可用）')
+      } else {
+        setVoiceNotice('没有听清，请再说一次或打字告诉我 ✏️')
+      }
+      setTimeout(() => setVoiceNotice(''), 4000)
+      return
+    }
+
     const formData = new FormData()
     formData.append('file', audioBlob, 'recording.webm')
 
     try {
       const res = await fetch('/api/v1/voice/analyze', { method: 'POST', body: formData })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const json = await res.json()
       if (json.success && json.data) {
         const { text, emotion } = json.data
-        if (text) setInput(text)
-        if (emotion && emotion.labelEn !== 'unknown') {
-          setVoiceEmotion(emotion)
+        if (text) {
+          setInput(text)
+          return // 服务端成功，直接返回
         }
       }
+      throw new Error('服务端未返回文字')
     } catch (err) {
-      console.error('语音分析失败（降级为手动输入）', err)
+      console.warn('语音分析服务不可用，尝试浏览器识别', err.message)
+      // 降级：使用浏览器 Web Speech API 实时识别结果
+      if (browserTranscriptRef.current) {
+        setInput(browserTranscriptRef.current)
+        setVoiceNotice('已用浏览器识别（语音情绪分析暂不可用）')
+      } else {
+        setVoiceNotice('语音识别暂不可用，请打字告诉我吧 ✏️')
+      }
+      setTimeout(() => setVoiceNotice(''), 4000)
     }
   }, [])
 
   const { recording, analyzing, supported, toggle: toggleVoice } = useAudioRecorder(handleRecordingComplete)
 
+  /** 启动一次语音会话：并行开启 MediaRecorder（上传情感分析）+ 浏览器 SpeechRecognition（降级转写） */
+  const startVoiceSession = useCallback(() => {
+    // 并行启动浏览器 SpeechRecognition 作为降级转写
+    browserTranscriptRef.current = ''
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
+    if (SpeechRecognition) {
+      try {
+        const rec = new SpeechRecognition()
+        rec.lang = 'zh-CN'
+        rec.continuous = true
+        rec.interimResults = true
+        rec.onresult = (e) => {
+          let transcript = ''
+          for (let i = 0; i < e.results.length; i++) {
+            transcript += e.results[i][0].transcript
+          }
+          browserTranscriptRef.current = transcript
+        }
+        rec.onerror = () => {}
+        rec.start()
+        speechRecRef.current = rec
+      } catch (err) {
+        console.warn('浏览器语音识别启动失败', err)
+      }
+    }
+    // 启动 MediaRecorder 录音
+    toggleVoice()
+  }, [toggleVoice])
+
   /** 语音按钮点击（含授权检查） */
   const handleVoiceClick = useCallback(() => {
     if (recording) {
       toggleVoice()
+      // 停止浏览器识别
+      speechRecRef.current?.stop()
     } else {
       if (requestConsent()) {
-        toggleVoice()
+        startVoiceSession()
       }
     }
-  }, [recording, toggleVoice, requestConsent])
+  }, [recording, toggleVoice, requestConsent, startVoiceSession])
 
-  /** 授权通过后自动开始录音 */
+  /** 授权通过后自动开始录音（同样启动 SpeechRecognition 降级） */
   const handleConsentGrant = useCallback(() => {
     grantConsent()
-    toggleVoice()
-  }, [grantConsent, toggleVoice])
+    startVoiceSession()
+  }, [grantConsent, startVoiceSession])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
-
-  /** AI 回复完成后自动 TTS 播放 */
-  const handleAiComplete = useCallback((fullText) => {
-    if (fullText && !tts.muted) {
-      tts.speak(fullText)
-    }
-  }, [tts])
 
   /** 重播单条消息 */
   const handleReplay = useCallback((text, idx) => {
@@ -217,8 +309,9 @@ export default function ChatRoom({ session, onEnd }) {
     const text = input.trim()
     if (!text || streaming) return
 
-    // 停止当前 TTS 播放
+    // 先停止当前播放，再在用户手势中解锁音频（避免 unlock 被 stop 打断）
     tts.stop()
+    tts.unlock()
     setSpeakingMsgIdx(-1)
 
     const body = { content: text }
@@ -280,8 +373,10 @@ export default function ChatRoom({ session, onEnd }) {
         }
       }
 
-      // AI 回复完成 → 自动 TTS
-      handleAiComplete(fullResponse)
+      // AI 回复完成 → 自动 TTS 播放
+      if (fullResponse && !tts.muted) {
+        tts.speak(fullResponse)
+      }
     } catch (e) {
       console.error('发送失败', e)
       setMessages((prev) => {
@@ -435,6 +530,14 @@ export default function ChatRoom({ session, onEnd }) {
 
           {/* 输入区 */}
           <footer className="p-4 lg:px-8 lg:py-5 bg-white/80 backdrop-blur border-t border-gray-100">
+            {/* 语音降级提示 */}
+            {voiceNotice && (
+              <div className="flex items-center justify-center gap-2 mb-3 px-4 py-2 rounded-xl bg-amber-50 text-amber-700 text-sm">
+                <span>💡</span>
+                <span>{voiceNotice}</span>
+              </div>
+            )}
+
             {/* 手机录音状态 */}
             {(recording || analyzing) && (
               <div className="flex lg:hidden items-center justify-center gap-2 mb-3 text-sm" style={{ color: 'var(--primary)' }}>

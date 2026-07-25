@@ -11,8 +11,6 @@ import logging
 import os
 import tempfile
 
-import torch
-import torchaudio
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
@@ -166,6 +164,9 @@ async def synthesize(req: TtsRequest):
 
 async def _synthesize_cosyvoice(text: str, instruct: str, speed: float):
     """CosyVoice2 本地合成"""
+    import torch
+    import torchaudio
+
     try:
         # CosyVoice2 instruct 模式
         output = tts_model.inference_instruct(

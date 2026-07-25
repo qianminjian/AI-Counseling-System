@@ -46,9 +46,31 @@ public class TtsController {
         }
 
         return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_TYPE, "audio/wav")
+                .header(HttpHeaders.CONTENT_TYPE, detectAudioMimeType(audio))
                 .header(HttpHeaders.CACHE_CONTROL, "no-cache")
                 .body(audio);
+    }
+
+    /**
+     * 根据音频文件魔数（magic bytes）检测真实格式
+     * edge-tts 输出 MP3，CosyVoice2 输出 WAV，必须返回正确的 Content-Type
+     * 否则 Safari 等严格校验 MIME 的浏览器会解码失败
+     */
+    private String detectAudioMimeType(byte[] audio) {
+        // WAV: 以 RIFF 开头
+        if (audio.length >= 4
+                && audio[0] == 'R' && audio[1] == 'I' && audio[2] == 'F' && audio[3] == 'F') {
+            return "audio/wav";
+        }
+        // MP3: 帧同步头（0xFF Ex/Fx）或 ID3 标签
+        boolean isMp3Frame = audio.length >= 2
+                && (audio[0] & 0xFF) == 0xFF && (audio[1] & 0xE0) == 0xE0;
+        boolean isId3 = audio.length >= 3
+                && audio[0] == 'I' && audio[1] == 'D' && audio[2] == '3';
+        if (isMp3Frame || isId3) {
+            return "audio/mpeg";
+        }
+        return "audio/mpeg";
     }
 
     /**

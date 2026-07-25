@@ -9,8 +9,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Python 依赖
+# 先装 CPU 版 torch（本机无 GPU），避免默认拉取 CUDA 版多占 ~2GB 内存导致 OOM
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir torch torchaudio --index-url https://download.pytorch.org/whl/cpu \
+    && pip install --no-cache-dir -r requirements.txt
 
 # 预下载模型（构建时缓存，避免每次启动重新下载）
 RUN python -c "\
