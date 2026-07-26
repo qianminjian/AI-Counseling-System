@@ -478,6 +478,8 @@ export default function ChatRoom({ session, onEnd }) {
         body: JSON.stringify(body),
       })
 
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+
       const reader = res.body.getReader()
       const decoder = new TextDecoder()
       let buffer = ''
@@ -514,18 +516,24 @@ export default function ChatRoom({ session, onEnd }) {
         }
       }
 
-      // AI 回复完成 → 自动 TTS 播放
+    } catch (e) {
+      // SSE 流读取异常。常见于流结束时 chunked 终止块缺失（服务端异步收尾不干净），
+      // 此时 AI 回复其实已完整接收——保留已收到的内容，仅在完全没收到时才提示错误。
+      if (fullResponse) {
+        console.warn('SSE 流终止异常但回复已接收，忽略:', e?.message)
+      } else {
+        console.error('发送失败', e)
+        setMessages((prev) => {
+          const updated = [...prev]
+          updated[updated.length - 1] = { role: 'assistant', content: '网络出了点问题，请再试一次哦 🙏' }
+          return updated
+        })
+      }
+    } finally {
+      // AI 回复完成 → 自动 TTS 播放（无论流是否正常结束，只要收到内容就播放）
       if (fullResponse && !tts.muted) {
         tts.speak(fullResponse)
       }
-    } catch (e) {
-      console.error('发送失败', e)
-      setMessages((prev) => {
-        const updated = [...prev]
-        updated[updated.length - 1] = { role: 'assistant', content: '网络出了点问题，请再试一次哦 🙏' }
-        return updated
-      })
-    } finally {
       setStreaming(false)
     }
     return true
@@ -739,7 +747,7 @@ export default function ChatRoom({ session, onEnd }) {
                 style={{ '--tw-ring-color': 'var(--primary-light)' }}
               />
               <button
-                onClick={sendMessage}
+                onClick={() => sendMessage()}
                 disabled={!input.trim() || streaming || analyzing}
                 className="flex-shrink-0 px-6 lg:px-10 py-3.5 lg:py-4 rounded-full text-white
                   text-sm lg:text-lg font-medium active:scale-95
