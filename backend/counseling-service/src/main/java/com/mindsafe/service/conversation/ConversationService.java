@@ -34,4 +34,15 @@ public interface ConversationService {
      * 结束会话
      */
     void endSession(UUID tenantId, UUID sessionId);
+
+    /**
+     * 冷场暖场（nudge，design/28 §三 3.4）
+     * <p>
+     * 前端沉默检测满足后调用；后端冷场决策模型计算留白/暖场：
+     * 留白（warmthLevel=0）返回空 Flux（不打扰，把安静还给孩子）；
+     * 暖场（warmthLevel≥1）返回与 messages 相同的 SSE token 流。
+     *
+     * @param silenceSeconds 前端上报的沉默时长（秒）
+     */
+    Flux<StreamMessageEvent> sendNudgeStream(UUID tenantId, UUID sessionId, int silenceSeconds);
 }

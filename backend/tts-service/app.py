@@ -63,6 +63,8 @@ VOICE_PERSONAS = {
         "speed": 1.0,
         # edge-tts 降级音色
         "edge_voice": "zh-CN-XiaoxiaoNeural",
+        # CosyVoice2 内置说话人（persona→speaker 映射，design/28 §四）
+        "cosy_speaker": "中文女",
     },
     "qiqiu": {
         "name": "气球",
@@ -70,6 +72,7 @@ VOICE_PERSONAS = {
         "base_instruct": "用俏皮语气说",
         "speed": 1.05,
         "edge_voice": "zh-CN-XiaoyiNeural",
+        "cosy_speaker": "中文女",
     },
     "yueliang": {
         "name": "月亮",
@@ -77,6 +80,17 @@ VOICE_PERSONAS = {
         "base_instruct": "用温柔语气、用轻声说",
         "speed": 0.92,
         "edge_voice": "zh-CN-XiaohanNeural",
+        "cosy_speaker": "中文女",
+    },
+    # design/28 §四：男生默认音色（阳光大哥哥），修复男生回落女声缺陷
+    "xiaotaiyang": {
+        "name": "小太阳",
+        "desc": "阳光的大哥哥",
+        "base_instruct": "用开朗有活力的语气说",
+        "speed": 1.05,
+        # 少年男声，契合阳光大哥哥人设
+        "edge_voice": "zh-CN-YunxiNeural",
+        "cosy_speaker": "中文男",
     },
 }
 
@@ -155,23 +169,26 @@ async def synthesize(req: TtsRequest):
                 f"emotion={req.emotion}, instruct='{instruct}', speed={final_speed:.2f}")
 
     if MODEL_AVAILABLE:
-        return await _synthesize_cosyvoice(req.text, instruct, final_speed)
+        return await _synthesize_cosyvoice(req.text, instruct, final_speed, persona_cfg)
     elif EDGE_TTS_AVAILABLE:
         return await _synthesize_edge_tts(req.text, persona_cfg["edge_voice"], final_speed)
     else:
         raise HTTPException(status_code=503, detail="TTS 服务不可用")
 
 
-async def _synthesize_cosyvoice(text: str, instruct: str, speed: float):
-    """CosyVoice2 本地合成"""
+async def _synthesize_cosyvoice(text: str, instruct: str, speed: float, persona_cfg: dict):
+    """CosyVoice2 本地合成（persona→speaker 映射，design/28 §四）"""
     import torch
     import torchaudio
+
+    # 说话人随 persona 切换（3 女人设→中文女，xiaotaiyang→中文男），不再硬编码
+    speaker = persona_cfg.get("cosy_speaker", "中文女")
 
     try:
         # CosyVoice2 instruct 模式
         output = tts_model.inference_instruct(
             text,
-            "中文女",  # 默认说话人
+            speaker,
             instruct,
             stream=False,
         )
@@ -209,9 +226,9 @@ async def _synthesize_cosyvoice(text: str, instruct: str, speed: float):
 
     except Exception as e:
         logger.error(f"CosyVoice2 合成失败: {e}", exc_info=True)
-        # 降级到 edge-tts
+        # 降级到 edge-tts（保持当前 persona 音色，不回落女声）
         if EDGE_TTS_AVAILABLE:
-            return await _synthesize_edge_tts(text, "zh-CN-XiaoxiaoNeural", speed)
+            return await _synthesize_edge_tts(text, persona_cfg["edge_voice"], speed)
         raise HTTPException(status_code=500, detail=f"语音合成失败: {str(e)}")
 
 

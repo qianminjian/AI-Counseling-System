@@ -1,11 +1,14 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import VoiceConsentDialog, { useVoiceConsent } from './VoiceConsentDialog'
+import VoiceCallConsentDialog, { useVoiceCallConsent } from './VoiceCallConsentDialog'
 import SatisfactionDialog from './SatisfactionDialog'
 import SettingsPanel from './SettingsPanel'
 import BoBoPet from './BoBoPet'
 import { useTheme } from '../theme/ThemeProvider'
 import { useVoicePersona } from '../hooks/useVoicePersona'
 import { useTtsPlayer } from '../hooks/useTtsPlayer'
+import { useVoiceCallMode } from '../hooks/useVoiceCallMode'
+import { useSilenceNudge } from '../hooks/useSilenceNudge'
 import { getEmotionTypo } from '../theme/emotionTypography'
 import { getToken, api, getUser } from '../api'
 
@@ -14,6 +17,9 @@ const EMOTION_EMOJI = {
   happy: '😊', sad: '😢', angry: '😠', fearful: '😨',
   neutral: '😐', surprised: '😲', disgusted: '🤢', unknown: '', other: '',
 }
+
+/** 语音唤醒开关持久化 key（design/28 §1.1） */
+const WAKE_PREF_KEY = 'mindsafe_wake_enabled'
 
 /** 检测浏览器支持的录音格式（iOS Safari 不支持 webm，只支持 mp4/aac） */
 function getSupportedMimeType() {
@@ -239,6 +245,10 @@ export default function ChatRoom({ session, onEnd }) {
   // 语音授权（合规）
   const { showDialog: showConsent, hasConsent, requestConsent, grantConsent, denyConsent } = useVoiceConsent()
 
+  // 语音唤醒（design/28 §1.1）：单独授权 + 开关持久化
+  const [wakeEnabled, setWakeEnabled] = useState(() => localStorage.getItem(WAKE_PREF_KEY) === '1')
+  const wakeConsent = useVoiceCallConsent()
+
   // TTS 播放器（语速根据性别微调：男生稍快、女生稍慢）
   const userGender = getUser()?.gender
   const tts = useTtsPlayer({
@@ -314,6 +324,36 @@ export default function ChatRoom({ session, onEnd }) {
   }, [])
 
   const { recording, analyzing, supported, startRecording, stopRecording, cancelRecording, warmUp: warmUpMic, releaseStream } = useAudioRecorder(handleRecordingComplete)
+
+  /* ===== 语音唤醒状态机（design/28 §1.1）：off / standby（待唤醒）/ active（会话窗）
+     监听严格限定在本次对话内：仅 ChatRoom 挂载期间由 enabled 控制，卸载即释放麦克风 ===== */
+  const voiceCall = useVoiceCallMode({
+    enabled: wakeEnabled && wakeConsent.hasConsent(),
+    tts,
+    busy: streaming || tts.playing || recording || analyzing,
+    onFinalTranscript: (text) => {
+      // 唤醒后孩子说话 → 走与按住说话相同的自动发送流程
+      sendMessageRef.current?.(text, null)
+    },
+  })
+
+  /* ===== 冷场引导（design/28 §2.3）：孩子长时间沉默时，后端决策模型决定“留白还是暖场”
+     唤醒模式开启时不做冷场检测——沉默由会话窗冷却关窗处理（design/28 三功能协同） ===== */
+  const { recordInteraction, resetSilenceBase } = useSilenceNudge({
+    sessionId: session.sessionId,
+    // AI 忙碌（流式/录音/识别/朗读）或静音时不做冷场检测；唤醒模式（standby/active）时互斥
+    idle: !streaming && !recording && !analyzing && !tts.playing && !tts.muted && voiceCall.mode === 'off',
+    onNudge: (text) => {
+      // 暖场回复：追加 AI 消息气泡 + TTS 朗读（复用现有体验，跟随所选音色）
+      setMessages((prev) => [...prev, { role: 'assistant', content: text, emotion: session.emotionTag }])
+      if (!tts.muted) tts.speak(text)
+    },
+  })
+
+  // AI 活动结束（回复流/朗读完毕）→ 从此刻起算沉默
+  useEffect(() => {
+    resetSilenceBase()
+  }, [streaming, tts.playing, resetSilenceBase])
 
   // 安卓音频路由保护：活跃麦克风会让 Chrome 切到"通话模式"（像打电话），把 TTS 路由到听筒且切不回扬声器。
   // 对策：播放期间释放麦克风（保证走扬声器）；播放结束 600ms 后再预热（保证下次录音秒开）。
@@ -426,6 +466,26 @@ export default function ChatRoom({ session, onEnd }) {
     setTimeout(() => setVoiceNotice(''), 3000)
   }, [grantConsent, warmUpMic])
 
+  /** 语音唤醒开关：开启时若未单独授权，先弹授权弹窗（授权通过后才真正开启） */
+  const handleToggleWake = useCallback(() => {
+    if (wakeEnabled) {
+      setWakeEnabled(false)
+      localStorage.setItem(WAKE_PREF_KEY, '0')
+    } else if (wakeConsent.requestConsent()) {
+      setWakeEnabled(true)
+      localStorage.setItem(WAKE_PREF_KEY, '1')
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wakeEnabled])
+
+  /** 唤醒授权通过：记录授权 + 开启开关（进入待唤醒态） */
+  const handleWakeConsentGrant = useCallback(() => {
+    wakeConsent.grantConsent()
+    setWakeEnabled(true)
+    localStorage.setItem(WAKE_PREF_KEY, '1')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
@@ -462,6 +522,8 @@ export default function ChatRoom({ session, onEnd }) {
     const msgEmotion = emotion
     setInput('')
     setVoiceEmotion(null)
+    // 冷场引导：孩子一说话即重置沉默计时 + 清零连续暖场计数
+    recordInteraction()
     setMessages((prev) => [...prev, { role: 'user', content: text, emotion: msgEmotion }])
     setStreaming(true)
     // AI 回复挂上孩子情绪（语音情绪优先、会话情绪兜底），驱动情感化排印
@@ -567,10 +629,13 @@ export default function ChatRoom({ session, onEnd }) {
     onEnd()
   }
 
-  /* ===== 波波状态机（design/27 §4.3）：recording > streaming > tts.playing > idle ===== */
+  /* ===== 波波状态机（design/27 §4.3 + design/28 §1.1）：
+     recording > streaming > tts.playing > 待唤醒(standby) > 会话窗聆听(active) > idle ===== */
   const boboState = recording ? 'listening'
     : streaming ? 'thinking'
     : tts.playing ? 'speaking'
+    : voiceCall.mode === 'standby' ? 'waitingWake'
+    : voiceCall.mode === 'active' ? 'listening'
     : 'idle'
 
   /* ===== 波波宠物（手机悬浮输入栏右上角 / Pad 左栏共用）— 按住说话 ===== */
@@ -654,10 +719,15 @@ export default function ChatRoom({ session, onEnd }) {
               : analyzing ? '我在感受你的情绪...'
               : streaming ? '让我想想...'
               : tts.playing ? '我在说给你听...'
+              : voiceCall.mode === 'standby' ? '叫我“哈喽波波”'
+              : voiceCall.mode === 'active' ? '我在听，直接说吧'
               : '想说什么就说什么吧'}
           </p>
           <p className="mt-3 text-sm text-gray-400">
-            {recording ? '松开手指发送，上滑取消' : '按住波波，跟它说说话'}
+            {recording ? '松开手指发送，上滑取消'
+              : voiceCall.mode === 'standby' ? '我在这里安静地等你叫我'
+              : voiceCall.mode === 'active' ? '不用按，直接说就行'
+              : '按住波波，跟它说说话'}
           </p>
 
           {/* 语音情绪预览 */}
@@ -753,6 +823,11 @@ export default function ChatRoom({ session, onEnd }) {
         <VoiceConsentDialog onGrant={handleConsentGrant} onDeny={denyConsent} />
       )}
 
+      {/* 语音唤醒单独授权弹窗（合规，design/28 §1.4） */}
+      {wakeConsent.showDialog && (
+        <VoiceCallConsentDialog onGrant={handleWakeConsentGrant} onDeny={wakeConsent.denyConsent} />
+      )}
+
       {/* 结束会话满意度评价 */}
       {showSatisfaction && (
         <SatisfactionDialog
@@ -767,6 +842,9 @@ export default function ChatRoom({ session, onEnd }) {
         onClose={() => setSettingsOpen(false)}
         muted={tts.muted}
         onToggleMute={tts.toggleMute}
+        wakeSupported={voiceCall.wakeSupported}
+        wakeOn={wakeEnabled}
+        onToggleWake={handleToggleWake}
       />
     </div>
   )

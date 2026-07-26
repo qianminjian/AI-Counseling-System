@@ -76,6 +76,7 @@ public class PromptTemplateService {
     public static final String TSK_001 = "prompts/tasks/teacher_summary_zh-CN_v1.0.0.md";
     public static final String TSK_002 = "prompts/tasks/rag_query_rewrite_zh-CN_v1.0.0.md";
     public static final String TSK_003 = "prompts/tasks/session_close_zh-CN_v1.0.0.md";
+    public static final String TSK_004 = "prompts/tasks/proactive_nudge_zh-CN_v1.0.0.md";
 
     /**
      * 根据年级获取对应语言模板路径

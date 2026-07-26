@@ -23,6 +23,27 @@ public interface AiChatService {
     Flux<StreamMessageEvent> chat(UUID sessionId, String emotionTag, String message, String gender, String profilePrompt);
 
     /**
+     * 主动暖场对话（冷场引导，design/28 §三 3.4）
+     * <p>
+     * 关键差异（与 {@link #chat} 相比）：
+     * <ul>
+     *   <li><b>不向 ChatMemory 写入伪造的学生消息</b>（不污染对话记忆）；</li>
+     *   <li>nudge 指令（TSK-004 渲染后，含 warmthLevel/direction）追加到 system 层；</li>
+     *   <li>AI 回复正常写入记忆（孩子看到的连续性保留）；</li>
+     *   <li>复用 Layer1 流式硬过滤 + Layer2 异步语义审查安全管线。</li>
+     * </ul>
+     *
+     * @param sessionId        会话 ID
+     * @param emotionTag       当前情绪标签
+     * @param gender           学生性别（male/female，可为 null）
+     * @param profilePrompt    学生画像 Prompt 片段（可为 null）
+     * @param nudgeInstruction 暖场指令（TSK-004 渲染后，追加到 system 层）
+     * @return 流式事件
+     */
+    Flux<StreamMessageEvent> chatProactive(UUID sessionId, String emotionTag, String gender,
+                                           String profilePrompt, String nudgeInstruction);
+
+    /**
      * 清除会话记忆（会话结束时调用）
      *
      * @param sessionId 会话 ID

@@ -3,6 +3,48 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import basicSsl from '@vitejs/plugin-basic-ssl'
 import { VitePWA } from 'vite-plugin-pwa'
+import { copyFileSync, mkdirSync, rmSync, existsSync, readdirSync } from 'node:fs'
+import { resolve, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+const __dirname = fileURLToPath(new URL('.', import.meta.url))
+
+/**
+ * 构建时把 ONNX Runtime WASM 从 node_modules 复制到 dist/ort/（语音唤醒 Whisper 本地推理用）。
+ * - 不进 git：文件来自 npm 依赖（onnxruntime-web），本地与 CI 构建均可复现；
+ * - 运行时从本机服务器 /mindsafe/ort/ 加载，不走 jsdelivr CDN（国内不稳定，学校内网可能不通外网）；
+ * - 同时清理打包器输出到 dist/assets/ 的冗余 ort-*.wasm（运行时经 wasmPaths 显式指向 /ort/）。
+ * 说明：asyncify 变体供 Chrome/Android 等，plain 变体供 Safari/iOS（与 transformers 默认选择一致）。
+ */
+function copyOnnxWasm() {
+  return {
+    name: 'copy-onnx-wasm',
+    apply: 'build',
+    closeBundle() {
+      const src = resolve(__dirname, 'node_modules/onnxruntime-web/dist')
+      const outDir = resolve(__dirname, 'dist/ort')
+      const files = [
+        'ort-wasm-simd-threaded.asyncify.mjs',
+        'ort-wasm-simd-threaded.asyncify.wasm',
+        'ort-wasm-simd-threaded.mjs',
+        'ort-wasm-simd-threaded.wasm',
+      ]
+      mkdirSync(outDir, { recursive: true })
+      for (const f of files) {
+        copyFileSync(join(src, f), join(outDir, f))
+      }
+      const assetsDir = resolve(__dirname, 'dist/assets')
+      if (existsSync(assetsDir)) {
+        for (const f of readdirSync(assetsDir)) {
+          if (f.startsWith('ort-') && f.endsWith('.wasm')) {
+            rmSync(join(assetsDir, f))
+          }
+        }
+      }
+      console.log('[copy-onnx-wasm] ONNX Runtime WASM 已复制到 dist/ort/')
+    },
+  }
+}
 
 // HTTPS 默认开启（手机局域网直连时麦克风需要安全上下文）
 // 设为 VITE_HTTPS=false 可关闭（配合公网隧道使用时，HTTPS 由隧道层提供）
@@ -16,6 +58,7 @@ export default defineConfig({
   plugins: [
     react(),
     tailwindcss(),
+    copyOnnxWasm(),
     ...(useHttps ? [basicSsl()] : []),
     VitePWA({
       registerType: 'autoUpdate',
@@ -39,6 +82,10 @@ export default defineConfig({
       workbox: {
         // 缓存静态资源，API 请求走网络优先
         globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
+        // Transformers.js（Whisper 唤醒引擎）是按需动态 chunk（约 516KB，仅开启语音唤醒时加载），
+        // 排除出 PWA 预缓存，避免未使用该功能的用户白白下载（首次加载后走浏览器 HTTP 缓存）。
+        // ONNX wasm（dist/ort/，约 12-22MB）不在 globPatterns 扩展名内，天然不会被预缓存。
+        globIgnores: ['**/transformers.web-*.js'],
         runtimeCaching: [
           {
             urlPattern: /^\/api\/.*/,

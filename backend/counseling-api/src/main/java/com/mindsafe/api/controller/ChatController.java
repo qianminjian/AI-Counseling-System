@@ -66,6 +66,21 @@ public class ChatController {
     }
 
     /**
+     * 冷场暖场（nudge，SSE，design/28 §六 6.1）
+     * <p>
+     * 前端沉默检测满足后调用；后端冷场决策模型决定留白（返回空流，不打扰）
+     * 或暖场（返回与 messages 相同的 SSE token 流，前端追加 AI 消息 + TTS 朗读）。
+     */
+    @PostMapping(value = "/sessions/{sessionId}/nudge", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public Flux<StreamMessageEvent> sendNudge(
+            @PathVariable UUID sessionId,
+            @Valid @RequestBody NudgeRequest request,
+            Authentication authentication) {
+        TenantContext ctx = extractContext(authentication);
+        return conversationService.sendNudgeStream(ctx.tenantId(), sessionId, request.silenceSeconds());
+    }
+
+    /**
      * 结束会话
      */
     @PostMapping("/sessions/{sessionId}/end")

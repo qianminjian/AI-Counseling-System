@@ -102,6 +102,54 @@ public class AiChatServiceImpl implements AiChatService {
                 .doOnError(e -> log.error("AI 流式调用失败: sessionId={}", sessionId, e));
     }
 
+    @Override
+    public Flux<StreamMessageEvent> chatProactive(UUID sessionId, String emotionTag, String gender,
+                                                  String profilePrompt, String nudgeInstruction) {
+        String conversationId = sessionId.toString();
+        log.debug("主动暖场请求: sessionId={}, emotion={}, gender={}", sessionId, emotionTag, gender);
+
+        // 1. 关键：不向 ChatMemory 写入伪造的学生消息（不污染对话记忆，design/28 §三 3.4）
+        //    仅读取历史作为上下文
+        List<Message> history = chatMemory.get(conversationId);
+
+        // 2. SYS-001 + 性别风格 + 画像 + nudge 指令（全部追加到 system 层）
+        String systemPrompt = promptTemplateService.render(PromptTemplateService.SYS_001, Map.of(
+                "grade_level", "5-6",
+                "emotion_tag", emotionTag,
+                "school_policy", "默认：发现高风险立即通知心理老师。",
+                "session_mode", "normal_counseling"
+        ));
+        String fullSystem = systemPrompt + "\n\n" + buildGenderStyle(gender);
+        if (profilePrompt != null && !profilePrompt.isBlank()) {
+            fullSystem = fullSystem + "\n\n" + profilePrompt;
+        }
+        fullSystem = fullSystem + "\n\n" + nudgeInstruction;
+
+        // 3. 流式调用 LLM（带历史上下文，无新增 UserMessage）
+        StringBuilder responseCollector = new StringBuilder();
+        Flux<String> rawTokens = chatClient.prompt()
+                .system(fullSystem)
+                .messages(history)
+                .stream()
+                .content();
+
+        // 4. 复用双层安全管线：Layer1 流式硬过滤 + Layer2 异步语义审查
+        return outputContentFilter.apply(rawTokens, sessionId)
+                .doOnNext(evt -> {
+                    if ("token".equals(evt.type()) && evt.content() != null) {
+                        responseCollector.append(evt.content());
+                    }
+                })
+                .doOnComplete(() -> {
+                    // 5. AI 回复正常写入记忆（孩子看到的连续性保留）
+                    String fullReply = responseCollector.toString();
+                    chatMemory.add(conversationId, List.of(new AssistantMessage(fullReply)));
+                    log.debug("主动暖场回复完成: sessionId={}, responseLength={}", sessionId, fullReply.length());
+                    outputReviewService.reviewAsync(sessionId, fullReply, emotionTag);
+                })
+                .doOnError(e -> log.error("主动暖场流式调用失败: sessionId={}", sessionId, e));
+    }
+
     /** 清除会话记忆（会话结束时调用） */
     @Override
     public void clearMemory(UUID sessionId) {

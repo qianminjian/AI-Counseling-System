@@ -169,6 +169,38 @@ public class StudentProfileService {
         return result.length() > 50 ? result : null; // 内容太少则不注入
     }
 
+    /**
+     * 获取画像沟通偏好 expression_depth（design/28 §三 3.2 冷场决策模型信号 F）
+     * <p>
+     * 话多（≥0.6）→ 冷场时偏留白；沉默性格（≤0.4）→ 偏主动暖场。
+     *
+     * @return expression_depth（0.0~1.0）；无画像/首次对话/字段缺失时返回 null（决策模型计 0，不阻塞）
+     */
+    public Double getExpressionDepth(UUID tenantId, UUID userId) {
+        try {
+            StudentProfile profile = profileMapper.selectOne(
+                    new LambdaQueryWrapper<StudentProfile>()
+                            .eq(StudentProfile::getTenantId, tenantId)
+                            .eq(StudentProfile::getUserId, userId)
+            );
+            if (profile == null) {
+                return null;
+            }
+            Map<String, Object> commPref = parseJson(profile.getCommunicationPref());
+            if (commPref == null) {
+                return null;
+            }
+            Object depth = commPref.get("expression_depth");
+            if (depth instanceof Number num) {
+                return num.doubleValue();
+            }
+            return null;
+        } catch (Exception e) {
+            log.warn("获取画像 expression_depth 失败（不阻塞会话）: userId={}, error={}", userId, e.getMessage());
+            return null;
+        }
+    }
+
     // ===== 私有方法 =====
 
     private Map<String, Object> buildEmotionBaseline(List<CounselingSession> sessions) {

@@ -1,6 +1,7 @@
 package com.mindsafe.service.conversation;
 
 import com.mindsafe.ai.chat.AiChatService;
+import com.mindsafe.ai.prompt.PromptTemplateService;
 import com.mindsafe.ai.risk.RiskDetectorService;
 import com.mindsafe.ai.safety.PiiDesensitizer;
 import com.mindsafe.common.dto.chat.SessionInfo;
@@ -42,6 +43,7 @@ public class ConversationServiceImpl implements ConversationService {
     private static final Logger log = LoggerFactory.getLogger(ConversationServiceImpl.class);
 
     private final AiChatService aiChatService;
+    private final PromptTemplateService promptTemplateService;
     private final RiskDetectorService riskDetectorService;
     private final PiiDesensitizer piiDesensitizer;
     private final CounselingSessionMapper sessionMapper;
@@ -56,7 +58,11 @@ public class ConversationServiceImpl implements ConversationService {
     /** 活跃会话内存缓存（emotionTag 等非 DB 字段 + 轮次计数） */
     private final Map<UUID, SessionState> activeSessions = new ConcurrentHashMap<>();
 
+    /** 冷场决策模型（无状态纯计算，design/28 §三） */
+    private final NudgeDecisionModel nudgeDecisionModel = new NudgeDecisionModel();
+
     public ConversationServiceImpl(AiChatService aiChatService,
+                                   PromptTemplateService promptTemplateService,
                                    RiskDetectorService riskDetectorService,
                                    PiiDesensitizer piiDesensitizer,
                                    CounselingSessionMapper sessionMapper,
@@ -68,6 +74,7 @@ public class ConversationServiceImpl implements ConversationService {
                                    ProfileExtractorService profileExtractorService,
                                    UsageTimeLimitService usageTimeLimitService) {
         this.aiChatService = aiChatService;
+        this.promptTemplateService = promptTemplateService;
         this.riskDetectorService = riskDetectorService;
         this.piiDesensitizer = piiDesensitizer;
         this.sessionMapper = sessionMapper;
@@ -87,13 +94,22 @@ public class ConversationServiceImpl implements ConversationService {
         sessionMapper.insert(entity);
 
         UUID sessionId = entity.getSessionId();
-        String greeting = buildGreeting(emotionTag);
 
-        // 2. 内存缓存活跃会话状态（查询用户性别用于 Prompt 个性化）
+        // 2. 内存缓存活跃会话状态（查询用户性别/昵称用于 Prompt 个性化与问候语）
         User user = userMapper.selectById(studentUserId);
         String gender = (user != null) ? user.getGender() : null;
-        activeSessions.put(sessionId, new SessionState(sessionId, tenantId, studentUserId, emotionTag, channel, gender));
-        log.info("会话创建: sessionId={}, student={}, emotion={}", sessionId, studentUserId, emotionTag);
+        String pseudonym = (user != null) ? user.getPseudonym() : null;
+
+        // 3. 问候语个性化："哈喽，[昵称]！" + 情绪问候（唤醒词 onboarding，design/28 §2.2）
+        String greeting = buildGreeting(emotionTag, pseudonym);
+
+        // 4. 加载学生画像沟通偏好（冷场决策模型信号 F，首次对话为 null 不阻塞）
+        Double expressionDepth = profileService.getExpressionDepth(tenantId, studentUserId);
+
+        activeSessions.put(sessionId, new SessionState(
+                sessionId, tenantId, studentUserId, emotionTag, channel, gender, expressionDepth));
+        log.info("会话创建: sessionId={}, student={}, emotion={}, expressionDepth={}",
+                sessionId, studentUserId, emotionTag, expressionDepth);
 
         return new SessionInfo(sessionId, greeting, Instant.now());
     }
@@ -188,6 +204,12 @@ public class ConversationServiceImpl implements ConversationService {
         int riskLevelValue = fusedLevel != null ? fusedLevel.severity() : 0;
         persistStudentMessageSummary(session, turn, content, session.emotionTag, riskLevelValue);
 
+        // 4.1 冷场决策模型信号更新：学生消息类型 + 风险快照（孩子说话即清零暖场计数）
+        session.recordStudentMessage(classifyStudentMessage(content, fusedLevel != null, session.emotionTag));
+        if (fusedLevel != null) {
+            session.updateMaxRiskSeverity(fusedLevel.severity());
+        }
+
         // 4.5 AUTH-030：每日使用时长超限 → 引导休息（红色风险优先，不拦截）
         if (fusedLevel != RiskLevel.RED
                 && usageTimeLimitService.isExceeded(session.tenantId, session.studentUserId)) {
@@ -213,7 +235,10 @@ public class ConversationServiceImpl implements ConversationService {
                 })
                 .concatWith(Flux.defer(() -> {
                     // AI 回复完成后持久化摘要
-                    persistAiMessageSummary(session, turn, aiResponseCollector.toString());
+                    String fullReply = aiResponseCollector.toString();
+                    persistAiMessageSummary(session, turn, fullReply);
+                    // 冷场决策模型信号：AI 是否刚问了思考型问题
+                    session.recordAiReply(fullReply);
                     return Flux.just(StreamMessageEvent.done(""));
                 }))
                 .onErrorResume(e -> {
@@ -223,6 +248,90 @@ public class ConversationServiceImpl implements ConversationService {
 
         // 6. 组合：风险事件 + AI 回复
         return riskEvents.concatWith(aiStream);
+    }
+
+    @Override
+    public Flux<StreamMessageEvent> sendNudgeStream(UUID tenantId, UUID sessionId, int silenceSeconds) {
+        SessionState session = activeSessions.get(sessionId);
+        if (session == null) {
+            log.debug("nudge: 会话不存在，返回空流: sessionId={}", sessionId);
+            return Flux.empty();
+        }
+
+        // 护栏 1：会话已 escalated（红色风险）→ 不做日常暖场（安全流程接管）
+        if (isSessionEscalated(sessionId)) {
+            log.debug("nudge: 会话已 escalated，返回空流: sessionId={}", sessionId);
+            return Flux.empty();
+        }
+
+        // 护栏 2：连续暖场次数（≤2）/ 间隔（≥20s），孩子说话即清零
+        if (!session.canNudge()) {
+            log.debug("nudge: 护栏拦截（次数/间隔），返回空流: sessionId={}, nudgeCount={}",
+                    sessionId, session.nudgeCount.get());
+            return Flux.empty();
+        }
+
+        // 冷场决策模型（design/28 §三 3.2）：多信号加权 → 留白/轻陪伴/引导破冰
+        boolean riskBlocked = session.maxRiskSeverity() >= RiskLevel.ORANGE.severity();
+        NudgeDecisionModel.NudgeDecision decision = nudgeDecisionModel.decide(new NudgeDecisionModel.NudgeContext(
+                session.emotionTag,
+                silenceSeconds,
+                session.lastStudentMessageType(),
+                session.lastAiAskedThinkingQuestion(),
+                session.turnCount.get(),
+                riskBlocked,
+                session.secondsSinceLastStudentMessage(),
+                session.expressionDepth
+        ));
+
+        if (decision.warmthLevel() == 0) {
+            // 留白：把安静还给孩子（他可能在思考），前端不做任何事
+            log.debug("nudge: 决策=留白，返回空流: sessionId={}, silenceSeconds={}", sessionId, silenceSeconds);
+            return Flux.empty();
+        }
+
+        // 暖场：渲染 TSK-004 指令（追加到 system 层，不向记忆写伪造学生消息）
+        String nudgeInstruction = promptTemplateService.render(PromptTemplateService.TSK_004, Map.of(
+                "silence_seconds", String.valueOf(silenceSeconds),
+                "warmth_level", String.valueOf(decision.warmthLevel()),
+                "direction", decision.direction()
+        ));
+        String profilePrompt = profileService.buildProfilePrompt(session.tenantId, session.studentUserId);
+        int turn = session.turnCount.get();
+        StringBuilder aiResponseCollector = new StringBuilder();
+
+        session.markNudged();
+        log.info("nudge: 决策=暖场: sessionId={}, warmthLevel={}, direction={}, silenceSeconds={}",
+                sessionId, decision.warmthLevel(), decision.direction(), silenceSeconds);
+
+        return aiChatService.chatProactive(sessionId, session.emotionTag, session.gender, profilePrompt, nudgeInstruction)
+                .doOnNext(event -> {
+                    if (event.type() != null && event.type().equals("token") && event.content() != null) {
+                        aiResponseCollector.append(event.content());
+                    }
+                })
+                .concatWith(Flux.defer(() -> {
+                    String fullReply = aiResponseCollector.toString();
+                    persistAiMessageSummary(session, turn, fullReply);
+                    session.recordAiReply(fullReply);
+                    return Flux.just(StreamMessageEvent.done(""));
+                }))
+                .onErrorResume(e -> {
+                    // 暖场失败静默处理（不给孩子展示错误，不打扰氛围）
+                    log.error("nudge: AI 调用异常，返回空流: sessionId={}", sessionId, e);
+                    return Flux.empty();
+                });
+    }
+
+    /** 查询会话是否已 escalated（红色风险接管）；查询失败返回 false（决策模型层有风险信号兜底） */
+    private boolean isSessionEscalated(UUID sessionId) {
+        try {
+            CounselingSession entity = sessionMapper.selectById(sessionId);
+            return entity != null && "escalated".equals(entity.getSessionStatus());
+        } catch (Exception e) {
+            log.warn("nudge: 查询会话状态失败: sessionId={}", sessionId, e);
+            return false;
+        }
     }
 
     @Override
@@ -337,15 +446,25 @@ public class ConversationServiceImpl implements ConversationService {
         }
     }
 
-    private String buildGreeting(String emotionTag) {
-        return switch (emotionTag) {
-            case "happy" -> "嗨！看起来你今天心情不错呀！想和我聊聊什么开心的事吗？😊";
-            case "sad" -> "嗨，我感觉到你今天有点难过。没关系，我在这里陪着你，想和我说说吗？💙";
-            case "angry" -> "嗨，看起来你现在有些生气。生气是很正常的感受哦，想和我聊聊发生了什么吗？";
-            case "scared" -> "嗨，我感觉到你有些害怕。别担心，这里很安全，我会一直陪着你。🌟";
-            case "nervous" -> "嗨，看起来你有点紧张。深呼吸一下，我们慢慢聊，不着急。🌈";
-            default -> "嗨！我是波波，今天想和我聊些什么呢？";
+    /**
+     * 构建问候语：个性化"哈喽，[昵称]！" + 情绪问候（design/28 §2.2）
+     * <p>
+     * 唤醒词 onboarding：用"哈喽+名字"模式自然引导孩子回应"哈喽波波"；
+     * 始终生效（不依赖语音唤醒模式）；昵称缺失时回退通用问候。
+     */
+    private String buildGreeting(String emotionTag, String pseudonym) {
+        String hello = (pseudonym != null && !pseudonym.isBlank())
+                ? "哈喽，" + pseudonym + "！"
+                : "哈喽！";
+        String emotionGreeting = switch (emotionTag) {
+            case "happy" -> "看起来你今天心情不错呀！想和我聊聊什么开心的事吗？😊";
+            case "sad" -> "我感觉到你今天有点难过。没关系，我在这里陪着你，想和我说说吗？💙";
+            case "angry" -> "看起来你现在有些生气。生气是很正常的感受哦，想和我聊聊发生了什么吗？";
+            case "scared" -> "我感觉到你有些害怕。别担心，这里很安全，我会一直陪着你。🌟";
+            case "nervous" -> "看起来你有点紧张。深呼吸一下，我们慢慢聊，不着急。🌈";
+            default -> "我是波波，今天想和我聊些什么呢？";
         };
+        return hello + emotionGreeting;
     }
 
     /**
@@ -415,7 +534,57 @@ public class ConversationServiceImpl implements ConversationService {
         };
     }
 
-    /** 内存会话状态（含情绪趋势追踪） */
+    // ===== 冷场决策模型辅助（design/28 §三 3.2 信号 C） =====
+
+    /** 敷衍回答词集（"嗯/哦/不知道"类短答） */
+    private static final java.util.Set<String> PERFUNCTORY_REPLIES = java.util.Set.of(
+            "嗯", "哦", "喔", "好", "好的", "是", "是的", "啊", "行", "可以",
+            "不知道", "不晓得", "随便", "还行", "还好", "嗯嗯", "哦哦", "没有", "没", "不想说");
+
+    /** 负面情绪标签集（用于轻微倾诉判定：表达了感受但未命中风险信号） */
+    private static final java.util.Set<String> DISTRESS_EMOTIONS = java.util.Set.of(
+            "sad", "angry", "scared", "nervous");
+
+    /**
+     * 分类学生消息类型（信号 C）：沉重倾诉（命中风险信号）/ 敷衍回答 / 轻微倾诉 / 普通
+     * <p>
+     * 轻微倾诉：负面情绪 + 有一定内容长度（表达了感受，但未命中风险信号）→ 决策模型只轻陪伴不深挖。
+     */
+    private String classifyStudentMessage(String content, boolean risky, String emotionTag) {
+        if (risky) {
+            return NudgeDecisionModel.MSG_HEAVY;
+        }
+        String stripped = content == null ? "" : content.replaceAll("[\\s，。！？!?~～…·、\"'“”（）()]", "");
+        if (!stripped.isEmpty() && stripped.length() <= 5 && PERFUNCTORY_REPLIES.contains(stripped)) {
+            return NudgeDecisionModel.MSG_PERFUNCTORY;
+        }
+        // 轻微倾诉：负面情绪 + 有内容（如"没人和我玩"），未命中风险信号
+        if (stripped.length() > 5 && emotionTag != null && DISTRESS_EMOTIONS.contains(emotionTag)) {
+            return NudgeDecisionModel.MSG_DISCLOSURE;
+        }
+        return NudgeDecisionModel.MSG_NORMAL;
+    }
+
+    /** 思考型问题引导词（AI 正在引导反思，孩子的沉默可能是在思考） */
+    private static final String[] THINKING_CUES = {
+            "脑袋里冒出", "你在想什么", "你觉得为什么", "你心里是什么感觉",
+            "当时发生了什么", "你会怎么做", "是什么感觉", "能多说说"
+    };
+
+    /**
+     * 判断 AI 回复是否以思考型问题收尾（信号 C：是则延长留白）
+     */
+    private static boolean isThinkingQuestion(String aiReply) {
+        if (aiReply == null || aiReply.isBlank()) return false;
+        boolean hasQuestion = aiReply.contains("？") || aiReply.contains("?");
+        if (!hasQuestion) return false;
+        for (String cue : THINKING_CUES) {
+            if (aiReply.contains(cue)) return true;
+        }
+        return false;
+    }
+
+    /** 内存会话状态（含情绪趋势追踪 + 冷场决策信号） */
     private static class SessionState {
         final UUID sessionId;
         final UUID tenantId;
@@ -425,19 +594,39 @@ public class ConversationServiceImpl implements ConversationService {
         final String gender;
         final AtomicInteger turnCount = new AtomicInteger(0);
 
+        /** 信号 F：画像沟通偏好 expression_depth（nullable，首次对话为 null → F 计 0） */
+        final Double expressionDepth;
+
         /** 上次活动时间（AUTH-030：用于累计每日使用时长） */
         private Instant lastActiveAt = Instant.now();
 
         /** 语音情绪历史（最近 10 条） */
         private final List<EmotionRecord> emotionHistory = new ArrayList<>();
 
-        SessionState(UUID sessionId, UUID tenantId, UUID studentUserId, String emotionTag, String channel, String gender) {
+        // ===== 冷场决策模型（nudge）状态，design/28 §三 3.4 =====
+
+        /** 连续暖场计数（学生说话即清零，连续上限 2 次） */
+        final AtomicInteger nudgeCount = new AtomicInteger(0);
+        /** 上次暖场时间（间隔 ≥20s 才允许再次暖场） */
+        private volatile Instant lastNudgeAt;
+        /** 信号 C：最后一条学生消息类型（normal/perfunctory/heavy） */
+        private volatile String lastStudentMessageType = NudgeDecisionModel.MSG_NORMAL;
+        /** 孩子上次说话时间（沉重倾诉宽限期判断） */
+        private volatile Instant lastStudentMessageAt = Instant.now();
+        /** 信号 C：AI 最后一句是否为思考型问题 */
+        private volatile boolean lastAiAskedThinkingQuestion = false;
+        /** 信号 E：本会话出现过的最高融合风险 severity */
+        private volatile int maxRiskSeverity = 0;
+
+        SessionState(UUID sessionId, UUID tenantId, UUID studentUserId, String emotionTag,
+                     String channel, String gender, Double expressionDepth) {
             this.sessionId = sessionId;
             this.tenantId = tenantId;
             this.studentUserId = studentUserId;
             this.emotionTag = emotionTag;
             this.channel = channel;
             this.gender = gender;
+            this.expressionDepth = expressionDepth;
         }
 
         void addEmotionRecord(String emotion, double confidence) {
@@ -470,6 +659,47 @@ public class ConversationServiceImpl implements ConversationService {
                 }
             }
             return count;
+        }
+
+        // ===== 冷场决策模型（nudge）方法 =====
+
+        /** 记录学生消息：更新消息类型 + 清零暖场计数（孩子一说话即重置） */
+        void recordStudentMessage(String messageType) {
+            this.lastStudentMessageType = messageType;
+            this.lastStudentMessageAt = Instant.now();
+            this.nudgeCount.set(0);
+        }
+
+        /** 记录 AI 回复：判断是否以思考型问题收尾 */
+        void recordAiReply(String aiReply) {
+            this.lastAiAskedThinkingQuestion = isThinkingQuestion(aiReply);
+        }
+
+        /** 更新本会话最高风险 severity */
+        void updateMaxRiskSeverity(int severity) {
+            if (severity > this.maxRiskSeverity) {
+                this.maxRiskSeverity = severity;
+            }
+        }
+
+        int maxRiskSeverity() { return maxRiskSeverity; }
+        String lastStudentMessageType() { return lastStudentMessageType; }
+        boolean lastAiAskedThinkingQuestion() { return lastAiAskedThinkingQuestion; }
+
+        long secondsSinceLastStudentMessage() {
+            return java.time.Duration.between(lastStudentMessageAt, Instant.now()).getSeconds();
+        }
+
+        /** 暖场护栏：连续 ≤2 次 且 距上次暖场 ≥20s */
+        boolean canNudge() {
+            if (nudgeCount.get() >= 2) return false;
+            Instant last = lastNudgeAt;
+            return last == null || java.time.Duration.between(last, Instant.now()).getSeconds() >= 20;
+        }
+
+        void markNudged() {
+            nudgeCount.incrementAndGet();
+            lastNudgeAt = Instant.now();
         }
 
         record EmotionRecord(String emotion, double confidence, Instant timestamp) {}

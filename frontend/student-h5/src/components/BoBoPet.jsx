@@ -1,7 +1,8 @@
 /**
  * 波波宠物（design/27 §四/§五）
  * - 纯 SVG 逐部件可动画海豚角色，随主题换色
- * - 四态状态机：idle 漂浮眨眼 / listening 蜷成发光圆球 / thinking 思考 / speaking 说话冒气泡
+ * - 五态状态机：idle 漂浮眨眼 / listening 蜷成发光圆球 / thinking 思考 / speaking 说话冒气泡 /
+ *   waitingWake 待唤醒（侧耳倾听 + 柔和脉冲光晕，design/28 §1.1）
  * - 波波即语音输入圆球：interactive 模式下按住说话（复用 ChatRoom 录音 handlers）
  * - 触感反馈：Android vibrate，iOS 降级为视觉挤压
  */
@@ -13,7 +14,7 @@ function vibrate(pattern) {
 }
 
 export default function BoBoPet({
-  state = 'idle',            // 'idle' | 'listening' | 'thinking' | 'speaking'
+  state = 'idle',            // 'idle' | 'listening' | 'thinking' | 'speaking' | 'waitingWake'
   colors = { body: '#38BDF8', belly: '#E0F2FE', fin: '#0284C7' },
   sentenceText = '',         // speaking 时气泡展示的句子
   liveTranscript = '',       // listening 时气泡展示的实时转写
@@ -72,7 +73,8 @@ export default function BoBoPet({
           ${listening ? 'opacity-0 scale-50 pointer-events-none' : 'opacity-100 scale-100'}
           ${state === 'idle' ? 'animate-[bobo-float_2.6s_ease-in-out_infinite]' : ''}
           ${state === 'thinking' ? 'animate-[bobo-sway_2s_ease-in-out_infinite]' : ''}
-          ${state === 'speaking' ? 'animate-[bobo-groove_1.4s_ease-in-out_infinite]' : ''}`}
+          ${state === 'speaking' ? 'animate-[bobo-groove_1.4s_ease-in-out_infinite]' : ''}
+          ${state === 'waitingWake' ? 'animate-[bobo-listen_2.2s_ease-in-out_infinite]' : ''}`}
       >
         <svg viewBox="0 0 200 160" className="w-full h-full overflow-visible">
           {/* 尾鳍（两瓣，可摆动） */}
@@ -114,8 +116,8 @@ export default function BoBoPet({
           >
             <circle cx="148" cy="60" r="13" fill="#FFFFFF" />
             <circle
-              cx="151"
-              cy={state === 'thinking' ? 56 : 62}
+              cx={state === 'waitingWake' ? 154 : 151}
+              cy={state === 'thinking' ? 56 : state === 'waitingWake' ? 58 : 62}
               r="6.5"
               fill="#0F172A"
               style={{ transition: 'cy 0.3s' }}
@@ -168,11 +170,16 @@ export default function BoBoPet({
         </div>
       )}
 
-      {/* 待机呼吸光晕（暗示可触碰） */}
-      {interactive && state === 'idle' && !disabled && (
+      {/* 待机呼吸光晕（暗示可触碰）/ 待唤醒柔和脉冲光晕（侧耳倾听，design/28 §1.1） */}
+      {((interactive && state === 'idle') || state === 'waitingWake') && !disabled && (
         <span
-          className="absolute inset-0 rounded-full animate-[bobo-halo_2.4s_ease-in-out_infinite] pointer-events-none"
-          style={{ boxShadow: `0 0 0 6px ${colors.body}22` }}
+          className="absolute inset-0 rounded-full pointer-events-none"
+          style={{
+            boxShadow: `0 0 0 6px ${colors.body}22`,
+            animation: state === 'waitingWake'
+              ? 'bobo-halo-slow 3.2s ease-in-out infinite'
+              : 'bobo-halo 2.4s ease-in-out infinite',
+          }}
         />
       )}
 
@@ -188,6 +195,8 @@ export default function BoBoPet({
         @keyframes bobo-ripple{ 0% { transform: scale(0.85); opacity: 0.85; } 100% { transform: scale(1.7); opacity: 0; } }
         @keyframes bobo-pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.07); } }
         @keyframes bobo-halo  { 0%,100% { opacity: 0.5; transform: scale(1); } 50% { opacity: 1; transform: scale(1.06); } }
+        @keyframes bobo-listen { 0%,100% { transform: translateY(0) rotate(0deg); } 50% { transform: translateY(-3px) rotate(4deg); } }
+        @keyframes bobo-halo-slow { 0%,100% { opacity: 0.35; transform: scale(1); } 50% { opacity: 0.9; transform: scale(1.12); } }
       `}</style>
     </div>
   )

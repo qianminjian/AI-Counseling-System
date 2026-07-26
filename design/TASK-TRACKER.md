@@ -1,6 +1,6 @@
 # AI 小学生心理辅导系统 - 任务跟踪表
 
-> 创建：2026-07-23 | 更新：2026-07-26（波波小精灵 BOBO 系列全部完成）
+> 创建：2026-07-23 | 更新：2026-07-26（新增语音唤醒与冷场引导 WAKE 系列，design/28）
 > 
 > 本表用于跟踪项目各阶段任务的进度和责任人。
 
@@ -277,6 +277,27 @@
 | BOBO-004 | 话语气泡组件（SpeechBubble.jsx）+ useTtsPlayer 暴露 currentSentenceText | ✅ 完成 | 逐句滚动与 TTS 同步 |
 | BOBO-005 | 接入 ChatRoom（手机悬浮输入栏右上角 + Pad 左栏合并，删除旧麦克风按钮） | ✅ 完成 | 状态映射：recording/streaming/tts.playing；手机气泡右对齐防溢出 |
 | BOBO-006 | WelcomeGuide 增加「按住波波说话」引导 + AI 人设改波波（design/18 + 后端 prompt）+ 构建验证 | ✅ 完成 | vite build 通过；后端问候语同步改波波（待部署生效） |
+
+---
+
+## 十六、语音唤醒与冷场引导（design/28）
+
+> 设计思路：三个叠加式能力——唤醒词"哈喽波波"（Transformers.js + Whisper 本地引擎，监听严格限定在对话会话内）+ 冷场决策模型（多信号加权+画像关联，先判断该留白还是该暖场）+ 音色人设（中性角色+男女/温柔音色）；后端 nudge SSE 接口 + 前端沉默检测，不改动现有按住说话主路径。
+
+| 编号 | 任务 | 状态 | 备注 |
+|------|------|------|------|
+| WAKE-001 | 设计文档 design/28 + design/18 登记 TSK-004 + OVERVIEW/TRACKER/BEACON 同步 | ✅ 完成 | 阶段 0 设计先行 |
+| WAKE-002 | 问候语加昵称"哈喽，[昵称]！"（buildGreeting + user.pseudonym） | ✅ 完成 | 阶段 1 后端，唤醒词 onboarding |
+| WAKE-003 | 冷场决策模型（信号 A-F 加权评分卡 + 硬规则覆盖）+ SessionState 字段（nudgeCount/lastNudgeAt/expressionDepth/最后消息类型）+ createSession 画像加载 | ✅ 完成 | 阶段 1 后端，信号 F=画像沟通偏好 |
+| WAKE-004 | TSK-004 prompt 文件 proactive_nudge_zh-CN_v1.0.0.md + PromptTemplateService.TSK_004 常量 | ✅ 完成 | 阶段 1 后端 |
+| WAKE-005 | AiChatService.chatProactive（不写伪造学生消息、nudge 指令追加 system 层、复用双层安全管线） | ✅ 完成 | 阶段 1 后端，不污染记忆 |
+| WAKE-006 | ConversationService.sendNudgeStream + ChatController POST /nudge SSE 端点 + 护栏（2 次上限/间隔/escalated 拒绝） | ✅ 完成 | 阶段 1 后端 |
+| WAKE-007 | tts-service 补 xiaotaiyang 人设（zh-CN-YunxiNeural）+ CosyVoice2 persona→speaker 映射（去硬编码"中文女"） | ✅ 完成 | 阶段 1 后端，功能三缺陷修复 |
+| WAKE-008 | 后端单元/集成测试（问候含昵称、决策模型用例含画像信号 F、护栏、记忆不污染、xiaotaiyang 男声） | ✅ 完成 | 阶段 1 后端，161 个测试全绿 |
+| WAKE-009 | ChatRoom 沉默检测计时器 + nudge 调用 + TTS 朗读 + 护栏（2 次上限/说话重置/与录音互斥） | ✅ 完成 | 阶段 2 前端 |
+| WAKE-010 | useWakeWord（Whisper）+ useVoiceCallMode 状态机 + VoiceCallConsentDialog 单独授权 + BoBoPet waitingWake 态 + ChatRoom 集成 | ✅ 完成 | 阶段 3，**已从 Porcupine 切换为 Transformers.js + Whisper**（零外部账号），构建通过 |
+| WAKE-011 | ~~.env 增加 AccessKey + Picovoice Console 训练唤醒词~~ | ❌ 已取消 | Whisper 开源方案无需任何外部账号/密钥/训练 |
+| WAKE-012 | 集成回归（按住说话主路径/红色风险流程不受影响）+ 真机测试（唤醒率/防自听回声/冷却关窗/iOS 兼容） | ⏳ 待开始 | 阶段 4 |
 
 ---
 
