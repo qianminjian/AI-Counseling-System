@@ -1,6 +1,7 @@
 package com.mindsafe.domain.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
+import com.mindsafe.domain.handler.JsonbTypeHandler;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -11,7 +12,7 @@ import java.util.UUID;
  * 设计原则：不存原始消息明文，仅存结构化摘要（情绪标签、风险信号、CBT 关键节点）。
  * 对齐 design/08 §5.1 "message_summaries 只存结构化摘要"。
  */
-@TableName(value = "message_summaries", schema = "tenant_template")
+@TableName(value = "message_summaries", schema = "tenant_template", autoResultMap = true)
 public class MessageSummary {
 
     @TableId(value = "summary_id", type = IdType.INPUT)
@@ -23,12 +24,15 @@ public class MessageSummary {
     private Integer turnCount;
 
     /** 情绪标签 JSON 数组，如 ["sad","anxious"] */
+    @TableField(typeHandler = JsonbTypeHandler.class)
     private String emotionTags;
 
     /** 话题标签 JSON 数组，如 ["peer_conflict","academic_stress"] */
+    @TableField(typeHandler = JsonbTypeHandler.class)
     private String topicTags;
 
     /** 风险信号 JSON 数组 */
+    @TableField(typeHandler = JsonbTypeHandler.class)
     private String riskSignals;
 
     /** 学生需求摘要（加密存储，MVP 阶段暂用明文） */
@@ -58,6 +62,7 @@ public class MessageSummary {
     private String contentSummary;
 
     /** CBT 结构化字段 JSON */
+    @TableField(typeHandler = JsonbTypeHandler.class)
     private String cbtFields;
 
     private Instant createdAt;

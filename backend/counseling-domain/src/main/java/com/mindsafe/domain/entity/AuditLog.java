@@ -1,6 +1,7 @@
 package com.mindsafe.domain.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
+import com.mindsafe.domain.handler.JsonbTypeHandler;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -8,7 +9,7 @@ import java.util.UUID;
 /**
  * 审计日志实体（对应 tenant_template.audit_logs）
  */
-@TableName(value = "audit_logs", schema = "tenant_template")
+@TableName(value = "audit_logs", schema = "tenant_template", autoResultMap = true)
 public class AuditLog {
 
     @TableId(value = "audit_log_id", type = IdType.INPUT)
@@ -19,6 +20,7 @@ public class AuditLog {
     private String action;
     private String resourceType;
     private UUID resourceId;
+    @TableField(typeHandler = JsonbTypeHandler.class)
     private String detail;
     private String ipHash;
     private String userAgent;

@@ -1,6 +1,7 @@
 package com.mindsafe.domain.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
+import com.mindsafe.domain.handler.JsonbTypeHandler;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -9,7 +10,7 @@ import java.util.UUID;
  * 学生心理画像实体（对应 tenant_template.student_profiles）
  * 只存结构化统计指标，不存原始对话
  */
-@TableName(value = "student_profiles", schema = "tenant_template")
+@TableName(value = "student_profiles", schema = "tenant_template", autoResultMap = true)
 public class StudentProfile {
 
     @TableId(value = "profile_id", type = IdType.ASSIGN_UUID)
@@ -19,21 +20,27 @@ public class StudentProfile {
     private UUID userId;
 
     /** 情绪基线：分布/波动度/触发主题 */
+    @TableField(typeHandler = JsonbTypeHandler.class)
     private String emotionBaseline;
 
     /** 沟通偏好：表达深度/偏好风格/活跃时段 */
+    @TableField(typeHandler = JsonbTypeHandler.class)
     private String communicationPref;
 
     /** 心理韧性：恢复速度/应对技巧/自我效能 */
+    @TableField(typeHandler = JsonbTypeHandler.class)
     private String resilience;
 
     /** 风险轨迹：等级分布/趋势/敏感主题 */
+    @TableField(typeHandler = JsonbTypeHandler.class)
     private String riskTrajectory;
 
     /** 社交图谱：关键人物(代号化)/满意度/求助意愿 */
+    @TableField(typeHandler = JsonbTypeHandler.class)
     private String socialGraph;
 
     /** 成长轨迹：频率/里程碑/干预有效性 */
+    @TableField(typeHandler = JsonbTypeHandler.class)
     private String growthTrack;
 
     private Integer version;

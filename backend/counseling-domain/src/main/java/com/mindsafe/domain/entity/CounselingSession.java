@@ -1,6 +1,7 @@
 package com.mindsafe.domain.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
+import com.mindsafe.domain.handler.JsonbTypeHandler;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -8,7 +9,7 @@ import java.util.UUID;
 /**
  * 辅导会话实体（对应 tenant_template.counseling_sessions）
  */
-@TableName(value = "counseling_sessions", schema = "tenant_template")
+@TableName(value = "counseling_sessions", schema = "tenant_template", autoResultMap = true)
 public class CounselingSession {
 
     @TableId(value = "session_id", type = IdType.INPUT)
@@ -27,6 +28,7 @@ public class CounselingSession {
     private String consentVersion;
 
     /** CBT 状态机路径（jsonb，存储 CbtSessionState 序列化 JSON） */
+    @TableField(typeHandler = JsonbTypeHandler.class)
     private String statePath;
 
     /** 对话轮次数 */
