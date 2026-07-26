@@ -2,9 +2,9 @@
 # MindSafe 生产部署脚本（本地执行）
 # 用法：./deploy.sh
 # 前置条件：已 commit + push，CI 通过
-set -euo pipefail
+set -eo pipefail
 
-SERVER="root@116.8.109.229"
+SERVER="mindsafe@116.8.109.229"
 REMOTE_DIR="/guju/mindsafe"
 PROJECT_ROOT="$(cd "$(dirname "$0")" && pwd)"
 
@@ -74,7 +74,8 @@ ssh "$SERVER" "cd $REMOTE_DIR && docker compose up -d --build backend"
 # 7. 等待启动 + 健康检查
 echo "⏳ 等待服务启动..."
 sleep 12
-HTTP_CODE=$(ssh "$SERVER" "curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:18081/actuator/health" 2>/dev/null || echo "000")
+HTTP_CODE=$(ssh "$SERVER" "curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:18081/actuator/health" 2>/dev/null | tr -cd '0-9' || echo "000")
+HTTP_CODE=${HTTP_CODE:-000}
 
 if [ "$HTTP_CODE" = "200" ]; then
   echo ""
