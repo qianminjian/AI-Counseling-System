@@ -1,7 +1,7 @@
 package com.mindsafe.domain.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
-import com.mindsafe.domain.handler.JsonbTypeHandler;
+import com.mindsafe.domain.typehandler.JsonbTypeHandler;
 
 import java.time.Instant;
 import java.util.UUID;
