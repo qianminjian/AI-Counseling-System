@@ -1,0 +1,236 @@
+// 全局样式
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  background-color: #f5f7fa;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 15px;
+  color: #333;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+.container {
+  padding: 20px 16px;
+  min-height: 100vh;
+  max-width: 480px;
+  margin: 0 auto;
+}
+
+// 通用卡片
+.card {
+  background: #fff;
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 16px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+// 主按钮
+.btn-primary {
+  display: block;
+  width: 100%;
+  height: 48px;
+  background: linear-gradient(135deg, #4a90d9, #357abd);
+  color: #fff;
+  border-radius: 24px;
+  font-size: 16px;
+  font-weight: 500;
+  border: none;
+  margin-top: 24px;
+  cursor: pointer;
+
+  &:disabled { opacity: 0.5; cursor: not-allowed; }
+  &:active:not(:disabled) { transform: scale(0.98); }
+}
+
+// 危险按钮
+.btn-danger {
+  display: block;
+  width: 100%;
+  height: 48px;
+  background: #fff;
+  color: #e74c3c;
+  border: 2px solid #e74c3c;
+  border-radius: 24px;
+  font-size: 16px;
+  font-weight: 500;
+  margin-top: 24px;
+  cursor: pointer;
+
+  &:disabled { opacity: 0.5; cursor: not-allowed; }
+}
+
+// 链接按钮
+.btn-link {
+  display: block;
+  width: 100%;
+  background: none;
+  border: none;
+  color: #4a90d9;
+  font-size: 15px;
+  text-align: center;
+  margin-top: 20px;
+  padding: 10px;
+  cursor: pointer;
+}
+
+// 标题
+.page-title {
+  font-size: 22px;
+  font-weight: 600;
+  color: #2c3e50;
+  margin-bottom: 8px;
+}
+
+.page-subtitle {
+  font-size: 14px;
+  color: #7f8c8d;
+  margin-bottom: 28px;
+}
+
+// 输入框
+.input-group {
+  margin-bottom: 20px;
+
+  .input-label {
+    display: block;
+    font-size: 13px;
+    color: #7f8c8d;
+    margin-bottom: 6px;
+  }
+
+  .input-field {
+    width: 100%;
+    height: 48px;
+    padding: 0 14px;
+    border: 1.5px solid #e8ecf0;
+    border-radius: 10px;
+    font-size: 16px;
+    background: #fafbfc;
+    outline: none;
+
+    &:focus { border-color: #4a90d9; background: #fff; }
+  }
+}
+
+// 验证码行
+.code-row {
+  display: flex;
+  gap: 10px;
+
+  .input-field { flex: 1; }
+
+  .code-btn {
+    width: 120px;
+    height: 48px;
+    background: #eef4fb;
+    color: #4a90d9;
+    border: none;
+    border-radius: 10px;
+    font-size: 14px;
+    white-space: nowrap;
+    flex-shrink: 0;
+    cursor: pointer;
+
+    &:disabled { color: #bdc3c7; background: #f5f5f5; cursor: not-allowed; }
+  }
+}
+
+// 提示信息
+.tip-text {
+  font-size: 12px;
+  color: #95a5a6;
+  margin-top: 14px;
+  text-align: center;
+}
+
+.error-text {
+  font-size: 13px;
+  color: #e74c3c;
+  margin-top: 10px;
+  text-align: center;
+}
+
+// ========== 验证页 ==========
+.verify-page {
+  .logo-area {
+    text-align: center;
+    padding: 40px 0 24px;
+
+    .logo-emoji { font-size: 48px; display: block; margin-bottom: 12px; }
+  }
+}
+
+// ========== 周报页 ==========
+.report-page {
+  .report-header { padding: 24px 0 12px; }
+  .loading-area { text-align: center; padding: 80px 0; color: #95a5a6; }
+
+  .card-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: #2c3e50;
+    margin-bottom: 14px;
+  }
+
+  .emotion-list .emotion-row {
+    display: flex;
+    align-items: center;
+    margin-bottom: 12px;
+
+    .emotion-emoji { font-size: 20px; width: 28px; }
+    .emotion-name { font-size: 13px; color: #555; width: 44px; }
+    .emotion-bar-bg {
+      flex: 1; height: 10px; background: #eef2f7;
+      border-radius: 5px; overflow: hidden; margin: 0 10px;
+      .emotion-bar {
+        height: 100%; background: linear-gradient(90deg, #4a90d9, #67b8f7);
+        border-radius: 5px; transition: width 0.6s ease;
+      }
+    }
+    .emotion-pct { font-size: 12px; color: #7f8c8d; width: 40px; text-align: right; }
+  }
+
+  .empty-text { font-size: 14px; color: #bdc3c7; text-align: center; padding: 20px 0; }
+
+  .stats-card {
+    display: flex; align-items: center; justify-content: space-around;
+    .stat-item {
+      text-align: center; flex: 1;
+      .stat-value { display: block; font-size: 18px; font-weight: 600; color: #2c3e50; margin-bottom: 4px; }
+      .stat-label { font-size: 12px; color: #95a5a6; }
+    }
+    .stat-divider { width: 1px; height: 36px; background: #e8ecf0; }
+  }
+
+  .suggestion-card .suggestion-text { font-size: 14px; color: #555; line-height: 1.8; }
+}
+
+// ========== 同意管理页 ==========
+.consent-page {
+  .page-header { padding: 24px 0 12px; }
+
+  .status-card .status-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 12px 0; border-bottom: 1px solid #f0f2f5;
+    &:last-child { border-bottom: none; }
+    .status-label { font-size: 13px; color: #7f8c8d; }
+    .status-value {
+      font-size: 13px; color: #2c3e50; max-width: 60%; text-align: right;
+      &.active { color: #27ae60; font-weight: 500; }
+    }
+  }
+
+  .warning-card {
+    background: #fef9f0; border: 1px solid #fdebd0;
+    .warning-title { font-size: 15px; font-weight: 600; color: #e67e22; margin-bottom: 10px; }
+    .warning-list .warning-item { font-size: 13px; color: #7f6c50; line-height: 2; }
+  }
+
+  .result-area {
+    text-align: center; padding: 80px 20px;
+    .result-emoji { font-size: 48px; display: block; margin-bottom: 20px; }
+    .result-desc { font-size: 14px; color: #7f8c8d; line-height: 2; }
+  }
+}

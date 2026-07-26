@@ -191,7 +191,7 @@
 |--------|----------|------|------|
 | AUTH-020 | 学校 Excel 批量导入学生名单 | ✅ 完成 | CSV 导入（AdminController + AdminPanel UI） |
 | AUTH-021 | 企微/钉钉 OAuth 配置上线 | ⏳ 待开始 | 代码已就绪，需配置 corpId/secret |
-| AUTH-022 | 家长微信小程序 + 微信 OAuth 登录 | ⏳ 待开始 | 独立小程序工程，后端 parent_bindings 表已设计 |
+| AUTH-022 | 家长微信小程序 + 微信 OAuth 登录 | ⏳ 远期 | 待 H5 稳定后转小程序，见 PARENT-WX 系列任务 |
 | AUTH-023 | 监护人同意闭环（短信确认链接） | ✅ 完成 | GuardianConsentService + AuthController 端点 |
 
 ### 阶段三：合规加固（后续待办）
@@ -203,6 +203,31 @@
 | AUTH-032 | 家长撤回同意 → 冻结+删除 | ✅ 完成 | PIPL §47，ConsentWithdrawalService + ParentController 端点 |
 | AUTH-033 | 年度合规审计报送 | ⏳ 待开始 | 未保条例 §37，流程性报送（非代码） |
 | AUTH-034 | WebAuthn 设备端指纹/Face ID（可选） | ⏳ 待开始 | 不采集生物数据，需真机测试 |
+
+---
+
+## 十二、家长端 H5（design/26）
+
+### P1：H5 移动网页（本期）
+
+| 任务ID | 任务描述 | 状态 | 备注 |
+|--------|----------|------|------|
+| PARENT-001 | Vite+React 工程初始化 + 基础架构 | ✅ 完成 | frontend/parent-h5 |
+| PARENT-002 | 手机验证页（send-code → verify-phone） | ✅ 完成 | |
+| PARENT-003 | 情绪周报页（/parent/report） | ✅ 完成 | |
+| PARENT-004 | 同意管理页（撤回同意 + 二次确认） | ✅ 完成 | |
+| PARENT-005 | 构建验证 + nginx 部署配置 | ✅ 完成 | vite build 成功，base=/parent/ |
+
+### P2：微信小程序（远期规划，不丢失）
+
+| 任务ID | 任务描述 | 状态 | 备注 |
+|--------|----------|------|------|
+| PARENT-WX-001 | 微信小程序工程注册 + AppID 配置 | ⏳ 远期 | 需企业主体认证 |
+| PARENT-WX-002 | wx.login → openid → parent_bindings 绑定 | ⏳ 远期 | 后端表已设计 |
+| PARENT-WX-003 | 微信 OAuth 授权页（获取手机号） | ⏳ 远期 | 微信开放平台配置 |
+| PARENT-WX-004 | taro build --type weapp + 真机调试 | ⏳ 远期 | 依赖 PARENT-001~005 |
+| PARENT-WX-005 | 小程序提审 + 上线 | ⏳ 远期 | 隐私协议/类目审核 |
+| PARENT-WX-006 | 订阅消息推送（周报通知） | ⏳ 远期 | 微信订阅消息 API |
 
 ---
 
