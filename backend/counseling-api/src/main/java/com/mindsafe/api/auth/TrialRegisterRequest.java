@@ -20,6 +20,9 @@ public record TrialRegisterRequest(
         /** 体验者身份（家长/老师/其他），可选 */
         String role,
 
+        /** 性别（male/female），用于对话风格与 TTS 音色个性化 */
+        String gender,
+
         @NotBlank(message = "同意版本号不能为空")
         String consentVersion,
 

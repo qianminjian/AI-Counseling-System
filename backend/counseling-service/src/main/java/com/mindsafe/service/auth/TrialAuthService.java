@@ -61,7 +61,7 @@ public class TrialAuthService {
      */
     @Transactional
     public User registerTrialUser(String inviteCode, String pseudonym, int age,
-                                  String role, String consentVersion) {
+                                  String role, String gender, String consentVersion) {
         // 1. 校验告知同意版本
         if (!CURRENT_CONSENT_VERSION.equals(consentVersion)) {
             throw new BizException(ErrorCode.CONSENT_VERSION_MISMATCH);
@@ -82,6 +82,7 @@ public class TrialAuthService {
         user.setPseudonym(pseudonym);
         user.setStatus("active");
         user.setMustChangePassword(false);
+        user.setGender(gender);
         user.setCreatedAt(Instant.now());
         user.setUpdatedAt(Instant.now());
         userMapper.insert(user);

@@ -12,6 +12,7 @@ import com.mindsafe.common.exception.BizException;
 import com.mindsafe.domain.entity.User;
 import com.mindsafe.domain.mapper.UserMapper;
 import com.mindsafe.service.auth.TrialAuthService;
+import com.mindsafe.service.audit.AuditLogService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
@@ -39,17 +40,20 @@ public class AuthController {
     private final JwtTokenProvider jwtTokenProvider;
     private final TrialAuthStrategy trialAuthStrategy;
     private final TrialAuthService trialAuthService;
+    private final AuditLogService auditLogService;
 
     public AuthController(UserMapper userMapper,
                           PasswordEncoder passwordEncoder,
                           JwtTokenProvider jwtTokenProvider,
                           TrialAuthStrategy trialAuthStrategy,
-                          TrialAuthService trialAuthService) {
+                          TrialAuthService trialAuthService,
+                          AuditLogService auditLogService) {
         this.userMapper = userMapper;
         this.passwordEncoder = passwordEncoder;
         this.jwtTokenProvider = jwtTokenProvider;
         this.trialAuthStrategy = trialAuthStrategy;
         this.trialAuthService = trialAuthService;
+        this.auditLogService = auditLogService;
     }
 
     /**
@@ -77,6 +81,9 @@ public class AuthController {
 
         String token = jwtTokenProvider.generateToken(
                 user.getUserId(), user.getUserType(), user.getTenantId());
+
+        // 审计：登录成功
+        auditLogService.log(user.getTenantId(), user.getUserId(), "LOGIN", "user", user.getUserId(), null);
 
         boolean mustChange = Boolean.TRUE.equals(user.getMustChangePassword());
 

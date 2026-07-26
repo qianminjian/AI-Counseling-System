@@ -47,9 +47,9 @@ public class AiChatServiceImpl implements AiChatService {
     }
 
     @Override
-    public Flux<StreamMessageEvent> chat(UUID sessionId, String emotionTag, String message) {
+    public Flux<StreamMessageEvent> chat(UUID sessionId, String emotionTag, String message, String gender) {
         String conversationId = sessionId.toString();
-        log.debug("AI 对话请求: sessionId={}, emotion={}, msgLength={}", sessionId, emotionTag, message.length());
+        log.debug("AI 对话请求: sessionId={}, emotion={}, gender={}, msgLength={}", sessionId, emotionTag, gender, message.length());
 
         // 1. 保存用户消息到记忆
         chatMemory.add(conversationId, List.of(new UserMessage(message)));
@@ -65,11 +65,15 @@ public class AiChatServiceImpl implements AiChatService {
                 "session_mode", "normal_counseling"
         ));
 
+        // 3.5 性别个性化话术注入
+        String genderStyle = buildGenderStyle(gender);
+        String fullSystem = systemPrompt + "\n\n" + genderStyle;
+
         // 4. 流式调用 LLM（带历史上下文）
         StringBuilder responseCollector = new StringBuilder();
 
         Flux<String> rawTokens = chatClient.prompt()
-                .system(systemPrompt)
+                .system(fullSystem)
                 .messages(history)
                 .stream()
                 .content();
@@ -98,5 +102,71 @@ public class AiChatServiceImpl implements AiChatService {
     public void clearMemory(UUID sessionId) {
         chatMemory.clear(sessionId.toString());
         log.debug("会话记忆已清除: sessionId={}", sessionId);
+    }
+
+    private static final String SUMMARY_SYSTEM_PROMPT = """
+            你是一位学校心理辅导系统的摘要生成器。根据以下对话记录，生成一份结构化 JSON 摘要，供心理老师快速了解会话情况。
+            
+            输出格式（严格 JSON，无其他文字）：
+            {
+              "mainTopic": "主要话题（10字以内）",
+              "emotionTrend": "情绪变化趋势（20字以内）",
+              "keyPoints": ["关键点1", "关键点2"],
+              "riskNote": "风险提示（无风险则填'无'）",
+              "suggestion": "给老师的建议（30字以内）"
+            }
+            
+            注意：
+            - 语言简洁专业，面向教师
+            - 不暴露学生真实姓名
+            - riskNote 只在发现自伤/被欺凌/家庭暴力等信号时填写
+            """;
+
+    @Override
+    public String generateSessionSummary(String conversationText) {
+        if (conversationText == null || conversationText.isBlank()) {
+            return null;
+        }
+        try {
+            String result = chatClient.prompt()
+                    .system(SUMMARY_SYSTEM_PROMPT)
+                    .user("请为以下对话生成摘要：\n\n" + conversationText)
+                    .call()
+                    .content();
+            log.debug("会话摘要生成完成, length={}", result != null ? result.length() : 0);
+            return result;
+        } catch (Exception e) {
+            log.error("会话摘要生成失败", e);
+            return null;
+        }
+    }
+
+    /** 根据性别构建个性化沟通风格 Prompt 片段 */
+    private String buildGenderStyle(String gender) {
+        if ("male".equals(gender)) {
+            return """
+                    # 沟通风格（男生）
+                    - 你像一个阳光、爱运动的小队友，说话简短有力、带点幽默
+                    - 多用行动隐喻："咱们想个办法试试？""你已经很勇敢了"
+                    - CBT 切入顺序：情境 → 行动 → 感受（先做再感受）
+                    - 情绪命名简洁："看起来你有点不爽？"
+                    - 鼓励方向：勇气、坚持、想办法
+                    """;
+        } else if ("female".equals(gender)) {
+            return """
+                    # 沟通风格（女生）
+                    - 你像一个暖心、细心的好闺蜜，说话温柔、有耐心
+                    - 多用情感反射："听起来你心里有点委屈对吗？""你的感受很重要"
+                    - CBT 切入顺序：感受 → 情境 → 行动（先命名情绪再解决）
+                    - 情绪命名细腻："你是不是觉得有点孤单，又有点生气？"
+                    - 鼓励方向：表达、自我关怀、愿意说出来就很棒
+                    """;
+        }
+        // 未指定性别时使用通用风格
+        return """
+                # 沟通风格
+                - 说话温和、有耐心，用小朋友能听懂的短句
+                - 先共情，再帮助说出感受，再给一个小行动
+                """;
     }
 }

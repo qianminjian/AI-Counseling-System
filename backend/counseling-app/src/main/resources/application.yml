@@ -64,15 +64,21 @@ mybatis-plus:
       logic-delete-value: 1
       logic-not-delete-value: 0
 
-# Actuator 健康检查
+# Actuator 健康检查 + Prometheus 指标
 management:
   endpoints:
     web:
       exposure:
-        include: health,info,metrics
+        include: health,info,metrics,prometheus
   endpoint:
     health:
       show-details: when-authorized
+  metrics:
+    tags:
+      application: mindsafe
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
 
 # 日志配置
 logging:

@@ -8,6 +8,7 @@ import com.mindsafe.domain.mapper.NotificationMapper;
 import com.mindsafe.domain.mapper.UserMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
@@ -24,10 +25,13 @@ public class NotificationServiceImpl implements NotificationService {
 
     private final NotificationMapper notificationMapper;
     private final UserMapper userMapper;
+    private final ApplicationEventPublisher eventPublisher;
 
-    public NotificationServiceImpl(NotificationMapper notificationMapper, UserMapper userMapper) {
+    public NotificationServiceImpl(NotificationMapper notificationMapper, UserMapper userMapper,
+                                   ApplicationEventPublisher eventPublisher) {
         this.notificationMapper = notificationMapper;
         this.userMapper = userMapper;
+        this.eventPublisher = eventPublisher;
     }
 
     @Override
@@ -64,6 +68,14 @@ public class NotificationServiceImpl implements NotificationService {
             }
 
             log.info("风险通知已发送: riskEventId={}, 通知教师数={}", event.getRiskEventId(), teachers.size());
+
+            // 发布 WebSocket 实时推送事件
+            eventPublisher.publishEvent(new RiskAlertPushEvent(
+                    event.getTenantId(), event.getRiskEventId(), event.getStudentUserId(),
+                    event.getSourceId(),
+                    event.getRiskType(), event.getRiskLevel(),
+                    title, body, event.getDetectedAt()
+            ));
         } catch (Exception e) {
             log.error("发送风险通知失败（不影响主流程）: riskEventId={}", event.getRiskEventId(), e);
         }

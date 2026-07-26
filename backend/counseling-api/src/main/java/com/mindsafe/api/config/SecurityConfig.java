@@ -12,11 +12,11 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
 /**
- * Spring Security 配置（JWT 认证）
+ * Spring Security 配置（JWT 认证 + 角色授权）
  * <p>
  * 放行：/api/v1/auth/login、/api/v1/auth/trial/register、/actuator/**、/swagger-ui/**
- * 鉴权：/api/v1/chat/**（学生端，JWT）、/api/v1/teacher/**（教师端，JWT）、
- *       /api/v1/auth/change-password（已登录用户改密）
+ * 角色：/api/v1/admin/** → ADMIN；/api/v1/teacher/** + /api/v1/alerts/** → TEACHER/ADMIN
+ * 鉴权：/api/v1/chat/**（学生端，JWT）、/api/v1/auth/change-password（已登录用户改密）
  */
 @Configuration
 @EnableWebSecurity
@@ -38,19 +38,26 @@ public class SecurityConfig {
                         .requestMatchers("/api/v1/auth/login").permitAll()
                         .requestMatchers("/api/v1/auth/trial/register").permitAll()
                         .requestMatchers("/actuator/**").permitAll()
+                        .requestMatchers("/ws/**").permitAll()
                         .requestMatchers("/swagger-ui/**", "/api-docs/**").permitAll()
+                        // 管理端 API：仅 ADMIN 角色
+                        .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
+                        // 平台管理后台：仅 ADMIN 角色
+                        .requestMatchers("/api/v1/platform/**").hasRole("ADMIN")
                         // 改密需已登录
                         .requestMatchers("/api/v1/auth/change-password").authenticated()
                         // 学生对话 API 需认证（前端已接入 JWT）
                         .requestMatchers("/api/v1/chat/**").authenticated()
-                        // 教师端 API 需认证
-                        .requestMatchers("/api/v1/teacher/**").authenticated()
-                        // 预警队列 API 需认证
-                        .requestMatchers("/api/v1/alerts/**").authenticated()
+                        // 教师端 API：所有教师角色 + ADMIN
+                        .requestMatchers("/api/v1/teacher/**").hasAnyRole("TEACHER", "PSYCH_TEACHER", "CLASS_TEACHER", "ADMIN")
+                        // 预警队列 API：所有教师角色 + ADMIN
+                        .requestMatchers("/api/v1/alerts/**").hasAnyRole("TEACHER", "PSYCH_TEACHER", "CLASS_TEACHER", "ADMIN")
                         // 会话 API 需认证
                         .requestMatchers("/api/v1/sessions/**").authenticated()
                         // 放松练习 API 需认证
                         .requestMatchers("/api/v1/relaxation/**").authenticated()
+                        // 情绪日记 API 需认证
+                        .requestMatchers("/api/v1/diary/**").authenticated()
                         // 其余请求放行（语音/TTS 等辅助 API，M1 宽松）
                         .anyRequest().permitAll()
                 )

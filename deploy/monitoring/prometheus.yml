@@ -1,0 +1,16 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: 'mindsafe-backend'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      # 本地开发：host.docker.internal 指向宿主机
+      - targets: ['host.docker.internal:8080']
+        labels:
+          env: 'dev'
+
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']

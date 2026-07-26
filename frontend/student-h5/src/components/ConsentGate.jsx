@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback, useEffect } from 'react'
 
 /** 当前告知同意版本（与后端 TrialAuthService.CURRENT_CONSENT_VERSION 一致） */
 export const CONSENT_VERSION = 'v0.1'
@@ -13,6 +13,14 @@ export default function ConsentGate({ onAgree }) {
   const [scrolledToBottom, setScrolledToBottom] = useState(false)
   const [checked, setChecked] = useState(false)
   const scrollRef = useRef(null)
+
+  // 如果内容不需要滚动（内容高度 ≤ 容器高度），直接视为已读完
+  useEffect(() => {
+    const el = scrollRef.current
+    if (el && el.scrollHeight <= el.clientHeight + 50) {
+      setScrolledToBottom(true)
+    }
+  }, [])
 
   const handleScroll = useCallback(() => {
     const el = scrollRef.current

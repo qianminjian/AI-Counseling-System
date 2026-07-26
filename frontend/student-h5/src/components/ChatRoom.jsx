@@ -1,11 +1,12 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import VoiceConsentDialog, { useVoiceConsent } from './VoiceConsentDialog'
+import SatisfactionDialog from './SatisfactionDialog'
 import SettingsPanel from './SettingsPanel'
 import { useTheme } from '../theme/ThemeProvider'
 import { useVoicePersona } from '../hooks/useVoicePersona'
 import { useTtsPlayer } from '../hooks/useTtsPlayer'
 import { getEmotionTypo } from '../theme/emotionTypography'
-import { getToken, api } from '../api'
+import { getToken, api, getUser } from '../api'
 
 /** 情绪标签 → emoji 映射 */
 const EMOTION_EMOJI = {
@@ -237,11 +238,12 @@ export default function ChatRoom({ session, onEnd }) {
   // 语音授权（合规）
   const { showDialog: showConsent, hasConsent, requestConsent, grantConsent, denyConsent } = useVoiceConsent()
 
-  // TTS 播放器
+  // TTS 播放器（语速根据性别微调：男生稍快、女生稍慢）
+  const userGender = getUser()?.gender
   const tts = useTtsPlayer({
     persona: personaId,
     emotion: voiceEmotion?.labelEn || 'neutral',
-    speed: 1.0,
+    speed: userGender === 'male' ? 1.05 : userGender === 'female' ? 0.95 : 1.0,
   })
 
   // 进入聊天室自动朗读打招呼语
@@ -534,11 +536,25 @@ export default function ChatRoom({ session, onEnd }) {
     sendMessageRef.current = sendMessage
   })
 
-  const handleEnd = async () => {
+  const [showSatisfaction, setShowSatisfaction] = useState(false)
+
+  const handleEnd = () => {
     tts.stop()
+    setShowSatisfaction(true)
+  }
+
+  const closeSession = async (rating, comment) => {
+    setShowSatisfaction(false)
     try {
-      await api(`/chat/sessions/${session.sessionId}/end`, { method: 'POST' })
-    } catch { /* ignore */ }
+      const body = rating ? { rating, comment } : undefined
+      await api(`/sessions/${session.sessionId}/close`, {
+        method: 'POST',
+        body: body ? JSON.stringify(body) : undefined,
+      })
+    } catch {
+      // fallback: 旧接口
+      try { await api(`/chat/sessions/${session.sessionId}/end`, { method: 'POST' }) } catch { /* ignore */ }
+    }
     onEnd()
   }
 
@@ -765,6 +781,14 @@ export default function ChatRoom({ session, onEnd }) {
       {/* 语音授权弹窗（合规） */}
       {showConsent && (
         <VoiceConsentDialog onGrant={handleConsentGrant} onDeny={denyConsent} />
+      )}
+
+      {/* 结束会话满意度评价 */}
+      {showSatisfaction && (
+        <SatisfactionDialog
+          onSubmit={(rating, comment) => closeSession(rating, comment)}
+          onSkip={() => closeSession(null)}
+        />
       )}
 
       {/* 设置面板 */}

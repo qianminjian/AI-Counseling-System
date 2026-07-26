@@ -29,11 +29,17 @@ public class CounselingSession {
     /** CBT 状态机路径（jsonb，存储 CbtSessionState 序列化 JSON） */
     private String statePath;
 
+    /** 对话轮次数 */
+    private Integer turnCount;
+
     /** 满意度评分（1-5 星） */
     private Integer satisfactionRating;
 
     /** 满意度评价文字 */
     private String satisfactionComment;
+
+    /** AI 生成的会话结构化摘要 */
+    private String sessionSummary;
 
     private Instant createdAt;
     private Instant updatedAt;
@@ -116,11 +122,17 @@ public class CounselingSession {
     public String getStatePath() { return statePath; }
     public void setStatePath(String statePath) { this.statePath = statePath; }
 
+    public Integer getTurnCount() { return turnCount; }
+    public void setTurnCount(Integer turnCount) { this.turnCount = turnCount; }
+
     public Integer getSatisfactionRating() { return satisfactionRating; }
     public void setSatisfactionRating(Integer satisfactionRating) { this.satisfactionRating = satisfactionRating; }
 
     public String getSatisfactionComment() { return satisfactionComment; }
     public void setSatisfactionComment(String satisfactionComment) { this.satisfactionComment = satisfactionComment; }
+
+    public String getSessionSummary() { return sessionSummary; }
+    public void setSessionSummary(String sessionSummary) { this.sessionSummary = sessionSummary; }
 
     public Instant getCreatedAt() { return createdAt; }
     public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }

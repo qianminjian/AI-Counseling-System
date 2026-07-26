@@ -1,6 +1,10 @@
 import { useState } from 'react'
 import { useTheme } from '../theme/ThemeProvider'
 import { api } from '../api'
+import SessionHistory from './SessionHistory'
+import RelaxationExercises from './RelaxationExercises'
+import EmotionDiary from './EmotionDiary'
+import Achievements from './Achievements'
 
 const EMOTIONS = [
   { tag: 'happy', emoji: '😊', label: '开心', desc: '有好事发生', color: 'bg-yellow-100 border-yellow-400 text-yellow-800' },
@@ -13,6 +17,8 @@ const EMOTIONS = [
 export default function EmotionSelect({ onStart, userName, onLogout }) {
   const [selected, setSelected] = useState(null)
   const [loading, setLoading] = useState(false)
+  const [showRelaxation, setShowRelaxation] = useState(false)
+  const [showDiary, setShowDiary] = useState(false)
   const { theme } = useTheme()
 
   const handleStart = async () => {
@@ -35,9 +41,17 @@ export default function EmotionSelect({ onStart, userName, onLogout }) {
     }
   }
 
+  if (showRelaxation) {
+    return <RelaxationExercises onBack={() => setShowRelaxation(false)} />
+  }
+
+  if (showDiary) {
+    return <EmotionDiary onBack={() => setShowDiary(false)} />
+  }
+
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-6 lg:p-10"
-      style={{ background: 'linear-gradient(to bottom, var(--bg-start), var(--bg-end))' }}>
+    <div className="min-h-screen flex flex-col items-center pt-10 pb-16 px-6 lg:p-10"
+      style={{ background: 'linear-gradient(to bottom, var(--bg-start), var(--bg-end))', paddingBottom: 'calc(4rem + env(safe-area-inset-bottom))' }}>
       {/* 标题区：儿童化圆体标题 + 伙伴漂浮动画 */}
       <div className="text-6xl lg:text-8xl mb-4 lg:mb-6 float-companion">{theme.companion}</div>
       <h1 className="kid-title text-2xl lg:text-4xl text-gray-800 mb-2">
@@ -64,19 +78,39 @@ export default function EmotionSelect({ onStart, userName, onLogout }) {
         ))}
       </div>
 
-      {/* 开始按钮：触摸目标 ≥ 64px */}
-      <button
-        onClick={handleStart}
-        disabled={!selected || loading}
-        className={`px-10 lg:px-16 py-4 lg:py-5 rounded-full text-white font-medium text-lg lg:text-2xl transition-all
-          ${selected
-            ? 'active:scale-95 shadow-lg'
-            : 'bg-gray-300 cursor-not-allowed'
-          }`}
-        style={selected ? { background: 'var(--primary)' } : undefined}
-      >
-        {loading ? '正在连接...' : '开始聊天 💬'}
-      </button>
+      {/* 开始按钮 + 放松练习入口 */}
+      <div className="flex flex-col items-center gap-4">
+        <button
+          onClick={handleStart}
+          disabled={!selected || loading}
+          className={`px-10 lg:px-16 py-4 lg:py-5 rounded-full text-white font-medium text-lg lg:text-2xl transition-all
+            ${selected
+              ? 'active:scale-95 shadow-lg'
+              : 'bg-gray-300 cursor-not-allowed'
+            }`}
+          style={selected ? { background: 'var(--primary)' } : undefined}
+        >
+          {loading ? '正在连接...' : '开始聊天 💬'}
+        </button>
+        <button
+          onClick={() => setShowRelaxation(true)}
+          className="text-sm text-gray-400 hover:text-gray-600 transition-colors underline underline-offset-4"
+        >
+          不想聊天？做个放松练习 🌿
+        </button>
+        <button
+          onClick={() => setShowDiary(true)}
+          className="text-sm text-gray-400 hover:text-gray-600 transition-colors underline underline-offset-4"
+        >
+          记录今天的心情 📔
+        </button>
+      </div>
+
+      {/* 会话历史 */}
+      <SessionHistory />
+
+      {/* 成就徽章 */}
+      <Achievements />
     </div>
   )
 }

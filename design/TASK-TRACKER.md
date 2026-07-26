@@ -1,6 +1,6 @@
 # AI 小学生心理辅导系统 - 任务跟踪表
 
-> 创建：2026-07-23 | 更新：2026-07-23（内容安全审查体系已实现 + 设计文档全面同步 + 新增认证试用准入设计 + 立文档代码一致底线规则）
+> 创建：2026-07-23 | 更新：2026-07-23（商业化版本 Phase 1-20 全部完成，设计文档全面对齐）
 > 
 > 本表用于跟踪项目各阶段任务的进度和责任人。
 
@@ -45,59 +45,65 @@
 | DEC-002 | Java 构建工具 | Maven / Gradle | Maven（信创/银行通用） | ✅ 已确认 | 2026-07-23 |
 | DEC-003 | Java ORM 框架 | MyBatis-Plus / Spring Data JPA | MyBatis-Plus（政企/信创主流） | ✅ 已确认 | 2026-07-23 |
 | DEC-004 | 3 版建设方案主版本 | 时间戳后缀版 / 整合版 | 需人工比对 md5 | ⏳ 待确认 | 随时 |
-| DEC-005 | 首个 LLM Provider | DeepSeek / 通义 / GLM | DeepSeek（性价比高） | ⏳ 待确认 | M1 联调前 |
+| DEC-005 | 首个 LLM Provider | DeepSeek / 通义 / GLM | DeepSeek（性价比高） | ✅ 已确认（deepseek-v4-flash/pro） | 2026-07-23 |
 | DEC-006 | 信创数据库选型 | 达梦 / 人大金仓 / 其他 | MVP 用 PG，M3+ 评估 | ⏳ 待确认 | M3 前 |
 
 ---
 
-## 三、MVP 开发任务（M1，1-2 个月）
+## 三、MVP 开发任务（M1，已完成）
 
-> 注：决策已确认（DEC-001~003），开发规范已制定（STRUCTURE.md §2.7-2.13），可启动。
+> 注：M1 全部任务已在 Phase 1-10 中完成，含 Maven 多模块、多租户、AI 对话、风险识别、双前端、Docker 部署。
 
-| 任务ID | 任务描述 | 模块 | 优先级 | 状态 | 负责人 | 预估工时 |
-|--------|----------|------|--------|------|--------|----------|
-| M1-001 | Maven 多模块骨架搭建 | backend/ | P0 | ⏳ 待开始 | Agent | 1d |
-| M1-002 | PostgreSQL + pgvector 初始化 | backend/ | P0 | ⏳ 待开始 | Agent | 0.5d |
-| M1-003 | Schema 级多租户路由实现 | counseling-tenant/ | P0 | ⏳ 待开始 | Agent | 3d |
-| M1-004 | 用户与权限模型（RBAC） | counseling-domain/ | P0 | ⏳ 待开始 | Agent | 2d |
-| M1-005 | Spring AI LLM Provider 抽象 | counseling-ai/ | P0 | ⏳ 待开始 | Agent | 2d |
-| M1-006 | Safety Agent 实现 | counseling-ai/ | P0 | ⏳ 待开始 | Agent | 3d |
-| M1-007 | Emotion Agent 实现 | counseling-ai/ | P0 | ⏳ 待开始 | Agent | 2d |
-| M1-008 | CBT Agent 实现 | counseling-ai/ | P0 | ⏳ 待开始 | Agent | 3d |
-| M1-009 | 风险关键词识别规则库 | counseling-ai/ | P0 | ⏳ 待开始 | Agent | 2d |
-| M1-010 | 对话 API（学生端） | counseling-api/ | P0 | ⏳ 待开始 | Agent | 3d |
-| M1-011 | 预警通知服务（站内） | counseling-service/ | P0 | ⏳ 待开始 | Agent | 2d |
-| M1-012 | 学生端 H5（React + Tailwind） | apps/student/ | P0 | ⏳ 待开始 | Agent | 5d |
-| M1-013 | 教师端 Web（Ant Design） | apps/teacher/ | P0 | ⏳ 待开始 | Agent | 4d |
-| M1-014 | Docker Compose 部署配置 | backend/ | P1 | ⏳ 待开始 | Agent | 1d |
-| M1-015 | 单元测试（JUnit 5 + Mockito） | 各模块 src/test/ | P1 | ⏳ 待开始 | Agent | 3d |
-| M1-016 | 集成测试（Testcontainers） | 各模块 src/test/ | P1 | ⏳ 待开始 | Agent | 2d |
-
-**M1 总预估**：约 38 人天（单人 Agent 辅助开发，实际日历时间约 4-6 周）
+| 任务ID | 任务描述 | 模块 | 状态 |
+|--------|----------|------|------|
+| M1-001 | Maven 多模块骨架搭建（7 模块） | backend/ | ✅ 完成 |
+| M1-002 | PostgreSQL 初始化 + Flyway 迁移 | backend/ | ✅ 完成 |
+| M1-003 | Schema 级多租户路由实现 | counseling-tenant/ | ✅ 完成 |
+| M1-004 | 用户与权限模型（JWT + RBAC） | counseling-domain/ | ✅ 完成 |
+| M1-005 | Spring AI LLM Provider 接入（DeepSeek） | counseling-ai/ | ✅ 完成 |
+| M1-006 | Safety Agent 实现（双层输出审查 + PII） | counseling-ai/ | ✅ 完成 |
+| M1-007 | Emotion Agent + CBT Agent 实现 | counseling-ai/ | ✅ 完成 |
+| M1-008 | 风险关键词识别规则库（10 类信号） | counseling-ai/ | ✅ 完成 |
+| M1-009 | 对话 API（学生端 SSE 流式） | counseling-api/ | ✅ 完成 |
+| M1-010 | 预警通知服务（WebSocket 实时推送） | counseling-service/ | ✅ 完成 |
+| M1-011 | 学生端 H5（React 19 + Tailwind + PWA） | frontend/student-h5/ | ✅ 完成 |
+| M1-012 | 教师端 Web（React 19 + Ant Design 6） | frontend/teacher-web/ | ✅ 完成 |
+| M1-013 | Docker Compose 部署配置 | deploy/ | ✅ 完成 |
+| M1-014 | 单元测试（123 个，JUnit 5） | 各模块 src/test/ | ✅ 完成 |
 
 ---
 
-## 四、M2 任务预规划（3-4 个月）
+## 四、M2 任务（已完成，在 Phase 11-15 中实现）
 
-| 任务ID | 任务描述 | 模块 | 优先级 | 状态 |
-|--------|----------|------|--------|------|
-| M2-001 | 放松呼吸练习（学生端） | apps/student/ | P1 | ⏳ 待规划 |
-| M2-002 | 高风险学生列表（教师端） | apps/teacher/ | P1 | ⏳ 待规划 |
-| M2-003 | 学生档案查看（教师端） | apps/teacher/ | P1 | ⏳ 待规划 |
-| M2-004 | 使用量/预警量统计 | counseling-service/ | P1 | ⏳ 待规划 |
-| M2-005 | 满意度评价功能 | apps/student/ | P2 | ⏳ 待规划 |
+| 任务ID | 任务描述 | 状态 |
+|--------|----------|------|
+| M2-001 | 放松呼吸练习（学生端 CSS 动画） | ✅ 完成 |
+| M2-002 | 高风险学生列表（教师端） | ✅ 完成 |
+| M2-003 | 学生档案查看 + AI 摘要（教师端） | ✅ 完成 |
+| M2-004 | 使用量/预警量统计（教师端图表） | ✅ 完成 |
+| M2-005 | 满意度评价功能（学生端 + 教师端统计） | ✅ 完成 |
+| M2-006 | 会话转人工（红色风险 → 教师接管） | ✅ 完成 |
+| M2-007 | 家长端 H5 报告（JWT 链接访问） | ✅ 完成 |
+| M2-008 | 周报导出（可打印 HTML） | ✅ 完成 |
 
 ---
 
-## 五、M3 任务预规划（5-6 个月）
+## 五、商业化版本开发（Phase 1-20，已完成）
 
-| 任务ID | 任务描述 | 模块 | 优先级 | 状态 |
-|--------|----------|------|--------|------|
-| M3-001 | 基础测评量表（PHQ-9、GAD-7） | counseling-ai/ | P1 | ⏳ 待规划 |
-| M3-002 | 学生情绪趋势分析 | counseling-service/ | P1 | ⏳ 待规划 |
-| M3-003 | 语音输入/输出（ASR/TTS） | counseling-ai/ | P1 | ⏳ 待规划 |
-| M3-004 | 教师工作台优化 | apps/teacher/ | P2 | ⏳ 待规划 |
-| M3-005 | 信创数据库评估（达梦/人大金仓） | backend/ | P1 | ⏳ 待规划 |
+| Phase | 核心功能 | 状态 |
+|-------|----------|------|
+| 1-3 | 后端骨架 + 多租户 + AI 对话 + 风险识别 + 学生端 H5 | ✅ |
+| 4-6 | 教师端工作台 + 预警队列 + WebSocket 实时通知 | ✅ |
+| 7-8 | 语音输入/TTS + 会话历史 + 设置面板 | ✅ |
+| 9-10 | 告知同意 + 试用注册 + 密码管理 | ✅ |
+| 11-12 | PWA 离线 + CSV 导出 + Prometheus 监控 + 批量导入 | ✅ |
+| 13-14 | 情绪趋势分析 + 班级统计 + 学生备注 | ✅ |
+| 15 | 会话转人工 + 家长 H5 + 周报导出 | ✅ |
+| 16 | 满意度分析 + 呼吸练习增强 + 移动端适配 | ✅ |
+| 17 | 平台管理后台 + 质量监控 + 情绪日记 | ✅ |
+| 18 | 企微 OAuth + 数据大屏 + 会话导出 PDF | ✅ |
+| 19 | Docker Compose + 新手引导 + 话术模板 + 成就系统 | ✅ |
+| 20 | .env.example + 暗色模式 + 学生端引导动画 | ✅ |
 
 ---
 
@@ -120,9 +126,10 @@
 |--------|------|----------|----------|------|
 | **M0：文档整合完成** | 15 份 docx 转为 md，总览/跟踪表就绪 | 2026-07-23 | 2026-07-23 | ✅ 完成 |
 | **M0.5：决策确认 + 开发规范** | MVP 范围、Java 子选型确认；开发规范制定 | 2026-07-23 | 2026-07-23 | ✅ 完成 |
-| **M1：核心对话+风险识别** | 最小闭环验证（100 真实用户） | 2026-09-23 | - | ⏳ 待开始 |
-| **M2：放松训练+教师后台** | 功能体验完善 | 2026-11-23 | - | ⏳ 待开始 |
-| **M3：测评+趋势分析** | 心理测量能力 | 2027-01-23 | - | ⏳ 待开始 |
+| **M1：核心对话+风险识别** | 最小闭环验证 | 2026-09-23 | 2026-07-23 | ✅ 完成（Phase 1-10） |
+| **M2：功能体验完善** | 放松训练+教师后台+家长端 | 2026-11-23 | 2026-07-23 | ✅ 完成（Phase 11-15） |
+| **M3：商业化版本** | 企微/大屏/导出/成就/部署 | 2027-01-23 | 2026-07-23 | ✅ 完成（Phase 16-20） |
+| **M4：部署上线** | 云资源采购 + 生产部署 + 真实用户试用 | 待定 | - | ⏳ 待启动 |
 
 ---
 
@@ -149,9 +156,9 @@
 | DOC-028 | 对齐 design/18 §3 SAF-002 + §13 Advisor 链实现状态 | ✅ 完成 | 实际占位符 {candidate_reply}/{context} |
 | DOC-029 | 立"设计文档与代码一致"底线规则 | ✅ 完成 | core-red-lines §4.5 / AGENTS §3.5 / design-persistence §4.2 |
 | DOC-030 | 更新 BEACON / DESIGN-OVERVIEW / TASK-TRACKER | ✅ 完成 | 决策 #10-12、导航 21、版本 v1.5 |
-| AUTH-001 | 实施试用准入 P0（告知同意门控+试用注册+ChatController 接 SecurityContext） | ⏳ 待开始 | 依赖 D1-D4 决策 |
-| AUTH-002 | chat 端点收紧鉴权 + 前端接入 JWT | ⏳ 待开始 | 依赖 AUTH-001 |
-| AUTH-003 | consent_records / trial_invite_codes 表迁移脚本 | ⏳ 待开始 | ⚠️ 命中红线 #3（schema 变更需用户确认） |
+| AUTH-001 | 实施试用准入 P0（告知同意门控+试用注册+ChatController 接 SecurityContext） | ✅ 完成 | Phase 9-10 实现 |
+| AUTH-002 | chat 端点收紧鉴权 + 前端接入 JWT | ✅ 完成 | Phase 9-10 实现 |
+| AUTH-003 | consent_records / trial_invite_codes 表迁移脚本 | ✅ 完成 | V6__trial_access.sql |
 
 ---
 

@@ -1,21 +1,24 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Layout, Menu, Badge, List, Tag, Card, Table, Button, Space, Typography, message } from 'antd'
+import { Layout, Menu, Badge, message } from 'antd'
 import {
-  BellOutlined, WarningOutlined, TeamOutlined, LogoutOutlined, CheckOutlined,
+  BellOutlined, WarningOutlined, TeamOutlined, LogoutOutlined,
+  DashboardOutlined, AlertOutlined, SettingOutlined,
 } from '@ant-design/icons'
-import dayjs from 'dayjs'
-import { api } from '../api'
+import { getUnreadCount } from '../api'
+import { useAlertWebSocket } from '../hooks/useAlertWebSocket'
+import OverviewPanel from '../components/teacher/OverviewPanel'
+import AlertQueue from '../components/teacher/AlertQueue'
+import StudentPanel from '../components/teacher/StudentPanel'
+import NotificationPanel from '../components/teacher/NotificationPanel'
+import AdminPanel from '../components/teacher/AdminPanel'
+import PlatformPanel from '../components/teacher/PlatformPanel'
+import QualityPanel from '../components/teacher/QualityPanel'
+import OnboardingGuide from '../components/teacher/OnboardingGuide'
 
 const { Header, Sider, Content } = Layout
-const { Title, Text } = Typography
 
-const RISK_COLORS = { 3: 'red', 2: 'orange', 1: 'gold', 0: 'default' }
-const RISK_LABELS = { 3: '红色', 2: '橙色', 1: '黄色', 0: '绿色' }
-
-/** 轮询间隔（毫秒） */
 const POLL_INTERVAL = 15000
 
-/** 播放提示音（Web Audio API，无需外部文件） */
 function playAlertSound() {
   try {
     const ctx = new (window.AudioContext || window.webkitAudioContext)()
@@ -29,10 +32,9 @@ function playAlertSound() {
     gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.5)
     osc.start(ctx.currentTime)
     osc.stop(ctx.currentTime + 0.5)
-  } catch { /* 音频不可用时静默 */ }
+  } catch { /* silent */ }
 }
 
-/** 发送浏览器桌面通知 */
 function sendDesktopNotification(title, body) {
   if (!('Notification' in window)) return
   if (Notification.permission === 'granted') {
@@ -40,146 +42,163 @@ function sendDesktopNotification(title, body) {
   }
 }
 
-export default function Dashboard({ user, onLogout }) {
-  const [tab, setTab] = useState('notifications')
-  const [notifications, setNotifications] = useState([])
-  const [riskEvents, setRiskEvents] = useState([])
-  const [students, setStudents] = useState([])
+const MENU_ITEMS = [
+  { key: 'overview', icon: <DashboardOutlined />, label: '工作台' },
+  { key: 'alerts', icon: <AlertOutlined />, label: '预警队列' },
+  { key: 'students', icon: <TeamOutlined />, label: '学生管理' },
+  { key: 'quality', icon: <WarningOutlined />, label: '质量监控' },
+  { key: 'notifications', icon: <BellOutlined />, label: '通知中心' },
+]
+
+const ADMIN_MENU_ITEMS = [
+  { key: 'platform', icon: <DashboardOutlined />, label: '平台总览' },
+  { key: 'admin', icon: <SettingOutlined />, label: '管理控制台' },
+]
+
+export default function Dashboard({ user, onLogout, darkMode, toggleDark }) {
+  const [tab, setTab] = useState('overview')
   const [unreadCount, setUnreadCount] = useState(0)
   const prevUnreadRef = useRef(0)
+  const isAdmin = user.userType === 'admin'
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
 
-  const loadData = useCallback(async (silent = false) => {
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth < 768)
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
+
+  const pollUnread = useCallback(async (silent = true) => {
     try {
-      const [notifs, events, studs, unread] = await Promise.all([
-        api('/teacher/notifications'),
-        api('/teacher/risk-events'),
-        api('/teacher/students'),
-        api('/teacher/notifications/unread-count'),
-      ])
-      setNotifications(notifs)
-      setRiskEvents(events)
-      setStudents(studs)
-      setUnreadCount(unread)
-
-      // 检测新增未读通知 → 桌面通知 + 提示音
-      if (unread > prevUnreadRef.current && prevUnreadRef.current >= 0) {
-        const newCount = unread - prevUnreadRef.current
+      const count = await getUnreadCount()
+      setUnreadCount(count)
+      if (count > prevUnreadRef.current && prevUnreadRef.current >= 0) {
+        const newCount = count - prevUnreadRef.current
         playAlertSound()
-        sendDesktopNotification(
-          '🛡️ MindSafe 新预警',
-          `收到 ${newCount} 条新的风险预警通知，请及时查看。`
-        )
+        sendDesktopNotification('🛡️ MindSafe 新预警', `收到 ${newCount} 条新的风险预警通知。`)
       }
-      prevUnreadRef.current = unread
+      prevUnreadRef.current = count
     } catch (e) {
-      if (!silent) message.error('加载数据失败: ' + e.message)
+      if (!silent) message.error('加载失败: ' + e.message)
     }
   }, [])
 
-  // 挂载时：请求桌面通知权限 + 首次加载
   useEffect(() => {
     if ('Notification' in window && Notification.permission === 'default') {
       Notification.requestPermission()
     }
-    loadData()
-  }, [loadData])
+    pollUnread(false)
+  }, [pollUnread])
 
-  // P0 轮询：每 15 秒静默拉取 unread-count（纯前端增强，零后端改动）
   useEffect(() => {
-    const timer = setInterval(() => loadData(true), POLL_INTERVAL)
+    const timer = setInterval(() => pollUnread(true), POLL_INTERVAL)
     return () => clearInterval(timer)
-  }, [loadData])
+  }, [pollUnread])
 
-  const markRead = async (id) => {
-    await api(`/teacher/notifications/${id}/read`, { method: 'PUT' })
-    message.success('已标记为已读')
-    loadData()
+  // WebSocket 实时预警推送（补充轮询，秒级触达）
+  useAlertWebSocket({
+    onAlert: () => {
+      playAlertSound()
+      pollUnread(true) // 刷新未读数
+    },
+  })
+
+  const menuItems = [
+    ...MENU_ITEMS.map((item) =>
+      item.key === 'notifications'
+        ? { ...item, icon: <Badge count={unreadCount} size="small"><BellOutlined /></Badge> }
+        : item
+    ),
+    ...(isAdmin ? ADMIN_MENU_ITEMS : []),
+  ]
+
+  const TITLES = {
+    overview: '工作台',
+    alerts: '预警队列',
+    students: '学生管理',
+    quality: '质量监控',
+    notifications: '通知中心',
+    platform: '平台总览',
+    admin: '管理控制台',
   }
-
-  const riskColumns = [
-    { title: '时间', dataIndex: 'detectedAt', render: (v) => dayjs(v).format('MM-DD HH:mm') },
-    { title: '等级', dataIndex: 'riskLevel', render: (v) => <Tag color={RISK_COLORS[v]}>{RISK_LABELS[v]}</Tag> },
-    { title: '类型', dataIndex: 'riskType' },
-    { title: '状态', dataIndex: 'status', render: (v) => <Tag color={v === 'open' ? 'red' : 'green'}>{v === 'open' ? '待处理' : '已关闭'}</Tag> },
-  ]
-
-  const studentColumns = [
-    { title: '姓名', dataIndex: 'displayName' },
-    { title: '年级', dataIndex: 'gradeCode' },
-    { title: '班级', dataIndex: 'classCode' },
-  ]
 
   return (
     <Layout style={{ minHeight: '100vh' }}>
-      <Sider theme="light" width={220} style={{ borderRight: '1px solid #f0f0f0' }}>
-        <div style={{ padding: '20px 16px', textAlign: 'center' }}>
-          <div style={{ fontSize: 28 }}>🛡️</div>
-          <Text strong style={{ fontSize: 15 }}>MindSafe</Text>
-        </div>
-        <Menu
-          mode="inline"
-          selectedKeys={[tab]}
-          onClick={({ key }) => setTab(key)}
-          items={[
-            { key: 'notifications', icon: <Badge count={unreadCount} size="small"><BellOutlined /></Badge>, label: '预警通知' },
-            { key: 'risk-events', icon: <WarningOutlined />, label: '风险事件' },
-            { key: 'students', icon: <TeamOutlined />, label: '学生档案' },
-          ]}
-        />
-      </Sider>
+      <OnboardingGuide />
+      {/* 桌面端侧边栏 */}
+      {!isMobile && (
+        <Sider theme="light" width={220} style={{ borderRight: '1px solid #f0f0f0' }}>
+          <div style={{ padding: '20px 16px', textAlign: 'center' }}>
+            <div style={{ fontSize: 28 }}>🛡️</div>
+            <div style={{ fontWeight: 600, fontSize: 15, marginTop: 4 }}>MindSafe</div>
+            <div style={{ fontSize: 12, color: '#999', marginTop: 2 }}>学生心理守护平台</div>
+          </div>
+          <Menu
+            mode="inline"
+            selectedKeys={[tab]}
+            onClick={({ key }) => setTab(key)}
+            items={menuItems}
+          />
+        </Sider>
+      )}
 
       <Layout>
-        <Header style={{ background: '#fff', padding: '0 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #f0f0f0' }}>
-          <Title level={4} style={{ margin: 0 }}>
-            {tab === 'notifications' && '预警通知'}
-            {tab === 'risk-events' && '风险事件'}
-            {tab === 'students' && '学生档案'}
-          </Title>
-          <Button icon={<LogoutOutlined />} onClick={onLogout}>退出</Button>
+        <Header style={{
+          background: '#fff', padding: isMobile ? '0 12px' : '0 24px', display: 'flex',
+          alignItems: 'center', justifyContent: 'space-between',
+          borderBottom: '1px solid #f0f0f0', height: 56,
+        }}>
+          <span style={{ fontSize: 16, fontWeight: 600 }}>
+            {isMobile && '🛡️ '}{TITLES[tab]}
+          </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <span onClick={toggleDark} style={{ cursor: 'pointer', fontSize: 16 }} title={darkMode ? '切换亮色' : '切换暗色'}>
+              {darkMode ? '☀️' : '🌙'}
+            </span>
+            {!isMobile && <span style={{ fontSize: 13, color: '#666' }}>{user.displayName}</span>}
+            <a onClick={onLogout} style={{ fontSize: 13, color: '#999' }}>
+              <LogoutOutlined /> {isMobile ? '' : '退出'}
+            </a>
+          </div>
         </Header>
 
-        <Content style={{ padding: 24, background: '#f5f5f5' }}>
-          {tab === 'notifications' && (
-            <List
-              dataSource={notifications}
-              locale={{ emptyText: '暂无通知' }}
-              renderItem={(item) => (
-                <Card size="small" style={{ marginBottom: 12, borderLeft: `3px solid ${item.severity >= 3 ? '#ff4d4f' : item.severity >= 2 ? '#fa8c16' : '#faad14'}` }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                    <div>
-                      <Text strong>{item.title}</Text>
-                      <br />
-                      <Text type="secondary" style={{ fontSize: 13 }}>{item.bodySummary}</Text>
-                      <br />
-                      <Text type="secondary" style={{ fontSize: 12 }}>{dayjs(item.createdAt).format('YYYY-MM-DD HH:mm:ss')}</Text>
-                    </div>
-                    <Space>
-                      {item.deliveryStatus !== 'read' && (
-                        <Button size="small" icon={<CheckOutlined />} onClick={() => markRead(item.notificationId)}>
-                          已读
-                        </Button>
-                      )}
-                      {item.deliveryStatus === 'read' && <Tag color="green">已读</Tag>}
-                    </Space>
-                  </div>
-                </Card>
-              )}
-            />
-          )}
-
-          {tab === 'risk-events' && (
-            <Card>
-              <Table dataSource={riskEvents} columns={riskColumns} rowKey="riskEventId" pagination={{ pageSize: 20 }} />
-            </Card>
-          )}
-
-          {tab === 'students' && (
-            <Card>
-              <Table dataSource={students} columns={studentColumns} rowKey="userId" pagination={{ pageSize: 20 }} />
-            </Card>
-          )}
+        <Content style={{
+          padding: isMobile ? 12 : 24, background: '#f5f5f5', overflow: 'auto',
+          paddingBottom: isMobile ? 72 : 24, // 底部 Tab 栏留白
+        }}>
+          {tab === 'overview' && <OverviewPanel onNavigate={setTab} />}
+          {tab === 'alerts' && <AlertQueue />}
+          {tab === 'students' && <StudentPanel />}
+          {tab === 'quality' && <QualityPanel />}
+          {tab === 'notifications' && <NotificationPanel />}
+          {tab === 'platform' && isAdmin && <PlatformPanel />}
+          {tab === 'admin' && isAdmin && <AdminPanel />}
         </Content>
       </Layout>
+
+      {/* 移动端底部 Tab 栏 */}
+      {isMobile && (
+        <div style={{
+          position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 100,
+          background: '#fff', borderTop: '1px solid #f0f0f0',
+          display: 'flex', justifyContent: 'space-around', padding: '8px 0 env(safe-area-inset-bottom)',
+        }}>
+          {menuItems.map(item => (
+            <button
+              key={item.key}
+              onClick={() => setTab(item.key)}
+              style={{
+                border: 'none', background: 'none', cursor: 'pointer',
+                display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
+                color: tab === item.key ? '#1677ff' : '#999', fontSize: 11,
+              }}
+            >
+              <span style={{ fontSize: 20 }}>{item.icon}</span>
+              <span>{item.label}</span>
+            </button>
+          ))}
+        </div>
+      )}
     </Layout>
   )
 }

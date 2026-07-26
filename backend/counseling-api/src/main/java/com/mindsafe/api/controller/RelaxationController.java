@@ -1,5 +1,6 @@
 package com.mindsafe.api.controller;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.mindsafe.api.security.JwtAuthenticationFilter.TenantContext;
 import com.mindsafe.common.dto.ApiResponse;
 import com.mindsafe.common.dto.ErrorCode;
@@ -9,6 +10,9 @@ import com.mindsafe.domain.mapper.RelaxationSessionMapper;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -71,6 +75,22 @@ public class RelaxationController {
         relaxationSessionMapper.insert(session);
 
         return ApiResponse.ok(session);
+    }
+
+    /** 今日练习计数 */
+    @GetMapping("/sessions/today")
+    public ApiResponse<Map<String, Object>> getTodayCount(Authentication auth) {
+        TenantContext ctx = extractContext(auth);
+        Instant todayStart = LocalDate.now().atStartOfDay(ZoneId.systemDefault()).toInstant();
+
+        Long count = relaxationSessionMapper.selectCount(
+                new LambdaQueryWrapper<RelaxationSession>()
+                        .eq(RelaxationSession::getTenantId, ctx.tenantId())
+                        .eq(RelaxationSession::getStudentUserId, ctx.userId())
+                        .eq(RelaxationSession::getCompleted, true)
+                        .ge(RelaxationSession::getCreatedAt, todayStart)
+        );
+        return ApiResponse.ok(Map.of("count", count));
     }
 
     private TenantContext extractContext(Authentication authentication) {

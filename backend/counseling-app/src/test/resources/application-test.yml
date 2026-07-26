@@ -1,0 +1,41 @@
+# 集成测试配置（Testcontainers 动态覆盖数据源）
+spring:
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+
+  # Redis 由 Testcontainers 动态注入
+  data:
+    redis:
+      timeout: 3000ms
+
+  # Spring AI - 测试用占位（不实际调用 LLM）
+  ai:
+    openai:
+      api-key: sk-test-placeholder
+      base-url: http://localhost:19999
+      chat:
+        options:
+          model: test-model
+          temperature: 0.7
+          max-tokens: 100
+
+mybatis-plus:
+  type-handlers-package: com.mindsafe.domain.handler
+  configuration:
+    map-underscore-to-camel-case: true
+  global-config:
+    db-config:
+      id-type: assign_uuid
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+
+logging:
+  level:
+    com.mindsafe: DEBUG
+    org.testcontainers: INFO

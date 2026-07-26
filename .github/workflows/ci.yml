@@ -1,0 +1,69 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  backend:
+    name: Backend (Maven)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: 'maven'
+
+      - name: Compile + Unit Tests
+        run: mvn verify -pl counseling-app -am -DskipITs --batch-mode --quiet
+
+  frontend-student:
+    name: Frontend Student H5
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend/student-h5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: frontend/student-h5/package-lock.json
+
+      - name: Install + Build
+        run: |
+          npm ci
+          npm run build
+
+  frontend-teacher:
+    name: Frontend Teacher Web
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend/teacher-web
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: frontend/teacher-web/package-lock.json
+
+      - name: Install + Build
+        run: |
+          npm ci
+          npm run build

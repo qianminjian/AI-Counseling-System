@@ -1,12 +1,14 @@
 import { useState } from 'react'
-import { ConfigProvider } from 'antd'
+import { ConfigProvider, theme } from 'antd'
 import zhCN from 'antd/locale/zh_CN'
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
+import BigScreen from './pages/BigScreen'
 import ChangePassword from './pages/ChangePassword'
 import { getToken, clearToken } from './api'
 
 const MUST_CHANGE_KEY = 'mindsafe_must_change_password'
+const DARK_MODE_KEY = 'mindsafe_dark_mode'
 
 function getMustChange() {
   return localStorage.getItem(MUST_CHANGE_KEY) === 'true'
@@ -17,6 +19,24 @@ function setMustChange(val) {
 }
 
 export default function App() {
+  const [darkMode, setDarkMode] = useState(() => localStorage.getItem(DARK_MODE_KEY) === 'true')
+
+  const toggleDark = () => {
+    setDarkMode(prev => {
+      const next = !prev
+      localStorage.setItem(DARK_MODE_KEY, String(next))
+      return next
+    })
+  }
+
+  const themeConfig = {
+    algorithm: darkMode ? theme.darkAlgorithm : theme.defaultAlgorithm,
+  }
+
+  // 数据大屏路由（全屏展示，需已登录）
+  if (window.location.pathname === '/bigscreen' && getToken()) {
+    return <ConfigProvider locale={zhCN} theme={{ algorithm: theme.darkAlgorithm }}><BigScreen /></ConfigProvider>
+  }
   const [user, setUser] = useState(() => {
     const token = getToken()
     if (!token) return null
@@ -50,7 +70,7 @@ export default function App() {
   }
 
   return (
-    <ConfigProvider locale={zhCN}>
+    <ConfigProvider locale={zhCN} theme={themeConfig}>
       {!user ? (
         <Login onLogin={handleLogin} />
       ) : user.mustChangePassword ? (
@@ -59,7 +79,7 @@ export default function App() {
           onChanged={handlePasswordChanged}
         />
       ) : (
-        <Dashboard user={user} onLogout={handleLogout} />
+        <Dashboard user={user} onLogout={handleLogout} darkMode={darkMode} toggleDark={toggleDark} />
       )}
     </ConfigProvider>
   )

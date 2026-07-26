@@ -32,6 +32,9 @@ public class User {
     /** 首次登录强制改密标记（方案 B：临时密码 + 首次改密） */
     private Boolean mustChangePassword;
 
+    /** 性别（male/female），用于对话风格、TTS 音色、界面主题个性化 */
+    private String gender;
+
     public User() {
     }
 
@@ -102,4 +105,7 @@ public class User {
 
     public Boolean getMustChangePassword() { return mustChangePassword; }
     public void setMustChangePassword(Boolean mustChangePassword) { this.mustChangePassword = mustChangePassword; }
+
+    public String getGender() { return gender; }
+    public void setGender(String gender) { this.gender = gender; }
 }

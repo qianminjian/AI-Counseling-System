@@ -1,10 +1,17 @@
-import { useState } from 'react'
-import { Card, Form, Input, Button, message } from 'antd'
-import { UserOutlined, LockOutlined } from '@ant-design/icons'
+import { useState, useEffect } from 'react'
+import { Card, Form, Input, Button, message, Divider } from 'antd'
+import { UserOutlined, LockOutlined, WechatOutlined } from '@ant-design/icons'
 import { api, setToken } from '../api'
 
 export default function Login({ onLogin }) {
   const [loading, setLoading] = useState(false)
+  const [wecomUrl, setWecomUrl] = useState(null)
+
+  useEffect(() => {
+    api('/auth/wecom/auth-url').then(d => {
+      if (d.enabled) setWecomUrl(d.authUrl)
+    }).catch(() => {})
+  }, [])
 
   const handleSubmit = async (values) => {
     setLoading(true)
@@ -55,6 +62,15 @@ export default function Login({ onLogin }) {
             </Button>
           </Form.Item>
         </Form>
+        {wecomUrl && (
+          <>
+            <Divider plain style={{ margin: '12px 0' }}>或</Divider>
+            <Button block icon={<WechatOutlined />} style={{ color: '#07c160', borderColor: '#07c160' }}
+              onClick={() => { window.location.href = wecomUrl }}>
+              企业微信登录
+            </Button>
+          </>
+        )}
       </Card>
     </div>
   )

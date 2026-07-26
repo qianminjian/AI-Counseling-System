@@ -8,12 +8,17 @@ import com.mindsafe.common.dto.chat.StreamMessageEvent;
 import com.mindsafe.common.dto.risk.RiskDetectionResult;
 import com.mindsafe.common.enums.RiskLevel;
 import com.mindsafe.domain.entity.CounselingSession;
+import com.mindsafe.domain.entity.MessageSummary;
 import com.mindsafe.domain.entity.RiskEvent;
+import com.mindsafe.domain.entity.User;
 import com.mindsafe.domain.mapper.CounselingSessionMapper;
+import com.mindsafe.domain.mapper.MessageSummaryMapper;
 import com.mindsafe.domain.mapper.RiskEventMapper;
+import com.mindsafe.domain.mapper.UserMapper;
 import com.mindsafe.service.notification.NotificationService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 
@@ -37,8 +42,10 @@ public class ConversationServiceImpl implements ConversationService {
     private final RiskDetectorService riskDetectorService;
     private final PiiDesensitizer piiDesensitizer;
     private final CounselingSessionMapper sessionMapper;
+    private final MessageSummaryMapper messageSummaryMapper;
     private final RiskEventMapper riskEventMapper;
     private final NotificationService notificationService;
+    private final UserMapper userMapper;
 
     /** 活跃会话内存缓存（emotionTag 等非 DB 字段 + 轮次计数） */
     private final Map<UUID, SessionState> activeSessions = new ConcurrentHashMap<>();
@@ -47,14 +54,18 @@ public class ConversationServiceImpl implements ConversationService {
                                    RiskDetectorService riskDetectorService,
                                    PiiDesensitizer piiDesensitizer,
                                    CounselingSessionMapper sessionMapper,
+                                   MessageSummaryMapper messageSummaryMapper,
                                    RiskEventMapper riskEventMapper,
-                                   NotificationService notificationService) {
+                                   NotificationService notificationService,
+                                   UserMapper userMapper) {
         this.aiChatService = aiChatService;
         this.riskDetectorService = riskDetectorService;
         this.piiDesensitizer = piiDesensitizer;
         this.sessionMapper = sessionMapper;
+        this.messageSummaryMapper = messageSummaryMapper;
         this.riskEventMapper = riskEventMapper;
         this.notificationService = notificationService;
+        this.userMapper = userMapper;
     }
 
     @Override
@@ -66,8 +77,10 @@ public class ConversationServiceImpl implements ConversationService {
         UUID sessionId = entity.getSessionId();
         String greeting = buildGreeting(emotionTag);
 
-        // 2. 内存缓存活跃会话状态
-        activeSessions.put(sessionId, new SessionState(sessionId, tenantId, studentUserId, emotionTag, channel));
+        // 2. 内存缓存活跃会话状态（查询用户性别用于 Prompt 个性化）
+        User user = userMapper.selectById(studentUserId);
+        String gender = (user != null) ? user.getGender() : null;
+        activeSessions.put(sessionId, new SessionState(sessionId, tenantId, studentUserId, emotionTag, channel, gender));
         log.info("会话创建: sessionId={}, student={}, emotion={}", sessionId, studentUserId, emotionTag);
 
         return new SessionInfo(sessionId, greeting, Instant.now());
@@ -129,12 +142,19 @@ public class ConversationServiceImpl implements ConversationService {
                     StreamMessageEvent.risk(fusedLevel.severity(), fusedResult.suggestion())
             );
 
-            // 红色风险：追加"已通知老师"友好提示
+            // 红色风隩：追加“已通知老师”友好提示 + 会话升级为 escalated
             if (fusedLevel == RiskLevel.RED) {
                 riskEvents = riskEvents.concatWith(Flux.just(
                         StreamMessageEvent.token("我很关心你现在的情况。我已经通知了老师，老师会来帮助你。你不是一个人。💙")
                 ));
-                log.error("🚨 红色风险预警: sessionId={}, student={}, category={}",
+                // 会话状态升级为 escalated
+                CounselingSession escalate = new CounselingSession();
+                escalate.setSessionId(sessionId);
+                escalate.setSessionStatus("escalated");
+                escalate.setUpdatedAt(Instant.now());
+                sessionMapper.updateById(escalate);
+            
+                log.error("🚨 红色风隩预警(已升级): sessionId={}, student={}, category={}",
                         sessionId, session.studentUserId, category);
             }
         }
@@ -146,15 +166,29 @@ public class ConversationServiceImpl implements ConversationService {
             log.info("PII 已脱敏: sessionId={}", sessionId);
         }
 
-        // 4. 调用 AI 服务获取流式回复
-        Flux<StreamMessageEvent> aiStream = aiChatService.chat(sessionId, session.emotionTag, safeContent)
-                .concatWith(Flux.defer(() -> Flux.just(StreamMessageEvent.done(""))))
+        // 4. 持久化学生消息摘要（异步，不阻塞主流程）
+        int riskLevelValue = fusedLevel != null ? fusedLevel.severity() : 0;
+        persistStudentMessageSummary(session, turn, content, session.emotionTag, riskLevelValue);
+
+        // 5. 调用 AI 服务获取流式回复
+        StringBuilder aiResponseCollector = new StringBuilder();
+        Flux<StreamMessageEvent> aiStream = aiChatService.chat(sessionId, session.emotionTag, safeContent, session.gender)
+                .doOnNext(event -> {
+                    if (event.type() != null && event.type().equals("token") && event.content() != null) {
+                        aiResponseCollector.append(event.content());
+                    }
+                })
+                .concatWith(Flux.defer(() -> {
+                    // AI 回复完成后持久化摘要
+                    persistAiMessageSummary(session, turn, aiResponseCollector.toString());
+                    return Flux.just(StreamMessageEvent.done(""));
+                }))
                 .onErrorResume(e -> {
                     log.error("AI 调用异常: sessionId={}", sessionId, e);
                     return Flux.just(StreamMessageEvent.error("小助手暂时走神了，请再说一次好吗？"));
                 });
 
-        // 5. 组合：风险事件 + AI 回复
+        // 6. 组合：风险事件 + AI 回复
         return riskEvents.concatWith(aiStream);
     }
 
@@ -162,17 +196,57 @@ public class ConversationServiceImpl implements ConversationService {
     public void endSession(UUID tenantId, UUID sessionId) {
         SessionState session = activeSessions.remove(sessionId);
         if (session != null) {
-            // 更新 DB 会话状态
+            // 更新 DB 会话状态 + 轮次数
             CounselingSession update = new CounselingSession();
             update.setSessionId(sessionId);
             update.setEndedAt(Instant.now());
             update.setSessionStatus("completed");
+            update.setTurnCount(session.turnCount.get());
             update.setUpdatedAt(Instant.now());
             sessionMapper.updateById(update);
 
             // 清除 AI 对话记忆
             aiChatService.clearMemory(sessionId);
             log.info("会话结束: sessionId={}, turns={}", sessionId, session.turnCount.get());
+
+            // 异步生成 AI 会话摘要
+            generateSummaryAsync(tenantId, sessionId);
+        }
+    }
+
+    /** 异步生成会话摘要（不阻塞主流程） */
+    @Async
+    public void generateSummaryAsync(UUID tenantId, UUID sessionId) {
+        try {
+            // 1. 查询该会话所有消息摘要
+            List<MessageSummary> messages = messageSummaryMapper.selectList(
+                    new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<MessageSummary>()
+                            .eq(MessageSummary::getTenantId, tenantId)
+                            .eq(MessageSummary::getSessionId, sessionId)
+                            .orderByAsc(MessageSummary::getTurnCount)
+                            .orderByAsc(MessageSummary::getCreatedAt)
+            );
+            if (messages.isEmpty()) return;
+
+            // 2. 拼接对话文本
+            StringBuilder sb = new StringBuilder();
+            for (MessageSummary m : messages) {
+                String role = "student".equals(m.getSenderType()) ? "学生" : "AI";
+                sb.append(role).append(": ").append(m.getContentSummary()).append("\n");
+            }
+
+            // 3. 调用 LLM 生成摘要
+            String summary = aiChatService.generateSessionSummary(sb.toString());
+            if (summary != null && !summary.isBlank()) {
+                CounselingSession update = new CounselingSession();
+                update.setSessionId(sessionId);
+                update.setSessionSummary(summary);
+                update.setUpdatedAt(Instant.now());
+                sessionMapper.updateById(update);
+                log.info("会话摘要已生成: sessionId={}", sessionId);
+            }
+        } catch (Exception e) {
+            log.warn("会话摘要生成失败（不影响业务）: sessionId={}", sessionId, e);
         }
     }
 
@@ -192,6 +266,34 @@ public class ConversationServiceImpl implements ConversationService {
             notificationService.notifyRiskEvent(event);
         } catch (Exception e) {
             log.error("风险事件持久化失败（不影响对话流）: sessionId={}", session.sessionId, e);
+        }
+    }
+
+    /** 持久化学生消息摘要（fire-and-forget，不影响主流程） */
+    private void persistStudentMessageSummary(SessionState session, int turn,
+                                              String content, String emotionLabel, int riskLevel) {
+        try {
+            MessageSummary summary = MessageSummary.studentMessage(
+                    session.tenantId, session.sessionId, session.studentUserId,
+                    turn, content, emotionLabel, riskLevel
+            );
+            messageSummaryMapper.insert(summary);
+        } catch (Exception e) {
+            log.warn("学生消息摘要持久化失败（不影响对话）: sessionId={}, turn={}", session.sessionId, turn, e);
+        }
+    }
+
+    /** 持久化 AI 回复摘要 */
+    private void persistAiMessageSummary(SessionState session, int turn, String aiResponse) {
+        try {
+            if (aiResponse == null || aiResponse.isBlank()) return;
+            MessageSummary summary = MessageSummary.aiMessage(
+                    session.tenantId, session.sessionId, session.studentUserId,
+                    turn, aiResponse
+            );
+            messageSummaryMapper.insert(summary);
+        } catch (Exception e) {
+            log.warn("AI 回复摘要持久化失败: sessionId={}, turn={}", session.sessionId, turn, e);
         }
     }
 
@@ -280,17 +382,19 @@ public class ConversationServiceImpl implements ConversationService {
         final UUID studentUserId;
         final String emotionTag;
         final String channel;
+        final String gender;
         final AtomicInteger turnCount = new AtomicInteger(0);
 
         /** 语音情绪历史（最近 10 条） */
         private final List<EmotionRecord> emotionHistory = new ArrayList<>();
 
-        SessionState(UUID sessionId, UUID tenantId, UUID studentUserId, String emotionTag, String channel) {
+        SessionState(UUID sessionId, UUID tenantId, UUID studentUserId, String emotionTag, String channel, String gender) {
             this.sessionId = sessionId;
             this.tenantId = tenantId;
             this.studentUserId = studentUserId;
             this.emotionTag = emotionTag;
             this.channel = channel;
+            this.gender = gender;
         }
 
         void addEmotionRecord(String emotion, double confidence) {
