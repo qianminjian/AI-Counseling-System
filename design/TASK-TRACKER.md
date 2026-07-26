@@ -1,6 +1,6 @@
 # AI 小学生心理辅导系统 - 任务跟踪表
 
-> 创建：2026-07-23 | 更新：2026-07-23（商用部署就绪加固完成）
+> 创建：2026-07-23 | 更新：2026-07-26（波波小精灵 BOBO 系列全部完成）
 > 
 > 本表用于跟踪项目各阶段任务的进度和责任人。
 
@@ -262,6 +262,21 @@
 | FAM-005 | 家长端 H5 改造（家庭码注册页 + 密码登录） | ✅ | |
 | FAM-006 | 学生端注册成功页显示家庭码 | ✅ | |
 | FAM-007 | 家长查看周报改用正式 JWT（复用现有 /parent/report） | ✅ | |
+
+---
+
+## 十五、波波小精灵品牌与宠物交互（design/27）
+
+> 设计思路：品牌固化（波波小精灵）+ 伙伴宠物化（四态动画）+ 语音输入圆球化（宠物与圆球合一），纯前端改动，后端零改动。
+
+| 编号 | 任务 | 状态 | 备注 |
+|------|------|------|------|
+| BOBO-001 | 品牌固化：PWA 名/title 改「波波小精灵」+ 海豚 favicon/PWA 图标 + 三主题角色固定波波 | ✅ 完成 | index.html / vite.config.js / public/* / ThemeProvider.jsx |
+| BOBO-002 | 波波 SVG 角色组件（BoBoPet.jsx，逐部件可动画 + 四态动画基础） | ✅ 完成 | 纯 SVG，随主题变色 |
+| BOBO-003 | 圆球变形 + 触感反馈（按住蜷成发光圆球 + vibrate + iOS 视觉补偿） | ✅ 完成 | navigator.vibrate 降级策略 |
+| BOBO-004 | 话语气泡组件（SpeechBubble.jsx）+ useTtsPlayer 暴露 currentSentenceText | ✅ 完成 | 逐句滚动与 TTS 同步 |
+| BOBO-005 | 接入 ChatRoom（手机悬浮输入栏右上角 + Pad 左栏合并，删除旧麦克风按钮） | ✅ 完成 | 状态映射：recording/streaming/tts.playing；手机气泡右对齐防溢出 |
+| BOBO-006 | WelcomeGuide 增加「按住波波说话」引导 + AI 人设改波波（design/18 + 后端 prompt）+ 构建验证 | ✅ 完成 | vite build 通过；后端问候语同步改波波（待部署生效） |
 
 ---
 

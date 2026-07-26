@@ -63,6 +63,8 @@ function mergeShortSentences(sentences, minLen = 10) {
 export function useTtsPlayer({ persona = 'xiaoxing', emotion = 'neutral', speed = 1.0 } = {}) {
   const [playing, setPlaying] = useState(false)
   const [currentSentenceIdx, setCurrentSentenceIdx] = useState(-1)
+  // 当前正在播放的句子数组（供波波话语气泡逐句展示，见 design/27 §4.4）
+  const [sentences, setSentences] = useState([])
   const [muted, setMuted] = useState(false)
   // 单一持久 Audio 元素（在用户手势中创建，规避自动播放拦截）
   const audioRef = useRef(null)
@@ -165,6 +167,7 @@ export function useTtsPlayer({ persona = 'xiaoxing', emotion = 'neutral', speed 
     if (sentences.length === 0) return
 
     abortRef.current = false
+    setSentences(sentences)
     setPlaying(true)
 
     // 所有句子同时并行合成：播放第 i 句时，第 i+1..n 句早已在后台合成
@@ -182,6 +185,7 @@ export function useTtsPlayer({ persona = 'xiaoxing', emotion = 'neutral', speed 
     // 播放完毕
     setPlaying(false)
     setCurrentSentenceIdx(-1)
+    setSentences([])
   }, [muted, synthesizeSentence, playBlob])
 
   /** 播放单句（点击气泡重播） */
@@ -206,6 +210,7 @@ export function useTtsPlayer({ persona = 'xiaoxing', emotion = 'neutral', speed 
     }
     setPlaying(false)
     setCurrentSentenceIdx(-1)
+    setSentences([])
   }, [])
 
   /** 切换静音 */
@@ -216,10 +221,17 @@ export function useTtsPlayer({ persona = 'xiaoxing', emotion = 'neutral', speed 
     })
   }, [stop])
 
+  // 当前正在朗读的那一句（波波话语气泡用，逐句滚动）
+  const currentSentenceText =
+    currentSentenceIdx >= 0 && currentSentenceIdx < sentences.length
+      ? sentences[currentSentenceIdx]
+      : ''
+
   return {
     playing,
     muted,
     currentSentenceIdx,
+    currentSentenceText,
     speak,
     speakSentence,
     stop,

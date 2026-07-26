@@ -16,6 +16,8 @@ export const THEMES = {
     desc: '和小海豚"波波"一起探索',
     companion: '🐬',
     companionName: '波波',
+    // 波波配色（品牌角色固定，仅随主题换色，见 design/27）
+    bobo: { body: '#38BDF8', belly: '#E0F2FE', fin: '#0284C7' },
     vars: {
       '--primary': '#0EA5E9',
       '--primary-light': '#E0F2FE',
@@ -33,9 +35,10 @@ export const THEMES = {
     id: 'garden',
     name: '花园精灵',
     emoji: '🌸',
-    desc: '和小兔子"棉花糖"一起玩耍',
-    companion: '🐰',
-    companionName: '棉花糖',
+    desc: '和小海豚"波波"一起玩耍',
+    companion: '🐬',
+    companionName: '波波',
+    bobo: { body: '#F472B6', belly: '#FCE7F3', fin: '#DB2777' },
     vars: {
       '--primary': '#EC4899',
       '--primary-light': '#FCE7F3',
@@ -53,9 +56,10 @@ export const THEMES = {
     id: 'rainbow',
     name: '彩虹自由',
     emoji: '🌈',
-    desc: '选择你最喜欢的颜色',
-    companion: '⭐',
-    companionName: '小星',
+    desc: '和小海豚"波波"选择你最喜欢的颜色',
+    companion: '🐬',
+    companionName: '波波',
+    bobo: { body: '#A78BFA', belly: '#EDE9FE', fin: '#7C3AED' },
     vars: {
       '--primary': '#8B5CF6',
       '--primary-light': '#EDE9FE',

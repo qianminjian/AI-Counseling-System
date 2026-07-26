@@ -4,7 +4,7 @@ const WELCOME_KEY = 'mindsafe_welcome_done'
 
 const SLIDES = [
   { emoji: '👋', title: '嗨，欢迎来到心灵小屋！', desc: '这里是你的秘密空间，说什么都可以哦' },
-  { emoji: '💬', title: '和 AI 小伙伴聊天', desc: '开心或不开心的事，都可以告诉它' },
+  { emoji: '🐬', title: '和波波说说话', desc: '按住波波就能说话，开心或不开心的事，都可以告诉它' },
   { emoji: '🔒', title: '你说的都是安全的', desc: '只有学校心理老师能看到，爸爸妈妈不会看到' },
   { emoji: '🌈', title: '准备好了吗？', desc: '选一个你现在的心情，开始吧！' },
 ]

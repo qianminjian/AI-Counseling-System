@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import VoiceConsentDialog, { useVoiceConsent } from './VoiceConsentDialog'
 import SatisfactionDialog from './SatisfactionDialog'
 import SettingsPanel from './SettingsPanel'
+import BoBoPet from './BoBoPet'
 import { useTheme } from '../theme/ThemeProvider'
 import { useVoicePersona } from '../hooks/useVoicePersona'
 import { useTtsPlayer } from '../hooks/useTtsPlayer'
@@ -566,42 +567,30 @@ export default function ChatRoom({ session, onEnd }) {
     onEnd()
   }
 
-  /* ===== 语音大按钮（Pad 左栏 / 手机底部共用逻辑）— 按住说话 ===== */
-  const voiceButton = (size) => {
-    const sizeClass = size === 'lg'
-      ? 'w-28 h-28 lg:w-36 lg:h-36'
-      : 'w-12 h-12'
-    const iconClass = size === 'lg' ? 'w-12 h-12 lg:w-14 lg:h-14' : 'w-5 h-5'
+  /* ===== 波波状态机（design/27 §4.3）：recording > streaming > tts.playing > idle ===== */
+  const boboState = recording ? 'listening'
+    : streaming ? 'thinking'
+    : tts.playing ? 'speaking'
+    : 'idle'
 
-    return (
-      <button
-        onPointerDown={handleVoicePointerDown}
-        onPointerMove={handleVoicePointerMove}
-        onPointerUp={handleVoicePointerUp}
-        onPointerCancel={handleVoicePointerCancel}
-        onLostPointerCapture={handleVoicePointerCancel}
-        disabled={streaming || analyzing}
-        style={{ touchAction: 'none' }}
-        className={`${sizeClass} rounded-full flex items-center justify-center transition-all flex-shrink-0 select-none
-          ${recording
-            ? 'bg-red-500 text-white shadow-xl shadow-red-200 scale-110 animate-pulse'
-            : 'bg-[var(--voice-btn)] text-white shadow-lg hover:opacity-90 active:scale-95'
-          } disabled:opacity-40 disabled:cursor-not-allowed`}
-        title={recording ? '松开 发送，上滑 取消' : '按住 说话'}
-      >
-        {recording ? (
-          <svg className={iconClass} fill="currentColor" viewBox="0 0 24 24">
-            <rect x="6" y="6" width="12" height="12" rx="2" />
-          </svg>
-        ) : (
-          <svg className={iconClass} fill="currentColor" viewBox="0 0 24 24">
-            <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
-            <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
-          </svg>
-        )}
-      </button>
-    )
-  }
+  /* ===== 波波宠物（手机悬浮输入栏右上角 / Pad 左栏共用）— 按住说话 ===== */
+  const boBoPet = (size, bubbleAlign = 'center') => (
+    <BoBoPet
+      state={boboState}
+      colors={theme.bobo}
+      sentenceText={tts.currentSentenceText}
+      liveTranscript={liveTranscript}
+      size={size}
+      interactive={supported}
+      cancelArmed={cancelArmed}
+      disabled={streaming || analyzing}
+      bubbleAlign={bubbleAlign}
+      onPointerDown={handleVoicePointerDown}
+      onPointerMove={handleVoicePointerMove}
+      onPointerUp={handleVoicePointerUp}
+      onPointerCancel={handleVoicePointerCancel}
+    />
+  )
 
   return (
     <div className="h-screen flex flex-col" style={{ background: 'linear-gradient(to bottom, var(--bg-start), var(--bg-end))' }}>
@@ -654,26 +643,21 @@ export default function ChatRoom({ session, onEnd }) {
       {/* ===== 主体：手机单栏 / Pad 双栏 ===== */}
       <div className="flex-1 flex overflow-hidden">
 
-        {/* Pad 左栏：伙伴区 + 语音主按钮（仅 lg 显示） */}
+        {/* Pad 左栏：波波（伙伴 + 语音输入合一，design/27 §5.1） */}
         <aside className="hidden lg:flex flex-col items-center justify-center w-[340px] xl:w-[400px]
           border-r border-gray-100/50 p-8"
           style={{ background: 'linear-gradient(to bottom, var(--primary-light), var(--bg-end))' }}>
-          {/* 伙伴形象 */}
-          <div className={`text-8xl xl:text-9xl mb-6 transition-transform duration-300 ${streaming ? 'animate-bounce' : ''}`}>
-            {recording ? '👂' : streaming ? '🤔' : tts.playing ? '🗣️' : theme.companion}
-          </div>
-          <p className="text-lg mb-10" style={{ color: 'var(--primary)' }}>
+          {/* 波波（按住说话） */}
+          <div className="mb-10">{boBoPet(170)}</div>
+          <p className="text-lg" style={{ color: 'var(--primary)' }}>
             {recording ? '我在认真听你说...'
               : analyzing ? '我在感受你的情绪...'
               : streaming ? '让我想想...'
               : tts.playing ? '我在说给你听...'
               : '想说什么就说什么吧'}
           </p>
-
-          {/* 语音大按钮 */}
-          {supported && voiceButton('lg')}
-          <p className="mt-4 text-sm text-gray-400">
-            {recording ? '松开手指发送，上滑取消' : '按住麦克风，用说的更快哦'}
+          <p className="mt-3 text-sm text-gray-400">
+            {recording ? '松开手指发送，上滑取消' : '按住波波，跟它说说话'}
           </p>
 
           {/* 语音情绪预览 */}
@@ -731,10 +715,13 @@ export default function ChatRoom({ session, onEnd }) {
               </div>
             )}
 
-            <div className="flex gap-3 max-w-lg lg:max-w-2xl mx-auto items-center">
-              {/* 手机端语音按钮（Pad 用左栏大按钮） */}
+            <div className="relative flex gap-3 max-w-lg lg:max-w-2xl mx-auto items-center">
+              {/* 波波悬浮输入框右上角（手机，design/27 §4.5/§5.4）：按住说话，删除麦克风按钮 */}
+              {/* -top-20 让波波悬于输入栏上方不遮挡发送按钮；气泡右对齐向左展开防溢出 */}
               {supported && (
-                <div className="lg:hidden">{voiceButton('sm')}</div>
+                <div className="lg:hidden absolute -top-20 right-1 z-30">
+                  {boBoPet(72, 'right')}
+                </div>
               )}
               <input
                 value={input}
@@ -760,31 +747,6 @@ export default function ChatRoom({ session, onEnd }) {
           </footer>
         </div>
       </div>
-
-      {/* ===== 录音遮罩（按住说话，微信同款） ===== */}
-      {recording && (
-        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center pointer-events-none">
-          <div className={`flex flex-col items-center gap-4 px-10 py-8 rounded-3xl text-white shadow-2xl transition-colors w-[280px]
-            ${cancelArmed ? 'bg-red-500' : 'bg-gray-800/95'}`}>
-            {/* 麦克风图标（脉冲） */}
-            <div className={`w-16 h-16 rounded-full flex items-center justify-center ${cancelArmed ? 'bg-white/20' : 'bg-white/10 animate-pulse'}`}>
-              <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
-                <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
-              </svg>
-            </div>
-            {/* 实时转写（底部对齐：内容超出时始终露出最新部分） */}
-            <div className="h-16 w-full overflow-hidden flex items-end justify-center">
-              <p className="text-base text-center leading-relaxed break-all">{liveTranscript || '正在聆听...'}</p>
-            </div>
-            {/* 状态文案 */}
-            <div className="text-center">
-              <p className="text-sm font-medium">{cancelArmed ? '松开手指，取消发送' : '松开 发送'}</p>
-              {!cancelArmed && <p className="text-xs opacity-60 mt-1">上滑取消</p>}
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* 语音授权弹窗（合规） */}
       {showConsent && (

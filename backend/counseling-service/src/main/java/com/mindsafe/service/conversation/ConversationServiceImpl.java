@@ -344,7 +344,7 @@ public class ConversationServiceImpl implements ConversationService {
             case "angry" -> "嗨，看起来你现在有些生气。生气是很正常的感受哦，想和我聊聊发生了什么吗？";
             case "scared" -> "嗨，我感觉到你有些害怕。别担心，这里很安全，我会一直陪着你。🌟";
             case "nervous" -> "嗨，看起来你有点紧张。深呼吸一下，我们慢慢聊，不着急。🌈";
-            default -> "嗨！我是你的心理小伙伴，今天想和我聊些什么呢？";
+            default -> "嗨！我是波波，今天想和我聊些什么呢？";
         };
     }
 
