@@ -243,8 +243,25 @@
 | DEPLOY-006 | CORS + 安全头（X-Frame-Options/XSS） | ✅ 完成 | SecurityConfig 加固 |
 | DEPLOY-007 | 学校初始化工具（init-school.sh） | ✅ 完成 | 租户+学校+管理员+邀请码 |
 | DEPLOY-008 | pgcrypto 扩展（V15 迁移） | ✅ 完成 | crypt/gen_salt 依赖 |
-| DEPLOY-009 | 生产部署执行 | ⏳ 待用户指令 | 需 push + 手动 CD |
+| DEPLOY-009 | 生产部署执行 | ✅ | 三端上线 + nginx /parent 路由 |
 | DEPLOY-010 | 阿里云 SMS 签名/模板申请 | ⏳ 待用户操作 | 需企业主体 + 审核 |
+
+---
+
+## 十四、家庭码认证关联体系（FAM）
+
+> 设计思路：教师是信任锚点。学生注册获得家庭码，家长用家庭码+手机号+密码绑定孩子。
+> MVP 阶段无需短信，正式版加短信验证只需一步。
+
+| 编号 | 任务 | 状态 | 备注 |
+|------|------|------|------|
+| FAM-001 | V16 迁移：users.family_code + parent_accounts + parent_student_links | ✅ | |
+| FAM-002 | 学生注册时生成家庭码 + /me 返回 familyCode | ✅ | |
+| FAM-003 | 家长注册 API（家庭码+手机号+密码+关系） | ✅ | |
+| FAM-004 | 家长登录 API（手机号+密码） | ✅ | |
+| FAM-005 | 家长端 H5 改造（家庭码注册页 + 密码登录） | ✅ | |
+| FAM-006 | 学生端注册成功页显示家庭码 | ✅ | |
+| FAM-007 | 家长查看周报改用正式 JWT（复用现有 /parent/report） | ✅ | |
 
 ---
 

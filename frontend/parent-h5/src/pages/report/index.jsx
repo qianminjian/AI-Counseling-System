@@ -1,31 +1,35 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getReport } from '../../api/index.js'
-
-const RISK_MAP = {
-  0: { label: '良好', color: '#27ae60', emoji: '🟢' },
-  1: { label: '关注', color: '#f39c12', emoji: '🟡' },
-  2: { label: '预警', color: '#e67e22', emoji: '🟠' },
-  3: { label: '高危', color: '#e74c3c', emoji: '🔴' }
-}
-
-const EMOTION_EMOJI = {
-  happy: '😊', calm: '😐', sad: '😢', anxious: '😰', angry: '😠'
-}
+import { getUser, clearAuth } from '../../utils/auth.js'
 
 export default function ReportPage() {
   const navigate = useNavigate()
   const [report, setReport] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [selectedChild, setSelectedChild] = useState(null)
 
-  useEffect(() => { loadReport() }, [])
+  const user = getUser()
+  const children = user?.children || []
 
-  const loadReport = async () => {
+  useEffect(() => {
+    // 默认选第一个孩子
+    if (children.length > 0 && !selectedChild) {
+      setSelectedChild(children[0])
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!selectedChild) return
+    loadReport(selectedChild.userId)
+  }, [selectedChild])
+
+  const loadReport = async (studentUserId) => {
     setLoading(true)
     setError('')
     try {
-      const res = await getReport()
+      const res = await getReport(studentUserId)
       setReport(res.data || res)
     } catch (e) {
       setError(e.message || '加载失败')
@@ -34,86 +38,99 @@ export default function ReportPage() {
     }
   }
 
-  if (loading) {
-    return <div className="container report-page"><div className="loading-area">加载中...</div></div>
+  const handleLogout = () => {
+    clearAuth()
+    navigate('/', { replace: true })
   }
 
-  if (error) {
-    return (
-      <div className="container report-page">
-        <div className="card">
-          <p className="error-text">{error}</p>
-          <button className="btn-primary" onClick={loadReport}>重试</button>
-        </div>
-      </div>
-    )
+  const emotionEmoji = (label) => {
+    const map = { '开心': '😊', '平静': '😌', '焦虑': '😰', '难过': '😢', '愤怒': '😠', '恐惧': '😨' }
+    return map[label] || '🫧'
   }
-
-  const risk = RISK_MAP[report?.riskLevel ?? 0] || RISK_MAP[0]
-  const emotions = report?.emotionDistribution || []
-  const totalSessions = report?.totalSessions ?? 0
-  const totalMessages = report?.totalMessages ?? 0
-  const suggestion = report?.suggestion || '暂无建议'
-  const studentName = report?.studentName || '孩子'
-  const period = report?.period || '近 7 天'
 
   return (
     <div className="container report-page">
+      {/* 头部 */}
       <div className="report-header">
-        <h1 className="page-title">🌈 {studentName}的情绪周报</h1>
-        <p className="page-subtitle">{period}</p>
+        <div>
+          <h1 className="page-title">情绪周报</h1>
+          <p className="page-subtitle">{user?.displayName || '家长'}，您好</p>
+        </div>
+        <button className="logout-btn" onClick={handleLogout}>退出</button>
       </div>
 
-      {/* 情绪分布 */}
-      <div className="card">
-        <h2 className="card-title">情绪分布</h2>
-        {emotions.length > 0 ? (
-          <div className="emotion-list">
-            {emotions.map(item => (
-              <div className="emotion-row" key={item.emotion}>
-                <span className="emotion-emoji">{EMOTION_EMOJI[item.emotion] || '😶'}</span>
-                <span className="emotion-name">{item.label || item.emotion}</span>
-                <div className="emotion-bar-bg">
-                  <div className="emotion-bar" style={{ width: `${item.percentage || 0}%` }} />
-                </div>
-                <span className="emotion-pct">{item.percentage || 0}%</span>
+      {/* 多孩子切换 */}
+      {children.length > 1 && (
+        <div className="child-tabs">
+          {children.map(c => (
+            <button
+              key={c.userId}
+              className={`child-tab ${selectedChild?.userId === c.userId ? 'active' : ''}`}
+              onClick={() => setSelectedChild(c)}
+            >
+              {c.nickname}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {loading && <div className="loading-area">加载中...</div>}
+      {error && <div className="error-area">{error}</div>}
+
+      {report && !loading && (
+        <div className="report-content">
+          {/* 概览卡片 */}
+          <div className="card summary-card">
+            <div className="summary-row">
+              <div className="summary-item">
+                <span className="summary-value">{report.sessionCount || 0}</span>
+                <span className="summary-label">本周对话</span>
               </div>
-            ))}
+              <div className="summary-item">
+                <span className="summary-value">{report.totalTurns || 0}</span>
+                <span className="summary-label">对话轮次</span>
+              </div>
+              <div className="summary-item">
+                <span className="summary-value risk-badge" data-level={report.maxRiskLevel}>
+                  {report.riskLabel || '良好'}
+                </span>
+                <span className="summary-label">整体状态</span>
+              </div>
+            </div>
           </div>
-        ) : (
-          <p className="empty-text">本周暂无对话记录</p>
-        )}
-      </div>
 
-      {/* 统计 */}
-      <div className="card stats-card">
-        <div className="stat-item">
-          <span className="stat-value">{totalSessions}</span>
-          <span className="stat-label">本周对话</span>
+          {/* 情绪分布 */}
+          {report.emotionDistribution && Object.keys(report.emotionDistribution).length > 0 && (
+            <div className="card">
+              <h3 className="card-title">情绪分布</h3>
+              <div className="emotion-list">
+                {Object.entries(report.emotionDistribution).map(([label, count]) => (
+                  <div key={label} className="emotion-item">
+                    <span className="emotion-emoji">{emotionEmoji(label)}</span>
+                    <span className="emotion-label">{label}</span>
+                    <span className="emotion-count">{count} 次</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* 无数据提示 */}
+          {(!report.sessionCount || report.sessionCount === 0) && (
+            <div className="card empty-card">
+              <p>📭 本周暂无对话记录</p>
+              <p className="hint-text">孩子使用 AI 对话后，这里会显示情绪周报</p>
+            </div>
+          )}
+
+          {/* 底部操作 */}
+          <div className="report-actions">
+            <button className="btn-secondary" onClick={() => navigate('/consent')}>
+              数据授权管理
+            </button>
+          </div>
         </div>
-        <div className="stat-divider" />
-        <div className="stat-item">
-          <span className="stat-value">{totalMessages}</span>
-          <span className="stat-label">对话轮次</span>
-        </div>
-        <div className="stat-divider" />
-        <div className="stat-item">
-          <span className="stat-value" style={{ color: risk.color }}>{risk.emoji} {risk.label}</span>
-          <span className="stat-label">风险状态</span>
-        </div>
-      </div>
-
-      {/* AI 建议 */}
-      <div className="card suggestion-card">
-        <h2 className="card-title">💡 AI 建议</h2>
-        <p className="suggestion-text">{suggestion}</p>
-      </div>
-
-      <button className="btn-link" onClick={() => navigate('/consent')}>
-        数据授权管理
-      </button>
-
-      <p className="tip-text">本报告仅展示情绪趋势统计，不包含对话原文</p>
+      )}
     </div>
   )
 }

@@ -162,10 +162,147 @@ body {
   }
 }
 
+// 切换标签
+.tab-row {
+  display: flex;
+  margin-bottom: 16px;
+  background: #eef2f7;
+  border-radius: 10px;
+  padding: 4px;
+
+  .tab-btn {
+    flex: 1;
+    padding: 10px 0;
+    border: none;
+    background: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    color: #7f8c8d;
+    cursor: pointer;
+    transition: all 0.2s;
+
+    &.active {
+      background: #fff;
+      color: #2c3e50;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+    }
+  }
+}
+
+// 关系选择
+.relation-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+
+  .relation-btn {
+    padding: 10px;
+    border: 1.5px solid #e8ecf0;
+    border-radius: 10px;
+    background: #fafbfc;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.2s;
+
+    &.active {
+      border-color: #4a90d9;
+      background: #eef4fb;
+      color: #4a90d9;
+      font-weight: 500;
+    }
+  }
+}
+
+.hint-text {
+  font-size: 12px;
+  color: #95a5a6;
+  margin-top: 6px;
+}
+
+.btn-secondary {
+  display: block;
+  width: 100%;
+  height: 44px;
+  background: #f5f7fa;
+  color: #4a90d9;
+  border: 1.5px solid #4a90d9;
+  border-radius: 22px;
+  font-size: 15px;
+  font-weight: 500;
+  margin-top: 16px;
+  cursor: pointer;
+
+  &:active { transform: scale(0.98); }
+}
+
 // ========== 周报页 ==========
 .report-page {
-  .report-header { padding: 24px 0 12px; }
+  .report-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    padding: 24px 0 12px;
+
+    .logout-btn {
+      padding: 6px 14px;
+      border: 1px solid #ddd;
+      border-radius: 16px;
+      background: #fff;
+      font-size: 13px;
+      color: #7f8c8d;
+      cursor: pointer;
+    }
+  }
+
+  .child-tabs {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 16px;
+
+    .child-tab {
+      padding: 8px 16px;
+      border: 1.5px solid #e8ecf0;
+      border-radius: 20px;
+      background: #fff;
+      font-size: 13px;
+      cursor: pointer;
+
+      &.active {
+        border-color: #4a90d9;
+        background: #eef4fb;
+        color: #4a90d9;
+        font-weight: 500;
+      }
+    }
+  }
+
   .loading-area { text-align: center; padding: 80px 0; color: #95a5a6; }
+  .error-area { text-align: center; padding: 40px 0; color: #e74c3c; }
+
+  .summary-card .summary-row {
+    display: flex;
+    justify-content: space-around;
+
+    .summary-item {
+      text-align: center;
+      .summary-value {
+        display: block;
+        font-size: 20px;
+        font-weight: 600;
+        color: #2c3e50;
+        margin-bottom: 4px;
+      }
+      .summary-label { font-size: 12px; color: #95a5a6; }
+      .risk-badge {
+        font-size: 14px;
+        padding: 2px 10px;
+        border-radius: 12px;
+        background: #e8f8f0;
+        color: #27ae60;
+      }
+    }
+  }
 
   .card-title {
     font-size: 16px;
@@ -174,63 +311,91 @@ body {
     margin-bottom: 14px;
   }
 
-  .emotion-list .emotion-row {
+  .emotion-list .emotion-item {
     display: flex;
     align-items: center;
     margin-bottom: 12px;
 
     .emotion-emoji { font-size: 20px; width: 28px; }
-    .emotion-name { font-size: 13px; color: #555; width: 44px; }
-    .emotion-bar-bg {
-      flex: 1; height: 10px; background: #eef2f7;
-      border-radius: 5px; overflow: hidden; margin: 0 10px;
-      .emotion-bar {
-        height: 100%; background: linear-gradient(90deg, #4a90d9, #67b8f7);
-        border-radius: 5px; transition: width 0.6s ease;
-      }
-    }
-    .emotion-pct { font-size: 12px; color: #7f8c8d; width: 40px; text-align: right; }
+    .emotion-label { font-size: 14px; color: #555; flex: 1; }
+    .emotion-count { font-size: 13px; color: #7f8c8d; }
   }
 
-  .empty-text { font-size: 14px; color: #bdc3c7; text-align: center; padding: 20px 0; }
-
-  .stats-card {
-    display: flex; align-items: center; justify-content: space-around;
-    .stat-item {
-      text-align: center; flex: 1;
-      .stat-value { display: block; font-size: 18px; font-weight: 600; color: #2c3e50; margin-bottom: 4px; }
-      .stat-label { font-size: 12px; color: #95a5a6; }
-    }
-    .stat-divider { width: 1px; height: 36px; background: #e8ecf0; }
+  .empty-card {
+    text-align: center;
+    padding: 30px 20px;
+    color: #95a5a6;
   }
 
-  .suggestion-card .suggestion-text { font-size: 14px; color: #555; line-height: 1.8; }
+  .report-actions { margin-top: 8px; }
 }
 
 // ========== 同意管理页 ==========
 .consent-page {
-  .page-header { padding: 24px 0 12px; }
+  .consent-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 24px 0 12px;
 
-  .status-card .status-row {
-    display: flex; justify-content: space-between; align-items: center;
-    padding: 12px 0; border-bottom: 1px solid #f0f2f5;
-    &:last-child { border-bottom: none; }
-    .status-label { font-size: 13px; color: #7f8c8d; }
-    .status-value {
-      font-size: 13px; color: #2c3e50; max-width: 60%; text-align: right;
-      &.active { color: #27ae60; font-weight: 500; }
+    .back-btn {
+      padding: 6px 12px;
+      border: 1px solid #ddd;
+      border-radius: 16px;
+      background: #fff;
+      font-size: 13px;
+      color: #555;
+      cursor: pointer;
     }
   }
 
-  .warning-card {
-    background: #fef9f0; border: 1px solid #fdebd0;
-    .warning-title { font-size: 15px; font-weight: 600; color: #e67e22; margin-bottom: 10px; }
-    .warning-list .warning-item { font-size: 13px; color: #7f6c50; line-height: 2; }
+  .consent-text {
+    font-size: 14px;
+    color: #555;
+    line-height: 1.8;
   }
 
-  .result-area {
-    text-align: center; padding: 80px 20px;
-    .result-emoji { font-size: 48px; display: block; margin-bottom: 20px; }
-    .result-desc { font-size: 14px; color: #7f8c8d; line-height: 2; }
+  .child-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+
+    .child-select-btn {
+      padding: 12px 16px;
+      border: 1.5px solid #e8ecf0;
+      border-radius: 10px;
+      background: #fafbfc;
+      font-size: 14px;
+      text-align: left;
+      cursor: pointer;
+
+      &.active {
+        border-color: #4a90d9;
+        background: #eef4fb;
+        color: #4a90d9;
+        font-weight: 500;
+      }
+    }
+  }
+
+  .danger-card {
+    background: #fef9f0;
+    border: 1px solid #fdebd0;
+  }
+
+  .confirm-area {
+    text-align: center;
+    .confirm-text { font-size: 14px; color: #e67e22; margin-bottom: 12px; }
+    .confirm-btns {
+      display: flex;
+      gap: 12px;
+      .btn-danger { flex: 1; margin-top: 0; }
+      .btn-secondary { flex: 1; margin-top: 0; }
+    }
+  }
+
+  .result-card {
+    text-align: center;
+    .success-text { font-size: 15px; color: #27ae60; margin-bottom: 16px; }
   }
 }

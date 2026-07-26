@@ -13,6 +13,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.security.SecureRandom;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -86,6 +87,7 @@ public class TrialAuthService {
         user.setStatus("active");
         user.setMustChangePassword(false);
         user.setGender(gender);
+        user.setFamilyCode(generateFamilyCode());
         user.setCreatedAt(Instant.now());
         user.setUpdatedAt(Instant.now());
         userMapper.insert(user);
@@ -197,6 +199,32 @@ public class TrialAuthService {
                 throw new BizException(ErrorCode.NICKNAME_INVALID, "昵称含敏感词");
             }
         }
+    }
+
+    /**
+     * 生成 6 位家庭码（大写字母+数字，去除易混淆字符 0/O/1/I/L）
+     */
+    private String generateFamilyCode() {
+        String chars = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+        SecureRandom random = new SecureRandom();
+        // 最多尝试 10 次避免碰撞
+        for (int attempt = 0; attempt < 10; attempt++) {
+            StringBuilder sb = new StringBuilder(6);
+            for (int i = 0; i < 6; i++) {
+                sb.append(chars.charAt(random.nextInt(chars.length())));
+            }
+            String code = sb.toString();
+            // 检查唯一性
+            Long count = userMapper.selectCount(
+                    new LambdaQueryWrapper<User>()
+                            .eq(User::getTenantId, TRIAL_TENANT_ID)
+                            .eq(User::getFamilyCode, code)
+            );
+            if (count == 0) {
+                return code;
+            }
+        }
+        throw new BizException(ErrorCode.INTERNAL_ERROR, "家庭码生成失败，请重试");
     }
 
     private TrialInviteCode validateAndConsumeInviteCode(String inviteCode) {

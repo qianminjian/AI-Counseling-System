@@ -15,6 +15,7 @@ export default function TrialRegister({ consentVersion, onRegistered }) {
   })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [familyCode, setFamilyCode] = useState(null) // 注册成功后显示
 
   const update = (key, value) => {
     setForm((f) => ({ ...f, [key]: value }))
@@ -56,13 +57,46 @@ export default function TrialRegister({ consentVersion, onRegistered }) {
         userType: data.userType,
         pseudonym: data.pseudonym,
         gender: form.gender,
+        familyCode: data.familyCode,
       })
-      onRegistered(data)
+      // 显示家庭码成功页
+      if (data.familyCode) {
+        setFamilyCode(data.familyCode)
+      } else {
+        onRegistered(data)
+      }
     } catch (err) {
       setError(err.message || '注册失败，请检查邀请码')
     } finally {
       setLoading(false)
     }
+  }
+
+  // 注册成功：显示家庭码
+  if (familyCode) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center p-6"
+        style={{ background: 'linear-gradient(to bottom, #f0fff4, #e8f8f0)' }}>
+        <div className="w-full max-w-sm text-center">
+          <div className="text-5xl mb-4">🎉</div>
+          <h1 className="text-2xl font-bold text-gray-800 mb-2">注册成功！</h1>
+          <p className="text-sm text-gray-500 mb-6">请把这个家庭码告诉爸爸妈妈</p>
+
+          <div className="bg-white rounded-2xl shadow-sm border-2 border-dashed border-green-300 p-6 mb-6">
+            <p className="text-xs text-gray-400 mb-2">我的家庭码</p>
+            <p className="text-4xl font-mono font-bold tracking-[0.3em] text-green-600">{familyCode}</p>
+            <p className="text-xs text-gray-400 mt-3">爸爸妈妈用这个码就能绑定你，查看你的情绪周报</p>
+          </div>
+
+          <button
+            onClick={() => onRegistered()}
+            className="w-full py-4 rounded-full text-white font-medium text-lg bg-green-500 hover:bg-green-600 active:scale-[0.98] shadow-lg transition-all"
+          >
+            开始使用 🚀
+          </button>
+        </div>
+      </div>
+    )
   }
 
   return (

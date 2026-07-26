@@ -74,16 +74,14 @@ ssh "$SERVER" "cd $REMOTE_DIR && docker compose up -d --build backend"
 # 7. 等待启动 + 健康检查
 echo "⏳ 等待服务启动..."
 sleep 12
-set +u
-HTTP_CODE=$(ssh "$SERVER" "curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:18081/api/v1/auth/trial/register -X POST -H 'Content-Type: application/json' -d '{}'" 2>/dev/null)
-set -u
+HTTP_CODE=$(ssh "$SERVER" "curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:18081/actuator/health" 2>/dev/null || echo "000")
 
-if [ -n "$HTTP_CODE" ] && [ "$HTTP_CODE" != "000" ]; then
+if [ "$HTTP_CODE" = "200" ]; then
   echo ""
   echo "🎉 部署完成！服务已启动（HTTP $HTTP_CODE）"
   echo "   学生端：https://yun.gxjugu.com/mindsafe/"
   echo "   教师端：https://yun.gxjugu.com/teacher/"
   echo "   家长端：https://yun.gxjugu.com/parent/"
 else
-  echo "⚠️  服务可能未完全启动，请手动检查：ssh $SERVER 'docker logs mindsafe-backend-1 --tail 20'"
+  echo "⚠️  服务可能未完全启动（HTTP $HTTP_CODE），请手动检查：ssh $SERVER 'docker logs mindsafe-backend-1 --tail 20'"
 fi

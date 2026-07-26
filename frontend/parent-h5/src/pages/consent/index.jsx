@@ -1,80 +1,100 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { withdrawConsent } from '../../api/index.js'
-import { clearToken } from '../../utils/auth.js'
+import { getUser } from '../../utils/auth.js'
 
 export default function ConsentPage() {
+  const navigate = useNavigate()
   const [loading, setLoading] = useState(false)
-  const [withdrawn, setWithdrawn] = useState(false)
+  const [result, setResult] = useState(null)
+  const [confirming, setConfirming] = useState(false)
+  const [selectedChild, setSelectedChild] = useState(null)
+
+  const user = getUser()
+  const children = user?.children || []
 
   const handleWithdraw = async () => {
-    const confirmed = window.confirm(
-      '撤回后将冻结孩子账号并删除心理画像数据，此操作不可逆。\n\n确定要撤回吗？'
-    )
-    if (!confirmed) return
-
+    if (!selectedChild) return
     setLoading(true)
     try {
-      await withdrawConsent()
-      setWithdrawn(true)
-      clearToken()
+      const res = await withdrawConsent(selectedChild.userId)
+      setResult(res.data || res)
     } catch (e) {
-      alert(e.message || '操作失败')
+      setResult({ error: e.message })
     } finally {
       setLoading(false)
+      setConfirming(false)
     }
-  }
-
-  if (withdrawn) {
-    return (
-      <div className="container consent-page">
-        <div className="result-area">
-          <span className="result-emoji">✅</span>
-          <h1 className="page-title">已撤回同意</h1>
-          <p className="result-desc">孩子的账号已冻结，心理画像数据已删除。</p>
-          <p className="result-desc">如需恢复使用，请联系学校心理老师重新生成授权链接。</p>
-        </div>
-      </div>
-    )
   }
 
   return (
     <div className="container consent-page">
-      <div className="page-header">
+      <div className="consent-header">
+        <button className="back-btn" onClick={() => navigate('/report')}>← 返回</button>
         <h1 className="page-title">数据授权管理</h1>
-        <p className="page-subtitle">管理您对孩子数据使用的授权</p>
       </div>
 
-      <div className="card status-card">
-        <div className="status-row">
-          <span className="status-label">当前状态</span>
-          <span className="status-value active">✅ 已授权</span>
-        </div>
-        <div className="status-row">
-          <span className="status-label">授权范围</span>
-          <span className="status-value">AI 心理辅导对话 + 情绪统计</span>
-        </div>
-        <div className="status-row">
-          <span className="status-label">数据保护</span>
-          <span className="status-value">对话原文仅 AI 可见，教师/家长只看统计</span>
-        </div>
+      <div className="card">
+        <h3 className="card-title">授权说明</h3>
+        <p className="consent-text">
+          您已授权学校心理老师查看孩子的 AI 对话情绪摘要。
+          撤回授权后，孩子账号将被冻结，心理画像数据将被删除。
+          此操作不可逆，如需恢复请联系学校重新授权。
+        </p>
       </div>
 
-      <div className="card warning-card">
-        <h2 className="warning-title">⚠️ 撤回同意将：</h2>
-        <div className="warning-list">
-          <p className="warning-item">· 冻结孩子的账号（无法继续使用）</p>
-          <p className="warning-item">· 删除已生成的心理画像数据</p>
-          <p className="warning-item">· 保留风险预警记录（法律要求）</p>
-          <p className="warning-item">· 此操作不可逆</p>
+      {/* 选择孩子 */}
+      {children.length > 0 && !result && (
+        <div className="card">
+          <h3 className="card-title">选择孩子</h3>
+          <div className="child-list">
+            {children.map(c => (
+              <button
+                key={c.userId}
+                className={`child-select-btn ${selectedChild?.userId === c.userId ? 'active' : ''}`}
+                onClick={() => setSelectedChild(c)}
+              >
+                {c.nickname}（{c.gradeCode || ''}{c.classCode || ''}）
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
 
-      <button className="btn-danger" disabled={loading} onClick={handleWithdraw}>
-        {loading ? '处理中...' : '撤回同意'}
-      </button>
+      {/* 撤回按钮 */}
+      {!result && selectedChild && (
+        <div className="card danger-card">
+          {!confirming ? (
+            <button className="btn-danger" onClick={() => setConfirming(true)}>
+              撤回「{selectedChild.nickname}」的授权
+            </button>
+          ) : (
+            <div className="confirm-area">
+              <p className="confirm-text">⚠️ 确认撤回？此操作不可逆！</p>
+              <div className="confirm-btns">
+                <button className="btn-danger" disabled={loading} onClick={handleWithdraw}>
+                  {loading ? '处理中...' : '确认撤回'}
+                </button>
+                <button className="btn-secondary" onClick={() => setConfirming(false)}>取消</button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
-      <p className="tip-text">如需恢复，请联系学校重新生成授权链接</p>
-      <p className="tip-text">依据《个人信息保护法》第 47 条，您有权撤回同意</p>
+      {/* 结果 */}
+      {result && (
+        <div className="card result-card">
+          {result.error ? (
+            <p className="error-text">{result.error}</p>
+          ) : (
+            <div>
+              <p className="success-text">✅ {result.message || '已撤回授权'}</p>
+              <button className="btn-secondary" onClick={() => navigate('/report')}>返回周报</button>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }

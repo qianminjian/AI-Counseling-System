@@ -1,13 +1,12 @@
-import { getToken } from '../utils/auth.js'
+import { getToken, getRefreshToken, setToken, setRefreshToken, clearAuth } from '../utils/auth.js'
 
 const BASE_URL = '/api/v1'
 
 /**
- * 统一请求封装
- * P2 迁移小程序时：将 fetch 替换为 Taro.request，逻辑不变
+ * 统一请求封装（含 401 自动刷新）
  */
 async function request(path, options = {}) {
-  const token = options._token || getToken()
+  const token = getToken()
   const headers = {
     'Content-Type': 'application/json',
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -20,9 +19,15 @@ async function request(path, options = {}) {
     body: options.data ? JSON.stringify(options.data) : undefined
   })
 
-  if (res.status === 401) {
+  // 401 自动刷新
+  if (res.status === 401 && !options._retried) {
+    const refreshed = await tryRefresh()
+    if (refreshed) {
+      return request(path, { ...options, _retried: true })
+    }
+    clearAuth()
     window.location.href = '/parent/'
-    throw new Error('登录已过期，请重新验证')
+    throw new Error('登录已过期，请重新登录')
   }
 
   if (!res.ok) {
@@ -33,32 +38,53 @@ async function request(path, options = {}) {
   return res.json()
 }
 
-// ========== 家长端 API ==========
-
-/** 发送手机验证码（需初始 token） */
-export function sendCode(phone, initialToken) {
-  return request('/parent/send-code', {
-    method: 'POST',
-    data: { phone },
-    _token: initialToken
-  })
+async function tryRefresh() {
+  const rt = getRefreshToken()
+  if (!rt) return false
+  try {
+    const res = await fetch(`${BASE_URL}/auth/refresh`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refreshToken: rt })
+    })
+    const json = await res.json()
+    if (json.success && json.data?.token) {
+      setToken(json.data.token)
+      setRefreshToken(json.data.refreshToken)
+      return true
+    }
+  } catch { /* ignore */ }
+  return false
 }
 
-/** 验证手机 + 签发正式 Token */
-export function verifyPhone(phone, code, initialToken) {
-  return request('/parent/verify-phone', {
-    method: 'POST',
-    data: { phone, code },
-    _token: initialToken
-  })
+// ========== 家长认证 API ==========
+
+/** 家长注册（家庭码 + 手机号 + 密码 + 关系） */
+export function parentRegister(data) {
+  return request('/parent/auth/register', { method: 'POST', data })
 }
 
-/** 获取情绪周报 */
-export function getReport() {
-  return request('/parent/report')
+/** 家长登录（手机号 + 密码） */
+export function parentLogin(data) {
+  return request('/parent/auth/login', { method: 'POST', data })
+}
+
+/** 查询绑定的学生列表 */
+export function getChildren() {
+  return request('/parent/auth/children')
+}
+
+// ========== 家长数据 API ==========
+
+/** 获取情绪周报（指定学生） */
+export function getReport(studentUserId) {
+  return request(`/parent/report?studentUserId=${studentUserId}`)
 }
 
 /** 撤回同意 */
-export function withdrawConsent() {
-  return request('/parent/consent/withdraw', { method: 'POST' })
+export function withdrawConsent(studentUserId) {
+  return request('/parent/consent/withdraw', {
+    method: 'POST',
+    data: { studentUserId }
+  })
 }

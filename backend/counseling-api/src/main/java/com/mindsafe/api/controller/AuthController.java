@@ -134,6 +134,9 @@ public class AuthController {
             @Valid @RequestBody TrialRegisterRequest request) {
         AuthenticatedUser authUser = trialAuthStrategy.authenticate(request);
 
+        // 查询完整用户信息（含 familyCode）
+        User fullUser = userMapper.selectById(authUser.userId());
+
         String token = jwtTokenProvider.generateToken(
                 authUser.userId(), authUser.userType(), authUser.tenantId());
         String refreshToken = jwtTokenProvider.generateRefreshToken(
@@ -145,7 +148,8 @@ public class AuthController {
                 authUser.userId(),
                 authUser.tenantId(),
                 authUser.userType(),
-                authUser.pseudonym()
+                authUser.pseudonym(),
+                fullUser != null ? fullUser.getFamilyCode() : null
         ));
     }
 
@@ -225,6 +229,7 @@ public class AuthController {
         info.put("gradeCode", user.getGradeCode());
         info.put("classCode", user.getClassCode());
         info.put("mustChangePassword", Boolean.TRUE.equals(user.getMustChangePassword()));
+        info.put("familyCode", user.getFamilyCode());
         return ApiResponse.ok(info);
     }
 
@@ -305,7 +310,8 @@ public class AuthController {
             UUID userId,
             UUID tenantId,
             String userType,
-            String pseudonym
+            String pseudonym,
+            String familyCode
     ) {}
 
     public record ChangePasswordRequest(

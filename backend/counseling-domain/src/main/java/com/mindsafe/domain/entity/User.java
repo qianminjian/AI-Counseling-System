@@ -43,6 +43,9 @@ public class User {
     /** 最近一次密码修改时间（AUTH-014：用于 90 天过期判断） */
     private Instant passwordChangedAt;
 
+    /** 家庭码（6位字母数字，学生注册时生成，家长绑定凭证） */
+    private String familyCode;
+
     public User() {
     }
 
@@ -125,4 +128,7 @@ public class User {
 
     public Instant getPasswordChangedAt() { return passwordChangedAt; }
     public void setPasswordChangedAt(Instant passwordChangedAt) { this.passwordChangedAt = passwordChangedAt; }
+
+    public String getFamilyCode() { return familyCode; }
+    public void setFamilyCode(String familyCode) { this.familyCode = familyCode; }
 }

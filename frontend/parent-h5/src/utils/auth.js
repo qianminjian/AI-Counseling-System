@@ -1,5 +1,6 @@
 const TOKEN_KEY = 'parent_token'
-const INITIAL_TOKEN_KEY = 'parent_initial_token'
+const REFRESH_KEY = 'parent_refresh_token'
+const USER_KEY = 'parent_user'
 
 /** 获取正式 Token */
 export function getToken() {
@@ -11,34 +12,35 @@ export function setToken(token) {
   localStorage.setItem(TOKEN_KEY, token)
 }
 
-/** 清除 Token */
-export function clearToken() {
+/** 获取 Refresh Token */
+export function getRefreshToken() {
+  return localStorage.getItem(REFRESH_KEY) || ''
+}
+
+/** 保存 Refresh Token */
+export function setRefreshToken(token) {
+  localStorage.setItem(REFRESH_KEY, token)
+}
+
+/** 清除所有认证信息 */
+export function clearAuth() {
   localStorage.removeItem(TOKEN_KEY)
+  localStorage.removeItem(REFRESH_KEY)
+  localStorage.removeItem(USER_KEY)
 }
 
-/** 获取初始 Token（从 URL 参数或缓存） */
-export function getInitialToken() {
-  return localStorage.getItem(INITIAL_TOKEN_KEY) || ''
+/** 保存用户信息 */
+export function setUser(user) {
+  localStorage.setItem(USER_KEY, JSON.stringify(user))
 }
 
-/** 保存初始 Token */
-export function setInitialToken(token) {
-  localStorage.setItem(INITIAL_TOKEN_KEY, token)
-}
-
-/**
- * 从 URL 参数中提取 token
- * H5: ?token=xxx
- * P2 小程序阶段：改为从 scene 参数提取
- */
-export function extractTokenFromUrl() {
-  const params = new URLSearchParams(window.location.search)
-  const token = params.get('token')
-  if (token) {
-    setInitialToken(token)
-    return token
+/** 获取用户信息 */
+export function getUser() {
+  try {
+    return JSON.parse(localStorage.getItem(USER_KEY) || 'null')
+  } catch {
+    return null
   }
-  return getInitialToken()
 }
 
 /** 检查是否已登录（有正式 token） */
