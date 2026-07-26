@@ -53,12 +53,18 @@ cd "$PROJECT_ROOT/frontend/teacher-web"
 npm run build --silent
 echo "✅ 教师端构建完成"
 
+echo "📦 构建家长端..."
+cd "$PROJECT_ROOT/frontend/parent-h5"
+npm run build --silent
+echo "✅ 家长端构建完成"
+
 # 5. 上传到服务器
 echo ""
 echo "🚀 部署到服务器..."
 
 rsync -avz --delete "$PROJECT_ROOT/frontend/student-h5/dist/" "$SERVER:$REMOTE_DIR/frontend/student/"
 rsync -avz --delete "$PROJECT_ROOT/frontend/teacher-web/dist/" "$SERVER:$REMOTE_DIR/frontend/teacher/"
+rsync -avz --delete "$PROJECT_ROOT/frontend/parent-h5/dist/" "$SERVER:$REMOTE_DIR/frontend/parent/"
 rsync -avz "$PROJECT_ROOT/backend/$JAR" "$SERVER:$REMOTE_DIR/app.jar"
 
 # 6. 重建后端容器
@@ -77,6 +83,7 @@ if [ -n "$HTTP_CODE" ] && [ "$HTTP_CODE" != "000" ]; then
   echo "🎉 部署完成！服务已启动（HTTP $HTTP_CODE）"
   echo "   学生端：https://yun.gxjugu.com/mindsafe/"
   echo "   教师端：https://yun.gxjugu.com/teacher/"
+  echo "   家长端：https://yun.gxjugu.com/parent/"
 else
   echo "⚠️  服务可能未完全启动，请手动检查：ssh $SERVER 'docker logs mindsafe-backend-1 --tail 20'"
 fi

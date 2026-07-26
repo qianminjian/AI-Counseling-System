@@ -97,6 +97,14 @@ springdoc:
 
 # MindSafe 业务配置
 mindsafe:
+  # JWT 认证（生产必须配置 secret）
+  jwt:
+    secret: ${MINDSAFE_JWT_SECRET:}  # 空 = 开发默认（生产 fail-fast）
+    access-expiration-ms: 7200000    # 2 小时
+    refresh-expiration-ms: 604800000 # 7 天
+  # CORS 允许的前端域名（生产环境仅允许正式域名）
+  cors:
+    allowed-origins: ${MINDSAFE_CORS_ORIGINS:https://yun.gxjugu.com,http://localhost:5173,http://localhost:5174}
   # 安全策略（AUTH-014 密码策略）
   security:
     password-policy:
@@ -114,3 +122,11 @@ mindsafe:
   # TTS 语音合成微服务（CosyVoice2 / edge-tts）
   tts-service:
     url: ${TTS_SERVICE_URL:http://localhost:10096}
+  # 短信服务（家长手机验证）
+  sms:
+    provider: ${MINDSAFE_SMS_PROVIDER:logging}  # logging | aliyun
+    aliyun:
+      access-key-id: ${MINDSAFE_SMS_ALIYUN_ACCESS_KEY_ID:}
+      access-key-secret: ${MINDSAFE_SMS_ALIYUN_ACCESS_KEY_SECRET:}
+      sign-name: ${MINDSAFE_SMS_ALIYUN_SIGN_NAME:}
+      template-code: ${MINDSAFE_SMS_ALIYUN_TEMPLATE_CODE:}

@@ -1,5 +1,6 @@
 package com.mindsafe.api.security;
 
+import com.mindsafe.service.auth.TokenBlacklistService;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -15,15 +16,18 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * JWT 认证过滤器：从 Authorization: Bearer <token> 提取并验证令牌
+ * JWT 认证过滤器：提取并验证 Access Token（黑名单 + 类型检查）
  */
 @Component
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtTokenProvider jwtTokenProvider;
+    private final TokenBlacklistService blacklistService;
 
-    public JwtAuthenticationFilter(JwtTokenProvider jwtTokenProvider) {
+    public JwtAuthenticationFilter(JwtTokenProvider jwtTokenProvider,
+                                   TokenBlacklistService blacklistService) {
         this.jwtTokenProvider = jwtTokenProvider;
+        this.blacklistService = blacklistService;
     }
 
     @Override
@@ -32,12 +36,15 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                                     FilterChain filterChain) throws ServletException, IOException {
         String token = extractToken(request);
 
-        if (token != null && jwtTokenProvider.validateToken(token)) {
+        if (token != null
+                && jwtTokenProvider.validateToken(token)
+                && jwtTokenProvider.isAccessToken(token)
+                && !blacklistService.isBlacklisted(token)) {
+
             UUID userId = jwtTokenProvider.getUserId(token);
             String userType = jwtTokenProvider.getUserType(token);
             UUID tenantId = jwtTokenProvider.getTenantId(token);
 
-            // 构建认证对象（角色 = ROLE_ + userType）
             var authorities = List.of(new SimpleGrantedAuthority("ROLE_" + userType.toUpperCase()));
             var auth = new UsernamePasswordAuthenticationToken(userId, null, authorities);
             auth.setDetails(new TenantContext(tenantId, userId, userType));

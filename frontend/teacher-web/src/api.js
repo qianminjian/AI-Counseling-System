@@ -1,4 +1,5 @@
 const TOKEN_KEY = 'mindsafe_token'
+const REFRESH_KEY = 'mindsafe_refresh'
 
 export function getToken() {
   return localStorage.getItem(TOKEN_KEY)
@@ -8,8 +9,37 @@ export function setToken(token) {
   localStorage.setItem(TOKEN_KEY, token)
 }
 
+export function getRefreshToken() {
+  return localStorage.getItem(REFRESH_KEY)
+}
+
+export function setRefreshToken(token) {
+  localStorage.setItem(REFRESH_KEY, token)
+}
+
 export function clearToken() {
   localStorage.removeItem(TOKEN_KEY)
+  localStorage.removeItem(REFRESH_KEY)
+}
+
+/** 尝试刷新 Token */
+async function tryRefresh() {
+  const rt = getRefreshToken()
+  if (!rt) return false
+  try {
+    const res = await fetch('/api/v1/auth/refresh', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refreshToken: rt }),
+    })
+    const json = await res.json()
+    if (json.success && json.data?.token) {
+      setToken(json.data.token)
+      setRefreshToken(json.data.refreshToken)
+      return true
+    }
+  } catch { /* ignore */ }
+  return false
 }
 
 export async function api(path, options = {}) {
@@ -23,6 +53,20 @@ export async function api(path, options = {}) {
     },
   })
   if (res.status === 401) {
+    if (await tryRefresh()) {
+      const newToken = getToken()
+      const retry = await fetch(`/api/v1${path}`, {
+        ...options,
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${newToken}`,
+          ...options.headers,
+        },
+      })
+      const json = await retry.json()
+      if (!json.success) throw new Error(json.message || '请求失败')
+      return json.data
+    }
     clearToken()
     window.location.reload()
     throw new Error('登录已过期')

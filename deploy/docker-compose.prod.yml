@@ -48,10 +48,17 @@ services:
       DB_PASSWORD: ${DB_PASSWORD}
       SPRING_DATA_REDIS_HOST: redis
       SPRING_DATA_REDIS_PORT: 6379
-      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      SPRING_DATA_REDIS_PASSWORD: ${REDIS_PASSWORD}
       LLM_API_KEY: ${LLM_API_KEY}
       LLM_BASE_URL: ${LLM_BASE_URL:-https://api.deepseek.com}
       LLM_MODEL: ${LLM_MODEL:-deepseek-v4-flash}
+      MINDSAFE_JWT_SECRET: ${JWT_SECRET}
+      MINDSAFE_SMS_PROVIDER: ${SMS_PROVIDER:-logging}
+      MINDSAFE_SMS_ALIYUN_ACCESS_KEY_ID: ${SMS_ALIYUN_ACCESS_KEY_ID:-}
+      MINDSAFE_SMS_ALIYUN_ACCESS_KEY_SECRET: ${SMS_ALIYUN_ACCESS_KEY_SECRET:-}
+      MINDSAFE_SMS_ALIYUN_SIGN_NAME: ${SMS_ALIYUN_SIGN_NAME:-}
+      MINDSAFE_SMS_ALIYUN_TEMPLATE_CODE: ${SMS_ALIYUN_TEMPLATE_CODE:-}
+      MINDSAFE_CORS_ORIGINS: ${CORS_ORIGINS:-https://yun.gxjugu.com}
       VOICE_SERVICE_URL: http://voice-service:10095
       TTS_SERVICE_URL: http://tts-service:10096
       LOGGING_LEVEL_COM_MINDSAFE: INFO
@@ -119,8 +126,9 @@ services:
       - "${HTTP_PORT:-80}:80"
     volumes:
       - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
-      - ../frontend/student-h5/dist:/usr/share/nginx/html/student:ro
-      - ../frontend/teacher-web/dist:/usr/share/nginx/html/teacher:ro
+      - ../frontend/student-h5/dist:/app/student:ro
+      - ../frontend/teacher-web/dist:/app/teacher:ro
+      - ../frontend/parent-h5/dist:/app/parent:ro
     depends_on:
       backend:
         condition: service_healthy

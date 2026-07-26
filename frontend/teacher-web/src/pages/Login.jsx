@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Card, Form, Input, Button, message, Divider } from 'antd'
 import { UserOutlined, LockOutlined, WechatOutlined } from '@ant-design/icons'
-import { api, setToken } from '../api'
+import { api, setToken, setRefreshToken } from '../api'
 
 export default function Login({ onLogin }) {
   const [loading, setLoading] = useState(false)
@@ -21,6 +21,7 @@ export default function Login({ onLogin }) {
         body: JSON.stringify(values),
       })
       setToken(data.token)
+      if (data.refreshToken) setRefreshToken(data.refreshToken)
       message.success(`欢迎回来，${data.displayName}！`)
       onLogin({
         userId: data.userId,

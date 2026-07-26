@@ -1,7 +1,8 @@
 /**
- * student-h5 API 工具（JWT token 管理 + 请求封装）
+ * student-h5 API 工具（JWT 双 Token + 自动刷新）
  */
 const TOKEN_KEY = 'mindsafe_student_token'
+const REFRESH_KEY = 'mindsafe_student_refresh'
 const USER_KEY = 'mindsafe_student_user'
 
 export function getToken() {
@@ -12,8 +13,17 @@ export function setToken(token) {
   localStorage.setItem(TOKEN_KEY, token)
 }
 
+export function getRefreshToken() {
+  return localStorage.getItem(REFRESH_KEY)
+}
+
+export function setRefreshToken(token) {
+  localStorage.setItem(REFRESH_KEY, token)
+}
+
 export function clearToken() {
   localStorage.removeItem(TOKEN_KEY)
+  localStorage.removeItem(REFRESH_KEY)
   localStorage.removeItem(USER_KEY)
 }
 
@@ -34,11 +44,28 @@ export function isAuthenticated() {
   return !!getToken()
 }
 
+/** 尝试刷新 Token，成功返回 true */
+async function tryRefresh() {
+  const rt = getRefreshToken()
+  if (!rt) return false
+  try {
+    const res = await fetch('/api/v1/auth/refresh', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refreshToken: rt }),
+    })
+    const json = await res.json()
+    if (json.success && json.data?.token) {
+      setToken(json.data.token)
+      setRefreshToken(json.data.refreshToken)
+      return true
+    }
+  } catch { /* ignore */ }
+  return false
+}
+
 /**
- * 通用 API 请求（自动携带 JWT）
- * @param {string} path - 相对路径，如 '/chat/sessions'
- * @param {RequestInit} options - fetch 选项
- * @returns {Promise<any>} - 响应 data 字段
+ * 通用 API 请求（自动携带 JWT + 401 自动刷新）
  */
 export async function api(path, options = {}) {
   const token = getToken()
@@ -52,6 +79,22 @@ export async function api(path, options = {}) {
   })
 
   if (res.status === 401) {
+    // 尝试刷新
+    if (await tryRefresh()) {
+      // 重试原请求
+      const newToken = getToken()
+      const retry = await fetch(`/api/v1${path}`, {
+        ...options,
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${newToken}`,
+          ...options.headers,
+        },
+      })
+      const json = await retry.json()
+      if (!json.success) throw new Error(json.message || '请求失败')
+      return json.data
+    }
     clearToken()
     window.location.reload()
     throw new Error('登录已过期，请重新进入')

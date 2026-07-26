@@ -3,6 +3,7 @@
 
 CREATE EXTENSION IF NOT EXISTS vector;
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 -- 公共 Schema：存放租户注册表、全局配置（不按租户隔离的数据）
 CREATE SCHEMA IF NOT EXISTS public;

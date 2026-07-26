@@ -14,6 +14,7 @@ import com.mindsafe.domain.mapper.UserMapper;
 import com.mindsafe.service.auth.TrialAuthService;
 import com.mindsafe.service.auth.LoginLockoutService;
 import com.mindsafe.service.auth.PasswordPolicyService;
+import com.mindsafe.service.auth.TokenBlacklistService;
 import com.mindsafe.service.audit.AuditLogService;
 import com.mindsafe.service.consent.GuardianConsentService;
 import jakarta.validation.Valid;
@@ -48,6 +49,7 @@ public class AuthController {
     private final LoginLockoutService lockoutService;
     private final PasswordPolicyService passwordPolicyService;
     private final GuardianConsentService guardianConsentService;
+    private final TokenBlacklistService tokenBlacklistService;
 
     public AuthController(UserMapper userMapper,
                           PasswordEncoder passwordEncoder,
@@ -57,7 +59,8 @@ public class AuthController {
                           AuditLogService auditLogService,
                           LoginLockoutService lockoutService,
                           PasswordPolicyService passwordPolicyService,
-                          GuardianConsentService guardianConsentService) {
+                          GuardianConsentService guardianConsentService,
+                          TokenBlacklistService tokenBlacklistService) {
         this.userMapper = userMapper;
         this.passwordEncoder = passwordEncoder;
         this.jwtTokenProvider = jwtTokenProvider;
@@ -67,6 +70,7 @@ public class AuthController {
         this.lockoutService = lockoutService;
         this.passwordPolicyService = passwordPolicyService;
         this.guardianConsentService = guardianConsentService;
+        this.tokenBlacklistService = tokenBlacklistService;
     }
 
     /**
@@ -101,6 +105,8 @@ public class AuthController {
 
         String token = jwtTokenProvider.generateToken(
                 user.getUserId(), user.getUserType(), user.getTenantId());
+        String refreshToken = jwtTokenProvider.generateRefreshToken(
+                user.getUserId(), user.getUserType(), user.getTenantId());
 
         // 审计：登录成功
         auditLogService.log(user.getTenantId(), user.getUserId(), "LOGIN", "user", user.getUserId(), null);
@@ -110,6 +116,7 @@ public class AuthController {
 
         return ApiResponse.ok(new LoginResponse(
                 token,
+                refreshToken,
                 user.getUserId(),
                 user.getPseudonym(),
                 user.getUserType(),
@@ -129,9 +136,12 @@ public class AuthController {
 
         String token = jwtTokenProvider.generateToken(
                 authUser.userId(), authUser.userType(), authUser.tenantId());
+        String refreshToken = jwtTokenProvider.generateRefreshToken(
+                authUser.userId(), authUser.userType(), authUser.tenantId());
 
         return ApiResponse.ok(new TrialRegisterResponse(
                 token,
+                refreshToken,
                 authUser.userId(),
                 authUser.tenantId(),
                 authUser.userType(),
@@ -179,9 +189,11 @@ public class AuthController {
             lockoutService.clearFailures(lockKey);
             String token = jwtTokenProvider.generateToken(
                     user.getUserId(), user.getUserType(), user.getTenantId());
+            String refreshToken = jwtTokenProvider.generateRefreshToken(
+                    user.getUserId(), user.getUserType(), user.getTenantId());
             auditLogService.log(user.getTenantId(), user.getUserId(), "PIN_LOGIN", "user", user.getUserId(), null);
             return ApiResponse.ok(new LoginResponse(
-                    token, user.getUserId(), user.getPseudonym(),
+                    token, refreshToken, user.getUserId(), user.getPseudonym(),
                     user.getUserType(), user.getGradeCode(), user.getClassCode(), false
             ));
         } catch (BizException e) {
@@ -192,6 +204,85 @@ public class AuthController {
 
     // ===== Request / Response Records =====
 
+    /**
+     * 获取当前用户信息（前端刷新页面恢复状态）
+     */
+    @GetMapping("/me")
+    public ApiResponse<Map<String, Object>> me(Authentication authentication) {
+        if (authentication == null || !(authentication.getDetails() instanceof TenantContext ctx)) {
+            throw new BizException(ErrorCode.UNAUTHORIZED);
+        }
+        User user = userMapper.selectById(ctx.userId());
+        if (user == null) {
+            throw new BizException(ErrorCode.RESOURCE_NOT_FOUND, "用户不存在");
+        }
+        Map<String, Object> info = new java.util.LinkedHashMap<>();
+        info.put("userId", user.getUserId());
+        info.put("displayName", user.getPseudonym());
+        info.put("userType", user.getUserType());
+        info.put("tenantId", user.getTenantId());
+        info.put("schoolId", user.getSchoolId());
+        info.put("gradeCode", user.getGradeCode());
+        info.put("classCode", user.getClassCode());
+        info.put("mustChangePassword", Boolean.TRUE.equals(user.getMustChangePassword()));
+        return ApiResponse.ok(info);
+    }
+
+    /**
+     * 刷新 Token（用 refresh token 换取新的 access + refresh）
+     */
+    @PostMapping("/refresh")
+    public ApiResponse<Map<String, String>> refresh(@RequestBody RefreshRequest request) {
+        String rt = request.refreshToken();
+        if (rt == null || !jwtTokenProvider.validateToken(rt) || !jwtTokenProvider.isRefreshToken(rt)) {
+            throw new BizException(ErrorCode.UNAUTHORIZED, "刷新令牌无效或已过期，请重新登录");
+        }
+        if (tokenBlacklistService.isBlacklisted(rt)) {
+            throw new BizException(ErrorCode.UNAUTHORIZED, "令牌已失效，请重新登录");
+        }
+
+        UUID userId = jwtTokenProvider.getUserId(rt);
+        String userType = jwtTokenProvider.getUserType(rt);
+        UUID tenantId = jwtTokenProvider.getTenantId(rt);
+
+        // 签发新双 token
+        String newAccess = jwtTokenProvider.generateToken(userId, userType, tenantId);
+        String newRefresh = jwtTokenProvider.generateRefreshToken(userId, userType, tenantId);
+
+        // 旧 refresh token 拉黑（防重放）
+        tokenBlacklistService.blacklist(rt, jwtTokenProvider.getRemainingMs(rt));
+
+        return ApiResponse.ok(Map.of("token", newAccess, "refreshToken", newRefresh));
+    }
+
+    /**
+     * 登出（将当前 access token + 可选 refresh token 加入黑名单）
+     */
+    @PostMapping("/logout")
+    public ApiResponse<Void> logout(
+            @RequestHeader("Authorization") String authHeader,
+            @RequestBody(required = false) LogoutRequest request,
+            Authentication authentication) {
+        // 拉黑 access token
+        String accessToken = authHeader.replace("Bearer ", "");
+        tokenBlacklistService.blacklist(accessToken, jwtTokenProvider.getRemainingMs(accessToken));
+
+        // 拉黑 refresh token（如果前端传了）
+        if (request != null && request.refreshToken() != null && !request.refreshToken().isBlank()) {
+            String rt = request.refreshToken();
+            if (jwtTokenProvider.validateToken(rt)) {
+                tokenBlacklistService.blacklist(rt, jwtTokenProvider.getRemainingMs(rt));
+            }
+        }
+
+        // 审计
+        if (authentication != null && authentication.getDetails() instanceof TenantContext ctx) {
+            auditLogService.log(ctx.tenantId(), ctx.userId(), "LOGOUT", "user", ctx.userId(), null);
+        }
+
+        return ApiResponse.ok();
+    }
+
     public record LoginRequest(
             @NotBlank(message = "用户名不能为空") String username,
             @NotBlank(message = "密码不能为空") String password
@@ -199,6 +290,7 @@ public class AuthController {
 
     public record LoginResponse(
             String token,
+            String refreshToken,
             UUID userId,
             String displayName,
             String userType,
@@ -209,6 +301,7 @@ public class AuthController {
 
     public record TrialRegisterResponse(
             String token,
+            String refreshToken,
             UUID userId,
             UUID tenantId,
             String userType,
@@ -231,6 +324,10 @@ public class AuthController {
             @NotBlank(message = "昵称不能为空") String pseudonym,
             @NotBlank(message = "PIN 码不能为空") String pin
     ) {}
+
+    public record RefreshRequest(String refreshToken) {}
+
+    public record LogoutRequest(String refreshToken) {}
 
     // ===== AUTH-023 监护人同意闭环 =====
 

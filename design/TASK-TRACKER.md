@@ -1,6 +1,6 @@
 # AI 小学生心理辅导系统 - 任务跟踪表
 
-> 创建：2026-07-23 | 更新：2026-07-23（商业化版本 Phase 1-20 全部完成，设计文档全面对齐）
+> 创建：2026-07-23 | 更新：2026-07-23（商用部署就绪加固完成）
 > 
 > 本表用于跟踪项目各阶段任务的进度和责任人。
 
@@ -228,6 +228,23 @@
 | PARENT-WX-004 | taro build --type weapp + 真机调试 | ⏳ 远期 | 依赖 PARENT-001~005 |
 | PARENT-WX-005 | 小程序提审 + 上线 | ⏳ 远期 | 隐私协议/类目审核 |
 | PARENT-WX-006 | 订阅消息推送（周报通知） | ⏳ 远期 | 微信订阅消息 API |
+
+---
+
+## 十三、商用部署就绪（M4 前置）
+
+| 任务ID | 任务描述 | 状态 | 备注 |
+|--------|----------|------|------|
+| DEPLOY-001 | nginx /parent 路由修复（alias + SPA fallback） | ✅ 完成 | deploy/nginx/default.conf |
+| DEPLOY-002 | docker-compose.prod.yml 挂载 parent-h5 + 路径对齐 | ✅ 完成 | /app/student, /app/teacher, /app/parent |
+| DEPLOY-003 | deploy.sh 加入 parent-h5 构建+上传 | ✅ 完成 | |
+| DEPLOY-004 | 环境变量修复（Redis密码/JWT/SMS/CORS） | ✅ 完成 | docker-compose.prod.yml + .env.example |
+| DEPLOY-005 | SMS 可配置化（logging/aliyun 切换） | ✅ 完成 | AliyunSmsService + @ConditionalOnProperty |
+| DEPLOY-006 | CORS + 安全头（X-Frame-Options/XSS） | ✅ 完成 | SecurityConfig 加固 |
+| DEPLOY-007 | 学校初始化工具（init-school.sh） | ✅ 完成 | 租户+学校+管理员+邀请码 |
+| DEPLOY-008 | pgcrypto 扩展（V15 迁移） | ✅ 完成 | crypt/gen_salt 依赖 |
+| DEPLOY-009 | 生产部署执行 | ⏳ 待用户指令 | 需 push + 手动 CD |
+| DEPLOY-010 | 阿里云 SMS 签名/模板申请 | ⏳ 待用户操作 | 需企业主体 + 审核 |
 
 ---
 

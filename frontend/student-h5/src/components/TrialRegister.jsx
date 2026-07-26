@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { trialRegister, setToken, setUser } from '../api'
+import { trialRegister, setToken, setRefreshToken, setUser } from '../api'
 
 
 /**
@@ -50,6 +50,7 @@ export default function TrialRegister({ consentVersion, onRegistered }) {
       })
       // 存储 token 和用户信息
       setToken(data.token)
+      if (data.refreshToken) setRefreshToken(data.refreshToken)
       setUser({
         userId: data.userId,
         userType: data.userType,
