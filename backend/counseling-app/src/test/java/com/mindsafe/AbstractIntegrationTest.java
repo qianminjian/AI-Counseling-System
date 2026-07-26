@@ -1,5 +1,6 @@
 package com.mindsafe;
 
+import com.mindsafe.app.MindSafeApplication;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -20,7 +21,7 @@ import org.testcontainers.utility.DockerImageName;
  * <p>
  * 注意：需要本机 Docker 运行。CI 中由 GitHub Actions 提供 Docker 环境。
  */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, classes = MindSafeApplication.class)
 @Testcontainers
 @ActiveProfiles("test")
 public abstract class AbstractIntegrationTest {
@@ -30,7 +31,9 @@ public abstract class AbstractIntegrationTest {
             DockerImageName.parse("pgvector/pgvector:pg16").asCompatibleSubstituteFor("postgres"))
             .withDatabaseName("mindsafe_test")
             .withUsername("test")
-            .withPassword("test");
+            .withPassword("test")
+            // 预装迁移依赖的扩展（vector/uuid-ossp/pgcrypto），在 Flyway 迁移前执行
+            .withInitScript("init-test-db.sql");
 
     @Container
     @SuppressWarnings("resource")

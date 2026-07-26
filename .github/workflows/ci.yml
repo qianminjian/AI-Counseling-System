@@ -102,6 +102,11 @@ jobs:
       - name: Build Backend Jar
         run: mvn package -pl counseling-app -am -DskipTests -DskipITs --batch-mode --quiet
 
+      # 预装迁移依赖的扩展（vector/uuid-ossp/pgcrypto）：services 的 PostgreSQL 是空库，
+      # 复用 deploy/init/pg-init.sql，在 Flyway 迁移（V1 起用 uuid_generate_v4）前执行。
+      - name: Init DB Extensions
+        run: PGPASSWORD=mindsafe psql -h localhost -p 5432 -U mindsafe -d mindsafe -f ../deploy/init/pg-init.sql
+
       # 启动后端（默认 dev profile，JWT 回退开发密钥；Flyway 自动迁移 + 种子数据）
       - name: Start Backend
         run: |
