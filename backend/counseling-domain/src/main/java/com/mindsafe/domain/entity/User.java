@@ -35,6 +35,14 @@ public class User {
     /** 性别（male/female），用于对话风格、TTS 音色、界面主题个性化 */
     private String gender;
 
+    /** PIN码 BCrypt 哈希（4-6位数字，学生快捷登录用） */
+    private String pinHash;
+    /** PIN码设置时间 */
+    private Instant pinSetAt;
+
+    /** 最近一次密码修改时间（AUTH-014：用于 90 天过期判断） */
+    private Instant passwordChangedAt;
+
     public User() {
     }
 
@@ -108,4 +116,13 @@ public class User {
 
     public String getGender() { return gender; }
     public void setGender(String gender) { this.gender = gender; }
+
+    public String getPinHash() { return pinHash; }
+    public void setPinHash(String pinHash) { this.pinHash = pinHash; }
+
+    public Instant getPinSetAt() { return pinSetAt; }
+    public void setPinSetAt(Instant pinSetAt) { this.pinSetAt = pinSetAt; }
+
+    public Instant getPasswordChangedAt() { return passwordChangedAt; }
+    public void setPasswordChangedAt(Instant passwordChangedAt) { this.passwordChangedAt = passwordChangedAt; }
 }

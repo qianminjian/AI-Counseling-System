@@ -47,7 +47,7 @@ public class AiChatServiceImpl implements AiChatService {
     }
 
     @Override
-    public Flux<StreamMessageEvent> chat(UUID sessionId, String emotionTag, String message, String gender) {
+    public Flux<StreamMessageEvent> chat(UUID sessionId, String emotionTag, String message, String gender, String profilePrompt) {
         String conversationId = sessionId.toString();
         log.debug("AI 对话请求: sessionId={}, emotion={}, gender={}, msgLength={}", sessionId, emotionTag, gender, message.length());
 
@@ -68,6 +68,11 @@ public class AiChatServiceImpl implements AiChatService {
         // 3.5 性别个性化话术注入
         String genderStyle = buildGenderStyle(gender);
         String fullSystem = systemPrompt + "\n\n" + genderStyle;
+
+        // 3.6 学生画像注入（个性化辅导）
+        if (profilePrompt != null && !profilePrompt.isBlank()) {
+            fullSystem = fullSystem + "\n\n" + profilePrompt;
+        }
 
         // 4. 流式调用 LLM（带历史上下文）
         StringBuilder responseCollector = new StringBuilder();
@@ -137,6 +142,67 @@ public class AiChatServiceImpl implements AiChatService {
             return result;
         } catch (Exception e) {
             log.error("会话摘要生成失败", e);
+            return null;
+        }
+    }
+
+    /**
+     * 画像提炼 Prompt（PROF-003）
+     * <p>
+     * 隐私红线：只输出统计指标与泛化标签，严禁复述原始对话；人物一律代号化（role 标签），
+     * 主题泛化为英文标识，不出现真实姓名/地名/校名。
+     */
+    private static final String PROFILE_EXTRACTOR_SYSTEM_PROMPT = """
+            你是学校心理辅导系统的画像提炼器。根据一次会话的摘要文本与结构化摘要，
+            提炼该学生的沟通偏好、心理韧性、社交图谱三个维度的增量指标。
+
+            输出格式（严格 JSON，无其他文字，无 markdown 代码块）：
+            {
+              "communication_pref": {
+                "preferred_style": "行动建议型 / 倾听共情型 / 混合型",
+                "expression_depth": 0.0到1.0的小数
+              },
+              "resilience": {
+                "coping_skills_used": ["本次会话中实际使用或练习的 CBT 技巧英文标识，如 deep_breathing/cognitive_reframing/drawing/exercise，没有则为空数组"],
+                "self_efficacy": 0.0到1.0的小数
+              },
+              "social_graph": {
+                "key_persons": [{"role": "mother/father/classmate/teacher/grandparent/sibling/other", "sentiment": -1.0到1.0的小数}],
+                "help_seeking": 0.0到1.0的小数
+              }
+            }
+
+            字段说明：
+            - preferred_style：学生更适应的辅导风格。主动要办法/爱行动→行动建议型；重感受/需被理解→倾听共情型；两者兼有→混合型
+            - expression_depth：表达深度。回复简短被动→偏低(0.2-0.4)；愿意展开讲述细节与感受→偏高(0.6-0.9)
+            - coping_skills_used：仅当会话中明确出现技巧练习/运用时填写，否则空数组
+            - self_efficacy：自我效能。“我能/我试试/我愿意”类表达多→偏高；“我不行/没办法”多→偏低
+            - key_persons：会话提及的重要他人，一律用 role 标签代号化，绝不出现真实姓名；sentiment 为学生对该人的情感倾向
+            - help_seeking：求助意愿。主动倾诉/愿意接受帮助→偏高；抗拒/封闭→偏低
+
+            红线：
+            - 某维度本次会话无法判断时，该维度输出空对象 {} 或缺省，不要臆造
+            - 不输出任何原始对话句子、真实姓名、地名、校名
+            """;
+
+    @Override
+    public String extractProfilePatch(String conversationText, String sessionSummary) {
+        if (conversationText == null || conversationText.isBlank()) {
+            return null;
+        }
+        try {
+            String userPrompt = "会话摘要文本：\n" + conversationText
+                    + "\n\n结构化摘要：\n" + (sessionSummary == null ? "无" : sessionSummary)
+                    + "\n\n请输出画像增量 JSON：";
+            String result = chatClient.prompt()
+                    .system(PROFILE_EXTRACTOR_SYSTEM_PROMPT)
+                    .user(userPrompt)
+                    .call()
+                    .content();
+            log.debug("画像提炼完成, length={}", result != null ? result.length() : 0);
+            return result;
+        } catch (Exception e) {
+            log.error("画像提炼失败", e);
             return null;
         }
     }

@@ -97,6 +97,17 @@ springdoc:
 
 # MindSafe 业务配置
 mindsafe:
+  # 安全策略（AUTH-014 密码策略）
+  security:
+    password-policy:
+      min-length: 8          # 密码最小长度
+      max-age-days: 90       # 密码过期天数（0 或负数 = 永不过期）
+    usage-limit:
+      max-daily-minutes: 30  # 学生每日对话时长上限（未保法，0 或负数 = 不限制）
+    data-retention:
+      normal-session-days: 30    # 普通对话保留天数（PIPL 数据最小化）
+      high-risk-session-days: 365 # 高风险对话保留天数（合规追溯）
+      cleanup-cron: "0 0 3 * * ?"  # 清理任务 cron（每日凌晨 3 点）
   # 语音分析微服务（FunASR + emotion2vec+）
   voice-service:
     url: ${VOICE_SERVICE_URL:http://localhost:10095}

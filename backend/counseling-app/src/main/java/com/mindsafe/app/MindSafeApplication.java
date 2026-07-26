@@ -5,6 +5,7 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.scheduling.annotation.EnableAsync;
+import org.springframework.scheduling.annotation.EnableScheduling;
 
 /**
  * MindSafe AI 心理辅导系统 - 启动入口
@@ -13,6 +14,7 @@ import org.springframework.scheduling.annotation.EnableAsync;
 @ComponentScan(basePackages = "com.mindsafe")
 @MapperScan("com.mindsafe.domain.mapper")
 @EnableAsync
+@EnableScheduling
 public class MindSafeApplication {
 
     public static void main(String[] args) {

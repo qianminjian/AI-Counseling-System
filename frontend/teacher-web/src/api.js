@@ -80,6 +80,7 @@ export const resolveAlert = (id, resolutionNote) =>
 export const getStudents = () => api('/teacher/students')
 export const getHighRiskStudents = () => api('/teacher/students/high-risk')
 export const getStudentProfile = (id) => api(`/teacher/students/${id}`)
+export const getStudentRadar = (id) => api(`/teacher/students/${id}/radar`)
 export const addStudentNote = (id, content, noteType = 'general') =>
   api(`/teacher/students/${id}/notes`, {
     method: 'POST',

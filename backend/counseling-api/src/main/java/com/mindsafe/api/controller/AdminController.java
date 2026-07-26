@@ -93,6 +93,56 @@ public class AdminController {
         return ApiResponse.ok(code);
     }
 
+    /**
+     * 批量生成一人一码邀请码（教师分发给学生）
+     * POST /api/v1/admin/invite-codes/batch
+     * Body: { "count": 30, "expireDays": 90 }
+     */
+    @PostMapping("/batch")
+    public ApiResponse<Map<String, Object>> batchCreateCodes(
+            @RequestBody(required = false) Map<String, Object> body,
+            Authentication auth) {
+        TenantContext ctx = extractContext(auth);
+        UUID userId = (UUID) auth.getPrincipal();
+
+        int count = 30;
+        int expireDays = 90;
+        if (body != null) {
+            if (body.containsKey("count")) count = Math.min(((Number) body.get("count")).intValue(), 200);
+            if (body.containsKey("expireDays")) expireDays = ((Number) body.get("expireDays")).intValue();
+        }
+
+        String batchId = "BATCH-" + System.currentTimeMillis();
+        List<String> codes = new ArrayList<>();
+
+        for (int i = 0; i < count; i++) {
+            TrialInviteCode code = new TrialInviteCode();
+            code.setCodeId(UUID.randomUUID());
+            code.setTenantId(ctx.tenantId());
+            code.setCode(generateUniqueCode());
+            code.setMaxUses(1); // 一人一码
+            code.setUsedCount(0);
+            code.setExpiresAt(Instant.now().plus(expireDays, ChronoUnit.DAYS));
+            code.setStatus("active");
+            code.setCreatedBy(userId);
+            code.setCreatedAt(Instant.now());
+            code.setBatchId(batchId);
+            code.setGeneratedBy(userId);
+            inviteCodeMapper.insert(code);
+            codes.add(code.getCode());
+        }
+
+        auditLogService.log(ctx.tenantId(), userId, "BATCH_INVITE_CODES",
+                "invite_code_batch", null, "生成" + count + "个邀请码，批次:" + batchId);
+
+        return ApiResponse.ok(Map.of(
+                "batchId", batchId,
+                "count", count,
+                "codes", codes,
+                "expireDays", expireDays
+        ));
+    }
+
     /** 邀请码列表 */
     @GetMapping
     public ApiResponse<List<TrialInviteCode>> listCodes(Authentication auth) {

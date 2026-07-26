@@ -38,15 +38,18 @@ public class TrialAuthService {
     private final UserMapper userMapper;
     private final ConsentRecordMapper consentRecordMapper;
     private final PasswordEncoder passwordEncoder;
+    private final PasswordPolicyService passwordPolicyService;
 
     public TrialAuthService(TrialInviteCodeMapper inviteCodeMapper,
                             UserMapper userMapper,
                             ConsentRecordMapper consentRecordMapper,
-                            PasswordEncoder passwordEncoder) {
+                            PasswordEncoder passwordEncoder,
+                            PasswordPolicyService passwordPolicyService) {
         this.inviteCodeMapper = inviteCodeMapper;
         this.userMapper = userMapper;
         this.consentRecordMapper = consentRecordMapper;
         this.passwordEncoder = passwordEncoder;
+        this.passwordPolicyService = passwordPolicyService;
     }
 
     /**
@@ -92,10 +95,12 @@ public class TrialAuthService {
                 user.getUserId(), TRIAL_TENANT_ID, "trial_terms", consentVersion);
         consentRecordMapper.insert(consent);
 
-        // 6. 邀请码使用计数 +1（乐观更新）
+        // 6. 邀请码绑定用户（一人一码）+ 使用计数 +1
         TrialInviteCode update = new TrialInviteCode();
         update.setCodeId(code.getCodeId());
         update.setUsedCount(code.getUsedCount() + 1);
+        update.setBoundUserId(user.getUserId());
+        update.setUsedAt(Instant.now());
         inviteCodeMapper.updateById(update);
 
         return user;
@@ -118,16 +123,64 @@ public class TrialAuthService {
                 || !passwordEncoder.matches(oldPassword, user.getPasswordHash())) {
             throw new BizException(ErrorCode.UNAUTHORIZED, "旧密码错误");
         }
-        if (newPassword == null || newPassword.length() < 8) {
-            throw new BizException(ErrorCode.PARAM_INVALID, "新密码至少 8 位");
-        }
+        // AUTH-014：密码复杂度校验（≥8位 + 字母+数字）
+        passwordPolicyService.validateComplexity(newPassword);
 
         User update = new User();
         update.setUserId(userId);
         update.setPasswordHash(passwordEncoder.encode(newPassword));
         update.setMustChangePassword(false);
+        update.setPasswordChangedAt(Instant.now());
         update.setUpdatedAt(Instant.now());
         userMapper.updateById(update);
+    }
+
+    /**
+     * 设置 PIN 码（注册后学生设置 4-6 位数字 PIN）
+     */
+    @Transactional
+    public void setPin(UUID userId, String pin) {
+        if (pin == null || !pin.matches("\\d{4,6}")) {
+            throw new BizException(ErrorCode.PARAM_INVALID, "PIN 码必须为 4-6 位数字");
+        }
+        User user = userMapper.selectById(userId);
+        if (user == null) {
+            throw new BizException(ErrorCode.UNAUTHORIZED);
+        }
+        User update = new User();
+        update.setUserId(userId);
+        update.setPinHash(passwordEncoder.encode(pin));
+        update.setPinSetAt(Instant.now());
+        update.setUpdatedAt(Instant.now());
+        userMapper.updateById(update);
+    }
+
+    /**
+     * PIN 码登录（学生快捷登录）
+     *
+     * @param pseudonym 昵称
+     * @param pin       4-6 位数字 PIN
+     * @return 登录成功的用户
+     */
+    public User loginWithPin(String pseudonym, String pin) {
+        User user = userMapper.selectOne(
+                new LambdaQueryWrapper<User>()
+                        .eq(User::getPseudonym, pseudonym)
+                        .eq(User::getStatus, "active")
+                        .last("LIMIT 1")
+        );
+        if (user == null || user.getPinHash() == null) {
+            throw new BizException(ErrorCode.UNAUTHORIZED, "昵称或 PIN 码错误");
+        }
+        if (!passwordEncoder.matches(pin, user.getPinHash())) {
+            throw new BizException(ErrorCode.UNAUTHORIZED, "昵称或 PIN 码错误");
+        }
+        // 更新最后登录时间
+        User update = new User();
+        update.setUserId(user.getUserId());
+        update.setLastLoginAt(Instant.now());
+        userMapper.updateById(update);
+        return user;
     }
 
     // ===== 内部方法 =====

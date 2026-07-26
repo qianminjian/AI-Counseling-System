@@ -4,6 +4,7 @@ import { ArrowLeftOutlined, PlusOutlined, MessageOutlined, DownloadOutlined } fr
 import dayjs from 'dayjs'
 import { getStudents, getHighRiskStudents, getStudentProfile, addStudentNote, getSessionMessages, exportStudentsCsv } from '../../api'
 import SessionSummaryCard from './SessionSummaryCard'
+import ProfileRadarChart from './ProfileRadarChart'
 
 const RISK_COLORS = { 3: 'red', 2: 'orange', 1: 'gold', 0: 'default' }
 const RISK_LABELS = { 3: '红色', 2: '橙色', 1: '黄色', 0: '绿色' }
@@ -126,6 +127,11 @@ function StudentProfile({ studentId, onBack }) {
           <Descriptions.Item label="累计会话">{profile.totalSessions} 次</Descriptions.Item>
         </Descriptions>
       </Card>
+
+      {/* 心理画像雷达图（PROF-004） */}
+      <div style={{ marginBottom: 16 }}>
+        <ProfileRadarChart studentId={studentId} />
+      </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16 }}>
         {/* 近期会话 */}

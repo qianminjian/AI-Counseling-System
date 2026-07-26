@@ -23,10 +23,20 @@ public class TrialInviteCode {
     private UUID createdBy;
     private Instant createdAt;
 
-    /** 校验邀请码是否可用（有效 + 未过期 + 未超限） */
+    /** 绑定的用户ID（一人一码，用后填入） */
+    private UUID boundUserId;
+    /** 实际使用时间 */
+    private Instant usedAt;
+    /** 批次号（教师批量生成） */
+    private String batchId;
+    /** 生成者（教师 userId） */
+    private UUID generatedBy;
+
+    /** 校验邀请码是否可用（有效 + 未过期 + 未超限 + 未绑定） */
     public boolean isUsable() {
         if (!"active".equals(status)) return false;
         if (expiresAt != null && Instant.now().isAfter(expiresAt)) return false;
+        if (boundUserId != null) return false; // 已绑定 = 已使用
         return usedCount == null || maxUses == null || usedCount < maxUses;
     }
 
@@ -58,4 +68,16 @@ public class TrialInviteCode {
 
     public Instant getCreatedAt() { return createdAt; }
     public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }
+
+    public UUID getBoundUserId() { return boundUserId; }
+    public void setBoundUserId(UUID boundUserId) { this.boundUserId = boundUserId; }
+
+    public Instant getUsedAt() { return usedAt; }
+    public void setUsedAt(Instant usedAt) { this.usedAt = usedAt; }
+
+    public String getBatchId() { return batchId; }
+    public void setBatchId(String batchId) { this.batchId = batchId; }
+
+    public UUID getGeneratedBy() { return generatedBy; }
+    public void setGeneratedBy(UUID generatedBy) { this.generatedBy = generatedBy; }
 }

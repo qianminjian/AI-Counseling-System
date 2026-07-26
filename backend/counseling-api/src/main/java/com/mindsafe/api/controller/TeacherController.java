@@ -13,6 +13,7 @@ import com.mindsafe.domain.mapper.CounselingSessionMapper;
 import com.mindsafe.domain.mapper.RiskEventMapper;
 import com.mindsafe.domain.mapper.UserMapper;
 import com.mindsafe.service.notification.NotificationService;
+import com.mindsafe.service.profile.ProfileRadarService;
 import com.mindsafe.service.teacher.TeacherService;
 import com.mindsafe.service.audit.AuditLogService;
 import jakarta.servlet.http.HttpServletResponse;
@@ -39,6 +40,7 @@ public class TeacherController {
 
     private final NotificationService notificationService;
     private final TeacherService teacherService;
+    private final ProfileRadarService profileRadarService;
     private final RiskEventMapper riskEventMapper;
     private final UserMapper userMapper;
     private final CounselingSessionMapper sessionMapper;
@@ -47,6 +49,7 @@ public class TeacherController {
 
     public TeacherController(NotificationService notificationService,
                              TeacherService teacherService,
+                             ProfileRadarService profileRadarService,
                              RiskEventMapper riskEventMapper,
                              UserMapper userMapper,
                              CounselingSessionMapper sessionMapper,
@@ -54,6 +57,7 @@ public class TeacherController {
                              JwtTokenProvider jwtTokenProvider) {
         this.notificationService = notificationService;
         this.teacherService = teacherService;
+        this.profileRadarService = profileRadarService;
         this.riskEventMapper = riskEventMapper;
         this.userMapper = userMapper;
         this.sessionMapper = sessionMapper;
@@ -208,6 +212,14 @@ public class TeacherController {
             @PathVariable UUID id, Authentication auth) {
         TenantContext ctx = (TenantContext) auth.getDetails();
         return ApiResponse.ok(teacherService.getStudentProfile(ctx.tenantId(), id));
+    }
+
+    /** 学生画像雷达图（PROF-004，6 维度 + 里程碑） */
+    @GetMapping("/teacher/students/{id}/radar")
+    public ApiResponse<Map<String, Object>> getStudentRadar(
+            @PathVariable UUID id, Authentication auth) {
+        TenantContext ctx = (TenantContext) auth.getDetails();
+        return ApiResponse.ok(profileRadarService.getRadarData(ctx.tenantId(), id));
     }
 
     /** 添加备注 */

@@ -16,6 +16,9 @@ import com.mindsafe.domain.mapper.MessageSummaryMapper;
 import com.mindsafe.domain.mapper.RiskEventMapper;
 import com.mindsafe.domain.mapper.UserMapper;
 import com.mindsafe.service.notification.NotificationService;
+import com.mindsafe.service.profile.ProfileExtractorService;
+import com.mindsafe.service.profile.StudentProfileService;
+import com.mindsafe.service.usage.UsageTimeLimitService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Async;
@@ -46,6 +49,9 @@ public class ConversationServiceImpl implements ConversationService {
     private final RiskEventMapper riskEventMapper;
     private final NotificationService notificationService;
     private final UserMapper userMapper;
+    private final StudentProfileService profileService;
+    private final ProfileExtractorService profileExtractorService;
+    private final UsageTimeLimitService usageTimeLimitService;
 
     /** 活跃会话内存缓存（emotionTag 等非 DB 字段 + 轮次计数） */
     private final Map<UUID, SessionState> activeSessions = new ConcurrentHashMap<>();
@@ -57,7 +63,10 @@ public class ConversationServiceImpl implements ConversationService {
                                    MessageSummaryMapper messageSummaryMapper,
                                    RiskEventMapper riskEventMapper,
                                    NotificationService notificationService,
-                                   UserMapper userMapper) {
+                                   UserMapper userMapper,
+                                   StudentProfileService profileService,
+                                   ProfileExtractorService profileExtractorService,
+                                   UsageTimeLimitService usageTimeLimitService) {
         this.aiChatService = aiChatService;
         this.riskDetectorService = riskDetectorService;
         this.piiDesensitizer = piiDesensitizer;
@@ -66,6 +75,9 @@ public class ConversationServiceImpl implements ConversationService {
         this.riskEventMapper = riskEventMapper;
         this.notificationService = notificationService;
         this.userMapper = userMapper;
+        this.profileService = profileService;
+        this.profileExtractorService = profileExtractorService;
+        this.usageTimeLimitService = usageTimeLimitService;
     }
 
     @Override
@@ -102,6 +114,12 @@ public class ConversationServiceImpl implements ConversationService {
         int turn = session.turnCount.incrementAndGet();
         log.debug("收到消息: sessionId={}, turn={}, length={}, voiceEmotion={}",
                 sessionId, turn, content.length(), voiceEmotion);
+
+        // AUTH-030：累计每日使用时长（按距上次消息的间隔，上限 5 分钟）
+        long elapsedSec = session.markActiveAndElapsed();
+        if (elapsedSec > 0) {
+            usageTimeLimitService.addUsage(session.tenantId, session.studentUserId, elapsedSec);
+        }
 
         // 记录语音情绪到会话历史（用于趋势追踪）
         if (voiceEmotion != null && voiceEmotionConfidence != null && voiceEmotionConfidence > 0.6) {
@@ -170,9 +188,24 @@ public class ConversationServiceImpl implements ConversationService {
         int riskLevelValue = fusedLevel != null ? fusedLevel.severity() : 0;
         persistStudentMessageSummary(session, turn, content, session.emotionTag, riskLevelValue);
 
-        // 5. 调用 AI 服务获取流式回复
+        // 4.5 AUTH-030：每日使用时长超限 → 引导休息（红色风险优先，不拦截）
+        if (fusedLevel != RiskLevel.RED
+                && usageTimeLimitService.isExceeded(session.tenantId, session.studentUserId)) {
+            log.info("每日使用时长已达上限，引导休息: sessionId={}, student={}, usedSec={}",
+                    sessionId, session.studentUserId,
+                    usageTimeLimitService.getUsedSeconds(session.tenantId, session.studentUserId));
+            String guidance = "今天我们聊了不少啦，你已经很棒了。为了让眼睛和心情都休息一下，今天就先到这里好吗？"
+                    + "明天我还在这里等你。\uD83C\uDF19 如果现在有紧急的事情，可以告诉老师，或拨打心理援助热线 12355。";
+            return riskEvents.concatWith(Flux.just(
+                    StreamMessageEvent.token(guidance),
+                    StreamMessageEvent.done("")
+            ));
+        }
+
+        // 5. 调用 AI 服务获取流式回复（注入学生画像）
+        String profilePrompt = profileService.buildProfilePrompt(session.tenantId, session.studentUserId);
         StringBuilder aiResponseCollector = new StringBuilder();
-        Flux<StreamMessageEvent> aiStream = aiChatService.chat(sessionId, session.emotionTag, safeContent, session.gender)
+        Flux<StreamMessageEvent> aiStream = aiChatService.chat(sessionId, session.emotionTag, safeContent, session.gender, profilePrompt)
                 .doOnNext(event -> {
                     if (event.type() != null && event.type().equals("token") && event.content() != null) {
                         aiResponseCollector.append(event.content());
@@ -209,14 +242,17 @@ public class ConversationServiceImpl implements ConversationService {
             aiChatService.clearMemory(sessionId);
             log.info("会话结束: sessionId={}, turns={}", sessionId, session.turnCount.get());
 
-            // 异步生成 AI 会话摘要
-            generateSummaryAsync(tenantId, sessionId);
+            // 异步生成 AI 会话摘要（摘要完成后触发 PROF-003 画像 LLM 提炼）
+            generateSummaryAsync(tenantId, sessionId, session.studentUserId);
+
+            // 异步更新学生画像（基于历史会话统计）
+            profileService.updateProfile(session.tenantId, session.studentUserId);
         }
     }
 
-    /** 异步生成会话摘要（不阻塞主流程） */
+    /** 异步生成会话摘要（不阻塞主流程），摘要完成后触发画像 LLM 提炼（PROF-003） */
     @Async
-    public void generateSummaryAsync(UUID tenantId, UUID sessionId) {
+    public void generateSummaryAsync(UUID tenantId, UUID sessionId, UUID studentUserId) {
         try {
             // 1. 查询该会话所有消息摘要
             List<MessageSummary> messages = messageSummaryMapper.selectList(
@@ -234,9 +270,10 @@ public class ConversationServiceImpl implements ConversationService {
                 String role = "student".equals(m.getSenderType()) ? "学生" : "AI";
                 sb.append(role).append(": ").append(m.getContentSummary()).append("\n");
             }
+            String conversationText = sb.toString();
 
             // 3. 调用 LLM 生成摘要
-            String summary = aiChatService.generateSessionSummary(sb.toString());
+            String summary = aiChatService.generateSessionSummary(conversationText);
             if (summary != null && !summary.isBlank()) {
                 CounselingSession update = new CounselingSession();
                 update.setSessionId(sessionId);
@@ -244,6 +281,9 @@ public class ConversationServiceImpl implements ConversationService {
                 update.setUpdatedAt(Instant.now());
                 sessionMapper.updateById(update);
                 log.info("会话摘要已生成: sessionId={}", sessionId);
+
+                // 4. PROF-003：基于摘要 + 对话文本提炼画像增量（沟通偏好/韧性/社交图谱）
+                profileExtractorService.extractAndMerge(tenantId, studentUserId, conversationText, summary);
             }
         } catch (Exception e) {
             log.warn("会话摘要生成失败（不影响业务）: sessionId={}", sessionId, e);
@@ -385,6 +425,9 @@ public class ConversationServiceImpl implements ConversationService {
         final String gender;
         final AtomicInteger turnCount = new AtomicInteger(0);
 
+        /** 上次活动时间（AUTH-030：用于累计每日使用时长） */
+        private Instant lastActiveAt = Instant.now();
+
         /** 语音情绪历史（最近 10 条） */
         private final List<EmotionRecord> emotionHistory = new ArrayList<>();
 
@@ -403,6 +446,16 @@ public class ConversationServiceImpl implements ConversationService {
             if (emotionHistory.size() > 10) {
                 emotionHistory.remove(0);
             }
+        }
+
+        /**
+         * 标记本次活跃，返回距上次活动的秒数（上限 300s，避免长时间挂起累计虚高）。
+         */
+        long markActiveAndElapsed() {
+            Instant now = Instant.now();
+            long elapsed = java.time.Duration.between(lastActiveAt, now).getSeconds();
+            lastActiveAt = now;
+            return Math.max(0, Math.min(elapsed, 300));
         }
 
         /** 连续消极情绪计数（从最近一条往前数） */

@@ -34,9 +34,10 @@ public class SecurityConfig {
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        // 公开端点：登录 + 试用注册
+                        // 公开端点：登录 + 试用注册 + PIN 登录
                         .requestMatchers("/api/v1/auth/login").permitAll()
                         .requestMatchers("/api/v1/auth/trial/register").permitAll()
+                        .requestMatchers("/api/v1/auth/pin-login").permitAll()
                         .requestMatchers("/actuator/**").permitAll()
                         .requestMatchers("/ws/**").permitAll()
                         .requestMatchers("/swagger-ui/**", "/api-docs/**").permitAll()

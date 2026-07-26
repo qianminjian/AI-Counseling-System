@@ -162,4 +162,48 @@
 
 ---
 
+## 十、学生心理画像（design/23）
+
+| 任务ID | 任务描述 | 状态 | 备注 |
+|--------|----------|------|------|
+| PROF-001 | P0：student_profiles 表 + 情绪基线 + 风险轨迹（SQL 聚合） | ✅ 完成 | V12 迁移 + StudentProfileService |
+| PROF-002 | P0：对话时注入画像到 System Prompt | ✅ 完成 | AiChatServiceImpl 3.6 段 |
+| PROF-003 | P1：沟通偏好 + 技巧有效性（LLM 提炼） | ✅ 完成 | ProfileExtractorService 异步提炼 + Prompt 注入增强 |
+| PROF-004 | P2：成长轨迹 + 里程碑 + 教师端雷达图 | ✅ 完成 | ProfileRadarService + ECharts 雷达图 + 里程碑检测 |
+
+---
+
+## 十一、身份认证优化（design/24）
+
+### 阶段一：M1 试用加固（近期开发）
+
+| 任务ID | 任务描述 | 状态 | 备注 |
+|--------|----------|------|------|
+| AUTH-010 | 邀请码一人一码（教师批量生成 + 用后作废） | ✅ 完成 | P0，V13 迁移 + AdminController 批量生成 |
+| AUTH-011 | 学生 PIN 码（4-6位数字 + BCrypt） | ✅ 完成 | P0，set-pin/pin-login 端点 |
+| AUTH-012 | 登录失败锁定（Redis 计数器 5次/15min） | ✅ 完成 | P0，LoginLockoutService |
+| AUTH-013 | 家长 Token 绑定手机 + 短信验证 | ✅ 完成 | P1，SmsService + PhoneVerificationService + ParentController 端点 |
+| AUTH-014 | 密码策略（8位+复杂度 + 90天过期） | ✅ 完成 | P1，PasswordPolicyService + V14 迁移 |
+
+### 阶段二：M2 学校正式部署（后续待办）
+
+| 任务ID | 任务描述 | 状态 | 备注 |
+|--------|----------|------|------|
+| AUTH-020 | 学校 Excel 批量导入学生名单 | ✅ 完成 | CSV 导入（AdminController + AdminPanel UI） |
+| AUTH-021 | 企微/钉钉 OAuth 配置上线 | ⏳ 待开始 | 代码已就绪，需配置 corpId/secret |
+| AUTH-022 | 家长微信小程序 + 微信 OAuth 登录 | ⏳ 待开始 | 独立小程序工程，后端 parent_bindings 表已设计 |
+| AUTH-023 | 监护人同意闭环（短信确认链接） | ✅ 完成 | GuardianConsentService + AuthController 端点 |
+
+### 阶段三：合规加固（后续待办）
+
+| 任务ID | 任务描述 | 状态 | 备注 |
+|--------|----------|------|------|
+| AUTH-030 | 使用时长限制（每日≤30min） | ✅ 完成 | 未保法，UsageTimeLimitService + Redis 每日累计 |
+| AUTH-031 | 数据最小化审计 + 定期清理 | ✅ 完成 | DataRetentionCleanupJob + @EnableScheduling，普通30天/高风险365天 |
+| AUTH-032 | 家长撤回同意 → 冻结+删除 | ✅ 完成 | PIPL §47，ConsentWithdrawalService + ParentController 端点 |
+| AUTH-033 | 年度合规审计报送 | ⏳ 待开始 | 未保条例 §37，流程性报送（非代码） |
+| AUTH-034 | WebAuthn 设备端指纹/Face ID（可选） | ⏳ 待开始 | 不采集生物数据，需真机测试 |
+
+---
+
 _本表由 Agent 维护，每次任务变更时更新。_
