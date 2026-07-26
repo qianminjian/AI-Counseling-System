@@ -27,7 +27,9 @@ check() {
 }
 
 http_code() {
-  curl -s -o /dev/null -w "%{http_code}" "$@"
+  # || true：curl 非零退出（如连接中断 18 / 超时 28）不触发 set -e 提前终止，
+  # 由后续 check 根据状态码（可能为 000）判定失败
+  curl -s -o /dev/null -w "%{http_code}" "$@" || true
 }
 
 echo "=========================================="
@@ -45,7 +47,7 @@ echo "[2/6] 公开端点"
 # 错误凭据登录：业务异常 BizException → HTTP 200，错误在 body.success=false（非 401）
 LOGIN_BODY=$(curl -s -X POST "$API/auth/login" \
   -H 'Content-Type: application/json' \
-  -d '{"username":"__not_exist__","password":"__bad__"}')
+  -d '{"username":"__not_exist__","password":"__bad__"}' || true)
 LOGIN_SUCCESS=$(echo "$LOGIN_BODY" | python3 -c "import sys,json; print(json.load(sys.stdin).get('success',''))" 2>/dev/null || echo "")
 check "错误凭据登录被拒（success=false）" "False" "$LOGIN_SUCCESS"
 
@@ -56,7 +58,7 @@ NICK="smoke_$RANDOM"
 # age=9（<14）必须携带 guardianPhone；consentVersion 须与后端 CURRENT_CONSENT_VERSION(v0.1) 一致
 REG_BODY=$(curl -s -X POST "$API/auth/trial/register" \
   -H 'Content-Type: application/json' \
-  -d "{\"inviteCode\":\"DEMO2026\",\"pseudonym\":\"$NICK\",\"age\":9,\"consentVersion\":\"v0.1\",\"guardianPhone\":\"13800138000\"}")
+  -d "{\"inviteCode\":\"DEMO2026\",\"pseudonym\":\"$NICK\",\"age\":9,\"consentVersion\":\"v0.1\",\"guardianPhone\":\"13800138000\"}" || true)
 REG_SUCCESS=$(echo "$REG_BODY" | python3 -c "import sys,json; print(json.load(sys.stdin).get('success',''))" 2>/dev/null || echo "")
 check "试用注册成功" "True" "$REG_SUCCESS"
 
@@ -71,7 +73,7 @@ if [ -n "$STUDENT_TOKEN" ]; then
   SESSION_BODY=$(curl -s -X POST "$API/chat/sessions" \
     -H "Authorization: Bearer $STUDENT_TOKEN" \
     -H 'Content-Type: application/json' \
-    -d '{"emotionTag":"happy","channel":"h5"}')
+    -d '{"emotionTag":"happy","channel":"h5"}' || true)
   SESSION_ID=$(echo "$SESSION_BODY" | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('sessionId',''))" 2>/dev/null || echo "")
   if [ -n "$SESSION_ID" ]; then
     green "  ✓ 创建会话 ($SESSION_ID)"
@@ -81,14 +83,22 @@ if [ -n "$STUDENT_TOKEN" ]; then
     FAIL=$((FAIL + 1))
   fi
 
-  # 发送消息（SSE 流，取 HTTP 状态码）
+  # 发送消息（SSE 流）：不仅看 HTTP 200（SSE 会先发 200 再流式推送），
+  # 而是检查流中是否出现 done 事件（AI 回复完成），避免 LLM 不可用时
+  # （200 后流中报错/连接中断）造成假绿。curl 失败用 || true 兜底，不提前退出。
   if [ -n "$SESSION_ID" ]; then
-    MSG_CODE=$(http_code -X POST "$API/chat/sessions/$SESSION_ID/messages" \
+    MSG_OUTPUT=$(curl -s -X POST "$API/chat/sessions/$SESSION_ID/messages" \
       -H "Authorization: Bearer $STUDENT_TOKEN" \
       -H 'Content-Type: application/json' \
       -d '{"content":"今天很开心"}' \
-      --max-time 30)
-    check "发送消息（SSE）" "200" "$MSG_CODE"
+      --max-time 30 || true)
+    if echo "$MSG_OUTPUT" | grep -qE '"type"[[:space:]]*:[[:space:]]*"done"'; then
+      green "  ✓ 发送消息（SSE，AI 回复完成）"
+      PASS=$((PASS + 1))
+    else
+      red "  ✗ 发送消息（SSE 未收到 AI 完整回复）"
+      FAIL=$((FAIL + 1))
+    fi
 
     # 结束会话
     END_CODE=$(http_code -X POST "$API/chat/sessions/$SESSION_ID/end" \
@@ -111,7 +121,7 @@ echo "[5/6] 教师端链路"
 if [ -n "${TEACHER_USER:-}" ] && [ -n "${TEACHER_PASS:-}" ]; then
   LOGIN_BODY=$(curl -s -X POST "$API/auth/login" \
     -H 'Content-Type: application/json' \
-    -d "{\"username\":\"$TEACHER_USER\",\"password\":\"$TEACHER_PASS\"}")
+    -d "{\"username\":\"$TEACHER_USER\",\"password\":\"$TEACHER_PASS\"}" || true)
   TEACHER_TOKEN=$(echo "$LOGIN_BODY" | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('token',''))" 2>/dev/null || echo "")
 
   if [ -n "$TEACHER_TOKEN" ]; then
