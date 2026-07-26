@@ -42,16 +42,21 @@ check "actuator/health" "200" "$(http_code "$BASE_URL/actuator/health")"
 # ----- 2. 公开端点 -----
 echo ""
 echo "[2/6] 公开端点"
-check "登录页可达（错误凭据返回 401）" "401" \
-  "$(http_code -X POST "$API/auth/login" -H 'Content-Type: application/json' -d '{"username":"__not_exist__","password":"__bad__"}')"
+# 错误凭据登录：业务异常 BizException → HTTP 200，错误在 body.success=false（非 401）
+LOGIN_BODY=$(curl -s -X POST "$API/auth/login" \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"__not_exist__","password":"__bad__"}')
+LOGIN_SUCCESS=$(echo "$LOGIN_BODY" | python3 -c "import sys,json; print(json.load(sys.stdin).get('success',''))" 2>/dev/null || echo "")
+check "错误凭据登录被拒（success=false）" "False" "$LOGIN_SUCCESS"
 
 # ----- 3. 试用注册流程 -----
 echo ""
 echo "[3/6] 试用注册流程"
 NICK="smoke_$RANDOM"
+# age=9（<14）必须携带 guardianPhone；consentVersion 须与后端 CURRENT_CONSENT_VERSION(v0.1) 一致
 REG_BODY=$(curl -s -X POST "$API/auth/trial/register" \
   -H 'Content-Type: application/json' \
-  -d "{\"inviteCode\":\"DEMO2026\",\"pseudonym\":\"$NICK\",\"age\":9,\"consentVersion\":\"v1.0\"}")
+  -d "{\"inviteCode\":\"DEMO2026\",\"pseudonym\":\"$NICK\",\"age\":9,\"consentVersion\":\"v0.1\",\"guardianPhone\":\"13800138000\"}")
 REG_SUCCESS=$(echo "$REG_BODY" | python3 -c "import sys,json; print(json.load(sys.stdin).get('success',''))" 2>/dev/null || echo "")
 check "试用注册成功" "True" "$REG_SUCCESS"
 

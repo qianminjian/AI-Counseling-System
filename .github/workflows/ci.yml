@@ -26,6 +26,116 @@ jobs:
       - name: Compile + Unit Tests
         run: mvn verify -pl counseling-app -am -DskipITs --batch-mode --quiet
 
+  backend-integration:
+    name: Backend Integration Tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: 'maven'
+
+      # 集成测试（*IT.java）：Testcontainers 自拉 PostgreSQL(pgvector)+Redis，
+      # application-test.yml 已将 LLM 指向占位地址，无需任何外部密钥。
+      # GitHub Actions ubuntu runner 自带 Docker，Testcontainers 开箱即用。
+      - name: Integration Tests (Testcontainers)
+        run: mvn verify -pl counseling-app -am --batch-mode
+
+  e2e-smoke:
+    name: E2E Smoke Test
+    runs-on: ubuntu-latest
+    needs: backend
+    defaults:
+      run:
+        working-directory: backend
+    # 临时测试环境：GitHub Actions services 起 PostgreSQL(pgvector) + Redis，
+    # job 结束自动销毁，无需常驻主机。服务端口映射到 runner 的 localhost。
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: mindsafe
+          POSTGRES_USER: mindsafe
+          POSTGRES_PASSWORD: mindsafe
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      # 覆盖 application.yml 中硬编码的 localhost:5433 数据源，指向 services
+      SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/mindsafe
+      SPRING_DATASOURCE_USERNAME: mindsafe
+      SPRING_DATASOURCE_PASSWORD: mindsafe
+      SPRING_DATA_REDIS_HOST: localhost
+      SPRING_DATA_REDIS_PORT: 6379
+      # 真实 LLM 密钥（smoke 测试发送真实对话）——需在 GitHub Secrets 配置
+      LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: 'maven'
+
+      - name: Build Backend Jar
+        run: mvn package -pl counseling-app -am -DskipTests -DskipITs --batch-mode --quiet
+
+      # 启动后端（默认 dev profile，JWT 回退开发密钥；Flyway 自动迁移 + 种子数据）
+      - name: Start Backend
+        run: |
+          nohup java -jar counseling-app/target/counseling-app-0.1.0-SNAPSHOT.jar > backend.log 2>&1 &
+          echo $! > backend.pid
+
+      - name: Wait for Backend Health
+        run: |
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:8080/actuator/health > /dev/null; then
+              echo "Backend is up"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Backend failed to start within 120s" >&2
+          tail -n 100 backend.log >&2
+          exit 1
+
+      # 冒烟测试：健康检查 + 公开端点 + 试用注册 + 学生对话链路（真实 LLM）+ 教师端 + 安全校验。
+      # 教师账号用 V5 回填的种子密码（李老师/123456，BCrypt 哈希见 V5__add_password_hash.sql）。
+      - name: Run Smoke Test
+        env:
+          TEACHER_USER: 李老师
+          TEACHER_PASS: 123456
+        run: BASE_URL=http://localhost:8080 bash ../tests/e2e/smoke-test.sh
+
+      - name: Upload Backend Log on Failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-backend-log
+          path: backend/backend.log
+
   frontend-student:
     name: Frontend Student H5
     runs-on: ubuntu-latest
