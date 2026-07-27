@@ -202,7 +202,7 @@ class ConversationServiceImplTest {
                     .sendNudgeStream(tenantId, UUID.randomUUID(), 30)
                     .collectList().block();
             assertThat(events).isEmpty();
-            verify(aiChatService, never()).chatProactive(any(), any(), any(), any(), any());
+            verify(aiChatService, never()).chatProactive(any(), any(), any(), any(), any(), anyInt());
         }
 
         @Test
@@ -219,7 +219,7 @@ class ConversationServiceImplTest {
                     .collectList().block();
 
             assertThat(events).isEmpty();
-            verify(aiChatService, never()).chatProactive(any(), any(), any(), any(), any());
+            verify(aiChatService, never()).chatProactive(any(), any(), any(), any(), any(), anyInt());
         }
 
         @Test
@@ -234,7 +234,7 @@ class ConversationServiceImplTest {
                     .collectList().block();
 
             assertThat(events).isEmpty();
-            verify(aiChatService, never()).chatProactive(any(), any(), any(), any(), any());
+            verify(aiChatService, never()).chatProactive(any(), any(), any(), any(), any(), anyInt());
         }
 
         @Test
@@ -244,8 +244,9 @@ class ConversationServiceImplTest {
             mockSessionActive(sessionId);
             when(promptTemplateService.render(eq(PromptTemplateService.TSK_004), anyMap()))
                     .thenReturn("【暖场指令】强度=2");
-            when(profileService.buildProfilePrompt(tenantId, studentId)).thenReturn(null);
-            when(aiChatService.chatProactive(eq(sessionId), eq("happy"), eq("male"), any(), eq("【暖场指令】强度=2")))
+            when(profileService.buildProfilePrompt(eq(tenantId), eq(studentId), any(Integer.class), any()))
+                    .thenReturn(null);
+            when(aiChatService.chatProactive(eq(sessionId), eq("happy"), eq("male"), any(), eq("【暖场指令】强度=2"), any(Integer.class)))
                     .thenReturn(Flux.just(StreamMessageEvent.token("波波在呢"), StreamMessageEvent.token("～")));
 
             // happy(+1) + 30s(B+1) + 前期(D+1) = 3 → 引导破冰
@@ -259,8 +260,8 @@ class ConversationServiceImplTest {
             assertThat(events.get(2).type()).isEqualTo("done");
 
             // 走 chatProactive（不污染记忆），绝不走 chat
-            verify(aiChatService).chatProactive(eq(sessionId), eq("happy"), eq("male"), any(), eq("【暖场指令】强度=2"));
-            verify(aiChatService, never()).chat(any(), any(), any(), any(), any());
+            verify(aiChatService).chatProactive(eq(sessionId), eq("happy"), eq("male"), any(), eq("【暖场指令】强度=2"), any(Integer.class));
+            verify(aiChatService, never()).chat(any(), any(), any(), any(), any(), any(Integer.class));
             // TSK-004 渲染含决策参数
             verify(promptTemplateService).render(eq(PromptTemplateService.TSK_004), anyMap());
             // AI 暖场回复落库（孩子看到的连续性保留）
@@ -273,7 +274,7 @@ class ConversationServiceImplTest {
             UUID sessionId = createSession("happy");
             mockSessionActive(sessionId);
             when(promptTemplateService.render(anyString(), anyMap())).thenReturn("指令");
-            when(aiChatService.chatProactive(any(), any(), any(), any(), any()))
+            when(aiChatService.chatProactive(any(), any(), any(), any(), any(), any(Integer.class)))
                     .thenReturn(Flux.just(StreamMessageEvent.token("在呢")));
 
             // 第一次暖场成功
@@ -284,7 +285,7 @@ class ConversationServiceImplTest {
                     .collectList().block();
 
             assertThat(second).isEmpty();
-            verify(aiChatService, times(1)).chatProactive(any(), any(), any(), any(), any());
+            verify(aiChatService, times(1)).chatProactive(any(), any(), any(), any(), any(), any(Integer.class));
         }
 
         @Test
@@ -299,7 +300,7 @@ class ConversationServiceImplTest {
                     .collectList().block();
 
             assertThat(events).isEmpty();
-            verify(aiChatService, never()).chatProactive(any(), any(), any(), any(), any());
+            verify(aiChatService, never()).chatProactive(any(), any(), any(), any(), any(), any(Integer.class));
         }
 
         @Test
@@ -316,8 +317,9 @@ class ConversationServiceImplTest {
             when(riskDetectorService.detect(anyString())).thenReturn(RiskDetectionResult.safe());
             when(piiDesensitizer.desensitize(anyString())).thenAnswer(inv -> inv.getArgument(0));
             when(usageTimeLimitService.isExceeded(any(), any())).thenReturn(false);
-            when(profileService.buildProfilePrompt(tenantId, studentId)).thenReturn(null);
-            when(aiChatService.chat(any(), any(), any(), any(), any()))
+            when(profileService.buildProfilePrompt(eq(tenantId), eq(studentId), any(Integer.class), any()))
+                    .thenReturn(null);
+            when(aiChatService.chat(any(), any(), any(), any(), any(), any(Integer.class)))
                     .thenReturn(Flux.just(StreamMessageEvent.token("你好呀")));
 
             List<StreamMessageEvent> chatEvents = service
@@ -327,14 +329,14 @@ class ConversationServiceImplTest {
 
             // 计数已清零 + 间隔足够 → 暖场恢复
             when(promptTemplateService.render(anyString(), anyMap())).thenReturn("指令");
-            when(aiChatService.chatProactive(any(), any(), any(), any(), any()))
+            when(aiChatService.chatProactive(any(), any(), any(), any(), any(), any(Integer.class)))
                     .thenReturn(Flux.just(StreamMessageEvent.token("在呢")));
             List<StreamMessageEvent> nudgeEvents = service
                     .sendNudgeStream(tenantId, sessionId, 40)
                     .collectList().block();
 
             assertThat(nudgeEvents).isNotEmpty();
-            verify(aiChatService, times(1)).chatProactive(any(), any(), any(), any(), any());
+            verify(aiChatService, times(1)).chatProactive(any(), any(), any(), any(), any(), any(Integer.class));
         }
 
         @Test
@@ -343,8 +345,9 @@ class ConversationServiceImplTest {
             UUID sessionId = createSession("happy");
             mockSessionActive(sessionId);
             when(promptTemplateService.render(anyString(), anyMap())).thenReturn("指令");
-            when(profileService.buildProfilePrompt(tenantId, studentId)).thenReturn(null);
-            when(aiChatService.chatProactive(any(), any(), any(), any(), any()))
+            when(profileService.buildProfilePrompt(eq(tenantId), eq(studentId), any(Integer.class), any()))
+                    .thenReturn(null);
+            when(aiChatService.chatProactive(any(), any(), any(), any(), any(), any(Integer.class)))
                     .thenReturn(Flux.error(new RuntimeException("LLM 超时")));
 
             List<StreamMessageEvent> events = service
@@ -352,6 +355,64 @@ class ConversationServiceImplTest {
                     .collectList().block();
 
             assertThat(events).isEmpty();
+        }
+    }
+
+    @Nested
+    @DisplayName("年级解析与动态降级（PROF-010/015）")
+    class GradeComputation {
+
+        @Test
+        @DisplayName("parseGradeCode: 支持 G1-G6、纯数字、null/空/非法 → 默认 4")
+        void parseGradeCode_variants() {
+            assertThat(ConversationServiceImpl.parseGradeCode("G1")).isEqualTo(1);
+            assertThat(ConversationServiceImpl.parseGradeCode("G6")).isEqualTo(6);
+            assertThat(ConversationServiceImpl.parseGradeCode("3")).isEqualTo(3);
+            assertThat(ConversationServiceImpl.parseGradeCode(null)).isEqualTo(4);
+            assertThat(ConversationServiceImpl.parseGradeCode("")).isEqualTo(4);
+            assertThat(ConversationServiceImpl.parseGradeCode("abc")).isEqualTo(4);
+            assertThat(ConversationServiceImpl.parseGradeCode("G9")).isEqualTo(4);
+        }
+
+        @Test
+        @DisplayName("computeEffectiveGrade: 无画像数据 → 不降级")
+        void noProfile_noDowngrade() {
+            assertThat(ConversationServiceImpl.computeEffectiveGrade(5, null, false)).isEqualTo(5);
+        }
+
+        @Test
+        @DisplayName("computeEffectiveGrade: 风险场景 → 不降级")
+        void riskBlocked_noDowngrade() {
+            assertThat(ConversationServiceImpl.computeEffectiveGrade(5, 0.1, true)).isEqualTo(5);
+        }
+
+        @Test
+        @DisplayName("computeEffectiveGrade: 极端沉默(<0.15) → 直接降到 1")
+        void extremeSilence_gradeOne() {
+            assertThat(ConversationServiceImpl.computeEffectiveGrade(5, 0.1, false)).isEqualTo(1);
+            assertThat(ConversationServiceImpl.computeEffectiveGrade(3, 0.14, false)).isEqualTo(1);
+        }
+
+        @Test
+        @DisplayName("computeEffectiveGrade: 低表达(0.15-0.3) + grade>2 → 降 2 年级")
+        void lowExpression_downgrade() {
+            assertThat(ConversationServiceImpl.computeEffectiveGrade(5, 0.25, false)).isEqualTo(3);
+            assertThat(ConversationServiceImpl.computeEffectiveGrade(4, 0.2, false)).isEqualTo(2);
+            assertThat(ConversationServiceImpl.computeEffectiveGrade(3, 0.29, false)).isEqualTo(1);
+        }
+
+        @Test
+        @DisplayName("computeEffectiveGrade: 低表达 + grade≤2 → 不降（已是最低段）")
+        void lowExpression_lowGrade_noDowngrade() {
+            assertThat(ConversationServiceImpl.computeEffectiveGrade(2, 0.2, false)).isEqualTo(2);
+            assertThat(ConversationServiceImpl.computeEffectiveGrade(1, 0.2, false)).isEqualTo(1);
+        }
+
+        @Test
+        @DisplayName("computeEffectiveGrade: 正常表达(≥0.3) → 不降级")
+        void normalExpression_noDowngrade() {
+            assertThat(ConversationServiceImpl.computeEffectiveGrade(5, 0.5, false)).isEqualTo(5);
+            assertThat(ConversationServiceImpl.computeEffectiveGrade(3, 0.3, false)).isEqualTo(3);
         }
     }
 }

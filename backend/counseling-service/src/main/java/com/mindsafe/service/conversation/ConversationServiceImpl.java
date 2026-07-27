@@ -95,21 +95,22 @@ public class ConversationServiceImpl implements ConversationService {
 
         UUID sessionId = entity.getSessionId();
 
-        // 2. 内存缓存活跃会话状态（查询用户性别/昵称用于 Prompt 个性化与问候语）
+        // 2. 内存缓存活跃会话状态（查询用户性别/昵称/年级用于 Prompt 个性化与问候语）
         User user = userMapper.selectById(studentUserId);
         String gender = (user != null) ? user.getGender() : null;
         String pseudonym = (user != null) ? user.getPseudonym() : null;
-
-        // 3. 问候语个性化："哈喽，[昵称]！" + 情绪问候（唤醒词 onboarding，design/28 §2.2）
+        int grade = parseGradeCode(user != null ? user.getGradeCode() : null);
+        
+        // 3. 问候语个性化：“哈喽，[昵称]！” + 情绪问候（唤醒词 onboarding，design/28 §2.2）
         String greeting = buildGreeting(emotionTag, pseudonym);
-
+        
         // 4. 加载学生画像沟通偏好（冷场决策模型信号 F，首次对话为 null 不阻塞）
         Double expressionDepth = profileService.getExpressionDepth(tenantId, studentUserId);
-
+        
         activeSessions.put(sessionId, new SessionState(
-                sessionId, tenantId, studentUserId, emotionTag, channel, gender, expressionDepth));
-        log.info("会话创建: sessionId={}, student={}, emotion={}, expressionDepth={}",
-                sessionId, studentUserId, emotionTag, expressionDepth);
+                sessionId, tenantId, studentUserId, emotionTag, channel, gender, expressionDepth, grade));
+        log.info("会话创建: sessionId={}, student={}, emotion={}, grade={}, expressionDepth={}",
+                sessionId, studentUserId, emotionTag, grade, expressionDepth);
 
         return new SessionInfo(sessionId, greeting, Instant.now());
     }
@@ -224,10 +225,12 @@ public class ConversationServiceImpl implements ConversationService {
             ));
         }
 
-        // 5. 调用 AI 服务获取流式回复（注入学生画像）
-        String profilePrompt = profileService.buildProfilePrompt(session.tenantId, session.studentUserId);
+        // 5. 调用 AI 服务获取流式回复（注入学生画像 + 年级适配，PROF-010/011/012/015）
+        boolean riskBlocked = fusedLevel != null && fusedLevel.severity() >= RiskLevel.ORANGE.severity();
+        int effectiveGrade = computeEffectiveGrade(session.grade, session.expressionDepth, riskBlocked);
+        String profilePrompt = profileService.buildProfilePrompt(session.tenantId, session.studentUserId, session.grade, session.gender);
         StringBuilder aiResponseCollector = new StringBuilder();
-        Flux<StreamMessageEvent> aiStream = aiChatService.chat(sessionId, session.emotionTag, safeContent, session.gender, profilePrompt)
+        Flux<StreamMessageEvent> aiStream = aiChatService.chat(sessionId, session.emotionTag, safeContent, session.gender, profilePrompt, effectiveGrade)
                 .doOnNext(event -> {
                     if (event.type() != null && event.type().equals("token") && event.content() != null) {
                         aiResponseCollector.append(event.content());
@@ -296,7 +299,9 @@ public class ConversationServiceImpl implements ConversationService {
                 "warmth_level", String.valueOf(decision.warmthLevel()),
                 "direction", decision.direction()
         ));
-        String profilePrompt = profileService.buildProfilePrompt(session.tenantId, session.studentUserId);
+        String profilePrompt = profileService.buildProfilePrompt(session.tenantId, session.studentUserId, session.grade, session.gender);
+        // PROF-015：暖场场景无风险（橙/红已拦截），仅根据表达深度降级
+        int effectiveGrade = computeEffectiveGrade(session.grade, session.expressionDepth, false);
         int turn = session.turnCount.get();
         StringBuilder aiResponseCollector = new StringBuilder();
 
@@ -304,7 +309,7 @@ public class ConversationServiceImpl implements ConversationService {
         log.info("nudge: 决策=暖场: sessionId={}, warmthLevel={}, direction={}, silenceSeconds={}",
                 sessionId, decision.warmthLevel(), decision.direction(), silenceSeconds);
 
-        return aiChatService.chatProactive(sessionId, session.emotionTag, session.gender, profilePrompt, nudgeInstruction)
+        return aiChatService.chatProactive(sessionId, session.emotionTag, session.gender, profilePrompt, nudgeInstruction, effectiveGrade)
                 .doOnNext(event -> {
                     if (event.type() != null && event.type().equals("token") && event.content() != null) {
                         aiResponseCollector.append(event.content());
@@ -447,7 +452,55 @@ public class ConversationServiceImpl implements ConversationService {
     }
 
     /**
-     * 构建问候语：个性化"哈喽，[昵称]！" + 情绪问候（design/28 §2.2）
+     * 解析 gradeCode 为年级数字（1-6）。
+     * <p>
+     * 支持格式："G1"~"G6"、"1"~"6"、null/空/无法解析 → 默认 4（中间值，design/29 §3.3）
+     */
+    static int parseGradeCode(String gradeCode) {
+        if (gradeCode == null || gradeCode.isBlank()) return 4;
+        String cleaned = gradeCode.trim().toUpperCase();
+        // 去掉 "G" 前缀（如 "G3" → "3"）
+        if (cleaned.startsWith("G")) {
+            cleaned = cleaned.substring(1);
+        }
+        try {
+            int grade = Integer.parseInt(cleaned);
+            return (grade >= 1 && grade <= 6) ? grade : 4;
+        } catch (NumberFormatException e) {
+            return 4;
+        }
+    }
+
+    /**
+     * PROF-015：动态降级机制——根据表达深度调整语言复杂度。
+     * <p>
+     * 规则（design/29 §3.11）：
+     * <ul>
+     *   <li>expressionDepth < 0.15（极端沉默）→ 直接使用 1-2 年级模板（effectiveGrade=1）</li>
+     *   <li>expressionDepth < 0.3 且 grade > 2 → 降 2 个年级（如 5→3）</li>
+     *   <li>风险场景（橙/红）→ 不降级（安全话术需要认知匹配）</li>
+     * </ul>
+     *
+     * @param grade           实际年级（1-6）
+     * @param expressionDepth 画像表达深度（null 表示无数据，不降级）
+     * @param riskBlocked     是否处于风险场景（橙/红）
+     * @return 有效年级（用于选择语言模板）
+     */
+    static int computeEffectiveGrade(int grade, Double expressionDepth, boolean riskBlocked) {
+        if (riskBlocked || expressionDepth == null) {
+            return grade;
+        }
+        if (expressionDepth < 0.15) {
+            return 1; // 极端沉默 → 直接用最简单语言
+        }
+        if (expressionDepth < 0.3 && grade > 2) {
+            return Math.max(1, grade - 2);
+        }
+        return grade;
+    }
+    
+    /**
+     * 构建问候语：个性化“哈喽，[昵称]！” + 情绪问候（design/28 §2.2）
      * <p>
      * 唤醒词 onboarding：用"哈喽+名字"模式自然引导孩子回应"哈喽波波"；
      * 始终生效（不依赖语音唤醒模式）；昵称缺失时回退通用问候。
@@ -584,7 +637,7 @@ public class ConversationServiceImpl implements ConversationService {
         return false;
     }
 
-    /** 内存会话状态（含情绪趋势追踪 + 冷场决策信号） */
+    /** 内存会话状态（含情绪趋势追踪 + 冷场决策信号 + 年级适配） */
     private static class SessionState {
         final UUID sessionId;
         final UUID tenantId;
@@ -593,6 +646,9 @@ public class ConversationServiceImpl implements ConversationService {
         final String channel;
         final String gender;
         final AtomicInteger turnCount = new AtomicInteger(0);
+
+        /** PROF-010：学生年级（1-6，解析失败默认 4） */
+        final int grade;
 
         /** 信号 F：画像沟通偏好 expression_depth（nullable，首次对话为 null → F 计 0） */
         final Double expressionDepth;
@@ -619,7 +675,7 @@ public class ConversationServiceImpl implements ConversationService {
         private volatile int maxRiskSeverity = 0;
 
         SessionState(UUID sessionId, UUID tenantId, UUID studentUserId, String emotionTag,
-                     String channel, String gender, Double expressionDepth) {
+                     String channel, String gender, Double expressionDepth, int grade) {
             this.sessionId = sessionId;
             this.tenantId = tenantId;
             this.studentUserId = studentUserId;
@@ -627,6 +683,7 @@ public class ConversationServiceImpl implements ConversationService {
             this.channel = channel;
             this.gender = gender;
             this.expressionDepth = expressionDepth;
+            this.grade = grade;
         }
 
         void addEmotionRecord(String emotion, double confidence) {

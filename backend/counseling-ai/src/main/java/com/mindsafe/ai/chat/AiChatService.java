@@ -18,9 +18,10 @@ public interface AiChatService {
      * @param message       学生消息
      * @param gender        学生性别（male/female，可为 null）
      * @param profilePrompt 学生画像 Prompt 片段（可为 null）
+     * @param grade         学生年级（1-6，解析失败默认 4）
      * @return 流式事件
      */
-    Flux<StreamMessageEvent> chat(UUID sessionId, String emotionTag, String message, String gender, String profilePrompt);
+    Flux<StreamMessageEvent> chat(UUID sessionId, String emotionTag, String message, String gender, String profilePrompt, int grade);
 
     /**
      * 主动暖场对话（冷场引导，design/28 §三 3.4）
@@ -38,10 +39,11 @@ public interface AiChatService {
      * @param gender           学生性别（male/female，可为 null）
      * @param profilePrompt    学生画像 Prompt 片段（可为 null）
      * @param nudgeInstruction 暖场指令（TSK-004 渲染后，追加到 system 层）
+     * @param grade            学生年级（1-6，解析失败默认 4）
      * @return 流式事件
      */
     Flux<StreamMessageEvent> chatProactive(UUID sessionId, String emotionTag, String gender,
-                                           String profilePrompt, String nudgeInstruction);
+                                           String profilePrompt, String nudgeInstruction, int grade);
 
     /**
      * 清除会话记忆（会话结束时调用）

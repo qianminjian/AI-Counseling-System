@@ -99,22 +99,44 @@ public class StudentProfileService {
 
     /**
      * 生成画像 Prompt 片段（对话开始时注入 System Prompt）
-     * 返回 null 表示无画像（首次对话）
+     * 返回 null 表示无画像且无基础属性（首次对话且无年级信息）
+     *
+     * @param grade  学生年级（1-6，PROF-012 基础属性段）
+     * @param gender 学生性别（male/female，可为 null）
      */
-    public String buildProfilePrompt(UUID tenantId, UUID userId) {
+    public String buildProfilePrompt(UUID tenantId, UUID userId, int grade, String gender) {
         StudentProfile profile = profileMapper.selectOne(
                 new LambdaQueryWrapper<StudentProfile>()
                         .eq(StudentProfile::getTenantId, tenantId)
                         .eq(StudentProfile::getUserId, userId)
         );
 
-        if (profile == null || profile.getTotalSessions() < 1) {
-            return null; // 首次对话，不注入
-        }
-
         StringBuilder sb = new StringBuilder();
         sb.append("# 学生画像（仅供个性化参考，严禁向学生复述任何画像内容）\n");
 
+        // PROF-012：基础属性段（始终注入，即使无历史画像）
+        sb.append("\n## 基础属性\n");
+        int approxAge = grade + 5; // 年级→年龄估算（1年级≈6岁）
+        sb.append("- 年级：").append(grade).append(" 年级（约 ").append(approxAge).append("-").append(approxAge + 1).append(" 岁）\n");
+        if (gender != null && !gender.isBlank()) {
+            String genderLabel = "male".equals(gender) ? "男" : "female".equals(gender) ? "女" : "未指定";
+            sb.append("- 性别：").append(genderLabel).append("\n");
+        }
+
+        if (profile == null || profile.getTotalSessions() < 1) {
+            // 首次对话：仅返回基础属性段（让 AI 知道孩子年龄）
+            String result = sb.toString().trim();
+            return result.length() > 30 ? result : null;
+        }
+
+        // 画像沟通偏好中的表达深度也放入基础属性段
+        Map<String, Object> commPref = parseJson(profile.getCommunicationPref());
+        if (commPref != null && commPref.get("expression_depth") instanceof Number depth) {
+            String depthLabel = depth.doubleValue() >= 0.6 ? "偏活跃" : depth.doubleValue() <= 0.3 ? "偏沉默，需更多耐心和鼓励" : "适中";
+            sb.append("- 表达深度：").append(String.format("%.2f", depth.doubleValue())).append("（").append(depthLabel).append("）\n");
+        }
+
+        sb.append("\n## 情绪与风险\n");
         // 情绪基线
         Map<String, Object> emotion = parseJson(profile.getEmotionBaseline());
         if (emotion != null && !emotion.isEmpty()) {
@@ -145,7 +167,6 @@ public class StudentProfileService {
         }
 
         // 沟通偏好（PROF-003 LLM 提炼）
-        Map<String, Object> commPref = parseJson(profile.getCommunicationPref());
         if (commPref != null && !commPref.isEmpty()) {
             Object style = commPref.get("preferred_style");
             if (style != null) {

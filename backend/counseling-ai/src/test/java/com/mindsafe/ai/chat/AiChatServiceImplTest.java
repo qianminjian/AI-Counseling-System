@@ -74,6 +74,7 @@ class AiChatServiceImplTest {
         when(requestSpec.stream()).thenReturn(streamSpec);
 
         when(promptTemplateService.render(eq(PromptTemplateService.SYS_001), anyMap())).thenReturn("SYS-001 系统提示");
+        when(promptTemplateService.getTemplate(anyString())).thenReturn("# 语言规则（测试）");
 
         service = new AiChatServiceImpl(builder, chatMemory, outputContentFilter,
                 outputReviewService, promptTemplateService);
@@ -90,7 +91,7 @@ class AiChatServiceImplTest {
         when(streamSpec.content()).thenReturn(Flux.just("波波在呢", "～"));
 
         List<StreamMessageEvent> events = service
-                .chatProactive(sessionId, "sad", "female", null, "【暖场指令】强度=1，方向=共情陪伴")
+                .chatProactive(sessionId, "sad", "female", null, "【暖场指令】强度=1，方向=共情陪伴", 4)
                 .collectList().block();
 
         assertThat(events).hasSize(2);
@@ -115,7 +116,7 @@ class AiChatServiceImplTest {
         when(chatMemory.get(conversationId)).thenReturn(List.of());
         when(streamSpec.content()).thenReturn(Flux.just("在呢"));
 
-        service.chatProactive(sessionId, "happy", "male", "【学生画像】偏沉默", "【暖场指令】强度=2")
+        service.chatProactive(sessionId, "happy", "male", "【学生画像】偏沉默", "【暖场指令】强度=2", 3)
                 .collectList().block();
 
         ArgumentCaptor<String> sysCaptor = ArgumentCaptor.forClass(String.class);
@@ -133,7 +134,7 @@ class AiChatServiceImplTest {
         when(chatMemory.get(conversationId)).thenReturn(List.of(new UserMessage("今天不开心")));
         when(streamSpec.content()).thenReturn(Flux.just("和我说说"));
 
-        service.chat(sessionId, "sad", "今天不开心", "female", null)
+        service.chat(sessionId, "sad", "今天不开心", "female", null, 5)
                 .collectList().block();
 
         ArgumentCaptor<List<Message>> captor = ArgumentCaptor.forClass(List.class);
