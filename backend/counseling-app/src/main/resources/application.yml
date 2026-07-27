@@ -80,13 +80,11 @@ management:
       percentiles-histogram:
         http.server.requests: true
 
-# 日志配置
+# 日志配置（格式与级别由 logback-spring.xml 统一管理，此处仅保留全局开关）
 logging:
   level:
     com.mindsafe: DEBUG
     org.springframework.ai: INFO
-  pattern:
-    console: "%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
 
 # SpringDoc OpenAPI
 springdoc:
