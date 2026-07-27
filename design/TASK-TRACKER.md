@@ -186,9 +186,9 @@
 | PROF-013 | P1：语言模板升级（三维度：认知水平+比喻库+互动模式+CBT 深度） | ✅ 完成 | LANG_001/002/003 已重写为五段（认知水平/语言约束/比喻库/互动模式/禁止），design/29 §3.9 |
 | PROF-014 | P1：性别 × 年龄交叉策略（buildGenderStyle 按年级段分化） | ✅ 完成 | `AiChatServiceImpl.buildGenderStyle` 6 分支矩阵（男/女 × low/mid/high），design/29 §3.10 |
 | PROF-015 | P1：动态降级机制（expressionDepth < 0.3 → 降低语言复杂度） | ✅ 完成 | `ConversationServiceImpl.computeEffectiveGrade`，风险场景不降级，design/29 §3.11 |
-| PROF-016 | P2：V18 迁移 student_profiles 新增 personality_traits JSONB 列 | ⏳ 待开始 | design/29 §4.2 |
-| PROF-017 | P2：LLM 提炼扩展（PROFILE_EXTRACTOR 新增性格维度：内向/敏感/好奇/兴趣） | ⏳ 待开始 | design/29 §3.6 |
-| PROF-018 | P2：性格 → Prompt 策略映射 + dominant_interests 暖场取材 | ⏳ 待开始 | design/29 §3.8 |
+| PROF-016 | P2：V18 迁移 student_profiles 新增 personality_traits JSONB 列 | ✅ 完成 | V18 迁移 + StudentProfile 实体扩展，design/29 §4.2 |
+| PROF-017 | P2：LLM 提炼扩展（PROFILE_EXTRACTOR 新增性格维度：内向/敏感/好奇/兴趣） | ✅ 完成 | ProfileExtractorService.mergePersonalityTraits + EMA 合并，design/29 §3.6 |
+| PROF-018 | P2：性格 → Prompt 策略映射 + dominant_interests 暖场取材 | ✅ 完成 | StudentProfileService.appendPersonalityStrategy，design/29 §3.8 |
 | PROF-019 | P0-P1 集成测试（1 年级 vs 6 年级 System Prompt 差异 + 降级 + 风险不降级回归） | ✅ 完成 | `ConversationServiceImplTest.GradeComputation` 6 用例（含风险不降级回归），design/29 §七 |
 | PROF-020 | P3：画像效果量化（A/B 适配 vs 不适配的满意度/会话深度对比） | ⏳ 远期 | design/29 §八 P3 |
 
@@ -331,10 +331,10 @@
 
 | 任务ID | 任务描述 | 状态 | Sprint |
 |--------|----------|------|--------|
-| AI-001 | 对话质量评估指标体系（共情度/CBT 完成度/安全/满意度） | ⏳ 待开始 | B |
-| AI-002 | LLM-as-Judge 自动评估管线（异步抽样 + 低分标记） | ⏳ 待开始 | B |
+| AI-001 | 对话质量评估指标体系（共情度/CBT 完成度/安全/满意度） | ✅ 完成 | B |
+| AI-002 | LLM-as-Judge 自动评估管线（异步抽样 + 低分标记） | ✅ 完成 | B |
 | AI-003 | 教师端质量监控增强（AI 评分可视化 + 抽检回放） | ⏳ 待开始 | C |
-| AI-004 | 多模型路由（DeepSeek 主 + 通义/GLM 备，故障自动切换） | ⏳ 待开始 | B |
+| AI-004 | 多模型路由（DeepSeek 主 + 通义/GLM 备，故障自动切换） | ✅ 完成 | B |
 | AI-005 | Prompt 版本管理与 A/B 测试框架 | ⏳ 待开始 | C |
 | AI-006 | RAG 心理知识库（Spring AI VectorStore + pgvector） | ⏳ 待开始 | E |
 | AI-007 | 语音情感分析 SER（emotion2vec+，风险辅助信号） | ⏳ 待开始 | 远期 |
@@ -371,8 +371,8 @@
 |--------|----------|------|--------|
 | OPS-001 | CD 自动化（CI → 镜像 → Registry → 部署） | ⏳ 待开始 | E |
 | OPS-002 | Docker 镜像版本化（Git SHA tag + ACR） | ⏳ 待开始 | E |
-| OPS-003 | 结构化日志 + 链路追踪（JSON + traceId） | ⏳ 待开始 | B |
-| OPS-004 | 告警体系（AlertManager → 企微 webhook） | ⏳ 待开始 | B |
+| OPS-003 | 结构化日志 + 链路追踪（JSON + traceId） | ✅ 完成 | B |
+| OPS-004 | 告警体系（AlertManager → 企微 webhook） | ✅ 完成 | B |
 | OPS-005 | 数据库自动备份（pg_dump + 异地 + 恢复演练） | ⏳ 待开始 | A |
 | OPS-006 | 蓝绿/滚动部署 | ⏳ 待开始 | 远期 |
 | OPS-007 | 多环境管理（dev/staging/prod） | ⏳ 待开始 | E |

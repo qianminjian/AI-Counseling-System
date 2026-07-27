@@ -43,6 +43,10 @@ public class StudentProfile {
     @TableField(typeHandler = JsonbTypeHandler.class)
     private String growthTrack;
 
+    /** 性格特征（LLM 提炼）：introversion/sensitivity/curiosity/dominant_interests */
+    @TableField(typeHandler = JsonbTypeHandler.class)
+    private String personalityTraits;
+
     private Integer version;
     private Integer totalSessions;
     private Instant lastUpdatedAt;
@@ -76,6 +80,9 @@ public class StudentProfile {
 
     public String getGrowthTrack() { return growthTrack; }
     public void setGrowthTrack(String growthTrack) { this.growthTrack = growthTrack; }
+
+    public String getPersonalityTraits() { return personalityTraits; }
+    public void setPersonalityTraits(String personalityTraits) { this.personalityTraits = personalityTraits; }
 
     public Integer getVersion() { return version; }
     public void setVersion(Integer version) { this.version = version; }

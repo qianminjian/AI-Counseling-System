@@ -1,0 +1,74 @@
+package com.mindsafe.service.alert;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.scheduling.annotation.Async;
+import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestTemplate;
+
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.util.Map;
+
+/**
+ * 企微 Webhook 告警实现（OPS-004）
+ * <p>
+ * 配置：mindsafe.alert.wecom.webhook-url=https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxx
+ * 未配置时自动降级为 LoggingAlertService。
+ */
+@Service
+@ConditionalOnProperty(name = "mindsafe.alert.wecom.webhook-url")
+public class WeComAlertService implements AlertService {
+
+    private static final Logger log = LoggerFactory.getLogger(WeComAlertService.class);
+    private static final DateTimeFormatter FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
+            .withZone(ZoneId.of("Asia/Shanghai"));
+
+    @Value("${mindsafe.alert.wecom.webhook-url}")
+    private String webhookUrl;
+
+    @Value("${mindsafe.alert.wecom.mentioned-list:}")
+    private String mentionedList;
+
+    private final RestTemplate restTemplate = new RestTemplate();
+
+    @Async
+    @Override
+    public void sendAlert(AlertLevel level, String title, String detail) {
+        try {
+            String emoji = switch (level) {
+                case CRITICAL -> "🔴";
+                case WARNING -> "🟡";
+                case INFO -> "🔵";
+            };
+
+            String content = String.format("""
+                    %s **MindSafe 告警** [%s]
+                    > **标题**：%s
+                    > **时间**：%s
+                    > **详情**：%s
+                    """, emoji, level, title, FMT.format(Instant.now()), detail);
+
+            Map<String, Object> body = Map.of(
+                    "msgtype", "markdown",
+                    "markdown", Map.of("content", content)
+            );
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            HttpEntity<Map<String, Object>> request = new HttpEntity<>(body, headers);
+
+            restTemplate.postForEntity(webhookUrl, request, String.class);
+            log.info("企微告警发送成功: level={}, title={}", level, title);
+        } catch (Exception e) {
+            log.warn("企微告警发送失败（降级为日志）: title={}, error={}", title, e.getMessage());
+            log.error("[ALERT-{}] {}: {}", level, title, detail);
+        }
+    }
+}

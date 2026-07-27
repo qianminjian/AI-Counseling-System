@@ -70,4 +70,14 @@ public interface AiChatService {
      * @return JSON patch（communication_pref/resilience/social_graph），失败返回 null
      */
     String extractProfilePatch(String conversationText, String sessionSummary);
+
+    /**
+     * LLM-as-Judge 对话质量评估（AI-001/AI-002，非流式，会话关闭后异步调用）
+     * <p>
+     * 输出四维评分 JSON：empathy_score / cbt_completion / safety_compliance / engagement_score
+     *
+     * @param conversationText 对话摘要文本
+     * @return JSON 评分结果，失败返回 null
+     */
+    String evaluateConversationQuality(String conversationText);
 }

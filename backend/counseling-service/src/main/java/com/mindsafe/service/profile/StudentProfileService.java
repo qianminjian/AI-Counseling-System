@@ -77,6 +77,7 @@ public class StudentProfileService {
                 profile.setResilience("{}");
                 profile.setSocialGraph("{}");
                 profile.setGrowthTrack("{}");
+                profile.setPersonalityTraits("{}");
                 profile.setVersion(1);
                 profile.setTotalSessions(recentSessions.size());
                 profile.setLastUpdatedAt(Instant.now());
@@ -134,6 +135,13 @@ public class StudentProfileService {
         if (commPref != null && commPref.get("expression_depth") instanceof Number depth) {
             String depthLabel = depth.doubleValue() >= 0.6 ? "偏活跃" : depth.doubleValue() <= 0.3 ? "偏沉默，需更多耐心和鼓励" : "适中";
             sb.append("- 表达深度：").append(String.format("%.2f", depth.doubleValue())).append("（").append(depthLabel).append("）\n");
+        }
+
+        // PROF-018：性格特征策略段
+        Map<String, Object> personality = parseJson(profile.getPersonalityTraits());
+        if (personality != null && !personality.isEmpty()) {
+            sb.append("\n## 性格特征与策略\n");
+            appendPersonalityStrategy(sb, personality);
         }
 
         sb.append("\n## 情绪与风险\n");
@@ -302,6 +310,43 @@ public class StudentProfileService {
             first = false;
         }
         return sb.toString();
+    }
+
+    /**
+     * PROF-018：性格特征 → Prompt 策略映射
+     * 根据 design/29 §3.8 的映射表生成策略指引
+     */
+    @SuppressWarnings("unchecked")
+    private void appendPersonalityStrategy(StringBuilder sb, Map<String, Object> personality) {
+        // introversion
+        if (personality.get("introversion") instanceof Number intro) {
+            if (intro.doubleValue() >= 0.7) {
+                sb.append("- 内向偏高：不追问、给选择题、允许沉默、可以说“不想说也没关系”\n");
+            } else if (intro.doubleValue() <= 0.3) {
+                sb.append("- 外向活跃：可以开放提问、邀请展开讲述\n");
+            }
+        }
+        // sensitivity
+        if (personality.get("sensitivity") instanceof Number sens) {
+            if (sens.doubleValue() >= 0.7) {
+                sb.append("- 情绪敏感：语气更轻柔、避免直接指出问题、先稳定再探索\n");
+            } else if (sens.doubleValue() <= 0.3) {
+                sb.append("- 情绪稳定：可以适度挑战、直接反馈\n");
+            }
+        }
+        // curiosity
+        if (personality.get("curiosity") instanceof Number curi) {
+            if (curi.doubleValue() >= 0.7) {
+                sb.append("- 好奇心强：用探索/实验比喻、“我们来当小侦探”\n");
+            } else if (curi.doubleValue() <= 0.3) {
+                sb.append("- 偏好稳定：用安全/稳定比喻、“我们找个舒服的办法”\n");
+            }
+        }
+        // dominant_interests：暖场取材
+        if (personality.get("dominant_interests") instanceof java.util.List<?> interests && !interests.isEmpty()) {
+            sb.append("- 兴趣取材：该生喜欢「").append(String.join("、",
+                    interests.stream().map(Object::toString).limit(3).toList())).append("」，暖场和比喻可优先从这些主题取材\n");
+        }
     }
 
     private String toJson(Map<String, Object> map) {

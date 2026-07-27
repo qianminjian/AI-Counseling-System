@@ -76,6 +76,7 @@ public class ProfileExtractorService {
             ObjectNode socialGraph = mergeSocialGraph(parseObject(profile.getSocialGraph()), patch.path("social_graph"));
             ObjectNode growthTrack = mergeGrowthTrack(parseObject(profile.getGrowthTrack()),
                     profile.getTotalSessions(), patch.path("resilience").path("coping_skills_used"));
+            ObjectNode personalityTraits = mergePersonalityTraits(parseObject(profile.getPersonalityTraits()), patch.path("personality_traits"));
 
             StudentProfile update = new StudentProfile();
             update.setProfileId(profile.getProfileId());
@@ -83,6 +84,7 @@ public class ProfileExtractorService {
             update.setResilience(objectMapper.writeValueAsString(resilience));
             update.setSocialGraph(objectMapper.writeValueAsString(socialGraph));
             update.setGrowthTrack(objectMapper.writeValueAsString(growthTrack));
+            update.setPersonalityTraits(objectMapper.writeValueAsString(personalityTraits));
             update.setVersion(profile.getVersion() == null ? 1 : profile.getVersion() + 1);
             update.setLastUpdatedAt(Instant.now());
             profileMapper.updateById(update);
@@ -94,6 +96,44 @@ public class ProfileExtractorService {
     }
 
     // ===== 维度合并 =====
+
+    private ObjectNode mergePersonalityTraits(ObjectNode existing, JsonNode patchNode) {
+        if (patchNode == null || patchNode.isMissingNode() || patchNode.isNull()) {
+            return existing;
+        }
+        // 数值维度：指数移动平均（新值权重 0.4，历史 0.6）——避免单次会话过度影响
+        mergeEmaField(existing, patchNode, "introversion", 0.4);
+        mergeEmaField(existing, patchNode, "sensitivity", 0.4);
+        mergeEmaField(existing, patchNode, "curiosity", 0.4);
+
+        // dominant_interests：累加去重（最多保留 6 个）
+        JsonNode interests = patchNode.path("dominant_interests");
+        if (interests.isArray() && !interests.isEmpty()) {
+            ArrayNode existingInterests = existing.has("dominant_interests") && existing.get("dominant_interests").isArray()
+                    ? (ArrayNode) existing.get("dominant_interests")
+                    : existing.putArray("dominant_interests");
+            java.util.Set<String> seen = new java.util.LinkedHashSet<>();
+            existingInterests.forEach(n -> seen.add(n.asText()));
+            for (JsonNode item : interests) {
+                String tag = item.asText("").trim();
+                if (!tag.isEmpty()) seen.add(tag);
+            }
+            existingInterests.removeAll();
+            seen.stream().limit(6).forEach(existingInterests::add);
+        }
+        return existing;
+    }
+
+    private void mergeEmaField(ObjectNode existing, JsonNode patch, String field, double alpha) {
+        if (!patch.hasNonNull(field)) return;
+        double newVal = patch.get(field).asDouble();
+        if (existing.hasNonNull(field)) {
+            double oldVal = existing.get(field).asDouble();
+            existing.put(field, Math.round((alpha * newVal + (1 - alpha) * oldVal) * 100.0) / 100.0);
+        } else {
+            existing.put(field, Math.round(newVal * 100.0) / 100.0);
+        }
+    }
 
     private ObjectNode mergeCommunicationPref(ObjectNode existing, JsonNode patchNode) {
         if (patchNode == null || patchNode.isMissingNode() || patchNode.isNull()) {
