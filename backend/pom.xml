@@ -41,6 +41,9 @@
         <springdoc.version>2.7.0</springdoc.version>
         <jjwt.version>0.12.6</jjwt.version>
         <pgvector.version>0.1.6</pgvector.version>
+        <jacoco.version>0.8.12</jacoco.version>
+        <!-- 覆盖率门禁：起步 30%，目标逐步提升至 80%（counseling-ai 当前 34%，拖后腿） -->
+        <jacoco.line.coverage>0.30</jacoco.line.coverage>
     </properties>
 
     <dependencyManagement>
@@ -164,6 +167,27 @@
                         <goals>
                             <goal>integration-test</goal>
                             <goal>verify</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+            <!-- 代码覆盖率：JaCoCo（报告生成，门禁由 CI 层聚合检查） -->
+            <plugin>
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
+                <version>${jacoco.version}</version>
+                <executions>
+                    <execution>
+                        <id>prepare-agent</id>
+                        <goals>
+                            <goal>prepare-agent</goal>
+                        </goals>
+                    </execution>
+                    <execution>
+                        <id>report</id>
+                        <phase>test</phase>
+                        <goals>
+                            <goal>report</goal>
                         </goals>
                     </execution>
                 </executions>
