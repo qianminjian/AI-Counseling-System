@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useTheme } from '../theme/ThemeProvider'
 import { api } from '../api'
+import { unlockAudio } from '../utils/audioUnlock'
 import SessionHistory from './SessionHistory'
 import RelaxationExercises from './RelaxationExercises'
 import EmotionDiary from './EmotionDiary'
@@ -23,6 +24,9 @@ export default function EmotionSelect({ onStart, userName, onLogout }) {
 
   const handleStart = async () => {
     if (!selected) return
+    // 关键：在用户手势同步调用栈内立即解锁音频（Safari/Firefox 要求）
+    // 不能等 async API 返回后再解锁，否则浏览器不再认为处于"用户激活"状态
+    unlockAudio()
     setLoading(true)
     try {
       const data = await api('/chat/sessions', {

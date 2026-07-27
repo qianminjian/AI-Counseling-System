@@ -1,6 +1,130 @@
 import { useState } from 'react'
 import { trialRegister, setToken, setRefreshToken, setUser } from '../api'
 
+/** 家长绑定（POST /api/v1/parent/auth/register） */
+async function parentBind(familyCode, phone, password, relation) {
+  const res = await fetch('/api/v1/parent/auth/register', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ familyCode, phone, password, relation }),
+  })
+  const json = await res.json()
+  if (!json.success) throw new Error(json.message || '绑定失败')
+  return json.data
+}
+
+
+/**
+ * 家庭码成功页 + 家长手机绑定表单
+ * 解决 Bug：不满14岁提示需家长陡同后，无手机号管理衔接（Pad 端死胡同）
+ */
+function FamilyCodePage({ familyCode, onDone }) {
+  const [showBind, setShowBind] = useState(false)
+  const [phone, setPhone] = useState('')
+  const [password, setPassword] = useState('')
+  const [relation, setRelation] = useState('爸爸')
+  const [binding, setBinding] = useState(false)
+  const [bindResult, setBindResult] = useState(null) // 'success' | error message
+
+  const handleBind = async (e) => {
+    e.preventDefault()
+    if (!/^1[3-9]\d{9}$/.test(phone)) {
+      setBindResult('请输入正确的手机号')
+      return
+    }
+    if (password.length < 6) {
+      setBindResult('密码至少 6 位')
+      return
+    }
+    setBinding(true)
+    setBindResult(null)
+    try {
+      await parentBind(familyCode, phone, password, relation)
+      setBindResult('success')
+    } catch (err) {
+      setBindResult(err.message || '绑定失败')
+    } finally {
+      setBinding(false)
+    }
+  }
+
+  return (
+    <div className="min-h-screen flex flex-col items-center justify-center p-6"
+      style={{ background: 'linear-gradient(to bottom, #f0fff4, #e8f8f0)' }}>
+      <div className="w-full max-w-sm text-center">
+        <div className="text-5xl mb-4">🎉</div>
+        <h1 className="text-2xl font-bold text-gray-800 mb-2">注册成功！</h1>
+        <p className="text-sm text-gray-500 mb-6">请把这个家庭码告诉爸爸妈妈</p>
+
+        <div className="bg-white rounded-2xl shadow-sm border-2 border-dashed border-green-300 p-6 mb-6">
+          <p className="text-xs text-gray-400 mb-2">我的家庭码</p>
+          <p className="text-4xl font-mono font-bold tracking-[0.3em] text-green-600">{familyCode}</p>
+          <p className="text-xs text-gray-400 mt-3">爸爸妈妈用这个码就能绑定你，查看你的情绪周报</p>
+        </div>
+
+        {/* 家长绑定区域 */}
+        {bindResult === 'success' ? (
+          <div className="bg-green-50 border border-green-200 rounded-2xl p-4 mb-6 text-green-700 text-sm">
+            ✅ 家长绑定成功！爸爸妈妈可以查看你的情绪周报了
+          </div>
+        ) : showBind ? (
+          <form onSubmit={handleBind} className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 mb-6 text-left space-y-4">
+            <p className="text-sm font-medium text-gray-700 text-center">👨‍👩‍👧 家长绑定（可选）</p>
+
+            {/* 关系 */}
+            <div className="grid grid-cols-3 gap-2">
+              {['爸爸', '妈妈', '其他'].map((r) => (
+                <button key={r} type="button" onClick={() => setRelation(r)}
+                  className={`py-2.5 rounded-xl border-2 text-sm font-medium transition-all ${
+                    relation === r ? 'border-green-400 bg-green-50 text-green-700' : 'border-gray-100 text-gray-500'
+                  }`}
+                >{r}</button>
+              ))}
+            </div>
+
+            {/* 手机号 */}
+            <input
+              type="tel" value={phone} onChange={(e) => { setPhone(e.target.value); setBindResult(null) }}
+              placeholder="家长手机号" maxLength={11}
+              className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-green-200 text-sm"
+            />
+
+            {/* 密码 */}
+            <input
+              type="password" value={password} onChange={(e) => { setPassword(e.target.value); setBindResult(null) }}
+              placeholder="设置密码（至少 6 位）" maxLength={20}
+              className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-green-200 text-sm"
+            />
+
+            {bindResult && bindResult !== 'success' && (
+              <p className="text-xs text-red-500 bg-red-50 px-3 py-2 rounded-lg">{bindResult}</p>
+            )}
+
+            <button type="submit" disabled={binding}
+              className={`w-full py-3.5 rounded-full text-white font-medium transition-all ${
+                binding ? 'bg-gray-300 cursor-wait' : 'bg-green-500 hover:bg-green-600 active:scale-[0.98]'
+              }`}
+            >{binding ? '绑定中...' : '确认绑定'}</button>
+          </form>
+        ) : (
+          <button
+            onClick={() => setShowBind(true)}
+            className="w-full py-3.5 rounded-full border-2 border-green-300 text-green-600 font-medium mb-4 hover:bg-green-50 active:scale-[0.98] transition-all"
+          >
+            👨‍👩‍👧 我是家长，现在绑定手机号
+          </button>
+        )}
+
+        <button
+          onClick={onDone}
+          className="w-full py-4 rounded-full text-white font-medium text-lg bg-green-500 hover:bg-green-600 active:scale-[0.98] shadow-lg transition-all"
+        >
+          开始使用 🚀
+        </button>
+      </div>
+    </div>
+  )
+}
 
 /**
  * 试用注册页（邀请码 + 昵称 + 年龄 + 角色）
@@ -72,31 +196,9 @@ export default function TrialRegister({ consentVersion, onRegistered }) {
     }
   }
 
-  // 注册成功：显示家庭码
+ // 注册成功：显示家庭码 + 家长绑定入口
   if (familyCode) {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center p-6"
-        style={{ background: 'linear-gradient(to bottom, #f0fff4, #e8f8f0)' }}>
-        <div className="w-full max-w-sm text-center">
-          <div className="text-5xl mb-4">🎉</div>
-          <h1 className="text-2xl font-bold text-gray-800 mb-2">注册成功！</h1>
-          <p className="text-sm text-gray-500 mb-6">请把这个家庭码告诉爸爸妈妈</p>
-
-          <div className="bg-white rounded-2xl shadow-sm border-2 border-dashed border-green-300 p-6 mb-6">
-            <p className="text-xs text-gray-400 mb-2">我的家庭码</p>
-            <p className="text-4xl font-mono font-bold tracking-[0.3em] text-green-600">{familyCode}</p>
-            <p className="text-xs text-gray-400 mt-3">爸爸妈妈用这个码就能绑定你，查看你的情绪周报</p>
-          </div>
-
-          <button
-            onClick={() => onRegistered()}
-            className="w-full py-4 rounded-full text-white font-medium text-lg bg-green-500 hover:bg-green-600 active:scale-[0.98] shadow-lg transition-all"
-          >
-            开始使用 🚀
-          </button>
-        </div>
-      </div>
-    )
+    return <FamilyCodePage familyCode={familyCode} onDone={() => onRegistered()} />
   }
 
   return (

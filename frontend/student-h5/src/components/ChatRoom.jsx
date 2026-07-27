@@ -269,6 +269,14 @@ export default function ChatRoom({ session, onEnd }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // TTS 引擎不可用提示（安卓 Pad 无 Google 语音引擎时显示友好提示，而非系统报错）
+  useEffect(() => {
+    if (tts.engine === 'none') {
+      setVoiceNotice('当前浏览器不支持语音播放，可阅读文字内容 📖')
+      setTimeout(() => setVoiceNotice(''), 6000)
+    }
+  }, [tts.engine])
+
   /** 录音完成 → 上传分析 → 自动发送（audioBlob 为 null 时直接用浏览器转写） */
   const handleRecordingComplete = useCallback(async (audioBlob) => {
     // 无录音（麦克风不可用）→ 直接用浏览器识别结果

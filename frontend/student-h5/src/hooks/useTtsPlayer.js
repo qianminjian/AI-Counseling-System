@@ -2,9 +2,12 @@
  * TTS 语音播放 Hook
  * - 逐句合成 + 队列播放
  * - 单一持久 Audio 元素（规避浏览器自动播放拦截）
+ * - 后端 TTS 不可用时降级为浏览器 speechSynthesis
+ * - 无可用语音引擎时友好提示（修复安卓 Pad "找不到google语音引擎" 问题）
  * - 支持暂停/重播/停止
  */
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback, useEffect } from 'react'
+import { getGlobalAudioElement, getGlobalAudioContext, unlockAudio } from '../utils/audioUnlock'
 
 /** 去除 emoji 和特殊符号（TTS 不需要朗读） */
 function stripEmoji(text) {
@@ -60,74 +63,101 @@ function mergeShortSentences(sentences, minLen = 10) {
   return merged
 }
 
+/** 检测浏览器 speechSynthesis 是否可用（安卓无 Google TTS 时 getVoices 为空） */
+function checkBrowserTts() {
+  if (!('speechSynthesis' in window)) return false
+  const voices = window.speechSynthesis.getVoices()
+  // 部分浏览器异步加载 voices，首次可能为空但引擎存在
+  return voices.length > 0 || true // 引擎存在即认为可用，voices 异步加载
+}
+
+/** 用浏览器 speechSynthesis 朗读（后端 TTS 不可用时的降级） */
+function browserSpeak(text, { rate = 1.0, onEnd } = {}) {
+  if (!('speechSynthesis' in window)) { onEnd?.(); return false }
+  try {
+    window.speechSynthesis.cancel()
+    const utter = new SpeechSynthesisUtterance(text)
+    utter.lang = 'zh-CN'
+    utter.rate = Math.max(0.5, Math.min(2, rate))
+    // 优先选中文语音
+    const voices = window.speechSynthesis.getVoices()
+    const zhVoice = voices.find(v => v.lang.startsWith('zh'))
+    if (zhVoice) utter.voice = zhVoice
+    utter.onend = () => onEnd?.()
+    utter.onerror = () => onEnd?.()
+    window.speechSynthesis.speak(utter)
+    return true
+  } catch {
+    onEnd?.()
+    return false
+  }
+}
+
 export function useTtsPlayer({ persona = 'xiaoxing', emotion = 'neutral', speed = 1.0 } = {}) {
   const [playing, setPlaying] = useState(false)
   const [currentSentenceIdx, setCurrentSentenceIdx] = useState(-1)
   // 当前正在播放的句子数组（供波波话语气泡逐句展示，见 design/27 §4.4）
   const [sentences, setSentences] = useState([])
   const [muted, setMuted] = useState(false)
+  // 语音引擎状态：'backend' | 'browser' | 'none'
+  const [engine, setEngine] = useState('backend')
   // 单一持久 Audio 元素（在用户手势中创建，规避自动播放拦截）
   const audioRef = useRef(null)
   const audioCtxRef = useRef(null)
   const abortRef = useRef(false)
+  const backendFailCount = useRef(0) // 连续后端失败计数
 
-  /** 获取/创建持久 Audio 元素（移动端需 playsinline 才能内联播放） */
+  // 初始化时检测浏览器 TTS 可用性（voiceschanged 事件确保异步加载完成）
+  useEffect(() => {
+    if ('speechSynthesis' in window) {
+      const handler = () => window.speechSynthesis.getVoices()
+      window.speechSynthesis.addEventListener?.('voiceschanged', handler)
+      return () => window.speechSynthesis.removeEventListener?.('voiceschanged', handler)
+    }
+  }, [])
+
+  /** 获取/创建持久 Audio 元素（复用全局已解锁实例，确保自动播放权限） */
   const getAudio = useCallback(() => {
     if (!audioRef.current) {
-      const audio = new Audio()
-      audio.preload = 'auto'
-      audio.playsInline = true
-      audio.setAttribute('playsinline', '')
-      audio.setAttribute('webkit-playsinline', '')
-      audioRef.current = audio
+      audioRef.current = getGlobalAudioElement()
     }
     return audioRef.current
   }, [])
 
-  /** 在用户手势中调用，解锁浏览器音频自动播放限制 */
+  /** 在用户手势中调用，解锁浏览器音频自动播放限制（增强多浏览器兼容） */
   const unlock = useCallback(() => {
-    // 1. 解锁 AudioContext（复用同一个，避免重复创建）
-    try {
-      if (!audioCtxRef.current) {
-        audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)()
-      }
-      if (audioCtxRef.current.state === 'suspended') {
-        audioCtxRef.current.resume()
-      }
-      const ctx = audioCtxRef.current
-      const buffer = ctx.createBuffer(1, 1, 22050)
-      const source = ctx.createBufferSource()
-      source.buffer = buffer
-      source.connect(ctx.destination)
-      source.start(0)
-    } catch { /* ignore */ }
+    // 委托全局解锁模块（幂等，EmotionSelect 点击时已调用过则跳过）
+    unlockAudio()
+    // 确保 ref 指向全局实例
+    if (!audioRef.current) {
+      audioRef.current = getGlobalAudioElement()
+    }
+    if (!audioCtxRef.current) {
+      audioCtxRef.current = getGlobalAudioContext()
+    }
+  }, [])
 
-    // 2. 预创建并"预热"持久 Audio 元素（关键：在用户手势中 play 一次静音）
-    const audio = getAudio()
-    // 用一段极短的静音 data URI 预热，让浏览器记住这个元素已被用户手势激活
-    const silentWav = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA='
-    audio.src = silentWav
-    audio.volume = 0
-    audio.play().then(() => {
-      audio.pause()
-      audio.volume = 1
-      audio.currentTime = 0
-    }).catch(() => {
-      audio.volume = 1
-    })
-  }, [getAudio])
-
-  /** 合成单句音频 */
+  /** 合成单句音频（后端 TTS，连续失败 3 次后降级为浏览器 TTS） */
   const synthesizeSentence = useCallback(async (text) => {
+    // 后端已连续失败多次，直接用浏览器 TTS
+    if (backendFailCount.current >= 3) {
+      return null // 返回 null 触发 speak() 中的浏览器降级路径
+    }
     try {
       const res = await fetch('/api/v1/tts/synthesize', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text, persona, emotion, speed }),
       })
-      if (!res.ok || res.status === 204) return null
+      if (!res.ok || res.status === 204) {
+        backendFailCount.current++
+        return null
+      }
+      backendFailCount.current = 0 // 成功则重置
+      setEngine('backend')
       return await res.blob()
     } catch {
+      backendFailCount.current++
       return null
     }
   }, [persona, emotion, speed])
@@ -171,22 +201,40 @@ export function useTtsPlayer({ persona = 'xiaoxing', emotion = 'neutral', speed 
     setPlaying(true)
 
     // 所有句子同时并行合成：播放第 i 句时，第 i+1..n 句早已在后台合成
-    // → 无论单句合成多慢，句间都零间隔（只有首句需等待一次合成）
     const audioPromises = sentences.map(s => synthesizeSentence(s))
 
+    let usedBrowserFallback = false
     for (let i = 0; i < audioPromises.length; i++) {
       if (abortRef.current) break
       setCurrentSentenceIdx(i)
       const audioBlob = await audioPromises[i]
-      if (!audioBlob || abortRef.current) continue
-      await playBlob(audioBlob)
+      if (abortRef.current) break
+      if (audioBlob) {
+        await playBlob(audioBlob)
+      } else {
+        // 后端 TTS 不可用 → 浏览器 speechSynthesis 降级
+        usedBrowserFallback = true
+        setEngine('browser')
+        await new Promise((resolve) => {
+          const ok = browserSpeak(sentences[i], { rate: speed, onEnd: resolve })
+          if (!ok) {
+            // 浏览器 TTS 也不可用（安卓无 Google 语音引擎）
+            setEngine('none')
+            resolve()
+          }
+        })
+      }
     }
 
     // 播放完毕
     setPlaying(false)
     setCurrentSentenceIdx(-1)
     setSentences([])
-  }, [muted, synthesizeSentence, playBlob])
+    // 如果整段都用了浏览器降级且引擎不可用，恢复 backend 标记（下次重试）
+    if (usedBrowserFallback && backendFailCount.current < 3) {
+      setEngine('backend')
+    }
+  }, [muted, synthesizeSentence, playBlob, speed])
 
   /** 播放单句（点击气泡重播） */
   const speakSentence = useCallback(async (text) => {
@@ -195,18 +243,33 @@ export function useTtsPlayer({ persona = 'xiaoxing', emotion = 'neutral', speed 
 
     const cleaned = stripEmoji(text)
     const audioBlob = await synthesizeSentence(cleaned)
-    if (!audioBlob) return
 
     setPlaying(true)
-    await playBlob(audioBlob)
+    if (audioBlob) {
+      await playBlob(audioBlob)
+    } else {
+      // 后端不可用 → 浏览器 TTS 降级
+      setEngine('browser')
+      await new Promise((resolve) => {
+        const ok = browserSpeak(cleaned, { rate: speed, onEnd: resolve })
+        if (!ok) {
+          setEngine('none')
+          resolve()
+        }
+      })
+    }
     setPlaying(false)
-  }, [muted, synthesizeSentence, playBlob])
+  }, [muted, synthesizeSentence, playBlob, speed])
 
   /** 停止播放 */
   const stop = useCallback(() => {
     abortRef.current = true
     if (audioRef.current) {
       audioRef.current.pause()
+    }
+    // 停止浏览器 TTS
+    if ('speechSynthesis' in window) {
+      try { window.speechSynthesis.cancel() } catch { /* ignore */ }
     }
     setPlaying(false)
     setCurrentSentenceIdx(-1)
@@ -230,6 +293,7 @@ export function useTtsPlayer({ persona = 'xiaoxing', emotion = 'neutral', speed 
   return {
     playing,
     muted,
+    engine, // 'backend' | 'browser' | 'none'
     currentSentenceIdx,
     currentSentenceText,
     speak,
