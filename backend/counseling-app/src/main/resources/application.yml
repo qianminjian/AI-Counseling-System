@@ -51,17 +51,6 @@ spring:
           temperature: 0.7
           max-tokens: 2048
 
-# MindSafe AI 多模型降级配置（AI-004）
-mindsafe:
-  ai:
-    fallback:
-      enabled: ${LLM_FALLBACK_ENABLED:false}
-      base-url: ${LLM_FALLBACK_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode/v1}
-      api-key: ${LLM_FALLBACK_API_KEY:}
-      model: ${LLM_FALLBACK_MODEL:qwen-plus}
-      temperature: 0.7
-      max-tokens: 2048
-
 # MyBatis-Plus 配置
 mybatis-plus:
   type-handlers-package: com.mindsafe.domain.handler
@@ -106,6 +95,15 @@ springdoc:
 
 # MindSafe 业务配置
 mindsafe:
+  # AI 多模型降级配置（AI-004）
+  ai:
+    fallback:
+      enabled: ${LLM_FALLBACK_ENABLED:false}
+      base-url: ${LLM_FALLBACK_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode/v1}
+      api-key: ${LLM_FALLBACK_API_KEY:}
+      model: ${LLM_FALLBACK_MODEL:qwen-plus}
+      temperature: 0.7
+      max-tokens: 2048
   # JWT 认证（生产必须配置 secret）
   jwt:
     secret: ${MINDSAFE_JWT_SECRET:}  # 空 = 开发默认（生产 fail-fast）
