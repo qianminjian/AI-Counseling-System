@@ -1,6 +1,6 @@
 # AI 小学生心理辅导系统 - 任务跟踪表
 
-> 创建：2026-07-23 | 更新：2026-07-23（新增产品全景优化规划任务，design/30）
+> 创建：2026-07-23 | 更新：2026-07-27（核对 design/29 PROF-010~015+019 实现状态，同步为 ✅ 完成，与代码一致）
 > 
 > 本表用于跟踪项目各阶段任务的进度和责任人。
 
@@ -173,22 +173,23 @@
 | PROF-003 | P1：沟通偏好 + 技巧有效性（LLM 提炼） | ✅ 完成 | ProfileExtractorService 异步提炼 + Prompt 注入增强 |
 | PROF-004 | P2：成长轨迹 + 里程碑 + 教师端雷达图 | ✅ 完成 | ProfileRadarService + ECharts 雷达图 + 里程碑检测 |
 
-### 年龄适配与画像增强（design/29，待实施）
+### 年龄适配与画像增强（design/29，P0/P1 已实施）
 
 > 核心问题：grade_level 硬编码 "5-6"、语言模板从未调用、User.gradeCode 未传入 AI 层、画像无年龄/性格维度。
+> 核对结论（2026-07-27）：P0+P1（PROF-010~015 + PROF-019）已实现，与 [BEACON.md](BEACON.md) L63 一致；P2/P3 保持待开始/远期。
 
 | 任务ID | 任务描述 | 状态 | 备注 |
 |--------|----------|------|------|
-| PROF-010 | P0：接通年级——SessionState 新增 grade + AiChatService 接口新增 grade 参数 + gradeCode 解析 | ⏳ 待开始 | 消除硬编码 "5-6"，design/29 §3.1-3.3 |
-| PROF-011 | P0：调用 languageTemplateForGrade(grade) 加载语言模板追加到 System Prompt | ⏳ 待开始 | 模板文件已存在，只需接线，design/29 §3.4 |
-| PROF-012 | P0：buildProfilePrompt 追加「基础属性」段（年级/年龄/性别/表达深度） | ⏳ 待开始 | design/29 §3.5 |
-| PROF-013 | P1：语言模板升级（三维度：认知水平+比喻库+互动模式+CBT 深度） | ⏳ 待开始 | 重写 LANG_001/002/003，design/29 §3.9 |
-| PROF-014 | P1：性别 × 年龄交叉策略（buildGenderStyle 按年级段分化） | ⏳ 待开始 | design/29 §3.10 |
-| PROF-015 | P1：动态降级机制（expressionDepth < 0.3 → 降低语言复杂度） | ⏳ 待开始 | design/29 §3.11，风险场景不降级 |
+| PROF-010 | P0：接通年级——SessionState 新增 grade + AiChatService 接口新增 grade 参数 + gradeCode 解析 | ✅ 完成 | `User.gradeCode` 字段 + `AiChatService.chat` 接 grade 参数 + `ConversationServiceImpl.parseGradeCode`，design/29 §3.1-3.3 |
+| PROF-011 | P0：调用 languageTemplateForGrade(grade) 加载语言模板追加到 System Prompt | ✅ 完成 | `PromptTemplateService.languageTemplateForGrade` + `AiChatServiceImpl` L70/L128 调用，design/29 §3.4 |
+| PROF-012 | P0：buildProfilePrompt 追加「基础属性」段（年级/年龄/性别/表达深度） | ✅ 完成 | `StudentProfileService.buildProfilePrompt` 含 `## 基础属性` 段，design/29 §3.5 |
+| PROF-013 | P1：语言模板升级（三维度：认知水平+比喻库+互动模式+CBT 深度） | ✅ 完成 | LANG_001/002/003 已重写为五段（认知水平/语言约束/比喻库/互动模式/禁止），design/29 §3.9 |
+| PROF-014 | P1：性别 × 年龄交叉策略（buildGenderStyle 按年级段分化） | ✅ 完成 | `AiChatServiceImpl.buildGenderStyle` 6 分支矩阵（男/女 × low/mid/high），design/29 §3.10 |
+| PROF-015 | P1：动态降级机制（expressionDepth < 0.3 → 降低语言复杂度） | ✅ 完成 | `ConversationServiceImpl.computeEffectiveGrade`，风险场景不降级，design/29 §3.11 |
 | PROF-016 | P2：V18 迁移 student_profiles 新增 personality_traits JSONB 列 | ⏳ 待开始 | design/29 §4.2 |
 | PROF-017 | P2：LLM 提炼扩展（PROFILE_EXTRACTOR 新增性格维度：内向/敏感/好奇/兴趣） | ⏳ 待开始 | design/29 §3.6 |
 | PROF-018 | P2：性格 → Prompt 策略映射 + dominant_interests 暖场取材 | ⏳ 待开始 | design/29 §3.8 |
-| PROF-019 | P0-P1 集成测试（1 年级 vs 6 年级 System Prompt 差异 + 降级 + 风险不降级回归） | ⏳ 待开始 | design/29 §七 |
+| PROF-019 | P0-P1 集成测试（1 年级 vs 6 年级 System Prompt 差异 + 降级 + 风险不降级回归） | ✅ 完成 | `ConversationServiceImplTest.GradeComputation` 6 用例（含风险不降级回归），design/29 §七 |
 | PROF-020 | P3：画像效果量化（A/B 适配 vs 不适配的满意度/会话深度对比） | ⏳ 远期 | design/29 §八 P3 |
 
 ---
