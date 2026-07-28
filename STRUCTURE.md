@@ -56,6 +56,7 @@ AI-Counseling-System/
   - `TASK-TRACKER.md` — 任务跟踪表（文档整合任务 + MVP 开发任务 + 决策/风险/里程碑）
   - `01_*.md` ~ `20_*.md` — **当前设计文档（md 格式，单一事实源）**，由 `doc/*.docx` 整合而来，直接平铺在 design/ 根下；16-20 为新增（API 接口 + 前端架构 + Prompt 模板库 + 界面详设 + 端到端流程）
   - `*-PLAN.md` — Plan Mode 产出的执行计划（按 design-persistence.md §6 硬性要求）
+  - `demo/` — 交互原型（独立 HTML Demo，供设计选型/现场预览，不参与前端构建，与 design/19 界面详设配套）
   - `discussion/`（可选）多轮设计讨论摘要；`decisions/`（可选）ADR；`reference/`（可选）外部参考
 - **命名约定**：新增正式设计文档在 `design/` 根下沿用 `NN_主题.md` 编号制，接着 20 往后排
 - **文档权威性**：以 `design/*.md` 为准；原始 docx 存于项目根 `doc/`，仅作溯源，二者冲突时以 md 为准（md 已按 Java 技术栈决策改写）
@@ -292,3 +293,4 @@ prompts/
 | 2026-07-23 | 目录结构纠偏：`design/docs/*.md` 拍平到 `design/`；`design/his/` 迁至项目根 `doc/`；§1/§2.2 同步 | 对齐钱敏健原意（md 直接在 design 下、docx 在 doc 下），消除多余中间层 |
 | 2026-07-23 | `prd/` + `prompts/` 归档至 `doc/his/`，删除原目录；§1/§2.1/§2.3/§3/§4 同步 | 内容已被 design/*.md 完全取代，无活跃用途，统一归入只读留档 |
 | 2026-07-23 | 开发规范制定：§2.7 测试命名/目录/管理规则、§2.8 构建产物、§2.9 deploy/、§2.10 DB 脚本、§2.11 报告输出、§2.12 Prompt 资源、§2.13 tmp 扩展；新增 deploy/ + reports/ 目录；§4 新增包名/产物/报告红线 | 钱敏健确认 MVP 范围 + Maven + MyBatis-Plus，开发启动前约束先行 |
+| 2026-07-28 | §2.2 新增 `design/demo/` 子目录约定（交互原型 HTML Demo） | 学生端登录页三风格 Demo 需纳入版本管理，从 tmp/ 迁入正式目录 |

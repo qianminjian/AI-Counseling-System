@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>风格 2：糖果乐园</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'PingFang SC',sans-serif;background:#0a0a1a;display:flex;flex-direction:column;align-items:center;min-height:100vh;padding:20px}
+.toolbar{display:flex;gap:10px;margin-bottom:14px;align-items:center;flex-wrap:wrap;justify-content:center}
+.toolbar .label{color:#fff;font-size:14px;font-weight:700}
+.toolbar button{padding:7px 16px;border:none;border-radius:16px;cursor:pointer;font-size:13px;font-weight:600;transition:all .2s}
+.toolbar .active{background:#ec4899;color:#fff}
+.toolbar .inactive{background:#222;color:#888}
+.device-frame{border-radius:36px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.6);transition:all .3s}
+.device-frame.phone{width:390px;height:844px}
+.device-frame.pad-landscape{width:1100px;height:700px}
+.device-frame.pad-portrait{width:700px;height:1000px}
+.screen{width:100%;height:100%;overflow-y:auto}
+
+/* === 糖果乐园：无卡片，元素漂浮 === */
+.scene{min-height:100%;position:relative;overflow:hidden;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px 24px;
+  background:linear-gradient(160deg,#fff1f2 0%,#fce7f3 30%,#fbcfe8 60%,#f9a8d4 100%)}
+.candy-float{position:absolute;animation:candy-bob 4s ease-in-out infinite;opacity:.45}
+@keyframes candy-bob{0%,100%{transform:translateY(0) rotate(0)}50%{transform:translateY(-12px) rotate(6deg)}}
+
+/* Pad 横屏 */
+.pad-landscape .scene{flex-direction:row;gap:40px;padding:36px 56px}
+.pad-landscape .left-brand{display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1}
+.left-brand{display:none}
+.left-brand .mascot{font-size:100px;animation:bounce-m 2s ease-in-out infinite}
+@keyframes bounce-m{0%,100%{transform:translateY(0) scale(1)}40%{transform:translateY(-22px) scale(1.05)}60%{transform:translateY(0) scale(.95)}}
+.left-brand h1{font-size:32px;color:#be185d;margin-top:10px;font-weight:900}
+.left-brand p{font-size:14px;color:#9d174d;opacity:.6;margin-top:4px}
+.left-brand .tagline{margin-top:16px;padding:10px 22px;background:rgba(255,255,255,.7);border-radius:20px;color:#be185d;font-size:13px;font-weight:700;box-shadow:0 4px 12px rgba(236,72,153,.12)}
+.pad-landscape .form-area{max-width:380px}
+.pad-landscape .form-area .brand{display:none}
+.pad-portrait .form-area{max-width:400px}
+.pad-portrait .left-brand{display:none}
+
+/* 品牌 */
+.brand{text-align:center;margin-bottom:18px}
+.brand .mascot{font-size:56px;display:inline-block;animation:bounce-m 2s ease-in-out infinite}
+.brand h1{font-size:24px;color:#be185d;font-weight:900;margin-top:4px}
+.brand p{font-size:11px;color:#9d174d;opacity:.5}
+
+/* 表单区域 */
+.form-area{width:100%;max-width:320px;position:relative;z-index:5}
+
+/* Tab 胶囊 */
+.tabs{display:flex;gap:8px;margin-bottom:18px;justify-content:center}
+.tabs button{padding:12px 28px;border:none;border-radius:24px;font-size:15px;font-weight:800;cursor:pointer;transition:all .25s;background:rgba(255,255,255,.5);color:#9d174d;box-shadow:0 3px 10px rgba(0,0,0,.05)}
+.tabs button.active{background:#fff;color:#db2777;box-shadow:0 6px 20px rgba(236,72,153,.2);transform:scale(1.05)}
+
+/* 输入 */
+.field{margin-bottom:12px}
+.field label{display:block;font-size:12px;font-weight:700;color:#9d174d;margin-bottom:4px}
+.field input{width:100%;padding:14px 16px;border:3px solid #fbcfe8;border-radius:20px;font-size:15px;text-align:center;background:#fff;color:#831843;outline:none;transition:all .2s;box-shadow:0 3px 10px rgba(236,72,153,.06)}
+.field input::placeholder{color:#f9a8d4}
+.field input:focus{border-color:#f472b6;box-shadow:0 0 0 5px rgba(244,114,182,.12);transform:scale(1.01)}
+
+/* PIN 糖果罐 */
+.pin-candy{display:flex;justify-content:center;gap:9px;margin:14px 0}
+.pin-candy .jar{width:40px;height:48px;border-radius:10px 10px 14px 14px;border:3px solid #fbcfe8;background:#fff;display:flex;align-items:center;justify-content:center;font-size:20px;transition:all .3s;position:relative}
+.pin-candy .jar::before{content:'';position:absolute;top:-5px;left:50%;transform:translateX(-50%);width:22px;height:7px;background:#fbcfe8;border-radius:4px}
+.pin-candy .jar.filled{border-color:#f472b6;background:linear-gradient(180deg,#fce7f3,#fbcfe8);transform:scale(1.06) rotate(-2deg);box-shadow:0 4px 12px rgba(244,114,182,.25)}
+.pin-candy .jar.filled::after{content:'🍬';font-size:16px}
+
+/* 彩虹圆形键盘 */
+.keypad{display:grid;grid-template-columns:repeat(3,62px);justify-content:center;gap:10px;margin-top:14px}
+.keypad button{width:62px;height:62px;margin:0 auto;border:none;border-radius:50%;font-size:24px;font-weight:900;cursor:pointer;transition:all .12s;box-shadow:0 5px 14px rgba(0,0,0,.08),inset 0 -3px 0 rgba(0,0,0,.08)}
+.keypad button:active{transform:scale(.85);box-shadow:0 2px 6px rgba(0,0,0,.08)}
+.keypad .k1{background:#fecaca;color:#dc2626}
+.keypad .k2{background:#fed7aa;color:#ea580c}
+.keypad .k3{background:#fef08a;color:#ca8a04}
+.keypad .k4{background:#bbf7d0;color:#16a34a}
+.keypad .k5{background:#a7f3d0;color:#059669}
+.keypad .k6{background:#a5f3fc;color:#0891b2}
+.keypad .k7{background:#bfdbfe;color:#2563eb}
+.keypad .k8{background:#c7d2fe;color:#4f46e5}
+.keypad .k9{background:#e9d5ff;color:#9333ea}
+.keypad .zero{grid-column:span 2;width:100%;border-radius:31px;background:#fbcfe8;color:#db2777}
+.keypad .del{background:#f1f5f9;color:#94a3b8;font-size:20px}
+
+/* 主按钮 */
+.btn-enter{width:100%;padding:17px;border:none;border-radius:26px;font-size:18px;font-weight:900;color:#fff;cursor:pointer;margin-top:18px;
+  background:linear-gradient(135deg,#ec4899,#f472b6,#fb923c);background-size:200% 200%;animation:candy-flow 3s ease infinite;
+  box-shadow:0 8px 24px rgba(236,72,153,.35);transition:all .2s;letter-spacing:1px}
+@keyframes candy-flow{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}
+.btn-enter:active{transform:scale(.94)}
+
+/* 语音唤醒勾选（与声纹登录一体化） */
+.voice-row{display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap}
+.wake-check{display:inline-flex;align-items:center;gap:5px;cursor:pointer;font-size:12px;color:#9d174d;font-weight:600;padding:6px 10px;border-radius:14px;background:rgba(255,255,255,.7);border:2px solid #fbcfe8;transition:all .2s}
+.wake-check input{accent-color:#ec4899;width:15px;height:15px;cursor:pointer}
+.voice-entry.disabled .voice-btn{opacity:.35;pointer-events:none}
+.voice-entry.disabled .dot{display:none}
+
+/* 声纹登录入口 */
+.voice-entry{margin-top:16px;text-align:center}
+.voice-entry .divider{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.voice-entry .divider::before,.voice-entry .divider::after{content:'';flex:1;height:1px;background:#fbcfe8}
+.voice-entry .divider span{font-size:11px;color:#d1759e}
+.voice-entry .voice-btn{display:inline-flex;align-items:center;gap:8px;padding:10px 20px;background:rgba(255,255,255,.7);border:2px solid #fbcfe8;border-radius:22px;font-size:13px;color:#be185d;cursor:pointer;font-weight:600;transition:all .2s}
+.voice-entry .voice-btn:active{transform:scale(.96)}
+.voice-entry .dot{width:7px;height:7px;border-radius:50%;background:#4ade80;animation:pulse 1.5s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+.voice-entry .sub{font-size:11px;color:#d1759e;margin-top:6px}
+
+/* 主题切换 */
+.theme-dock{position:absolute;top:12px;right:12px;z-index:20;display:flex;gap:5px}
+.theme-dock button{width:28px;height:28px;border-radius:50%;border:2px solid rgba(255,255,255,.8);cursor:pointer;font-size:13px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.5);transition:transform .2s}
+.theme-dock button:hover{transform:scale(1.15)}
+
+.hidden{display:none}
+.gender-btns{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.gender-btns button{padding:12px;border:3px solid #fbcfe8;border-radius:16px;font-size:14px;font-weight:700;cursor:pointer;background:#fff;color:#9d174d;transition:all .2s}
+.gender-btns button.sel{border-color:#f472b6;background:#fce7f3;transform:scale(1.02)}
+.hint{background:rgba(255,255,255,.6);border-radius:14px;padding:9px 12px;font-size:11px;color:#9d174d;margin-top:8px}
+.consent-row{display:flex;align-items:flex-start;gap:8px;padding:10px 12px;background:rgba(255,255,255,.6);border-radius:14px;margin-top:8px;cursor:pointer}
+.consent-row input{margin-top:2px;accent-color:#ec4899}
+.consent-row span{font-size:11px;color:#9d174d;line-height:1.5;opacity:.7}
+.age-warn{font-size:11px;color:#d97706;background:rgba(217,119,6,.06);padding:6px 10px;border-radius:8px;margin-top:4px}
+.done-panel{text-align:center;padding:20px 0}
+.done-panel .emoji{font-size:48px}
+.done-panel h2{color:#be185d;font-size:20px;margin-top:10px}
+.done-panel p{color:#9d174d;font-size:13px;margin-top:6px;opacity:.6}
+</style>
+</head>
+<body>
+<div class="toolbar">
+  <span class="label">风格 2：糖果乐园 🍭</span>
+  <button class="active" onclick="setDevice('phone')">📱 手机</button>
+  <button class="inactive" onclick="setDevice('pad-landscape')">📟 横屏</button>
+  <button class="inactive" onclick="setDevice('pad-portrait')">📟 竖屏</button>
+</div>
+<div class="device-frame phone" id="frame">
+<div class="screen">
+<div class="scene" id="scene">
+  <div class="theme-dock"><button title="海底世界">🐬</button><button title="糖果乐园">🍭</button><button title="星际探险">🚀</button></div>
+  <div class="left-brand">
+    <span class="mascot">🐬</span><h1>波波小精灵</h1><p>AI 情绪陪伴助手</p>
+    <div class="tagline">🍭 和波波一起，收集快乐糖果</div>
+  </div>
+  <div class="form-area">
+    <div class="brand"><span class="mascot">🐬</span><h1>波波小精灵</h1><p>AI 情绪陪伴助手</p></div>
+    <div class="tabs"><button class="active" onclick="switchTab('login')">登录</button><button onclick="switchTab('register')">新注册</button></div>
+
+    <!-- 登录面板 -->
+    <div id="panelLogin">
+      <div class="field"><label>你的昵称</label><input placeholder="输入注册时的昵称" maxlength="12"></div>
+      <div class="field"><label>秘密数字</label>
+        <div class="pin-candy"><div class="jar filled"></div><div class="jar filled"></div><div class="jar filled"></div><div class="jar"></div><div class="jar"></div><div class="jar"></div></div>
+      </div>
+      <div class="keypad">
+        <button class="k1">1</button><button class="k2">2</button><button class="k3">3</button>
+        <button class="k4">4</button><button class="k5">5</button><button class="k6">6</button>
+        <button class="k7">7</button><button class="k8">8</button><button class="k9">9</button>
+        <button class="zero">0</button><button class="del">⌫</button>
+      </div>
+      <button class="btn-enter">进入波波世界 ✨</button>
+      <!-- 声纹登录 + 语音唤醒（一体化开关） -->
+      <div class="voice-entry" id="voiceEntry">
+        <div class="divider"><span>或</span></div>
+        <div class="voice-row">
+          <div class="voice-btn">🎤 对我说"你好，波波" <i class="dot"></i></div>
+          <label class="wake-check"><input type="checkbox" checked onchange="toggleVoice(this)"><span>语音唤醒</span></label>
+        </div>
+        <p class="sub">声纹登录 + 对话唤醒，无需动手</p>
+      </div>
+    </div>
+
+    <!-- 注册面板 -->
+    <div id="panelRegister" class="hidden">
+      <div class="field"><label>邀请码 *</label><input placeholder="老师发的邀请码"></div>
+      <div class="field"><label>昵称 *（2-12字）</label><input placeholder="给自己取个名字吧" maxlength="12"></div>
+      <div class="field"><label>性别 *</label>
+        <div class="gender-btns"><button>👦 男生</button><button class="sel">👧 女生</button></div>
+      </div>
+      <div class="field"><label>年龄 *</label><input type="number" placeholder="你的年龄" min="6" max="12">
+        <div class="age-warn">⚠️ 不满 14 周岁建议在家长陪同下使用</div>
+      </div>
+      <div class="hint">💡 邀请码由学校心理老师发放，体验测试可用 <b>DEMO2026</b></div>
+      <label class="consent-row"><input type="checkbox" checked><span>同意在这台设备上录入我的声音，用于下次快速登录。声音信息只保存在这台设备上，不会上传到任何服务器。</span></label>
+      <button class="btn-enter">注册并开始 🍭</button>
+    </div>
+
+    <!-- 设置PIN -->
+    <div id="panelSetPin" class="hidden">
+      <div style="text-align:center;margin-bottom:14px"><span style="font-size:32px">🔐</span><h2 style="color:#be185d;font-size:17px;margin-top:6px">设置你的秘密数字</h2><p style="color:#9d174d;font-size:11px;margin-top:3px;opacity:.5">4-6 位数字，下次登录用</p></div>
+      <div class="pin-candy"><div class="jar filled"></div><div class="jar filled"></div><div class="jar"></div><div class="jar"></div><div class="jar"></div><div class="jar"></div></div>
+      <div class="keypad">
+        <button class="k1">1</button><button class="k2">2</button><button class="k3">3</button>
+        <button class="k4">4</button><button class="k5">5</button><button class="k6">6</button>
+        <button class="k7">7</button><button class="k8">8</button><button class="k9">9</button>
+        <button class="zero">0</button><button class="del">⌫</button>
+      </div>
+      <button class="btn-enter" onclick="showPanel('panelDone')">确认 ✓</button>
+      <p style="text-align:center;margin-top:10px;font-size:12px;color:#d1759e;cursor:pointer">先不设置，以后再说</p>
+    </div>
+
+    <!-- 注册成功 -->
+    <div id="panelDone" class="hidden">
+      <div class="done-panel"><span class="emoji">🎉</span><h2>注册成功！</h2><p>下次打开时用昵称和秘密数字就能登录啦</p></div>
+      <button class="btn-enter">开始使用 ✨</button>
+    </div>
+  </div>
+</div>
+</div>
+</div>
+<script>
+const scene=document.getElementById('scene');
+const candies=['🍭','🍬','🍩','🧁','🍪','⭐','🌈','☁️','🦄','🍡'];
+for(let i=0;i<12;i++){const c=document.createElement('span');c.className='candy-float';c.textContent=candies[i%candies.length];c.style.cssText=`left:${Math.random()*90}%;top:${Math.random()*90}%;font-size:${18+Math.random()*18}px;animation-delay:${Math.random()*4}s;animation-duration:${3+Math.random()*3}s`;scene.appendChild(c)}
+function setDevice(t){document.getElementById('frame').className='device-frame '+t;document.querySelectorAll('.toolbar button').forEach((b,i)=>{if(i===0)return;b.className=[,'phone','pad-landscape','pad-portrait'][i]===t?'active':'inactive'})}
+function switchTab(t){document.querySelectorAll('.tabs button').forEach((b,i)=>b.className=(t==='login'?i===0:i===1)?'active':'');showPanel(t==='login'?'panelLogin':'panelRegister')}
+function showPanel(id){['panelLogin','panelRegister','panelSetPin','panelDone'].forEach(p=>document.getElementById(p).className=p===id?'':'hidden')}
+function toggleVoice(cb){document.getElementById('voiceEntry').classList.toggle('disabled',!cb.checked)}
+</script>
+</body>
+</html>

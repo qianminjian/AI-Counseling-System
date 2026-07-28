@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>风格 3：星际探险</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'PingFang SC',sans-serif;background:#0a0a1a;display:flex;flex-direction:column;align-items:center;min-height:100vh;padding:20px}
+.toolbar{display:flex;gap:10px;margin-bottom:14px;align-items:center;flex-wrap:wrap;justify-content:center}
+.toolbar .label{color:#fff;font-size:14px;font-weight:700}
+.toolbar button{padding:7px 16px;border:none;border-radius:16px;cursor:pointer;font-size:13px;font-weight:600;transition:all .2s}
+.toolbar .active{background:#8b5cf6;color:#fff}
+.toolbar .inactive{background:#222;color:#888}
+.device-frame{border-radius:36px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.6);transition:all .3s}
+.device-frame.phone{width:390px;height:844px}
+.device-frame.pad-landscape{width:1100px;height:700px}
+.device-frame.pad-portrait{width:700px;height:1000px}
+.screen{width:100%;height:100%;overflow-y:auto}
+
+/* === 星际探险：深空 + 控制台 === */
+.scene{min-height:100%;position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center;padding:28px 20px;
+  background:radial-gradient(ellipse at 50% 0%,#1e1b4b 0%,#0f0a2e 40%,#030014 100%)}
+.star{position:absolute;width:2px;height:2px;background:#fff;border-radius:50%;animation:twinkle 3s ease-in-out infinite}
+@keyframes twinkle{0%,100%{opacity:.2}50%{opacity:1}}
+.planet{position:absolute;border-radius:50%;animation:drift 20s ease-in-out infinite}
+@keyframes drift{0%,100%{transform:translate(0,0)}50%{transform:translate(15px,-8px)}}
+.shooting-star{position:absolute;width:70px;height:2px;background:linear-gradient(90deg,#fff,transparent);border-radius:2px;animation:shoot 5s linear infinite;opacity:0}
+@keyframes shoot{0%{transform:translateX(-80px) translateY(0);opacity:0}5%{opacity:1}15%{transform:translateX(280px) translateY(70px);opacity:0}100%{opacity:0}}
+
+/* 控制台面板 */
+.console{background:rgba(15,10,46,.85);backdrop-filter:blur(20px);border:1.5px solid rgba(139,92,246,.2);border-radius:26px;padding:28px 22px;width:100%;max-width:340px;position:relative;z-index:5;
+  box-shadow:0 0 40px rgba(139,92,246,.08),0 16px 48px rgba(0,0,0,.4),inset 0 1px 0 rgba(255,255,255,.04)}
+.console::before{content:'';position:absolute;top:-1px;left:20%;right:20%;height:2px;background:linear-gradient(90deg,transparent,#8b5cf6,transparent);border-radius:2px}
+
+/* Pad 横屏 */
+.pad-landscape .scene{flex-direction:row;gap:48px;padding:36px 56px}
+.pad-landscape .left-brand{display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1}
+.left-brand{display:none}
+.left-brand .mascot{font-size:96px;animation:rocket-hover 3s ease-in-out infinite}
+@keyframes rocket-hover{0%,100%{transform:translateY(0) rotate(-4deg)}50%{transform:translateY(-14px) rotate(4deg)}}
+.left-brand h1{font-size:30px;color:#e0e7ff;margin-top:10px;font-weight:900;text-shadow:0 0 20px rgba(139,92,246,.4)}
+.left-brand p{font-size:14px;color:#a5b4fc;margin-top:4px}
+.left-brand .tagline{margin-top:16px;padding:10px 20px;background:rgba(139,92,246,.1);border:1px solid rgba(139,92,246,.25);border-radius:14px;color:#c4b5fd;font-size:13px}
+.pad-landscape .console{max-width:380px}
+.pad-landscape .console .brand{display:none}
+.pad-portrait .console{max-width:400px;padding:32px 28px}
+.pad-portrait .left-brand{display:none}
+
+/* 品牌 */
+.brand{text-align:center;margin-bottom:20px}
+.brand .mascot{font-size:50px;display:inline-block;animation:rocket-hover 3s ease-in-out infinite}
+.brand h1{font-size:21px;color:#e0e7ff;margin-top:4px;font-weight:900;text-shadow:0 0 14px rgba(139,92,246,.3)}
+.brand p{font-size:11px;color:#818cf8;margin-top:2px}
+
+/* Tab */
+.tabs{display:flex;background:rgba(139,92,246,.08);border:1px solid rgba(139,92,246,.15);border-radius:14px;padding:4px;margin-bottom:18px}
+.tabs button{flex:1;padding:11px;border:none;border-radius:11px;font-size:14px;font-weight:700;cursor:pointer;background:transparent;color:#818cf8;transition:all .25s}
+.tabs button.active{background:linear-gradient(135deg,#7c3aed,#6d28d9);color:#fff;box-shadow:0 4px 14px rgba(124,58,237,.35)}
+
+/* 输入 */
+.field{margin-bottom:12px}
+.field label{display:block;font-size:11px;font-weight:600;color:#a5b4fc;margin-bottom:4px;letter-spacing:1px;text-transform:uppercase}
+.field input{width:100%;padding:13px 16px;border:1.5px solid rgba(139,92,246,.2);border-radius:14px;font-size:15px;text-align:center;background:rgba(139,92,246,.04);color:#e0e7ff;outline:none;transition:all .2s}
+.field input::placeholder{color:rgba(165,180,252,.3)}
+.field input:focus{border-color:#8b5cf6;background:rgba(139,92,246,.08);box-shadow:0 0 0 4px rgba(139,92,246,.1),0 0 16px rgba(139,92,246,.08)}
+
+/* PIN 星球指示灯 */
+.pin-stars{display:flex;justify-content:center;gap:10px;margin:14px 0}
+.pin-stars .orb{width:36px;height:36px;border-radius:50%;border:2px solid rgba(139,92,246,.25);background:rgba(139,92,246,.03);display:flex;align-items:center;justify-content:center;transition:all .3s}
+.pin-stars .orb.filled{border-color:#a78bfa;background:radial-gradient(circle at 35% 35%,#c4b5fd,#7c3aed);box-shadow:0 0 14px rgba(139,92,246,.5);transform:scale(1.1)}
+.pin-stars .orb.filled::after{content:'✦';color:#fff;font-size:13px}
+
+/* 键盘 - 控制台 */
+.keypad{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px}
+.keypad button{padding:15px;border:none;border-radius:14px;font-size:22px;font-weight:800;cursor:pointer;transition:all .12s;background:rgba(139,92,246,.06);color:#c4b5fd;border:1px solid rgba(139,92,246,.15)}
+.keypad button:active{transform:scale(.88);background:rgba(139,92,246,.2);box-shadow:0 0 12px rgba(139,92,246,.25)}
+.keypad .k1{color:#fca5a5;border-color:rgba(252,165,165,.15)}
+.keypad .k2{color:#fdba74;border-color:rgba(253,186,116,.15)}
+.keypad .k3{color:#fde047;border-color:rgba(253,224,71,.15)}
+.keypad .k4{color:#86efac;border-color:rgba(134,239,172,.15)}
+.keypad .k5{color:#6ee7b7;border-color:rgba(110,231,183,.15)}
+.keypad .k6{color:#67e8f9;border-color:rgba(103,232,249,.15)}
+.keypad .k7{color:#93c5fd;border-color:rgba(147,197,253,.15)}
+.keypad .k8{color:#a5b4fc;border-color:rgba(165,180,252,.15)}
+.keypad .k9{color:#d8b4fe;border-color:rgba(216,180,254,.15)}
+.keypad .zero{grid-column:span 2;color:#f9a8d4;border-color:rgba(249,168,212,.15)}
+.keypad .del{color:#f87171;font-size:18px;border-color:rgba(248,113,113,.15)}
+
+/* 主按钮 */
+.btn-enter{width:100%;padding:16px;border:none;border-radius:18px;font-size:17px;font-weight:800;color:#fff;cursor:pointer;margin-top:16px;
+  background:linear-gradient(135deg,#7c3aed,#6d28d9,#4c1d95);box-shadow:0 8px 24px rgba(124,58,237,.35),0 0 32px rgba(124,58,237,.1);
+  transition:all .2s;letter-spacing:1px;position:relative;overflow:hidden}
+.btn-enter::after{content:'';position:absolute;top:-50%;left:-50%;width:200%;height:200%;background:linear-gradient(45deg,transparent 40%,rgba(255,255,255,.08) 50%,transparent 60%);animation:shimmer 3s linear infinite}
+@keyframes shimmer{0%{transform:translateX(-100%)}100%{transform:translateX(100%)}}
+.btn-enter:active{transform:scale(.95)}
+
+/* 语音唤醒勾选（与声纹登录一体化） */
+.voice-row{display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap}
+.wake-check{display:inline-flex;align-items:center;gap:5px;cursor:pointer;font-size:12px;color:#a5b4fc;padding:6px 10px;border-radius:12px;background:rgba(139,92,246,.04);border:1px solid rgba(139,92,246,.15);transition:all .2s}
+.wake-check input{accent-color:#8b5cf6;width:15px;height:15px;cursor:pointer}
+.voice-entry.disabled .voice-btn{opacity:.35;pointer-events:none}
+.voice-entry.disabled .dot{display:none}
+
+/* 声纹登录入口 */
+.voice-entry{margin-top:16px;text-align:center}
+.voice-entry .divider{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.voice-entry .divider::before,.voice-entry .divider::after{content:'';flex:1;height:1px;background:rgba(139,92,246,.15)}
+.voice-entry .divider span{font-size:11px;color:rgba(165,180,252,.4)}
+.voice-entry .voice-btn{display:inline-flex;align-items:center;gap:8px;padding:10px 20px;background:rgba(139,92,246,.06);border:1px solid rgba(139,92,246,.15);border-radius:20px;font-size:13px;color:#a5b4fc;cursor:pointer;transition:all .2s}
+.voice-entry .voice-btn:active{transform:scale(.96)}
+.voice-entry .dot{width:7px;height:7px;border-radius:50%;background:#4ade80;animation:pulse 1.5s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+.voice-entry .sub{font-size:11px;color:rgba(165,180,252,.3);margin-top:6px}
+
+/* 主题切换 */
+.theme-dock{position:absolute;top:12px;right:12px;z-index:20;display:flex;gap:5px}
+.theme-dock button{width:28px;height:28px;border-radius:50%;border:1.5px solid rgba(139,92,246,.35);cursor:pointer;font-size:13px;display:flex;align-items:center;justify-content:center;background:rgba(15,10,46,.6);transition:transform .2s}
+.theme-dock button:hover{transform:scale(1.15)}
+
+.hidden{display:none}
+.gender-btns{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.gender-btns button{padding:12px;border:1.5px solid rgba(139,92,246,.2);border-radius:14px;font-size:14px;font-weight:600;cursor:pointer;background:rgba(139,92,246,.04);color:#a5b4fc;transition:all .2s}
+.gender-btns button.sel{border-color:#8b5cf6;background:rgba(139,92,246,.12);color:#e0e7ff;box-shadow:0 0 10px rgba(139,92,246,.15)}
+.hint{background:rgba(139,92,246,.04);border:1px solid rgba(139,92,246,.1);border-radius:12px;padding:9px 12px;font-size:11px;color:#818cf8;margin-top:8px}
+.consent-row{display:flex;align-items:flex-start;gap:8px;padding:10px 12px;background:rgba(139,92,246,.04);border:1px solid rgba(139,92,246,.1);border-radius:12px;margin-top:8px;cursor:pointer}
+.consent-row input{margin-top:2px;accent-color:#8b5cf6}
+.consent-row span{font-size:11px;color:#818cf8;line-height:1.5}
+.age-warn{font-size:11px;color:#fbbf24;background:rgba(251,191,36,.06);padding:6px 10px;border-radius:8px;margin-top:4px}
+.done-panel{text-align:center;padding:20px 0}
+.done-panel .emoji{font-size:48px}
+.done-panel h2{color:#e0e7ff;font-size:20px;margin-top:10px}
+.done-panel p{color:#818cf8;font-size:13px;margin-top:6px}
+</style>
+</head>
+<body>
+<div class="toolbar">
+  <span class="label">风格 3：星际探险 🚀</span>
+  <button class="active" onclick="setDevice('phone')">📱 手机</button>
+  <button class="inactive" onclick="setDevice('pad-landscape')">📟 横屏</button>
+  <button class="inactive" onclick="setDevice('pad-portrait')">📟 竖屏</button>
+</div>
+<div class="device-frame phone" id="frame">
+<div class="screen">
+<div class="scene" id="scene">
+  <div class="theme-dock"><button title="海底世界">🐬</button><button title="糖果乐园">🍭</button><button title="星际探险">🚀</button></div>
+  <div class="left-brand">
+    <span class="mascot">🐬</span><h1>波波小精灵</h1><p>AI 情绪陪伴助手</p>
+    <div class="tagline">🚀 和波波一起，探索心情宇宙</div>
+  </div>
+  <div class="console">
+    <div class="brand"><span class="mascot">🐬</span><h1>波波小精灵</h1><p>AI 情绪陪伴助手</p></div>
+    <div class="tabs"><button class="active" onclick="switchTab('login')">登录</button><button onclick="switchTab('register')">新注册</button></div>
+
+    <!-- 登录面板 -->
+    <div id="panelLogin">
+      <div class="field"><label>你的昵称</label><input placeholder="输入注册时的昵称" maxlength="12"></div>
+      <div class="field"><label>秘密数字</label>
+        <div class="pin-stars"><div class="orb filled"></div><div class="orb filled"></div><div class="orb filled"></div><div class="orb"></div><div class="orb"></div><div class="orb"></div></div>
+      </div>
+      <div class="keypad">
+        <button class="k1">1</button><button class="k2">2</button><button class="k3">3</button>
+        <button class="k4">4</button><button class="k5">5</button><button class="k6">6</button>
+        <button class="k7">7</button><button class="k8">8</button><button class="k9">9</button>
+        <button class="zero">0</button><button class="del">⌫</button>
+      </div>
+      <button class="btn-enter">进入波波世界 🚀</button>
+      <!-- 声纹登录 + 语音唤醒（一体化开关） -->
+      <div class="voice-entry" id="voiceEntry">
+        <div class="divider"><span>或</span></div>
+        <div class="voice-row">
+          <div class="voice-btn">🎤 对我说"你好，波波" <i class="dot"></i></div>
+          <label class="wake-check"><input type="checkbox" checked onchange="toggleVoice(this)"><span>语音唤醒</span></label>
+        </div>
+        <p class="sub">声纹登录 + 对话唤醒，无需动手</p>
+      </div>
+    </div>
+
+    <!-- 注册面板 -->
+    <div id="panelRegister" class="hidden">
+      <div class="field"><label>邀请码 *</label><input placeholder="老师发的邀请码"></div>
+      <div class="field"><label>昵称 *（2-12字）</label><input placeholder="给自己取个名字吧" maxlength="12"></div>
+      <div class="field"><label>性别 *</label>
+        <div class="gender-btns"><button class="sel">👦 男生</button><button>👧 女生</button></div>
+      </div>
+      <div class="field"><label>年龄 *</label><input type="number" placeholder="你的年龄" min="6" max="12">
+        <div class="age-warn">⚠️ 不满 14 周岁建议在家长陪同下使用</div>
+      </div>
+      <div class="hint">💡 邀请码由学校心理老师发放，体验测试可用 <b>DEMO2026</b></div>
+      <label class="consent-row"><input type="checkbox" checked><span>同意在这台设备上录入我的声音，用于下次快速登录。声音信息只保存在这台设备上，不会上传到任何服务器。</span></label>
+      <button class="btn-enter">注册并发射 🚀</button>
+    </div>
+
+    <!-- 设置PIN -->
+    <div id="panelSetPin" class="hidden">
+      <div style="text-align:center;margin-bottom:14px"><span style="font-size:32px">🔐</span><h2 style="color:#e0e7ff;font-size:17px;margin-top:6px">设置你的秘密数字</h2><p style="color:#818cf8;font-size:11px;margin-top:3px">4-6 位数字，下次登录用</p></div>
+      <div class="pin-stars"><div class="orb filled"></div><div class="orb filled"></div><div class="orb"></div><div class="orb"></div><div class="orb"></div><div class="orb"></div></div>
+      <div class="keypad">
+        <button class="k1">1</button><button class="k2">2</button><button class="k3">3</button>
+        <button class="k4">4</button><button class="k5">5</button><button class="k6">6</button>
+        <button class="k7">7</button><button class="k8">8</button><button class="k9">9</button>
+        <button class="zero">0</button><button class="del">⌫</button>
+      </div>
+      <button class="btn-enter" onclick="showPanel('panelDone')">确认 ✓</button>
+      <p style="text-align:center;margin-top:10px;font-size:12px;color:rgba(165,180,252,.4);cursor:pointer">先不设置，以后再说</p>
+    </div>
+
+    <!-- 注册成功 -->
+    <div id="panelDone" class="hidden">
+      <div class="done-panel"><span class="emoji">🎉</span><h2>注册成功！</h2><p>下次打开时用昵称和秘密数字就能登录啦</p></div>
+      <button class="btn-enter">开始使用 🚀</button>
+    </div>
+  </div>
+</div>
+</div>
+</div>
+<script>
+const scene=document.getElementById('scene');
+for(let i=0;i<60;i++){const s=document.createElement('div');s.className='star';s.style.cssText=`left:${Math.random()*100}%;top:${Math.random()*100}%;width:${1+Math.random()*2}px;height:${1+Math.random()*2}px;animation-delay:${Math.random()*3}s;animation-duration:${2+Math.random()*3}s`;scene.appendChild(s)}
+const planets=[{size:36,color:'radial-gradient(circle at 35% 35%,#fbbf24,#d97706)',top:'10%',left:'8%'},{size:22,color:'radial-gradient(circle at 35% 35%,#f87171,#991b1b)',top:'72%',left:'85%'},{size:50,color:'radial-gradient(circle at 35% 35%,#a78bfa,#5b21b6)',top:'82%',left:'8%'}];
+planets.forEach(p=>{const el=document.createElement('div');el.className='planet';el.style.cssText=`width:${p.size}px;height:${p.size}px;background:${p.color};top:${p.top};left:${p.left};box-shadow:0 0 16px rgba(139,92,246,.25)`;scene.appendChild(el)});
+for(let i=0;i<3;i++){const ss=document.createElement('div');ss.className='shooting-star';ss.style.cssText=`top:${8+Math.random()*35}%;left:${Math.random()*50}%;animation-delay:${i*2.5}s`;scene.appendChild(ss)}
+function setDevice(t){document.getElementById('frame').className='device-frame '+t;document.querySelectorAll('.toolbar button').forEach((b,i)=>{if(i===0)return;b.className=[,'phone','pad-landscape','pad-portrait'][i]===t?'active':'inactive'})}
+function switchTab(t){document.querySelectorAll('.tabs button').forEach((b,i)=>b.className=(t==='login'?i===0:i===1)?'active':'');showPanel(t==='login'?'panelLogin':'panelRegister')}
+function showPanel(id){['panelLogin','panelRegister','panelSetPin','panelDone'].forEach(p=>document.getElementById(p).className=p===id?'':'hidden')}
+function toggleVoice(cb){document.getElementById('voiceEntry').classList.toggle('disabled',!cb.checked)}
+</script>
+</body>
+</html>

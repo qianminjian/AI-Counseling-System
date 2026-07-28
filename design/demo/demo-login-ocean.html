@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>风格 1：海底世界</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'PingFang SC',sans-serif;background:#0a0a1a;display:flex;flex-direction:column;align-items:center;min-height:100vh;padding:20px}
+.toolbar{display:flex;gap:10px;margin-bottom:14px;align-items:center;flex-wrap:wrap;justify-content:center}
+.toolbar .label{color:#fff;font-size:14px;font-weight:700}
+.toolbar button{padding:7px 16px;border:none;border-radius:16px;cursor:pointer;font-size:13px;font-weight:600;transition:all .2s}
+.toolbar .active{background:#0ea5e9;color:#fff}
+.toolbar .inactive{background:#222;color:#888}
+.device-frame{border-radius:36px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.6);transition:all .3s}
+.device-frame.phone{width:390px;height:844px}
+.device-frame.pad-landscape{width:1100px;height:700px}
+.device-frame.pad-portrait{width:700px;height:1000px}
+.screen{width:100%;height:100%;overflow-y:auto}
+
+/* === 海底世界 === */
+.scene{min-height:100%;position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center;padding:28px 20px;
+  background:linear-gradient(180deg,#0c4a6e 0%,#155e75 30%,#0e7490 60%,#06b6d4 100%)}
+.sea-floor{position:absolute;bottom:0;left:0;right:0;height:80px;background:linear-gradient(0deg,#164e63,transparent)}
+.sea-floor::before{content:'🪸 🌿 🐚 🪸 🌿';position:absolute;bottom:10px;left:50%;transform:translateX(-50%);font-size:24px;letter-spacing:16px;opacity:.5}
+.bubble{position:absolute;border-radius:50%;background:radial-gradient(circle at 30% 30%,rgba(255,255,255,.25),rgba(255,255,255,.03));border:1px solid rgba(255,255,255,.12);animation:bubble-rise linear infinite}
+@keyframes bubble-rise{0%{transform:translateY(0) scale(1);opacity:.6}100%{transform:translateY(-800px) scale(1.3);opacity:0}}
+.fish{position:absolute;animation:swim 14s linear infinite;opacity:.6}
+@keyframes swim{0%{transform:translateX(-60px)}100%{transform:translateX(calc(100vw + 60px))}}
+
+/* 卡片 - 水下玻璃 */
+.card{background:rgba(255,255,255,.1);backdrop-filter:blur(24px);border:1.5px solid rgba(255,255,255,.18);border-radius:28px;padding:28px 22px;width:100%;max-width:340px;position:relative;z-index:5;box-shadow:0 16px 48px rgba(0,0,0,.2),inset 0 1px 0 rgba(255,255,255,.1)}
+
+/* Pad 横屏 */
+.pad-landscape .scene{flex-direction:row;gap:48px;padding:36px 56px}
+.pad-landscape .left-brand{display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1}
+.left-brand{display:none}
+.left-brand .mascot{font-size:96px;animation:dolphin 3s ease-in-out infinite}
+@keyframes dolphin{0%,100%{transform:translateY(0) rotate(0)}30%{transform:translateY(-18px) rotate(-6deg)}60%{transform:translateY(-4px) rotate(3deg)}}
+.left-brand h1{color:#fff;font-size:30px;margin-top:10px;text-shadow:0 2px 12px rgba(0,0,0,.3)}
+.left-brand p{color:rgba(255,255,255,.65);font-size:14px;margin-top:4px}
+.left-brand .tagline{margin-top:16px;padding:10px 20px;background:rgba(255,255,255,.08);border-radius:14px;color:rgba(255,255,255,.85);font-size:13px;border:1px solid rgba(255,255,255,.12)}
+.pad-landscape .card{max-width:380px}
+.pad-landscape .card .brand{display:none}
+.pad-portrait .card{max-width:400px;padding:32px 28px}
+.pad-portrait .left-brand{display:none}
+
+/* 品牌 */
+.brand{text-align:center;margin-bottom:20px}
+.brand .mascot{font-size:52px;display:inline-block;animation:dolphin 3s ease-in-out infinite}
+.brand h1{color:#fff;font-size:22px;margin-top:4px;text-shadow:0 1px 8px rgba(0,0,0,.2)}
+.brand p{color:rgba(255,255,255,.55);font-size:11px;margin-top:2px}
+
+/* Tab */
+.tabs{display:flex;background:rgba(255,255,255,.08);border-radius:14px;padding:4px;margin-bottom:18px}
+.tabs button{flex:1;padding:11px;border:none;border-radius:11px;font-size:14px;font-weight:700;cursor:pointer;background:transparent;color:rgba(255,255,255,.45);transition:all .25s}
+.tabs button.active{background:rgba(255,255,255,.88);color:#0c4a6e;box-shadow:0 4px 12px rgba(0,0,0,.15)}
+
+/* 输入 */
+.field{margin-bottom:12px}
+.field label{display:block;font-size:12px;font-weight:600;color:rgba(255,255,255,.65);margin-bottom:4px}
+.field input{width:100%;padding:13px 16px;border:1.5px solid rgba(255,255,255,.18);border-radius:14px;font-size:15px;text-align:center;background:rgba(255,255,255,.06);color:#fff;outline:none;transition:all .2s}
+.field input::placeholder{color:rgba(255,255,255,.3)}
+.field input:focus{border-color:#67e8f9;background:rgba(255,255,255,.1);box-shadow:0 0 0 4px rgba(103,232,249,.12)}
+
+/* PIN 珍珠 */
+.pin-pearls{display:flex;justify-content:center;gap:9px;margin:12px 0}
+.pin-pearls .pearl{width:38px;height:38px;border-radius:50%;border:2px solid rgba(255,255,255,.2);background:rgba(255,255,255,.04);display:flex;align-items:center;justify-content:center;transition:all .3s}
+.pin-pearls .pearl.filled{border-color:#67e8f9;background:radial-gradient(circle at 35% 35%,#a5f3fc,#06b6d4);box-shadow:0 0 12px rgba(103,232,249,.4);transform:scale(1.08)}
+.pin-pearls .pearl.filled::after{content:'';width:9px;height:9px;border-radius:50%;background:rgba(255,255,255,.8)}
+
+/* 彩虹键盘 */
+.keypad{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px}
+.keypad button{padding:15px;border:none;border-radius:14px;font-size:22px;font-weight:800;cursor:pointer;transition:all .12s;border:1px solid rgba(255,255,255,.1)}
+.keypad button:active{transform:scale(.88)}
+.keypad .k1{background:rgba(254,202,202,.2);color:#fca5a5}
+.keypad .k2{background:rgba(254,215,170,.2);color:#fdba74}
+.keypad .k3{background:rgba(254,240,138,.2);color:#fde047}
+.keypad .k4{background:rgba(187,247,208,.2);color:#86efac}
+.keypad .k5{background:rgba(167,243,208,.2);color:#6ee7b7}
+.keypad .k6{background:rgba(165,243,252,.2);color:#67e8f9}
+.keypad .k7{background:rgba(191,219,254,.2);color:#93c5fd}
+.keypad .k8{background:rgba(199,210,254,.2);color:#a5b4fc}
+.keypad .k9{background:rgba(233,213,255,.2);color:#d8b4fe}
+.keypad .zero{grid-column:span 2;background:rgba(251,207,232,.2);color:#f9a8d4}
+.keypad .del{background:rgba(255,255,255,.06);color:rgba(255,255,255,.4);font-size:18px}
+
+/* 主按钮 */
+.btn-enter{width:100%;padding:16px;border:none;border-radius:20px;font-size:17px;font-weight:800;color:#fff;cursor:pointer;margin-top:16px;background:linear-gradient(135deg,#06b6d4,#0ea5e9);box-shadow:0 8px 24px rgba(6,182,212,.35);transition:all .2s;letter-spacing:1px}
+.btn-enter:active{transform:scale(.95)}
+
+/* 语音唤醒勾选（与声纹登录一体化） */
+.voice-row{display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap}
+.wake-check{display:inline-flex;align-items:center;gap:5px;cursor:pointer;font-size:12px;color:rgba(255,255,255,.6);padding:6px 10px;border-radius:12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);transition:all .2s}
+.wake-check input{accent-color:#06b6d4;width:15px;height:15px;cursor:pointer}
+.voice-entry.disabled .voice-btn{opacity:.35;pointer-events:none}
+.voice-entry.disabled .dot{display:none}
+
+/* 声纹登录入口 */
+.voice-entry{margin-top:16px;text-align:center}
+.voice-entry .divider{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.voice-entry .divider::before,.voice-entry .divider::after{content:'';flex:1;height:1px;background:rgba(255,255,255,.12)}
+.voice-entry .divider span{font-size:11px;color:rgba(255,255,255,.35)}
+.voice-entry .voice-btn{display:inline-flex;align-items:center;gap:8px;padding:10px 20px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:20px;font-size:13px;color:rgba(255,255,255,.65);cursor:pointer;transition:all .2s}
+.voice-entry .voice-btn:active{transform:scale(.96)}
+.voice-entry .dot{width:7px;height:7px;border-radius:50%;background:#4ade80;animation:pulse 1.5s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+.voice-entry .sub{font-size:11px;color:rgba(255,255,255,.3);margin-top:6px}
+
+/* 主题切换 */
+.theme-dock{position:absolute;top:12px;right:12px;z-index:20;display:flex;gap:5px}
+.theme-dock button{width:28px;height:28px;border-radius:50%;border:1.5px solid rgba(255,255,255,.4);cursor:pointer;font-size:13px;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.2);backdrop-filter:blur(4px);transition:transform .2s}
+.theme-dock button:hover{transform:scale(1.15)}
+
+.hidden{display:none}
+.gender-btns{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.gender-btns button{padding:12px;border:1.5px solid rgba(255,255,255,.18);border-radius:14px;font-size:14px;font-weight:600;cursor:pointer;background:rgba(255,255,255,.04);color:rgba(255,255,255,.6);transition:all .2s}
+.gender-btns button.sel{border-color:#67e8f9;background:rgba(103,232,249,.12);color:#fff}
+.hint{background:rgba(255,255,255,.04);border-radius:12px;padding:9px 12px;font-size:11px;color:rgba(255,255,255,.4);margin-top:8px}
+.consent-row{display:flex;align-items:flex-start;gap:8px;padding:10px 12px;background:rgba(255,255,255,.04);border-radius:12px;margin-top:8px;cursor:pointer}
+.consent-row input{margin-top:2px;accent-color:#06b6d4}
+.consent-row span{font-size:11px;color:rgba(255,255,255,.45);line-height:1.5}
+.age-warn{font-size:11px;color:#fbbf24;background:rgba(251,191,36,.08);padding:6px 10px;border-radius:8px;margin-top:4px}
+.error-msg{font-size:12px;color:#fca5a5;background:rgba(252,165,165,.08);padding:8px 12px;border-radius:10px;text-align:center;margin-top:8px}
+/* 注册成功 */
+.done-panel{text-align:center;padding:20px 0}
+.done-panel .emoji{font-size:48px}
+.done-panel h2{color:#fff;font-size:20px;margin-top:10px}
+.done-panel p{color:rgba(255,255,255,.5);font-size:13px;margin-top:6px}
+</style>
+</head>
+<body>
+<div class="toolbar">
+  <span class="label">风格 1：海底世界 🐬</span>
+  <button class="active" onclick="setDevice('phone')">📱 手机</button>
+  <button class="inactive" onclick="setDevice('pad-landscape')">📟 横屏</button>
+  <button class="inactive" onclick="setDevice('pad-portrait')">📟 竖屏</button>
+</div>
+<div class="device-frame phone" id="frame">
+<div class="screen">
+<div class="scene" id="scene">
+  <div class="theme-dock"><button title="海底世界">🐬</button><button title="糖果乐园">🍭</button><button title="星际探险">🚀</button></div>
+  <div class="sea-floor"></div>
+  <div class="left-brand">
+    <span class="mascot">🐬</span><h1>波波小精灵</h1><p>AI 情绪陪伴助手</p>
+    <div class="tagline">🌊 和波波一起，探索心情的深海</div>
+  </div>
+  <div class="card">
+    <div class="brand"><span class="mascot">🐬</span><h1>波波小精灵</h1><p>AI 情绪陪伴助手</p></div>
+    <div class="tabs"><button class="active" onclick="switchTab('login')">登录</button><button onclick="switchTab('register')">新注册</button></div>
+
+    <!-- 登录面板 -->
+    <div id="panelLogin">
+      <div class="field"><label>你的昵称</label><input placeholder="输入注册时的昵称" maxlength="12"></div>
+      <div class="field"><label>秘密数字</label>
+        <div class="pin-pearls"><div class="pearl filled"></div><div class="pearl filled"></div><div class="pearl filled"></div><div class="pearl"></div><div class="pearl"></div><div class="pearl"></div></div>
+      </div>
+      <div class="keypad">
+        <button class="k1">1</button><button class="k2">2</button><button class="k3">3</button>
+        <button class="k4">4</button><button class="k5">5</button><button class="k6">6</button>
+        <button class="k7">7</button><button class="k8">8</button><button class="k9">9</button>
+        <button class="zero">0</button><button class="del">⌫</button>
+      </div>
+      <button class="btn-enter">进入波波世界 🚀</button>
+      <!-- 声纹登录 + 语音唤醒（一体化开关） -->
+      <div class="voice-entry" id="voiceEntry">
+        <div class="divider"><span>或</span></div>
+        <div class="voice-row">
+          <div class="voice-btn">🎤 对我说"你好，波波" <i class="dot"></i></div>
+          <label class="wake-check"><input type="checkbox" checked onchange="toggleVoice(this)"><span>语音唤醒</span></label>
+        </div>
+        <p class="sub">声纹登录 + 对话唤醒，无需动手</p>
+      </div>
+    </div>
+
+    <!-- 注册面板 -->
+    <div id="panelRegister" class="hidden">
+      <div class="field"><label>邀请码 *</label><input placeholder="老师发的邀请码"></div>
+      <div class="field"><label>昵称 *（2-12字）</label><input placeholder="给自己取个名字吧" maxlength="12"></div>
+      <div class="field"><label>性别 *</label>
+        <div class="gender-btns"><button class="sel">👦 男生</button><button>👧 女生</button></div>
+      </div>
+      <div class="field"><label>年龄 *</label><input type="number" placeholder="你的年龄" min="6" max="12">
+        <div class="age-warn">⚠️ 不满 14 周岁建议在家长陪同下使用</div>
+      </div>
+      <div class="hint">💡 邀请码由学校心理老师发放，体验测试可用 <b>DEMO2026</b></div>
+      <label class="consent-row"><input type="checkbox" checked><span>同意在这台设备上录入我的声音，用于下次快速登录。声音信息只保存在这台设备上，不会上传到任何服务器。</span></label>
+      <button class="btn-enter">注册并开始 🌊</button>
+    </div>
+
+    <!-- 设置PIN面板 -->
+    <div id="panelSetPin" class="hidden">
+      <div style="text-align:center;margin-bottom:14px"><span style="font-size:32px">🔐</span><h2 style="color:#fff;font-size:17px;margin-top:6px">设置你的秘密数字</h2><p style="color:rgba(255,255,255,.4);font-size:11px;margin-top:3px">4-6 位数字，下次登录用</p></div>
+      <div class="pin-pearls"><div class="pearl filled"></div><div class="pearl filled"></div><div class="pearl"></div><div class="pearl"></div><div class="pearl"></div><div class="pearl"></div></div>
+      <div class="keypad">
+        <button class="k1">1</button><button class="k2">2</button><button class="k3">3</button>
+        <button class="k4">4</button><button class="k5">5</button><button class="k6">6</button>
+        <button class="k7">7</button><button class="k8">8</button><button class="k9">9</button>
+        <button class="zero">0</button><button class="del">⌫</button>
+      </div>
+      <button class="btn-enter" onclick="showPanel('panelDone')">确认 ✓</button>
+      <p style="text-align:center;margin-top:10px;font-size:12px;color:rgba(255,255,255,.35);cursor:pointer">先不设置，以后再说</p>
+    </div>
+
+    <!-- 注册成功 -->
+    <div id="panelDone" class="hidden">
+      <div class="done-panel"><span class="emoji">🎉</span><h2>注册成功！</h2><p>下次打开时用昵称和秘密数字就能登录啦</p></div>
+      <button class="btn-enter">开始使用 🚀</button>
+    </div>
+  </div>
+</div>
+</div>
+</div>
+<script>
+const scene=document.getElementById('scene');
+for(let i=0;i<16;i++){const b=document.createElement('div');b.className='bubble';const s=8+Math.random()*28;b.style.cssText=`width:${s}px;height:${s}px;left:${Math.random()*100}%;bottom:-40px;animation-duration:${5+Math.random()*8}s;animation-delay:${Math.random()*6}s`;scene.appendChild(b)}
+const fishes=['🐠','🐟','🐡','🦈'];
+for(let i=0;i<3;i++){const f=document.createElement('span');f.className='fish';f.textContent=fishes[i];f.style.cssText=`top:${15+Math.random()*55}%;animation-duration:${11+Math.random()*8}s;animation-delay:${Math.random()*8}s;font-size:${20+Math.random()*14}px`;scene.appendChild(f)}
+function setDevice(t){document.getElementById('frame').className='device-frame '+t;document.querySelectorAll('.toolbar button').forEach((b,i)=>{if(i===0)return;b.className=[,'phone','pad-landscape','pad-portrait'][i]===t?'active':'inactive'})}
+function switchTab(t){document.querySelectorAll('.tabs button').forEach((b,i)=>b.className=(t==='login'?i===0:i===1)?'active':'');showPanel(t==='login'?'panelLogin':'panelRegister')}
+function showPanel(id){['panelLogin','panelRegister','panelSetPin','panelDone'].forEach(p=>document.getElementById(p).className=p===id?'':'hidden')}
+function toggleVoice(cb){document.getElementById('voiceEntry').classList.toggle('disabled',!cb.checked)}
+</script>
+</body>
+</html>
