@@ -88,17 +88,9 @@ jobs:
           scan-ref: 'backend'
           scanners: 'vuln'
           severity: 'CRITICAL,HIGH'
-          format: 'sarif'
-          output: 'trivy-results.sarif'
+          format: 'table'
           exit-code: '0'  # 仅告警不阻断
           ignore-unfixed: true
-
-      - name: Upload Trivy Report
-        uses: github/codeql-action/upload-sarif@v3
-        if: always()
-        with:
-          sarif_file: 'trivy-results.sarif'
-          category: trivy
 
   frontend-build:
     name: Frontend Build Check
