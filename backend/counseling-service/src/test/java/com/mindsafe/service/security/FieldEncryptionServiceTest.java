@@ -3,6 +3,7 @@ package com.mindsafe.service.security;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.core.env.StandardEnvironment;
 
 import java.util.Base64;
 
@@ -25,7 +26,7 @@ class FieldEncryptionServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new FieldEncryptionService(TEST_KEY_BASE64, 1, "");
+        service = new FieldEncryptionService(TEST_KEY_BASE64, 1, "", new StandardEnvironment());
     }
 
     @Test
@@ -80,7 +81,7 @@ class FieldEncryptionServiceTest {
         String key2Base64 = Base64.getEncoder().encodeToString(key2Bytes);
 
         FieldEncryptionService v2Service = new FieldEncryptionService(
-                key2Base64, 2, "1:" + TEST_KEY_BASE64);
+                key2Base64, 2, "1:" + TEST_KEY_BASE64, new StandardEnvironment());
 
         // reEncrypt: v1 密文 → v2 密文
         String v2Encrypted = v2Service.reEncrypt(v1Encrypted);
@@ -93,7 +94,7 @@ class FieldEncryptionServiceTest {
     @Test
     @DisplayName("未配置密钥时降级为明文透传")
     void noKey_gracefulDegradation() {
-        FieldEncryptionService noKeyService = new FieldEncryptionService("", 1, "");
+        FieldEncryptionService noKeyService = new FieldEncryptionService("", 1, "", new StandardEnvironment());
         String plaintext = "无密钥降级测试";
         assertEquals(plaintext, noKeyService.encrypt(plaintext));
     }
@@ -114,6 +115,6 @@ class FieldEncryptionServiceTest {
     void invalidKeyLength_throws() {
         String shortKey = Base64.getEncoder().encodeToString(new byte[16]); // 128-bit
         assertThrows(IllegalArgumentException.class,
-                () -> new FieldEncryptionService(shortKey, 1, ""));
+                () -> new FieldEncryptionService(shortKey, 1, "", new StandardEnvironment()));
     }
 }

@@ -4,6 +4,7 @@ import com.mindsafe.api.security.JwtAuthenticationFilter;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.env.Environment;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -11,6 +12,7 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.security.web.header.writers.ContentSecurityPolicyHeaderWriter;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -26,12 +28,18 @@ import java.util.List;
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    private final Environment environment;
 
     @Value("${mindsafe.cors.allowed-origins:https://yun.gxjugu.com,http://localhost:5173,http://localhost:5174}")
     private String allowedOrigins;
 
-    public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter) {
+    public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter, Environment environment) {
         this.jwtAuthenticationFilter = jwtAuthenticationFilter;
+        this.environment = environment;
+    }
+
+    private boolean isProd() {
+        return Arrays.asList(environment.getActiveProfiles()).contains("prod");
     }
 
     @Bean
@@ -39,11 +47,15 @@ public class SecurityConfig {
         http
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .csrf(csrf -> csrf.disable())
-                .headers(headers -> headers
+                .headers(headers -> {
+                    headers
                         .frameOptions(frame -> frame.deny())
                         .contentTypeOptions(content -> {})
-                        .xssProtection(xss -> {})
-                )
+                        .xssProtection(xss -> {});
+                    headers.contentSecurityPolicy(csp -> csp
+                        .policyDirectives("default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://api.deepseek.com; font-src 'self' data:; frame-ancestors 'none'")
+                    );
+                })
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         // 公开端点：登录 + 试用注册 + PIN 登录 + Token 刷新
@@ -51,9 +63,14 @@ public class SecurityConfig {
                         .requestMatchers("/api/v1/auth/trial/register").permitAll()
                         .requestMatchers("/api/v1/auth/pin-login").permitAll()
                         .requestMatchers("/api/v1/auth/refresh").permitAll()
-                        .requestMatchers("/actuator/**").permitAll()
+                        // Actuator：生产仅暴露 health（供 Docker/Nginx 健康检查），开发全开
+                        .requestMatchers("/actuator/health").permitAll()
+                        .requestMatchers("/actuator/**").access(
+                                (authentication, context) -> new org.springframework.security.authorization.AuthorizationDecision(!isProd()))
                         .requestMatchers("/ws/**").permitAll()
-                        .requestMatchers("/swagger-ui/**", "/api-docs/**").permitAll()
+                        // Swagger：生产环境完全禁止访问
+                        .requestMatchers("/swagger-ui/**", "/api-docs/**").access(
+                                (authentication, context) -> new org.springframework.security.authorization.AuthorizationDecision(!isProd()))
                         // 家长端 API：内部 token 验证，不走 Spring Security 角色
                         .requestMatchers("/api/v1/parent/**").permitAll()
                         // 管理端 API：仅 ADMIN 角色

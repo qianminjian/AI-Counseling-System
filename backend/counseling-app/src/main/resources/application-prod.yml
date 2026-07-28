@@ -36,6 +36,13 @@ spring:
   flyway:
     enabled: true
 
+# 生产环境禁用 API 文档
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
+
 mindsafe:
   encryption:
     key: ${MINDSAFE_ENCRYPTION_KEY}

@@ -3,6 +3,7 @@ package com.mindsafe.service.security;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Service;
 
 import javax.crypto.Cipher;
@@ -44,7 +45,8 @@ public class FieldEncryptionService {
     public FieldEncryptionService(
             @Value("${mindsafe.encryption.key:}") String currentKey,
             @Value("${mindsafe.encryption.key-version:1}") int keyVersion,
-            @Value("${mindsafe.encryption.previous-keys:}") String previousKeys) {
+            @Value("${mindsafe.encryption.previous-keys:}") String previousKeys,
+            Environment environment) {
 
         this.activeKeyVersion = keyVersion;
 
@@ -53,7 +55,14 @@ public class FieldEncryptionService {
             keyRegistry.put(keyVersion, buildKey(currentKey));
             log.info("字段加密服务初始化: activeKeyVersion={}", keyVersion);
         } else {
-            log.warn("字段加密密钥未配置（mindsafe.encryption.key），加密功能降级为明文透传");
+            // 生产环境 fail-fast：密钥未配置时拒绝启动
+            boolean isProd = java.util.Arrays.asList(environment.getActiveProfiles()).contains("prod");
+            if (isProd) {
+                throw new IllegalStateException(
+                    "[FATAL] 生产环境必须配置 MINDSAFE_ENCRYPTION_KEY（mindsafe.encryption.key），" +
+                    "否则敏感字段将明文存储。请设置环境变量后重启。");
+            }
+            log.warn("字段加密密钥未配置（mindsafe.encryption.key），加密功能降级为明文透传（仅限开发环境）");
         }
 
         // 注册历史密钥（格式：version:base64key,version:base64key）
