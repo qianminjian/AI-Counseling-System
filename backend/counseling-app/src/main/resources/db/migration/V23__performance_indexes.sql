@@ -6,7 +6,7 @@ CREATE INDEX IF NOT EXISTS idx_sessions_tenant_student
     ON tenant_template.counseling_sessions (tenant_id, student_user_id, created_at DESC);
 
 CREATE INDEX IF NOT EXISTS idx_sessions_tenant_status
-    ON tenant_template.counseling_sessions (tenant_id, status, created_at DESC);
+    ON tenant_template.counseling_sessions (tenant_id, session_status, created_at DESC);
 
 -- 2. 消息查询（会话内消息按时间排序）
 CREATE INDEX IF NOT EXISTS idx_messages_session_time
