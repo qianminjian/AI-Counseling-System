@@ -1,0 +1,41 @@
+# MindSafe - Staging 环境配置
+# 激活方式: --spring.profiles.active=staging 或 SPRING_PROFILES_ACTIVE=staging
+
+server:
+  port: 8080
+
+spring:
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:staging-db}:${DB_PORT:5432}/${DB_NAME:mindsafe}
+    username: ${DB_USER:mindsafe}
+    password: ${DB_PASSWORD}
+    hikari:
+      maximum-pool-size: 15
+      minimum-idle: 3
+
+  data:
+    redis:
+      host: ${REDIS_HOST:staging-redis}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+
+  ai:
+    openai:
+      api-key: ${OPENAI_API_KEY}
+      base-url: ${OPENAI_BASE_URL:https://api.openai.com}
+
+mindsafe:
+  encryption:
+    key: ${MINDSAFE_ENCRYPTION_KEY}
+    key-version: ${MINDSAFE_ENCRYPTION_KEY_VERSION:1}
+  llm:
+    first-token-timeout-ms: 3000
+    overall-timeout-ms: 60000
+  alert:
+    wecom:
+      webhook-url: ${MINDSAFE_ALERT_WECOM_WEBHOOK_URL:}
+
+logging:
+  level:
+    com.mindsafe: INFO
+    org.springframework.ai: WARN
