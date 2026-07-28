@@ -1,6 +1,8 @@
 -- V24: RAG 心理知识库（AI-006）
 -- pgvector 向量存储 + 文档分块
 
+CREATE EXTENSION IF NOT EXISTS vector;
+
 -- 知识库文档（原始文档元数据）
 CREATE TABLE IF NOT EXISTS tenant_template.knowledge_documents (
     doc_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
