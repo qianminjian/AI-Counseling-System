@@ -26,6 +26,15 @@ public class RiskEvent {
     private String status;
     private UUID assignedUserId;
     private Instant closedAt;
+
+    // DATA-004：预警追踪闭环
+    private String resolutionNote;
+    private Instant resolvedAt;
+    private Instant followUpAt;
+    private String followUpNote;
+    private Boolean followUpDone;
+    private String outcome;
+
     private Instant createdAt;
     private Instant updatedAt;
 
@@ -96,4 +105,22 @@ public class RiskEvent {
 
     public Instant getUpdatedAt() { return updatedAt; }
     public void setUpdatedAt(Instant updatedAt) { this.updatedAt = updatedAt; }
+
+    public String getResolutionNote() { return resolutionNote; }
+    public void setResolutionNote(String resolutionNote) { this.resolutionNote = resolutionNote; }
+
+    public Instant getResolvedAt() { return resolvedAt; }
+    public void setResolvedAt(Instant resolvedAt) { this.resolvedAt = resolvedAt; }
+
+    public Instant getFollowUpAt() { return followUpAt; }
+    public void setFollowUpAt(Instant followUpAt) { this.followUpAt = followUpAt; }
+
+    public String getFollowUpNote() { return followUpNote; }
+    public void setFollowUpNote(String followUpNote) { this.followUpNote = followUpNote; }
+
+    public Boolean getFollowUpDone() { return followUpDone; }
+    public void setFollowUpDone(Boolean followUpDone) { this.followUpDone = followUpDone; }
+
+    public String getOutcome() { return outcome; }
+    public void setOutcome(String outcome) { this.outcome = outcome; }
 }

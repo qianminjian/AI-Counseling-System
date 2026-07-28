@@ -175,6 +175,8 @@ public class TeacherService {
         RiskEvent event = getEventWithTenantCheck(tenantId, riskEventId);
         event.setStatus("resolved");
         event.setAssignedUserId(teacherUserId);
+        event.setResolutionNote(resolutionNote);
+        event.setResolvedAt(Instant.now());
         event.setClosedAt(Instant.now());
         event.setUpdatedAt(Instant.now());
         riskEventMapper.updateById(event);
@@ -189,6 +191,52 @@ public class TeacherService {
         }
 
         log.info("预警已处理: riskEventId={}, teacher={}", riskEventId, teacherUserId);
+    }
+
+    /** DATA-004：安排回访（处置后不直接关闭，而是计划回访确认效果） */
+    public void scheduleFollowUp(UUID tenantId, UUID riskEventId, UUID teacherUserId, String followUpAtIso) {
+        RiskEvent event = getEventWithTenantCheck(tenantId, riskEventId);
+        event.setStatus("follow_up_scheduled");
+        event.setAssignedUserId(teacherUserId);
+        event.setFollowUpAt(Instant.parse(followUpAtIso));
+        event.setFollowUpDone(false);
+        event.setUpdatedAt(Instant.now());
+        riskEventMapper.updateById(event);
+        log.info("预警安排回访: riskEventId={}, followUpAt={}", riskEventId, followUpAtIso);
+    }
+
+    /** DATA-004：完成回访（填写回访记录 + 最终评估） */
+    public void completeFollowUp(UUID tenantId, UUID riskEventId, UUID teacherUserId,
+                                 String followUpNote, String outcome) {
+        RiskEvent event = getEventWithTenantCheck(tenantId, riskEventId);
+        event.setStatus("closed");
+        event.setFollowUpDone(true);
+        event.setFollowUpNote(followUpNote);
+        event.setOutcome(outcome);
+        event.setClosedAt(Instant.now());
+        event.setUpdatedAt(Instant.now());
+        riskEventMapper.updateById(event);
+
+        // 回访记录存为教师备注
+        if (followUpNote != null && !followUpNote.isBlank()) {
+            TeacherNote note = TeacherNote.create(
+                    event.getTenantId(), event.getStudentUserId(), teacherUserId,
+                    "【回访记录】" + followUpNote, "follow_up"
+            );
+            teacherNoteMapper.insert(note);
+        }
+        log.info("预警回访完成: riskEventId={}, outcome={}", riskEventId, outcome);
+    }
+
+    /** DATA-004：查询待回访事件列表 */
+    public List<RiskEvent> getPendingFollowUps(UUID tenantId) {
+        return riskEventMapper.selectList(
+                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<RiskEvent>()
+                        .eq(RiskEvent::getTenantId, tenantId)
+                        .eq(RiskEvent::getFollowUpDone, false)
+                        .isNotNull(RiskEvent::getFollowUpAt)
+                        .orderByAsc(RiskEvent::getFollowUpAt)
+        );
     }
 
     /** 租户校验：预警必须属于当前租户（防 IDOR 跨租户操作） */

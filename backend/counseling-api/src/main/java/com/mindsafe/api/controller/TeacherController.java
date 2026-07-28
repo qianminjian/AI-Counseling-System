@@ -206,6 +206,55 @@ public class TeacherController {
         return ApiResponse.ok(null);
     }
 
+    /** DATA-004：安排回访（处置后计划回访确认效果） */
+    @PostMapping("/alerts/{id}/schedule-followup")
+    public ApiResponse<Void> scheduleFollowUp(@PathVariable UUID id,
+                                              @RequestBody Map<String, String> body,
+                                              Authentication auth) {
+        TenantContext ctx = (TenantContext) auth.getDetails();
+        UUID userId = (UUID) auth.getPrincipal();
+        String followUpAt = body.get("followUpAt"); // ISO-8601 格式
+        if (followUpAt == null || followUpAt.isBlank()) {
+            return ApiResponse.ok(null);
+        }
+        teacherService.scheduleFollowUp(ctx.tenantId(), id, userId, followUpAt);
+        auditLogService.log(ctx.tenantId(), userId, "ALERT_SCHEDULE_FOLLOWUP", "risk_event", id, followUpAt);
+        return ApiResponse.ok(null);
+    }
+
+    /** DATA-004：完成回访（填写回访记录 + 最终评估） */
+    @PostMapping("/alerts/{id}/complete-followup")
+    public ApiResponse<Void> completeFollowUp(@PathVariable UUID id,
+                                              @RequestBody Map<String, String> body,
+                                              Authentication auth) {
+        TenantContext ctx = (TenantContext) auth.getDetails();
+        UUID userId = (UUID) auth.getPrincipal();
+        String note = body.get("followUpNote");
+        String outcome = body.get("outcome"); // resolved_improved/resolved_stable/escalated_referral/false_positive
+        teacherService.completeFollowUp(ctx.tenantId(), id, userId, note, outcome);
+        auditLogService.log(ctx.tenantId(), userId, "ALERT_COMPLETE_FOLLOWUP", "risk_event", id, outcome);
+        return ApiResponse.ok(null);
+    }
+
+    /** DATA-004：待回访列表 */
+    @GetMapping("/alerts/pending-followups")
+    public ApiResponse<List<Map<String, Object>>> getPendingFollowUps(Authentication auth) {
+        TenantContext ctx = (TenantContext) auth.getDetails();
+        var events = teacherService.getPendingFollowUps(ctx.tenantId());
+        List<Map<String, Object>> result = events.stream().map(e -> {
+            Map<String, Object> row = new java.util.LinkedHashMap<>();
+            row.put("riskEventId", e.getRiskEventId());
+            row.put("studentUserId", e.getStudentUserId());
+            row.put("riskType", e.getRiskType());
+            row.put("riskLevel", e.getRiskLevel());
+            row.put("followUpAt", e.getFollowUpAt() != null ? e.getFollowUpAt().toString() : "");
+            row.put("resolutionNote", e.getResolutionNote() != null ? e.getResolutionNote() : "");
+            row.put("detectedAt", e.getDetectedAt() != null ? e.getDetectedAt().toString() : "");
+            return row;
+        }).toList();
+        return ApiResponse.ok(result);
+    }
+
     // ===== 学生管理 =====
 
     /** 高风险学生列表 */
