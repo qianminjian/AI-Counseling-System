@@ -8,11 +8,7 @@ CREATE INDEX IF NOT EXISTS idx_sessions_tenant_student
 CREATE INDEX IF NOT EXISTS idx_sessions_tenant_status
     ON tenant_template.counseling_sessions (tenant_id, session_status, created_at DESC);
 
--- 2. 消息查询（会话内消息按时间排序）
-CREATE INDEX IF NOT EXISTS idx_messages_session_time
-    ON tenant_template.messages (session_id, created_at ASC);
-
--- 3. 风险事件（教师端按状态/时间筛选）
+-- 2. 风险事件（教师端按状态/时间筛选）
 CREATE INDEX IF NOT EXISTS idx_risk_events_tenant_status
     ON tenant_template.risk_events (tenant_id, status, created_at DESC);
 
@@ -24,7 +20,7 @@ CREATE INDEX IF NOT EXISTS idx_quality_scores_session
     ON tenant_template.quality_scores (session_id);
 
 CREATE INDEX IF NOT EXISTS idx_quality_scores_tenant_time
-    ON tenant_template.quality_scores (tenant_id, created_at DESC);
+    ON tenant_template.quality_scores (tenant_id, evaluated_at DESC);
 
 -- 5. 消息摘要（会话结束后查询）
 CREATE INDEX IF NOT EXISTS idx_message_summaries_session
@@ -51,4 +47,4 @@ CREATE INDEX IF NOT EXISTS idx_users_tenant_type
 
 -- 10. 学生画像（按学生查询最新）
 CREATE INDEX IF NOT EXISTS idx_student_profiles_student
-    ON tenant_template.student_profiles (student_user_id, updated_at DESC);
+    ON tenant_template.student_profiles (user_id, last_updated_at DESC);
