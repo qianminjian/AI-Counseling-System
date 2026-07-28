@@ -52,3 +52,4 @@ tests/e2e/blob-report/
 # ===== 日志 =====
 *.log
 frontend/parent-h5/.swc/
+.deploy-state

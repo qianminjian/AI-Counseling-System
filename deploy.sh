@@ -1,23 +1,74 @@
 #!/bin/bash
-# MindSafe 生产部署脚本（本地执行）
-# 用法：./deploy.sh
+# MindSafe 增量部署脚本（本地执行）
+# 用法：
+#   ./deploy.sh              自动检测变更组件，只部署受影响的服务
+#   ./deploy.sh --all        强制全量部署
+#   ./deploy.sh --backend    强制部署后端
+#   ./deploy.sh --student    强制部署学生端
+#   ./deploy.sh --teacher    强制部署教师端
+#   ./deploy.sh --parent     强制部署家长端
+#   ./deploy.sh --tts        强制部署 TTS 服务
+#   ./deploy.sh --rollback backend   回滚后端到上一版本
 # 前置条件：已 commit + push，CI 通过
 set -eo pipefail
 
 SERVER="mindsafe@116.8.109.229"
 REMOTE_DIR="/guju/mindsafe"
 PROJECT_ROOT="$(cd "$(dirname "$0")" && pwd)"
+STATE_FILE="$PROJECT_ROOT/.deploy-state"
+JAR="counseling-app/target/counseling-app-0.1.0-SNAPSHOT.jar"
 
+# ===== 参数解析 =====
+FORCE_ALL=false
+FORCE_BACKEND=false
+FORCE_STUDENT=false
+FORCE_TEACHER=false
+FORCE_PARENT=false
+FORCE_TTS=false
+ROLLBACK_TARGET=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --all)      FORCE_ALL=true; shift ;;
+    --backend)  FORCE_BACKEND=true; shift ;;
+    --student)  FORCE_STUDENT=true; shift ;;
+    --teacher)  FORCE_TEACHER=true; shift ;;
+    --parent)   FORCE_PARENT=true; shift ;;
+    --tts)      FORCE_TTS=true; shift ;;
+    --rollback) ROLLBACK_TARGET="${2:-backend}"; shift 2 ;;
+    *) echo "未知参数: $1"; exit 1 ;;
+  esac
+done
+
+# ===== 回滚模式 =====
+if [ -n "$ROLLBACK_TARGET" ]; then
+  echo "⏪ 回滚 $ROLLBACK_TARGET..."
+  case "$ROLLBACK_TARGET" in
+    backend)
+      ssh "$SERVER" "cd $REMOTE_DIR && [ -f app.jar.prev ] && cp app.jar.prev app.jar && docker compose up -d --build backend"
+      echo "✅ 后端已回滚到上一版本"
+      ;;
+    tts)
+      ssh "$SERVER" "cd $REMOTE_DIR && docker compose up -d --build tts-service"
+      echo "✅ TTS 服务已重建"
+      ;;
+    *)
+      echo "❌ 不支持回滚: $ROLLBACK_TARGET（支持 backend / tts）"
+      exit 1
+      ;;
+  esac
+  exit 0
+fi
+
+# ===== 前置检查 =====
 echo "🔍 前置检查..."
 
-# 1. 确认工作区干净（无未提交变更）
 if [ -n "$(git status --porcelain)" ]; then
   echo "❌ 有未提交的变更，请先 commit"
   git status --short
   exit 1
 fi
 
-# 2. 确认已 push（本地 HEAD = 远程 HEAD）
 git fetch origin main --quiet
 LOCAL=$(git rev-parse HEAD)
 REMOTE=$(git rev-parse origin/main)
@@ -27,63 +78,155 @@ if [ "$LOCAL" != "$REMOTE" ]; then
   echo "   remote: $REMOTE"
   exit 1
 fi
+echo "✅ Git 状态正常"
 
-echo "✅ Git 状态正常（已 commit + push）"
+# ===== 变更检测 =====
+DEPLOY_BACKEND=$FORCE_BACKEND
+DEPLOY_STUDENT=$FORCE_STUDENT
+DEPLOY_TEACHER=$FORCE_TEACHER
+DEPLOY_PARENT=$FORCE_PARENT
+DEPLOY_TTS=$FORCE_TTS
+
+if $FORCE_ALL; then
+  DEPLOY_BACKEND=true
+  DEPLOY_STUDENT=true
+  DEPLOY_TEACHER=true
+  DEPLOY_PARENT=true
+  DEPLOY_TTS=true
+elif ! $FORCE_BACKEND && ! $FORCE_STUDENT && ! $FORCE_TEACHER && ! $FORCE_PARENT && ! $FORCE_TTS; then
+  # 自动检测模式：基于 git diff
+  if [ -f "$STATE_FILE" ]; then
+    LAST_COMMIT=$(grep '^LAST_DEPLOYED_COMMIT=' "$STATE_FILE" | cut -d= -f2)
+  fi
+
+  if [ -z "$LAST_COMMIT" ] || ! git cat-file -e "$LAST_COMMIT" 2>/dev/null; then
+    echo "ℹ️  无部署历史，执行全量部署"
+    DEPLOY_BACKEND=true
+    DEPLOY_STUDENT=true
+    DEPLOY_TEACHER=true
+    DEPLOY_PARENT=true
+    DEPLOY_TTS=true
+  else
+    echo "📋 检测变更（$LAST_COMMIT → HEAD）..."
+    CHANGED=$(git diff --name-only "$LAST_COMMIT" HEAD)
+
+    if [ -z "$CHANGED" ]; then
+      echo "✅ 无变更，无需部署"
+      exit 0
+    fi
+
+    # 路径映射
+    echo "$CHANGED" | grep -q '^backend/tts-service/' && DEPLOY_TTS=true
+    echo "$CHANGED" | grep '^backend/' | grep -qv '^backend/tts-service/' && DEPLOY_BACKEND=true
+    echo "$CHANGED" | grep -q '^frontend/student-h5/' && DEPLOY_STUDENT=true
+    echo "$CHANGED" | grep -q '^frontend/teacher-web/' && DEPLOY_TEACHER=true
+    echo "$CHANGED" | grep -q '^frontend/parent-h5/' && DEPLOY_PARENT=true
+    # deploy.sh / docker-compose 变更 → 全量
+    echo "$CHANGED" | grep -qE '^(deploy\.sh|deploy/)' && {
+      DEPLOY_BACKEND=true; DEPLOY_TTS=true
+    }
+  fi
+fi
+
+# 汇总
+COMPONENTS=""
+$DEPLOY_BACKEND && COMPONENTS="$COMPONENTS backend"
+$DEPLOY_STUDENT && COMPONENTS="$COMPONENTS student"
+$DEPLOY_TEACHER && COMPONENTS="$COMPONENTS teacher"
+$DEPLOY_PARENT && COMPONENTS="$COMPONENTS parent"
+$DEPLOY_TTS && COMPONENTS="$COMPONENTS tts"
+
+if [ -z "$COMPONENTS" ]; then
+  echo "✅ 无需部署的组件变更"
+  # 仍更新状态文件（可能有 design/ 等无需部署的变更）
+  echo "LAST_DEPLOYED_COMMIT=$LOCAL" > "$STATE_FILE"
+  echo "DEPLOYED_AT=$(date -Iseconds)" >> "$STATE_FILE"
+  exit 0
+fi
+
+echo "🎯 待部署组件:$COMPONENTS"
 echo ""
 
-# 3. 构建后端 JAR
-echo "📦 构建后端..."
-cd "$PROJECT_ROOT/backend"
-mvn package -DskipTests -pl counseling-app -am -q
-JAR="counseling-app/target/counseling-app-0.1.0-SNAPSHOT.jar"
-if [ ! -f "$JAR" ]; then
-  echo "❌ JAR 构建失败"
-  exit 1
+# ===== 选择性构建 =====
+if $DEPLOY_BACKEND; then
+  echo "📦 构建后端..."
+  cd "$PROJECT_ROOT/backend"
+  mvn package -DskipTests -pl counseling-app -am -q
+  if [ ! -f "$JAR" ]; then
+    echo "❌ JAR 构建失败"; exit 1
+  fi
+  echo "✅ 后端 JAR 就绪"
 fi
-echo "✅ 后端 JAR 就绪"
 
-# 4. 构建前端
-echo "📦 构建学生端..."
-cd "$PROJECT_ROOT/frontend/student-h5"
-npm run build --silent
-echo "✅ 学生端构建完成"
+if $DEPLOY_STUDENT; then
+  echo "📦 构建学生端..."
+  cd "$PROJECT_ROOT/frontend/student-h5"
+  npm run build --silent
+  echo "✅ 学生端构建完成"
+fi
 
-echo "📦 构建教师端..."
-cd "$PROJECT_ROOT/frontend/teacher-web"
-npm run build --silent
-echo "✅ 教师端构建完成"
+if $DEPLOY_TEACHER; then
+  echo "📦 构建教师端..."
+  cd "$PROJECT_ROOT/frontend/teacher-web"
+  npm run build --silent
+  echo "✅ 教师端构建完成"
+fi
 
-echo "📦 构建家长端..."
-cd "$PROJECT_ROOT/frontend/parent-h5"
-npm run build --silent
-echo "✅ 家长端构建完成"
+if $DEPLOY_PARENT; then
+  echo "📦 构建家长端..."
+  cd "$PROJECT_ROOT/frontend/parent-h5"
+  npm run build --silent
+  echo "✅ 家长端构建完成"
+fi
 
-# 5. 上传到服务器
+# ===== 选择性上传 =====
 echo ""
 echo "🚀 部署到服务器..."
 
-rsync -avz --delete "$PROJECT_ROOT/frontend/student-h5/dist/" "$SERVER:$REMOTE_DIR/frontend/student/"
-rsync -avz --delete "$PROJECT_ROOT/frontend/teacher-web/dist/" "$SERVER:$REMOTE_DIR/frontend/teacher/"
-rsync -avz --delete "$PROJECT_ROOT/frontend/parent-h5/dist/" "$SERVER:$REMOTE_DIR/frontend/parent/"
-rsync -avz "$PROJECT_ROOT/backend/$JAR" "$SERVER:$REMOTE_DIR/app.jar"
-rsync -avz --delete "$PROJECT_ROOT/backend/tts-service/" "$SERVER:$REMOTE_DIR/tts-service/"
-
-# 6. 重建后端 + TTS 容器
-echo "🔄 重启后端容器..."
-ssh "$SERVER" "cd $REMOTE_DIR && docker compose up -d --build backend tts-service"
-
-# 7. 等待启动 + 健康检查
-echo "⏳ 等待服务启动..."
-sleep 12
-HTTP_CODE=$(ssh "$SERVER" "curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:18081/actuator/health" 2>/dev/null | tr -cd '0-9' || echo "000")
-HTTP_CODE=${HTTP_CODE:-000}
-
-if [ "$HTTP_CODE" = "200" ]; then
-  echo ""
-  echo "🎉 部署完成！服务已启动（HTTP $HTTP_CODE）"
-  echo "   学生端：https://yun.gxjugu.com/mindsafe/"
-  echo "   教师端：https://yun.gxjugu.com/teacher/"
-  echo "   家长端：https://yun.gxjugu.com/parent/"
-else
-  echo "⚠️  服务可能未完全启动（HTTP $HTTP_CODE），请手动检查：ssh $SERVER 'docker logs mindsafe-backend-1 --tail 20'"
+if $DEPLOY_BACKEND; then
+  # 保留上一版本用于回滚
+  ssh "$SERVER" "[ -f $REMOTE_DIR/app.jar ] && cp $REMOTE_DIR/app.jar $REMOTE_DIR/app.jar.prev || true"
+  rsync -avz "$PROJECT_ROOT/backend/$JAR" "$SERVER:$REMOTE_DIR/app.jar"
 fi
+
+$DEPLOY_STUDENT && rsync -avz --delete "$PROJECT_ROOT/frontend/student-h5/dist/" "$SERVER:$REMOTE_DIR/frontend/student/"
+$DEPLOY_TEACHER && rsync -avz --delete "$PROJECT_ROOT/frontend/teacher-web/dist/" "$SERVER:$REMOTE_DIR/frontend/teacher/"
+$DEPLOY_PARENT && rsync -avz --delete "$PROJECT_ROOT/frontend/parent-h5/dist/" "$SERVER:$REMOTE_DIR/frontend/parent/"
+
+if $DEPLOY_TTS; then
+  rsync -avz --delete "$PROJECT_ROOT/backend/tts-service/" "$SERVER:$REMOTE_DIR/tts-service/"
+fi
+
+# ===== 选择性重启（仅 backend/tts 需要） =====
+RESTART_SERVICES=""
+$DEPLOY_BACKEND && RESTART_SERVICES="$RESTART_SERVICES backend"
+$DEPLOY_TTS && RESTART_SERVICES="$RESTART_SERVICES tts-service"
+
+if [ -n "$RESTART_SERVICES" ]; then
+  echo "🔄 重启容器:$RESTART_SERVICES"
+  ssh "$SERVER" "cd $REMOTE_DIR && docker compose up -d --build $RESTART_SERVICES"
+
+  # 健康检查（仅重启时）
+  echo "⏳ 等待服务启动..."
+  sleep 12
+  if $DEPLOY_BACKEND; then
+    HTTP_OK=$(ssh "$SERVER" "curl -sf http://127.0.0.1:18081/actuator/health > /dev/null && echo yes || echo no")
+    if [ "$HTTP_OK" = "yes" ]; then
+      echo "✅ 后端健康检查通过"
+    else
+      echo "⚠️  后端可能未完全启动，请检查：ssh $SERVER 'docker logs mindsafe-backend-1 --tail 20'"
+    fi
+  fi
+else
+  echo "✅ 前端静态文件已更新（无需重启容器）"
+fi
+
+# ===== 更新部署状态 =====
+echo "LAST_DEPLOYED_COMMIT=$LOCAL" > "$STATE_FILE"
+echo "DEPLOYED_AT=$(date -Iseconds)" >> "$STATE_FILE"
+
+echo ""
+echo "🎉 部署完成！组件:$COMPONENTS"
+echo "   学生端：https://yun.gxjugu.com/mindsafe/"
+echo "   教师端：https://yun.gxjugu.com/teacher/"
+echo "   家长端：https://yun.gxjugu.com/parent/"
