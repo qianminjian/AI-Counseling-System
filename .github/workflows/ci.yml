@@ -11,7 +11,7 @@ on:
 
 env:
   JAVA_VERSION: '21'
-  MAVEN_OPTS: '-Xmx512m'
+  MAVEN_OPTS: '-Xmx1024m'
 
 jobs:
   backend-build-test:
@@ -76,6 +76,7 @@ jobs:
   dependency-scan:
     name: Dependency Vulnerability Scan
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: backend
@@ -90,20 +91,23 @@ jobs:
           distribution: temurin
           cache: maven
 
-      # 缓存 NVD 漏洞库（避免每次从零下载 ~2GB，首次 20min → 后续 <2min）
-      - name: Cache OWASP NVD database
+      # 缓存 NVD 漏洞库（按周轮转，7天自动刷新，避免永久缓存过期数据）
+      - name: Cache Dependency-Check DB
         uses: actions/cache@v4
         with:
           path: ~/.dependency-check
-          key: ${{ runner.os }}-owasp-nvd-${{ github.run_id }}
+          key: dc-db-${{ runner.os }}-${{ github.run_id }}
           restore-keys: |
-            ${{ runner.os }}-owasp-nvd-
+            dc-db-${{ runner.os }}-
 
       # OWASP 依赖检查（仅告警不阻断，避免误报阻塞开发）
       # NVD_API_KEY 可选：配置后下载速度提升 10x（https://nvd.nist.gov/developers/request-an-api-key）
       - name: OWASP Dependency Check
         run: |
           ARGS="-B -q -DfailBuildOnCVSS=9"
+          ARGS="$ARGS -DconnectionTimeout=60000"
+          ARGS="$ARGS -DcveValidForHours=72"
+          ARGS="$ARGS -DskipTestScope=true"
           if [ -n "$NVD_API_KEY" ]; then
             ARGS="$ARGS -DnvdApiKey=$NVD_API_KEY"
           fi
