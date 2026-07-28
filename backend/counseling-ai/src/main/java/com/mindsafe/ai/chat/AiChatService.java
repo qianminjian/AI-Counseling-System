@@ -80,4 +80,16 @@ public interface AiChatService {
      * @return JSON 评分结果，失败返回 null
      */
     String evaluateConversationQuality(String conversationText);
+
+    /**
+     * 提取跨会话关键事件（AI-008，非流式，会话关闭后异步调用）
+     * <p>
+     * 从对话中提取值得长期记忆的关键事件（突破/危机/承诺/转折），
+     * 输出泛化描述（不含真实姓名/地名），供后续会话 Prompt 回注。
+     *
+     * @param conversationText 对话摘要文本
+     * @param sessionSummary   会话结构化摘要（JSON，可为 null）
+     * @return JSON 数组（key_events），失败返回 null
+     */
+    String extractKeyEvents(String conversationText, String sessionSummary);
 }

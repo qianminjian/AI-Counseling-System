@@ -13,6 +13,7 @@ import com.mindsafe.domain.mapper.CounselingSessionMapper;
 import com.mindsafe.domain.mapper.MessageSummaryMapper;
 import com.mindsafe.domain.mapper.RiskEventMapper;
 import com.mindsafe.domain.mapper.UserMapper;
+import com.mindsafe.service.memory.LongTermMemoryService;
 import com.mindsafe.service.notification.NotificationService;
 import com.mindsafe.service.profile.ProfileExtractorService;
 import com.mindsafe.service.profile.StudentProfileService;
@@ -63,6 +64,7 @@ class ConversationServiceImplTest {
     private StudentProfileService profileService;
     private ProfileExtractorService profileExtractorService;
     private UsageTimeLimitService usageTimeLimitService;
+    private LongTermMemoryService longTermMemoryService;
 
     private ConversationServiceImpl service;
 
@@ -83,11 +85,12 @@ class ConversationServiceImplTest {
         profileService = mock(StudentProfileService.class);
         profileExtractorService = mock(ProfileExtractorService.class);
         usageTimeLimitService = mock(UsageTimeLimitService.class);
+        longTermMemoryService = mock(LongTermMemoryService.class);
 
         service = new ConversationServiceImpl(aiChatService, promptTemplateService,
                 riskDetectorService, piiDesensitizer, sessionMapper, messageSummaryMapper,
                 riskEventMapper, notificationService, userMapper, profileService,
-                profileExtractorService, usageTimeLimitService);
+                profileExtractorService, usageTimeLimitService, longTermMemoryService);
     }
 
     /** createSession 并捕获内部生成的 sessionId */

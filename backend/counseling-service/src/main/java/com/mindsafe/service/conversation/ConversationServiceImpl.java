@@ -16,6 +16,7 @@ import com.mindsafe.domain.mapper.CounselingSessionMapper;
 import com.mindsafe.domain.mapper.MessageSummaryMapper;
 import com.mindsafe.domain.mapper.RiskEventMapper;
 import com.mindsafe.domain.mapper.UserMapper;
+import com.mindsafe.service.memory.LongTermMemoryService;
 import com.mindsafe.service.notification.NotificationService;
 import com.mindsafe.service.profile.ProfileExtractorService;
 import com.mindsafe.service.profile.StudentProfileService;
@@ -54,6 +55,7 @@ public class ConversationServiceImpl implements ConversationService {
     private final StudentProfileService profileService;
     private final ProfileExtractorService profileExtractorService;
     private final UsageTimeLimitService usageTimeLimitService;
+    private final LongTermMemoryService longTermMemoryService;
 
     /** 活跃会话内存缓存（emotionTag 等非 DB 字段 + 轮次计数） */
     private final Map<UUID, SessionState> activeSessions = new ConcurrentHashMap<>();
@@ -72,7 +74,8 @@ public class ConversationServiceImpl implements ConversationService {
                                    UserMapper userMapper,
                                    StudentProfileService profileService,
                                    ProfileExtractorService profileExtractorService,
-                                   UsageTimeLimitService usageTimeLimitService) {
+                                   UsageTimeLimitService usageTimeLimitService,
+                                   LongTermMemoryService longTermMemoryService) {
         this.aiChatService = aiChatService;
         this.promptTemplateService = promptTemplateService;
         this.riskDetectorService = riskDetectorService;
@@ -85,6 +88,7 @@ public class ConversationServiceImpl implements ConversationService {
         this.profileService = profileService;
         this.profileExtractorService = profileExtractorService;
         this.usageTimeLimitService = usageTimeLimitService;
+        this.longTermMemoryService = longTermMemoryService;
     }
 
     @Override
@@ -225,10 +229,15 @@ public class ConversationServiceImpl implements ConversationService {
             ));
         }
 
-        // 5. 调用 AI 服务获取流式回复（注入学生画像 + 年级适配，PROF-010/011/012/015）
+        // 5. 调用 AI 服务获取流式回复（注入学生画像 + 长期记忆 + 年级适配，PROF-010/011/012/015 + AI-008）
         boolean riskBlocked = fusedLevel != null && fusedLevel.severity() >= RiskLevel.ORANGE.severity();
         int effectiveGrade = computeEffectiveGrade(session.grade, session.expressionDepth, riskBlocked);
         String profilePrompt = profileService.buildProfilePrompt(session.tenantId, session.studentUserId, session.grade, session.gender);
+        // AI-008：追加长期记忆（跨会话关键事件回注）
+        String memoryPrompt = longTermMemoryService.buildMemoryPrompt(session.tenantId, session.studentUserId);
+        if (memoryPrompt != null) {
+            profilePrompt = (profilePrompt != null ? profilePrompt + "\n\n" : "") + memoryPrompt;
+        }
         StringBuilder aiResponseCollector = new StringBuilder();
         Flux<StreamMessageEvent> aiStream = aiChatService.chat(sessionId, session.emotionTag, safeContent, session.gender, profilePrompt, effectiveGrade)
                 .doOnNext(event -> {
@@ -300,6 +309,11 @@ public class ConversationServiceImpl implements ConversationService {
                 "direction", decision.direction()
         ));
         String profilePrompt = profileService.buildProfilePrompt(session.tenantId, session.studentUserId, session.grade, session.gender);
+        // AI-008：暖场也回注长期记忆（让暖场更个性化，如"上次你说喜欢画画"）
+        String nudgeMemoryPrompt = longTermMemoryService.buildMemoryPrompt(session.tenantId, session.studentUserId);
+        if (nudgeMemoryPrompt != null) {
+            profilePrompt = (profilePrompt != null ? profilePrompt + "\n\n" : "") + nudgeMemoryPrompt;
+        }
         // PROF-015：暖场场景无风险（橙/红已拦截），仅根据表达深度降级
         int effectiveGrade = computeEffectiveGrade(session.grade, session.expressionDepth, false);
         int turn = session.turnCount.get();
@@ -398,6 +412,9 @@ public class ConversationServiceImpl implements ConversationService {
 
                 // 4. PROF-003：基于摘要 + 对话文本提炼画像增量（沟通偏好/韧性/社交图谱）
                 profileExtractorService.extractAndMerge(tenantId, studentUserId, conversationText, summary);
+
+                // 5. AI-008：提取跨会话关键事件（长期记忆）
+                longTermMemoryService.extractAndStoreKeyEvents(tenantId, studentUserId, sessionId, conversationText, summary);
             }
         } catch (Exception e) {
             log.warn("会话摘要生成失败（不影响业务）: sessionId={}", sessionId, e);

@@ -325,6 +325,56 @@ public class AiChatServiceImpl implements AiChatService {
         }
     }
 
+    // ===== AI-008: 跨会话关键事件提取 =====
+
+    private static final String KEY_EVENTS_SYSTEM_PROMPT = """
+            你是学校心理辅导系统的记忆提炼器。从一次 AI 与学生的心理辅导对话中，
+            提取值得长期记住的关键事件（突破/危机/承诺/转折/重要发现）。
+
+            输出格式（严格 JSON，无其他文字，无 markdown 代码块）：
+            {"key_events": [
+              {
+                "content": "泛化描述（15-40字，不含真实姓名/地名/校名）",
+                "emotion_context": "当时的情绪标签（如焦虑/开心/委屈/平静）",
+                "importance": 0.0到1.0的小数
+              }
+            ]}
+
+            提取标准：
+            - 仅提取对未来辅导有参考价值的事件（不是每句话都值得记）
+            - importance >= 0.7：危机事件、重大突破、明确承诺、情绪转折点
+            - importance 0.4~0.7：新发现的兴趣/困扰、关系变化、尝试新技巧
+            - importance < 0.4：日常寒暄、重复话题（不要提取）
+            - 如果本次对话平淡无关键事件，输出 {"key_events": []}
+
+            红线：
+            - 不输出任何原始对话句子、真实姓名、地名、校名
+            - 人物一律用 role 代号（妈妈/同学/老师）
+            - 最多提取 3 个事件（质量优先于数量）
+            """;
+
+    @Override
+    public String extractKeyEvents(String conversationText, String sessionSummary) {
+        if (conversationText == null || conversationText.isBlank()) {
+            return null;
+        }
+        try {
+            String userPrompt = "对话文本：\n" + conversationText
+                    + "\n\n结构化摘要：\n" + (sessionSummary == null ? "无" : sessionSummary)
+                    + "\n\n请提取关键事件 JSON：";
+            String result = chatClient.prompt()
+                    .system(KEY_EVENTS_SYSTEM_PROMPT)
+                    .user(userPrompt)
+                    .call()
+                    .content();
+            log.debug("关键事件提取完成, length={}", result != null ? result.length() : 0);
+            return result;
+        } catch (Exception e) {
+            log.error("关键事件提取 LLM 调用失败", e);
+            return null;
+        }
+    }
+
     /**
      * PROF-014：性别×年龄交叉策略
      * <p>
