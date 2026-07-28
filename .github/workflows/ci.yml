@@ -76,53 +76,29 @@ jobs:
   dependency-scan:
     name: Dependency Vulnerability Scan
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: backend
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up JDK
-        uses: actions/setup-java@v4
+      # Trivy 漏洞扫描（轻量漏洞库 ~30MB，1-2 分钟完成，替代 OWASP dependency-check）
+      - name: Trivy Vulnerability Scan
+        uses: aquasecurity/trivy-action@0.28.0
         with:
-          java-version: ${{ env.JAVA_VERSION }}
-          distribution: temurin
-          cache: maven
+          scan-type: 'fs'
+          scan-ref: 'backend'
+          scanners: 'vuln'
+          severity: 'CRITICAL,HIGH'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          exit-code: '0'  # 仅告警不阻断
+          ignore-unfixed: true
 
-      # 缓存 NVD 漏洞库（按周轮转，7天自动刷新，避免永久缓存过期数据）
-      - name: Cache Dependency-Check DB
-        uses: actions/cache@v4
-        with:
-          path: ~/.dependency-check
-          key: dc-db-${{ runner.os }}-${{ github.run_id }}
-          restore-keys: |
-            dc-db-${{ runner.os }}-
-
-      # OWASP 依赖检查（仅告警不阻断，避免误报阻塞开发）
-      # NVD_API_KEY 可选：配置后下载速度提升 10x（https://nvd.nist.gov/developers/request-an-api-key）
-      - name: OWASP Dependency Check
-        timeout-minutes: 18
-        run: |
-          ARGS="-B -q -DfailBuildOnCVSS=9"
-          ARGS="$ARGS -DconnectionTimeout=60000"
-          ARGS="$ARGS -DcveValidForHours=72"
-          ARGS="$ARGS -DskipTestScope=true"
-          if [ -n "$NVD_API_KEY" ]; then
-            ARGS="$ARGS -DnvdApiKey=$NVD_API_KEY"
-          fi
-          mvn org.owasp:dependency-check-maven:check $ARGS || true
-        continue-on-error: true
-        env:
-          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
-
-      - name: Upload Dependency Report
-        uses: actions/upload-artifact@v4
+      - name: Upload Trivy Report
+        uses: github/codeql-action/upload-sarif@v3
         if: always()
         with:
-          name: dependency-check-report
-          path: backend/target/dependency-check-report.html
-          retention-days: 14
+          sarif_file: 'trivy-results.sarif'
+          category: trivy
 
   frontend-build:
     name: Frontend Build Check
