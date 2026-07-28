@@ -82,7 +82,7 @@ jobs:
 
       # Trivy 漏洞扫描（轻量漏洞库 ~30MB，1-2 分钟完成，替代 OWASP dependency-check）
       - name: Trivy Vulnerability Scan
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: 'fs'
           scan-ref: 'backend'
