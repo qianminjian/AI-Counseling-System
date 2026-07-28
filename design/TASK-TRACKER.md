@@ -1,6 +1,6 @@
 # AI 小学生心理辅导系统 - 任务跟踪表
 
-> 创建：2026-07-23 | 更新：2026-07-28（新增 design/33 测试培训手册 + design/25 v2.0 + 状态文件同步）
+> 创建：2026-07-23 | 更新：2026-07-28（WAKE-013 登录页三主题风格落地完成）
 > 
 > 本表用于跟踪项目各阶段任务的进度和责任人。
 
@@ -32,7 +32,7 @@
 | DOC-020 | 转换 15_心理知识库建设 为 md | ✅ 完成 | Agent | 2026-07-23 | 2026-07-23 | RAG/Spring AI 适配 |
 | DOC-021 | 更新 STRUCTURE.md 反映 docs/his 结构 | ✅ 完成 | Agent | 2026-07-23 | 2026-07-23 | §2.2 拆分约定 |
 | DOC-022 | 更新 BEACON.md/OVERVIEW 引用新结构 | ✅ 完成 | Agent | 2026-07-23 | 2026-07-23 | 修正 6 处断链接 |
-| DOC-023 | Git commit 文档整合变更 | ⏳ 待开始 | Agent | - | - | 需用户授权 |
+| DOC-023 | Git commit 文档整合变更 | ✅ 完成 | Agent | 2026-07-23 | 2026-07-28 | 已在 0860320 提交，工作区干净 |
 | DOC-024 | 目录结构纠偏：md 拍平至 design/、docx 迁至 doc/ | ✅ 完成 | Agent | 2026-07-23 | 2026-07-23 | 对齐钱敏健原意，STRUCTURE/BEACON/OVERVIEW 同步 |
 
 ---
@@ -318,7 +318,8 @@
 | WAKE-009 | ChatRoom 沉默检测计时器 + nudge 调用 + TTS 朗读 + 护栏（2 次上限/说话重置/与录音互斥） | ✅ 完成 | 阶段 2 前端 |
 | WAKE-010 | useWakeWord（Whisper）+ useVoiceCallMode 状态机 + VoiceCallConsentDialog 单独授权 + BoBoPet waitingWake 态 + ChatRoom 集成 | ✅ 完成 | 阶段 3，**已从 Porcupine 切换为 Transformers.js + Whisper**（零外部账号），构建通过 |
 | WAKE-011 | ~~.env 增加 AccessKey + Picovoice Console 训练唤醒词~~ | ❌ 已取消 | Whisper 开源方案无需任何外部账号/密钥/训练 |
-| WAKE-012 | 集成回归（按住说话主路径/红色风险流程不受影响）+ 真机测试（唤醒率/防自听回声/冷却关窗/iOS 兼容） | ⏳ 待开始 | 阶段 4 |
+| WAKE-012 | 集成回归（按住说话主路径/红色风险流程不受影响）+ 真机测试（唤醒率/防自听回声/冷却关窗/iOS 兼容） | 🟡 代码回归完成 | 阶段 4：224 单测全绿 + 三端构建通过 + 主路径/风险流程代码完整性验证；**真机测试待执行**（需物理设备） |
+| WAKE-013 | 登录页三主题风格落地（design/demo 三 HTML → LoginPage.jsx 实施） | ✅ 完成 | 2026-07-28；ocean/garden/rainbow 动画背景 + 彩虹键盘(0占两格/无✓) + 一体化语音唤醒勾选框 + 主题切换浮标 + Pad 横屏左品牌右表单；三端构建通过 |
 
 ---
 

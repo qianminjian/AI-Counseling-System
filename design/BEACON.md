@@ -61,8 +61,8 @@
   - 部署：Docker Compose 一键启动（PostgreSQL + Redis + Spring Boot + Nginx）；CI/CD 流水线（GitHub Actions）；生产已迁移至 mindsafe 专用用户
   - 商业化功能：企微 OAuth、会话导出 PDF、批量导入、满意度分析、干预话术模板、新手引导、RAG 知识库
   - 安全加固：actuator/swagger 访问控制 + CSP + 种子用户禁用 + 加密 fail-fast + AES-256 + 审计日志
-- **最近动作**：声纹识别登录 Phase 1；CI/CD 流水线 + RAG 知识库；性能压测 + 单测覆盖率提升；生产安全加固；商用发布前置待办清单（design/32）；测试培训手册（design/33）；产品功能说明 v2.0（design/25）
-- **下一步**：WAKE-012 集成回归（真机测试）→ 远期任务按需推进 → 按用户指令提交/推送/发布
+- **最近动作**：登录页三主题风格落地（ocean/garden/rainbow 动画背景 + 彩虹键盘 + 一体化语音勾选框 + Pad 横屏适配）；声纹识别登录 Phase 1；CI/CD 流水线 + RAG 知识库；性能压测 + 单测覆盖率提升；生产安全加固；商用发布前置待办清单（design/32）；产品功能说明 v2.0（design/25）
+- **下一步**：WAKE-012 真机测试（需物理设备：唤醒率/防自听回声/冷却关窗/iOS 兼容）→ 远期任务按需推进 → 按用户指令提交/推送/发布
 - **阻塞项**：无
 
 ---
