@@ -336,7 +336,7 @@
 | AI-003 | 教师端质量监控增强（AI 评分可视化 + 抽检回放） | ✅ 完成 | C |
 | AI-004 | 多模型路由（DeepSeek 主 + 通义/GLM 备，故障自动切换） | ✅ 完成 | B |
 | AI-005 | Prompt 版本管理与 A/B 测试框架 | ✅ 完成 | C |
-| AI-006 | RAG 心理知识库（Spring AI VectorStore + pgvector） | ⏳ 待开始 | E |
+| AI-006 | RAG 心理知识库（Spring AI VectorStore + pgvector） | ✅ 完成 | E |
 | AI-007 | 语音情感分析 SER（emotion2vec+，风险辅助信号） | ⏳ 待开始 | 远期 |
 | AI-008 | 长期记忆增强（跨会话摘要 + 关键事件 + 画像回注） | ✅ 完成 | C |
 | AI-009 | 心理量表数字化（PHQ-A/GAD-7/SDQ 嵌入式） | ⏳ 待开始 | 远期 |
@@ -362,15 +362,15 @@
 | TEST-002 | 前端组件测试（Vitest + Testing Library） | ⏳ 待开始 | C |
 | TEST-003 | E2E 扩展（12 → 30+ 用例） | ⏳ 待开始 | C |
 | TEST-004 | 性能压测基线（k6，100 并发 SSE） | ⏳ 待开始 | E |
-| TEST-005 | CI 增强（覆盖率门禁 + 依赖扫描 + 缓存） | ⏳ 待开始 | A |
+| TEST-005 | CI 增强（覆盖率门禁 + 依赖扫描 + 缓存） | ✅ 完成 | A |
 | TEST-006 | 前后端契约测试（OpenAPI + mock 校验） | ⏳ 待开始 | 远期 |
 
 ### DevOps 与运维能力（P1）
 
 | 任务ID | 任务描述 | 状态 | Sprint |
 |--------|----------|------|--------|
-| OPS-001 | CD 自动化（CI → 镜像 → Registry → 部署） | ⏳ 待开始 | E |
-| OPS-002 | Docker 镜像版本化（Git SHA tag + ACR） | ⏳ 待开始 | E |
+| OPS-001 | CD 自动化（CI → 镜像 → Registry → 部署） | ✅ 完成 | E |
+| OPS-002 | Docker 镜像版本化（Git SHA tag + ACR） | ✅ 完成 | E |
 | OPS-003 | 结构化日志 + 链路追踪（JSON + traceId） | ✅ 完成 | B |
 | OPS-004 | 告警体系（AlertManager → 企微 webhook） | ✅ 完成 | B |
 | OPS-005 | 数据库自动备份（pg_dump + 异地 + 恢复演练） | ✅ 完成 | A |
