@@ -43,6 +43,9 @@ public class CounselingSession {
     /** AI 生成的会话结构化摘要 */
     private String sessionSummary;
 
+    /** AI-005: 会话使用的 Prompt 版本标识（如 SYS_001:v3:treatment_a） */
+    private String promptVersion;
+
     private Instant createdAt;
     private Instant updatedAt;
 
@@ -135,6 +138,9 @@ public class CounselingSession {
 
     public String getSessionSummary() { return sessionSummary; }
     public void setSessionSummary(String sessionSummary) { this.sessionSummary = sessionSummary; }
+
+    public String getPromptVersion() { return promptVersion; }
+    public void setPromptVersion(String promptVersion) { this.promptVersion = promptVersion; }
 
     public Instant getCreatedAt() { return createdAt; }
     public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }

@@ -20,6 +20,7 @@ import com.mindsafe.service.memory.LongTermMemoryService;
 import com.mindsafe.service.notification.NotificationService;
 import com.mindsafe.service.profile.ProfileExtractorService;
 import com.mindsafe.service.profile.StudentProfileService;
+import com.mindsafe.service.prompt.PromptVersionService;
 import com.mindsafe.service.usage.UsageTimeLimitService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -56,6 +57,7 @@ public class ConversationServiceImpl implements ConversationService {
     private final ProfileExtractorService profileExtractorService;
     private final UsageTimeLimitService usageTimeLimitService;
     private final LongTermMemoryService longTermMemoryService;
+    private final PromptVersionService promptVersionService;
 
     /** 活跃会话内存缓存（emotionTag 等非 DB 字段 + 轮次计数） */
     private final Map<UUID, SessionState> activeSessions = new ConcurrentHashMap<>();
@@ -75,7 +77,8 @@ public class ConversationServiceImpl implements ConversationService {
                                    StudentProfileService profileService,
                                    ProfileExtractorService profileExtractorService,
                                    UsageTimeLimitService usageTimeLimitService,
-                                   LongTermMemoryService longTermMemoryService) {
+                                   LongTermMemoryService longTermMemoryService,
+                                   PromptVersionService promptVersionService) {
         this.aiChatService = aiChatService;
         this.promptTemplateService = promptTemplateService;
         this.riskDetectorService = riskDetectorService;
@@ -89,6 +92,7 @@ public class ConversationServiceImpl implements ConversationService {
         this.profileExtractorService = profileExtractorService;
         this.usageTimeLimitService = usageTimeLimitService;
         this.longTermMemoryService = longTermMemoryService;
+        this.promptVersionService = promptVersionService;
     }
 
     @Override
@@ -229,7 +233,7 @@ public class ConversationServiceImpl implements ConversationService {
             ));
         }
 
-        // 5. 调用 AI 服务获取流式回复（注入学生画像 + 长期记忆 + 年级适配，PROF-010/011/012/015 + AI-008）
+        // 5. 调用 AI 服务获取流式回复（注入学生画像 + 长期记忆 + 年级适配，PROF-010/011/012/015 + AI-008 + AI-005）
         boolean riskBlocked = fusedLevel != null && fusedLevel.severity() >= RiskLevel.ORANGE.severity();
         int effectiveGrade = computeEffectiveGrade(session.grade, session.expressionDepth, riskBlocked);
         String profilePrompt = profileService.buildProfilePrompt(session.tenantId, session.studentUserId, session.grade, session.gender);
@@ -238,8 +242,31 @@ public class ConversationServiceImpl implements ConversationService {
         if (memoryPrompt != null) {
             profilePrompt = (profilePrompt != null ? profilePrompt + "\n\n" : "") + memoryPrompt;
         }
+
+        // AI-005：Prompt 版本 A/B 路由（DB 优先，classpath 降级）
+        String gradeLevel = effectiveGrade <= 2 ? "1-2" : effectiveGrade <= 4 ? "3-4" : "5-6";
+        PromptVersionService.ResolvedPrompt sysResolved = promptVersionService.resolve(
+                session.tenantId, "SYS_001", session.studentUserId, Map.of(
+                        "grade_level", gradeLevel,
+                        "emotion_tag", session.emotionTag != null ? session.emotionTag : "",
+                        "school_policy", "默认：发现高风险立即通知心理老师。",
+                        "session_mode", "normal_counseling"
+                ));
+        String langKey = effectiveGrade <= 2 ? "LANG_001" : effectiveGrade <= 4 ? "LANG_002" : "LANG_003";
+        PromptVersionService.ResolvedPrompt langResolved = promptVersionService.resolveRaw(
+                session.tenantId, langKey, session.studentUserId);
+        String systemPromptContent = sysResolved.content() + "\n\n" + langResolved.content();
+
+        // 记录 Prompt 版本到会话（用于 A/B 效果对比）
+        String versionTag = sysResolved.versionTag();
+        CounselingSession versionUpdate = new CounselingSession();
+        versionUpdate.setSessionId(sessionId);
+        versionUpdate.setPromptVersion(versionTag);
+        versionUpdate.setUpdatedAt(Instant.now());
+        sessionMapper.updateById(versionUpdate);
+
         StringBuilder aiResponseCollector = new StringBuilder();
-        Flux<StreamMessageEvent> aiStream = aiChatService.chat(sessionId, session.emotionTag, safeContent, session.gender, profilePrompt, effectiveGrade)
+        Flux<StreamMessageEvent> aiStream = aiChatService.chatWithPrompt(sessionId, session.emotionTag, safeContent, session.gender, profilePrompt, effectiveGrade, systemPromptContent)
                 .doOnNext(event -> {
                     if (event.type() != null && event.type().equals("token") && event.content() != null) {
                         aiResponseCollector.append(event.content());

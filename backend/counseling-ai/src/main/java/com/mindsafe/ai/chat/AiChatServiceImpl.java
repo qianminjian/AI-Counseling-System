@@ -108,6 +108,49 @@ public class AiChatServiceImpl implements AiChatService {
     }
 
     @Override
+    public Flux<StreamMessageEvent> chatWithPrompt(UUID sessionId, String emotionTag, String message,
+                                                   String gender, String profilePrompt, int grade,
+                                                   String systemPromptContent) {
+        String conversationId = sessionId.toString();
+        log.debug("AI 对话请求(AI-005): sessionId={}, emotion={}, grade={}, msgLength={}", sessionId, emotionTag, grade, message.length());
+
+        // 1. 保存用户消息到记忆
+        chatMemory.add(conversationId, List.of(new UserMessage(message)));
+
+        // 2. 获取历史消息构建上下文
+        List<Message> history = chatMemory.get(conversationId);
+
+        // 3. 使用预解析的 System Prompt（SYS_001 + 语言模板）+ 性别风格
+        String fullSystem = systemPromptContent + "\n\n" + buildGenderStyle(gender, grade);
+        if (profilePrompt != null && !profilePrompt.isBlank()) {
+            fullSystem = fullSystem + "\n\n" + profilePrompt;
+        }
+
+        // 4. 流式调用 LLM
+        StringBuilder responseCollector = new StringBuilder();
+        Flux<String> rawTokens = chatClient.prompt()
+                .system(fullSystem)
+                .messages(history)
+                .stream()
+                .content();
+
+        // 5. Layer1 实时过滤 + Layer2 异步审查
+        return outputContentFilter.apply(rawTokens, sessionId)
+                .doOnNext(evt -> {
+                    if ("token".equals(evt.type()) && evt.content() != null) {
+                        responseCollector.append(evt.content());
+                    }
+                })
+                .doOnComplete(() -> {
+                    String fullReply = responseCollector.toString();
+                    chatMemory.add(conversationId, List.of(new AssistantMessage(fullReply)));
+                    log.debug("AI 回复完成(AI-005): sessionId={}, responseLength={}", sessionId, fullReply.length());
+                    outputReviewService.reviewAsync(sessionId, fullReply, emotionTag);
+                })
+                .doOnError(e -> log.error("AI 流式调用失败(AI-005): sessionId={}", sessionId, e));
+    }
+
+    @Override
     public Flux<StreamMessageEvent> chatProactive(UUID sessionId, String emotionTag, String gender,
                                                   String profilePrompt, String nudgeInstruction, int grade) {
         String conversationId = sessionId.toString();

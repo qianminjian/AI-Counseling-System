@@ -24,6 +24,22 @@ public interface AiChatService {
     Flux<StreamMessageEvent> chat(UUID sessionId, String emotionTag, String message, String gender, String profilePrompt, int grade);
 
     /**
+     * 流式对话（AI-005：接受预解析的 System Prompt，支持 A/B 版本路由）
+     *
+     * @param sessionId           会话 ID
+     * @param emotionTag          当前情绪标签
+     * @param message             学生消息
+     * @param gender              学生性别
+     * @param profilePrompt       学生画像 Prompt 片段（可为 null）
+     * @param grade               学生年级
+     * @param systemPromptContent 预解析的 System Prompt 全文（已渲染变量，含语言模板）
+     * @return 流式事件
+     */
+    Flux<StreamMessageEvent> chatWithPrompt(UUID sessionId, String emotionTag, String message,
+                                            String gender, String profilePrompt, int grade,
+                                            String systemPromptContent);
+
+    /**
      * 主动暖场对话（冷场引导，design/28 §三 3.4）
      * <p>
      * 关键差异（与 {@link #chat} 相比）：

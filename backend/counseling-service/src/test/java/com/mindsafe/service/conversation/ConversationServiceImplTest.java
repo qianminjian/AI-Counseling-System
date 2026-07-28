@@ -17,6 +17,7 @@ import com.mindsafe.service.memory.LongTermMemoryService;
 import com.mindsafe.service.notification.NotificationService;
 import com.mindsafe.service.profile.ProfileExtractorService;
 import com.mindsafe.service.profile.StudentProfileService;
+import com.mindsafe.service.prompt.PromptVersionService;
 import com.mindsafe.service.usage.UsageTimeLimitService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -65,6 +66,7 @@ class ConversationServiceImplTest {
     private ProfileExtractorService profileExtractorService;
     private UsageTimeLimitService usageTimeLimitService;
     private LongTermMemoryService longTermMemoryService;
+    private PromptVersionService promptVersionService;
 
     private ConversationServiceImpl service;
 
@@ -86,11 +88,18 @@ class ConversationServiceImplTest {
         profileExtractorService = mock(ProfileExtractorService.class);
         usageTimeLimitService = mock(UsageTimeLimitService.class);
         longTermMemoryService = mock(LongTermMemoryService.class);
+        promptVersionService = mock(PromptVersionService.class);
+
+        // AI-005: PromptVersionService 默认返回 classpath 降级结果
+        when(promptVersionService.resolve(any(), anyString(), any(), anyMap()))
+                .thenReturn(new PromptVersionService.ResolvedPrompt("mock-system-prompt", "SYS_001:v0:classpath", "control"));
+        when(promptVersionService.resolveRaw(any(), anyString(), any()))
+                .thenReturn(new PromptVersionService.ResolvedPrompt("mock-lang-rules", "LANG_001:v0:classpath", "control"));
 
         service = new ConversationServiceImpl(aiChatService, promptTemplateService,
                 riskDetectorService, piiDesensitizer, sessionMapper, messageSummaryMapper,
                 riskEventMapper, notificationService, userMapper, profileService,
-                profileExtractorService, usageTimeLimitService, longTermMemoryService);
+                profileExtractorService, usageTimeLimitService, longTermMemoryService, promptVersionService);
     }
 
     /** createSession 并捕获内部生成的 sessionId */
@@ -322,7 +331,7 @@ class ConversationServiceImplTest {
             when(usageTimeLimitService.isExceeded(any(), any())).thenReturn(false);
             when(profileService.buildProfilePrompt(eq(tenantId), eq(studentId), any(Integer.class), any()))
                     .thenReturn(null);
-            when(aiChatService.chat(any(), any(), any(), any(), any(), any(Integer.class)))
+            when(aiChatService.chatWithPrompt(any(), any(), any(), any(), any(), any(Integer.class), anyString()))
                     .thenReturn(Flux.just(StreamMessageEvent.token("你好呀")));
 
             List<StreamMessageEvent> chatEvents = service
