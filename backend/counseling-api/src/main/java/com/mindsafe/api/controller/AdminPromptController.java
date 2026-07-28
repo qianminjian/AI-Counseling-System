@@ -9,6 +9,7 @@ import com.mindsafe.domain.entity.QualityScore;
 import com.mindsafe.domain.mapper.CounselingSessionMapper;
 import com.mindsafe.domain.mapper.PromptVersionMapper;
 import com.mindsafe.domain.mapper.QualityScoreMapper;
+import com.mindsafe.service.audit.AuditLogService;
 import com.mindsafe.service.prompt.PromptVersionService;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
@@ -30,15 +31,18 @@ public class AdminPromptController {
     private final PromptVersionMapper promptVersionMapper;
     private final CounselingSessionMapper sessionMapper;
     private final QualityScoreMapper qualityScoreMapper;
+    private final AuditLogService auditLogService;
 
     public AdminPromptController(PromptVersionService promptVersionService,
                                  PromptVersionMapper promptVersionMapper,
                                  CounselingSessionMapper sessionMapper,
-                                 QualityScoreMapper qualityScoreMapper) {
+                                 QualityScoreMapper qualityScoreMapper,
+                                 AuditLogService auditLogService) {
         this.promptVersionService = promptVersionService;
         this.promptVersionMapper = promptVersionMapper;
         this.sessionMapper = sessionMapper;
         this.qualityScoreMapper = qualityScoreMapper;
+        this.auditLogService = auditLogService;
     }
 
     // ===== 版本 CRUD =====
@@ -86,8 +90,10 @@ public class AdminPromptController {
 
     /** 激活版本（同组下唯一生效） */
     @PostMapping("/versions/{versionId}/activate")
-    public ApiResponse<Void> activateVersion(@PathVariable UUID versionId) {
+    public ApiResponse<Void> activateVersion(@PathVariable UUID versionId, Authentication auth) {
+        TenantContext ctx = (TenantContext) auth.getDetails();
         promptVersionService.activateVersion(versionId);
+        auditLogService.log(ctx.tenantId(), ctx.userId(), "PROMPT_ACTIVATE", "prompt_version", versionId, null);
         return ApiResponse.ok(null);
     }
 

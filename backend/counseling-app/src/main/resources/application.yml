@@ -142,3 +142,8 @@ mindsafe:
     wecom:
       webhook-url: ${MINDSAFE_ALERT_WECOM_WEBHOOK_URL:}  # 空 = 降级为日志告警
       mentioned-list: ${MINDSAFE_ALERT_WECOM_MENTIONED:}  # @指定人手机号，逗号分隔
+  # 字段加密（COMP-005：AES-256-GCM）
+  encryption:
+    key: ${MINDSAFE_ENCRYPTION_KEY:}  # Base64 编码的 32 字节密钥，空 = 降级为明文
+    key-version: ${MINDSAFE_ENCRYPTION_KEY_VERSION:1}
+    previous-keys: ${MINDSAFE_ENCRYPTION_PREVIOUS_KEYS:}  # 历史密钥，格式: version:base64key,version:base64key
