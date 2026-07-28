@@ -38,6 +38,12 @@ export const WAKE_PATTERNS = [
   'halo波波',
   'hellobobo',
   'halobobo',
+  // 声纹登录唤醒词扩展（"你好波波" / "你好bobo"）
+  '你好波波',
+  '你好啵啵',
+  '你好bobo',
+  'nihao波波',
+  'nijaobobo',
 ]
 
 /** 滑窗长度（秒）：累积满后送一次 Whisper 转写 */

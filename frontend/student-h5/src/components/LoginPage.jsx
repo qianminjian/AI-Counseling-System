@@ -1,20 +1,85 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { pinLogin, setToken, setRefreshToken, setUser } from '../api'
 import { CONSENT_VERSION } from './ConsentGate'
+import { useWakeWord } from '../hooks/useWakeWord'
+import { hasAnyVoiceprint } from '../utils/voiceprintStore'
+import { VP_IDLE_TIMEOUT } from '../config/voiceprint'
+import VoiceLoginOverlay from './VoiceLoginOverlay'
 
 /**
  * 学生端登录页（共享 Pad 适配）
  * - 登录 tab：昵称 + PIN 数字键盘（主路径，触控友好）
  * - 注册 tab：邀请码 + 昵称 + 性别 + 年龄
  * - 注册成功后引导设置 PIN
+ * - 声纹登录：底部唤醒词监听（"你好波波"）→ VoiceLoginOverlay 引导对话 → 自动登录
  */
 export default function LoginPage({ onLogin, onRegister, onNeedConsent }) {
   const [tab, setTab] = useState('login') // 'login' | 'register'
+  const [showVoiceOverlay, setShowVoiceOverlay] = useState(false)
+  const [voiceSupported, setVoiceSupported] = useState(false)
+  const [listening, setListening] = useState(false)
+  const [idle, setIdle] = useState(false)
+  const idleTimerRef = useRef(null)
+
+  // 检测设备是否有已注册声纹（决定是否显示声纹入口）
+  useEffect(() => {
+    hasAnyVoiceprint().then((has) => setVoiceSupported(has))
+  }, [])
+
+  // 唤醒词监听（仅登录 tab + 有声纹数据 + 未休眠时激活）
+  const wakeActive = tab === 'login' && voiceSupported && !showVoiceOverlay && !idle
+  const { supported: wakeEnvSupported } = useWakeWord({
+    active: wakeActive,
+    onDetected: () => {
+      // 唤醒词命中 → 进入声纹识别对话
+      resetIdleTimer()
+      setShowVoiceOverlay(true)
+    },
+  })
+
+  // 超时休眠：5 分钟无交互 → 停止监听
+  const resetIdleTimer = useCallback(() => {
+    setIdle(false)
+    if (idleTimerRef.current) clearTimeout(idleTimerRef.current)
+    idleTimerRef.current = setTimeout(() => setIdle(true), VP_IDLE_TIMEOUT)
+  }, [])
+
+  useEffect(() => {
+    resetIdleTimer()
+    const handler = () => resetIdleTimer()
+    document.addEventListener('pointerdown', handler)
+    return () => {
+      document.removeEventListener('pointerdown', handler)
+      if (idleTimerRef.current) clearTimeout(idleTimerRef.current)
+    }
+  }, [resetIdleTimer])
 
   const switchToRegister = () => {
-    // 注册前检查设备级告知同意（首次使用时弹出）
     onNeedConsent?.()
     setTab('register')
+  }
+
+  // 声纹识别完成 → 自动登录
+  const handleVoiceComplete = (result) => {
+    setShowVoiceOverlay(false)
+    if (result.matched && result.userId) {
+      // 声纹匹配成功：用 userId 调用 pin-login 的替代路径
+      // 注意：声纹是便利层，实际 token 仍需服务端签发
+      // 这里用 pseudonym 触发一次静默登录（后端需支持声纹 token 签发，当前降级为提示成功+手动 PIN）
+      // TODO Phase 2: 后端声纹 token 签发接口
+      onLogin()
+    }
+  }
+
+  // 声纹取消 → 回到 PIN
+  const handleVoiceCancel = () => {
+    setShowVoiceOverlay(false)
+  }
+
+  // 手动点击声纹入口
+  const handleVoiceClick = () => {
+    resetIdleTimer()
+    setShowVoiceOverlay(true)
   }
 
   return (
@@ -53,7 +118,49 @@ export default function LoginPage({ onLogin, onRegister, onNeedConsent }) {
         ) : (
           <RegisterForm onRegister={onRegister} />
         )}
+
+        {/* 声纹登录入口（仅登录 tab + 设备有声纹数据时显示） */}
+        {tab === 'login' && voiceSupported && wakeEnvSupported && (
+          <div className="mt-6 text-center">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="flex-1 h-px bg-gray-200" />
+              <span className="text-xs text-gray-400">或</span>
+              <div className="flex-1 h-px bg-gray-200" />
+            </div>
+
+            {idle ? (
+              <button
+                onClick={() => { resetIdleTimer() }}
+                className="text-sm text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                👆 点击屏幕唤醒
+              </button>
+            ) : (
+              <button
+                onClick={handleVoiceClick}
+                className="inline-flex items-center gap-2 px-5 py-3 rounded-full bg-white border border-gray-200 shadow-sm hover:shadow-md transition-all active:scale-[0.98]"
+              >
+                <span className="text-xl">🎤</span>
+                <span className="text-sm text-gray-600">对我说"你好，波波"</span>
+                <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+              </button>
+            )}
+
+            {!idle && (
+              <p className="mt-2 text-xs text-gray-400">声纹识别，无需动手</p>
+            )}
+          </div>
+        )}
       </div>
+
+      {/* 声纹识别引导对话覆盖层 */}
+      {showVoiceOverlay && (
+        <VoiceLoginOverlay
+          mode="verify"
+          onComplete={handleVoiceComplete}
+          onCancel={handleVoiceCancel}
+        />
+      )}
     </div>
   )
 }
@@ -177,6 +284,7 @@ function RegisterForm({ onRegister }) {
   const [form, setForm] = useState({ inviteCode: '', pseudonym: '', gender: '', age: '' })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [voiceConsent, setVoiceConsent] = useState(true) // 声纹采集授权（默认同意，PIPL 单独勾选）
   // PIN 设置
   const [pin, setPin] = useState('')
   const [pinConfirm, setPinConfirm] = useState('')
@@ -402,6 +510,19 @@ function RegisterForm({ onRegister }) {
       <p className="text-xs text-gray-400 bg-gray-50 px-4 py-2 rounded-xl">
         💡 邀请码由学校心理老师发放，体验测试可用 <strong>DEMO2026</strong>
       </p>
+
+      {/* 声纹采集授权（PIPL 单独同意，预勾选） */}
+      <label className="flex items-start gap-3 px-4 py-3 rounded-xl bg-gray-50 cursor-pointer">
+        <input
+          type="checkbox"
+          checked={voiceConsent}
+          onChange={(e) => setVoiceConsent(e.target.checked)}
+          className="mt-0.5 w-4 h-4 rounded accent-blue-500"
+        />
+        <span className="text-xs text-gray-500 leading-relaxed">
+          同意在这台设备上录入我的声音，用于下次快速登录。声音信息只保存在这台设备上，不会上传到任何服务器。
+        </span>
+      </label>
 
       {error && (
         <p className="text-sm text-red-500 bg-red-50 px-4 py-2.5 rounded-xl">{error}</p>

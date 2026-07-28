@@ -82,6 +82,7 @@ export default function ConsentGate({ onAgree }) {
           <ul className="list-disc pl-5 space-y-1">
             <li><strong>收集范围</strong>：昵称、年龄、对话内容（用于提供陪伴服务和风险识别）</li>
             <li><strong>不收集</strong>：真实姓名、身份证号、精确位置</li>
+            <li><strong>声纹信息（可选）</strong>：如您选择启用声纹登录，我们将在本设备本地采集和存储声纹特征向量（非原始录音）。声纹信息仅用于本设备上的快捷身份识别，不上传服务器、不与第三方共享。您可随时在设置中删除声纹数据。</li>
             <li><strong>存储</strong>：中国境内云服务器，加密存储</li>
             <li><strong>保留期限</strong>：账号注销后【30】日内删除</li>
             <li><strong>共享</strong>：除法律要求外，不向第三方提供个人信息</li>
