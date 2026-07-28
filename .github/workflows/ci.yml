@@ -90,10 +90,27 @@ jobs:
           distribution: temurin
           cache: maven
 
+      # 缓存 NVD 漏洞库（避免每次从零下载 ~2GB，首次 20min → 后续 <2min）
+      - name: Cache OWASP NVD database
+        uses: actions/cache@v4
+        with:
+          path: ~/.dependency-check
+          key: ${{ runner.os }}-owasp-nvd-${{ github.run_id }}
+          restore-keys: |
+            ${{ runner.os }}-owasp-nvd-
+
       # OWASP 依赖检查（仅告警不阻断，避免误报阻塞开发）
+      # NVD_API_KEY 可选：配置后下载速度提升 10x（https://nvd.nist.gov/developers/request-an-api-key）
       - name: OWASP Dependency Check
-        run: mvn org.owasp:dependency-check-maven:check -B -q -DfailBuildOnCVSS=9 || true
+        run: |
+          ARGS="-B -q -DfailBuildOnCVSS=9"
+          if [ -n "$NVD_API_KEY" ]; then
+            ARGS="$ARGS -DnvdApiKey=$NVD_API_KEY"
+          fi
+          mvn org.owasp:dependency-check-maven:check $ARGS || true
         continue-on-error: true
+        env:
+          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
 
       - name: Upload Dependency Report
         uses: actions/upload-artifact@v4
