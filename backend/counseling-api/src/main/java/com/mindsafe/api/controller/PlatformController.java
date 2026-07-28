@@ -75,7 +75,7 @@ public class PlatformController {
     }
 
     /** 租户列表（含各校学生/教师数） */
-    @GetMapping("/tenants")
+    @GetMapping("/tenant-stats")
     public ApiResponse<List<Map<String, Object>>> getTenants() {
         List<Tenant> tenants = tenantMapper.selectList(
                 new LambdaQueryWrapper<Tenant>().orderByDesc(Tenant::getCreatedAt));
