@@ -246,8 +246,8 @@ export function useWakeWord({ active, onDetected }) {
         sourceNode.connect(workletNode)
         // 不连接 destination：只采集不回放（避免反馈啸叫）
       } catch (err) {
-        console.warn('[WakeWord] 初始化失败，语音唤醒降级隐藏:', err?.message || err)
-        if (!cancelled) setSupported(false)
+        console.warn('[WakeWord] 初始化失败（下次激活时重试）:', err?.message || err)
+        // 不再 setSupported(false)：保持 UI 开关可见，允许用户重试
         // 清理已获取的部分资源
         stream?.getTracks().forEach((t) => t.stop())
         audioCtx?.close().catch(() => {})

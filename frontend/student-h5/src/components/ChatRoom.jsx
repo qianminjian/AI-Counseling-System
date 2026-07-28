@@ -246,7 +246,7 @@ export default function ChatRoom({ session, onEnd }) {
   const { showDialog: showConsent, hasConsent, requestConsent, grantConsent, denyConsent } = useVoiceConsent()
 
   // 语音唤醒（design/28 §1.1）：单独授权 + 开关持久化
-  const [wakeEnabled, setWakeEnabled] = useState(() => localStorage.getItem(WAKE_PREF_KEY) === '1')
+  const [wakeEnabled, setWakeEnabled] = useState(() => localStorage.getItem(WAKE_PREF_KEY) !== '0')
   const wakeConsent = useVoiceCallConsent()
 
   // TTS 播放器（语速根据性别微调：男生稍快、女生稍慢）
@@ -276,6 +276,15 @@ export default function ChatRoom({ session, onEnd }) {
       setTimeout(() => setVoiceNotice(''), 6000)
     }
   }, [tts.engine])
+
+  // 首次进入：唤醒默认开启但未授权 → 自动弹出授权说明（合规，design/28 §1.4）
+  useEffect(() => {
+    if (wakeEnabled && !wakeConsent.hasConsent()) {
+      const t = setTimeout(() => wakeConsent.requestConsent(), 800)
+      return () => clearTimeout(t)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   /** 录音完成 → 上传分析 → 自动发送（audioBlob 为 null 时直接用浏览器转写） */
   const handleRecordingComplete = useCallback(async (audioBlob) => {

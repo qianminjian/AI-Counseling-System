@@ -173,6 +173,7 @@ function PinLoginForm({ onLogin }) {
   const [pin, setPin] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [wakeOn, setWakeOn] = useState(() => localStorage.getItem('mindsafe_wake_enabled') !== '0')
 
   const pressKey = (key) => {
     setError('')
@@ -271,6 +272,25 @@ function PinLoginForm({ onLogin }) {
         }`}
       >
         {loading ? '正在进入...' : '进入 🚀'}
+      </button>
+
+      {/* 语音唤醒选项（默认开启） */}
+      <button
+        type="button"
+        onClick={() => {
+          const next = !wakeOn
+          setWakeOn(next)
+          localStorage.setItem('mindsafe_wake_enabled', next ? '1' : '0')
+        }}
+        className="flex w-full items-center justify-between px-4 py-3 rounded-xl bg-gray-50 border border-gray-100 transition-all active:scale-[0.98]"
+      >
+        <div className="flex items-center gap-2">
+          <span className="text-lg">{wakeOn ? '🎙️' : '💤'}</span>
+          <span className="text-sm text-gray-600">语音唤醒（说"哈喽波波"对话）</span>
+        </div>
+        <div className={`h-6 w-10 rounded-full p-0.5 transition-colors ${wakeOn ? 'bg-blue-500' : 'bg-gray-300'}`}>
+          <div className={`h-5 w-5 rounded-full bg-white shadow transition-transform ${wakeOn ? 'translate-x-4' : 'translate-x-0'}`} />
+        </div>
       </button>
     </div>
   )

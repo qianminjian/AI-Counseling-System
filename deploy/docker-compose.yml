@@ -21,6 +21,13 @@ services:
       retries: 5
     restart: unless-stopped
 
+  # ===== TTS 语音合成微服务（edge-tts） =====
+  tts-service:
+    build:
+      context: ../backend/tts-service
+      dockerfile: Dockerfile
+    restart: unless-stopped
+
   # ===== Spring Boot 后端 =====
   backend:
     build:
@@ -33,10 +40,13 @@ services:
       SPRING_AI_DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-sk-placeholder}
       SPRING_AI_DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
       JWT_SECRET: ${JWT_SECRET:-mindsafe-jwt-secret-change-in-production}
+      MINDSAFE_TTS_SERVICE_URL: http://tts-service:10096
       JAVA_OPTS: "-XX:MaxRAMPercentage=75.0"
     depends_on:
       postgres:
         condition: service_healthy
+      tts-service:
+        condition: service_started
     ports:
       - "8080:8080"
     restart: unless-stopped

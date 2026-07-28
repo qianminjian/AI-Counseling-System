@@ -106,39 +106,40 @@ export default function SettingsPanel({ open, onClose, muted, onToggleMute, wake
           </button>
         </section>
 
-        {/* 语音唤醒开关（design/28 §1.1；环境不支持或未配置时整块隐藏） */}
-        {wakeSupported && (
-          <section className="mb-4">
-            <h3 className="mb-3 text-sm font-semibold text-gray-500">🐬 语音唤醒</h3>
-            <button
-              onClick={onToggleWake}
-              className={`flex w-full items-center justify-between rounded-2xl border-2 p-4 transition-all active:scale-[0.98] ${
-                wakeOn
+        {/* 语音唤醒开关（design/28 §1.1；始终显示，不支持时灰显提示） */}
+        <section className="mb-4">
+          <h3 className="mb-3 text-sm font-semibold text-gray-500">🐬 语音唤醒</h3>
+          <button
+            onClick={wakeSupported ? onToggleWake : undefined}
+            disabled={!wakeSupported}
+            className={`flex w-full items-center justify-between rounded-2xl border-2 p-4 transition-all active:scale-[0.98] ${
+              !wakeSupported
+                ? 'border-gray-100 bg-gray-50 opacity-50 cursor-not-allowed'
+                : wakeOn
                   ? 'border-[var(--primary)] bg-[var(--primary-light)]'
                   : 'border-gray-100 bg-gray-50'
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                <span className="text-2xl">{wakeOn ? '🎙️' : '💤'}</span>
-                <div className="text-left">
-                  <p className="text-sm font-medium text-gray-700">
-                    {wakeOn ? '语音唤醒已开启' : '语音唤醒已关闭'}
-                  </p>
-                  <p className="text-xs text-gray-400">
-                    {wakeOn ? '直接说“哈喽波波”就能叫我' : '开启后说“哈喽波波”就能和我说话'}
-                  </p>
-                </div>
+            }`}
+          >
+            <div className="flex items-center gap-3">
+              <span className="text-2xl">{!wakeSupported ? '🚫' : wakeOn ? '🎙️' : '💤'}</span>
+              <div className="text-left">
+                <p className="text-sm font-medium text-gray-700">
+                  {!wakeSupported ? '当前设备不支持' : wakeOn ? '语音唤醒已开启' : '语音唤醒已关闭'}
+                </p>
+                <p className="text-xs text-gray-400">
+                  {!wakeSupported ? '需要支持麦克风和 AudioWorklet 的浏览器' : wakeOn ? '直接说"哈喽波波"就能叫我' : '开启后说"哈喽波波"就能和我说话'}
+                </p>
               </div>
-              <div className={`h-7 w-12 rounded-full p-1 transition-colors ${
-                wakeOn ? 'bg-[var(--primary)]' : 'bg-gray-300'
-              }`}>
-                <div className={`h-5 w-5 rounded-full bg-white shadow transition-transform ${
-                  wakeOn ? 'translate-x-5' : 'translate-x-0'
-                }`} />
-              </div>
-            </button>
-          </section>
-        )}
+            </div>
+            <div className={`h-7 w-12 rounded-full p-1 transition-colors ${
+              wakeOn && wakeSupported ? 'bg-[var(--primary)]' : 'bg-gray-300'
+            }`}>
+              <div className={`h-5 w-5 rounded-full bg-white shadow transition-transform ${
+                wakeOn && wakeSupported ? 'translate-x-5' : 'translate-x-0'
+              }`} />
+            </div>
+          </button>
+        </section>
 
         {/* 关闭按钮 */}
         <button

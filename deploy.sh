@@ -66,10 +66,11 @@ rsync -avz --delete "$PROJECT_ROOT/frontend/student-h5/dist/" "$SERVER:$REMOTE_D
 rsync -avz --delete "$PROJECT_ROOT/frontend/teacher-web/dist/" "$SERVER:$REMOTE_DIR/frontend/teacher/"
 rsync -avz --delete "$PROJECT_ROOT/frontend/parent-h5/dist/" "$SERVER:$REMOTE_DIR/frontend/parent/"
 rsync -avz "$PROJECT_ROOT/backend/$JAR" "$SERVER:$REMOTE_DIR/app.jar"
+rsync -avz --delete "$PROJECT_ROOT/backend/tts-service/" "$SERVER:$REMOTE_DIR/tts-service/"
 
-# 6. 重建后端容器
+# 6. 重建后端 + TTS 容器
 echo "🔄 重启后端容器..."
-ssh "$SERVER" "cd $REMOTE_DIR && docker compose up -d --build backend"
+ssh "$SERVER" "cd $REMOTE_DIR && docker compose up -d --build backend tts-service"
 
 # 7. 等待启动 + 健康检查
 echo "⏳ 等待服务启动..."
