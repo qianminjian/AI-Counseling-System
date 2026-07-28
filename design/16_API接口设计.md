@@ -3,6 +3,26 @@
 > 状态：新建 | 关联：05 老师后台、06 数据库、07 SaaS 隔离、08 MVP、12 技术架构、13 Agent 工作流
 > 核心：定义系统所有 REST API 端点、请求/响应 DTO、错误码与鉴权机制，是前后端并行开发的契约。
 
+> ⚠️ **实现偏差说明（2026-07-28 核对）**：
+> - 租户隔离实际通过 **JWT 内嵌 tenantId + JwtAuthenticationFilter 注入 TenantContext**（非 X-Tenant-Id Header）
+> - JWT Payload 实际为 `{userId, userType, tenantId}`（非 sub/tid/rid/schoolId）
+> - 统一响应实际为 `{code, message, data}`（无 traceId/timestamp 字段，traceId 在日志层）
+> - **新增端点（本文档未覆盖）**：
+>   - `POST /api/v1/chat/sessions/{id}/nudge` — 冷场暖场 SSE
+>   - `POST /api/v1/auth/pin-login` / `POST /api/v1/auth/set-pin` — PIN 码登录
+>   - `POST /api/v1/auth/refresh` / `POST /api/v1/auth/logout` — Token 刷新/登出拉黑
+>   - `POST /api/v1/auth/guardian-consent/*` — 监护人同意闭环
+>   - `POST /api/v1/parent/auth/register` / `login` — 家长家庭码注册/登录
+>   - `POST /api/v1/parent/consent/withdraw` — 撤回同意
+>   - `POST /api/v1/knowledge/documents` / `GET /search` — RAG 知识库
+>   - `POST /api/v1/voice/analyze` — 语音分析（ASR+情感）
+>   - `POST /api/v1/tts/synthesize` / `GET /personas` — TTS 合成/音色
+>   - `GET /api/v1/diary/*` — 情绪日记全套
+>   - `POST /api/v1/alerts/{id}/schedule-followup` / `complete-followup` — 预警回访闭环
+>   - `GET /api/v1/teacher/students/{id}/radar` — 画像雷达图
+>   - `GET /api/v1/platform/*` — 平台管理后台
+> - 完整 API 清单见 `design/33_系统测试培训手册.md` §六
+
 ---
 
 ## 0. 设计原则
