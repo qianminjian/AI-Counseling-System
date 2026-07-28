@@ -331,7 +331,7 @@ class ConversationServiceImplTest {
             when(usageTimeLimitService.isExceeded(any(), any())).thenReturn(false);
             when(profileService.buildProfilePrompt(eq(tenantId), eq(studentId), any(Integer.class), any()))
                     .thenReturn(null);
-            when(aiChatService.chatWithPrompt(any(), any(), any(), any(), any(), any(Integer.class), anyString()))
+            when(aiChatService.chatWithPrompt(any(), any(), any(), any(), any(), anyInt(), anyString()))
                     .thenReturn(Flux.just(StreamMessageEvent.token("你好呀")));
 
             List<StreamMessageEvent> chatEvents = service
