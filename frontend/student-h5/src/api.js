@@ -1,42 +1,57 @@
 /**
  * student-h5 API 工具（JWT 双 Token + 自动刷新）
+ * 
+ * 共享设备策略：token/user 存 sessionStorage（关闭 tab 自动清除 = 下次必须登录）
+ * 设备级标记（如 consent）存 localStorage（跨会话保持）
  */
 const TOKEN_KEY = 'mindsafe_student_token'
 const REFRESH_KEY = 'mindsafe_student_refresh'
 const USER_KEY = 'mindsafe_student_user'
 
 export function getToken() {
-  return localStorage.getItem(TOKEN_KEY)
+  return sessionStorage.getItem(TOKEN_KEY)
 }
 
 export function setToken(token) {
-  localStorage.setItem(TOKEN_KEY, token)
+  sessionStorage.setItem(TOKEN_KEY, token)
 }
 
 export function getRefreshToken() {
-  return localStorage.getItem(REFRESH_KEY)
+  return sessionStorage.getItem(REFRESH_KEY)
 }
 
 export function setRefreshToken(token) {
-  localStorage.setItem(REFRESH_KEY, token)
+  sessionStorage.setItem(REFRESH_KEY, token)
 }
 
 export function clearToken() {
-  localStorage.removeItem(TOKEN_KEY)
-  localStorage.removeItem(REFRESH_KEY)
-  localStorage.removeItem(USER_KEY)
+  sessionStorage.removeItem(TOKEN_KEY)
+  sessionStorage.removeItem(REFRESH_KEY)
+  sessionStorage.removeItem(USER_KEY)
 }
 
 export function getUser() {
   try {
-    return JSON.parse(localStorage.getItem(USER_KEY))
+    return JSON.parse(sessionStorage.getItem(USER_KEY))
   } catch {
     return null
   }
 }
 
 export function setUser(user) {
-  localStorage.setItem(USER_KEY, JSON.stringify(user))
+  sessionStorage.setItem(USER_KEY, JSON.stringify(user))
+}
+
+// ===== 设备级存储（跨会话保持） =====
+const CONSENT_KEY = 'mindsafe_consent_done'
+
+/** 设备是否已完成告知同意（跨 tab 保持） */
+export function isConsentDone() {
+  return localStorage.getItem(CONSENT_KEY) === '1'
+}
+
+export function markConsentDone() {
+  localStorage.setItem(CONSENT_KEY, '1')
 }
 
 /** 是否已登录（有有效 token） */
@@ -122,4 +137,31 @@ export async function trialRegister(data) {
     throw new Error(json.message || '注册失败')
   }
   return json.data
+}
+
+/**
+ * PIN 码快捷登录（学生用昵称 + 4-6 位数字 PIN）
+ * @returns {Promise<{token, refreshToken, userId, displayName, userType}>}
+ */
+export async function pinLogin(pseudonym, pin) {
+  const res = await fetch('/api/v1/auth/pin-login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ pseudonym, pin }),
+  })
+  const json = await res.json()
+  if (!json.success) {
+    throw new Error(json.message || '登录失败')
+  }
+  return json.data
+}
+
+/**
+ * 设置 PIN 码（注册后引导设置，需已登录）
+ */
+export async function setPin(pin) {
+  await api('/auth/set-pin', {
+    method: 'POST',
+    body: JSON.stringify({ pin }),
+  })
 }

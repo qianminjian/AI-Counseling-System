@@ -115,6 +115,14 @@ export default function EmotionSelect({ onStart, userName, onLogout }) {
 
       {/* 成就徽章 */}
       <Achievements />
+
+      {/* 切换用户（共享 Pad 场景） */}
+      <button
+        onClick={onLogout}
+        className="mt-8 px-6 py-2.5 rounded-full border border-gray-200 text-sm text-gray-400 hover:text-gray-600 hover:border-gray-300 transition-all"
+      >
+        🔄 切换同学
+      </button>
     </div>
   )
 }

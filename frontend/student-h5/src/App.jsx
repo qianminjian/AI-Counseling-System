@@ -1,17 +1,20 @@
 import { useState } from 'react'
 import { ThemeProvider } from './theme/ThemeProvider'
 import ConsentGate from './components/ConsentGate'
-import TrialRegister from './components/TrialRegister'
+import LoginPage from './components/LoginPage'
 import EmotionSelect from './components/EmotionSelect'
 import ChatRoom from './components/ChatRoom'
 import ParentReport from './components/ParentReport'
-import { isAuthenticated, getUser, clearToken } from './api'
+import { isAuthenticated, getUser, clearToken, isConsentDone, markConsentDone } from './api'
 
 /**
- * 学生端认证流程：
- * 1. 未登录 → ConsentGate（告知同意）→ TrialRegister（试用注册）
- * 2. 已登录 → EmotionSelect → ChatRoom
- * 3. /parent?token=xxx → ParentReport（家长周报）
+ * 学生端认证流程（共享 Pad 适配）：
+ * 1. 无 token → LoginPage（登录/注册双 tab）
+ *    - 注册时：若设备未完成告知同意 → 先弹 ConsentGate
+ *    - 登录时：不弹 ConsentGate（设备级标记）
+ * 2. 有 token（sessionStorage）→ EmotionSelect → ChatRoom
+ * 3. 关闭 tab/浏览器 → sessionStorage 清除 → 下次必须重新登录
+ * 4. /parent?token=xxx → ParentReport（家长周报，无需登录）
  */
 export default function App() {
   // 家长周报路由（无需登录）
@@ -20,15 +23,16 @@ export default function App() {
   }
 
   const [authed, setAuthed] = useState(() => isAuthenticated())
-  const [consentVersion, setConsentVersion] = useState(null)
+  const [showConsent, setShowConsent] = useState(false)
   const [session, setSession] = useState(null)
   const user = getUser()
 
-  const handleAgree = (version) => {
-    setConsentVersion(version)
+  const handleLogin = () => {
+    setAuthed(true)
   }
 
-  const handleRegistered = () => {
+  const handleRegister = () => {
+    markConsentDone()
     setAuthed(true)
   }
 
@@ -36,21 +40,25 @@ export default function App() {
     clearToken()
     setAuthed(false)
     setSession(null)
-    setConsentVersion(null)
+  }
+
+  // 注册前检查设备级告知同意
+  const handleNeedConsent = () => {
+    if (!isConsentDone()) {
+      setShowConsent(true)
+    }
   }
 
   return (
     <ThemeProvider>
-      {!authed ? (
-        consentVersion ? (
-          <TrialRegister consentVersion={consentVersion} onRegistered={handleRegistered} />
-        ) : (
-          <ConsentGate onAgree={handleAgree} />
-        )
+      {showConsent ? (
+        <ConsentGate onAgree={() => { markConsentDone(); setShowConsent(false) }} />
+      ) : !authed ? (
+        <LoginPage onLogin={handleLogin} onRegister={handleRegister} onNeedConsent={handleNeedConsent} />
       ) : !session ? (
         <EmotionSelect onStart={setSession} userName={user?.pseudonym} onLogout={handleLogout} />
       ) : (
-        <ChatRoom session={session} onEnd={() => setSession(null)} />
+        <ChatRoom session={session} onEnd={() => setSession(null)} onSwitchUser={handleLogout} />
       )}
     </ThemeProvider>
   )
