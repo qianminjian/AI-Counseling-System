@@ -77,7 +77,8 @@ class AiChatServiceImplTest {
         when(promptTemplateService.getTemplate(anyString())).thenReturn("# 语言规则（测试）");
 
         service = new AiChatServiceImpl(builder, chatMemory, outputContentFilter,
-                outputReviewService, promptTemplateService);
+                outputReviewService, promptTemplateService,
+                new LlmStreamEnhancer(3000, 60000));
     }
 
     @Test

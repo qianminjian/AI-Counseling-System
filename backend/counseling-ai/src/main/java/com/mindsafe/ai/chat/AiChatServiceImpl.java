@@ -35,15 +35,17 @@ public class AiChatServiceImpl implements AiChatService {
     private final OutputContentFilter outputContentFilter;
     private final OutputReviewService outputReviewService;
     private final PromptTemplateService promptTemplateService;
+    private final LlmStreamEnhancer llmStreamEnhancer;
 
     public AiChatServiceImpl(ChatClient.Builder chatClientBuilder, ChatMemory chatMemory,
                              OutputContentFilter outputContentFilter, OutputReviewService outputReviewService,
-                             PromptTemplateService promptTemplateService) {
+                             PromptTemplateService promptTemplateService, LlmStreamEnhancer llmStreamEnhancer) {
         this.chatClient = chatClientBuilder.build();
         this.chatMemory = chatMemory;
         this.outputContentFilter = outputContentFilter;
         this.outputReviewService = outputReviewService;
         this.promptTemplateService = promptTemplateService;
+        this.llmStreamEnhancer = llmStreamEnhancer;
     }
 
     @Override
@@ -89,7 +91,8 @@ public class AiChatServiceImpl implements AiChatService {
                 .content();
 
         // 5. Layer1 实时过滤：命中 block 级敏感词时中断流并替换为安全话术
-        return outputContentFilter.apply(rawTokens, sessionId)
+        // PERF-001: 超时保护 + 首 token 监控 + 降级
+        return llmStreamEnhancer.enhance(outputContentFilter.apply(rawTokens, sessionId), sessionId)
                 .doOnNext(evt -> {
                     if ("token".equals(evt.type()) && evt.content() != null) {
                         responseCollector.append(evt.content());
@@ -134,8 +137,8 @@ public class AiChatServiceImpl implements AiChatService {
                 .stream()
                 .content();
 
-        // 5. Layer1 实时过滤 + Layer2 异步审查
-        return outputContentFilter.apply(rawTokens, sessionId)
+        // 5. Layer1 实时过滤 + Layer2 异步审查 + PERF-001 超时保护
+        return llmStreamEnhancer.enhance(outputContentFilter.apply(rawTokens, sessionId), sessionId)
                 .doOnNext(evt -> {
                     if ("token".equals(evt.type()) && evt.content() != null) {
                         responseCollector.append(evt.content());
@@ -184,8 +187,8 @@ public class AiChatServiceImpl implements AiChatService {
                 .stream()
                 .content();
 
-        // 4. 复用双层安全管线：Layer1 流式硬过滤 + Layer2 异步语义审查
-        return outputContentFilter.apply(rawTokens, sessionId)
+        // 4. 复用双层安全管线 + PERF-001 超时保护
+        return llmStreamEnhancer.enhance(outputContentFilter.apply(rawTokens, sessionId), sessionId)
                 .doOnNext(evt -> {
                     if ("token".equals(evt.type()) && evt.content() != null) {
                         responseCollector.append(evt.content());
