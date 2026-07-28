@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { ThemeProvider } from './theme/ThemeProvider'
 import ConsentGate from './components/ConsentGate'
 import LoginPage from './components/LoginPage'
+import WelcomeGuide from './components/WelcomeGuide'
 import EmotionSelect from './components/EmotionSelect'
 import ChatRoom from './components/ChatRoom'
 import ParentReport from './components/ParentReport'
@@ -56,7 +57,10 @@ export default function App() {
       ) : !authed ? (
         <LoginPage onLogin={handleLogin} onRegister={handleRegister} onNeedConsent={handleNeedConsent} />
       ) : !session ? (
-        <EmotionSelect onStart={setSession} userName={user?.pseudonym} onLogout={handleLogout} />
+        <>
+          <WelcomeGuide />
+          <EmotionSelect onStart={setSession} userName={user?.pseudonym} onLogout={handleLogout} />
+        </>
       ) : (
         <ChatRoom session={session} onEnd={() => setSession(null)} onSwitchUser={handleLogout} />
       )}
