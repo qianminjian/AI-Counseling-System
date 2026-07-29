@@ -30,6 +30,7 @@ AI-Counseling-System/
 │   └── e2e/                #   端到端测试：Playwright，完整用户场景
 │
 ├── deploy/                 # 部署配置：Docker Compose、生产编排、基础设施初始化（详见 §2.9）
+├── data/                   # 内容资产：知识库语料等待审/已审内容（详见 §2.14）
 ├── reports/                # 报告输出目录（gitignore：测试/覆盖率/E2E 汇总报告，详见 §2.11）
 └── tmp/                    # 唯一临时目录（gitignore，不追踪，详见 §2.13）
 ```
@@ -257,6 +258,13 @@ prompts/
 - 不允许在项目根或桌面等处散落临时文件；脚本默认输出路径应指向 `tmp/`
 - Agent 工作中间产物（调研草稿、对比分析等）也归此目录
 
+### 2.14 `data/` — 内容资产（知识库语料等）
+
+- **存什么**：`data/knowledge-base/` 知识库语料文件（待审/已审），如首批入库语料、后续补全语料；未来其他内容资产（如量表题库文案）按子目录扩展
+- **性质**：**入库源文件**（人工审核 → 经 KnowledgeBaseService 摄入 pgvector），非临时产物（区别于 tmp/）、非设计文档（区别于 design/）
+- **审核状态约定**：文件头部标注 `审核状态：待审核/已审核`；**未经钱敏健审核的语料禁止入库**（15 §12.4 定稿流程、49 §5 审核门禁）
+- **命名**：`NN-主题_vN.md`，语料条目格式遵循 design/49 §4.2 元数据规范
+
 ---
 
 ## 3. 同步区边界（重要）
@@ -264,7 +272,7 @@ prompts/
 | 路径 | 性质 | 规则 |
 |------|------|------|
 | `AGENTS.md`、`.qoder/rules/` | 中央库同步区 | **禁止写入项目特有内容**，会被 sync-rules.sh 覆盖/告警；改规则去中央库改 |
-| `STRUCTURE.md`、`README.md`、`design/`、`doc/`（含 `doc/his/`）、`scripts/`、`backend/`、`apps/`、`tests/`、`deploy/`、`reports/`、`tmp/` | 项目自留区 | 项目特有内容全部放这里 |
+| `STRUCTURE.md`、`README.md`、`design/`、`doc/`（含 `doc/his/`）、`scripts/`、`backend/`、`apps/`、`tests/`、`deploy/`、`data/`、`reports/`、`tmp/` | 项目自留区 | 项目特有内容全部放这里 |
 
 ---
 
@@ -295,3 +303,4 @@ prompts/
 | 2026-07-23 | 开发规范制定：§2.7 测试命名/目录/管理规则、§2.8 构建产物、§2.9 deploy/、§2.10 DB 脚本、§2.11 报告输出、§2.12 Prompt 资源、§2.13 tmp 扩展；新增 deploy/ + reports/ 目录；§4 新增包名/产物/报告红线 | 钱敏健确认 MVP 范围 + Maven + MyBatis-Plus，开发启动前约束先行 |
 | 2026-07-28 | §2.2 新增 `design/demo/` 子目录约定（交互原型 HTML Demo） | 学生端登录页三风格 Demo 需纳入版本管理，从 tmp/ 迁入正式目录 |
 | 2026-07-28 | 目录结构纠偏补漏：`design/docs/` 残留 2 份 md（16_语音情感分析/17_全感官交互）迁入 `design/` 并重编号为 54/55，删除空 `design/docs/` 目录 | 完成 2026-07-23 “拍平”决策的遗漏收尾 |
+| 2026-07-29 | 新增 §2.14 `data/` 内容资产目录（`data/knowledge-base/` 知识库语料，待审/已审约定） | KB-101 首批语料落档需正式位置（非 tmp 非 design），约束先行 |
