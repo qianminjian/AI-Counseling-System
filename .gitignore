@@ -6,8 +6,10 @@ tmp/*
 !tmp/.gitkeep
 
 # ===== 报告输出目录（测试/覆盖率/E2E 汇总，见 STRUCTURE.md §2.11）=====
+# 机器产物拦截；人工报告（.md）白名单入库
 reports/*
 !reports/.gitkeep
+!reports/*.md
 
 # ===== 密钥与环境（红线：永不提交）=====
 .env
