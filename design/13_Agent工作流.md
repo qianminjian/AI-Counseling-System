@@ -1,8 +1,9 @@
 # 13 Agent 工作流详细设计
 
 > 来源：`doc/13_Agent工作流.docx`（原文 552 行）
-> 状态：已转换 | 关联决策：BEACON #9（**Spring AI 替代 LangGraph**）
+> 状态：已转换 | 关联决策：BEACON #9（**Spring AI 替代 LangGraph**）、**DEC-CBT 路径1（激活世界B，钱敏健 2026-07-28）**
 > ⚠️ 原文第四章基于 Python **LangGraph** 编写，本文档已按决策 #9 改写为 **Spring AI（ChatClient + Advisor 链 + 状态机）** 实现（见 §4）。原始 LangGraph 描述保留在 §4 附录供对照。
+> ⚠️ **实现现状（2026-07-28 核对）**：§2/§4/§9/§10 描述的多 Agent 编排（世界B）**已全部编码但零调用**——`ConversationOrchestrator` 全仓无 counseling-ai 之外的调用者，线上对话走 `ChatServiceImpl` 单 prompt 直连（世界A）。逐组件四态判定与 DEC-CBT 接线深化设计见 **§十三**，勿将本文档误读为已生效架构。
 
 ---
 
@@ -21,7 +22,7 @@ Agent 是系统核心智能单元，每个承担特定职责，协作完成心�
 | Conversation | 用户交互入口 | 接收用户输入、生成回复 |
 | Safety | 安全守护者 | 检测有害内容，触发风险评估 |
 | Emotion | 情绪识别器 | 分析用户情绪状态和强度 |
-| CBT | 认知行为治疗师 | 执行结构化干预 |
+| CBT | CBT 辅导引导者 | 执行结构化干预 |
 | Escalation | 升级管理者 | 处理高风险情况 |
 | Report | 报告生成器 | 汇总对话生成分析报告 |
 | Memory | 记忆管理者 | 维护用户历史与会话上下文 |
@@ -88,7 +89,7 @@ Agent 间通过结构化消息通信：
 
 **输出格式：** `{ emotion_category, emotion_subcategory, intensity_score, intensity_label(轻度/中度/强度/极度), triggers, trends, confidence }`
 
-### 2.3 CBT Agent（认知行为治疗）
+### 2.3 CBT Agent（认知行为辅导）
 
 **职责：** 认知重构、行为激活、情绪调节、问题解决训练。
 
@@ -108,13 +109,13 @@ Agent 间通过结构化消息通信：
 
 **Prompt 模板：**
 ```
-【系统提示】你是一名专业的儿童认知行为治疗师(CBT)。服务对象是儿童和青少年：
+【系统提示】你是一名专业的儿童心理辅导助手，运用认知行为疗法（CBT）技术做辅导引导（不做诊断和治疗）。服务对象是儿童和青少年：
 - 使用简单易懂的语言，适应儿童认知水平
-- 通过游戏、比喻、故事等有趣方式进行干预
-- 保持温暖、支持的态度，建立安全治疗环境
+- 通过游戏、比喻、故事等有趣方式进行引导
+- 保持温暖、支持的态度，营造安全的交流氛围
 - 遵循 CBT 框架：识别思维、挑战思维、建立新思维
 - 适当使用放松技巧和正念练习
-当前对话状态：[STATE]，请根据状态执行相应治疗动作。
+当前对话状态：[STATE]，请根据状态执行相应辅导动作。
 ```
 
 ### 2.4 Conversation Agent（对话交互）
@@ -612,3 +613,82 @@ SafetyOutputAdvisor ──▶ pass/rewrite/block/escalate
   ├──▶ LoggingAdvisor.log() ──▶ 写 model_call_logs
   └──▶ ReportAgent（会话结束时）──▶ 教师摘要 + risk_event
 ```
+
+---
+
+## 十三、实现现状四态判定与 DEC-CBT 接线深化设计（2026-07-28）
+
+> 背景：design/51-53 双世界分析确认本文档为「世界B」蓝图——**已实现、零调用**。DEC-CBT 已决策走路径1（激活世界B）。本节是落地锚：逐组件标注真实状态，给出流式兼容接线架构、延迟/成本门禁与分阶段里程碑。**本节为设计，未开发。**
+
+### 13.1 逐组件四态判定（🟩已生效 / 🟧已实现零调用 / 🟫仅骨架 / ⬜未实现）
+
+| 本文档章节 | 组件 | 代码位置 | 状态 | 说明 |
+|------|------|------|:---:|------|
+| §2.1/§9.2 | SafetyAgent | `counseling-ai/agent/SafetyAgent.java` | 🟧 | 已实现，仅被 Orchestrator 引用，Orchestrator 本身零调用 |
+| §2.2 | EmotionAgent | `counseling-ai/agent/EmotionAgent.java` | 🟧 | 同上 |
+| §2.3/§10 | CBTAgent + CbtStateMachine | `agent/CBTAgent.java`、`state/CbtStateMachine.java` | 🟧 | 状态机有单测（CbtStateMachineTest），从未驱动线上对话 |
+| §2.4 | ConversationAgent | `agent/ConversationAgent.java` | 🟧 | 与线上 ChatServiceImpl 职责重叠，接线时须裁决归一 |
+| §2.5 | Escalation Agent | — | ⬜ | 独立 Agent 未实现；线上等价能力由 RiskDetectorService→AlertService 链承担（世界A，🟩） |
+| §2.6 | Report Agent | — | ⬜ | 线上等价能力：教师摘要生成在 service 层（世界A，🟩） |
+| §2.7 | Memory Agent | — | ⬜ | 线上等价能力：历史消息窗口拼接；长期记忆见 design/50（部分实现） |
+| §4.4/§5 | ConversationState + ConversationStateManager(Redis) | `state/ConversationStateManager.java` | 🟧 | Redis 会话状态管理已实现未接线（同 STATE-002 前置） |
+| §9.3 | ConversationOrchestrator | `orchestrator/ConversationOrchestrator.java` | 🟧 | 全仓零外部调用者（2026-07-28 grep 复核） |
+| §11 | Advisor 链 | — | ⬜ | M1 未采用，安全管线以 Service 显式调用实现（§11 已有标注，以 design/04 §十七为准） |
+| §9.2 SkillRouter | 场景路由 Agent | — | ⬜ | 未实现；接线阶段2 由分诊结果承担路由职责 |
+
+### 13.2 接线目标架构：单次分诊 + 流式回复（SSE 兼容）
+
+世界A 的核心资产是 **SSE 流式体验**（首字快、边生成边播 TTS），世界B 原设计是「多次 LLM 串行调用后返回整段回复」——直接切换会破坏流式。接线采用**两段式**：
+
+```
+学生输入
+  │
+  ▼ ①分诊段（非流式，一次结构化调用，目标 ≤800ms）
+TriageCall（合并 Safety+Emotion+Route 为单次轻量 LLM 调用，JSON 输出）
+  ├─ 硬规则先行：关键词/正则命中 RED → 跳过 LLM 直接短路（对齐 design/04 深化）
+  ├─ 输出：{riskLevel, emotion, intensity, route(CBT/支持/危机), cbtTrigger}
+  └─ 期间前端展示「波波思考中」微交互（design/37），掩蔽分诊延迟
+  ▼ ②回复段（流式，SSE token 直通）
+按 route 选择系统 Prompt 组装（并入 design/44 StrategyProfile：情绪门控/年龄分层/合规裁决）
+  → ChatClient.stream() → SSE → 前端/TTS
+  ▼ ③输出审查（流式兼容）
+Layer1 同步逐句过滤（现有 OutputContentFilter，🟩）
+Layer2 异步全文复审 → 违规时**召回改写**（推送 correction 事件替换气泡，对齐 design/14 深化）
+  ▼ ④状态推进（异步旁路）
+CbtStateMachine.evaluate() 推进 S0-S9 + 阶段标记落库（对齐 design/03 深化）
+ConversationStateManager 写 Redis 会话状态（替代内存态，兼做 STATE-002 铺垫）
+```
+
+设计判断（真实取舍）：
+- **不采用** §4.2 的 Safety/Emotion 双 LLM 并行调用——虚拟线程并行仍是 2 次计费调用且尾延迟取 max；合并为单次 TriageCall 成本减半、尾延迟更稳。SafetyAgent/EmotionAgent 类保留，Prompt 合并。
+- **不采用** §11 Advisor 链重构作为接线前提——现有 Service 显式调用管线已生效（🟩），接线只替换「Prompt 组装与路由」层，安全管线原位复用，缩小改造面。
+- ConversationAgent 与 ChatServiceImpl 归一：接线后 ChatServiceImpl 退化为传输/会话壳，回复生成职责移入编排层，避免双份 Prompt 组装逻辑。
+
+### 13.3 延迟与成本门禁（接线前置评估，未达标不得全量）
+
+| 指标 | 世界A基线（需实测） | 接线后目标 | 超标处置 |
+|------|------|------|------|
+| 首 token 延迟 P95 | 待影子期实测 | ≤ 基线 + 900ms | 分诊模型降档（更小模型/更短输出）或分诊结果缓存（同会话 60s 内情绪不重判） |
+| 每轮 LLM 调用次数 | 1 次 | 2 次（分诊+回复）；Layer2 复审沿用现状 | RED 硬短路轮次为 0 次（省调用） |
+| 每轮 token 成本 | 待实测 | ≤ 基线 × 1.4 | 分诊 prompt 压缩至 ≤600 token、输出 ≤150 token |
+| 分诊 JSON 解析失败率 | — | <0.5%，失败即降级世界A路径 | 结构化输出重试 1 次后 fallback |
+
+### 13.4 与 design/44 编排引擎收敛（避免两套编排）
+
+design/44 的 PromptOrchestrationService/StrategyProfile（ORCH-001~008）与本文档 Orchestrator 若各自落地会形成第三个「半世界」。收敛原则：**一个编排入口、两层职责**——
+- 分诊层（本文档）：产出 riskLevel/emotion/route（「发生了什么」）；
+- 策略层（design/44）：消费分诊结果产出 StrategyProfile→Prompt 组装（「怎么回应」），情绪门控 allowCbt（ORCH-002）直接决定 CbtStateMachine 是否允许进入 S5/S6。
+ORCH-001/002 实施时即以本节两段式为宿主，不再单独建链。
+
+### 13.5 分阶段接线里程碑（衍生任务，登记 TASK-TRACKER §二十三）
+
+| 任务ID | 阶段 | 内容 | 门禁/回滚 | 优先级 | 责任人 |
+|--------|------|------|------|:---:|------|
+| WIRE-001 | 影子运行 | Orchestrator 旁路异步执行（不影响回复），采集分诊准确性/延迟/成本三基线 ≥2 周 | 只读旁路，无用户影响 | P0 | Agent（开发待钱敏健指令） |
+| WIRE-002 | 分诊接线 | TriageCall 前置生效：RED 硬短路 + route 驱动 Prompt 组装；feature flag `orchestrator.enabled` 按租户灰度 | 13.3 门禁达标；flag 关闭即回世界A | P0 | 同上 |
+| WIRE-003 | CBT 状态机接线 | CbtStateMachine 驱动 S0-S9 推进 + cbt_fields 落库 + 情绪门控（ORCH-002 并入） | 阶段标记完整率 >90% | P1 | 同上 |
+| WIRE-004 | 会话状态外置 | ConversationStateManager 接管会话态（兼 STATE-002 前置） | Redis 故障降级内存态 | P1 | 同上 |
+| WIRE-005 | 死角清理 | ConversationAgent/ChatServiceImpl 归一；未接线的 Escalation/Report/Memory Agent 从本文档降级为「由现有 Service 承担」或排期实现 | 文档与代码一致性复核 | P2 | Agent |
+
+> 回滚设计：全程保留世界A完整路径，`orchestrator.enabled=false` 一键回退；影子期数据是 go/no-go 的唯一依据，未达 13.3 门禁不进入 WIRE-002。
+

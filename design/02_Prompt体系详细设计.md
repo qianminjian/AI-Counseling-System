@@ -384,7 +384,7 @@ Prompt 体系的核心价值，是把校园心理 AI 从「会聊天」升级为
 
 > 关联决策 #5/#7/#9。Prompt 与 LLM 供应商无关，通过 Spring AI 抽象层承载；分层 Prompt 映射到 Advisor 链与 PromptTemplate 资源。
 >
-> ⚠️ **实现状态（2026-07-23 核对）**：下表与下方 Advisor 链顺序为**目标设计**。M1 实际未用完整 Advisor 链：L2 输入安全由 `RiskDetectorServiceImpl`（Service 层显式调用）实现，L6 输出审查由 `OutputContentFilter`（Layer1 流式硬过滤）+ `OutputReviewService`（Layer2 异步 SAF-002）实现，SYS-001 当前为 `AiChatServiceImpl` 内联基础 prompt（尚未迁移至 `prompts/system/*.md`）。**已实现范围以 `design/04` §十七 为准**。
+> ⚠️ **实现状态（2026-07-28 复核更新）**：下表与下方 Advisor 链顺序为**目标设计**。M1 实际未用完整 Advisor 链：L2 输入安全由 `RiskDetectorServiceImpl`（Service 层显式调用）实现，L6 输出审查由 `OutputContentFilter`（Layer1 流式硬过滤）+ `OutputReviewService`（Layer2 异步 SAF-002）实现。~~SYS-001 当前为内联 prompt~~ → **已更正（2026-07-28）**：SYS-001 已迁至 `prompts/system/system_student_companion_zh-CN_v1.0.0.md`，经 `PromptVersionService`（DB 优先→classpath 降级 + 灰度 arm）解析；LANG-001/002/003 已按年级路由接线。完整分层现状对照见 **§19**；安全管线范围以 `design/04` §十七 为准。
 
 | 设计要求 | Spring AI 实现方案 |
 |------|------|
@@ -401,3 +401,49 @@ Prompt 体系的核心价值，是把校园心理 AI 从「会聊天」升级为
 | 评测门禁 | 红队集/回归集用 JUnit 参数化 + 断言 L4/L5 召回；CI 阻断诊断违规和 L5 漏报 |
 
 **Advisor 链顺序（不可绕过）**：`SafetyInputAdvisor` → `MemoryAdvisor`(读) → `QuestionAnswerAdvisor`(RAG) → LLM 生成 → `SafetyOutputAdvisor` → `MemoryAdvisor`(写) → `LoggingAdvisor`。安全 Advisor 的优先级（`getOrder()`）必须保证前置/后置位置，任何业务 Advisor 不得插到 Safety 之外。
+
+---
+
+## 19. 实现现状分层对照与组装链深化（2026-07-28）
+
+> 背景：本文档 §2 七层架构长期被误读为「已生效」。本节逐层四态标注（🟩已生效/🟧已实现零调用/🟫仅骨架/⬜未实现），并把组装方式从「静态拼接」升级为「先算策略、再拼提示词」（与 design/44 编排引擎、design/13 §十三 两段式接线收敛）。**本节为设计，未开发。**
+
+### 19.1 七层 Prompt 四态对照（以代码为准，2026-07-28 核对）
+
+| 层 | 目标设计 | 真实现状 | 状态 | 差距与深化方向 |
+|:---:|------|------|:---:|------|
+| L0/L1 | Policy + System 不可覆盖 | SYS-001 classpath md + `PromptVersionService`（DB→classpath 降级、灰度 arm） | 🟩 | 已达目标；补：L0 合规块与 L1 身份块当前同文件，建议拆分以支持独立版本节奏 |
+| L2 | Safety Prompt + 风险 JSON | `RiskDetectorServiceImpl`（硬规则+LLM 分类），但**仅留痕不短路**（RED 不阻断主回复链） | 🟩部分 | RED 硬短路入分诊段（design/04 §十八、design/13 §13.2 ①） |
+| L3 | 儿童语言分年级 | LANG-001/002/003 按 gradeCode 路由（ConversationServiceImpl L255） | 🟩 | 升级为认知适配全维度（design/29：比喻库/互动模式/CBT 深度） |
+| L4 | CBT/SEL/PFA 技能路由 | SKL-001/002/003 模板已入 `PromptVersionService` 映射，**无路由者**：线上不按场景选择技能流程 | 🟧 | 路由职责并入分诊段 route 输出（WIRE-002），不单独建 SkillRouter |
+| L5 | 任务 Prompt | TSK-004 冷场暖场已接线；风险 JSON/教师摘要已接线；RAG 查询改写 `buildRagContext` **零调用** | 🟩部分 | RAG 接线归 KB-101，本文档不重复登记 |
+| L6 | Output Guard 四决策 | Layer1 `OutputContentFilter` 同步硬过滤（🟩）+ Layer2 `OutputReviewService` 异步复审但**仅留痕不召回** | 🟩部分 | Layer2 补召回改写（design/14 §十一深化，SAFE-201） |
+| E1 | 规则引擎 | 关键词/正则库已生效 | 🟩 | 补隐性表达语义层（design/04 M2，RISK-202） |
+| E2 | 版本治理+评测闭环 | 版本解析/灰度 arm 已实现；`evaluateConversationQuality` **零调用**；test_gate/红队集资产化未落地 | 🟧部分 | 评测接线归 PEVAL-001，门禁资产化归 PEVAL-003 |
+
+> 结论：世界A 并非「裸单 prompt」——L0/L1/L3 分层与版本治理已生效；真正的缺口是 **L4 技能路由、L2 硬短路、L6 召回、E2 评测闭环**四处，全部收敛到 design/13 §十三 接线方案与既有任务 ID，不新增平行机制。
+
+### 19.2 组装链升级：静态拼接 → 先算策略再拼（与 design/44 对齐）
+
+现状组装是「固定顺序拼接：SYS + LANG + 历史窗口 + 用户输入」，年级是唯一动态维度。升级后的组装契约（实施宿主：ORCH-001）：
+
+```
+分诊结果{risk, emotion, route}（design/13 §13.2 ①）
+  → StrategyProfile 计算（design/44：开场/回应策略、allowCbt 情绪门控、年龄×性格微调）
+  → 拼装顺序（固定，不可变更）：
+     L0/L1 固定块 → L3 年级模板 → 情绪镜映片段（EMO-001，PEVAL-002 补全）
+     → L4 技能片段（按 route：CBT/SEL/PFA/普通陪伴，仅选一） → 场景注入（冷场/降级等）
+  → 裁决复核：§1.1 优先级顺序在代码层的执行点 = 拼装前 StrategyProfile 内完成（如 allowCbt=false 时 route 降级为支持性陪伴），
+     而非拼装后靠 LLM 自觉遵守——冲突裁决必须发生在提示词之外（E1 硬控制原则的延伸）
+```
+
+### 19.3 版本治理差距与任务归口（单一事实源，不重复登记）
+
+| 差距 | 现状 | 归口任务 | 优先级 | 责任人 |
+|------|------|------|:---:|------|
+| EMO-001 情绪镜映模板无正文 | 模板 key 已预留 | PEVAL-002 | P0 | Agent（开发待钱敏健指令） |
+| §11.2 test_gate 未落地（红队通过率/L4L5 召回门禁不在 CI） | 仅文档约定 | PEVAL-003 | P1 | 同上 |
+| L4 技能路由零调用 | SKL 模板闲置 | WIRE-002（design/13） | P0 | 同上 |
+| L2 RED 不短路 | 仅留痕 | RISK-201（design/04） | P0 | 同上 |
+| L6 Layer2 不召回 | 仅留痕 | SAFE-201（design/14） | P0 | 同上 |
+| 评测闭环未接线 | evaluateConversationQuality 零调用 | PEVAL-001 | P0 | 同上 |

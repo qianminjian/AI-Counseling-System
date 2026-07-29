@@ -22,6 +22,7 @@
 >   - `GET /api/v1/teacher/students/{id}/radar` — 画像雷达图
 >   - `GET /api/v1/platform/*` — 平台管理后台
 > - 完整 API 清单见 `design/33_系统测试培训手册.md` §六
+> - **端点四态对照与契约深化见本文 §12（2026-07-28 设计深化）**
 
 ---
 
@@ -1014,3 +1015,62 @@ public record RecommendedActions(
  │                    │                    │                  │─WS push───────▶│              │
  │◀─{caseId}──────────│◀───────────────────│◀─────────────────│◀───────────────│              │
 ```
+
+---
+
+## 12. 设计深化：契约现状对照与补全规划（2026-07-28）
+
+> 图例：🟩 已生效 · 🟧 已实现零调用 · 🟫 仅骨架/部分实现 · ⬜ 未实现。本篇是**前后端契约文档**，深化重点是让契约与 18 个已实现 Controller 对齐，并为规划端点预留清晰的任务归口。
+
+### 12.1 端点模块四态对照
+
+| 模块 | 章节 | 状态 | 说明 |
+|------|------|:---:|------|
+| 认证（login/refresh/logout/guardian-consent） | §2 | 🟩 | 已生效；另有本文未覆盖的 pin-login/set-pin（见头部偏差说明） |
+| 学生对话（会话/消息 SSE/关闭/历史） | §3.1-3.3/3.5 | 🟩 | 主链路已生效；nudge 冷场暖场为新增端点 |
+| 放松练习 | §3.4 | 🟫 | 前端呼吸练习组件存在，后端练习库/记录端点未核对到独立实现 |
+| 教师工作台/预警队列/认领误报处置/回访 | §4.1-4.3 部分 | 🟩 | claim/false-positive/resolve/schedule-followup/complete-followup 已生效 |
+| 预警转派/升级/建个案 | §4.3 部分 | ⬜ | assign/escalate/create-case 设计期，归 WB-001/WB-003 |
+| 个案管理 | §4.4 | ⬜ | 无 CaseController/实体，归 WB-003 |
+| 测评管理 | §4.5 | ⬜ | 代码完全空白（无 Assessment 实体），归 SCALE-001/002；**施测接线上线门禁待钱敏健决策（见 10 §10.2）** |
+| 预约/家校沟通/班主任协同 | §4.6-4.8 | ⬜ | 设计期；预约归 WB-003，班主任协同归 WB-002 字段裁剪衔接 |
+| 管理报表 | §4.9 | 🟫 | teacher-web 有统计页，报表端点覆盖度未逐一核对 |
+| 租户/用户管理 | §5.1-5.2 | 🟫 | platform/* 平台管理端点已实现（新增形态），与本文 admin/* 命名不一致，以实现为准 |
+| 知识库审核工作流 | §5.3 | ⬜ | KnowledgeController 仅 documents/search；submit-review/approve/reject 无状态字段支撑，归 49/KB 系列（呼应 15 §12.1 审核铁律） |
+| 审计日志/系统配置 | §5.4-5.5 | ⬜ | 未核对到实现 |
+| 内部 AI 服务 API | §6 | ⬜ | 编排实际在 ConversationServiceImpl 进程内完成，未拆独立内部 API；§6 保留为世界B目标态，归 ORCH 系列 |
+| WebSocket 推送 | §7 | 🟫 | alert.new 已生效（useAlertWebSocket + 15s 轮询兜底）；sla_warning/escalated/appointment.reminder/session.risk_change ⬜ |
+
+### 12.2 契约基线修正（以实现为准，前后端对齐依据）
+
+1. **统一响应**：`{code, message, data}`——§1.1 的 traceId/timestamp 字段实现中不在响应体（traceId 在日志层）。前端不得依赖响应体 traceId。
+2. **JWT Payload**：`{userId, userType, tenantId}`——§1.3 的 sub/tid/rid/schoolId 结构作废。
+3. **租户隔离**：JWT 内嵌 tenantId + JwtAuthenticationFilter 注入 TenantContext，**无 X-Tenant-Id Header**，§0 表述作废。
+4. **错误码表内部冲突（本轮发现，需修复）**：§1.4 定义 40001=AI 服务不可用、40002=风险拦截；§10 全局校验规则又定义 40001=参数校验失败、40002=无效枚举值，且 §10 表格将 content 校验错误标为 20001（§1.4 中 20001=未认证）。**处理原则：以 §1.4 为唯一错误码登记表，§10 的校验类错误统一回归 10001，40003（JSON 解析失败）迁入 §1.4 登记**；实现侧以 GlobalExceptionHandler 实际返回值核对后修订。
+
+### 12.3 规划新增端点契约（设计期，先归口后开发）
+
+| 端点域 | 契约要点 | 任务归口 |
+|------|------|------|
+| 量表施测（学生侧） | `GET /api/v1/assessments/pending`（待测清单）、`POST /api/v1/assessments/tasks/{taskId}/answers`（提交作答，服务端计分不信任前端分值） | SCALE-001/002（上线门禁见 10 §10.2） |
+| 工具箱 | 工具清单/使用记录/情绪前后对比（与 §3.4 放松练习契约合并，避免两套记录模型） | TOOL-001/002 |
+| 画像元数据 | 教师侧画像字段附 provenance/confidence 元数据（呼应 23/46） | PROF-020/021 |
+| 记忆管理 | 学生长期记忆查看/删除（撤回同意联动清除） | 归 46 画像闭环，暂缓独立端点（YAGNI） |
+| 编排内部 API | §6 三端点保留为世界B目标态；MVP 不拆分进程 | ORCH-001/002 前置决策 |
+
+### 12.4 WebSocket 广播深化
+
+- 现状：单实例内 alert.new 直推 + 前端 15s 轮询兜底，**轮询兜底是当前可靠性主来源**，不应在广播完善前移除。
+- 扩容到多实例后 WS 连接与事件产生不在同一进程，需引入 Redis pub/sub 广播（跨实例事件分发设计见 design/40），归 STATE 系列（远期），MVP 不做。
+- §7 事件清单中 sla_warning 依赖 SLA 定时扫描（WB-001 承接）、session.risk_change 依赖会话中风险变化推送（与 05 §20 预警链路衔接），实现顺序跟随对应任务，不单独立项。
+
+### 12.5 任务归口
+
+| 缺口 | 归口 | 优先级 |
+|------|------|:---:|
+| 错误码登记表统一修复（§12.2-4） | 本文档修订 + GlobalExceptionHandler 核对（并入 WB-001 开发前置） | P1 |
+| 测评端点契约细化 | SCALE-001/002 | P1（开发）/门禁待决策 |
+| 个案/预约/转派升级端点 | WB-003 | P2 |
+| 知识库审核工作流端点 | 49/KB 系列 | P1 |
+| 内部编排 API 拆分 | ORCH 系列（世界B） | 远期 |
+| WS 跨实例广播 | STATE 系列 | 远期 |

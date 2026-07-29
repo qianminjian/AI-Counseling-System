@@ -3,6 +3,7 @@
 > 来源：`doc/07_SaaS多学校隔离架构.docx`（原文 260 行）
 > 状态：已转换 | 关联：06 数据库结构、05 老师后台、12 技术架构、决策 #6（Schema 级多租户）
 > 核心：**学校为租户粒度，Schema 级隔离 `tenant_{tenant_id}`**，跨租户查询在代码层面严格禁止。
+> ⚠️ **实现现状（2026-07-28 核对）**：当前代码为**共享表 + 行级 tenant_id 过滤**（所有实体带 `tenantId`，JWT 解出 `TenantContext` record），Schema 级隔离与 `counseling-tenant` 模块**未落地**（模块仅 pom.xml 空骨架）——与决策 #6 存在架构级偏差，详见 §11。
 
 ---
 
@@ -172,3 +173,47 @@ Schema 命名规范：`tenant_{tenant_id}`，如 `tenant_school_001`。每个租
 | 权限过滤 | Spring Security `@PreAuthorize`（RBAC）+ 数据权限拦截器（ABAC），与 05 文档角色权限表对齐 |
 
 > **隔离铁律**：TenantContext 未绑定时，任何进入持久层的查询必须**快速失败（fail-fast）抛异常**，绝不允许「无租户条件」的查询穿透到数据库。这是防止跨校数据泄露的最后一道代码防线。
+
+---
+
+## 11. 深化设计（2026-07-28）：实现现状对照、无状态化影响与租户配置补全
+
+> 图例：🟩 已生效 / 🟧 已实现零调用 / 🟫 仅骨架/部分实现 / ⬜ 未实现
+
+### 11.1 实现现状四态对照（含架构级偏差登记）
+
+| 设计项 | 章节 | 状态 | 核对结论（2026-07-28） |
+|------|------|:---:|------|
+| Schema 级隔离 `tenant_{id}` | §2.1/§10 | ⬜ | **未落地**。无 `AbstractRoutingDataSource`、无 `search_path` 切换、无 RLS `SET app.tenant_id`。实际为**单 schema 共享表 + 行级 tenant_id 列** |
+| `counseling-tenant` 模块 | §10 | 🟫 | 模块目录仅 pom.xml，`TenantContextFilter` 等类均不存在 |
+| 租户上下文 | §10 | 🟩 | 以 `JwtAuthenticationFilter.TenantContext`（record: tenantId/userId/userType）实现，Controller 层显式取用——非 ThreadLocal 注入，天然无泄漏风险但依赖各 Controller 自觉传参 |
+| 行级 tenant_id 过滤 | §2.3 | 🟫 | 实体统一带 `tenantId` 字段；但**未启用 `TenantLineInnerInterceptor`**，Mapper 层无强制拦截，「无租户条件查询 fail-fast」铁律当前无代码防线，靠 Service 层手工传参 |
+| SSO（钉钉/企微） | §3.1 | ⬜ | 未实现，当前为家庭码/PIN 自有认证（见 24 篇） |
+| 配额/限流 | §1.3/§6 | 🟫 | 有 `ratelimit` 包（API 级），未按租户维度分层计量（归 38 计费配额） |
+| 私有化部署 | §8 | ⬜ | 设计期保留 |
+
+**偏差定性（需钱敏健确认，已入待确认清单）**：MVP 阶段「共享表 + 行级过滤」是合理的 KISS 简化（单校试点无隔离压力），但与决策 #6 的 Schema 级目标态存在**架构级偏差**。两条路线：
+- **A（推荐）**：MVP~早期多租户沿用行级隔离，但立即补两道防线——①启用 MyBatis-Plus `TenantLineInnerInterceptor` 强制注入 tenant_id 条件 ②无 TenantContext 的 DAO 调用 fail-fast。Schema 级隔离推迟到首个「要求强隔离」的付费学校签约前实施（expand 路径清晰：按 §2.1 建 schema + 数据搬迁）。
+- **B**：现在实施 Schema 级切换。成本高（Flyway 多 schema 迁移、连接池、运维），当前无对应客户需求，违背 YAGNI。
+
+### 11.2 无状态化（design/40）对隔离的影响
+
+- 当前 `TenantContext` 为请求级 record（随 SecurityContext），**本身无状态化友好**，优于设计稿的 ThreadLocal 方案；若未来引入 ThreadLocal/ScopedValue 注入，虚拟线程下须用 `ScopedValue` 而非 ThreadLocal。
+- 真正的冲突点在**会话内存态**：`SessionState`（语音情绪趋势等）驻留单实例内存，多实例水平扩展时同一学生请求落到不同实例会丢失租户内会话状态——无状态化改造（40 篇 STATE 系列）须将其外置 Redis，key 必须带 `tenant_id` 前缀实现租户命名空间隔离。
+- Schema 迁移采用 **expand-contract**：新增列/表先 expand（兼容旧代码）→ 全量发布 → contract 清理。若未来切 Schema 级隔离，Flyway 须逐租户 schema 循环执行迁移，发布窗口内允许新旧结构并存。
+
+### 11.3 学校级配置补全与偏差修正（§4）
+
+- **补充配置项：心理援助热线号码**（SAFE-203）。危机干预页展示的热线（如 12355/北京 010-82951332）须按学校属地配置，进入 §4 配置表「预警规则」类别；前端从租户配置接口读取，不得硬编码。14/27 篇已引用此项。
+- **偏差登记：§4 预警规则写「SCL-90 总分阈值」与实际不符**——①系统实际风险体系为绿/黄/橙/红四级（04 篇规则库 + fuseRiskSignals），无 SCL-90 阈值逻辑；②SCL-90 不适用小学生，量表选型以 34 篇为准（PHQ-A/GAD-7 等）。§4 该行待量表施测（SCALE-001/002）落地后按实际量表重写，本节先行登记不改写正文。
+
+### 11.4 任务归口
+
+| 事项 | 归口任务 | 优先级 | 责任人 |
+|------|------|:---:|------|
+| `TenantLineInnerInterceptor` 启用 + fail-fast 防线 | STATE/安全加固（新增前置） | P1 | Agent |
+| 隔离路线 A/B 决策 | ✅ 已定稿 A：行级隔离为正式架构（2026-07-28 钱敏健）；加固三件套=拦截器覆盖测试+跨租户越权测试+PG RLS 兜底；BIZ-001 维持挂起，遇采购方硬性物理隔离要求再启动 B | P1 | 钱敏健 |
+| 热线号码租户配置化 | SAFE-203 | P1 | Agent |
+| SessionState 外置 Redis（租户前缀） | STATE 系列（40） | P2 | Agent |
+| §4 预警规则按实际量表重写 | SCALE-001/002 后置 | P2 | Agent |
+| SSO 钉钉/企微 | 商用前（随学校采购需求） | P3 | 钱敏健+Agent |
