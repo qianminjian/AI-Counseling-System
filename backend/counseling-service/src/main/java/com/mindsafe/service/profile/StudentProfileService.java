@@ -1,6 +1,7 @@
 package com.mindsafe.service.profile;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.mindsafe.ai.orchestrator.ProfileSignals;
 import com.mindsafe.domain.entity.CounselingSession;
 import com.mindsafe.domain.entity.RiskEvent;
 import com.mindsafe.domain.entity.StudentProfile;
@@ -41,9 +42,21 @@ public class StudentProfileService {
     }
 
     /**
-     * 会话结束后更新画像（异步调用）
+     * 会话结束后更新画像（异步调用，无语音情绪数据）
      */
     public void updateProfile(UUID tenantId, UUID userId) {
+        updateProfile(tenantId, userId, List.of());
+    }
+
+    /**
+     * 会话结束后更新画像（异步调用）
+     * <p>
+     * VCL-001：本会话语音情绪聚合回注 emotionBaseline.voice（累计 counts，
+     * provenance=voice_ser，design/47 §5.1）；只存聚合衍生特征，不留逐条流水。
+     *
+     * @param voiceEmotions 本次会话语音情绪标签（已归一到规范集），空列表 = 无新语音数据，保留既有 voice 节点
+     */
+    public void updateProfile(UUID tenantId, UUID userId, List<String> voiceEmotions) {
         try {
             // 1. 聚合情绪分布（近 20 次会话）
             List<CounselingSession> recentSessions = sessionMapper.selectList(
@@ -56,16 +69,22 @@ public class StudentProfileService {
 
             if (recentSessions.isEmpty()) return;
 
-            Map<String, Object> emotionBaseline = buildEmotionBaseline(recentSessions);
-            Map<String, Object> riskTrajectory = buildRiskTrajectory(tenantId, userId);
-
-            // 2. Upsert 画像
+            // 先查既有画像（VCL-001：voice 累计/保留需读旧 emotionBaseline）
             StudentProfile existing = profileMapper.selectOne(
                     new LambdaQueryWrapper<StudentProfile>()
                             .eq(StudentProfile::getTenantId, tenantId)
                             .eq(StudentProfile::getUserId, userId)
             );
 
+            Map<String, Object> emotionBaseline = buildEmotionBaseline(recentSessions);
+            Map<String, Object> riskTrajectory = buildRiskTrajectory(tenantId, userId);
+            // PROF-022：规则聚合维度盖元数据戳（provenance=rule_agg，confidence 随样本量增长，10 次会话封顶）
+            stampRuleAggMeta(emotionBaseline, recentSessions.size());
+            stampRuleAggMeta(riskTrajectory, recentSessions.size());
+            // VCL-001：语音情绪子对象（累计 counts；无新数据时保留既有，避免纯文本会话冲掉语音基线）
+            attachVoiceBaseline(emotionBaseline, existing, voiceEmotions);
+
+            // 2. Upsert 画像
             if (existing == null) {
                 StudentProfile profile = new StudentProfile();
                 profile.setProfileId(UUID.randomUUID());
@@ -230,7 +249,116 @@ public class StudentProfileService {
         }
     }
 
+    /**
+     * PROF-022：读取画像结构化信号供编排引擎微调（design/46 §5.1）
+     * <p>
+     * 置信度取自维度 JSONB 内 {@code _meta}（LLM 提炼合并时写入）；元数据缺失时置信计 0，
+     * 由编排层门控拒绝采用（宁可不用，不可乱用）。失败/无画像 → null，不阻塞会话。
+     */
+    public ProfileSignals getProfileSignals(UUID tenantId, UUID userId) {
+        try {
+            StudentProfile profile = profileMapper.selectOne(
+                    new LambdaQueryWrapper<StudentProfile>()
+                            .eq(StudentProfile::getTenantId, tenantId)
+                            .eq(StudentProfile::getUserId, userId)
+            );
+            if (profile == null) {
+                return null;
+            }
+            Map<String, Object> personality = parseJson(profile.getPersonalityTraits());
+            if (personality == null || personality.isEmpty()) {
+                return null;
+            }
+            Double introversion = personality.get("introversion") instanceof Number n ? n.doubleValue() : null;
+            List<String> interests = personality.get("dominant_interests") instanceof List<?> list
+                    ? list.stream().map(Object::toString).toList()
+                    : List.of();
+            return new ProfileSignals(
+                    introversion, metaConfidence(personality, "introversion"),
+                    interests, metaConfidence(personality, "dominant_interests"));
+        } catch (Exception e) {
+            log.warn("获取画像编排信号失败（不阻塞会话）: userId={}, error={}", userId, e.getMessage());
+            return null;
+        }
+    }
+
     // ===== 私有方法 =====
+
+    /** PROF-022：从维度 {@code _meta.<field>.confidence} 读置信度，缺失计 0 */
+    private double metaConfidence(Map<String, Object> dimension, String field) {
+        if (dimension.get("_meta") instanceof Map<?, ?> meta
+                && meta.get(field) instanceof Map<?, ?> entry
+                && entry.get("confidence") instanceof Number conf) {
+            return conf.doubleValue();
+        }
+        return 0.0;
+    }
+
+    /** PROF-022：规则聚合维度的元数据戳（维度级，provenance=rule_agg） */
+    private void stampRuleAggMeta(Map<String, Object> dimension, int evidenceCount) {
+        Map<String, Object> meta = new LinkedHashMap<>();
+        meta.put("provenance", "rule_agg");
+        meta.put("confidence", Math.min(1.0, Math.round(evidenceCount / 10.0 * 100.0) / 100.0));
+        meta.put("evidence_count", evidenceCount);
+        String now = Instant.now().toString();
+        meta.put("updated_at", now);
+        meta.put("last_seen_at", now);
+        dimension.put("_meta", meta);
+    }
+
+    /**
+     * VCL-001：emotionBaseline 内嵌 voice 子对象（design/47 §5.1/§5.2）
+     * <p>
+     * 累计 counts：旧 counts + 本次会话标签计数；无新数据时原样保留既有 voice 节点。
+     * confidence 随累计样本量增长（20 样本封顶：轮级样本比会话级积累快）。
+     */
+    @SuppressWarnings("unchecked")
+    private void attachVoiceBaseline(Map<String, Object> emotionBaseline,
+                                     StudentProfile existing, List<String> voiceEmotions) {
+        Map<String, Object> previousVoice = null;
+        if (existing != null) {
+            Map<String, Object> prevBaseline = parseJson(existing.getEmotionBaseline());
+            if (prevBaseline != null && prevBaseline.get("voice") instanceof Map) {
+                previousVoice = (Map<String, Object>) prevBaseline.get("voice");
+            }
+        }
+        if (voiceEmotions == null || voiceEmotions.isEmpty()) {
+            if (previousVoice != null) {
+                emotionBaseline.put("voice", previousVoice);
+            }
+            return;
+        }
+
+        // 累计 counts（旧值 Jackson 解析为 Integer，统一按 Number 取 long）
+        Map<String, Object> counts = new LinkedHashMap<>();
+        if (previousVoice != null && previousVoice.get("counts") instanceof Map<?, ?> prevCounts) {
+            prevCounts.forEach((k, v) -> {
+                if (v instanceof Number n) counts.put(k.toString(), n.longValue());
+            });
+        }
+        for (String emotion : voiceEmotions) {
+            if (emotion == null || emotion.isBlank()) continue;
+            counts.merge(emotion, 1L, (a, b) -> ((Number) a).longValue() + 1);
+        }
+
+        long totalSamples = counts.values().stream().mapToLong(v -> ((Number) v).longValue()).sum();
+        Map<String, Object> voice = new LinkedHashMap<>();
+        voice.put("counts", counts);
+        counts.entrySet().stream()
+                .max(Comparator.comparingLong(e -> ((Number) e.getValue()).longValue()))
+                .ifPresent(e -> voice.put("dominant_emotion", e.getKey()));
+
+        Map<String, Object> meta = new LinkedHashMap<>();
+        meta.put("provenance", "voice_ser");
+        meta.put("confidence", Math.min(1.0, Math.round(totalSamples / 20.0 * 100.0) / 100.0));
+        meta.put("evidence_count", totalSamples);
+        String now = Instant.now().toString();
+        meta.put("updated_at", now);
+        meta.put("last_seen_at", now);
+        voice.put("_meta", meta);
+
+        emotionBaseline.put("voice", voice);
+    }
 
     private Map<String, Object> buildEmotionBaseline(List<CounselingSession> sessions) {
         Map<String, Object> result = new LinkedHashMap<>();

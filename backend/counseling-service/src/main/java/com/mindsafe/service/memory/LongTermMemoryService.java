@@ -6,12 +6,14 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mindsafe.ai.chat.AiChatService;
 import com.mindsafe.domain.entity.LongTermMemory;
 import com.mindsafe.domain.mapper.LongTermMemoryMapper;
+import com.mindsafe.service.profile.MemoryProfileBackfillService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -22,6 +24,7 @@ import java.util.UUID;
  * 1. 会话结束后异步提取关键事件（LLM 提炼）
  * 2. 新会话开始时召回 top-N 记忆供 Prompt 回注
  * 3. 记忆去重（同一会话不重复提取）
+ * 4. MEM-101：关键事件回注画像 growthTrack/socialGraph（provenance=memory，design/50 §5.1）
  */
 @Service
 public class LongTermMemoryService {
@@ -37,13 +40,16 @@ public class LongTermMemoryService {
     private final LongTermMemoryMapper memoryMapper;
     private final AiChatService aiChatService;
     private final ObjectMapper objectMapper;
+    private final MemoryProfileBackfillService backfillService;
 
     public LongTermMemoryService(LongTermMemoryMapper memoryMapper,
                                  AiChatService aiChatService,
-                                 ObjectMapper objectMapper) {
+                                 ObjectMapper objectMapper,
+                                 MemoryProfileBackfillService backfillService) {
         this.memoryMapper = memoryMapper;
         this.aiChatService = aiChatService;
         this.objectMapper = objectMapper;
+        this.backfillService = backfillService;
     }
 
     /**
@@ -76,6 +82,7 @@ public class LongTermMemoryService {
             if (events == null || !events.isArray() || events.isEmpty()) return;
 
             int stored = 0;
+            List<MemoryProfileBackfillService.MemoryEvent> backfillEvents = new ArrayList<>();
             for (JsonNode event : events) {
                 String content = getTextSafe(event, "content");
                 if (content == null || content.isBlank()) continue;
@@ -91,11 +98,17 @@ public class LongTermMemoryService {
                         tenantId, studentUserId, sessionId, content, emotion, importance);
                 memoryMapper.insert(memory);
                 stored++;
+
+                // MEM-101：收集可回注事件（milestone/person 分类由 LLM 提取时给出）
+                backfillEvents.add(new MemoryProfileBackfillService.MemoryEvent(
+                        getTextSafe(event, "event_type"), content, getTextSafe(event, "person_role"), emotion));
             }
 
             if (stored > 0) {
                 log.info("关键事件提取完成: sessionId={}, stored={}", sessionId, stored);
                 evictOldMemories(tenantId, studentUserId);
+                // MEM-101：记忆→画像回注（已在异步链路内，失败静默降级）
+                backfillService.backfill(tenantId, studentUserId, backfillEvents);
             }
         } catch (Exception e) {
             log.warn("关键事件提取失败（不影响业务）: sessionId={}, error={}", sessionId, e.getMessage());

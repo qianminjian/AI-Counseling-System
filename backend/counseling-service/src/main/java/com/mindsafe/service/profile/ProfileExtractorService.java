@@ -25,12 +25,18 @@ import java.util.UUID;
  *   <li>resilience：coping_skills 累加使用次数，self_efficacy 取最新值</li>
  *   <li>social_graph：key_persons 按 role 增量更新情感倾向，help_seeking 取最新值</li>
  * </ul>
+ * PROF-022：每次合并同时在维度 JSONB 内的 {@code _meta} 节点记录字段级元数据
+ * （provenance=llm_extract / confidence / evidence_count / updated_at / last_seen_at），
+ * 供画像→编排接线做置信门控；不改表结构。
  * 失败静默降级，不影响主流程。
  */
 @Service
 public class ProfileExtractorService {
 
     private static final Logger log = LoggerFactory.getLogger(ProfileExtractorService.class);
+
+    /** PROF-022：LLM 提炼来源标识 */
+    private static final String PROVENANCE_LLM = "llm_extract";
 
     private final AiChatService aiChatService;
     private final StudentProfileMapper profileMapper;
@@ -120,6 +126,7 @@ public class ProfileExtractorService {
             }
             existingInterests.removeAll();
             seen.stream().limit(6).forEach(existingInterests::add);
+            stampMeta(existing, "dominant_interests");
         }
         return existing;
     }
@@ -133,6 +140,7 @@ public class ProfileExtractorService {
         } else {
             existing.put(field, Math.round(newVal * 100.0) / 100.0);
         }
+        stampMeta(existing, field);
     }
 
     private ObjectNode mergeCommunicationPref(ObjectNode existing, JsonNode patchNode) {
@@ -141,9 +149,11 @@ public class ProfileExtractorService {
         }
         if (patchNode.hasNonNull("preferred_style")) {
             existing.put("preferred_style", patchNode.get("preferred_style").asText());
+            stampMeta(existing, "preferred_style");
         }
         if (patchNode.hasNonNull("expression_depth")) {
             existing.put("expression_depth", patchNode.get("expression_depth").asDouble());
+            stampMeta(existing, "expression_depth");
         }
         return existing;
     }
@@ -168,9 +178,11 @@ public class ProfileExtractorService {
                 if (!entry.has("effective")) entry.putNull("effective");
                 entry.put("uses", entry.get("uses").asInt(0) + 1);
             }
+            stampMeta(existing, "coping_skills");
         }
         if (patchNode.hasNonNull("self_efficacy")) {
             existing.put("self_efficacy", patchNode.get("self_efficacy").asDouble());
+            stampMeta(existing, "self_efficacy");
         }
         return existing;
     }
@@ -196,9 +208,11 @@ public class ProfileExtractorService {
                     entry.put("sentiment", p.get("sentiment").asDouble());
                 }
             }
+            stampMeta(existing, "key_persons");
         }
         if (patchNode.hasNonNull("help_seeking")) {
             existing.put("help_seeking", patchNode.get("help_seeking").asDouble());
+            stampMeta(existing, "help_seeking");
         }
         return existing;
     }
@@ -258,17 +272,16 @@ public class ProfileExtractorService {
 
     // ===== 工具方法 =====
 
+    /**
+     * PROF-022：在维度 JSONB 的 {@code _meta.<field>} 下盖元数据戳（provenance=llm_extract）。
+     */
+    private void stampMeta(ObjectNode dimension, String field) {
+        ProfileMetaStamper.stamp(dimension, field, PROVENANCE_LLM);
+    }
+
     /** 解析 JSON 对象；非法/空则返回空对象节点 */
     private ObjectNode parseObject(String json) {
-        if (json == null || json.isBlank() || "{}".equals(json.trim())) {
-            return objectMapper.createObjectNode();
-        }
-        try {
-            JsonNode node = objectMapper.readTree(json);
-            return node.isObject() ? (ObjectNode) node : objectMapper.createObjectNode();
-        } catch (Exception e) {
-            return objectMapper.createObjectNode();
-        }
+        return ProfileMetaStamper.parseObject(objectMapper, json);
     }
 
     /** 去除 LLM 可能包裹的 ```json ... ``` 代码块标记 */

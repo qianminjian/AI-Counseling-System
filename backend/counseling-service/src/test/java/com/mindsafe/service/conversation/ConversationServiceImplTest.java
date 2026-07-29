@@ -1,6 +1,8 @@
 package com.mindsafe.service.conversation;
 
 import com.mindsafe.ai.chat.AiChatService;
+import com.mindsafe.ai.orchestrator.EntryMoodStrategyResolver;
+import com.mindsafe.ai.orchestrator.PromptOrchestrationService;
 import com.mindsafe.ai.prompt.PromptTemplateService;
 import com.mindsafe.ai.risk.RiskDetectorService;
 import com.mindsafe.ai.risk.SemanticRiskClassifier;
@@ -24,6 +26,7 @@ import com.mindsafe.service.notification.NotificationService;
 import com.mindsafe.service.profile.ProfileExtractorService;
 import com.mindsafe.service.profile.StudentProfileService;
 import com.mindsafe.service.prompt.PromptVersionService;
+import com.mindsafe.service.quality.ConversationQualityService;
 import com.mindsafe.service.usage.UsageTimeLimitService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -75,6 +78,7 @@ class ConversationServiceImplTest {
     private PromptVersionService promptVersionService;
     private RagAdvisorService ragAdvisorService;
     private SemanticRiskClassifier semanticRiskClassifier;
+    private ConversationQualityService conversationQualityService;
 
     private ConversationServiceImpl service;
 
@@ -99,6 +103,7 @@ class ConversationServiceImplTest {
         promptVersionService = mock(PromptVersionService.class);
         ragAdvisorService = mock(RagAdvisorService.class);
         semanticRiskClassifier = mock(SemanticRiskClassifier.class);
+        conversationQualityService = mock(ConversationQualityService.class);
 
         // AI-005: PromptVersionService 默认返回 classpath 降级结果
         when(promptVersionService.resolve(any(), anyString(), any(), anyMap()))
@@ -119,7 +124,10 @@ class ConversationServiceImplTest {
                 riskDetectorService, piiDesensitizer, sessionMapper, messageSummaryMapper,
                 riskEventMapper, notificationService, userMapper, profileService,
                 profileExtractorService, usageTimeLimitService, longTermMemoryService, promptVersionService,
-                ragAdvisorService, semanticRiskClassifier);
+                ragAdvisorService, semanticRiskClassifier,
+                // ORCH-001：编排引擎纯规则无依赖，直接用真实实例
+                new PromptOrchestrationService(new EntryMoodStrategyResolver()),
+                conversationQualityService);
     }
 
     /** createSession 并捕获内部生成的 sessionId */
@@ -734,8 +742,9 @@ class ConversationServiceImplTest {
 
             ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
             verify(aiChatService).chatWithPrompt(any(), any(), any(), any(), any(), anyInt(), promptCaptor.capture());
+            // ORCH-002：组装链 SYS → LANG → EMO（EMO_001 经 mock resolve 同样返回 mock-system-prompt）
             assertThat(promptCaptor.getValue())
-                    .isEqualTo("mock-system-prompt\n\nmock-lang-rules")
+                    .isEqualTo("mock-system-prompt\n\nmock-lang-rules\n\nmock-system-prompt")
                     .doesNotContain("参考资料");
         }
 
@@ -808,6 +817,121 @@ class ConversationServiceImplTest {
         void normalExpression_noDowngrade() {
             assertThat(ConversationServiceImpl.computeEffectiveGrade(5, 0.5, false)).isEqualTo(5);
             assertThat(ConversationServiceImpl.computeEffectiveGrade(3, 0.3, false)).isEqualTo(3);
+        }
+    }
+
+    @Nested
+    @DisplayName("语音情绪驱动编排（VCL-001，design/47 §4.1/§5.1）")
+    class VoiceEmotionOrchestration {
+
+        private void mockChatPipeline() {
+            when(riskDetectorService.detect(anyString())).thenReturn(RiskDetectionResult.safe());
+            when(piiDesensitizer.desensitize(anyString())).thenAnswer(inv -> inv.getArgument(0));
+            when(usageTimeLimitService.isExceeded(any(), any())).thenReturn(false);
+            when(profileService.buildProfilePrompt(eq(tenantId), eq(studentId), any(Integer.class), any()))
+                    .thenReturn(null);
+            when(aiChatService.chatWithPrompt(any(), any(), any(), any(), any(), anyInt(), anyString()))
+                    .thenReturn(Flux.just(StreamMessageEvent.token("我在听")));
+        }
+
+        /** 捕获 EMO_001 模板变量（编排策略经 toTemplateVariables 渲染的入参） */
+        private java.util.Map<String, String> captureEmoVariables() {
+            @SuppressWarnings("unchecked")
+            ArgumentCaptor<java.util.Map<String, String>> captor = ArgumentCaptor.forClass(java.util.Map.class);
+            verify(promptVersionService).resolve(eq(tenantId), eq("EMO_001"), eq(studentId), captor.capture());
+            return captor.getValue();
+        }
+
+        @Test
+        @DisplayName("语音 sad 高置信 → 轮级 currentEmotion 覆盖会话 entryMood，触发 sad 共情策略")
+        void voiceSad_overridesEntryMood() {
+            UUID sessionId = createSession("happy");
+            mockChatPipeline();
+
+            service.sendMessageStream(tenantId, sessionId, "嗯", "sad", 0.9).collectList().block();
+
+            assertThat(captureEmoVariables().get("entry_mood")).isEqualTo("sad");
+        }
+
+        @Test
+        @DisplayName("语音置信不足（≤0.6）→ 不驱动策略，回退会话 entryMood")
+        void lowConfidence_fallbackToEntryMood() {
+            UUID sessionId = createSession("happy");
+            mockChatPipeline();
+
+            service.sendMessageStream(tenantId, sessionId, "嗯", "sad", 0.5).collectList().block();
+
+            assertThat(captureEmoVariables().get("entry_mood")).isEqualTo("happy");
+        }
+
+        @Test
+        @DisplayName("不可映射标签（unknown/surprised）→ 回退会话 entryMood，不错当平静")
+        void unmappableLabel_fallbackToEntryMood() {
+            UUID sessionId = createSession("sad");
+            mockChatPipeline();
+
+            service.sendMessageStream(tenantId, sessionId, "嗯", "unknown", 0.9).collectList().block();
+
+            assertThat(captureEmoVariables().get("entry_mood")).isEqualTo("sad");
+        }
+
+        @Test
+        @DisplayName("会话结束 → 语音情绪映射规范集后聚合回注画像（不可映射标签过滤）")
+        void endSession_backfillsMappedVoiceEmotions() {
+            UUID sessionId = createSession("happy");
+            mockChatPipeline();
+            service.sendMessageStream(tenantId, sessionId, "嗯", "sad", 0.9).collectList().block();
+            service.sendMessageStream(tenantId, sessionId, "嗯", "neutral", 0.8).collectList().block();
+            service.sendMessageStream(tenantId, sessionId, "嗯", "unknown", 0.9).collectList().block();
+
+            service.endSession(tenantId, sessionId);
+
+            @SuppressWarnings("unchecked")
+            ArgumentCaptor<List<String>> captor = ArgumentCaptor.forClass(List.class);
+            verify(profileService).updateProfile(eq(tenantId), eq(studentId), captor.capture());
+            // sad→sad、neutral→calm；unknown 不可映射被过滤
+            assertThat(captor.getValue()).containsExactly("sad", "calm");
+        }
+
+        @Test
+        @DisplayName("纯文本会话结束 → 回注空列表（保留既有语音基线由画像层保证）")
+        void textOnlySession_backfillsEmptyList() {
+            UUID sessionId = createSession("happy");
+
+            service.endSession(tenantId, sessionId);
+
+            verify(profileService).updateProfile(eq(tenantId), eq(studentId), eq(List.of()));
+        }
+    }
+
+    @Nested
+    @DisplayName("会话质量评估接线（PEVAL-001）")
+    class QualityEvaluationWiring {
+
+        @Test
+        @DisplayName("摘要流程触发质量评估：对话文本传给 evaluateSessionAsync")
+        void summaryFlow_triggersQualityEvaluation() {
+            UUID sessionId = UUID.randomUUID();
+            when(messageSummaryMapper.selectList(any())).thenReturn(List.of(
+                    MessageSummary.studentMessage(tenantId, sessionId, studentId, 1, "我今天很难过", "sad", 0),
+                    MessageSummary.aiMessage(tenantId, sessionId, studentId, 1, "我在听")));
+            when(aiChatService.generateSessionSummary(anyString())).thenReturn("会话摘要");
+
+            service.generateSummaryAsync(tenantId, sessionId, studentId);
+
+            ArgumentCaptor<String> textCaptor = ArgumentCaptor.forClass(String.class);
+            verify(conversationQualityService).evaluateSessionAsync(eq(tenantId), eq(sessionId), textCaptor.capture());
+            assertThat(textCaptor.getValue()).contains("学生: 我今天很难过").contains("AI: 我在听");
+        }
+
+        @Test
+        @DisplayName("无消息 → 不触发质量评估")
+        void noMessages_noEvaluation() {
+            when(messageSummaryMapper.selectList(any())).thenReturn(List.of());
+
+            service.generateSummaryAsync(tenantId, UUID.randomUUID(), studentId);
+
+            verify(conversationQualityService, never()).evaluateSessionAsync(any(), any(), anyString());
         }
     }
 }

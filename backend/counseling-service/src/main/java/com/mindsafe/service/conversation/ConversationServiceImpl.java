@@ -1,6 +1,10 @@
 package com.mindsafe.service.conversation;
 
 import com.mindsafe.ai.chat.AiChatService;
+import com.mindsafe.ai.orchestrator.OrchestrationContext;
+import com.mindsafe.ai.orchestrator.ProfileSignals;
+import com.mindsafe.ai.orchestrator.PromptOrchestrationService;
+import com.mindsafe.ai.orchestrator.StrategyProfile;
 import com.mindsafe.ai.prompt.PromptTemplateService;
 import com.mindsafe.ai.risk.RiskDetectorService;
 import com.mindsafe.ai.risk.SemanticRiskClassifier;
@@ -25,6 +29,7 @@ import com.mindsafe.service.notification.NotificationService;
 import com.mindsafe.service.profile.ProfileExtractorService;
 import com.mindsafe.service.profile.StudentProfileService;
 import com.mindsafe.service.prompt.PromptVersionService;
+import com.mindsafe.service.quality.ConversationQualityService;
 import com.mindsafe.service.usage.UsageTimeLimitService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -36,6 +41,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -65,6 +71,8 @@ public class ConversationServiceImpl implements ConversationService {
     private final PromptVersionService promptVersionService;
     private final RagAdvisorService ragAdvisorService;
     private final SemanticRiskClassifier semanticRiskClassifier;
+    private final PromptOrchestrationService promptOrchestrationService;
+    private final ConversationQualityService conversationQualityService;
 
     /** 活跃会话内存缓存（emotionTag 等非 DB 字段 + 轮次计数） */
     private final Map<UUID, SessionState> activeSessions = new ConcurrentHashMap<>();
@@ -87,7 +95,9 @@ public class ConversationServiceImpl implements ConversationService {
                                    LongTermMemoryService longTermMemoryService,
                                    PromptVersionService promptVersionService,
                                    RagAdvisorService ragAdvisorService,
-                                   SemanticRiskClassifier semanticRiskClassifier) {
+                                   SemanticRiskClassifier semanticRiskClassifier,
+                                   PromptOrchestrationService promptOrchestrationService,
+                                   ConversationQualityService conversationQualityService) {
         this.aiChatService = aiChatService;
         this.promptTemplateService = promptTemplateService;
         this.riskDetectorService = riskDetectorService;
@@ -104,6 +114,8 @@ public class ConversationServiceImpl implements ConversationService {
         this.promptVersionService = promptVersionService;
         this.ragAdvisorService = ragAdvisorService;
         this.semanticRiskClassifier = semanticRiskClassifier;
+        this.promptOrchestrationService = promptOrchestrationService;
+        this.conversationQualityService = conversationQualityService;
     }
 
     @Override
@@ -308,6 +320,21 @@ public class ConversationServiceImpl implements ConversationService {
                 session.tenantId, langKey, session.studentUserId);
         String systemPromptContent = sysResolved.content() + "\n\n" + langResolved.content();
 
+        // ORCH-001/002：编排引擎——先算策略、再拼提示词（design/44 §四/§五）。
+        // VCL-001：轮级 currentEmotion 由语音 SER 映射驱动（置信门控 >0.6 与情绪历史同源），
+        // 映射不可用/纯文本输入时为 null，编排层回退会话级 entryMood；
+        // ORANGE 融合风险在编排层触发 safetyLocked（RED 已在 4.2 硬短路）。
+        // PROF-022：画像信号带置信度进编排，低置信由编排层门控拒用（宁可不用，不可乱用）。
+        String currentEmotion = (voiceEmotion != null && voiceEmotionConfidence != null && voiceEmotionConfidence > 0.6)
+                ? promptOrchestrationService.mapVoiceEmotion(voiceEmotion) : null;
+        ProfileSignals profileSignals = profileService.getProfileSignals(session.tenantId, session.studentUserId);
+        StrategyProfile strategy = promptOrchestrationService.resolve(new OrchestrationContext(
+                session.grade, effectiveGrade, session.emotionTag, currentEmotion, fusedLevel, profileSignals));
+        PromptVersionService.ResolvedPrompt emoResolved = promptVersionService.resolve(
+                session.tenantId, "EMO_001", session.studentUserId,
+                promptOrchestrationService.toTemplateVariables(strategy));
+        systemPromptContent = systemPromptContent + "\n\n" + emoResolved.content();
+
         // KB-101b：RAG 参考知识注入（design/49 §六）——场景触发才检索，寒暄闲聊不检索；
         // RED 危机场景已在 4.2 硬短路，不会走到此处；检索异常返回空串不影响主线。
         String ragContext = ragAdvisorService.buildRagContext(session.tenantId, safeContent, effectiveGrade);
@@ -459,8 +486,13 @@ public class ConversationServiceImpl implements ConversationService {
             // 异步生成 AI 会话摘要（摘要完成后触发 PROF-003 画像 LLM 提炼）
             generateSummaryAsync(tenantId, sessionId, session.studentUserId);
 
-            // 异步更新学生画像（基于历史会话统计）
-            profileService.updateProfile(session.tenantId, session.studentUserId);
+            // 异步更新学生画像（基于历史会话统计；VCL-001：本会话语音情绪聚合回注 emotionBaseline.voice，
+            // 只传可映射到规范集的标签，聚合衍生特征不留逐条流水，design/47 §5.1）
+            List<String> voiceEmotions = session.emotionLabels().stream()
+                    .map(promptOrchestrationService::mapVoiceEmotion)
+                    .filter(Objects::nonNull)
+                    .toList();
+            profileService.updateProfile(session.tenantId, session.studentUserId, voiceEmotions);
         }
     }
 
@@ -485,6 +517,9 @@ public class ConversationServiceImpl implements ConversationService {
                 sb.append(role).append(": ").append(m.getContentSummary()).append("\n");
             }
             String conversationText = sb.toString();
+
+            // PEVAL-001：异步评估会话质量并落库（服务内部按抽样率决定是否评估，失败静默降级）
+            conversationQualityService.evaluateSessionAsync(tenantId, sessionId, conversationText);
 
             // 3. 调用 LLM 生成摘要
             String summary = aiChatService.generateSessionSummary(conversationText);
@@ -558,8 +593,10 @@ public class ConversationServiceImpl implements ConversationService {
      * 解析 gradeCode 为年级数字（1-6）。
      * <p>
      * 支持格式："G1"~"G6"、"1"~"6"、null/空/无法解析 → 默认 4（中间值，design/29 §3.3）
+     * <p>
+     * public：供 VoicePersonaResolver（TMATCH-001，voice 包）复用同一年级解析口径。
      */
-    static int parseGradeCode(String gradeCode) {
+    public static int parseGradeCode(String gradeCode) {
         if (gradeCode == null || gradeCode.isBlank()) return 4;
         String cleaned = gradeCode.trim().toUpperCase();
         // 去掉 "G" 前缀（如 "G3" → "3"）
@@ -833,6 +870,11 @@ public class ConversationServiceImpl implements ConversationService {
             if (emotionHistory.size() > 10) {
                 emotionHistory.remove(0);
             }
+        }
+
+        /** VCL-001：本会话语音情绪标签快照（原始 SER 标签，会话结束聚合回注画像用） */
+        List<String> emotionLabels() {
+            return emotionHistory.stream().map(EmotionRecord::emotion).toList();
         }
 
         /**

@@ -1,6 +1,9 @@
 package com.mindsafe.service.profile;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mindsafe.ai.chat.AiChatService;
+import com.mindsafe.ai.orchestrator.ProfileSignals;
 import com.mindsafe.domain.entity.StudentProfile;
 import com.mindsafe.domain.mapper.CounselingSessionMapper;
 import com.mindsafe.domain.mapper.RiskEventMapper;
@@ -10,6 +13,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -168,6 +172,90 @@ class PersonalityTraitsTest {
             profileExtractorService.extractAndMerge(TENANT, USER, "conversation", "summary");
 
             verify(profileMapper).updateById(any(StudentProfile.class));
+        }
+    }
+
+    @Nested
+    @DisplayName("PROF-022: 元数据戳与画像→编排信号")
+    class ProvenanceMetadata {
+
+        private final ObjectMapper om = new ObjectMapper();
+
+        @Test
+        @DisplayName("extractAndMerge → personality_traits._meta 写入 provenance/confidence/evidence_count")
+        void mergeStampsMeta() throws Exception {
+            StudentProfile profile = baseProfile();
+            profile.setPersonalityTraits("{}");
+            when(profileMapper.selectOne(any())).thenReturn(profile);
+            when(aiChatService.extractProfilePatch(anyString(), anyString())).thenReturn("""
+                    {"personality_traits":{"introversion":0.8,"dominant_interests":["恐龙"]}}
+                    """);
+
+            profileExtractorService.extractAndMerge(TENANT, USER, "conversation", "summary");
+
+            ArgumentCaptor<StudentProfile> captor = ArgumentCaptor.forClass(StudentProfile.class);
+            verify(profileMapper).updateById(captor.capture());
+            JsonNode meta = om.readTree(captor.getValue().getPersonalityTraits()).path("_meta");
+            JsonNode intro = meta.path("introversion");
+            assertThat(intro.path("provenance").asText()).isEqualTo("llm_extract");
+            assertThat(intro.path("evidence_count").asInt()).isEqualTo(1);
+            assertThat(intro.path("confidence").asDouble()).isEqualTo(0.33);
+            assertThat(intro.path("updated_at").asText()).isNotBlank();
+            assertThat(intro.path("last_seen_at").asText()).isNotBlank();
+            assertThat(meta.path("dominant_interests").path("evidence_count").asInt()).isEqualTo(1);
+        }
+
+        @Test
+        @DisplayName("重复提炼 → evidence_count 累加，confidence 收敛（2 次→ 0.5 达编排门槛）")
+        void evidenceAccumulates() throws Exception {
+            StudentProfile profile = baseProfile();
+            // 已有 1 次提炼的元数据
+            profile.setPersonalityTraits("""
+                    {"introversion":0.6,"_meta":{"introversion":{"provenance":"llm_extract","evidence_count":1,"confidence":0.33}}}
+                    """);
+            when(profileMapper.selectOne(any())).thenReturn(profile);
+            when(aiChatService.extractProfilePatch(anyString(), anyString())).thenReturn("""
+                    {"personality_traits":{"introversion":0.8}}
+                    """);
+
+            profileExtractorService.extractAndMerge(TENANT, USER, "conversation", "summary");
+
+            ArgumentCaptor<StudentProfile> captor = ArgumentCaptor.forClass(StudentProfile.class);
+            verify(profileMapper).updateById(captor.capture());
+            JsonNode intro = om.readTree(captor.getValue().getPersonalityTraits()).path("_meta").path("introversion");
+            assertThat(intro.path("evidence_count").asInt()).isEqualTo(2);
+            assertThat(intro.path("confidence").asDouble()).isEqualTo(0.5);
+        }
+
+        @Test
+        @DisplayName("getProfileSignals: 高置信 → 信号可用；无 _meta → 置信计 0 不可用")
+        void profileSignalsConfidenceGate() {
+            StudentProfile profile = baseProfile();
+            profile.setPersonalityTraits("""
+                    {"introversion":0.8,"dominant_interests":["恐龙","画画"],
+                     "_meta":{"introversion":{"confidence":0.6,"evidence_count":3}}}
+                    """);
+            when(profileMapper.selectOne(any())).thenReturn(profile);
+
+            ProfileSignals signals = studentProfileService.getProfileSignals(TENANT, USER);
+
+            assertThat(signals).isNotNull();
+            assertThat(signals.introversionUsable()).isTrue();
+            assertThat(signals.introversion()).isEqualTo(0.8);
+            // dominant_interests 无 _meta → 置信 0，门控拒用（宁可不用不可乱用）
+            assertThat(signals.interestsUsable()).isFalse();
+        }
+
+        @Test
+        @DisplayName("getProfileSignals: 无画像/空画像 → null 不阻塞")
+        void noProfileReturnsNull() {
+            when(profileMapper.selectOne(any())).thenReturn(null);
+            assertThat(studentProfileService.getProfileSignals(TENANT, USER)).isNull();
+
+            StudentProfile profile = baseProfile();
+            profile.setPersonalityTraits("{}");
+            when(profileMapper.selectOne(any())).thenReturn(profile);
+            assertThat(studentProfileService.getProfileSignals(TENANT, USER)).isNull();
         }
     }
 

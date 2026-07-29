@@ -42,7 +42,8 @@ public class PromptVersionService {
             Map.entry("TSK_001", PromptTemplateService.TSK_001),
             Map.entry("TSK_002", PromptTemplateService.TSK_002),
             Map.entry("TSK_003", PromptTemplateService.TSK_003),
-            Map.entry("TSK_004", PromptTemplateService.TSK_004)
+            Map.entry("TSK_004", PromptTemplateService.TSK_004),
+            Map.entry("EMO_001", PromptTemplateService.EMO_001)
     );
 
     private final PromptVersionMapper promptVersionMapper;

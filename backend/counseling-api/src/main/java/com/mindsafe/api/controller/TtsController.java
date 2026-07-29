@@ -1,38 +1,49 @@
 package com.mindsafe.api.controller;
 
 import com.mindsafe.ai.voice.TtsService;
+import com.mindsafe.api.security.JwtAuthenticationFilter.TenantContext;
 import com.mindsafe.common.dto.ApiResponse;
+import com.mindsafe.service.voice.VoicePersonaResolver;
+import com.mindsafe.service.voice.VoiceRenderProfile;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 /**
  * TTS 语音合成 API
  * <p>
- * 前端在 AI 回复完成后调用，将文字转为语音播放
+ * 前端在 AI 回复完成后调用，将文字转为语音播放。
+ * TMATCH-001：persona 未指定时由 {@link VoicePersonaResolver} 按画像自动匹配，
+ * 情绪同时驱动 prosody 基调（非仅 instruct）。
  */
 @RestController
 @RequestMapping("/api/v1/tts")
 public class TtsController {
 
     private final TtsService ttsService;
+    private final VoicePersonaResolver personaResolver;
 
-    public TtsController(TtsService ttsService) {
+    public TtsController(TtsService ttsService, VoicePersonaResolver personaResolver) {
         this.ttsService = ttsService;
+        this.personaResolver = personaResolver;
     }
 
     /**
      * 合成语音（返回音频流）
      */
     @PostMapping("/synthesize")
-    public ResponseEntity<byte[]> synthesize(@RequestBody Map<String, Object> request) {
+    public ResponseEntity<byte[]> synthesize(@RequestBody Map<String, Object> request, Authentication auth) {
         String text = (String) request.get("text");
-        String persona = (String) request.getOrDefault("persona", "xiaoxing");
+        // persona 可缺省：前端显式传 = 学生手动选择（最高优先）；缺省 → 画像冷启动自动匹配
+        String persona = (String) request.get("persona");
         String emotion = (String) request.getOrDefault("emotion", "neutral");
+        String scene = (String) request.getOrDefault("scene", "chat");
         double speed = request.containsKey("speed")
                 ? ((Number) request.get("speed")).doubleValue() : 1.0;
 
@@ -40,7 +51,12 @@ public class TtsController {
             return ResponseEntity.badRequest().build();
         }
 
-        byte[] audio = ttsService.synthesize(text, persona, emotion, speed);
+        UUID userId = auth != null && auth.getPrincipal() instanceof UUID id ? id : null;
+        UUID tenantId = auth != null && auth.getDetails() instanceof TenantContext ctx ? ctx.tenantId() : null;
+        VoiceRenderProfile profile = personaResolver.resolve(tenantId, userId, persona, emotion, scene);
+
+        byte[] audio = ttsService.synthesize(text, profile.persona(), profile.emotionInstruct(),
+                speed * profile.speed(), profile.pitchScale(), profile.pauseStyle());
         if (audio == null) {
             return ResponseEntity.noContent().build();
         }
@@ -48,6 +64,8 @@ public class TtsController {
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_TYPE, detectAudioMimeType(audio))
                 .header(HttpHeaders.CACHE_CONTROL, "no-cache")
+                .header("X-Voice-Persona", profile.persona())
+                .header("X-Voice-Source", profile.source())
                 .body(audio);
     }
 

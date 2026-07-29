@@ -113,6 +113,8 @@ class TtsRequest(BaseModel):
     persona: str = "xiaoxing"           # 音色人设
     emotion: str = "neutral"            # 孩子当前情绪（用于调整语气）
     speed: float = 1.0                  # 语速倍率（年龄适配）
+    pitch: float = 1.0                  # 音高基调（TMATCH-001 prosody，<1 更低沉安抚）
+    pause_style: int = 1                # 停顿风格（0=轻快 1=自然 2=多停顿安抚）
 
 
 class TtsInfoResponse(BaseModel):
@@ -159,6 +161,9 @@ async def synthesize(req: TtsRequest):
 
     # 组合 instruct：音色基础 + 情绪叠加
     instruct = f"{persona_cfg['base_instruct']}、{emotion_instruct}"
+    # 多停顿安抚基调（TMATCH-001）：CosyVoice instruct 模式下用描述词表达停顿风格
+    if req.pause_style >= 2:
+        instruct += "、说得慢一点、多停顿"
     # 去重（如果基础和情绪相同）
     parts = list(dict.fromkeys(instruct.split("、")))
     instruct = "、".join(parts)
@@ -166,17 +171,18 @@ async def synthesize(req: TtsRequest):
     final_speed = persona_cfg["speed"] * req.speed
 
     logger.info(f"TTS 合成: text_len={len(req.text)}, persona={req.persona}, "
-                f"emotion={req.emotion}, instruct='{instruct}', speed={final_speed:.2f}")
+                f"emotion={req.emotion}, instruct='{instruct}', speed={final_speed:.2f}, "
+                f"pitch={req.pitch:.2f}, pause_style={req.pause_style}")
 
     if MODEL_AVAILABLE:
-        return await _synthesize_cosyvoice(req.text, instruct, final_speed, persona_cfg)
+        return await _synthesize_cosyvoice(req.text, instruct, final_speed, persona_cfg, req.pitch)
     elif EDGE_TTS_AVAILABLE:
-        return await _synthesize_edge_tts(req.text, persona_cfg["edge_voice"], final_speed)
+        return await _synthesize_edge_tts(req.text, persona_cfg["edge_voice"], final_speed, req.pitch)
     else:
         raise HTTPException(status_code=503, detail="TTS 服务不可用")
 
 
-async def _synthesize_cosyvoice(text: str, instruct: str, speed: float, persona_cfg: dict):
+async def _synthesize_cosyvoice(text: str, instruct: str, speed: float, persona_cfg: dict, pitch: float = 1.0):
     """CosyVoice2 本地合成（persona→speaker 映射，design/28 §四）"""
     import torch
     import torchaudio
@@ -203,15 +209,22 @@ async def _synthesize_cosyvoice(text: str, instruct: str, speed: float, persona_
 
         audio_tensor = torch.cat(audio_chunks, dim=1)
 
-        # 语速调整（通过重采样）
+        # 语速/音高基调调整（TMATCH-001 prosody，通过 sox 效果链）
+        effects = []
         if abs(speed - 1.0) > 0.05:
-            effects = [["tempo", str(speed)]]
+            effects.append(["tempo", str(speed)])
+        if abs(pitch - 1.0) > 0.02:
+            # pitchScale → 音分（cents）：0.9 ≈ -182 cents（更低沉）
+            import math
+            cents = int(1200 * math.log2(pitch))
+            effects.append(["pitch", str(cents)])
+        if effects:
             try:
                 audio_tensor, _ = torchaudio.sox_effects.apply_effects_tensor(
                     audio_tensor, 22050, effects
                 )
             except Exception:
-                pass  # sox 不可用时跳过语速调整
+                pass  # sox 不可用时跳过 prosody 调整
 
         # 转为 WAV bytes
         buffer = io.BytesIO()
@@ -232,16 +245,19 @@ async def _synthesize_cosyvoice(text: str, instruct: str, speed: float, persona_
         raise HTTPException(status_code=500, detail=f"语音合成失败: {str(e)}")
 
 
-async def _synthesize_edge_tts(text: str, voice: str, speed: float):
+async def _synthesize_edge_tts(text: str, voice: str, speed: float, pitch: float = 1.0):
     """edge-tts 降级合成（需联网）"""
     import edge_tts
 
     # 语速转换为 edge-tts 格式（如 "+10%", "-15%"）
     rate_pct = int((speed - 1.0) * 100)
     rate_str = f"+{rate_pct}%" if rate_pct >= 0 else f"{rate_pct}%"
+    # 音高基调转换（TMATCH-001）：pitchScale 0.9 ≈ -10Hz（更低沉安抚）
+    pitch_hz = int((pitch - 1.0) * 100)
+    pitch_str = f"+{pitch_hz}Hz" if pitch_hz >= 0 else f"{pitch_hz}Hz"
 
     try:
-        communicate = edge_tts.Communicate(text, voice, rate=rate_str)
+        communicate = edge_tts.Communicate(text, voice, rate=rate_str, pitch=pitch_str)
         buffer = io.BytesIO()
         async for chunk in communicate.stream():
             if chunk["type"] == "audio":

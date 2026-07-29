@@ -340,8 +340,8 @@
 | AI-005 | Prompt 版本管理与 A/B 测试框架 | ✅ 完成 | C |
 | AI-006 | RAG 心理知识库（Spring AI VectorStore + pgvector） | ✅ 完成 | E |
 | AI-007 | 语音情感分析 SER（emotion2vec+，风险辅助信号） | 🟡 基础已实现 | voice-service 已完整实现 ASR(SenseVoiceSmall)+SER(emotion2vec_plus_large 9类)+风险融合；**数据闭环深化见 design/47**（映射 44 currentEmotion/回注画像/趋势追踪/标注回流待实施） |
-| AI-008 | 长期记忆增强（跨会话摘要 + 关键事件 + 画像回注） | 🟡 部分实现（标记更正） | **核实：关键事件提取+top5 回注+淘汰已实现；画像回注/recurring_theme 主题演化/风险关联未实现**，原「✅完成」标记与代码不符。深化见 design/50 |
-| AI-009 | 心理量表数字化（PHQ-A/GAD-7/SDQ 嵌入式） | 📝 设计完成，待实施 | design/34；SDQ/MHT 版权许可为发布门禁 |
+| AI-008 | 长期记忆增强（跨会话摘要 + 关键事件 + 画像回注） | 🟡 部分实现 | 关键事件提取+top5 回注+淘汰+**画像回注(MEM-101,2026-07-28)**已实现；recurring_theme 主题演化/风险关联未实现。深化见 design/50 |
+| AI-009 | 心理量表数字化（PHQ-A/GAD-7/SDQ 嵌入式） | 🟡 部分实现（M1 计分引擎完成，不接线施测） | design/34；SCALE-001 开发完成(2026-07-28)；SDQ/MHT 版权许可为发布门禁 |
 
 ### 安全合规与信任体系（P0）
 
@@ -549,9 +549,9 @@
 
 | 任务ID | 阶段任务 | 期段 | 来源设计 | 关联主任务 | 状态 |
 |--------|----------|------|----------|-----------|------|
-| ORCH-001 | 提示词编排引擎骨架 + StrategyProfile + EntryMoodStrategyResolver（情绪→开场/回应策略）+ EMO-001 模板 + 接入 chat() 组装链 | 近期 | design/44 P0 | PROF-021 | ⏳ 待实施 |
-| ORCH-002 | 情绪门控 allowCbt（ACTIVATED/CRISIS 禁认知重构） | 近期 | design/44 P0 | PROF-021 | ⏳ 待实施 |
-| SCALE-001 | 量表计分引擎 + PHQ-A/GAD-7（免费量表先行，✅ 钱敏健 2026-07-28 确认）+ 关键条目即时熔断（S0 预警）；**施测已定稿暂缓（2026-07-28）：完成开发不接线，待首校共定施测方案（34 头部），退出商用门禁** | 近期 | design/34 M1 | AI-009 | ⏳ 待实施 |
+| ORCH-001 | 提示词编排引擎骨架 + StrategyProfile + EntryMoodStrategyResolver（情绪→开场/回应策略）+ EMO-001 模板 + 接入 chat() 组装链 | 近期 | design/44 P0 | PROF-021 | ✅ 已完成（2026-07-28） |
+| ORCH-002 | 情绪门控 allowCbt（ACTIVATED/CRISIS 禁认知重构） | 近期 | design/44 P0 | PROF-021 | ✅ 已完成（2026-07-28） |
+| SCALE-001 | 量表计分引擎 + PHQ-A/GAD-7（免费量表先行，✅ 钱敏健 2026-07-28 确认）+ 关键条目即时熔断（S0 预警）；**施测已定稿暂缓（2026-07-28）：完成开发不接线，待首校共定施测方案（34 头部），退出商用门禁** | 近期 | design/34 M1 | AI-009 | ✅ 开发完成（2026-07-28，不接线施测） |
 
 ### P1 · 近期（对话力延展 + 教师效率 + 学生体验）
 
@@ -618,23 +618,23 @@
 
 | 任务ID | 阶段任务 | 优先级 | 来源设计 | 关联主任务 | 状态 |
 |--------|----------|--------|----------|-----------|------|
-| PEVAL-001 | 接线未调用的 evaluateConversationQuality 到会话结束异步流程 + 落库 prompt_eval_result（四维分+版本+人群维度） | P0 近期 | design/45 P0 | AI-002/PROF-021 | ⏳ 待实施 |
-| PEVAL-002 | 补全 EMO-001 模板正文并纳入 PromptVersionService（配合 ORCH-001） | P0 近期 | design/45 P0 | PROF-021 | ⏳ 待实施 |
+| PEVAL-001 | 接线未调用的 evaluateConversationQuality 到会话结束异步流程 + 落库 prompt_eval_result（四维分+版本+人群维度） | P0 近期 | design/45 P0 | AI-002/PROF-021 | ✅ 已完成（2026-07-28） |
+| PEVAL-002 | 补全 EMO-001 模板正文并纳入 PromptVersionService（配合 ORCH-001） | P0 近期 | design/45 P0 | PROF-021 | ✅ 已完成（2026-07-28） |
 | PEVAL-003 | 模板矩阵登记+版本命名规范 + 红队护栏用例集资产化 + 改版三门禁（红队/审校/eval 不回退） | P1 近期 | design/45 P1 | AI-005 | ⏳ 待实施 |
 | PEVAL-004 | 评估人群下钻看板 + 提示词 metrics + 灰度分阶段放量/自动回滚 + LLM-as-Judge κ 校准 | P2 近期偏后 | design/45 P2 | AI-003 | ⏳ 待实施 |
-| PROF-022 | 画像字段加 provenance/confidence/updated_at/decay 元数据 + 画像→StrategyProfile 结构化决策接线（低置信不参与） | P0 近期 | design/46 P0 | PROF-021/AI-008 | ⏳ 待实施 |
+| PROF-022 | 画像字段加 provenance/confidence/updated_at/decay 元数据 + 画像→StrategyProfile 结构化决策接线（低置信不参与） | P0 近期 | design/46 P0 | PROF-021/AI-008 | ✅ 已完成（2026-07-28） |
 | PROF-023 | 画像合并门控（置信加权+冲突检测+时效衰减）+ 量表结果回写画像 + 质量评估四维 | P1 近期 | design/46 P1 | AI-009 | ⏳ 待实施 |
 | PROF-024 | 画像效果回收（有/无画像会话质量对比接 39/45）+ 无效维度降权自校准 + 教师侧脱敏摘要与订正回流 | P2 近期偏后 | design/46 P2 | PROF-020 | ⏳ 待实施 |
-| VCL-001 | 语音情绪映射进 44 currentEmotion 驱动共情策略 + 会话结束聚合回注画像 emotionBaseline | P0 近期 | design/47 P0 | AI-007/PROF-021 | ⏳ 待实施 |
+| VCL-001 | 语音情绪映射进 44 currentEmotion 驱动共情策略 + 会话结束聚合回注画像 emotionBaseline | P0 近期 | design/47 P0 | AI-007/PROF-021 | ✅ 已完成（2026-07-28） |
 | VCL-002 | voice_emotion_trend 跨会话趋势 + 文本×语音融合与不一致(掩饰)检测 | P1 近期 | design/47 P1 | AI-007 | ⏳ 待实施 |
 | VCL-003 | 趋势异常→教师关注信号+量表复测 + SER 标注回流评估儿童 domain 准确度 + 分类阈值自适应 | P2/远期 | design/47 P2/P3 | AI-007 | ⏳ 待实施 |
-| TMATCH-001 | VoicePersonaResolver 冷启动默认匹配（性别认同/年龄）+ emotionState→prosody 基调联动（非仅 instruct） | P0 近期 | design/48 P0 | UX-005 | ⏳ 待实施 |
+| TMATCH-001 | VoicePersonaResolver 冷启动默认匹配（性别认同/年龄）+ emotionState→prosody 基调联动（非仅 instruct） | P0 近期 | design/48 P0 | UX-005 | ✅ 已完成（2026-07-28） |
 | TMATCH-002 | 画像匹配微调+手动偏好记忆回写46 + 安全/危机稳定基调锁定+预合成矩阵（统一 TTSFX-002）+ 三方同源接线 | P1 近期 | design/48 P1 | UX-005/PROD-003 | ⏳ 待实施 |
 | TMATCH-003 | 音色效果回收（完成率/切换/参与度）+ 会话内稳定性 + 匹配规则 A/B 进化 | P2/远期 | design/48 P2/P3 | PROF-020 | ⏳ 待实施 |
 | KB-101 | 知识内容首批生产（CBT/SEL/PFA/危机/工具箱，结构化 02/03/36）+ RAG Advisor 接入对话主线（场景触发+年龄过滤+不覆盖安全） | P0 近期 | design/49 P0 | AI-006 | ✅ 已完成（2026-07-28）：62 条语料解析+幂等入库机制（`POST /api/v1/knowledge/corpus`，危机类 10 条缓入待 KB-102）+ `RagAdvisorService` 接主线（场景触发/grade_band 近似过滤/危机双保险/失败安全），解 AI-006 门禁，见 design/49 §6.5 |
 | KB-102 | 审核工作流状态机+门禁 + 知识条目元数据增强 + 危机内容与 04/14 单一事实源打通 | P1 近期 | design/49 P1 | AI-006 | ⏳ 待实施 |
 | KB-103 | 混合检索 RRF（向量0.6+关键词0.4，落地 15 未实现项）+ groundedness 回收+未命中查询补全 + 语义分块优化 | P2/远期 | design/49 P2/P3 | AI-006 | ⏳ 待实施 |
-| MEM-101 | **更正 AI-008 状态**（已在十七完成）+ 记忆→画像回注（growthTrack/socialGraph，provenance=memory） | P0 近期 | design/50 P0 | AI-008 | ⏳ 待实施 |
+| MEM-101 | **更正 AI-008 状态**（已在十七完成）+ 记忆→画像回注（growthTrack/socialGraph，provenance=memory） | P0 近期 | design/50 P0 | AI-008 | ✅ 已完成（2026-07-28） |
 | MEM-102 | recurring_theme 主题演化（聚类+反思）+ 相关性召回升级（向量+重要性+时效+recurring）+ MEM-CTX+continuity 接 45 | P1 近期 | design/50 P1 | AI-008 | ⏳ 待实施 |
 | MEM-103 | 记忆与风险纵向关联（负面主题→关注信号，非实时报警）+ 遗忘策略升级（时效/敏感/被遗忘权）+ 双向互哺权重调优 | P2/远期 | design/50 P2/P3 | AI-008 | ⏳ 待实施 |
 
