@@ -28,6 +28,17 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
 
+  # ===== 语音识别与情绪分析微服务（FunASR） =====
+  voice-service:
+    build:
+      context: ../backend/voice-service
+      dockerfile: Dockerfile
+    deploy:
+      resources:
+        limits:
+          memory: 6G
+    restart: unless-stopped
+
   # ===== Spring Boot 后端 =====
   backend:
     build:
@@ -40,7 +51,10 @@ services:
       SPRING_AI_DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-sk-placeholder}
       SPRING_AI_DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
       JWT_SECRET: ${JWT_SECRET:-mindsafe-jwt-secret-change-in-production}
-      MINDSAFE_TTS_SERVICE_URL: http://tts-service:10096
+      # 变量名必须与 application.yml 占位符 ${TTS_SERVICE_URL} 一致；
+      # 写成 MINDSAFE_TTS_SERVICE_URL 时 Spring 松散绑定匹配不上，会回落 localhost
+      TTS_SERVICE_URL: http://tts-service:10096
+      VOICE_SERVICE_URL: http://voice-service:10095
       JAVA_OPTS: "-XX:MaxRAMPercentage=75.0"
     depends_on:
       postgres:

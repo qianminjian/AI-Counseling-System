@@ -8,10 +8,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
-# Python 依赖
+# Python 依赖（统一走阿里云镜像，download.pytorch.org 境内约 20KB/s 会导致构建数小时）
 # 先装 CPU 版 torch（本机无 GPU），避免默认拉取 CUDA 版多占 ~2GB 内存导致 OOM
 COPY requirements.txt .
-RUN pip install --no-cache-dir torch torchaudio --index-url https://download.pytorch.org/whl/cpu \
+RUN pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/ \
+    && pip install --no-cache-dir torch==2.6.0+cpu torchaudio==2.6.0+cpu \
+        -f https://mirrors.aliyun.com/pytorch-wheels/cpu/ \
     && pip install --no-cache-dir -r requirements.txt
 
 # 预下载模型（构建时缓存，避免每次启动重新下载）
