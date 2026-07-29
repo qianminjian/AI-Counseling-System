@@ -122,7 +122,11 @@ function StudentProfile({ studentId, onBack }) {
           <Descriptions.Item label="年级">{profile.gradeCode || '-'}</Descriptions.Item>
           <Descriptions.Item label="班级">{profile.classCode || '-'}</Descriptions.Item>
           <Descriptions.Item label="最高风险等级">
-            <Tag color={RISK_COLORS[profile.maxRiskLevel]}>{RISK_LABELS[profile.maxRiskLevel]}</Tag>
+            {profile.maxRiskLevel != null ? (
+              <Tag color={RISK_COLORS[profile.maxRiskLevel]}>{RISK_LABELS[profile.maxRiskLevel]}</Tag>
+            ) : (
+              <span style={{ color: '#999' }}>无权查看</span>
+            )}
           </Descriptions.Item>
           <Descriptions.Item label="累计会话">{profile.totalSessions} 次</Descriptions.Item>
         </Descriptions>

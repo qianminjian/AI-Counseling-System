@@ -114,6 +114,7 @@ export const getAlerts = (params = {}) => {
 }
 export const claimAlert = (id) => api(`/alerts/${id}/claim`, { method: 'POST' })
 export const markFalsePositive = (id) => api(`/alerts/${id}/false-positive`, { method: 'PATCH' })
+export const getPendingFollowups = () => api('/alerts/pending-followups')
 export const resolveAlert = (id, resolutionNote) =>
   api(`/alerts/${id}/resolve`, {
     method: 'POST',

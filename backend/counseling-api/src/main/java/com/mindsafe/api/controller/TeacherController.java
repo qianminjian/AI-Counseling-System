@@ -270,7 +270,7 @@ public class TeacherController {
     public ApiResponse<TeacherService.StudentProfileVO> getStudentProfile(
             @PathVariable UUID id, Authentication auth) {
         TenantContext ctx = (TenantContext) auth.getDetails();
-        return ApiResponse.ok(teacherService.getStudentProfile(ctx.tenantId(), id));
+        return ApiResponse.ok(teacherService.getStudentProfile(ctx.tenantId(), id, ctx.userType()));
     }
 
     /** 学生画像雷达图（PROF-004，6 维度 + 里程碑） */

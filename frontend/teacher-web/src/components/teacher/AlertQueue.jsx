@@ -3,6 +3,7 @@ import { Table, Tag, Button, Space, Select, Card, message, Popconfirm, Modal, In
 import { CheckOutlined, StopOutlined, UserOutlined, CheckCircleOutlined, DownloadOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import { getAlerts, claimAlert, markFalsePositive, resolveAlert, exportAlertsCsv } from '../../api'
+import { evaluateSla } from '../../utils/sla'
 
 const RISK_COLORS = { 3: 'red', 2: 'orange', 1: 'gold', 0: 'default' }
 const RISK_LABELS = { 3: '红色', 2: '橙色', 1: '黄色', 0: '绿色' }
@@ -82,6 +83,27 @@ export default function AlertQueue() {
       title: '等级', dataIndex: 'riskLevel', width: 80,
       render: (v) => <Tag color={RISK_COLORS[v]}>{RISK_LABELS[v]}</Tag>,
       sorter: (a, b) => a.riskLevel - b.riskLevel,
+    },
+    {
+      title: 'SLA', width: 110,
+      render: (_, r) => {
+        const sla = evaluateSla(r.riskLevel, r.status, r.detectedAt)
+        if (!sla.hasSla) return <span style={{ fontSize: 12, color: '#999' }}>无时限</span>
+        if (sla.breached) {
+          return <Tag color="red" style={{ margin: 0, fontWeight: 600 }}>逾期 {sla.overdueMin}min</Tag>
+        }
+        if (sla.remainingMin > 0) {
+          return <Tag color={sla.remainingMin <= 5 ? 'orange' : 'blue'} style={{ margin: 0 }}>剩 {sla.remainingMin}min</Tag>
+        }
+        return <span style={{ fontSize: 12, color: '#999' }}>已关闭</span>
+      },
+      sorter: (a, b) => {
+        const wa = evaluateSla(a.riskLevel, a.status, a.detectedAt)
+        const wb = evaluateSla(b.riskLevel, b.status, b.detectedAt)
+        const ka = wa.breached ? -wa.overdueMin : (wa.hasSla ? wa.remainingMin : 9999)
+        const kb = wb.breached ? -wb.overdueMin : (wb.hasSla ? wb.remainingMin : 9999)
+        return ka - kb
+      },
     },
     { title: '学生', dataIndex: 'studentName', width: 100 },
     { title: '类型', dataIndex: 'riskType', width: 120 },

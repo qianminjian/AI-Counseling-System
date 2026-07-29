@@ -1,6 +1,7 @@
 package com.mindsafe.service.teacher;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.mindsafe.domain.entity.*;
 import com.mindsafe.domain.mapper.*;
 import org.slf4j.Logger;
@@ -250,10 +251,35 @@ public class TeacherService {
 
     // ===== 学生档案 =====
 
-    public StudentProfileVO getStudentProfile(UUID tenantId, UUID studentUserId) {
+    public StudentProfileVO getStudentProfile(UUID tenantId, UUID studentUserId, String userType) {
         User student = userMapper.selectById(studentUserId);
         if (student == null || !student.getTenantId().equals(tenantId)) {
             throw new IllegalArgumentException("学生不存在: " + studentUserId);
+        }
+
+        // 班主任（class_teacher）只见沟通建议，不见风险轨迹与对话摘要（design/35 §3.3/§六：服务端裁剪）
+        boolean fullAccess = !"class_teacher".equals(userType);
+
+        // 教师备注（所有角色可见，沟通建议来源）
+        List<TeacherNote> notes = teacherNoteMapper.selectList(
+                new LambdaQueryWrapper<TeacherNote>()
+                        .eq(TeacherNote::getTenantId, tenantId)
+                        .eq(TeacherNote::getStudentUserId, studentUserId)
+                        .orderByDesc(TeacherNote::getCreatedAt)
+        );
+
+        // 班主任裁剪：不查询也不返回会话/预警/风险等级
+        if (!fullAccess) {
+            return new StudentProfileVO(
+                    student.getUserId(), student.getPseudonym(),
+                    student.getGradeCode(), student.getClassCode(),
+                    null, 0,
+                    null, null,
+                    notes.stream().map(n -> new NoteVO(
+                            n.getNoteId(), n.getTeacherUserId(), n.getContent(),
+                            n.getNoteType(), n.getCreatedAt()
+                    )).toList()
+            );
         }
 
         // 最近会话
@@ -272,14 +298,6 @@ public class TeacherService {
                         .eq(RiskEvent::getStudentUserId, studentUserId)
                         .orderByDesc(RiskEvent::getDetectedAt)
                         .last("LIMIT 20")
-        );
-
-        // 教师备注
-        List<TeacherNote> notes = teacherNoteMapper.selectList(
-                new LambdaQueryWrapper<TeacherNote>()
-                        .eq(TeacherNote::getTenantId, tenantId)
-                        .eq(TeacherNote::getStudentUserId, studentUserId)
-                        .orderByDesc(TeacherNote::getCreatedAt)
         );
 
         // 最高风险等级
@@ -499,10 +517,11 @@ public class TeacherService {
             Instant detectedAt, UUID assignedUserId
     ) {}
 
+    @JsonInclude(JsonInclude.Include.NON_NULL)
     public record StudentProfileVO(
             UUID studentUserId, String displayName,
             String gradeCode, String classCode,
-            int maxRiskLevel, int totalSessions,
+            Integer maxRiskLevel, int totalSessions,
             List<SessionSummaryVO> recentSessions,
             List<AlertVO> alertHistory,
             List<NoteVO> notes
