@@ -1,6 +1,7 @@
 package com.mindsafe.service.conversation;
 
 import com.mindsafe.ai.chat.AiChatService;
+import com.mindsafe.ai.orchestrator.EmotionStateMachine;
 import com.mindsafe.ai.orchestrator.EntryMoodStrategyResolver;
 import com.mindsafe.ai.orchestrator.PromptOrchestrationService;
 import com.mindsafe.ai.prompt.PromptTemplateService;
@@ -125,8 +126,8 @@ class ConversationServiceImplTest {
                 riskEventMapper, notificationService, userMapper, profileService,
                 profileExtractorService, usageTimeLimitService, longTermMemoryService, promptVersionService,
                 ragAdvisorService, semanticRiskClassifier,
-                // ORCH-001：编排引擎纯规则无依赖，直接用真实实例
-                new PromptOrchestrationService(new EntryMoodStrategyResolver()),
+                // ORCH-001/003：编排引擎+情绪状态机纯规则无依赖，直接用真实实例
+                new PromptOrchestrationService(new EntryMoodStrategyResolver(), new EmotionStateMachine()),
                 conversationQualityService);
     }
 

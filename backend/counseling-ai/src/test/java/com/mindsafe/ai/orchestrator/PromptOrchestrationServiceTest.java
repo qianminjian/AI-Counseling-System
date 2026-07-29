@@ -23,7 +23,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class PromptOrchestrationServiceTest {
 
     private final PromptOrchestrationService service =
-            new PromptOrchestrationService(new EntryMoodStrategyResolver());
+            new PromptOrchestrationService(new EntryMoodStrategyResolver(), new EmotionStateMachine());
 
     private OrchestrationContext ctx(int grade, int effectiveGrade, String entryMood,
                                      String currentEmotion, RiskLevel riskLevel) {

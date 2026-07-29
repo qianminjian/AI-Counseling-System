@@ -125,13 +125,13 @@ public class EntryMoodStrategyResolver {
     }
 
     /**
-     * 情绪镜映话术取材（design/44 §5.3：情绪 × 年级段，命名即驯服）。
-     * 表中未覆盖的情绪（calm/happy/withdrawn/crisis）不做镜映，返回空串。
+     * 情绪镜映话术取材（ORCH-004，design/44 §5.3：情绪 × 年级段，命名即駯服）。
+     * 表中未覆盖的情绪（calm/happy/crisis）不做镜映，返回空串。
      */
     public String mirrorHint(String canonicalMood, int effectiveGrade) {
         String band = effectiveGrade <= 2 ? "low" : effectiveGrade <= 4 ? "mid" : "high";
         return switch (canonicalMood) {
-            case "anxious" -> switch (band) {
+            case "anxious", "nervous" -> switch (band) {
                 case "low" -> "心里是不是像有小鹿在乱撞呀？";
                 case "mid" -> "听起来心里有点七上八下的";
                 default -> "有点紧张、放不下心，对吗？";
@@ -150,6 +150,11 @@ public class EntryMoodStrategyResolver {
                 case "low" -> "有点怕怕的？波波牵着你的手";
                 case "mid" -> "有点担心会发生不好的事？";
                 default -> "这种不确定让你没有安全感";
+            };
+            case "withdrawn" -> switch (band) {
+                case "low" -> "波波在这里，不想说也没关系";
+                case "mid" -> "有时候不想说话也很正常，我陪你待着";
+                default -> "不需要强迫自己说什么，我在这里";
             };
             default -> "";
         };

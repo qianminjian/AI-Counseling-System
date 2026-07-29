@@ -10,6 +10,7 @@ import com.mindsafe.ai.risk.RiskDetectorService;
 import com.mindsafe.ai.risk.SemanticRiskClassifier;
 import com.mindsafe.ai.safety.ConfidentialityNotice;
 import com.mindsafe.ai.safety.CrisisResources;
+import com.mindsafe.ai.safety.HighSensitivityCategories;
 import com.mindsafe.ai.safety.PiiDesensitizer;
 import com.mindsafe.common.dto.chat.SessionInfo;
 import com.mindsafe.common.dto.chat.StreamMessageEvent;
@@ -213,6 +214,11 @@ public class ConversationServiceImpl implements ConversationService {
         RiskLevel fusedLevel = fuseRiskSignals(riskResult, voiceEmotion, voiceEmotionConfidence, session);
         boolean isRisky = fusedLevel != null;
 
+        // SAFE-202：高敏场景前置化——命中虐待/丧失/自伤等类别即永久标记（不论级别）
+        if (riskResult.isRisky() && HighSensitivityCategories.isHighSensitivity(riskResult.category())) {
+            session.highSensitivity = true;
+        }
+
         Flux<StreamMessageEvent> riskEvents = Flux.empty();
 
         if (isRisky) {
@@ -320,16 +326,22 @@ public class ConversationServiceImpl implements ConversationService {
                 session.tenantId, langKey, session.studentUserId);
         String systemPromptContent = sysResolved.content() + "\n\n" + langResolved.content();
 
-        // ORCH-001/002：编排引擎——先算策略、再拼提示词（design/44 §四/§五）。
-        // VCL-001：轮级 currentEmotion 由语音 SER 映射驱动（置信门控 >0.6 与情绪历史同源），
-        // 映射不可用/纯文本输入时为 null，编排层回退会话级 entryMood；
-        // ORANGE 融合风险在编排层触发 safetyLocked（RED 已在 4.2 硬短路）。
-        // PROF-022：画像信号带置信度进编排，低置信由编排层门控拒用（宁可不用，不可乱用）。
+        // ORCH-001/002/003/005：编排引擎——先算策略、再拼提示词（design/44 §四/§七）。
+        // VCL-001：轮级 currentEmotion 由语音 SER 映射驱动（置信门控 >0.6），
+        // ORCH-003：状态机输入上一轮 state/reliefCount，输出转移结果存回 session。
+        // ORCH-005：冷场 nudge 信号并入编排（nudgeCount>0 且本轮无学生输入时触发）。
         String currentEmotion = (voiceEmotion != null && voiceEmotionConfidence != null && voiceEmotionConfidence > 0.6)
                 ? promptOrchestrationService.mapVoiceEmotion(voiceEmotion) : null;
         ProfileSignals profileSignals = profileService.getProfileSignals(session.tenantId, session.studentUserId);
-        StrategyProfile strategy = promptOrchestrationService.resolve(new OrchestrationContext(
-                session.grade, effectiveGrade, session.emotionTag, currentEmotion, fusedLevel, profileSignals));
+        boolean nudgeActive = session.nudgeCount.get() > 0;
+        PromptOrchestrationService.Result orchResult = promptOrchestrationService.resolveWithTransition(
+                new OrchestrationContext(session.grade, effectiveGrade, session.emotionTag,
+                        currentEmotion, fusedLevel, profileSignals,
+                        session.emotionState, session.reliefCount, nudgeActive, session.highSensitivity));
+        StrategyProfile strategy = orchResult.profile();
+        // 状态机转移结果存回会话（下一轮输入）
+        session.emotionState = orchResult.transition().state();
+        session.reliefCount = orchResult.transition().reliefCount();
         PromptVersionService.ResolvedPrompt emoResolved = promptVersionService.resolve(
                 session.tenantId, "EMO_001", session.studentUserId,
                 promptOrchestrationService.toTemplateVariables(strategy));
@@ -851,6 +863,13 @@ public class ConversationServiceImpl implements ConversationService {
 
         /** RISK-201：安全响应模式（RED 短路后限制自由生成，解除需教师处置/新会话） */
         private final AtomicBoolean safetyMode = new AtomicBoolean(false);
+
+        /** ORCH-003：情绪状态机会话级状态（轮级更新） */
+        private volatile StrategyProfile.EmotionState emotionState = StrategyProfile.EmotionState.STABLE;
+        private volatile int reliefCount = 0;
+
+        /** SAFE-202：高敏模式标记（命中虐待/丧失/自伤等类别后永久标记，不回落） */
+        private volatile boolean highSensitivity = false;
 
         SessionState(UUID sessionId, UUID tenantId, UUID studentUserId, String emotionTag,
                      String channel, String gender, Double expressionDepth, int grade) {

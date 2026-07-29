@@ -157,7 +157,7 @@ class EntryMoodStrategyResolverTest {
         }
 
         @ParameterizedTest
-        @ValueSource(strings = {"calm", "happy", "withdrawn", "crisis"})
+        @ValueSource(strings = {"calm", "happy", "crisis"})
         void 表外情绪不镜映(String mood) {
             assertThat(resolver.mirrorHint(mood, 3)).isEmpty();
         }
