@@ -560,6 +560,16 @@ body {
 .login-error--garden { color: #dc2626; background: rgba(252,165,165,0.15); }
 .login-error--rainbow { color: #fca5a5; background: rgba(252,165,165,0.08); }
 
+/* PIN 登录失败抖动反馈 */
+@keyframes pin-shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-8px); }
+  40% { transform: translateX(8px); }
+  60% { transform: translateX(-5px); }
+  80% { transform: translateX(5px); }
+}
+.pin-row--shake { animation: pin-shake 0.4s ease-in-out; }
+
 .skip-pin { text-align: center; margin-top: 10px; font-size: 12px; cursor: pointer; background: none; border: none; width: 100%; }
 .skip-pin--ocean { color: rgba(255,255,255,0.35); }
 .skip-pin--garden { color: #d1759e; }

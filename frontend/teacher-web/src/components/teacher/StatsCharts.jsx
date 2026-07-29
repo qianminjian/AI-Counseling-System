@@ -1,5 +1,6 @@
 import { useRef, useEffect } from 'react'
 import * as echarts from 'echarts/core'
+import { emotionLabel } from '../../utils/emotionLabels'
 import { LineChart, PieChart, BarChart } from 'echarts/charts'
 import {
   TitleComponent, TooltipComponent, LegendComponent,
@@ -123,7 +124,7 @@ export function EmotionBarChart({ data }) {
     xAxis: { type: 'value', minInterval: 1 },
     yAxis: {
       type: 'category',
-      data: sorted.map(d => d.emotion),
+      data: sorted.map(d => emotionLabel(d.emotion)),
       axisLabel: { fontSize: 11 },
     },
     series: [{

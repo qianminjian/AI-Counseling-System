@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Card, Row, Col, Statistic, Table, Tag, Button, Drawer, Spin, Empty } from 'antd'
 import { WarningOutlined, StarOutlined, EyeOutlined } from '@ant-design/icons'
 import { getQualityStats, getFlaggedSessions, getSessionMessages, exportSessionPdf } from '../../api'
+import { emotionLabel } from '../../utils/emotionLabels'
 
 /** AI 对话质量监控面板 */
 export default function QualityPanel() {
@@ -92,7 +93,7 @@ export default function QualityPanel() {
                 background: msg.senderType === 'student' ? '#e6f7ff' : '#f6ffed',
               }}>
                 <div style={{ fontSize: 11, color: '#999', marginBottom: 4 }}>
-                  {msg.senderType === 'student' ? '🧒 学生' : '🤖 AI'} · {msg.emotionLabel || ''}
+                  {msg.senderType === 'student' ? '🧒 学生' : '🤖 AI'} · {emotionLabel(msg.emotionLabel)}
                 </div>
                 <div style={{ fontSize: 13 }}>{msg.contentSummary || msg.messageContent || ''}</div>
               </div>

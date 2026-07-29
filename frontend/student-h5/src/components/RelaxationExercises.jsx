@@ -8,6 +8,29 @@ const CATEGORY_EMOJI = {
   somatic: '🦋',
 }
 
+const VOICE_PREF_KEY = 'mindsafe_relax_voice_on'
+
+/** 放松练习语音引导朗读（轻柔语速，冥想/呼吸场景） */
+function speakGuide(text) {
+  if (!('speechSynthesis' in window)) return
+  try {
+    window.speechSynthesis.cancel()
+    const utter = new SpeechSynthesisUtterance(text)
+    utter.lang = 'zh-CN'
+    utter.rate = 0.85
+    utter.pitch = 1.0
+    const zhVoice = window.speechSynthesis.getVoices().find(v => v.lang.startsWith('zh'))
+    if (zhVoice) utter.voice = zhVoice
+    window.speechSynthesis.speak(utter)
+  } catch { /* ignore */ }
+}
+
+function stopGuide() {
+  if ('speechSynthesis' in window) {
+    try { window.speechSynthesis.cancel() } catch { /* ignore */ }
+  }
+}
+
 /** 呼吸引导动画圆圈（CSS keyframe 平滑动画） */
 function BreathingCircle({ phase, seconds }) {
   const phaseConfig = {
@@ -45,7 +68,12 @@ function ExerciseRunner({ exercise, onComplete, onBack }) {
   const [seconds, setSeconds] = useState(0)
   const [elapsed, setElapsed] = useState(0)
   const [done, setDone] = useState(false)
+  const [voiceOn, setVoiceOn] = useState(() => localStorage.getItem(VOICE_PREF_KEY) !== '0')
   const timerRef = useRef(null)
+  const voiceOnRef = useRef(voiceOn)
+  voiceOnRef.current = voiceOn
+
+  const isBreathing = exercise.category === 'breathing'
 
   // 呼吸节奏：3-2-3 或 4-7-8
   const pattern = exercise.id === 'breathing_478'
@@ -73,10 +101,27 @@ function ExerciseRunner({ exercise, onComplete, onBack }) {
     return () => clearInterval(timerRef.current)
   }, [])
 
+  // 语音引导：呼吸类按相位提示，其他类开始时朗读引导词
+  useEffect(() => {
+    if (!voiceOnRef.current || done) return
+    if (isBreathing) {
+      const phaseWords = { inhale: '慢慢吸气', hold: '屏住呼吸', exhale: '轻轻呼气' }
+      speakGuide(phaseWords[phase] || '')
+    }
+  }, [phase, isBreathing, done])
+
+  useEffect(() => {
+    if (!isBreathing && voiceOnRef.current) {
+      speakGuide(exercise.description)
+    }
+    return () => stopGuide()
+  }, [])
+
   useEffect(() => {
     if (elapsed >= exercise.durationSeconds && !done) {
       setDone(true)
       clearInterval(timerRef.current)
+      if (voiceOnRef.current) speakGuide('做得好！感觉放松一些了吗？')
       // 记录完成
       api('/relaxation/sessions', {
         method: 'POST',
@@ -105,11 +150,22 @@ function ExerciseRunner({ exercise, onComplete, onBack }) {
     )
   }
 
-  const isBreathing = exercise.category === 'breathing'
-
   return (
     <div className="flex flex-col items-center gap-6 py-6">
       <h3 className="text-lg font-medium text-gray-700">{exercise.name}</h3>
+
+      {/* 语音引导开关 */}
+      <button
+        onClick={() => {
+          const next = !voiceOn
+          setVoiceOn(next)
+          localStorage.setItem(VOICE_PREF_KEY, next ? '1' : '0')
+          if (!next) stopGuide()
+        }}
+        className="text-xs text-gray-400 px-3 py-1 rounded-full bg-white/70 shadow-sm"
+      >
+        {voiceOn ? '🔊 语音引导：开' : '🔇 语音引导：关'}
+      </button>
 
       {isBreathing ? (
         <BreathingCircle phase={phase} seconds={seconds} />
@@ -137,7 +193,7 @@ function ExerciseRunner({ exercise, onComplete, onBack }) {
         </div>
       </div>
 
-      <button onClick={onBack} className="text-sm text-gray-400 underline">
+      <button onClick={() => { stopGuide(); onBack() }} className="text-sm text-gray-400 underline">
         提前结束
       </button>
     </div>

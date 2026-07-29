@@ -547,7 +547,7 @@ public class TeacherController {
         // 情绪分布
         html.append("<h3>情绪分布</h3><table><tr><th>情绪</th><th>次数</th></tr>");
         for (var item : stats.emotionDistribution()) {
-            html.append("<tr><td>").append(item.emotion()).append("</td><td>").append(item.count()).append("</td></tr>");
+            html.append("<tr><td>").append(emotionZh(item.emotion())).append("</td><td>").append(item.count()).append("</td></tr>");
         }
         html.append("</table>");
 
@@ -584,7 +584,7 @@ public class TeacherController {
             boolean isStudent = "student".equals(msg.senderType());
             html.append("<div class='msg ").append(isStudent ? "student" : "ai").append("'>");
             html.append("<div class='meta'>").append(isStudent ? "🧒 学生" : "🤖 AI");
-            if (msg.emotionLabel() != null) html.append(" · ").append(msg.emotionLabel());
+            if (msg.emotionLabel() != null) html.append(" · ").append(emotionZh(msg.emotionLabel()));
             html.append("</div>");
             html.append("<div>").append(msg.contentSummary() != null ? msg.contentSummary() : "").append("</div>");
             html.append("</div>");
@@ -596,6 +596,19 @@ public class TeacherController {
         response.setContentType("text/html; charset=UTF-8");
         response.getWriter().write(html.toString());
         response.getWriter().flush();
+    }
+
+    /** 情绪码值 → 中文标签（导出报告用，未知码值原样返回） */
+    private static final Map<String, String> EMOTION_ZH = Map.ofEntries(
+            Map.entry("happy", "开心"), Map.entry("sad", "难过"), Map.entry("angry", "生气"),
+            Map.entry("scared", "害怕"), Map.entry("fearful", "恐惧"), Map.entry("nervous", "紧张"),
+            Map.entry("anxious", "焦虑"), Map.entry("neutral", "平静"), Map.entry("calm", "平静"),
+            Map.entry("excited", "兴奋"), Map.entry("surprised", "惊讶"), Map.entry("disgusted", "厌恶"),
+            Map.entry("tired", "疲惫"));
+
+    private static String emotionZh(String code) {
+        if (code == null || code.isBlank()) return "";
+        return EMOTION_ZH.getOrDefault(code, code);
     }
 
     // ===== AI-003：质量监控 =====

@@ -3,6 +3,7 @@ package com.mindsafe.service.conversation;
 import com.mindsafe.ai.chat.AiChatService;
 import com.mindsafe.ai.prompt.PromptTemplateService;
 import com.mindsafe.ai.risk.RiskDetectorService;
+import com.mindsafe.ai.safety.CrisisResources;
 import com.mindsafe.ai.safety.PiiDesensitizer;
 import com.mindsafe.common.dto.chat.SessionInfo;
 import com.mindsafe.common.dto.chat.StreamMessageEvent;
@@ -185,10 +186,15 @@ public class ConversationServiceImpl implements ConversationService {
                     StreamMessageEvent.risk(fusedLevel.severity(), fusedResult.suggestion())
             );
 
-            // 红色风隩：追加“已通知老师”友好提示 + 会话升级为 escalated
+            // 红色风隩：追加“已通知老师”友好提示 + 固化危机热线（防 LLM 幻觉篡改号码）+ 会话升级为 escalated
             if (fusedLevel == RiskLevel.RED) {
                 riskEvents = riskEvents.concatWith(Flux.just(
-                        StreamMessageEvent.token("我很关心你现在的情况。我已经通知了老师，老师会来帮助你。你不是一个人。💙")
+                        StreamMessageEvent.token("我很关心你现在的情况。我已经通知了老师，老师会来帮助你。你不是一个人。💙\n"
+                                + "如果你现在需要马上找人说说话，可以拨打：\n"
+                                + "📞 全国心理援助热线 " + CrisisResources.NATIONAL_PSYCHOLOGICAL_AID + "（24 小时）\n"
+                                + "📞 生命热线 " + CrisisResources.LIFE_HOTLINE + "\n"
+                                + "遇到紧急危险请拨打 " + CrisisResources.EMERGENCY_POLICE + "（报警）或 "
+                                + CrisisResources.EMERGENCY_MEDICAL + "（急救）。")
                 ));
                 // 会话状态升级为 escalated
                 CounselingSession escalate = new CounselingSession();
@@ -220,11 +226,15 @@ public class ConversationServiceImpl implements ConversationService {
         }
 
         // 4.5 AUTH-030：每日使用时长超限 → 引导休息（红色风险优先，不拦截）
+        // Redis 为主，内存累计为兜底（Redis 不可用时限制仍生效）
+        long maxDailySeconds = usageTimeLimitService.getMaxDailyMinutes() * 60L;
+        boolean localExceeded = maxDailySeconds > 0 && session.localUsedSeconds() >= maxDailySeconds;
         if (fusedLevel != RiskLevel.RED
-                && usageTimeLimitService.isExceeded(session.tenantId, session.studentUserId)) {
-            log.info("每日使用时长已达上限，引导休息: sessionId={}, student={}, usedSec={}",
+                && (usageTimeLimitService.isExceeded(session.tenantId, session.studentUserId) || localExceeded)) {
+            log.info("每日使用时长已达上限，引导休息: sessionId={}, student={}, usedSec={}, localSec={}",
                     sessionId, session.studentUserId,
-                    usageTimeLimitService.getUsedSeconds(session.tenantId, session.studentUserId));
+                    usageTimeLimitService.getUsedSeconds(session.tenantId, session.studentUserId),
+                    session.localUsedSeconds());
             String guidance = "今天我们聊了不少啦，你已经很棒了。为了让眼睛和心情都休息一下，今天就先到这里好吗？"
                     + "明天我还在这里等你。\uD83C\uDF19 如果现在有紧急的事情，可以告诉老师，或拨打心理援助热线 12355。";
             return riskEvents.concatWith(Flux.just(
@@ -700,6 +710,9 @@ public class ConversationServiceImpl implements ConversationService {
         /** 上次活动时间（AUTH-030：用于累计每日使用时长） */
         private Instant lastActiveAt = Instant.now();
 
+        /** 本会话内存累计使用秒数（AUTH-030：Redis 不可用时的时长限制兜底） */
+        private final java.util.concurrent.atomic.AtomicLong usedSeconds = new java.util.concurrent.atomic.AtomicLong(0);
+
         /** 语音情绪历史（最近 10 条） */
         private final List<EmotionRecord> emotionHistory = new ArrayList<>();
 
@@ -739,13 +752,21 @@ public class ConversationServiceImpl implements ConversationService {
         }
 
         /**
-         * 标记本次活跃，返回距上次活动的秒数（上限 300s，避免长时间挂起累计虚高）。
+         * 标记本次活跃，返回距上次活动的秒数（上限 300s，避免长时间挂起累计虚高），
+         * 同时累计到会话内存计时器（Redis 兜底）。
          */
         long markActiveAndElapsed() {
             Instant now = Instant.now();
             long elapsed = java.time.Duration.between(lastActiveAt, now).getSeconds();
             lastActiveAt = now;
-            return Math.max(0, Math.min(elapsed, 300));
+            long capped = Math.max(0, Math.min(elapsed, 300));
+            usedSeconds.addAndGet(capped);
+            return capped;
+        }
+
+        /** 本会话内存累计使用秒数 */
+        long localUsedSeconds() {
+            return usedSeconds.get();
         }
 
         /** 连续消极情绪计数（从最近一条往前数） */

@@ -232,6 +232,7 @@ function PinLoginForm({ themeId, onLogin }) {
   const [pin, setPin] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [shakeKey, setShakeKey] = useState(0)
   const [wakeOn, setWakeOn] = useState(() => localStorage.getItem('mindsafe_wake_enabled') !== '0')
 
   const pressKey = (key) => {
@@ -257,6 +258,7 @@ function PinLoginForm({ themeId, onLogin }) {
     } catch (err) {
       setError(err.message || '登录失败')
       setPin('')
+      setShakeKey((k) => k + 1) // 触发 PIN 指示器抖动反馈
     } finally {
       setLoading(false)
     }
@@ -278,8 +280,8 @@ function PinLoginForm({ themeId, onLogin }) {
         />
       </div>
 
-      {/* PIN 指示器 */}
-      <div className="pin-row">
+      {/* PIN 指示器（登录失败时抖动，key 变化重新触发动画） */}
+      <div key={shakeKey} className={`pin-row ${shakeKey > 0 && error ? 'pin-row--shake' : ''}`}>
         {[0, 1, 2, 3, 4, 5].map((i) => (
           <div key={i} className={`${pinIndicator} ${i < pin.length ? 'filled' : ''}`} />
         ))}
@@ -328,7 +330,7 @@ function PinLoginForm({ themeId, onLogin }) {
 /* ===== 注册表单 ===== */
 function RegisterForm({ themeId, onRegister }) {
   const [step, setStep] = useState('form')
-  const [form, setForm] = useState({ inviteCode: '', pseudonym: '', gender: '', age: '' })
+  const [form, setForm] = useState({ inviteCode: '', pseudonym: '', gender: '', age: '', guardianPhone: '' })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [voiceConsent, setVoiceConsent] = useState(true)
@@ -349,6 +351,11 @@ function RegisterForm({ themeId, onRegister }) {
     if (form.pseudonym.trim().length < 2 || form.pseudonym.trim().length > 12) {
       setError('昵称长度 2-12 字'); return
     }
+    // 未成年人保护：不满 14 周岁必须提供监护人手机号（与后端 TrialAuthStrategy 校验对齐）
+    if (age < 14) {
+      if (!form.guardianPhone.trim()) { setError('不满 14 周岁需填写家长手机号'); return }
+      if (!/^1\d{10}$/.test(form.guardianPhone.trim())) { setError('请输入正确的 11 位手机号'); return }
+    }
     setLoading(true); setError('')
     try {
       const { trialRegister, setToken: st, setRefreshToken: srt, setUser: su, markConsentDone } = await import('../api')
@@ -356,6 +363,7 @@ function RegisterForm({ themeId, onRegister }) {
         inviteCode: form.inviteCode.trim(),
         pseudonym: form.pseudonym.trim(),
         age, role: 'student', gender: form.gender, consentVersion: CONSENT_VERSION,
+        ...(age < 14 ? { guardianPhone: form.guardianPhone.trim() } : {}),
       })
       st(data.token)
       if (data.refreshToken) srt(data.refreshToken)
@@ -488,6 +496,20 @@ function RegisterForm({ themeId, onRegister }) {
           <p className={`age-warn age-warn--${themeId}`}>⚠️ 不满 14 周岁建议在家长陪同下使用</p>
         )}
       </div>
+
+      {/* 监护人手机号（不满 14 周岁必填，未成年人保护法要求） */}
+      {form.age && parseInt(form.age) < 14 && (
+        <div className={`login-field login-field--${themeId}`}>
+          <label>家长手机号 *</label>
+          <input
+            type="tel"
+            value={form.guardianPhone}
+            onChange={(e) => update('guardianPhone', e.target.value)}
+            placeholder="监护人的 11 位手机号"
+            maxLength={11}
+          />
+        </div>
+      )}
 
       <p className={`login-hint login-hint--${themeId}`}>
         💡 邀请码由学校心理老师发放，体验测试可用 <strong>DEMO2026</strong>

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Layout, Menu, Badge, message } from 'antd'
+import { Layout, Menu, Badge, message, notification } from 'antd'
 import {
   BellOutlined, WarningOutlined, TeamOutlined, LogoutOutlined,
   DashboardOutlined, AlertOutlined, SettingOutlined,
@@ -36,10 +36,14 @@ function playAlertSound() {
 }
 
 function sendDesktopNotification(title, body) {
-  if (!('Notification' in window)) return
-  if (Notification.permission === 'granted') {
-    new Notification(title, { body, icon: '🛡️' })
+  // 桌面通知不可用或未授权时，降级为页内通知（不静默丢弃）
+  if ('Notification' in window && Notification.permission === 'granted') {
+    try {
+      new Notification(title, { body, icon: '🛡️' })
+      return
+    } catch { /* 部分移动浏览器构造器不可用，落入页内通知 */ }
   }
+  notification.warning({ message: title, description: body, placement: 'topRight', duration: 6 })
 }
 
 const MENU_ITEMS = [

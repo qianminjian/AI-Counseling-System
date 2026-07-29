@@ -71,14 +71,24 @@ function checkBrowserTts() {
   return voices.length > 0 || true // 引擎存在即认为可用，voices 异步加载
 }
 
-/** 用浏览器 speechSynthesis 朗读（后端 TTS 不可用时的降级） */
-function browserSpeak(text, { rate = 1.0, onEnd } = {}) {
+/** 浏览器降级时的人设音色参数（speechSynthesis 无法选音色，用 pitch/rate 区分人设） */
+const PERSONA_VOICE_PROFILES = {
+  xiaoxing: { pitch: 1.1, rateScale: 1.0 },   // 小星：温暖大姐姐
+  qiqiu: { pitch: 1.4, rateScale: 1.1 },      // 气球：活泼俏皮，音调高、语速快
+  yueliang: { pitch: 1.0, rateScale: 0.9 },   // 月亮：温柔轻语，语速慢
+  xiaotaiyang: { pitch: 0.7, rateScale: 1.0 },// 小太阳：阳光大哥哥，低音调模拟男声
+}
+
+/** 用浏览器 speechSynthesis 朗读（后端 TTS 不可用时的降级，按人设调整音高语速） */
+function browserSpeak(text, { rate = 1.0, persona = 'xiaoxing', onEnd } = {}) {
   if (!('speechSynthesis' in window)) { onEnd?.(); return false }
   try {
     window.speechSynthesis.cancel()
     const utter = new SpeechSynthesisUtterance(text)
+    const profile = PERSONA_VOICE_PROFILES[persona] || PERSONA_VOICE_PROFILES.xiaoxing
     utter.lang = 'zh-CN'
-    utter.rate = Math.max(0.5, Math.min(2, rate))
+    utter.rate = Math.max(0.5, Math.min(2, rate * profile.rateScale))
+    utter.pitch = profile.pitch
     // 优先选中文语音
     const voices = window.speechSynthesis.getVoices()
     const zhVoice = voices.find(v => v.lang.startsWith('zh'))
@@ -216,7 +226,7 @@ export function useTtsPlayer({ persona = 'xiaoxing', emotion = 'neutral', speed 
         usedBrowserFallback = true
         setEngine('browser')
         await new Promise((resolve) => {
-          const ok = browserSpeak(sentences[i], { rate: speed, onEnd: resolve })
+          const ok = browserSpeak(sentences[i], { rate: speed, persona, onEnd: resolve })
           if (!ok) {
             // 浏览器 TTS 也不可用（安卓无 Google 语音引擎）
             setEngine('none')
@@ -251,7 +261,7 @@ export function useTtsPlayer({ persona = 'xiaoxing', emotion = 'neutral', speed 
       // 后端不可用 → 浏览器 TTS 降级
       setEngine('browser')
       await new Promise((resolve) => {
-        const ok = browserSpeak(cleaned, { rate: speed, onEnd: resolve })
+        const ok = browserSpeak(cleaned, { rate: speed, persona, onEnd: resolve })
         if (!ok) {
           setEngine('none')
           resolve()

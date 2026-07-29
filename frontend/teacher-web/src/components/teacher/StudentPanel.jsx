@@ -4,6 +4,7 @@ import { ArrowLeftOutlined, PlusOutlined, MessageOutlined, DownloadOutlined } fr
 import dayjs from 'dayjs'
 import { getStudents, getHighRiskStudents, getStudentProfile, addStudentNote, getSessionMessages, exportStudentsCsv } from '../../api'
 import SessionSummaryCard from './SessionSummaryCard'
+import { emotionLabel } from '../../utils/emotionLabels'
 import ProfileRadarChart from './ProfileRadarChart'
 
 const RISK_COLORS = { 3: 'red', 2: 'orange', 1: 'gold', 0: 'default' }
@@ -53,7 +54,7 @@ function SessionMessagesDrawer({ sessionId, onClose }) {
                   {msg.senderType === 'student' ? '学生' : 'AI'}
                 </Tag>
                 <span style={{ fontSize: 11, color: '#999' }}>第 {msg.turnCount} 轮</span>
-                {msg.emotionLabel && <Tag style={{ margin: 0, fontSize: 11 }}>{msg.emotionLabel}</Tag>}
+                {msg.emotionLabel && <Tag style={{ margin: 0, fontSize: 11 }}>{emotionLabel(msg.emotionLabel)}</Tag>}
                 {msg.riskLevel > 0 && (
                   <Tag color={RISK_COLORS[msg.riskLevel]} style={{ margin: 0, fontSize: 11 }}>
                     {RISK_LABELS[msg.riskLevel]}

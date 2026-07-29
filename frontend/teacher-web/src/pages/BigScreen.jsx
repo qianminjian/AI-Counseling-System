@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { getStats, getDashboard, getSatisfaction } from '../api'
+import { emotionLabel } from '../utils/emotionLabels'
 
 const REFRESH_INTERVAL = 30000
 
@@ -123,7 +124,7 @@ function EmotionBars({ data }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '8px 0' }}>
       {data.slice(0, 6).map((d, i) => (
         <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ width: 48, fontSize: 12, color: '#ccc', textAlign: 'right' }}>{d.emotion}</span>
+          <span style={{ width: 48, fontSize: 12, color: '#ccc', textAlign: 'right' }}>{emotionLabel(d.emotion)}</span>
           <div style={{ flex: 1, height: 16, background: '#1e2a3a', borderRadius: 8, overflow: 'hidden' }}>
             <div style={{
               height: '100%', borderRadius: 8, transition: 'width 0.6s ease',
