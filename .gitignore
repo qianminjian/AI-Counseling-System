@@ -22,9 +22,6 @@ reports/*
 *.swp
 *~
 
-# ===== Qoder IDE 本地缓存（repowiki 知识索引，IDE 自动重建，不入库）=====
-.qoder/repowiki/
-
 # ===== Python =====
 __pycache__/
 *.py[cod]
