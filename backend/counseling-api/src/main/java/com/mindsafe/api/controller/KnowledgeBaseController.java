@@ -4,6 +4,7 @@ import com.mindsafe.api.security.JwtAuthenticationFilter.TenantContext;
 import com.mindsafe.common.dto.ApiResponse;
 import com.mindsafe.service.audit.AuditLogService;
 import com.mindsafe.service.knowledge.KnowledgeBaseService;
+import com.mindsafe.service.knowledge.KnowledgeCorpusIngestService;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
@@ -22,11 +23,14 @@ import java.util.UUID;
 public class KnowledgeBaseController {
 
     private final KnowledgeBaseService knowledgeBaseService;
+    private final KnowledgeCorpusIngestService corpusIngestService;
     private final AuditLogService auditLogService;
 
     public KnowledgeBaseController(KnowledgeBaseService knowledgeBaseService,
+                                   KnowledgeCorpusIngestService corpusIngestService,
                                    AuditLogService auditLogService) {
         this.knowledgeBaseService = knowledgeBaseService;
+        this.corpusIngestService = corpusIngestService;
         this.auditLogService = auditLogService;
     }
 
@@ -51,6 +55,27 @@ public class KnowledgeBaseController {
                 "knowledge_document", docId, "title=" + title + ", category=" + category);
 
         return ApiResponse.ok(Map.of("docId", docId, "message", "文档摄入成功"));
+    }
+
+    /**
+     * 批量入库审核语料（KB-101）
+     * <p>
+     * 请求体为已审核语料 Markdown 全文（data/knowledge-base/01-首批入库语料_v1.md），
+     * 幂等可重复执行；crisis_intervention 类自动缓入（铁律：不进学生对话 RAG）。
+     */
+    @PostMapping(value = "/corpus", consumes = "text/plain;charset=UTF-8")
+    public ApiResponse<KnowledgeCorpusIngestService.IngestReport> ingestCorpus(
+            @RequestBody String corpusMarkdown, Authentication auth) {
+        TenantContext ctx = (TenantContext) auth.getDetails();
+        KnowledgeCorpusIngestService.IngestReport report =
+                corpusIngestService.ingestCorpus(corpusMarkdown);
+
+        auditLogService.log(ctx.tenantId(), ctx.userId(), "KNOWLEDGE_CORPUS_INGEST",
+                "knowledge_document", null,
+                "parsed=" + report.parsed() + ", ingested=" + report.ingested()
+                        + ", skipped=" + report.skippedExisting() + ", deferredCrisis=" + report.deferredCrisis());
+
+        return ApiResponse.ok(report);
     }
 
     /** 检索测试（验证 RAG 效果） */

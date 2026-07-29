@@ -14,6 +14,8 @@ spring:
     multipart:
       max-file-size: 10MB
       max-request-size: 12MB
+      # COMP-009：阈值≥请求上限，音频全程内存处理不写容器临时目录（转写即删承诺，22 §6.3）
+      file-size-threshold: 12MB
 
   # 数据源（PostgreSQL 16 + pgvector）
   datasource:

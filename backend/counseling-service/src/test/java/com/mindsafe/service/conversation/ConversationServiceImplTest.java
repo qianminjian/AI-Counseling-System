@@ -3,16 +3,22 @@ package com.mindsafe.service.conversation;
 import com.mindsafe.ai.chat.AiChatService;
 import com.mindsafe.ai.prompt.PromptTemplateService;
 import com.mindsafe.ai.risk.RiskDetectorService;
+import com.mindsafe.ai.risk.SemanticRiskClassifier;
+import com.mindsafe.ai.safety.ConfidentialityNotice;
+import com.mindsafe.ai.safety.CrisisResources;
 import com.mindsafe.ai.safety.PiiDesensitizer;
 import com.mindsafe.common.dto.chat.SessionInfo;
 import com.mindsafe.common.dto.chat.StreamMessageEvent;
 import com.mindsafe.common.dto.risk.RiskDetectionResult;
+import com.mindsafe.common.enums.RiskLevel;
 import com.mindsafe.domain.entity.CounselingSession;
+import com.mindsafe.domain.entity.MessageSummary;
 import com.mindsafe.domain.entity.User;
 import com.mindsafe.domain.mapper.CounselingSessionMapper;
 import com.mindsafe.domain.mapper.MessageSummaryMapper;
 import com.mindsafe.domain.mapper.RiskEventMapper;
 import com.mindsafe.domain.mapper.UserMapper;
+import com.mindsafe.service.knowledge.RagAdvisorService;
 import com.mindsafe.service.memory.LongTermMemoryService;
 import com.mindsafe.service.notification.NotificationService;
 import com.mindsafe.service.profile.ProfileExtractorService;
@@ -67,6 +73,8 @@ class ConversationServiceImplTest {
     private UsageTimeLimitService usageTimeLimitService;
     private LongTermMemoryService longTermMemoryService;
     private PromptVersionService promptVersionService;
+    private RagAdvisorService ragAdvisorService;
+    private SemanticRiskClassifier semanticRiskClassifier;
 
     private ConversationServiceImpl service;
 
@@ -89,6 +97,8 @@ class ConversationServiceImplTest {
         usageTimeLimitService = mock(UsageTimeLimitService.class);
         longTermMemoryService = mock(LongTermMemoryService.class);
         promptVersionService = mock(PromptVersionService.class);
+        ragAdvisorService = mock(RagAdvisorService.class);
+        semanticRiskClassifier = mock(SemanticRiskClassifier.class);
 
         // AI-005: PromptVersionService 默认返回 classpath 降级结果
         when(promptVersionService.resolve(any(), anyString(), any(), anyMap()))
@@ -96,10 +106,20 @@ class ConversationServiceImplTest {
         when(promptVersionService.resolveRaw(any(), anyString(), any()))
                 .thenReturn(new PromptVersionService.ResolvedPrompt("mock-lang-rules", "LANG_001:v0:classpath", "control"));
 
+        // SAFE-201: 默认学生已完成保密告知（selectCount=1），告知注入测试组内单独覆盖为 0
+        when(messageSummaryMapper.selectCount(any())).thenReturn(1L);
+
+        // KB-101b: RAG 默认不触发（空串），RAG 注入测试组内单独覆盖
+        when(ragAdvisorService.buildRagContext(any(), anyString(), anyInt())).thenReturn("");
+
+        // RISK-202: 语义分类默认无风险（null=降级纯硬规则），语义升级测试组内单独覆盖
+        when(semanticRiskClassifier.classify(anyString(), any(), any(), anyInt())).thenReturn(null);
+
         service = new ConversationServiceImpl(aiChatService, promptTemplateService,
                 riskDetectorService, piiDesensitizer, sessionMapper, messageSummaryMapper,
                 riskEventMapper, notificationService, userMapper, profileService,
-                profileExtractorService, usageTimeLimitService, longTermMemoryService, promptVersionService);
+                profileExtractorService, usageTimeLimitService, longTermMemoryService, promptVersionService,
+                ragAdvisorService, semanticRiskClassifier);
     }
 
     /** createSession 并捕获内部生成的 sessionId */
@@ -200,6 +220,72 @@ class ConversationServiceImplTest {
         void createSessionLoadsExpressionDepth() {
             createSession("happy");
             verify(profileService).getExpressionDepth(tenantId, studentId);
+        }
+    }
+
+    @Nested
+    @DisplayName("SAFE-201 保密边界告知注入（design/14 §12.3）")
+    class ConfidentialityNoticeInjection {
+
+        private User studentWithGrade(String gradeCode) {
+            User user = new User();
+            user.setPseudonym("小明");
+            user.setGradeCode(gradeCode);
+            when(userMapper.selectById(studentId)).thenReturn(user);
+            when(profileService.getExpressionDepth(tenantId, studentId)).thenReturn(null);
+            return user;
+        }
+
+        @Test
+        @DisplayName("首次会话 → 问候语拼接标准版告知 + 落 turn=0 审计记录")
+        void firstSession_injectsNotice_andPersistsAuditRecord() {
+            when(messageSummaryMapper.selectCount(any())).thenReturn(0L);
+            studentWithGrade("G4");
+
+            SessionInfo info = service.createSession(tenantId, studentId, "happy", "web");
+
+            assertThat(info.greeting()).startsWith("哈喽，小明！");
+            assertThat(info.greeting()).contains(ConfidentialityNotice.NOTICE_STANDARD);
+
+            ArgumentCaptor<MessageSummary> captor = ArgumentCaptor.forClass(MessageSummary.class);
+            verify(messageSummaryMapper).insert(captor.capture());
+            MessageSummary record = captor.getValue();
+            assertThat(record.getSenderType()).isEqualTo("ai");
+            assertThat(record.getTurnCount()).isZero();
+            assertThat(record.getContentSummary()).isEqualTo(ConfidentialityNotice.NOTICE_STANDARD);
+            assertThat(record.getStudentUserId()).isEqualTo(studentId);
+        }
+
+        @Test
+        @DisplayName("1-2 年级 → 柔和简化版告知")
+        void lowerGrade_usesSimplifiedNotice() {
+            when(messageSummaryMapper.selectCount(any())).thenReturn(0L);
+            studentWithGrade("G2");
+
+            SessionInfo info = service.createSession(tenantId, studentId, "happy", "web");
+
+            assertThat(info.greeting()).contains(ConfidentialityNotice.NOTICE_LOWER_GRADE);
+            assertThat(info.greeting()).doesNotContain(ConfidentialityNotice.NOTICE_STANDARD);
+        }
+
+        @Test
+        @DisplayName("已告知学生二次会话 → 不重复注入、不重复落库")
+        void alreadyNoticed_notRepeated() {
+            studentWithGrade("G4");
+
+            SessionInfo info = service.createSession(tenantId, studentId, "happy", "web");
+
+            assertThat(info.greeting()).doesNotContain("三件小事");
+            verify(messageSummaryMapper, never()).insert(any(MessageSummary.class));
+        }
+
+        @Test
+        @DisplayName("forGrade 分年级选版：1-2 简化版 / 3-6 标准版")
+        void forGrade_variants() {
+            assertThat(ConfidentialityNotice.forGrade(1)).isEqualTo(ConfidentialityNotice.NOTICE_LOWER_GRADE);
+            assertThat(ConfidentialityNotice.forGrade(2)).isEqualTo(ConfidentialityNotice.NOTICE_LOWER_GRADE);
+            assertThat(ConfidentialityNotice.forGrade(3)).isEqualTo(ConfidentialityNotice.NOTICE_STANDARD);
+            assertThat(ConfidentialityNotice.forGrade(6)).isEqualTo(ConfidentialityNotice.NOTICE_STANDARD);
         }
     }
 
@@ -367,6 +453,303 @@ class ConversationServiceImplTest {
                     .collectList().block();
 
             assertThat(events).isEmpty();
+        }
+    }
+
+    @Nested
+    @DisplayName("RED 硬短路（RISK-201，design/04 §18.2）")
+    class RedShortCircuit {
+
+        /** 构造 RED 硬规则命中结果 */
+        private RiskDetectionResult redResult() {
+            return new RiskDetectionResult(RiskLevel.RED, "self_harm",
+                    List.of("硬规则关键词"), 90, true, "立即通知教师");
+        }
+
+        /** 通用 mock：脱敏透传 + 时长未超限 */
+        private void mockPipeline() {
+            when(piiDesensitizer.desensitize(anyString())).thenAnswer(inv -> inv.getArgument(0));
+            when(usageTimeLimitService.isExceeded(any(), any())).thenReturn(false);
+        }
+
+        @Test
+        @DisplayName("RED → 跳过 LLM，返回 risk + 预审核安全文案 + done")
+        void red_skipsLlm_returnsSafetyReply() {
+            UUID sessionId = createSession("sad");
+            when(riskDetectorService.detect(anyString())).thenReturn(redResult());
+            mockPipeline();
+
+            List<StreamMessageEvent> events = service
+                    .sendMessageStream(tenantId, sessionId, "我不想活了")
+                    .collectList().block();
+
+            // 事件序列：risk → 安全文案 token → done（无 LLM 自由生成）
+            assertThat(events).hasSize(3);
+            assertThat(events.get(0).type()).isEqualTo("risk");
+            assertThat(events.get(1).type()).isEqualTo("token");
+            assertThat(events.get(1).content()).isEqualTo(CrisisResources.RED_SAFETY_REPLY);
+            assertThat(events.get(2).type()).isEqualTo("done");
+
+            // 硬短路：绝不调用 LLM 自由生成
+            verify(aiChatService, never()).chatWithPrompt(any(), any(), any(), any(), any(), anyInt(), anyString());
+        }
+
+        @Test
+        @DisplayName("RED → 教师告警照发 + 会话升级 escalated")
+        void red_notifiesTeacher_andEscalates() {
+            UUID sessionId = createSession("sad");
+            when(riskDetectorService.detect(anyString())).thenReturn(redResult());
+            mockPipeline();
+
+            service.sendMessageStream(tenantId, sessionId, "我不想活了").collectList().block();
+
+            // 风险事件落库 + 教师通知
+            verify(riskEventMapper).insert(any(com.mindsafe.domain.entity.RiskEvent.class));
+            verify(notificationService).notifyRiskEvent(any(com.mindsafe.domain.entity.RiskEvent.class));
+
+            // 会话状态升级 escalated
+            ArgumentCaptor<CounselingSession> captor = ArgumentCaptor.forClass(CounselingSession.class);
+            verify(sessionMapper, times(2)).updateById(captor.capture());
+            assertThat(captor.getAllValues())
+                    .anyMatch(s -> "escalated".equals(s.getSessionStatus()));
+        }
+
+        @Test
+        @DisplayName("1-2 年级 → 短句版安全文案")
+        void red_lowerGrade_usesShortReply() {
+            User user = new User();
+            user.setPseudonym("小花");
+            user.setGradeCode("G2");
+            when(userMapper.selectById(studentId)).thenReturn(user);
+            when(profileService.getExpressionDepth(tenantId, studentId)).thenReturn(null);
+            UUID sessionId = service.createSession(tenantId, studentId, "sad", "web").sessionId();
+
+            when(riskDetectorService.detect(anyString())).thenReturn(redResult());
+            mockPipeline();
+
+            List<StreamMessageEvent> events = service
+                    .sendMessageStream(tenantId, sessionId, "我不想活了")
+                    .collectList().block();
+
+            assertThat(events.get(1).content()).isEqualTo(CrisisResources.RED_SAFETY_REPLY_LOWER_GRADE);
+        }
+
+        @Test
+        @DisplayName("安全响应模式：RED 后的后续轮次也不自由生成，返回陪伴话术")
+        void safetyMode_subsequentTurns_noLlm() {
+            UUID sessionId = createSession("sad");
+            when(riskDetectorService.detect(anyString())).thenReturn(redResult());
+            mockPipeline();
+            service.sendMessageStream(tenantId, sessionId, "我不想活了").collectList().block();
+
+            // 后续普通消息（无风险）
+            when(riskDetectorService.detect(anyString())).thenReturn(RiskDetectionResult.safe());
+            List<StreamMessageEvent> events = service
+                    .sendMessageStream(tenantId, sessionId, "嗯")
+                    .collectList().block();
+
+            assertThat(events).hasSize(2);
+            assertThat(events.get(0).type()).isEqualTo("token");
+            assertThat(events.get(0).content()).isEqualTo(CrisisResources.SAFETY_MODE_COMPANION_REPLY);
+            assertThat(events.get(1).type()).isEqualTo("done");
+            verify(aiChatService, never()).chatWithPrompt(any(), any(), any(), any(), any(), anyInt(), anyString());
+        }
+
+        @Test
+        @DisplayName("ORANGE → 不短路，仍走 LLM（附风险事件）")
+        void orange_notShortCircuited() {
+            UUID sessionId = createSession("sad");
+            when(riskDetectorService.detect(anyString())).thenReturn(new RiskDetectionResult(
+                    RiskLevel.ORANGE, "bullying", List.of("被打"), 60, false, "建议关注"));
+            mockPipeline();
+            when(profileService.buildProfilePrompt(eq(tenantId), eq(studentId), any(Integer.class), any()))
+                    .thenReturn(null);
+            when(aiChatService.chatWithPrompt(any(), any(), any(), any(), any(), anyInt(), anyString()))
+                    .thenReturn(Flux.just(StreamMessageEvent.token("我在听")));
+
+            List<StreamMessageEvent> events = service
+                    .sendMessageStream(tenantId, sessionId, "我在学校被打了")
+                    .collectList().block();
+
+            verify(aiChatService).chatWithPrompt(any(), any(), any(), any(), any(), anyInt(), anyString());
+            assertThat(events).anyMatch(e -> "risk".equals(e.type()));
+            assertThat(events).anyMatch(e -> "token".equals(e.type()) && "我在听".equals(e.content()));
+        }
+
+        @Test
+        @DisplayName("redSafetyReply: 分年级选版（1-2 短句版 / 3-6 标准版）")
+        void redSafetyReply_gradeVariants() {
+            assertThat(ConversationServiceImpl.redSafetyReply(1)).isEqualTo(CrisisResources.RED_SAFETY_REPLY_LOWER_GRADE);
+            assertThat(ConversationServiceImpl.redSafetyReply(2)).isEqualTo(CrisisResources.RED_SAFETY_REPLY_LOWER_GRADE);
+            assertThat(ConversationServiceImpl.redSafetyReply(3)).isEqualTo(CrisisResources.RED_SAFETY_REPLY);
+            assertThat(ConversationServiceImpl.redSafetyReply(6)).isEqualTo(CrisisResources.RED_SAFETY_REPLY);
+        }
+    }
+
+    @Nested
+    @DisplayName("语义风险升级（RISK-202，design/04 §18.3）")
+    class SemanticRiskUpgrade {
+
+        /** 通用 mock：硬规则 GREEN + 脱敏透传 + 时长未超限 */
+        private void mockPipeline() {
+            when(riskDetectorService.detect(anyString())).thenReturn(RiskDetectionResult.safe());
+            when(piiDesensitizer.desensitize(anyString())).thenAnswer(inv -> inv.getArgument(0));
+            when(usageTimeLimitService.isExceeded(any(), any())).thenReturn(false);
+        }
+
+        /** LLM 正常回复 mock（未短路场景用） */
+        private void mockLlmReply() {
+            when(profileService.buildProfilePrompt(eq(tenantId), eq(studentId), any(Integer.class), any()))
+                    .thenReturn(null);
+            when(aiChatService.chatWithPrompt(any(), any(), any(), any(), any(), anyInt(), anyString()))
+                    .thenReturn(Flux.just(StreamMessageEvent.token("我在听")));
+        }
+
+        @Test
+        @DisplayName("硬规则 GREEN + 语义 RED → 联动 RED 硬短路 + 教师告警")
+        void semanticRed_triggersShortCircuit() {
+            UUID sessionId = createSession("sad");
+            mockPipeline();
+            when(semanticRiskClassifier.classify(anyString(), any(), any(), anyInt()))
+                    .thenReturn(RiskLevel.RED);
+
+            List<StreamMessageEvent> events = service
+                    .sendMessageStream(tenantId, sessionId, "如果我消失就好了")
+                    .collectList().block();
+
+            // 语义升级后走 RISK-201 同一条硬短路链路：risk → 安全文案 → done
+            assertThat(events).hasSize(3);
+            assertThat(events.get(0).type()).isEqualTo("risk");
+            assertThat(events.get(1).content()).isEqualTo(CrisisResources.RED_SAFETY_REPLY);
+            assertThat(events.get(2).type()).isEqualTo("done");
+            verify(aiChatService, never()).chatWithPrompt(any(), any(), any(), any(), any(), anyInt(), anyString());
+            verify(notificationService).notifyRiskEvent(any(com.mindsafe.domain.entity.RiskEvent.class));
+        }
+
+        @Test
+        @DisplayName("语义分类失败（null）→ 降级纯硬规则，正常 LLM 流程")
+        void semanticNull_fallsBackToNormalFlow() {
+            UUID sessionId = createSession("sad");
+            mockPipeline();
+            mockLlmReply();
+            // setUp 默认 classify 返回 null，无需额外 stub
+
+            List<StreamMessageEvent> events = service
+                    .sendMessageStream(tenantId, sessionId, "今天有点累")
+                    .collectList().block();
+
+            verify(semanticRiskClassifier).classify(anyString(), any(), any(), anyInt());
+            verify(aiChatService).chatWithPrompt(any(), any(), any(), any(), any(), anyInt(), anyString());
+            assertThat(events).noneMatch(e -> "risk".equals(e.type()));
+        }
+
+        @Test
+        @DisplayName("硬规则已 RED → 不调语义分类（已被硬规则接住，省 LLM 调用）")
+        void keywordRed_skipsClassifier() {
+            UUID sessionId = createSession("sad");
+            when(riskDetectorService.detect(anyString())).thenReturn(new RiskDetectionResult(
+                    RiskLevel.RED, "self_harm", List.of("硬规则关键词"), 90, true, "立即通知教师"));
+            when(piiDesensitizer.desensitize(anyString())).thenAnswer(inv -> inv.getArgument(0));
+            when(usageTimeLimitService.isExceeded(any(), any())).thenReturn(false);
+
+            service.sendMessageStream(tenantId, sessionId, "我不想活了").collectList().block();
+
+            verify(semanticRiskClassifier, never()).classify(anyString(), any(), any(), anyInt());
+        }
+
+        @Test
+        @DisplayName("硬规则 GREEN + 语义 YELLOW → 发 risk 事件但不短路")
+        void semanticYellow_riskEventNoShortCircuit() {
+            UUID sessionId = createSession("sad");
+            mockPipeline();
+            mockLlmReply();
+            when(semanticRiskClassifier.classify(anyString(), any(), any(), anyInt()))
+                    .thenReturn(RiskLevel.YELLOW);
+
+            List<StreamMessageEvent> events = service
+                    .sendMessageStream(tenantId, sessionId, "想睡一辈子不醒")
+                    .collectList().block();
+
+            assertThat(events).anyMatch(e -> "risk".equals(e.type()));
+            verify(aiChatService).chatWithPrompt(any(), any(), any(), any(), any(), anyInt(), anyString());
+            verify(riskEventMapper).insert(any(com.mindsafe.domain.entity.RiskEvent.class));
+        }
+
+        @Test
+        @DisplayName("语义分类只收脱敏文（原始 PII 不进 LLM）")
+        void classifierReceivesDesensitizedText() {
+            UUID sessionId = createSession("sad");
+            when(riskDetectorService.detect(anyString())).thenReturn(RiskDetectionResult.safe());
+            when(piiDesensitizer.desensitize(anyString())).thenReturn("我住在[地址]，很难过");
+            when(usageTimeLimitService.isExceeded(any(), any())).thenReturn(false);
+            mockLlmReply();
+
+            service.sendMessageStream(tenantId, sessionId, "我住在幸福路1号，很难过").collectList().block();
+
+            verify(semanticRiskClassifier).classify(eq("我住在[地址]，很难过"), any(), any(), anyInt());
+        }
+    }
+
+    @Nested
+    @DisplayName("RAG 参考知识注入（KB-101b，design/49 §六）")
+    class RagInjection {
+
+        private void mockChatPipeline() {
+            when(riskDetectorService.detect(anyString())).thenReturn(RiskDetectionResult.safe());
+            when(piiDesensitizer.desensitize(anyString())).thenAnswer(inv -> inv.getArgument(0));
+            when(usageTimeLimitService.isExceeded(any(), any())).thenReturn(false);
+            when(profileService.buildProfilePrompt(eq(tenantId), eq(studentId), any(Integer.class), any()))
+                    .thenReturn(null);
+            when(aiChatService.chatWithPrompt(any(), any(), any(), any(), any(), anyInt(), anyString()))
+                    .thenReturn(Flux.just(StreamMessageEvent.token("我在听")));
+        }
+
+        @Test
+        @DisplayName("触发检索 → RAG 上下文拼入 System Prompt 尾部（不覆盖安全规则）")
+        void ragContext_appendedToSystemPrompt() {
+            UUID sessionId = createSession("sad");
+            mockChatPipeline();
+            String ragContext = "# 参考资料（心理辅导知识库检索，仅供辅助参考）\n[1] (cbt_technique) KB-001";
+            when(ragAdvisorService.buildRagContext(eq(tenantId), anyString(), anyInt()))
+                    .thenReturn(ragContext);
+
+            service.sendMessageStream(tenantId, sessionId, "我考试考砸了很难过").collectList().block();
+
+            ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
+            verify(aiChatService).chatWithPrompt(any(), any(), any(), any(), any(), anyInt(), promptCaptor.capture());
+            // 拼在系统 Prompt 之后：安全规则在前，参考资料在尾部
+            assertThat(promptCaptor.getValue())
+                    .startsWith("mock-system-prompt")
+                    .endsWith(ragContext);
+        }
+
+        @Test
+        @DisplayName("未触发（闲聊/无命中）→ System Prompt 不含参考资料")
+        void noRagContext_promptUnchanged() {
+            UUID sessionId = createSession("happy");
+            mockChatPipeline();
+            // 默认 stub 已返回空串（未触发）
+
+            service.sendMessageStream(tenantId, sessionId, "波波你在吗").collectList().block();
+
+            ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
+            verify(aiChatService).chatWithPrompt(any(), any(), any(), any(), any(), anyInt(), promptCaptor.capture());
+            assertThat(promptCaptor.getValue())
+                    .isEqualTo("mock-system-prompt\n\nmock-lang-rules")
+                    .doesNotContain("参考资料");
+        }
+
+        @Test
+        @DisplayName("RED 硬短路 → 不调用 RAG 检索（危机场景固定话术优先）")
+        void redShortCircuit_noRagRetrieval() {
+            UUID sessionId = createSession("sad");
+            when(riskDetectorService.detect(anyString())).thenReturn(new RiskDetectionResult(
+                    RiskLevel.RED, "self_harm", List.of("硬规则关键词"), 90, true, "立即通知教师"));
+            when(piiDesensitizer.desensitize(anyString())).thenAnswer(inv -> inv.getArgument(0));
+
+            service.sendMessageStream(tenantId, sessionId, "我不想活了").collectList().block();
+
+            verify(ragAdvisorService, never()).buildRagContext(any(), anyString(), anyInt());
         }
     }
 

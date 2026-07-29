@@ -351,7 +351,7 @@
 | COMP-006 | 操作审计日志（管理员/教师敏感操作留痕） | ✅ 完成 | D |
 | COMP-007 | 年度合规审计报送（未保条例 §37） | ⏳ 待开始 | 远期 |
 | COMP-008 | WebAuthn 设备认证（可选） | ⏳ 待开始 | 远期 |
-| COMP-009 | voice-service 音频「转写即删」清理逻辑核实/补齐（22 §6.3 定稿承诺兑现：ASR/SER 完成后立即删除原始音频，仅留文本与情感特征值） | ⏳ 待开始 | 近期（商用前） |
+| COMP-009 | voice-service 音频「转写即删」清理逻辑核实/补齐（22 §6.3 定稿承诺兑现：ASR/SER 完成后立即删除原始音频，仅留文本与情感特征值） | ✅ 完成（2026-07-28，见 design/22 §6.3 落地记录：voice-service finally 必删+删除日志留痕+mkstemp；Java 侧补 file-size-threshold 12MB 音频全程内存处理；日志不记音频/转写全文） | 近期（商用前） |
 | COMP-010 | doc/ 历史物料违规表述扫描（非诊断表述底线：排查"诊断/治疗/心理咨询"等越界表述，出违规清单交钱敏健，25 §十 第 6 条） | ✅ 完成（2026-07-29，报告见 reports/COMP-010-doc物料违规表述扫描报告.md；真违规 7 类 24 处全在归档层，design/13 传导已修复；处置建议钱敏健 2026-07-29 全部确认：不改归档、封禁外发、doc/README 警示已加） | 近期（商用前） |
 
 > COMP-001~004 为商务/法务流程，已移至「十八、商务与法务待办」。
@@ -631,7 +631,7 @@
 | TMATCH-001 | VoicePersonaResolver 冷启动默认匹配（性别认同/年龄）+ emotionState→prosody 基调联动（非仅 instruct） | P0 近期 | design/48 P0 | UX-005 | ⏳ 待实施 |
 | TMATCH-002 | 画像匹配微调+手动偏好记忆回写46 + 安全/危机稳定基调锁定+预合成矩阵（统一 TTSFX-002）+ 三方同源接线 | P1 近期 | design/48 P1 | UX-005/PROD-003 | ⏳ 待实施 |
 | TMATCH-003 | 音色效果回收（完成率/切换/参与度）+ 会话内稳定性 + 匹配规则 A/B 进化 | P2/远期 | design/48 P2/P3 | PROF-020 | ⏳ 待实施 |
-| KB-101 | 知识内容首批生产（CBT/SEL/PFA/危机/工具箱，结构化 02/03/36）+ RAG Advisor 接入对话主线（场景触发+年龄过滤+不覆盖安全） | P0 近期 | design/49 P0 | AI-006 | 🔄 首批语料已审核（data/knowledge-base/01-首批入库语料_v1.md，62 条，钱敏健 2026-07-29 确认，待执行入库+RAG 接入解 AI-006 门禁；危机类 10 条检索域隔离前缓入） |
+| KB-101 | 知识内容首批生产（CBT/SEL/PFA/危机/工具箱，结构化 02/03/36）+ RAG Advisor 接入对话主线（场景触发+年龄过滤+不覆盖安全） | P0 近期 | design/49 P0 | AI-006 | ✅ 已完成（2026-07-28）：62 条语料解析+幂等入库机制（`POST /api/v1/knowledge/corpus`，危机类 10 条缓入待 KB-102）+ `RagAdvisorService` 接主线（场景触发/grade_band 近似过滤/危机双保险/失败安全），解 AI-006 门禁，见 design/49 §6.5 |
 | KB-102 | 审核工作流状态机+门禁 + 知识条目元数据增强 + 危机内容与 04/14 单一事实源打通 | P1 近期 | design/49 P1 | AI-006 | ⏳ 待实施 |
 | KB-103 | 混合检索 RRF（向量0.6+关键词0.4，落地 15 未实现项）+ groundedness 回收+未命中查询补全 + 语义分块优化 | P2/远期 | design/49 P2/P3 | AI-006 | ⏳ 待实施 |
 | MEM-101 | **更正 AI-008 状态**（已在十七完成）+ 记忆→画像回注（growthTrack/socialGraph，provenance=memory） | P0 近期 | design/50 P0 | AI-008 | ⏳ 待实施 |
@@ -645,11 +645,11 @@
 | 任务ID | 阶段任务 | 优先级 | 来源设计 | 依赖 | 状态 |
 |--------|----------|--------|----------|------|------|
 | DEC-CBT | 双世界编排收敛决策——**✅ 已定夺：路径 1 激活世界 B**（接线 ConversationOrchestrator 到线上，废弃单 prompt 主路径；落地前置：编排层兼容 SSE 流式输出方案 + 延迟/成本评估） | P0 决策 | design/52 〇/一/四 | 无（最先） | ✅ 已决策（2026-07-28），落地待实施 |
-| RISK-201 | RED 硬短路跳过 LLM，复用 CrisisResources（**儿童安全红线级，可独立立即做**） | **P0 安全最高** | design/52 二 | 无 | ⏳ 待实施 |
-| RISK-202 | M2 语义风险分类（SAF_001）上线补隐性表达 | P0 安全 | design/52 二 | DEC-CBT（已决） | ⏳ 待实施 |
+| RISK-201 | RED 硬短路跳过 LLM，复用 CrisisResources（**儿童安全红线级，可独立立即做**） | **P0 安全最高** | design/52 二 | 无 | ✅ 已完成（2026-07-28）：ConversationServiceImpl 4.2 段 RED 硬短路 + 分年级预审核文案 + 安全响应模式，见 design/04 §18.2 落地记录 |
+| RISK-202 | M2 语义风险分类（SAF_001）上线补隐性表达 | P0 安全 | design/52 二 | DEC-CBT（已决） | ✅ 已完成（2026-07-28）：SemanticRiskClassifier 非流式前置调用（800ms 门禁可配）+ 主线 1.6 段只升不降 + SafetyAgent 委托复用，见 design/04 §18.3 落地记录 |
 | RISK-203 | RiskScoreCalculator + C-SSRS 儿童分级（落地 04 §十） | P1 | design/52 二 | RISK-202 | ⏳ 待实施 |
 | RISK-204 | TrendAnalyzer 纵向趋势（汇入 BL-08 通道，合并 VCL-003/MEM-103） | P2 | design/52 二 | — | ⏳ 待实施 |
-| SAFE-201 | 保密边界儿童化告知话术（接 design/22，落到对话首触点） | P0 安全 | design/52 三 | 无 | ⏳ 待实施 |
+| SAFE-201 | 保密边界儿童化告知话术（接 design/22，落到对话首触点） | P0 安全 | design/52 三 | 无 | ✅ 已完成（2026-07-28）：ConfidentialityNotice 分年级话术 + createSession 注入 + turn=0 审计落库，见 design/14 §12.3 落地记录 |
 | SAFE-202 | Layer2 高敏场景前置化/触发关注 | P1 | design/52 三 | 无 | ⏳ 待实施 |
 | SAFE-203 | 危机热线多租户可配置（去硬编码） | P1 | design/52 三 | 无 | ⏳ 待实施 |
 | SAFE-204 | 姓名/地址脱敏扩展 | P2 | design/52 三 | 无 | ⏳ 待实施 |
