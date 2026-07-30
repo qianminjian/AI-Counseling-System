@@ -251,6 +251,7 @@
 | AUTH-032 | 家长撤回同意 → 冻结+删除 | ✅ 完成 | PIPL §47，ConsentWithdrawalService + ParentController 端点 |
 | AUTH-033 | 年度合规审计报送 | ⏳ 待开始 | 未保条例 §37，流程性报送（非代码） |
 | AUTH-034 | WebAuthn 设备端指纹/Face ID（可选） | ⏳ 待开始 | 不采集生物数据，需真机测试 |
+| AUTH-040 | 监护人同意 SMS 闭环（替代试运行自动写入） | ⏳ 待开始 | PIPL §31 完整合规：接入短信网关→发送验证码→监护人确认→写入 guardian_consent。前置：DEPLOY-010 阿里云 SMS 签名/模板。当前试运行阶段由 TrialAuthService 注册时自动写入（无 SMS 网关），正式上线前必须替换为真实闭环 |
 
 ---
 
