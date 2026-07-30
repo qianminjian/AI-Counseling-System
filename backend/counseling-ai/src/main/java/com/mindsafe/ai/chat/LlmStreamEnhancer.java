@@ -34,7 +34,7 @@ public class LlmStreamEnhancer {
             "波波现在有点忙不过来，你先深呼吸三次，等一等波波好不好？我马上就回来陪你～";
 
     public LlmStreamEnhancer(
-            @Value("${mindsafe.llm.first-token-timeout-ms:3000}") long firstTokenMs,
+            @Value("${mindsafe.llm.first-token-timeout-ms:15000}") long firstTokenMs,
             @Value("${mindsafe.llm.overall-timeout-ms:60000}") long overallMs) {
         this.firstTokenTimeout = Duration.ofMillis(firstTokenMs);
         this.overallTimeout = Duration.ofMillis(overallMs);

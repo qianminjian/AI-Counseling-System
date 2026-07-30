@@ -115,7 +115,10 @@ export function useTtsPlayer({ persona = 'xiaoxing', emotion = 'neutral', speed 
   const audioRef = useRef(null)
   const audioCtxRef = useRef(null)
   const abortRef = useRef(false)
-  const backendFailCount = useRef(0) // 连续后端失败计数
+  const backendFailCount = useRef(
+    // 上次会话后端 TTS 连续失败→本次直接跳过，避免每次等 3 次超时
+    sessionStorage.getItem('mindsafe_tts_backend_failed') === '1' ? 3 : 0
+  )
 
   // 初始化时检测浏览器 TTS 可用性（voiceschanged 事件确保异步加载完成）
   useEffect(() => {
@@ -147,10 +150,10 @@ export function useTtsPlayer({ persona = 'xiaoxing', emotion = 'neutral', speed 
     }
   }, [])
 
-  /** 合成单句音频（后端 TTS，连续失败 3 次后降级为浏览器 TTS） */
+  /** 合成单句音频（后端 TTS，连续失败 2 次后降级为浏览器 TTS） */
   const synthesizeSentence = useCallback(async (text) => {
     // 后端已连续失败多次，直接用浏览器 TTS
-    if (backendFailCount.current >= 3) {
+    if (backendFailCount.current >= 2) {
       return null // 返回 null 触发 speak() 中的浏览器降级路径
     }
     try {
@@ -161,13 +164,16 @@ export function useTtsPlayer({ persona = 'xiaoxing', emotion = 'neutral', speed 
       })
       if (!res.ok || res.status === 204) {
         backendFailCount.current++
+        if (backendFailCount.current >= 2) sessionStorage.setItem('mindsafe_tts_backend_failed', '1')
         return null
       }
       backendFailCount.current = 0 // 成功则重置
+      sessionStorage.removeItem('mindsafe_tts_backend_failed')
       setEngine('backend')
       return await res.blob()
     } catch {
       backendFailCount.current++
+      if (backendFailCount.current >= 2) sessionStorage.setItem('mindsafe_tts_backend_failed', '1')
       return null
     }
   }, [persona, emotion, speed])

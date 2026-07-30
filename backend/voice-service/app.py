@@ -11,6 +11,7 @@ import re
 import subprocess
 import tempfile
 import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import numpy as np
 import soundfile as sf
@@ -140,19 +141,26 @@ async def analyze_voice(file: UploadFile = File(...)):
         audio_data, sample_rate = sf.read(wav_path)
         duration = len(audio_data) / sample_rate if sample_rate > 0 else 0.0
 
-        # 1. ASR 转写
-        asr_result = asr_model.generate(input=wav_path, language="zh", use_itn=True)
-        text = ""
-        if asr_result and len(asr_result) > 0:
-            text = asr_result[0].get("text", "")
-        # 清洗 SenseVoice 特殊标记（<|zh|><|HAPPY|><|Speech|><|withitn|> 等）
-        text = re.sub(r"<\|[^|]*\|>", "", text).strip()
+        # 1+2. ASR 转写 + 情感识别（并行执行，减少总延迟）
+        def run_asr():
+            result = asr_model.generate(input=wav_path, language="zh", use_itn=True)
+            text = ""
+            if result and len(result) > 0:
+                text = result[0].get("text", "")
+            # 清洗 SenseVoice 特殊标记
+            return re.sub(r"<\|[^|]*\|>", "", text).strip()
 
-        # 2. 情感识别
-        emo_result = emotion_model.generate(input=wav_path)
-        emotion = EmotionResult(label="未知", label_en="unknown", confidence=0.0, scores=[0.0] * 9)
-        if emo_result and len(emo_result) > 0:
-            emotion = parse_emotion_result(emo_result[0])
+        def run_ser():
+            result = emotion_model.generate(input=wav_path)
+            if result and len(result) > 0:
+                return parse_emotion_result(result[0])
+            return EmotionResult(label="未知", label_en="unknown", confidence=0.0, scores=[0.0] * 9)
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            asr_future = executor.submit(run_asr)
+            ser_future = executor.submit(run_ser)
+            text = asr_future.result()
+            emotion = ser_future.result()
 
         logger.info(f"分析完成: text_len={len(text)}, emotion={emotion.label_en}({emotion.confidence:.2f}), duration={duration:.1f}s")
 

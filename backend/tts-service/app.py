@@ -1,16 +1,17 @@
 """
-MindSafe TTS 微服务（CosyVoice2 情感语音合成）
-- 文本 → 情感语音（支持 instruct 指令控制语气）
-- 多音色人设（参考音频切换）
-- 流式合成，首包延迟 < 2s
+MindSafe TTS 微服务（三级降级架构）
+- Level 1：阿里云百炼 CosyVoice（主力，国内低延迟）
+- Level 2：edge-tts（微软，备用）
+- Level 3：前端浏览器 speechSynthesis 兜底（本服务返回 503 时前端自动降级）
 - 部署：Docker 容器，端口 10096
 """
 
 import io
+import json
 import logging
 import os
-import tempfile
 
+import httpx
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
@@ -19,7 +20,7 @@ from pydantic import BaseModel
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("tts-service")
 
-app = FastAPI(title="MindSafe TTS Service", version="1.0.0")
+app = FastAPI(title="MindSafe TTS Service", version="2.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -28,81 +29,65 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ===== 模型初始化 =====
+# ===== Level 1：阿里云百炼 CosyVoice（非实时 HTTP API） =====
 
-logger.info("正在加载 CosyVoice2 模型...")
-try:
-    from cosyvoice.cli.cosyvoice import CosyVoice2
+DASHSCOPE_API_KEY = os.environ.get("DASHSCOPE_API_KEY", "")
+DASHSCOPE_TTS_URL = os.environ.get(
+    "DASHSCOPE_TTS_URL",
+    "https://dashscope.aliyuncs.com/api/v1/services/audio/tts/SpeechSynthesizer"
+)
+DASHSCOPE_TTS_MODEL = os.environ.get("DASHSCOPE_TTS_MODEL", "cosyvoice-v3-flash")
+CLOUD_TTS_AVAILABLE = bool(DASHSCOPE_API_KEY)
 
-    model_dir = os.environ.get("COSYVOICE_MODEL_DIR", "/app/models/CosyVoice2-0.5B")
-    tts_model = CosyVoice2(model_dir, load_jit=False, load_trt=False)
-    logger.info("✅ CosyVoice2 模型加载完成")
-    MODEL_AVAILABLE = True
-except Exception as e:
-    logger.warning(f"CosyVoice2 加载失败（降级为 edge-tts）: {e}")
-    MODEL_AVAILABLE = False
+if CLOUD_TTS_AVAILABLE:
+    logger.info("✅ 阿里云 CosyVoice TTS 就绪 (model=%s)", DASHSCOPE_TTS_MODEL)
+else:
+    logger.warning("DASHSCOPE_API_KEY 未配置，阿里云 CosyVoice 不可用")
 
-# ===== 降级方案：edge-tts（微软免费 TTS，需联网） =====
+# ===== Level 2：edge-tts（微软免费 TTS，备用） =====
+
 EDGE_TTS_AVAILABLE = False
-if not MODEL_AVAILABLE:
-    try:
-        import edge_tts
-        EDGE_TTS_AVAILABLE = True
-        logger.info("✅ edge-tts 降级方案就绪")
-    except ImportError:
-        logger.error("edge-tts 未安装，TTS 服务不可用")
+try:
+    import edge_tts  # noqa: F401
+    EDGE_TTS_AVAILABLE = True
+    logger.info("✅ edge-tts 备用方案就绪")
+except ImportError:
+    logger.warning("edge-tts 未安装，备用方案不可用")
 
 
 # ===== 音色人设配置 =====
+# dashscope_voice: 阿里云 CosyVoice 音色名（cosyvoice-v3-flash 音色列表）
+# edge_voice: edge-tts 备用音色
 
 VOICE_PERSONAS = {
     "xiaoxing": {
         "name": "小星",
         "desc": "温暖的大姐姐",
-        "base_instruct": "用亲切语气说",
         "speed": 1.0,
-        # edge-tts 降级音色
+        "dashscope_voice": "longxing_v3",
         "edge_voice": "zh-CN-XiaoxiaoNeural",
-        # CosyVoice2 内置说话人（persona→speaker 映射，design/28 §四）
-        "cosy_speaker": "中文女",
     },
     "qiqiu": {
         "name": "气球",
         "desc": "活泼的小伙伴",
-        "base_instruct": "用俏皮语气说",
         "speed": 1.05,
+        "dashscope_voice": "longanhuan_v3",
         "edge_voice": "zh-CN-XiaoyiNeural",
-        "cosy_speaker": "中文女",
     },
     "yueliang": {
         "name": "月亮",
         "desc": "温柔的讲故事者",
-        "base_instruct": "用温柔语气、用轻声说",
         "speed": 0.92,
+        "dashscope_voice": "longwan_v3",
         "edge_voice": "zh-CN-XiaohanNeural",
-        "cosy_speaker": "中文女",
     },
-    # design/28 §四：男生默认音色（阳光大哥哥），修复男生回落女声缺陷
     "xiaotaiyang": {
         "name": "小太阳",
         "desc": "阳光的大哥哥",
-        "base_instruct": "用开朗有活力的语气说",
         "speed": 1.05,
-        # 少年男声，契合阳光大哥哥人设
+        "dashscope_voice": "longanyang",
         "edge_voice": "zh-CN-YunxiNeural",
-        "cosy_speaker": "中文男",
     },
-}
-
-# ===== 情绪 → CosyVoice instruct 映射 =====
-
-EMOTION_INSTRUCTS = {
-    "happy": "用开心语气说",
-    "sad": "用温柔语气、用轻声说",
-    "angry": "用平静语气、用轻声说",
-    "fearful": "用温柔语气说",
-    "nervous": "用轻松语气说",
-    "neutral": "用亲切语气说",
 }
 
 
@@ -127,7 +112,12 @@ class TtsInfoResponse(BaseModel):
 
 @app.get("/health")
 def health():
-    engine = "cosyvoice2" if MODEL_AVAILABLE else ("edge-tts" if EDGE_TTS_AVAILABLE else "none")
+    if CLOUD_TTS_AVAILABLE:
+        engine = "cosyvoice-cloud"
+    elif EDGE_TTS_AVAILABLE:
+        engine = "edge-tts"
+    else:
+        engine = "none"
     return {"status": "UP" if engine != "none" else "DEGRADED", "engine": engine}
 
 
@@ -147,8 +137,8 @@ def list_personas():
 @app.post("/api/v1/tts/synthesize")
 async def synthesize(req: TtsRequest):
     """
-    文本 → 语音合成
-    返回 audio/wav 二进制流
+    文本 → 语音合成（三级降级：阿里云 CosyVoice → edge-tts → 503）
+    返回音频二进制流
     """
     if not req.text.strip():
         raise HTTPException(status_code=400, detail="文本不能为空")
@@ -157,121 +147,101 @@ async def synthesize(req: TtsRequest):
         raise HTTPException(status_code=400, detail="单次合成文本不超过500字")
 
     persona_cfg = VOICE_PERSONAS.get(req.persona, VOICE_PERSONAS["xiaoxing"])
-    emotion_instruct = EMOTION_INSTRUCTS.get(req.emotion, EMOTION_INSTRUCTS["neutral"])
-
-    # 组合 instruct：音色基础 + 情绪叠加
-    instruct = f"{persona_cfg['base_instruct']}、{emotion_instruct}"
-    # 多停顿安抚基调（TMATCH-001）：CosyVoice instruct 模式下用描述词表达停顿风格
-    if req.pause_style >= 2:
-        instruct += "、说得慢一点、多停顿"
-    # 去重（如果基础和情绪相同）
-    parts = list(dict.fromkeys(instruct.split("、")))
-    instruct = "、".join(parts)
-
     final_speed = persona_cfg["speed"] * req.speed
 
     logger.info(f"TTS 合成: text_len={len(req.text)}, persona={req.persona}, "
-                f"emotion={req.emotion}, instruct='{instruct}', speed={final_speed:.2f}, "
-                f"pitch={req.pitch:.2f}, pause_style={req.pause_style}")
+                f"emotion={req.emotion}, speed={final_speed:.2f}")
 
-    if MODEL_AVAILABLE:
-        return await _synthesize_cosyvoice(req.text, instruct, final_speed, persona_cfg, req.pitch)
-    elif EDGE_TTS_AVAILABLE:
-        return await _synthesize_edge_tts(req.text, persona_cfg["edge_voice"], final_speed, req.pitch)
-    else:
-        raise HTTPException(status_code=503, detail="TTS 服务不可用")
+    # Level 1：阿里云 CosyVoice
+    if CLOUD_TTS_AVAILABLE:
+        try:
+            return await _synthesize_dashscope(req.text, persona_cfg["dashscope_voice"], final_speed)
+        except Exception as e:
+            logger.warning(f"阿里云 CosyVoice 失败，降级 edge-tts: {e}")
+
+    # Level 2：edge-tts
+    if EDGE_TTS_AVAILABLE:
+        try:
+            return await _synthesize_edge_tts(req.text, persona_cfg["edge_voice"], final_speed, req.pitch)
+        except Exception as e:
+            logger.error(f"edge-tts 也失败: {e}")
+
+    # Level 3：返回 503，前端自动降级到浏览器 speechSynthesis
+    raise HTTPException(status_code=503, detail="TTS 服务不可用")
 
 
-async def _synthesize_cosyvoice(text: str, instruct: str, speed: float, persona_cfg: dict, pitch: float = 1.0):
-    """CosyVoice2 本地合成（persona→speaker 映射，design/28 §四）"""
-    import torch
-    import torchaudio
+async def _synthesize_dashscope(text: str, voice: str, speed: float):
+    """Level 1：阿里云百炼 CosyVoice（非实时 HTTP API，返回音频 URL）"""
+    headers = {
+        "Authorization": f"Bearer {DASHSCOPE_API_KEY}",
+        "Content-Type": "application/json",
+    }
+    params = {"voice": voice, "format": "mp3"}
+    # 语速调整（CosyVoice 支持 0.5~2.0）
+    if abs(speed - 1.0) > 0.05:
+        params["rate"] = round(max(0.5, min(2.0, speed)), 2)
 
-    # 说话人随 persona 切换（3 女人设→中文女，xiaotaiyang→中文男），不再硬编码
-    speaker = persona_cfg.get("cosy_speaker", "中文女")
+    body = {
+        "model": DASHSCOPE_TTS_MODEL,
+        "input": {"text": text},
+        "parameters": params,
+    }
 
-    try:
-        # CosyVoice2 instruct 模式
-        output = tts_model.inference_instruct(
-            text,
-            speaker,
-            instruct,
-            stream=False,
-        )
+    async with httpx.AsyncClient(timeout=20.0) as client:
+        # 第一步：调用合成 API，获取音频 URL
+        resp = await client.post(DASHSCOPE_TTS_URL, headers=headers, json=body)
 
-        # 收集音频数据
-        audio_chunks = []
-        for chunk in output:
-            audio_chunks.append(chunk["tts_speech"])
+        if resp.status_code != 200:
+            detail = resp.text[:200] if resp.text else f"HTTP {resp.status_code}"
+            raise RuntimeError(f"CosyVoice API 错误: {detail}")
 
-        if not audio_chunks:
-            raise HTTPException(status_code=500, detail="合成结果为空")
+        data = resp.json()
+        audio_url = data.get("output", {}).get("audio", {}).get("url", "")
+        if not audio_url:
+            raise RuntimeError(f"CosyVoice 返回无音频 URL: {json.dumps(data, ensure_ascii=False)[:200]}")
 
-        audio_tensor = torch.cat(audio_chunks, dim=1)
+        # 第二步：下载音频文件
+        audio_resp = await client.get(audio_url)
+        if audio_resp.status_code != 200:
+            raise RuntimeError(f"音频下载失败: HTTP {audio_resp.status_code}")
 
-        # 语速/音高基调调整（TMATCH-001 prosody，通过 sox 效果链）
-        effects = []
-        if abs(speed - 1.0) > 0.05:
-            effects.append(["tempo", str(speed)])
-        if abs(pitch - 1.0) > 0.02:
-            # pitchScale → 音分（cents）：0.9 ≈ -182 cents（更低沉）
-            import math
-            cents = int(1200 * math.log2(pitch))
-            effects.append(["pitch", str(cents)])
-        if effects:
-            try:
-                audio_tensor, _ = torchaudio.sox_effects.apply_effects_tensor(
-                    audio_tensor, 22050, effects
-                )
-            except Exception:
-                pass  # sox 不可用时跳过 prosody 调整
+    audio_bytes = audio_resp.content
+    if not audio_bytes or len(audio_bytes) < 100:
+        raise RuntimeError("CosyVoice 返回音频为空")
 
-        # 转为 WAV bytes
-        buffer = io.BytesIO()
-        torchaudio.save(buffer, audio_tensor, 22050, format="wav")
-        buffer.seek(0)
-
-        return StreamingResponse(
-            buffer,
-            media_type="audio/wav",
-            headers={"X-TTS-Engine": "cosyvoice2", "X-TTS-Instruct": instruct},
-        )
-
-    except Exception as e:
-        logger.error(f"CosyVoice2 合成失败: {e}", exc_info=True)
-        # 降级到 edge-tts（保持当前 persona 音色，不回落女声）
-        if EDGE_TTS_AVAILABLE:
-            return await _synthesize_edge_tts(text, persona_cfg["edge_voice"], speed)
-        raise HTTPException(status_code=500, detail=f"语音合成失败: {str(e)}")
+    logger.info(f"CosyVoice 合成成功: voice={voice}, bytes={len(audio_bytes)}")
+    return StreamingResponse(
+        io.BytesIO(audio_bytes),
+        media_type="audio/mpeg",
+        headers={"X-TTS-Engine": "cosyvoice-cloud", "X-TTS-Voice": voice},
+    )
 
 
 async def _synthesize_edge_tts(text: str, voice: str, speed: float, pitch: float = 1.0):
-    """edge-tts 降级合成（需联网）"""
+    """Level 2：edge-tts 备用合成（需联网访问微软）"""
     import edge_tts
 
-    # 语速转换为 edge-tts 格式（如 "+10%", "-15%"）
     rate_pct = int((speed - 1.0) * 100)
     rate_str = f"+{rate_pct}%" if rate_pct >= 0 else f"{rate_pct}%"
-    # 音高基调转换（TMATCH-001）：pitchScale 0.9 ≈ -10Hz（更低沉安抚）
     pitch_hz = int((pitch - 1.0) * 100)
     pitch_str = f"+{pitch_hz}Hz" if pitch_hz >= 0 else f"{pitch_hz}Hz"
 
-    try:
-        communicate = edge_tts.Communicate(text, voice, rate=rate_str, pitch=pitch_str)
-        buffer = io.BytesIO()
-        async for chunk in communicate.stream():
-            if chunk["type"] == "audio":
-                buffer.write(chunk["data"])
+    communicate = edge_tts.Communicate(text, voice, rate=rate_str, pitch=pitch_str)
+    buffer = io.BytesIO()
+    async for chunk in communicate.stream():
+        if chunk["type"] == "audio":
+            buffer.write(chunk["data"])
 
-        buffer.seek(0)
-        return StreamingResponse(
-            buffer,
-            media_type="audio/mpeg",
-            headers={"X-TTS-Engine": "edge-tts", "X-TTS-Voice": voice},
-        )
-    except Exception as e:
-        logger.error(f"edge-tts 合成失败: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"语音合成失败: {str(e)}")
+    if buffer.tell() == 0:
+        raise RuntimeError("edge-tts 返回音频为空")
+
+    buffer.seek(0)
+    logger.info(f"edge-tts 合成成功: voice={voice}, bytes={buffer.tell()}")
+    return StreamingResponse(
+        buffer,
+        media_type="audio/mpeg",
+        headers={"X-TTS-Engine": "edge-tts", "X-TTS-Voice": voice},
+    )
 
 
 if __name__ == "__main__":

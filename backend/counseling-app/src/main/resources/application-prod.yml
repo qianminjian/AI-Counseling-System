@@ -50,7 +50,7 @@ mindsafe:
     key-version: ${MINDSAFE_ENCRYPTION_KEY_VERSION:1}
     previous-keys: ${MINDSAFE_ENCRYPTION_PREVIOUS_KEYS:}
   llm:
-    first-token-timeout-ms: 2000
+    first-token-timeout-ms: 12000
     overall-timeout-ms: 45000
   alert:
     wecom:

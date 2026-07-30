@@ -2,12 +2,12 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# 系统依赖（edge-tts 模式无需 torch/sox，仅保留基础网络库）
+# 系统依赖
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Python 依赖（轻量：仅 edge-tts + FastAPI）
+# Python 依赖（轻量：httpx + edge-tts + FastAPI）
 COPY requirements-lite.txt .
 RUN pip install --no-cache-dir -r requirements-lite.txt
 

@@ -27,6 +27,8 @@ services:
       context: ../backend/tts-service
       dockerfile: Dockerfile
     restart: unless-stopped
+    environment:
+      DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:-}
 
   # ===== 语音识别与情绪分析微服务（FunASR） =====
   voice-service:

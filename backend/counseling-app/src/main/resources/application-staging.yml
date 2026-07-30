@@ -29,7 +29,7 @@ mindsafe:
     key: ${MINDSAFE_ENCRYPTION_KEY}
     key-version: ${MINDSAFE_ENCRYPTION_KEY_VERSION:1}
   llm:
-    first-token-timeout-ms: 3000
+    first-token-timeout-ms: 15000
     overall-timeout-ms: 60000
   alert:
     wecom:

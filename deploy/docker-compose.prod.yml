@@ -112,6 +112,8 @@ services:
       dockerfile: Dockerfile
     container_name: mindsafe-tts
     restart: unless-stopped
+    environment:
+      DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:-}
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:10096/health')"]
       interval: 30s

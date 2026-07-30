@@ -6,6 +6,7 @@ import SessionHistory from './SessionHistory'
 import RelaxationExercises from './RelaxationExercises'
 import EmotionDiary from './EmotionDiary'
 import Achievements from './Achievements'
+import SettingsPanel from './SettingsPanel'
 
 const EMOTIONS = [
   { tag: 'happy', emoji: '😊', label: '开心', desc: '有好事发生', color: 'bg-yellow-100 border-yellow-400 text-yellow-800' },
@@ -21,6 +22,8 @@ export default function EmotionSelect({ onStart, userName, onLogout }) {
   const [error, setError] = useState('')
   const [showRelaxation, setShowRelaxation] = useState(false)
   const [showDiary, setShowDiary] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [muted, setMuted] = useState(false)
   const { theme } = useTheme()
 
   const handleStart = async () => {
@@ -58,6 +61,22 @@ export default function EmotionSelect({ onStart, userName, onLogout }) {
   return (
     <div className="min-h-screen flex flex-col items-center pt-10 pb-16 px-6 lg:p-10"
       style={{ background: 'linear-gradient(to bottom, var(--bg-start), var(--bg-end))', paddingBottom: 'calc(4rem + env(safe-area-inset-bottom))' }}>
+      {/* 设置按钮（右上角） */}
+      <button
+        onClick={() => setSettingsOpen(true)}
+        className="fixed top-4 right-4 z-40 w-10 h-10 flex items-center justify-center rounded-full bg-white/80 shadow-md border border-gray-100 text-gray-500 hover:text-gray-700 active:scale-90 transition-all"
+        title="设置"
+      >
+        ⚙️
+      </button>
+      <SettingsPanel
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        muted={muted}
+        onToggleMute={() => setMuted(v => !v)}
+        onToggleWake={() => {}}
+      />
+
       {/* 标题区：儿童化圆体标题 + 伙伴漂浮动画 */}
       <div className="text-6xl lg:text-8xl mb-4 lg:mb-6 float-companion">{theme.companion}</div>
       <h1 className="kid-title text-2xl lg:text-4xl text-gray-800 mb-2">
