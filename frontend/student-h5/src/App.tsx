@@ -21,6 +21,7 @@ export default function App() {
   const [authed, setAuthed] = useState(() => isAuthenticated())
   const [showConsent, setShowConsent] = useState(false)
   const [session, setSession] = useState(null)
+  const [loginTab, setLoginTab] = useState('login')
 
   // 家长周报路由（无需登录）
   if (window.location.pathname === '/parent') {
@@ -46,6 +47,7 @@ export default function App() {
   // 注册前检查设备级告知同意
   const handleNeedConsent = () => {
     if (!isConsentDone()) {
+      setLoginTab('register') // 记住目标 tab，同意完成后回到注册页
       setShowConsent(true)
     }
   }
@@ -55,7 +57,7 @@ export default function App() {
       {showConsent ? (
         <ConsentGate onAgree={() => { markConsentDone(); setShowConsent(false) }} />
       ) : !authed ? (
-        <LoginPage onLogin={handleLogin} onRegister={handleRegister} onNeedConsent={handleNeedConsent} />
+        <LoginPage onLogin={handleLogin} onRegister={handleRegister} onNeedConsent={handleNeedConsent} initialTab={loginTab} />
       ) : !session ? (
         <>
           <WelcomeGuide />

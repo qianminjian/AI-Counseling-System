@@ -4,14 +4,35 @@
  * - 音色选择（小星/气球/月亮）
  * - 语音开关
  * - 语音唤醒开关（design/28 §1.1；不支持/未配置时隐藏）
+ * - 我的家庭码（家长绑定用）
  * 适合儿童操作：大图标 + 简短文字
  */
+import { useState, useEffect } from 'react'
 import { useTheme, THEMES } from '../theme/ThemeProvider'
 import { useVoicePersona, VOICE_PERSONAS } from '../hooks/useVoicePersona'
+import { api, getUser } from '../api'
 
 export default function SettingsPanel({ open, onClose, muted, onToggleMute, wakeSupported = false, wakeOn = false, onToggleWake }) {
   const { themeId, changeTheme } = useTheme()
   const { personaId, changePersona } = useVoicePersona()
+  const [familyCode, setFamilyCode] = useState(getUser()?.familyCode || '')
+  const [copied, setCopied] = useState(false)
+
+  // 打开时如果 sessionStorage 没有 familyCode，从后端获取
+  useEffect(() => {
+    if (open && !familyCode) {
+      api('/api/v1/auth/me').then((data) => {
+        if (data?.familyCode) setFamilyCode(data.familyCode)
+      }).catch(() => {})
+    }
+  }, [open])
+
+  const copyCode = () => {
+    navigator.clipboard?.writeText(familyCode).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
+  }
 
   if (!open) return null
 
@@ -140,6 +161,25 @@ export default function SettingsPanel({ open, onClose, muted, onToggleMute, wake
             </div>
           </button>
         </section>
+
+        {/* 我的家庭码（家长绑定用） */}
+        {familyCode && (
+          <section className="mb-4">
+            <h3 className="mb-3 text-sm font-semibold text-gray-500">🏠 我的家庭码</h3>
+            <div className="flex items-center justify-between rounded-2xl border-2 border-gray-100 bg-gray-50 p-4">
+              <div>
+                <p className="font-mono text-2xl font-bold tracking-[0.2em] text-[var(--primary)]">{familyCode}</p>
+                <p className="mt-1 text-xs text-gray-400">告诉家长，用于绑定家长账号</p>
+              </div>
+              <button
+                onClick={copyCode}
+                className="rounded-xl bg-[var(--primary)] px-3 py-2 text-xs font-bold text-white active:scale-95 transition-all"
+              >
+                {copied ? '已复制 ✓' : '复制'}
+              </button>
+            </div>
+          </section>
+        )}
 
         {/* 关闭按钮 */}
         <button

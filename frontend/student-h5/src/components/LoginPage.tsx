@@ -15,9 +15,9 @@ import VoiceLoginOverlay from './VoiceLoginOverlay'
  * - 语音唤醒：一体化勾选框 + 声纹入口
  * - Pad 横屏：左品牌右表单
  */
-export default function LoginPage({ onLogin, onRegister, onNeedConsent }) {
+export default function LoginPage({ onLogin, onRegister, onNeedConsent, initialTab = 'login' }) {
   const { themeId, changeTheme } = useTheme()
-  const [tab, setTab] = useState('login')
+  const [tab, setTab] = useState(initialTab)
   const [showVoiceOverlay, setShowVoiceOverlay] = useState(false)
   const [voiceSupported, setVoiceSupported] = useState(false)
   const [idle, setIdle] = useState(false)
