@@ -22,7 +22,7 @@ import org.testcontainers.utility.DockerImageName;
  * 注意：需要本机 Docker 运行。CI 中由 GitHub Actions 提供 Docker 环境。
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, classes = MindSafeApplication.class)
-@Testcontainers
+@Testcontainers(disabledWithoutDocker = true)
 @ActiveProfiles("test")
 public abstract class AbstractIntegrationTest {
 
