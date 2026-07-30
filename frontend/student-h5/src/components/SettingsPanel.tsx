@@ -71,7 +71,7 @@ export default function SettingsPanel({ open, onClose, muted, onToggleMute, wake
       <div className="absolute inset-0 bg-black/30" onClick={onClose} />
 
       {/* 面板 */}
-      <div className="relative w-full max-w-lg rounded-t-3xl bg-white p-6 pb-10 shadow-2xl animate-slide-up">
+      <div className="relative w-full max-w-lg max-h-[85vh] overflow-y-auto rounded-t-3xl bg-white p-6 pb-10 shadow-2xl animate-slide-up">
         {/* 拖拽条 */}
         <div className="mx-auto mb-4 h-1.5 w-12 rounded-full bg-gray-200" />
 
@@ -177,7 +177,7 @@ export default function SettingsPanel({ open, onClose, muted, onToggleMute, wake
                   {!wakeSupported ? '当前设备不支持' : wakeOn ? '语音唤醒已开启' : '语音唤醒已关闭'}
                 </p>
                 <p className="text-xs text-gray-400">
-                  {!wakeSupported ? '需要支持麦克风和 AudioWorklet 的浏览器' : wakeOn ? '直接说“哈喽波波”就能叫我' : '开启后说“哈喽波波”就能和我说话'}
+                  {!wakeSupported ? '需要支持麦克风的浏览器（HTTPS）' : wakeOn ? '直接说“哈喽波波”就能叫我' : '开启后说“哈喽波波”就能和我说话'}
                 </p>
               </div>
             </div>

@@ -31,6 +31,7 @@ import {
   SILENCE_RMS_THRESHOLD,
   matchesWakeWord,
 } from '../config/wakeWord'
+import { createPcmCapture, type PcmCaptureHandle } from '../utils/createPcmCapture'
 
 /** Whisper 要求的采样率 */
 const TARGET_SAMPLE_RATE = 16000
@@ -40,19 +41,8 @@ const WINDOW_SAMPLES = Math.round(WAKE_WINDOW_SECONDS * TARGET_SAMPLE_RATE)
 const KEEP_SAMPLES = Math.round(WAKE_KEEP_SECONDS * TARGET_SAMPLE_RATE)
 const MAX_BUFFER_SAMPLES = WINDOW_SAMPLES * 2
 
-/** AudioWorklet 处理器：把麦克风 PCM（Float32 单声道）转发到主线程（内联 Blob，无需静态文件） */
-const CAPTURE_WORKLET_CODE = `
-class WakeCaptureProcessor extends AudioWorkletProcessor {
-  process(inputs) {
-    const input = inputs[0]
-    if (input && input[0] && input[0].length > 0) {
-      this.port.postMessage(input[0])
-    }
-    return true
-  }
-}
-registerProcessor('wake-capture-processor', WakeCaptureProcessor)
-`
+/** AudioWorklet 处理器代码（保留用于 createPcmCapture 内部，此处不再直接使用） */
+// 注：实际采集由 createPcmCapture 统一管理，支持 ScriptProcessor 降级
 
 /** 线性插值降采样到 16kHz（Float32 输出，Whisper 直接消费） */
 function downsampleTo16kFloat(f32, inputRate) {
@@ -138,23 +128,19 @@ export function useWakeWord({ active, onDetected }) {
   const onDetectedRef = useRef(onDetected)
   useEffect(() => { onDetectedRef.current = onDetected })
 
-  // 环境探测：麦克风 + AudioWorklet（无需任何外部账号/配置）
+  // 环境探测：仅需麦克风（AudioWorklet 不可用时自动降级 ScriptProcessor）
   useEffect(() => {
-    setSupported(
-      !!navigator.mediaDevices?.getUserMedia &&
-      typeof AudioWorkletNode !== 'undefined'
-    )
+    setSupported(!!navigator.mediaDevices?.getUserMedia)
   }, [])
 
   useEffect(() => {
     if (!active || !supported) return undefined
 
     let cancelled = false
-    let stream = null
-    let audioCtx = null
-    let sourceNode = null
-    let workletNode = null
-    let iosResumeHandler = null
+    let stream: MediaStream | null = null
+    let audioCtx: AudioContext | null = null
+    let captureHandle: PcmCaptureHandle | null = null
+    let iosResumeHandler: (() => void) | null = null
 
     // 滑窗状态
     let chunks = []
@@ -215,7 +201,7 @@ export function useWakeWord({ active, onDetected }) {
           return
         }
 
-        audioCtx = new (window.AudioContext || window.webkitAudioContext)()
+        audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)()
         if (audioCtx.state === 'suspended') {
           await audioCtx.resume().catch(() => {})
           // iOS Safari：AudioContext 须在用户手势内 resume，异步创建可能被挂起 → 等待任意点击恢复
@@ -225,20 +211,10 @@ export function useWakeWord({ active, onDetected }) {
           }
         }
 
-        const workletUrl = URL.createObjectURL(new Blob([CAPTURE_WORKLET_CODE], { type: 'application/javascript' }))
-        try {
-          await audioCtx.audioWorklet.addModule(workletUrl)
-        } finally {
-          URL.revokeObjectURL(workletUrl)
-        }
-
-        sourceNode = audioCtx.createMediaStreamSource(stream)
-        workletNode = new AudioWorkletNode(audioCtx, 'wake-capture-processor')
-
         const inputRate = audioCtx.sampleRate
-        workletNode.port.onmessage = (e) => {
+        captureHandle = await createPcmCapture(audioCtx, stream, (rawPcm: Float32Array) => {
           if (cancelled) return
-          const pcm = downsampleTo16kFloat(e.data, inputRate)
+          const pcm = downsampleTo16kFloat(rawPcm, inputRate)
           chunks.push(pcm)
           totalSamples += pcm.length
           // 积压上限：识别慢于采集时丢弃过老音频，只保最新一窗
@@ -249,10 +225,9 @@ export function useWakeWord({ active, onDetected }) {
             totalSamples = keep.length
           }
           maybeAnalyze()
-        }
+        })
+        console.info('[WakeWord] 音频引擎:', captureHandle.engine)
 
-        sourceNode.connect(workletNode)
-        // 不连接 destination：只采集不回放（避免反馈啸叫）
         setWakeStatus('listening')
         console.info('[WakeWord] 🎤 麦克风已启动，等待唤醒词...')
       } catch (err) {
@@ -270,8 +245,7 @@ export function useWakeWord({ active, onDetected }) {
       cancelled = true
       setWakeStatus('idle')
       if (iosResumeHandler) document.removeEventListener('pointerdown', iosResumeHandler)
-      try { workletNode?.port.close() } catch { /* ignore */ }
-      try { sourceNode?.disconnect() } catch { /* ignore */ }
+      captureHandle?.cleanup()
       stream?.getTracks().forEach((t) => t.stop())
       audioCtx?.close().catch(() => {})
     }

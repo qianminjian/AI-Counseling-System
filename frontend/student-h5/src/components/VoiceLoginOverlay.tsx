@@ -12,20 +12,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { VP_GUIDE_SCRIPTS, VP_SAMPLE_RATE, VP_SEGMENT_DURATION, VP_SILENCE_THRESHOLD } from '../config/voiceprint'
 import { useVoiceprint } from '../hooks/useVoiceprint'
 import { unlockAudio } from '../utils/audioUnlock'
-
-/** AudioWorklet 处理器：采集 PCM 转发主线程 */
-const CAPTURE_WORKLET = `
-class VPCaptureProcessor extends AudioWorkletProcessor {
-  process(inputs) {
-    const input = inputs[0]
-    if (input && input[0] && input[0].length > 0) {
-      this.port.postMessage(input[0])
-    }
-    return true
-  }
-}
-registerProcessor('vp-capture-processor', VPCaptureProcessor)
-`
+import { createPcmCapture, type PcmCaptureHandle } from '../utils/createPcmCapture'
 
 /**
  * @param {object} props
@@ -43,10 +30,10 @@ export default function VoiceLoginOverlay({ mode = 'verify', onComplete, onCance
 
   const { extractEmbedding, verify, loading } = useVoiceprint()
   const collectedEmbeddings = useRef([])
-  const audioCtxRef = useRef(null)
-  const streamRef = useRef(null)
-  const workletRef = useRef(null)
-  const chunksRef = useRef([])
+  const audioCtxRef = useRef<AudioContext | null>(null)
+  const streamRef = useRef<MediaStream | null>(null)
+  const captureRef = useRef<PcmCaptureHandle | null>(null)
+  const chunksRef = useRef<Float32Array[]>([])
   const listeningRef = useRef(false)
   const cancelledRef = useRef(false)
 
@@ -54,7 +41,8 @@ export default function VoiceLoginOverlay({ mode = 'verify', onComplete, onCance
   const cleanup = useCallback(() => {
     cancelledRef.current = true
     listeningRef.current = false
-    try { workletRef.current?.port.close() } catch { /* ignore */ }
+    captureRef.current?.cleanup()
+    captureRef.current = null
     streamRef.current?.getTracks().forEach((t) => t.stop())
     audioCtxRef.current?.close().catch(() => {})
   }, [])
@@ -84,7 +72,7 @@ export default function VoiceLoginOverlay({ mode = 'verify', onComplete, onCance
     })
   }, [])
 
-  /** 初始化麦克风 + AudioWorklet */
+  /** 初始化麦克风 + PCM 采集（AudioWorklet 优先，ScriptProcessor 降级） */
   const initMic = useCallback(async () => {
     if (audioCtxRef.current) return true
     try {
@@ -92,35 +80,23 @@ export default function VoiceLoginOverlay({ mode = 'verify', onComplete, onCance
         audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
       })
       streamRef.current = stream
-      const ctx = new (window.AudioContext || window.webkitAudioContext)()
+      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)()
       if (ctx.state === 'suspended') await ctx.resume().catch(() => {})
       audioCtxRef.current = ctx
 
-      const workletUrl = URL.createObjectURL(new Blob([CAPTURE_WORKLET], { type: 'application/javascript' }))
-      try {
-        await ctx.audioWorklet.addModule(workletUrl)
-      } finally {
-        URL.revokeObjectURL(workletUrl)
-      }
-
-      const source = ctx.createMediaStreamSource(stream)
-      const worklet = new AudioWorkletNode(ctx, 'vp-capture-processor')
-      workletRef.current = worklet
-
-      worklet.port.onmessage = (e) => {
+      const handle = await createPcmCapture(ctx, stream, (pcm: Float32Array) => {
         if (!listeningRef.current) return
-        const pcm = e.data
         chunksRef.current.push(pcm)
         // 计算音量（UI 动画）
         let sum = 0
         for (let i = 0; i < pcm.length; i++) sum += pcm[i] * pcm[i]
         setVolume(Math.min(1, Math.sqrt(sum / pcm.length) * 10))
-      }
-
-      source.connect(worklet)
+      })
+      captureRef.current = handle
+      console.info('[VoiceLogin] 音频引擎:', handle.engine)
       return true
     } catch (err) {
-      console.warn('[VoiceLogin] 麦克风初始化失败:', err?.message)
+      console.warn('[VoiceLogin] 麦克风初始化失败:', (err as Error)?.message)
       setStatusText('麦克风不可用，请用秘密数字登录')
       setPhase('fail')
       return false

@@ -116,11 +116,10 @@ export function useVoiceprint() {
   const checkSupport = useCallback(async () => {
     if (initRef.current) return supported
     initRef.current = true
-    // 基础环境检测
+    // 基础环境检测（AudioWorklet 不可用时自动降级 ScriptProcessor，不再硬性要求）
     const hasMic = !!navigator.mediaDevices?.getUserMedia
-    const hasWorklet = typeof AudioWorkletNode !== 'undefined'
     const hasIDB = typeof indexedDB !== 'undefined'
-    if (!hasMic || !hasWorklet || !hasIDB) {
+    if (!hasMic || !hasIDB) {
       setSupported(false)
       return false
     }
