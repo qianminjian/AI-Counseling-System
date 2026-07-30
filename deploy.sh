@@ -193,6 +193,7 @@ $DEPLOY_STUDENT && rsync -avz --delete "$PROJECT_ROOT/frontend/student-h5/dist/"
 $DEPLOY_TEACHER && rsync -avz --delete "$PROJECT_ROOT/frontend/teacher-web/dist/" "$SERVER:$REMOTE_DIR/frontend/teacher/"
 $DEPLOY_PARENT && rsync -avz --delete "$PROJECT_ROOT/frontend/parent-h5/dist/" "$SERVER:$REMOTE_DIR/frontend/parent/"
 
+
 if $DEPLOY_TTS; then
   rsync -avz --delete "$PROJECT_ROOT/backend/tts-service/" "$SERVER:$REMOTE_DIR/tts-service/"
 fi

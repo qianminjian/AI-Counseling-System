@@ -18,6 +18,7 @@ const EMOTIONS = [
 export default function EmotionSelect({ onStart, userName, onLogout }) {
   const [selected, setSelected] = useState(null)
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
   const [showRelaxation, setShowRelaxation] = useState(false)
   const [showDiary, setShowDiary] = useState(false)
   const { theme } = useTheme()
@@ -40,6 +41,7 @@ export default function EmotionSelect({ onStart, userName, onLogout }) {
       })
     } catch (e) {
       console.error('创建会话失败', e)
+      setError(e.message || '创建会话失败，请稍后再试')
     } finally {
       setLoading(false)
     }
@@ -96,6 +98,9 @@ export default function EmotionSelect({ onStart, userName, onLogout }) {
         >
           {loading ? '正在连接...' : '开始聊天 💬'}
         </button>
+        {error && (
+          <p className="text-sm text-red-500 text-center max-w-xs animate-pulse">{error}</p>
+        )}
         <button
           onClick={() => setShowRelaxation(true)}
           className="text-sm text-gray-400 hover:text-gray-600 transition-colors underline underline-offset-4"
