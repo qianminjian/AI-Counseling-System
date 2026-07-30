@@ -97,6 +97,14 @@ public class TrialAuthService {
                 user.getUserId(), TRIAL_TENANT_ID, "trial_terms", consentVersion);
         consentRecordMapper.insert(consent);
 
+        // 5.1 试运行阶段：age<14 自动写入监护人同意记录（无 SMS 网关，注册时已收集监护人手机号）
+        //     正式上线后由 GuardianConsentService SMS 闭环替代，见 TASK-TRACKER AUTH-040
+        if (age < 14) {
+            ConsentRecord guardianConsent = ConsentRecord.create(
+                    user.getUserId(), TRIAL_TENANT_ID, "guardian_consent", "v1.0");
+            consentRecordMapper.insert(guardianConsent);
+        }
+
         // 6. 邀请码使用计数 +1；单次码（max_uses=1）绑定用户，共享码不绑定
         TrialInviteCode update = new TrialInviteCode();
         update.setCodeId(code.getCodeId());
