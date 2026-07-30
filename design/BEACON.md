@@ -33,7 +33,7 @@
 | 2 | 文档分层：`design/`（正式设计）与 `doc/his/`（早期需求/探索产物，只读留档）分离 | 需求与设计生命周期不同，避免混杂；早期产物已归档至 `doc/his/` | 2026-07-23 |
 | 3 | `tmp/` 为唯一临时目录并 gitignore | 杜绝临时文件散落 | 2026-07-23 |
 | 4 | 3 版建设方案全部保留（时间戳后缀） | md5 均不同，取舍需人工比对，不擅自删；已归档至 `doc/his/` | 2026-07-23 |
-| 5 | 技术栈：**Java 21+Spring Boot 3.4+Spring AI 1.0** / PostgreSQL16 / React19+JS+Vite8+Tailwind(学生端)+AntDesign6(教师端) / Maven / Docker Compose | 私有化/信创是主营（钱敏健决策）：Java 信创适配成熟、政企交付预期、用户银行背景；前端实际采用 JS（非 TS）以降低开发复杂度 | 2026-07-23（实现期修正） |
+| 5 | 技术栈：**Java 21+Spring Boot 3.4+Spring AI 1.0** / PostgreSQL16 / React19+**TypeScript**+Vite8+Tailwind(学生端)+AntDesign6(教师端) / Maven / Docker Compose | 私有化/信创是主营（钱敏健决策）：Java 信创适配成熟、政企交付预期、用户银行背景；前端已于 2026-07 全量迁移 TypeScript（渐进式策略，noImplicitAny:false） | 2026-07-23（实现期修正，2026-07-28 TS 迁移） |
 | 6 | 多租户用 Schema 级隔离（`tenant_{id}`） | 钱敏健决策：隔离强度优先（金融背景标准），与07号文档一致；代价是迁移运维复杂度，接受 | 2026-07-23 |
 | 7 | LLM 供应商无关化：Spring AI 配置驱动接入任意国产合规 LLM，主备降级 | 钱敏健决策：不锁定供应商；Spring AI 天然多 Provider；合规候选 DeepSeek/通义/GLM | 2026-07-23 |
 | 8 | 后端架构：**模块化单体（Maven 多模块）**，MVP 不上微服务 | 微服务运维税（注册/配置/链路/分布式事务）MVP 纯负担；Maven 模块隔离领域未来可拆；私有化单体容器化对学校机房更友好 | 2026-07-23 |

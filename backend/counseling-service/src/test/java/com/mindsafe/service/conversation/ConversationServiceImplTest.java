@@ -93,6 +93,7 @@ class ConversationServiceImplTest {
     private final Map<UUID, SessionState> testSessionStore = new HashMap<>();
 
     private ConversationServiceImpl service;
+    private MessageSummaryService messageSummaryService;
 
     private final UUID tenantId = UUID.randomUUID();
     private final UUID studentId = UUID.randomUUID();
@@ -161,17 +162,21 @@ class ConversationServiceImplTest {
         when(ragAdvisorService.buildRagContext(any(), anyString(), anyInt())).thenReturn("");
 
 
+        // 构建 MessageSummaryService（使用同一组 mock）
+        com.mindsafe.service.security.FieldEncryptionService plainEnc =
+                new com.mindsafe.service.security.FieldEncryptionService(
+                        "", 1, "", new org.springframework.core.env.StandardEnvironment());
+        messageSummaryService = new MessageSummaryService(messageSummaryMapper, sessionMapper,
+                aiChatService, plainEnc, conversationQualityService, profileExtractorService, longTermMemoryService);
+
         service = new ConversationServiceImpl(aiChatService, promptTemplateService,
                 riskProcessor, piiDesensitizer, sessionMapper, messageSummaryMapper,
                 userMapper, profileService,
-                profileExtractorService, usageTimeLimitService, longTermMemoryService, promptVersionService,
+                usageTimeLimitService, longTermMemoryService, promptVersionService,
                 ragAdvisorService,
                 // ORCH-001/003：编排引擎+情绪状态机纯规则无依赖，直接用真实实例
                 new PromptOrchestrationService(new EntryMoodStrategyResolver(), new EmotionStateMachine()),
-                conversationQualityService,
-                // R-01：未配密钥的真实加密服务 → 明文透传，不影响 contentSummary 断言
-                new com.mindsafe.service.security.FieldEncryptionService(
-                        "", 1, "", new org.springframework.core.env.StandardEnvironment()),
+                messageSummaryService,
                 crisisResourceProvider,
                 allianceEnhancer, cbtStageRouter,
                 experimentBucketAssigner, experimentMetricsCollector,
@@ -354,10 +359,11 @@ class ConversationServiceImplTest {
             ConversationServiceImpl keyedService = new ConversationServiceImpl(aiChatService, promptTemplateService,
                     riskProcessor, piiDesensitizer, sessionMapper, messageSummaryMapper,
                     userMapper, profileService,
-                    profileExtractorService, usageTimeLimitService, longTermMemoryService, promptVersionService,
+                    usageTimeLimitService, longTermMemoryService, promptVersionService,
                     ragAdvisorService,
                     new PromptOrchestrationService(new EntryMoodStrategyResolver(), new EmotionStateMachine()),
-                    conversationQualityService, keyedEnc,
+                    new MessageSummaryService(messageSummaryMapper, sessionMapper,
+                            aiChatService, keyedEnc, conversationQualityService, profileExtractorService, longTermMemoryService),
                     crisisResourceProvider,
                     allianceEnhancer, cbtStageRouter,
                     experimentBucketAssigner, experimentMetricsCollector,
@@ -682,10 +688,10 @@ class ConversationServiceImplTest {
         @Test
         @DisplayName("redSafetyReply: 分年级选版（1-2 短句版 / 3-6 标准版）")
         void redSafetyReply_gradeVariants() {
-            assertThat(ConversationServiceImpl.redSafetyReply(1)).isEqualTo(CrisisResources.RED_SAFETY_REPLY_LOWER_GRADE);
-            assertThat(ConversationServiceImpl.redSafetyReply(2)).isEqualTo(CrisisResources.RED_SAFETY_REPLY_LOWER_GRADE);
-            assertThat(ConversationServiceImpl.redSafetyReply(3)).isEqualTo(CrisisResources.RED_SAFETY_REPLY);
-            assertThat(ConversationServiceImpl.redSafetyReply(6)).isEqualTo(CrisisResources.RED_SAFETY_REPLY);
+            assertThat(ConversationUtils.redSafetyReply(1)).isEqualTo(CrisisResources.RED_SAFETY_REPLY_LOWER_GRADE);
+            assertThat(ConversationUtils.redSafetyReply(2)).isEqualTo(CrisisResources.RED_SAFETY_REPLY_LOWER_GRADE);
+            assertThat(ConversationUtils.redSafetyReply(3)).isEqualTo(CrisisResources.RED_SAFETY_REPLY);
+            assertThat(ConversationUtils.redSafetyReply(6)).isEqualTo(CrisisResources.RED_SAFETY_REPLY);
         }
     }
 
@@ -874,54 +880,54 @@ class ConversationServiceImplTest {
         @Test
         @DisplayName("parseGradeCode: 支持 G1-G6、纯数字、null/空/非法 → 默认 4")
         void parseGradeCode_variants() {
-            assertThat(ConversationServiceImpl.parseGradeCode("G1")).isEqualTo(1);
-            assertThat(ConversationServiceImpl.parseGradeCode("G6")).isEqualTo(6);
-            assertThat(ConversationServiceImpl.parseGradeCode("3")).isEqualTo(3);
-            assertThat(ConversationServiceImpl.parseGradeCode(null)).isEqualTo(4);
-            assertThat(ConversationServiceImpl.parseGradeCode("")).isEqualTo(4);
-            assertThat(ConversationServiceImpl.parseGradeCode("abc")).isEqualTo(4);
-            assertThat(ConversationServiceImpl.parseGradeCode("G9")).isEqualTo(4);
+            assertThat(ConversationUtils.parseGradeCode("G1")).isEqualTo(1);
+            assertThat(ConversationUtils.parseGradeCode("G6")).isEqualTo(6);
+            assertThat(ConversationUtils.parseGradeCode("3")).isEqualTo(3);
+            assertThat(ConversationUtils.parseGradeCode(null)).isEqualTo(4);
+            assertThat(ConversationUtils.parseGradeCode("")).isEqualTo(4);
+            assertThat(ConversationUtils.parseGradeCode("abc")).isEqualTo(4);
+            assertThat(ConversationUtils.parseGradeCode("G9")).isEqualTo(4);
         }
 
         @Test
         @DisplayName("computeEffectiveGrade: 无画像数据 → 不降级")
         void noProfile_noDowngrade() {
-            assertThat(ConversationServiceImpl.computeEffectiveGrade(5, null, false)).isEqualTo(5);
+            assertThat(ConversationUtils.computeEffectiveGrade(5, null, false)).isEqualTo(5);
         }
 
         @Test
         @DisplayName("computeEffectiveGrade: 风险场景 → 不降级")
         void riskBlocked_noDowngrade() {
-            assertThat(ConversationServiceImpl.computeEffectiveGrade(5, 0.1, true)).isEqualTo(5);
+            assertThat(ConversationUtils.computeEffectiveGrade(5, 0.1, true)).isEqualTo(5);
         }
 
         @Test
         @DisplayName("computeEffectiveGrade: 极端沉默(<0.15) → 直接降到 1")
         void extremeSilence_gradeOne() {
-            assertThat(ConversationServiceImpl.computeEffectiveGrade(5, 0.1, false)).isEqualTo(1);
-            assertThat(ConversationServiceImpl.computeEffectiveGrade(3, 0.14, false)).isEqualTo(1);
+            assertThat(ConversationUtils.computeEffectiveGrade(5, 0.1, false)).isEqualTo(1);
+            assertThat(ConversationUtils.computeEffectiveGrade(3, 0.14, false)).isEqualTo(1);
         }
 
         @Test
         @DisplayName("computeEffectiveGrade: 低表达(0.15-0.3) + grade>2 → 降 2 年级")
         void lowExpression_downgrade() {
-            assertThat(ConversationServiceImpl.computeEffectiveGrade(5, 0.25, false)).isEqualTo(3);
-            assertThat(ConversationServiceImpl.computeEffectiveGrade(4, 0.2, false)).isEqualTo(2);
-            assertThat(ConversationServiceImpl.computeEffectiveGrade(3, 0.29, false)).isEqualTo(1);
+            assertThat(ConversationUtils.computeEffectiveGrade(5, 0.25, false)).isEqualTo(3);
+            assertThat(ConversationUtils.computeEffectiveGrade(4, 0.2, false)).isEqualTo(2);
+            assertThat(ConversationUtils.computeEffectiveGrade(3, 0.29, false)).isEqualTo(1);
         }
 
         @Test
         @DisplayName("computeEffectiveGrade: 低表达 + grade≤2 → 不降（已是最低段）")
         void lowExpression_lowGrade_noDowngrade() {
-            assertThat(ConversationServiceImpl.computeEffectiveGrade(2, 0.2, false)).isEqualTo(2);
-            assertThat(ConversationServiceImpl.computeEffectiveGrade(1, 0.2, false)).isEqualTo(1);
+            assertThat(ConversationUtils.computeEffectiveGrade(2, 0.2, false)).isEqualTo(2);
+            assertThat(ConversationUtils.computeEffectiveGrade(1, 0.2, false)).isEqualTo(1);
         }
 
         @Test
         @DisplayName("computeEffectiveGrade: 正常表达(≥0.3) → 不降级")
         void normalExpression_noDowngrade() {
-            assertThat(ConversationServiceImpl.computeEffectiveGrade(5, 0.5, false)).isEqualTo(5);
-            assertThat(ConversationServiceImpl.computeEffectiveGrade(3, 0.3, false)).isEqualTo(3);
+            assertThat(ConversationUtils.computeEffectiveGrade(5, 0.5, false)).isEqualTo(5);
+            assertThat(ConversationUtils.computeEffectiveGrade(3, 0.3, false)).isEqualTo(3);
         }
     }
 
@@ -1021,7 +1027,7 @@ class ConversationServiceImplTest {
                     MessageSummary.aiMessage(tenantId, sessionId, studentId, 1, "我在听")));
             when(aiChatService.generateSessionSummary(anyString())).thenReturn("会话摘要");
 
-            service.generateSummaryAsync(tenantId, sessionId, studentId);
+            messageSummaryService.generateSummaryAsync(tenantId, sessionId, studentId);
 
             ArgumentCaptor<String> textCaptor = ArgumentCaptor.forClass(String.class);
             verify(conversationQualityService).evaluateSessionAsync(eq(tenantId), eq(sessionId), textCaptor.capture());
@@ -1033,7 +1039,7 @@ class ConversationServiceImplTest {
         void noMessages_noEvaluation() {
             when(messageSummaryMapper.selectList(any())).thenReturn(List.of());
 
-            service.generateSummaryAsync(tenantId, UUID.randomUUID(), studentId);
+            messageSummaryService.generateSummaryAsync(tenantId, UUID.randomUUID(), studentId);
 
             verify(conversationQualityService, never()).evaluateSessionAsync(any(), any(), anyString());
         }

@@ -4,6 +4,7 @@ import type { ReactNode } from 'react'
 import VerifyPage from './pages/verify/index'
 import ReportPage from './pages/report/index'
 import ConsentPage from './pages/consent/index'
+import ErrorBoundary from './components/ErrorBoundary'
 import { isAuthenticated } from './utils/auth'
 import './app.scss'
 
@@ -15,12 +16,14 @@ function ProtectedRoute({ children }: { children: ReactNode }) {
 }
 
 createRoot(document.getElementById('root')!).render(
-  <BrowserRouter basename="/parent">
-    <Routes>
-      <Route path="/" element={<VerifyPage />} />
-      <Route path="/report" element={<ProtectedRoute><ReportPage /></ProtectedRoute>} />
-      <Route path="/consent" element={<ProtectedRoute><ConsentPage /></ProtectedRoute>} />
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
-  </BrowserRouter>
+  <ErrorBoundary>
+    <BrowserRouter basename="/parent">
+      <Routes>
+        <Route path="/" element={<VerifyPage />} />
+        <Route path="/report" element={<ProtectedRoute><ReportPage /></ProtectedRoute>} />
+        <Route path="/consent" element={<ProtectedRoute><ConsentPage /></ProtectedRoute>} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </BrowserRouter>
+  </ErrorBoundary>
 )

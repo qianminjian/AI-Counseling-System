@@ -147,9 +147,34 @@ services:
     networks:
       - internal
 
+  # P1-2: 每日凌晨 2 点自动 pg_dump 备份（保留 7 天）
+  db-backup:
+    image: pgvector/pgvector:pg16
+    container_name: mindsafe-db-backup
+    restart: unless-stopped
+    environment:
+      PGHOST: postgres
+      PGUSER: mindsafe
+      PGPASSWORD: ${DB_PASSWORD}
+      PGDATABASE: mindsafe
+    volumes:
+      - dbbackups:/backups
+    entrypoint: >
+      sh -c 'while true; do
+        pg_dump -Fc -f /backups/mindsafe_$(date +%Y%m%d_%H%M%S).dump;
+        find /backups -name "*.dump" -mtime +7 -delete;
+        sleep 86400;
+      done'
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - internal
+
 volumes:
   pgdata:
   redisdata:
+  dbbackups:
 
 networks:
   internal:
