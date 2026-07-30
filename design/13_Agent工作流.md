@@ -1,9 +1,9 @@
 # 13 Agent 工作流详细设计
 
 > 来源：`doc/13_Agent工作流.docx`（原文 552 行）
-> 状态：已转换 | 关联决策：BEACON #9（**Spring AI 替代 LangGraph**）、**DEC-CBT 路径1（激活世界B，钱敏健 2026-07-28）**
-> ⚠️ 原文第四章基于 Python **LangGraph** 编写，本文档已按决策 #9 改写为 **Spring AI（ChatClient + Advisor 链 + 状态机）** 实现（见 §4）。原始 LangGraph 描述保留在 §4 附录供对照。
-> ⚠️ **实现现状（2026-07-28 核对）**：§2/§4/§9/§10 描述的多 Agent 编排（世界B）**已全部编码但零调用**——`ConversationOrchestrator` 全仓无 counseling-ai 之外的调用者，线上对话走 `ChatServiceImpl` 单 prompt 直连（世界A）。逐组件四态判定与 DEC-CBT 接线深化设计见 **§十三**，勿将本文档误读为已生效架构。
+> 状态：**历史蓝图存档（世界B 已删除）** | 关联决策：BEACON #9（**Spring AI 替代 LangGraph**）、**DEC-CBT 删除世界B（钱敏健 2026-07-29，推翻原「路径1激活」）**
+> 
+> 🔴 **重要（2026-07-29）**：本文档描述的 7-Agent 星型编排（世界B：`ConversationOrchestrator` + `agent/` 包 + `state/` 包 + `CbtStateMachine`）为**整链零调用死代码**，已于 2026-07-29 从代码库**整体删除**。经审计（design/51-53 双世界分析），线上对话**唯一生效架构为世界A**——`ConversationServiceImpl` + `PromptOrchestrationService`（单 prompt 主线，SSE 流式）。本文档自此**降级为历史蓝图存档**，仅供设计思路追溯，**不代表任何已实现或计划实现的代码**。§2/§4/§9/§10 的 Agent 详细设计、Prompt 模板、状态机与接口定义均属已删除的世界B，勿据此实现或误读为线上架构。删除记录与世界A 事实架构见 **§十三**。
 
 ---
 
@@ -616,11 +616,55 @@ SafetyOutputAdvisor ──▶ pass/rewrite/block/escalate
 
 ---
 
-## 十三、实现现状四态判定与 DEC-CBT 接线深化设计（2026-07-28）
+## 十三、DEC-CBT 决策记录：删除世界B（2026-07-29）
 
-> 背景：design/51-53 双世界分析确认本文档为「世界B」蓝图——**已实现、零调用**。DEC-CBT 已决策走路径1（激活世界B）。本节是落地锚：逐组件标注真实状态，给出流式兼容接线架构、延迟/成本门禁与分阶段里程碑。**本节为设计，未开发。**
+> 背景：design/51-53 双世界分析确认本文档 §2/§4/§9/§10 描述的 7-Agent 星型编排为「世界B」蓝图——**已编码、整链零调用**。DEC-CBT 最终决策：**删除世界B，而非激活**（钱敏健 2026-07-29，推翻此前「路径1激活」倾向）。本节记录删除范围、决策依据与线上唯一生效的世界A 事实架构。
 
-### 13.1 逐组件四态判定（🟩已生效 / 🟧已实现零调用 / 🟫仅骨架 / ⬜未实现）
+### 13.1 决策依据（为何删而不激活）
+
+- **零调用死代码**：`ConversationOrchestrator` 全仓无 counseling-ai 之外的调用者，`agent/`、`state/` 两包无任何外部 `import`（2026-07-29 grep 双轮复核）。生产入口（Controller/Filter/@Scheduled/装配链）均不可达。
+- **职责与世界A 重叠**：ConversationAgent 与线上 `ConversationServiceImpl` 职责重叠；Safety/Emotion/Escalation/Report 的线上等价能力已由世界A 的 Service 链（`RiskDetectorService`→`AlertService`、教师摘要生成等）承担。激活世界B 将形成双份 Prompt 组装与双套编排，违背 KISS/DRY。
+- **激活成本高于价值**：激活需影子运行、延迟/成本门禁、灰度回滚（原 WIRE-001~005），且会破坏世界A 的 SSE 流式首字体验；而世界A 已满足 M4 前对话需求。YAGNI 判断：删除死代码消除维护负担与「假架构」误读风险。
+
+### 13.2 已删除清单（2026-07-29，红线操作已授权）
+
+| 归属 | 删除文件 |
+|------|------|
+| `agent/` 包 | `Agent.java`、`CBTAgent.java`、`ConversationAgent.java`、`ConversationContext.java`、`EmotionAgent.java`、`SafetyAgent.java` |
+| `orchestrator/`（仅世界B 件） | `ConversationOrchestrator.java` |
+| `state/` 包 | `CbtSessionState.java`、`CbtState.java`、`CbtStateMachine.java`、`ConversationState.java`、`ConversationStateManager.java` |
+| 测试 | `src/test/java/com/mindsafe/ai/state/CbtStateMachineTest.java` |
+
+> 删除后 `mvn -pl counseling-ai,counseling-service -am test-compile` **BUILD SUCCESS**，证明无外部编译依赖。`CounselingSession.statePath` 注释同步去除对已删 `CbtSessionState` 的悬空引用。
+
+### 13.3 保留清单：世界A 事实架构（线上唯一生效）
+
+> 以下组件在 `orchestrator/` 包内但属**世界A**，随线上单 prompt 主线生效，**保留**：
+
+| 组件 | 代码位置 | 职责 |
+|------|------|------|
+| ConversationServiceImpl | `counseling-service/.../ConversationServiceImpl` | 线上对话主入口，组装 prompt + SSE 流式回复 |
+| PromptOrchestrationService | `counseling-ai/orchestrator/PromptOrchestrationService.java` | 单 prompt 编排（情绪门控/年龄分层/合规裁决） |
+| OrchestrationContext / StrategyProfile / ProfileSignals | `counseling-ai/orchestrator/` | 编排上下文与策略画像（世界A 内部数据结构） |
+| EmotionStateMachine / EntryMoodStrategyResolver | `counseling-ai/orchestrator/` | 情绪状态与入场心境策略（有单测，世界A） |
+| EmotionOrchestrationEvaluator / PromptVariantRouter | `counseling-ai/orchestrator/` | 情绪编排评估与 prompt 变体路由 |
+
+### 13.4 与世界A 等价能力的对照（原世界B Agent 职责去向）
+
+| 原世界B Agent | 线上等价承担者（世界A） |
+|------|------|
+| Safety Agent | `RiskDetectorService`（硬规则+语义）→ 安全管线 Service 显式调用 |
+| Emotion Agent | `EmotionStateMachine` / `EntryMoodStrategyResolver` + `PromptOrchestrationService` 情绪门控 |
+| CBT Agent + 状态机 | 由 `PromptOrchestrationService` 的 CBT 策略变体承担（单 prompt 内引导，不再独立状态机） |
+| Conversation Agent | `ConversationServiceImpl` |
+| Escalation Agent | `RiskDetectorService` → `AlertService` 告警链 |
+| Report Agent | service 层教师摘要生成 |
+| Memory Agent | 历史消息窗口拼接；长期记忆见 design/50 |
+
+> 原 §13.5 分阶段接线里程碑（WIRE-001~005）随删除决策**整体作废**，不再登记 TASK-TRACKER §二十三。TASK-TRACKER 中 DEC-CBT 行已同步标注「删除世界B」。
+
+
+### 13.5 附录：2026-07-28 四态判定历史快照（🟩已生效 / 🟧已实现零调用 / 🟫仅骨架 / ⬜未实现）
 
 | 本文档章节 | 组件 | 代码位置 | 状态 | 说明 |
 |------|------|------|:---:|------|
@@ -631,64 +675,7 @@ SafetyOutputAdvisor ──▶ pass/rewrite/block/escalate
 | §2.5 | Escalation Agent | — | ⬜ | 独立 Agent 未实现；线上等价能力由 RiskDetectorService→AlertService 链承担（世界A，🟩） |
 | §2.6 | Report Agent | — | ⬜ | 线上等价能力：教师摘要生成在 service 层（世界A，🟩） |
 | §2.7 | Memory Agent | — | ⬜ | 线上等价能力：历史消息窗口拼接；长期记忆见 design/50（部分实现） |
-| §4.4/§5 | ConversationState + ConversationStateManager(Redis) | `state/ConversationStateManager.java` | 🟧 | Redis 会话状态管理已实现未接线（同 STATE-002 前置） |
-| §9.3 | ConversationOrchestrator | `orchestrator/ConversationOrchestrator.java` | 🟧 | 全仓零外部调用者（2026-07-28 grep 复核） |
-| §11 | Advisor 链 | — | ⬜ | M1 未采用，安全管线以 Service 显式调用实现（§11 已有标注，以 design/04 §十七为准） |
-| §9.2 SkillRouter | 场景路由 Agent | — | ⬜ | 未实现；接线阶段2 由分诊结果承担路由职责 |
 
-### 13.2 接线目标架构：单次分诊 + 流式回复（SSE 兼容）
+> 以上四态判定为 2026-07-28 历史快照。其中标 🟧 的世界B 组件（SafetyAgent/EmotionAgent/CBTAgent/CbtStateMachine/ConversationAgent/ConversationStateManager/ConversationOrchestrator）已于 2026-07-29 **全部删除**（见 §13.2）；标 ⬜ 的能力由世界A Service 链承担（见 §13.4）。本快照仅作历史存证，不再反映当前代码。
 
-世界A 的核心资产是 **SSE 流式体验**（首字快、边生成边播 TTS），世界B 原设计是「多次 LLM 串行调用后返回整段回复」——直接切换会破坏流式。接线采用**两段式**：
-
-```
-学生输入
-  │
-  ▼ ①分诊段（非流式，一次结构化调用，目标 ≤800ms）
-TriageCall（合并 Safety+Emotion+Route 为单次轻量 LLM 调用，JSON 输出）
-  ├─ 硬规则先行：关键词/正则命中 RED → 跳过 LLM 直接短路（对齐 design/04 深化）
-  ├─ 输出：{riskLevel, emotion, intensity, route(CBT/支持/危机), cbtTrigger}
-  └─ 期间前端展示「波波思考中」微交互（design/37），掩蔽分诊延迟
-  ▼ ②回复段（流式，SSE token 直通）
-按 route 选择系统 Prompt 组装（并入 design/44 StrategyProfile：情绪门控/年龄分层/合规裁决）
-  → ChatClient.stream() → SSE → 前端/TTS
-  ▼ ③输出审查（流式兼容）
-Layer1 同步逐句过滤（现有 OutputContentFilter，🟩）
-Layer2 异步全文复审 → 违规时**召回改写**（推送 correction 事件替换气泡，对齐 design/14 深化）
-  ▼ ④状态推进（异步旁路）
-CbtStateMachine.evaluate() 推进 S0-S9 + 阶段标记落库（对齐 design/03 深化）
-ConversationStateManager 写 Redis 会话状态（替代内存态，兼做 STATE-002 铺垫）
-```
-
-设计判断（真实取舍）：
-- **不采用** §4.2 的 Safety/Emotion 双 LLM 并行调用——虚拟线程并行仍是 2 次计费调用且尾延迟取 max；合并为单次 TriageCall 成本减半、尾延迟更稳。SafetyAgent/EmotionAgent 类保留，Prompt 合并。
-- **不采用** §11 Advisor 链重构作为接线前提——现有 Service 显式调用管线已生效（🟩），接线只替换「Prompt 组装与路由」层，安全管线原位复用，缩小改造面。
-- ConversationAgent 与 ChatServiceImpl 归一：接线后 ChatServiceImpl 退化为传输/会话壳，回复生成职责移入编排层，避免双份 Prompt 组装逻辑。
-
-### 13.3 延迟与成本门禁（接线前置评估，未达标不得全量）
-
-| 指标 | 世界A基线（需实测） | 接线后目标 | 超标处置 |
-|------|------|------|------|
-| 首 token 延迟 P95 | 待影子期实测 | ≤ 基线 + 900ms | 分诊模型降档（更小模型/更短输出）或分诊结果缓存（同会话 60s 内情绪不重判） |
-| 每轮 LLM 调用次数 | 1 次 | 2 次（分诊+回复）；Layer2 复审沿用现状 | RED 硬短路轮次为 0 次（省调用） |
-| 每轮 token 成本 | 待实测 | ≤ 基线 × 1.4 | 分诊 prompt 压缩至 ≤600 token、输出 ≤150 token |
-| 分诊 JSON 解析失败率 | — | <0.5%，失败即降级世界A路径 | 结构化输出重试 1 次后 fallback |
-
-### 13.4 与 design/44 编排引擎收敛（避免两套编排）
-
-design/44 的 PromptOrchestrationService/StrategyProfile（ORCH-001~008）与本文档 Orchestrator 若各自落地会形成第三个「半世界」。收敛原则：**一个编排入口、两层职责**——
-- 分诊层（本文档）：产出 riskLevel/emotion/route（「发生了什么」）；
-- 策略层（design/44）：消费分诊结果产出 StrategyProfile→Prompt 组装（「怎么回应」），情绪门控 allowCbt（ORCH-002）直接决定 CbtStateMachine 是否允许进入 S5/S6。
-ORCH-001/002 实施时即以本节两段式为宿主，不再单独建链。
-
-### 13.5 分阶段接线里程碑（衍生任务，登记 TASK-TRACKER §二十三）
-
-| 任务ID | 阶段 | 内容 | 门禁/回滚 | 优先级 | 责任人 |
-|--------|------|------|------|:---:|------|
-| WIRE-001 | 影子运行 | Orchestrator 旁路异步执行（不影响回复），采集分诊准确性/延迟/成本三基线 ≥2 周 | 只读旁路，无用户影响 | P0 | Agent（开发待钱敏健指令） |
-| WIRE-002 | 分诊接线 | TriageCall 前置生效：RED 硬短路 + route 驱动 Prompt 组装；feature flag `orchestrator.enabled` 按租户灰度 | 13.3 门禁达标；flag 关闭即回世界A | P0 | 同上 |
-| WIRE-003 | CBT 状态机接线 | CbtStateMachine 驱动 S0-S9 推进 + cbt_fields 落库 + 情绪门控（ORCH-002 并入） | 阶段标记完整率 >90% | P1 | 同上 |
-| WIRE-004 | 会话状态外置 | ConversationStateManager 接管会话态（兼 STATE-002 前置） | Redis 故障降级内存态 | P1 | 同上 |
-| WIRE-005 | 死角清理 | ConversationAgent/ChatServiceImpl 归一；未接线的 Escalation/Report/Memory Agent 从本文档降级为「由现有 Service 承担」或排期实现 | 文档与代码一致性复核 | P2 | Agent |
-
-> 回滚设计：全程保留世界A完整路径，`orchestrator.enabled=false` 一键回退；影子期数据是 go/no-go 的唯一依据，未达 13.3 门禁不进入 WIRE-002。
 

@@ -27,7 +27,7 @@ public class CounselingSession {
     private String transcriptPolicy;
     private String consentVersion;
 
-    /** CBT 状态机路径（jsonb，存储 CbtSessionState 序列化 JSON） */
+    /** CBT 阶段路径快照（jsonb，存储世界A CbtStageRouter 产出的阶段标记序列化 JSON） */
     @TableField(typeHandler = JsonbTypeHandler.class)
     private String statePath;
 

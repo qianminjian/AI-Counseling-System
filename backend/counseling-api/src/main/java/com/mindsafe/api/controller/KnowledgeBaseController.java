@@ -4,6 +4,11 @@ import com.mindsafe.api.security.JwtAuthenticationFilter.TenantContext;
 import com.mindsafe.common.dto.ApiResponse;
 import com.mindsafe.service.audit.AuditLogService;
 import com.mindsafe.service.knowledge.KnowledgeBaseService;
+import com.mindsafe.service.knowledge.KnowledgeCorpusIngestService;
+import com.mindsafe.service.knowledge.KnowledgeMetadata;
+import com.mindsafe.service.knowledge.ReviewGateValidator;
+import com.mindsafe.service.knowledge.ReviewWorkflowStateMachine;
+import com.mindsafe.service.knowledge.ReviewWorkflowStateMachine.ReviewStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
@@ -22,12 +27,21 @@ import java.util.UUID;
 public class KnowledgeBaseController {
 
     private final KnowledgeBaseService knowledgeBaseService;
+    private final KnowledgeCorpusIngestService corpusIngestService;
     private final AuditLogService auditLogService;
+    private final ReviewWorkflowStateMachine reviewStateMachine;
+    private final ReviewGateValidator reviewGateValidator;
 
     public KnowledgeBaseController(KnowledgeBaseService knowledgeBaseService,
-                                   AuditLogService auditLogService) {
+                                   KnowledgeCorpusIngestService corpusIngestService,
+                                   AuditLogService auditLogService,
+                                   ReviewWorkflowStateMachine reviewStateMachine,
+                                   ReviewGateValidator reviewGateValidator) {
         this.knowledgeBaseService = knowledgeBaseService;
+        this.corpusIngestService = corpusIngestService;
         this.auditLogService = auditLogService;
+        this.reviewStateMachine = reviewStateMachine;
+        this.reviewGateValidator = reviewGateValidator;
     }
 
     /** 摄入文档（分块 + 嵌入） */
@@ -51,6 +65,27 @@ public class KnowledgeBaseController {
                 "knowledge_document", docId, "title=" + title + ", category=" + category);
 
         return ApiResponse.ok(Map.of("docId", docId, "message", "文档摄入成功"));
+    }
+
+    /**
+     * 批量入库审核语料（KB-101）
+     * <p>
+     * 请求体为已审核语料 Markdown 全文（data/knowledge-base/01-首批入库语料_v1.md），
+     * 幂等可重复执行；crisis_intervention 类自动缓入（铁律：不进学生对话 RAG）。
+     */
+    @PostMapping(value = "/corpus", consumes = "text/plain;charset=UTF-8")
+    public ApiResponse<KnowledgeCorpusIngestService.IngestReport> ingestCorpus(
+            @RequestBody String corpusMarkdown, Authentication auth) {
+        TenantContext ctx = (TenantContext) auth.getDetails();
+        KnowledgeCorpusIngestService.IngestReport report =
+                corpusIngestService.ingestCorpus(corpusMarkdown);
+
+        auditLogService.log(ctx.tenantId(), ctx.userId(), "KNOWLEDGE_CORPUS_INGEST",
+                "knowledge_document", null,
+                "parsed=" + report.parsed() + ", ingested=" + report.ingested()
+                        + ", skipped=" + report.skippedExisting() + ", deferredCrisis=" + report.deferredCrisis());
+
+        return ApiResponse.ok(report);
     }
 
     /** 检索测试（验证 RAG 效果） */
@@ -82,5 +117,60 @@ public class KnowledgeBaseController {
         auditLogService.log(ctx.tenantId(), ctx.userId(), "KNOWLEDGE_DELETE",
                 "knowledge_document", docId, null);
         return ApiResponse.ok(null);
+    }
+
+    /**
+     * 知识审核状态转移（KB-102 接线：ReviewWorkflowStateMachine + ReviewGateValidator）
+     * <p>
+     * 状态流转：draft → in_review → published → deprecated。
+     * 门禁校验：提交审核需分类+年级段，发布需循证等级+审核人+红队校验。
+     */
+    @PutMapping("/documents/{docId}/review")
+    public ApiResponse<Map<String, Object>> transitionReviewStatus(
+            @PathVariable UUID docId,
+            @RequestBody Map<String, String> body,
+            Authentication auth) {
+        TenantContext ctx = (TenantContext) auth.getDetails();
+
+        String targetStatus = body.get("targetStatus");
+        String currentStatus = body.getOrDefault("currentStatus", "draft");
+        if (targetStatus == null || targetStatus.isBlank()) {
+            return ApiResponse.error(400, "缺少 targetStatus 参数");
+        }
+
+        ReviewStatus from = ReviewWorkflowStateMachine.fromDbStatus(currentStatus);
+        ReviewStatus to = ReviewWorkflowStateMachine.fromDbStatus(targetStatus);
+
+        // 构建元数据（从请求体提取门禁所需字段）
+        KnowledgeMetadata metadata = new KnowledgeMetadata(
+                docId.toString(),
+                body.get("category"),
+                body.get("gradeBand"),
+                body.get("sourceType"),
+                body.get("evidenceLevel"),
+                from,
+                0,
+                body.get("reviewer"),
+                null,
+                "crisis_intervention".equals(body.get("category")));
+
+        // 状态机 + 门禁组合校验
+        ReviewGateValidator.GateResult gateResult =
+                reviewGateValidator.validateTransition(reviewStateMachine, from, to, metadata);
+
+        if (!gateResult.passed()) {
+            return ApiResponse.error(400, "门禁校验失败: " + String.join("; ", gateResult.violations()));
+        }
+
+        auditLogService.log(ctx.tenantId(), ctx.userId(), "KNOWLEDGE_REVIEW_TRANSITION",
+                "knowledge_document", docId,
+                from + " → " + to + ", reviewer=" + body.get("reviewer"));
+
+        return ApiResponse.ok(Map.of(
+                "docId", docId,
+                "from", ReviewWorkflowStateMachine.toDbStatus(from),
+                "to", ReviewWorkflowStateMachine.toDbStatus(to),
+                "searchable", reviewStateMachine.isSearchable(to)
+        ));
     }
 }

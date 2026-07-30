@@ -382,7 +382,9 @@ public class AiChatServiceImpl implements AiChatService {
               {
                 "content": "泛化描述（15-40字，不含真实姓名/地名/校名）",
                 "emotion_context": "当时的情绪标签（如焦虑/开心/委屈/平静）",
-                "importance": 0.0到1.0的小数
+                "importance": 0.0到1.0的小数,
+                "event_type": "milestone或person或other（milestone=突破/承诺/首次尝试等成长节点；person=围绕关键人物的关系事件；其余填other）",
+                "person_role": "仅event_type=person时给出人物role代号（如妈妈/同学/老师），否则省略此字段"
               }
             ]}
 

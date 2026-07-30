@@ -8,6 +8,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.mindsafe.ai.chat.AiChatService;
 import com.mindsafe.domain.entity.StudentProfile;
 import com.mindsafe.domain.mapper.StudentProfileMapper;
+import com.mindsafe.service.profile.ProfileMergeGate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -25,6 +26,9 @@ import java.util.UUID;
  *   <li>resilience：coping_skills 累加使用次数，self_efficacy 取最新值</li>
  *   <li>social_graph：key_persons 按 role 增量更新情感倾向，help_seeking 取最新值</li>
  * </ul>
+ * PROF-022：每次合并同时在维度 JSONB 内的 {@code _meta} 节点记录字段级元数据
+ * （provenance=llm_extract / confidence / evidence_count / updated_at / last_seen_at），
+ * 供画像→编排接线做置信门控；不改表结构。
  * 失败静默降级，不影响主流程。
  */
 @Service
@@ -32,13 +36,19 @@ public class ProfileExtractorService {
 
     private static final Logger log = LoggerFactory.getLogger(ProfileExtractorService.class);
 
+    /** PROF-022：LLM 提炼来源标识 */
+    private static final String PROVENANCE_LLM = "llm_extract";
+
     private final AiChatService aiChatService;
     private final StudentProfileMapper profileMapper;
+    private final ProfileMergeGate profileMergeGate;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    public ProfileExtractorService(AiChatService aiChatService, StudentProfileMapper profileMapper) {
+    public ProfileExtractorService(AiChatService aiChatService, StudentProfileMapper profileMapper,
+                                   ProfileMergeGate profileMergeGate) {
         this.aiChatService = aiChatService;
         this.profileMapper = profileMapper;
+        this.profileMergeGate = profileMergeGate;
     }
 
     /**
@@ -120,6 +130,7 @@ public class ProfileExtractorService {
             }
             existingInterests.removeAll();
             seen.stream().limit(6).forEach(existingInterests::add);
+            stampMeta(existing, "dominant_interests");
         }
         return existing;
     }
@@ -129,10 +140,25 @@ public class ProfileExtractorService {
         double newVal = patch.get(field).asDouble();
         if (existing.hasNonNull(field)) {
             double oldVal = existing.get(field).asDouble();
-            existing.put(field, Math.round((alpha * newVal + (1 - alpha) * oldVal) * 100.0) / 100.0);
+            // PROF-023：置信门控合并（冲突检测 + 时效衰减，防止异常单次翻转画像）
+            double existingConf = readMetaConfidence(existing, field);
+            ProfileMergeGate.MergeDecision decision = profileMergeGate.merge(
+                    oldVal, existingConf, newVal, 0.7); // LLM 提炼默认新证据置信 0.7
+            existing.put(field, Math.round(decision.mergedValue() * 100.0) / 100.0);
+            if (decision.conflictDetected()) {
+                log.debug("画像合并冲突检测: field={}, strategy={}, old={}, new={}",
+                        field, decision.strategy(), oldVal, newVal);
+            }
         } else {
             existing.put(field, Math.round(newVal * 100.0) / 100.0);
         }
+        stampMeta(existing, field);
+    }
+
+    /** 从 _meta.<field>.confidence 读取字段级置信度（PROF-022），缺失默认 0.5 */
+    private double readMetaConfidence(ObjectNode dimension, String field) {
+        JsonNode meta = dimension.path("_meta").path(field).path("confidence");
+        return meta.isNumber() ? meta.asDouble() : 0.5;
     }
 
     private ObjectNode mergeCommunicationPref(ObjectNode existing, JsonNode patchNode) {
@@ -141,9 +167,11 @@ public class ProfileExtractorService {
         }
         if (patchNode.hasNonNull("preferred_style")) {
             existing.put("preferred_style", patchNode.get("preferred_style").asText());
+            stampMeta(existing, "preferred_style");
         }
         if (patchNode.hasNonNull("expression_depth")) {
             existing.put("expression_depth", patchNode.get("expression_depth").asDouble());
+            stampMeta(existing, "expression_depth");
         }
         return existing;
     }
@@ -168,9 +196,11 @@ public class ProfileExtractorService {
                 if (!entry.has("effective")) entry.putNull("effective");
                 entry.put("uses", entry.get("uses").asInt(0) + 1);
             }
+            stampMeta(existing, "coping_skills");
         }
         if (patchNode.hasNonNull("self_efficacy")) {
             existing.put("self_efficacy", patchNode.get("self_efficacy").asDouble());
+            stampMeta(existing, "self_efficacy");
         }
         return existing;
     }
@@ -196,9 +226,11 @@ public class ProfileExtractorService {
                     entry.put("sentiment", p.get("sentiment").asDouble());
                 }
             }
+            stampMeta(existing, "key_persons");
         }
         if (patchNode.hasNonNull("help_seeking")) {
             existing.put("help_seeking", patchNode.get("help_seeking").asDouble());
+            stampMeta(existing, "help_seeking");
         }
         return existing;
     }
@@ -258,17 +290,16 @@ public class ProfileExtractorService {
 
     // ===== 工具方法 =====
 
+    /**
+     * PROF-022：在维度 JSONB 的 {@code _meta.<field>} 下盖元数据戳（provenance=llm_extract）。
+     */
+    private void stampMeta(ObjectNode dimension, String field) {
+        ProfileMetaStamper.stamp(dimension, field, PROVENANCE_LLM);
+    }
+
     /** 解析 JSON 对象；非法/空则返回空对象节点 */
     private ObjectNode parseObject(String json) {
-        if (json == null || json.isBlank() || "{}".equals(json.trim())) {
-            return objectMapper.createObjectNode();
-        }
-        try {
-            JsonNode node = objectMapper.readTree(json);
-            return node.isObject() ? (ObjectNode) node : objectMapper.createObjectNode();
-        } catch (Exception e) {
-            return objectMapper.createObjectNode();
-        }
+        return ProfileMetaStamper.parseObject(objectMapper, json);
     }
 
     /** 去除 LLM 可能包裹的 ```json ... ``` 代码块标记 */

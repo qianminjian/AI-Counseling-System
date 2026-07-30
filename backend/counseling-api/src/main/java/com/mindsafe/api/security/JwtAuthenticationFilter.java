@@ -1,5 +1,6 @@
 package com.mindsafe.api.security;
 
+import com.mindsafe.common.tenant.TenantContextHolder;
 import com.mindsafe.service.auth.TokenBlacklistService;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -49,9 +50,16 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             var auth = new UsernamePasswordAuthenticationToken(userId, null, authorities);
             auth.setDetails(new TenantContext(tenantId, userId, userType));
             SecurityContextHolder.getContext().setAuthentication(auth);
+            // 绑定租户到持久层拦截器（P-02 行隔离纵深防线）
+            TenantContextHolder.set(tenantId);
         }
 
-        filterChain.doFilter(request, response);
+        try {
+            filterChain.doFilter(request, response);
+        } finally {
+            // 请求结束务必清除，防止线程池复用时串租户
+            TenantContextHolder.clear();
+        }
     }
 
     private String extractToken(HttpServletRequest request) {

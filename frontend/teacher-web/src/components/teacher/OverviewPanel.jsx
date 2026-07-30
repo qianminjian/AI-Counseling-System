@@ -5,6 +5,7 @@ import {
 } from '@ant-design/icons'
 import { getDashboard, getHighRiskStudents, getStats, openWeeklyReport, getSatisfaction } from '../../api'
 import { SessionTrendChart, RiskPieChart, ClassBarChart, EmotionBarChart } from './StatsCharts'
+import TodayTodoPanel from './TodayTodoPanel'
 
 /** 轻量 CSS 柱状图（7 天趋势） */
 function WeeklyChart({ data }) {
@@ -68,6 +69,11 @@ export default function OverviewPanel({ onNavigate }) {
 
   return (
     <div>
+      {/* 今日待办（行动驱动首屏，WB-001） */}
+      <div style={{ marginBottom: 16 }}>
+        <TodayTodoPanel onNavigate={onNavigate} />
+      </div>
+
       {/* 周报导出 */}
       <div style={{ marginBottom: 16, textAlign: 'right' }}>
         <Button icon={<FileTextOutlined />} onClick={openWeeklyReport}>导出周报（可打印 PDF）</Button>

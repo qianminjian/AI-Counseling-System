@@ -14,6 +14,8 @@ spring:
     multipart:
       max-file-size: 10MB
       max-request-size: 12MB
+      # COMP-009：阈值≥请求上限，音频全程内存处理不写容器临时目录（转写即删承诺，22 §6.3）
+      file-size-threshold: 12MB
 
   # 数据源（PostgreSQL 16 + pgvector）
   datasource:
@@ -123,6 +125,10 @@ mindsafe:
       normal-session-days: 30    # 普通对话保留天数（PIPL 数据最小化）
       high-risk-session-days: 365 # 高风险对话保留天数（合规追溯）
       cleanup-cron: "0 0 3 * * ?"  # 清理任务 cron（每日凌晨 3 点）
+    sla-escalation:
+      enabled: true                     # 风险预警 SLA 超时兜底扫描（P-05）
+      scan-cron: "0 * * * * ?"           # 扫描 cron（每分钟）
+      re-alert-cooldown-minutes: 30     # 同一事件重复告警冷却期（分钟，防告警风暴）
   # 语音分析微服务（FunASR + emotion2vec+）
   voice-service:
     url: ${VOICE_SERVICE_URL:http://localhost:10095}

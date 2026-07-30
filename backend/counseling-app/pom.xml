@@ -24,6 +24,23 @@
             <groupId>com.mindsafe</groupId>
             <artifactId>counseling-tenant</artifactId>
         </dependency>
+        <!-- 以下四个为传递依赖显式声明：jacoco report-aggregate 仅聚合直接依赖模块 -->
+        <dependency>
+            <groupId>com.mindsafe</groupId>
+            <artifactId>counseling-common</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.mindsafe</groupId>
+            <artifactId>counseling-domain</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.mindsafe</groupId>
+            <artifactId>counseling-ai</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.mindsafe</groupId>
+            <artifactId>counseling-service</artifactId>
+        </dependency>
 
         <!-- 运行时基础设施 -->
         <dependency>
@@ -79,6 +96,20 @@
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+            <!-- 覆盖率聚合报告：汇总全部依赖模块的 exec 数据，输出 target/site/jacoco-aggregate/（CI 门禁读取） -->
+            <plugin>
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>report-aggregate</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>report-aggregate</goal>
+                        </goals>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>

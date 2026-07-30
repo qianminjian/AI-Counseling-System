@@ -1,8 +1,10 @@
 package com.mindsafe.service.teacher;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.mindsafe.domain.entity.*;
 import com.mindsafe.domain.mapper.*;
+import com.mindsafe.service.security.FieldEncryptionService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -28,19 +30,22 @@ public class TeacherService {
     private final TeacherNoteMapper teacherNoteMapper;
     private final NotificationMapper notificationMapper;
     private final MessageSummaryMapper messageSummaryMapper;
+    private final FieldEncryptionService fieldEncryptionService;
 
     public TeacherService(RiskEventMapper riskEventMapper,
                           CounselingSessionMapper sessionMapper,
                           UserMapper userMapper,
                           TeacherNoteMapper teacherNoteMapper,
                           NotificationMapper notificationMapper,
-                          MessageSummaryMapper messageSummaryMapper) {
+                          MessageSummaryMapper messageSummaryMapper,
+                          FieldEncryptionService fieldEncryptionService) {
         this.riskEventMapper = riskEventMapper;
         this.sessionMapper = sessionMapper;
         this.userMapper = userMapper;
         this.teacherNoteMapper = teacherNoteMapper;
         this.notificationMapper = notificationMapper;
         this.messageSummaryMapper = messageSummaryMapper;
+        this.fieldEncryptionService = fieldEncryptionService;
     }
 
     // ===== 数据范围解析（RBAC） =====
@@ -250,10 +255,35 @@ public class TeacherService {
 
     // ===== 学生档案 =====
 
-    public StudentProfileVO getStudentProfile(UUID tenantId, UUID studentUserId) {
+    public StudentProfileVO getStudentProfile(UUID tenantId, UUID studentUserId, String userType) {
         User student = userMapper.selectById(studentUserId);
         if (student == null || !student.getTenantId().equals(tenantId)) {
             throw new IllegalArgumentException("学生不存在: " + studentUserId);
+        }
+
+        // 班主任（class_teacher）只见沟通建议，不见风险轨迹与对话摘要（design/35 §3.3/§六：服务端裁剪）
+        boolean fullAccess = !"class_teacher".equals(userType);
+
+        // 教师备注（所有角色可见，沟通建议来源）
+        List<TeacherNote> notes = teacherNoteMapper.selectList(
+                new LambdaQueryWrapper<TeacherNote>()
+                        .eq(TeacherNote::getTenantId, tenantId)
+                        .eq(TeacherNote::getStudentUserId, studentUserId)
+                        .orderByDesc(TeacherNote::getCreatedAt)
+        );
+
+        // 班主任裁剪：不查询也不返回会话/预警/风险等级
+        if (!fullAccess) {
+            return new StudentProfileVO(
+                    student.getUserId(), student.getPseudonym(),
+                    student.getGradeCode(), student.getClassCode(),
+                    null, 0,
+                    null, null,
+                    notes.stream().map(n -> new NoteVO(
+                            n.getNoteId(), n.getTeacherUserId(), n.getContent(),
+                            n.getNoteType(), n.getCreatedAt()
+                    )).toList()
+            );
         }
 
         // 最近会话
@@ -272,14 +302,6 @@ public class TeacherService {
                         .eq(RiskEvent::getStudentUserId, studentUserId)
                         .orderByDesc(RiskEvent::getDetectedAt)
                         .last("LIMIT 20")
-        );
-
-        // 教师备注
-        List<TeacherNote> notes = teacherNoteMapper.selectList(
-                new LambdaQueryWrapper<TeacherNote>()
-                        .eq(TeacherNote::getTenantId, tenantId)
-                        .eq(TeacherNote::getStudentUserId, studentUserId)
-                        .orderByDesc(TeacherNote::getCreatedAt)
         );
 
         // 最高风险等级
@@ -377,7 +399,8 @@ public class TeacherService {
         );
         return summaries.stream().map(m -> new MessageSummaryVO(
                 m.getSummaryId(), m.getSenderType(), m.getTurnCount(),
-                m.getContentSummary(), m.getEmotionLabel(),
+                // R-01：contentSummary 字段级加密，教师端读取时解密（明文兼容透传）
+                fieldEncryptionService.decrypt(m.getContentSummary()), m.getEmotionLabel(),
                 m.getRiskLevel() != null ? m.getRiskLevel() : 0,
                 m.getCreatedAt()
         )).toList();
@@ -499,10 +522,11 @@ public class TeacherService {
             Instant detectedAt, UUID assignedUserId
     ) {}
 
+    @JsonInclude(JsonInclude.Include.NON_NULL)
     public record StudentProfileVO(
             UUID studentUserId, String displayName,
             String gradeCode, String classCode,
-            int maxRiskLevel, int totalSessions,
+            Integer maxRiskLevel, int totalSessions,
             List<SessionSummaryVO> recentSessions,
             List<AlertVO> alertHistory,
             List<NoteVO> notes

@@ -128,7 +128,8 @@ async def analyze_voice(file: UploadFile = File(...)):
 
         # 用 ffmpeg 统一转为 16kHz 单声道 WAV
         # soundfile 不认识 webm/opus（安卓录音格式），先转 WAV 才能解码
-        wav_path = tempfile.mktemp(suffix=".wav")
+        wav_fd, wav_path = tempfile.mkstemp(suffix=".wav")
+        os.close(wav_fd)
         subprocess.run(
             ["ffmpeg", "-y", "-i", tmp_path, "-ar", "16000", "-ac", "1", wav_path],
             check=True,
@@ -169,10 +170,17 @@ async def analyze_voice(file: UploadFile = File(...)):
         raise HTTPException(status_code=500, detail=f"语音分析失败: {str(e)}")
 
     finally:
-        # 合规：立即删除临时文件（音频不落盘）
+        # 合规（COMP-009 / 22 §6.3 转写即删）：ASR/SER 完成后立即删除原始音频临时文件，
+        # 并留删除日志作审计凭据（仅记文件数，不记内容/路径以外信息）
+        deleted = 0
         for p in (tmp_path, wav_path):
             if p and os.path.exists(p):
-                os.unlink(p)
+                try:
+                    os.unlink(p)
+                    deleted += 1
+                except OSError as del_err:
+                    logger.error(f"⚠️ 合规告警：音频临时文件删除失败 path={p}: {del_err}")
+        logger.info(f"转写即删完成：已删除音频临时文件 {deleted} 个（不保留原始音频）")
 
 
 if __name__ == "__main__":

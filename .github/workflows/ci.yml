@@ -5,9 +5,9 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, develop]
   pull_request:
-    branches: [main]
+    branches: [main, develop]
 
 env:
   JAVA_VERSION: '21'
@@ -43,26 +43,33 @@ jobs:
       - name: Compile
         run: mvn compile -B -q
 
-      - name: Unit Tests + JaCoCo Coverage
-        run: mvn test -B -Pcoverage
+      # verify：单测（surefire *Test）+ 集成测试（failsafe *IT，Testcontainers 用 runner 自带 Docker）
+      # + jacoco report-aggregate（counseling-app，verify 阶段生成）
+      # 审计 Q-01：此前只跑 mvn test，AuthFlowIT 从不执行；-Pcoverage profile 并不存在
+      - name: Unit + Integration Tests (JaCoCo)
+        run: mvn verify -B
 
-      # 覆盖率门禁：行覆盖 >= 60%（当前阶段，目标 80%）
+      # 覆盖率门禁：行覆盖 >= 40%（真实基线 46.5%，2026-07-28；目标随 TEST-001 逐步升至 80%）
+      # 审计 Q-01：报告缺失即失败，不再静默跳过（此前 jacoco-aggregate 永不生成、门禁恒走 skip 分支）
       - name: Coverage Gate Check
         run: |
-          if [ -f counseling-app/target/site/jacoco-aggregate/jacoco.csv ]; then
-            MISSED=$(awk -F',' 'NR>1 {sum+=$4} END {print sum}' counseling-app/target/site/jacoco-aggregate/jacoco.csv)
-            COVERED=$(awk -F',' 'NR>1 {sum+=$5} END {print sum}' counseling-app/target/site/jacoco-aggregate/jacoco.csv)
-            TOTAL=$((MISSED + COVERED))
-            if [ "$TOTAL" -gt 0 ]; then
-              PCT=$((COVERED * 100 / TOTAL))
-              echo "Line coverage: ${PCT}%"
-              if [ "$PCT" -lt 60 ]; then
-                echo "::error::Coverage ${PCT}% below 60% gate"
-                exit 1
-              fi
-            fi
-          else
-            echo "No JaCoCo report found, skipping gate"
+          CSV=counseling-app/target/site/jacoco-aggregate/jacoco.csv
+          if [ ! -f "$CSV" ]; then
+            echo "::error::JaCoCo aggregate report missing ($CSV) — coverage gate cannot run"
+            exit 1
+          fi
+          MISSED=$(awk -F',' 'NR>1 {sum+=$4} END {print sum}' "$CSV")
+          COVERED=$(awk -F',' 'NR>1 {sum+=$5} END {print sum}' "$CSV")
+          TOTAL=$((MISSED + COVERED))
+          if [ "$TOTAL" -eq 0 ]; then
+            echo "::error::JaCoCo report contains no line data"
+            exit 1
+          fi
+          PCT=$((COVERED * 100 / TOTAL))
+          echo "Line coverage: ${PCT}%"
+          if [ "$PCT" -lt 40 ]; then
+            echo "::error::Coverage ${PCT}% below 40% gate"
+            exit 1
           fi
 
       - name: Upload Coverage Report
@@ -81,6 +88,7 @@ jobs:
       - uses: actions/checkout@v4
 
       # Trivy 漏洞扫描（轻量漏洞库 ~30MB，1-2 分钟完成，替代 OWASP dependency-check）
+      # 审计 Q-03：exit-code 改 1，CRITICAL/HIGH 漏洞阻断合入（此前仅告警不阻断）
       - name: Trivy Vulnerability Scan
         uses: aquasecurity/trivy-action@v0.36.0
         with:
@@ -89,7 +97,7 @@ jobs:
           scanners: 'vuln'
           severity: 'CRITICAL,HIGH'
           format: 'table'
-          exit-code: '0'  # 仅告警不阻断
+          exit-code: '1'
           ignore-unfixed: true
 
   frontend-build:
@@ -116,3 +124,10 @@ jobs:
         run: |
           npm ci
           npm run build
+
+      # lint/test 按需执行（parent-h5 暂无 lint，仅 student-h5 有 vitest）
+      - name: Lint
+        run: npm run lint --if-present
+
+      - name: Test
+        run: npm test --if-present

@@ -1,9 +1,24 @@
 package com.mindsafe.service.conversation;
 
+import com.mindsafe.ai.ally.AllianceEnhancer;
+import com.mindsafe.ai.cbt.CbtStageRouter;
+import com.mindsafe.ai.orchestrator.PromptVariantRouter;
+import com.mindsafe.service.experiment.ExperimentBucketAssigner;
+import com.mindsafe.service.experiment.ExperimentMetricsCollector;
+import com.mindsafe.service.offline.OfflineMessageReplayService;
 import com.mindsafe.ai.chat.AiChatService;
+import com.mindsafe.ai.orchestrator.OrchestrationContext;
+import com.mindsafe.ai.orchestrator.ProfileSignals;
+import com.mindsafe.ai.orchestrator.PromptOrchestrationService;
+import com.mindsafe.ai.orchestrator.StrategyProfile;
 import com.mindsafe.ai.prompt.PromptTemplateService;
 import com.mindsafe.ai.risk.RiskDetectorService;
+import com.mindsafe.ai.risk.RiskScoreCalculator;
+import com.mindsafe.ai.risk.SemanticRiskClassifier;
+import com.mindsafe.ai.safety.ConfidentialityNotice;
+import com.mindsafe.ai.safety.CrisisResourceProvider;
 import com.mindsafe.ai.safety.CrisisResources;
+import com.mindsafe.ai.safety.HighSensitivityCategories;
 import com.mindsafe.ai.safety.PiiDesensitizer;
 import com.mindsafe.common.dto.chat.SessionInfo;
 import com.mindsafe.common.dto.chat.StreamMessageEvent;
@@ -17,11 +32,14 @@ import com.mindsafe.domain.mapper.CounselingSessionMapper;
 import com.mindsafe.domain.mapper.MessageSummaryMapper;
 import com.mindsafe.domain.mapper.RiskEventMapper;
 import com.mindsafe.domain.mapper.UserMapper;
+import com.mindsafe.service.knowledge.RagAdvisorService;
 import com.mindsafe.service.memory.LongTermMemoryService;
 import com.mindsafe.service.notification.NotificationService;
 import com.mindsafe.service.profile.ProfileExtractorService;
 import com.mindsafe.service.profile.StudentProfileService;
 import com.mindsafe.service.prompt.PromptVersionService;
+import com.mindsafe.service.quality.ConversationQualityService;
+import com.mindsafe.service.security.FieldEncryptionService;
 import com.mindsafe.service.usage.UsageTimeLimitService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -33,8 +51,10 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -59,6 +79,20 @@ public class ConversationServiceImpl implements ConversationService {
     private final UsageTimeLimitService usageTimeLimitService;
     private final LongTermMemoryService longTermMemoryService;
     private final PromptVersionService promptVersionService;
+    private final RagAdvisorService ragAdvisorService;
+    private final SemanticRiskClassifier semanticRiskClassifier;
+    private final PromptOrchestrationService promptOrchestrationService;
+    private final ConversationQualityService conversationQualityService;
+    private final FieldEncryptionService fieldEncryptionService;
+    private final RiskScoreCalculator riskScoreCalculator;
+    private final CrisisResourceProvider crisisResourceProvider;
+    private final AllianceEnhancer allianceEnhancer;
+    private final CbtStageRouter cbtStageRouter;
+    private final ExperimentBucketAssigner experimentBucketAssigner;
+    private final ExperimentMetricsCollector experimentMetricsCollector;
+    private final SessionEndAnalyticsService sessionEndAnalyticsService;
+    private final PromptVariantRouter promptVariantRouter;
+    private final OfflineMessageReplayService offlineMessageReplayService;
 
     /** 活跃会话内存缓存（emotionTag 等非 DB 字段 + 轮次计数） */
     private final Map<UUID, SessionState> activeSessions = new ConcurrentHashMap<>();
@@ -79,7 +113,21 @@ public class ConversationServiceImpl implements ConversationService {
                                    ProfileExtractorService profileExtractorService,
                                    UsageTimeLimitService usageTimeLimitService,
                                    LongTermMemoryService longTermMemoryService,
-                                   PromptVersionService promptVersionService) {
+                                   PromptVersionService promptVersionService,
+                                   RagAdvisorService ragAdvisorService,
+                                   SemanticRiskClassifier semanticRiskClassifier,
+                                   PromptOrchestrationService promptOrchestrationService,
+                                   ConversationQualityService conversationQualityService,
+                                   FieldEncryptionService fieldEncryptionService,
+                                   RiskScoreCalculator riskScoreCalculator,
+                                   CrisisResourceProvider crisisResourceProvider,
+                                   AllianceEnhancer allianceEnhancer,
+                                   CbtStageRouter cbtStageRouter,
+                                   ExperimentBucketAssigner experimentBucketAssigner,
+                                   ExperimentMetricsCollector experimentMetricsCollector,
+                                   SessionEndAnalyticsService sessionEndAnalyticsService,
+                                   PromptVariantRouter promptVariantRouter,
+                                   OfflineMessageReplayService offlineMessageReplayService) {
         this.aiChatService = aiChatService;
         this.promptTemplateService = promptTemplateService;
         this.riskDetectorService = riskDetectorService;
@@ -94,6 +142,20 @@ public class ConversationServiceImpl implements ConversationService {
         this.usageTimeLimitService = usageTimeLimitService;
         this.longTermMemoryService = longTermMemoryService;
         this.promptVersionService = promptVersionService;
+        this.ragAdvisorService = ragAdvisorService;
+        this.semanticRiskClassifier = semanticRiskClassifier;
+        this.promptOrchestrationService = promptOrchestrationService;
+        this.conversationQualityService = conversationQualityService;
+        this.fieldEncryptionService = fieldEncryptionService;
+        this.riskScoreCalculator = riskScoreCalculator;
+        this.crisisResourceProvider = crisisResourceProvider;
+        this.allianceEnhancer = allianceEnhancer;
+        this.cbtStageRouter = cbtStageRouter;
+        this.experimentBucketAssigner = experimentBucketAssigner;
+        this.experimentMetricsCollector = experimentMetricsCollector;
+        this.sessionEndAnalyticsService = sessionEndAnalyticsService;
+        this.promptVariantRouter = promptVariantRouter;
+        this.offlineMessageReplayService = offlineMessageReplayService;
     }
 
     @Override
@@ -110,18 +172,55 @@ public class ConversationServiceImpl implements ConversationService {
         String pseudonym = (user != null) ? user.getPseudonym() : null;
         int grade = parseGradeCode(user != null ? user.getGradeCode() : null);
         
-        // 3. 问候语个性化：“哈喽，[昵称]！” + 情绪问候（唤醒词 onboarding，design/28 §2.2）
+        // 3. 问候语个性化："哈喽，[昵称]！" + 情绪问候（唤醒词 onboarding，design/28 §2.2）
         String greeting = buildGreeting(emotionTag, pseudonym);
         
+        // ORCH-007：EMO-001 A/B 开场策略路由（确定性分桶，CRISIS 强制走 A）
+        try {
+            PromptVariantRouter.RouteResult variantRoute = promptVariantRouter.route(
+                    studentUserId.toString(), "emo001", null);
+            log.debug("开场策略路由: student={}, variant={}, bucket={}",
+                    studentUserId, variantRoute.variant(), variantRoute.bucket());
+        } catch (Exception e) {
+            log.debug("开场策略路由降级: {}", e.getMessage());
+        }
+
+        // 3.5 SAFE-201：首次会话注入保密边界告知（design/14 §12.3，预审核模板）。
+        // 告知完成标记复用 message_summary：senderType='ai' + turnCount=0（正常 AI 摘要 turn>=1，具唯一区分性），
+        // 该记录同时作为合规审计凭据，不新增 DB 字段。
+        if (!hasConfidentialityNotice(tenantId, studentUserId)) {
+            String notice = ConfidentialityNotice.forGrade(grade);
+            greeting = greeting + "\n\n" + notice;
+            messageSummaryMapper.insert(MessageSummary.aiMessage(tenantId, sessionId, studentUserId, 0, notice));
+            log.info("保密边界告知已注入并落库: sessionId={}, student={}, grade={}", sessionId, studentUserId, grade);
+        }
+
         // 4. 加载学生画像沟通偏好（冷场决策模型信号 F，首次对话为 null 不阻塞）
         Double expressionDepth = profileService.getExpressionDepth(tenantId, studentUserId);
         
+        // AB-001：实验分桶（确定性哈希，同班同组；当前以 studentUserId 为分配键，待班级字段补全后切换 classId）
+        ExperimentBucketAssigner.Assignment experimentAssignment =
+                experimentBucketAssigner.assignClass("default_exp", studentUserId.toString(), null);
+        log.debug("AB 分桶: sessionId={}, variant={}, bucket={}", sessionId,
+                experimentAssignment.variant(), experimentAssignment.bucket());
+
         activeSessions.put(sessionId, new SessionState(
                 sessionId, tenantId, studentUserId, emotionTag, channel, gender, expressionDepth, grade));
         log.info("会话创建: sessionId={}, student={}, emotion={}, grade={}, expressionDepth={}",
                 sessionId, studentUserId, emotionTag, grade, expressionDepth);
 
         return new SessionInfo(sessionId, greeting, Instant.now());
+    }
+
+    /** SAFE-201：该学生是否已完成保密边界告知（存在 senderType='ai' + turnCount=0 的告知记录） */
+    private boolean hasConfidentialityNotice(UUID tenantId, UUID studentUserId) {
+        Long count = messageSummaryMapper.selectCount(
+                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<MessageSummary>()
+                        .eq(MessageSummary::getTenantId, tenantId)
+                        .eq(MessageSummary::getStudentUserId, studentUserId)
+                        .eq(MessageSummary::getSenderType, "ai")
+                        .eq(MessageSummary::getTurnCount, 0));
+        return count != null && count > 0;
     }
 
     @Override
@@ -141,6 +240,17 @@ public class ConversationServiceImpl implements ConversationService {
         log.debug("收到消息: sessionId={}, turn={}, length={}, voiceEmotion={}",
                 sessionId, turn, content.length(), voiceEmotion);
 
+        // TOOL-003：离线消息幂等去重（clientMsgId 由前端传入，缺省时跳过）
+        // 当前版本：仅记录能力接入点，待前端支持 clientMsgId 后启用完整去重
+        if (content != null && content.startsWith("[offline_replay]")) {
+            var dedup = offlineMessageReplayService.deduplicate(
+                    sessionId + "_" + turn, java.util.Set.of());
+            if (!dedup.accepted()) {
+                log.info("离线消息重复，跳过: sessionId={}, turn={}", sessionId, turn);
+                return Flux.empty();
+            }
+        }
+
         // AUTH-030：累计每日使用时长（按距上次消息的间隔，上限 5 分钟）
         long elapsedSec = session.markActiveAndElapsed();
         if (elapsedSec > 0) {
@@ -152,12 +262,28 @@ public class ConversationServiceImpl implements ConversationService {
             session.addEmotionRecord(voiceEmotion, voiceEmotionConfidence);
         }
 
-        // 1. 风险检测（文本关键词）
+        // 1. 风险检测（文本关键词硬规则，用原文——需捕获"地址+自伤"等组合）
         RiskDetectionResult riskResult = riskDetectorService.detect(content);
+
+        // 1.5 PII 服务端脱敏：硬规则检测已用原文完成，此后进入任何 LLM
+        //     （语义风险分类 / 对话生成）的内容一律脱敏，确保原始 PII 不被 AI 复述或残留
+        String safeContent = piiDesensitizer.desensitize(content);
+        if (!safeContent.equals(content)) {
+            log.info("PII 已脱敏: sessionId={}", sessionId);
+        }
+
+        // 1.6 RISK-202：M2 语义风险分类（SAF_001）——硬规则未达橙级时补召隐性/隐喻表达，
+        //     只升不降（design/04 §18.3）；分类失败/超时降级纯硬规则结果，不阻断对话
+        riskResult = applySemanticRisk(riskResult, safeContent, session);
 
         // 2. 多信号融合：文本风险 + 语音情绪
         RiskLevel fusedLevel = fuseRiskSignals(riskResult, voiceEmotion, voiceEmotionConfidence, session);
         boolean isRisky = fusedLevel != null;
+
+        // SAFE-202：高敏场景前置化——命中虐待/丧失/自伤等类别即永久标记（不论级别）
+        if (riskResult.isRisky() && HighSensitivityCategories.isHighSensitivity(riskResult.category())) {
+            session.highSensitivity = true;
+        }
 
         Flux<StreamMessageEvent> riskEvents = Flux.empty();
 
@@ -186,34 +312,21 @@ public class ConversationServiceImpl implements ConversationService {
                     StreamMessageEvent.risk(fusedLevel.severity(), fusedResult.suggestion())
             );
 
-            // 红色风隩：追加“已通知老师”友好提示 + 固化危机热线（防 LLM 幻觉篡改号码）+ 会话升级为 escalated
+            // RISK-201：红色风险 → 会话升级 escalated + 进入安全响应模式（后续硬短路跳过 LLM）
             if (fusedLevel == RiskLevel.RED) {
-                riskEvents = riskEvents.concatWith(Flux.just(
-                        StreamMessageEvent.token("我很关心你现在的情况。我已经通知了老师，老师会来帮助你。你不是一个人。💙\n"
-                                + "如果你现在需要马上找人说说话，可以拨打：\n"
-                                + "📞 全国心理援助热线 " + CrisisResources.NATIONAL_PSYCHOLOGICAL_AID + "（24 小时）\n"
-                                + "📞 生命热线 " + CrisisResources.LIFE_HOTLINE + "\n"
-                                + "遇到紧急危险请拨打 " + CrisisResources.EMERGENCY_POLICE + "（报警）或 "
-                                + CrisisResources.EMERGENCY_MEDICAL + "（急救）。")
-                ));
-                // 会话状态升级为 escalated
+                session.enterSafetyMode();
                 CounselingSession escalate = new CounselingSession();
                 escalate.setSessionId(sessionId);
                 escalate.setSessionStatus("escalated");
                 escalate.setUpdatedAt(Instant.now());
                 sessionMapper.updateById(escalate);
-            
-                log.error("🚨 红色风隩预警(已升级): sessionId={}, student={}, category={}",
+
+                log.error("🚨 红色风险预警(已升级+安全响应模式): sessionId={}, student={}, category={}",
                         sessionId, session.studentUserId, category);
             }
         }
 
-        // 3. PII 服务端脱敏：风险检测已用原文完成（需捕获"地址+自伤"等组合），
-        //    脱敏后的内容才进入 LLM / 对话记忆，确保原始 PII 不被 AI 复述或残留
-        String safeContent = piiDesensitizer.desensitize(content);
-        if (!safeContent.equals(content)) {
-            log.info("PII 已脱敏: sessionId={}", sessionId);
-        }
+        // 3.（已上移至 1.5）PII 脱敏完成，safeContent 后续进入 LLM / 对话记忆
 
         // 4. 持久化学生消息摘要（异步，不阻塞主流程）
         int riskLevelValue = fusedLevel != null ? fusedLevel.severity() : 0;
@@ -225,16 +338,28 @@ public class ConversationServiceImpl implements ConversationService {
             session.updateMaxRiskSeverity(fusedLevel.severity());
         }
 
-        // 4.5 AUTH-030：每日使用时长超限 → 引导休息（红色风险优先，不拦截）
-        // Redis 为主，内存累计为兜底（Redis 不可用时限制仍生效）
-        long maxDailySeconds = usageTimeLimitService.getMaxDailyMinutes() * 60L;
-        boolean localExceeded = maxDailySeconds > 0 && session.localUsedSeconds() >= maxDailySeconds;
-        if (fusedLevel != RiskLevel.RED
-                && (usageTimeLimitService.isExceeded(session.tenantId, session.studentUserId) || localExceeded)) {
-            log.info("每日使用时长已达上限，引导休息: sessionId={}, student={}, usedSec={}, localSec={}",
+        // 4.2 RISK-201：RED 硬短路——跳过 LLM 自由生成，返回预审核安全文案（design/04 §18.2）。
+        //     短路不可被否定/引用降噪覆盖（fusedLevel 已经硬规则融合）；教师告警已在上方照发。
+        //     安全响应模式：RED 触发后的后续轮次也不再自由生成，返回陪伴话术，解除需教师处置/新会话。
+        if (fusedLevel == RiskLevel.RED || session.inSafetyMode()) {
+            String safetyReply = (fusedLevel == RiskLevel.RED)
+                    ? crisisResourceProvider.getRedSafetyReply(session.grade)
+                    : CrisisResources.SAFETY_MODE_COMPANION_REPLY;
+            persistAiMessageSummary(session, turn, safetyReply);
+            session.recordAiReply(safetyReply);
+            log.warn("RED 安全响应模式：跳过 LLM 自由生成: sessionId={}, turn={}, freshRed={}",
+                    sessionId, turn, fusedLevel == RiskLevel.RED);
+            return riskEvents.concatWith(Flux.just(
+                    StreamMessageEvent.token(safetyReply),
+                    StreamMessageEvent.done("")
+            ));
+        }
+
+        // 4.5 AUTH-030：每日使用时长超限 → 引导休息（RED 已在 4.2 短路，此处不会拦截红色风险）
+        if (usageTimeLimitService.isExceeded(session.tenantId, session.studentUserId)) {
+            log.info("每日使用时长已达上限，引导休息: sessionId={}, student={}, usedSec={}",
                     sessionId, session.studentUserId,
-                    usageTimeLimitService.getUsedSeconds(session.tenantId, session.studentUserId),
-                    session.localUsedSeconds());
+                    usageTimeLimitService.getUsedSeconds(session.tenantId, session.studentUserId));
             String guidance = "今天我们聊了不少啦，你已经很棒了。为了让眼睛和心情都休息一下，今天就先到这里好吗？"
                     + "明天我还在这里等你。\uD83C\uDF19 如果现在有紧急的事情，可以告诉老师，或拨打心理援助热线 12355。";
             return riskEvents.concatWith(Flux.just(
@@ -253,6 +378,9 @@ public class ConversationServiceImpl implements ConversationService {
             profilePrompt = (profilePrompt != null ? profilePrompt + "\n\n" : "") + memoryPrompt;
         }
 
+        // ALLY-201/203：治疗联盟增强——连续性开场 + 中断回归照护（design/52 §五）
+        String alliancePrompt = buildAlliancePrompt(session, memoryPrompt);
+
         // AI-005：Prompt 版本 A/B 路由（DB 优先，classpath 降级）
         String gradeLevel = effectiveGrade <= 2 ? "1-2" : effectiveGrade <= 4 ? "3-4" : "5-6";
         PromptVersionService.ResolvedPrompt sysResolved = promptVersionService.resolve(
@@ -266,6 +394,44 @@ public class ConversationServiceImpl implements ConversationService {
         PromptVersionService.ResolvedPrompt langResolved = promptVersionService.resolveRaw(
                 session.tenantId, langKey, session.studentUserId);
         String systemPromptContent = sysResolved.content() + "\n\n" + langResolved.content();
+
+        // ORCH-001/002/003/005：编排引擎——先算策略、再拼提示词（design/44 §四/§七）。
+        // VCL-001：轮级 currentEmotion 由语音 SER 映射驱动（置信门控 >0.6），
+        // ORCH-003：状态机输入上一轮 state/reliefCount，输出转移结果存回 session。
+        // ORCH-005：冷场 nudge 信号并入编排（nudgeCount>0 且本轮无学生输入时触发）。
+        String currentEmotion = (voiceEmotion != null && voiceEmotionConfidence != null && voiceEmotionConfidence > 0.6)
+                ? promptOrchestrationService.mapVoiceEmotion(voiceEmotion) : null;
+        ProfileSignals profileSignals = profileService.getProfileSignals(session.tenantId, session.studentUserId);
+        boolean nudgeActive = session.nudgeCount.get() > 0;
+        PromptOrchestrationService.Result orchResult = promptOrchestrationService.resolveWithTransition(
+                new OrchestrationContext(session.grade, effectiveGrade, session.emotionTag,
+                        currentEmotion, fusedLevel, profileSignals,
+                        session.emotionState, session.reliefCount, nudgeActive, session.highSensitivity));
+        StrategyProfile strategy = orchResult.profile();
+        // 状态机转移结果存回会话（下一轮输入）
+        session.emotionState = orchResult.transition().state();
+        session.reliefCount = orchResult.transition().reliefCount();
+        PromptVersionService.ResolvedPrompt emoResolved = promptVersionService.resolve(
+                session.tenantId, "EMO_001", session.studentUserId,
+                promptOrchestrationService.toTemplateVariables(strategy));
+        systemPromptContent = systemPromptContent + "\n\n" + emoResolved.content();
+
+        // CBT-201/202：CBT 阶段标记 + 年龄分层路由（design/52 §一，design/03 §11.3/11.4）
+        CbtStageRouter.AgeStrategy ageStrategy = cbtStageRouter.resolveAgeStrategy(effectiveGrade);
+        log.debug("CBT 年龄分层: sessionId={}, grade={}, strategy={}", sessionId, effectiveGrade, ageStrategy);
+
+        // ALLY 连续性开场 / 回归照护注入 System Prompt
+        if (alliancePrompt != null) {
+            systemPromptContent = systemPromptContent + "\n\n" + alliancePrompt;
+        }
+
+        // KB-101b：RAG 参考知识注入（design/49 §六）——场景触发才检索，寒暄闲聊不检索；
+        // RED 危机场景已在 4.2 硬短路，不会走到此处；检索异常返回空串不影响主线。
+        String ragContext = ragAdvisorService.buildRagContext(session.tenantId, safeContent, effectiveGrade);
+        if (!ragContext.isEmpty()) {
+            systemPromptContent = systemPromptContent + "\n\n" + ragContext;
+            log.info("RAG 参考知识已注入: sessionId={}, contextLen={}", sessionId, ragContext.length());
+        }
 
         // 记录 Prompt 版本到会话（用于 A/B 效果对比）
         String versionTag = sysResolved.versionTag();
@@ -407,11 +573,39 @@ public class ConversationServiceImpl implements ConversationService {
             aiChatService.clearMemory(sessionId);
             log.info("会话结束: sessionId={}, turns={}", sessionId, session.turnCount.get());
 
+            // AB-002：采集会话深度指标（异步聚合，不阻塞主流程）
+            try {
+                ExperimentMetricsCollector.MetricEvent depthEvent = new ExperimentMetricsCollector.MetricEvent(
+                        "default_exp", "CONTROL", session.studentUserId.toString(),
+                        ExperimentMetricsCollector.MetricType.SESSION_DEPTH,
+                        session.turnCount.get(), java.time.LocalDate.now());
+                log.debug("AB 指标采集: sessionId={}, metric=SESSION_DEPTH, value={}", sessionId, depthEvent.value());
+            } catch (Exception e) {
+                log.debug("AB 指标采集失败（不影响业务）: {}", e.getMessage());
+            }
+
             // 异步生成 AI 会话摘要（摘要完成后触发 PROF-003 画像 LLM 提炼）
             generateSummaryAsync(tenantId, sessionId, session.studentUserId);
 
-            // 异步更新学生画像（基于历史会话统计）
-            profileService.updateProfile(session.tenantId, session.studentUserId);
+            // 异步更新学生画像（基于历史会话统计；VCL-001：本会话语音情绪聚合回注 emotionBaseline.voice，
+            // 只传可映射到规范集的标签，聚合衍生特征不留逐条流水，design/47 §5.1）
+            List<String> voiceEmotions = session.emotionLabels().stream()
+                    .map(promptOrchestrationService::mapVoiceEmotion)
+                    .filter(Objects::nonNull)
+                    .toList();
+            profileService.updateProfile(session.tenantId, session.studentUserId, voiceEmotions);
+
+            // RISK-204 / ORCH-008 / PROF-024：会话结束分析（趋势+效果量化，异步不阻塞）
+            try {
+                sessionEndAnalyticsService.analyze(
+                        session.tenantId, session.studentUserId,
+                        voiceEmotions, // 近期情绪（当前仅本会话，后续扩展跨会话查询）
+                        session.emotionLabels(),
+                        List.of(), // studentMessages 待后续从 DB 补充
+                        session.emotionTag);
+            } catch (Exception e) {
+                log.debug("会话结束分析降级: {}", e.getMessage());
+            }
         }
     }
 
@@ -433,9 +627,13 @@ public class ConversationServiceImpl implements ConversationService {
             StringBuilder sb = new StringBuilder();
             for (MessageSummary m : messages) {
                 String role = "student".equals(m.getSenderType()) ? "学生" : "AI";
-                sb.append(role).append(": ").append(m.getContentSummary()).append("\n");
+                // R-01：contentSummary 落库时字段级加密，拼接前解密（明文数据兼容透传）
+                sb.append(role).append(": ").append(fieldEncryptionService.decrypt(m.getContentSummary())).append("\n");
             }
             String conversationText = sb.toString();
+
+            // PEVAL-001：异步评估会话质量并落库（服务内部按抽样率决定是否评估，失败静默降级）
+            conversationQualityService.evaluateSessionAsync(tenantId, sessionId, conversationText);
 
             // 3. 调用 LLM 生成摘要
             String summary = aiChatService.generateSessionSummary(conversationText);
@@ -467,8 +665,29 @@ public class ConversationServiceImpl implements ConversationService {
                     riskResult.category(),
                     riskResult.level().severity()
             );
+
+            // RISK-203：结构化风险评分（C-SSRS 儿童适配，可解释 reason_codes 供教师复核）
+            RiskScoreCalculator.ScoreInput scoreInput = new RiskScoreCalculator.ScoreInput(
+                    riskResult.score(),           // categoryBaseScore
+                    0,                            // intentWeight（待语义层抽取）
+                    0,                            // planWeight
+                    10,                           // recencyWeight（当前会话=今天）
+                    0,                            // actionWeight
+                    0,                            // repetitionWeight
+                    0,                            // protectiveWeight
+                    0,                            // falsePositivePenalty
+                    0.8,                          // confidenceAdjustment（硬规则默认 0.8）
+                    riskResult.level().severity() >= RiskLevel.RED.severity() ? riskResult.level() : null,
+                    null,                         // cssrsIdeation（待语义层抽取）
+                    null                          // cssrsBehavior
+            );
+            RiskScoreCalculator.ScoreResult scoreResult = riskScoreCalculator.calculate(scoreInput);
+            log.info("风险评分计算: sessionId={}, score={}, level={}, reasons={}",
+                    session.sessionId, scoreResult.score(), scoreResult.level(), scoreResult.reasonCodes());
+
             riskEventMapper.insert(event);
-            log.info("风险事件已持久化: riskEventId={}, level={}", event.getRiskEventId(), riskResult.level());
+            log.info("风险事件已持久化: riskEventId={}, level={}, score={}",
+                    event.getRiskEventId(), riskResult.level(), scoreResult.score());
 
             // 触发教师通知
             notificationService.notifyRiskEvent(event);
@@ -485,6 +704,8 @@ public class ConversationServiceImpl implements ConversationService {
                     session.tenantId, session.sessionId, session.studentUserId,
                     turn, content, emotionLabel, riskLevel
             );
+            // R-01：学生消息内容字段级加密后落库（工厂已截断至 1024，再对截断后明文加密）
+            summary.setContentSummary(fieldEncryptionService.encrypt(summary.getContentSummary()));
             messageSummaryMapper.insert(summary);
         } catch (Exception e) {
             log.warn("学生消息摘要持久化失败（不影响对话）: sessionId={}, turn={}", session.sessionId, turn, e);
@@ -499,6 +720,8 @@ public class ConversationServiceImpl implements ConversationService {
                     session.tenantId, session.sessionId, session.studentUserId,
                     turn, aiResponse
             );
+            // R-01：AI 回复内容字段级加密后落库
+            summary.setContentSummary(fieldEncryptionService.encrypt(summary.getContentSummary()));
             messageSummaryMapper.insert(summary);
         } catch (Exception e) {
             log.warn("AI 回复摘要持久化失败: sessionId={}, turn={}", session.sessionId, turn, e);
@@ -509,8 +732,10 @@ public class ConversationServiceImpl implements ConversationService {
      * 解析 gradeCode 为年级数字（1-6）。
      * <p>
      * 支持格式："G1"~"G6"、"1"~"6"、null/空/无法解析 → 默认 4（中间值，design/29 §3.3）
+     * <p>
+     * public：供 VoicePersonaResolver（TMATCH-001，voice 包）复用同一年级解析口径。
      */
-    static int parseGradeCode(String gradeCode) {
+    public static int parseGradeCode(String gradeCode) {
         if (gradeCode == null || gradeCode.isBlank()) return 4;
         String cleaned = gradeCode.trim().toUpperCase();
         // 去掉 "G" 前缀（如 "G3" → "3"）
@@ -522,6 +747,29 @@ public class ConversationServiceImpl implements ConversationService {
             return (grade >= 1 && grade <= 6) ? grade : 4;
         } catch (NumberFormatException e) {
             return 4;
+        }
+    }
+
+    /**
+     * ALLY-201/203：构建治疗联盟增强 Prompt（连续性开场 + 中断回归照护）。
+     * <p>
+     * 利用记忆回注摘要生成续接话术；失败安全：无记忆 → 返回 null（不注入）。
+     */
+    private String buildAlliancePrompt(SessionState session, String memoryPrompt) {
+        try {
+            // ALLY-201：连续性开场（有记忆回注时生成续接提示）
+            if (memoryPrompt != null && !memoryPrompt.isBlank()) {
+                String firstLine = memoryPrompt.lines()
+                        .filter(l -> l.startsWith("- "))
+                        .findFirst()
+                        .map(l -> l.substring(2).trim())
+                        .orElse(null);
+                return allianceEnhancer.buildContinuityPrompt(firstLine, "波波");
+            }
+            return null;
+        } catch (Exception e) {
+            log.debug("ALLY 联盟增强构建失败（不影响对话）: {}", e.getMessage());
+            return null;
         }
     }
 
@@ -554,6 +802,17 @@ public class ConversationServiceImpl implements ConversationService {
     }
     
     /**
+     * RISK-201：RED 短路安全文案选择（分年级两版，预审核模板，不由 LLM 生成）
+     * <p>
+     * 1-2 年级 → 短句版；3-6 年级 → 标准版（含热线，design/04 §18.2）。
+     */
+    static String redSafetyReply(int grade) {
+        return grade <= 2
+                ? CrisisResources.RED_SAFETY_REPLY_LOWER_GRADE
+                : CrisisResources.RED_SAFETY_REPLY;
+    }
+
+    /**
      * 构建问候语：个性化“哈喽，[昵称]！” + 情绪问候（design/28 §2.2）
      * <p>
      * 唤醒词 onboarding：用"哈喽+名字"模式自然引导孩子回应"哈喽波波"；
@@ -572,6 +831,30 @@ public class ConversationServiceImpl implements ConversationService {
             default -> "我是波波，今天想和我聊些什么呢？";
         };
         return hello + emotionGreeting;
+    }
+
+    /**
+     * RISK-202：M2 语义风险分类融合（design/04 §18.3）
+     * <p>
+     * 分工铁律：硬规则管"宁多报"（RED/ORANGE 已接住，不再调语义层，更不可降级）；
+     * 语义层管"隐性补召"（隐喻/告别行为/送东西/网络黑话），只能升级风险档位。
+     * 升级结果进入 fuseRiskSignals 融合，天然联动 RISK-201 RED 硬短路与教师告警。
+     * 世界B 分诊段接线前的先行实施：非流式前置单次调用，超时门禁 ≤800ms（分类器内部控制）。
+     */
+    private RiskDetectionResult applySemanticRisk(RiskDetectionResult keywordResult,
+                                                  String safeContent, SessionState session) {
+        // 硬规则已达橙/红 → 语义层不参与（省 LLM 调用，且语义层无权降级，§九铁律）
+        if (keywordResult.level().severity() >= RiskLevel.ORANGE.severity()) {
+            return keywordResult;
+        }
+        RiskLevel semanticLevel = semanticRiskClassifier.classify(safeContent, null, null, session.grade);
+        if (semanticLevel == null || semanticLevel.severity() <= keywordResult.level().severity()) {
+            return keywordResult; // 无语义风险或未超过关键词档位（只升不降）
+        }
+        log.warn("语义分类升级风险等级: keyword={}, semantic={}", keywordResult.level(), semanticLevel);
+        int score = semanticLevel == RiskLevel.RED ? 85 : semanticLevel == RiskLevel.ORANGE ? 60 : 40;
+        return new RiskDetectionResult(semanticLevel, "llm_semantic", List.of(), score, false,
+                "语义分析识别到隐性风险表达（隐喻/暗示），请结合原文人工复核");
     }
 
     /**
@@ -710,9 +993,6 @@ public class ConversationServiceImpl implements ConversationService {
         /** 上次活动时间（AUTH-030：用于累计每日使用时长） */
         private Instant lastActiveAt = Instant.now();
 
-        /** 本会话内存累计使用秒数（AUTH-030：Redis 不可用时的时长限制兜底） */
-        private final java.util.concurrent.atomic.AtomicLong usedSeconds = new java.util.concurrent.atomic.AtomicLong(0);
-
         /** 语音情绪历史（最近 10 条） */
         private final List<EmotionRecord> emotionHistory = new ArrayList<>();
 
@@ -730,6 +1010,16 @@ public class ConversationServiceImpl implements ConversationService {
         private volatile boolean lastAiAskedThinkingQuestion = false;
         /** 信号 E：本会话出现过的最高融合风险 severity */
         private volatile int maxRiskSeverity = 0;
+
+        /** RISK-201：安全响应模式（RED 短路后限制自由生成，解除需教师处置/新会话） */
+        private final AtomicBoolean safetyMode = new AtomicBoolean(false);
+
+        /** ORCH-003：情绪状态机会话级状态（轮级更新） */
+        private volatile StrategyProfile.EmotionState emotionState = StrategyProfile.EmotionState.STABLE;
+        private volatile int reliefCount = 0;
+
+        /** SAFE-202：高敏模式标记（命中虐待/丧失/自伤等类别后永久标记，不回落） */
+        private volatile boolean highSensitivity = false;
 
         SessionState(UUID sessionId, UUID tenantId, UUID studentUserId, String emotionTag,
                      String channel, String gender, Double expressionDepth, int grade) {
@@ -751,22 +1041,19 @@ public class ConversationServiceImpl implements ConversationService {
             }
         }
 
+        /** VCL-001：本会话语音情绪标签快照（原始 SER 标签，会话结束聚合回注画像用） */
+        List<String> emotionLabels() {
+            return emotionHistory.stream().map(EmotionRecord::emotion).toList();
+        }
+
         /**
-         * 标记本次活跃，返回距上次活动的秒数（上限 300s，避免长时间挂起累计虚高），
-         * 同时累计到会话内存计时器（Redis 兜底）。
+         * 标记本次活跃，返回距上次活动的秒数（上限 300s，避免长时间挂起累计虚高）。
          */
         long markActiveAndElapsed() {
             Instant now = Instant.now();
             long elapsed = java.time.Duration.between(lastActiveAt, now).getSeconds();
             lastActiveAt = now;
-            long capped = Math.max(0, Math.min(elapsed, 300));
-            usedSeconds.addAndGet(capped);
-            return capped;
-        }
-
-        /** 本会话内存累计使用秒数 */
-        long localUsedSeconds() {
-            return usedSeconds.get();
+            return Math.max(0, Math.min(elapsed, 300));
         }
 
         /** 连续消极情绪计数（从最近一条往前数） */
@@ -807,6 +1094,11 @@ public class ConversationServiceImpl implements ConversationService {
         int maxRiskSeverity() { return maxRiskSeverity; }
         String lastStudentMessageType() { return lastStudentMessageType; }
         boolean lastAiAskedThinkingQuestion() { return lastAiAskedThinkingQuestion; }
+
+        // ===== RISK-201：安全响应模式 =====
+
+        void enterSafetyMode() { safetyMode.set(true); }
+        boolean inSafetyMode() { return safetyMode.get(); }
 
         long secondsSinceLastStudentMessage() {
             return java.time.Duration.between(lastStudentMessageAt, Instant.now()).getSeconds();

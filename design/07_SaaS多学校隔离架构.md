@@ -3,7 +3,7 @@
 > 来源：`doc/07_SaaS多学校隔离架构.docx`（原文 260 行）
 > 状态：已转换 | 关联：06 数据库结构、05 老师后台、12 技术架构、决策 #6（Schema 级多租户）
 > 核心：**学校为租户粒度，Schema 级隔离 `tenant_{tenant_id}`**，跨租户查询在代码层面严格禁止。
-> ⚠️ **实现现状（2026-07-28 核对）**：当前代码为**共享表 + 行级 tenant_id 过滤**（所有实体带 `tenantId`，JWT 解出 `TenantContext` record），Schema 级隔离与 `counseling-tenant` 模块**未落地**（模块仅 pom.xml 空骨架）——与决策 #6 存在架构级偏差，详见 §11。
+> ⚠️ **实现现状（2026-07-28 核对 / fix-06 更新）**：当前代码为**共享表 + 行级 tenant_id 过滤**（所有实体带 `tenantId`）。fix-06 已落地路线 A 纵深防线——`counseling-tenant` 模块启用 MyBatis-Plus `TenantLineInnerInterceptor`（策略 B 稳健渐进：已认证请求经 `TenantContextHolder` 自动注入 `tenant_id` 条件，无上下文时跳过注入、保留手工 `.eq` 兜底，尚非 fail-fast），`ParentAuthService` 已去单租户硬编码。Schema 级物理隔离仍**未落地**（仍为单 schema 共享表），与决策 #6 存在架构级偏差，详见 §11。
 
 ---
 
@@ -185,15 +185,15 @@ Schema 命名规范：`tenant_{tenant_id}`，如 `tenant_school_001`。每个租
 | 设计项 | 章节 | 状态 | 核对结论（2026-07-28） |
 |------|------|:---:|------|
 | Schema 级隔离 `tenant_{id}` | §2.1/§10 | ⬜ | **未落地**。无 `AbstractRoutingDataSource`、无 `search_path` 切换、无 RLS `SET app.tenant_id`。实际为**单 schema 共享表 + 行级 tenant_id 列** |
-| `counseling-tenant` 模块 | §10 | 🟫 | 模块目录仅 pom.xml，`TenantContextFilter` 等类均不存在 |
-| 租户上下文 | §10 | 🟩 | 以 `JwtAuthenticationFilter.TenantContext`（record: tenantId/userId/userType）实现，Controller 层显式取用——非 ThreadLocal 注入，天然无泄漏风险但依赖各 Controller 自觉传参 |
-| 行级 tenant_id 过滤 | §2.3 | 🟫 | 实体统一带 `tenantId` 字段；但**未启用 `TenantLineInnerInterceptor`**，Mapper 层无强制拦截，「无租户条件查询 fail-fast」铁律当前无代码防线，靠 Service 层手工传参 |
+| `counseling-tenant` 模块 | §10 | 🟩 | fix-06 落地：`MindSafeTenantLineHandler` + `MybatisPlusConfig`（注册 `TenantLineInnerInterceptor`），依赖 `mybatis-plus-jsqlparser`；由 app 层 `@ComponentScan("com.mindsafe")` 装配。`TenantContextFilter` 未建，改用 `TenantContextHolder`（common，ThreadLocal）+ JwtAuthenticationFilter set/clear |
+| 租户上下文 | §10 | 🟩 | 双通道：`JwtAuthenticationFilter.TenantContext`（record，Controller 显式取用）+ fix-06 新增 `TenantContextHolder`（common 层 ThreadLocal，filter 请求内 set、finally clear，供拦截器读取）。虚拟线程下如迁移须改 `ScopedValue` |
+| 行级 tenant_id 过滤 | §2.3 | 🟩 | 实体统一带 `tenantId` 字段；fix-06 启用 `TenantLineInnerInterceptor`（策略 B）自动注入 `AND tenant_id=?` 纵深防线。**注**：无上下文时跳过注入而非 fail-fast，`tenants` 公共标识表恒忽略；「无租户条件查询 fail-fast」铁律待集成测试后收紧（见 §11.4） |
 | SSO（钉钉/企微） | §3.1 | ⬜ | 未实现，当前为家庭码/PIN 自有认证（见 24 篇） |
 | 配额/限流 | §1.3/§6 | 🟫 | 有 `ratelimit` 包（API 级），未按租户维度分层计量（归 38 计费配额） |
 | 私有化部署 | §8 | ⬜ | 设计期保留 |
 
-**偏差定性（需钱敏健确认，已入待确认清单）**：MVP 阶段「共享表 + 行级过滤」是合理的 KISS 简化（单校试点无隔离压力），但与决策 #6 的 Schema 级目标态存在**架构级偏差**。两条路线：
-- **A（推荐）**：MVP~早期多租户沿用行级隔离，但立即补两道防线——①启用 MyBatis-Plus `TenantLineInnerInterceptor` 强制注入 tenant_id 条件 ②无 TenantContext 的 DAO 调用 fail-fast。Schema 级隔离推迟到首个「要求强隔离」的付费学校签约前实施（expand 路径清晰：按 §2.1 建 schema + 数据搬迁）。
+**偏差定性（路线 A 已定稿，fix-06 已落地首道防线）**：MVP 阶段「共享表 + 行级过滤」是合理的 KISS 简化（单校试点无隔离压力），但与决策 #6 的 Schema 级目标态存在**架构级偏差**。两条路线：
+- **A（已选，fix-06 落地）**：多租户沿用行级隔离，补两道防线——①✅ 已启用 MyBatis-Plus `TenantLineInnerInterceptor` 强制注入 tenant_id 条件（策略 B：已认证自动注入，无上下文跳过）②⏳ 无 TenantContext 的 DAO 调用 fail-fast（当前为跳过注入的稳健渐进态，待登录/注册路径补集成测试后收紧）。Schema 级隔离推迟到首个「要求强隔离」的付费学校签约前实施（expand 路径清晰：按 §2.1 建 schema + 数据搬迁）。
 - **B**：现在实施 Schema 级切换。成本高（Flyway 多 schema 迁移、连接池、运维），当前无对应客户需求，违背 YAGNI。
 
 ### 11.2 无状态化（design/40）对隔离的影响
@@ -211,7 +211,8 @@ Schema 命名规范：`tenant_{tenant_id}`，如 `tenant_school_001`。每个租
 
 | 事项 | 归口任务 | 优先级 | 责任人 |
 |------|------|:---:|------|
-| `TenantLineInnerInterceptor` 启用 + fail-fast 防线 | STATE/安全加固（新增前置） | P1 | Agent |
+| `TenantLineInnerInterceptor` 启用 | ✅ fix-06 已落地（策略 B 稳健渐进：已认证自动注入 tenant_id；`MindSafeTenantLineHandler` + 6 用例守卫）；`ParentAuthService` 去单租户硬编码同期完成 | P1 | Agent |
+| 无上下文 DAO 调用 fail-fast 收紧 | ⏳ 待登录/注册等前置认证路径补集成测试后，将 `ignoreTable` 无上下文分支从「跳过注入」改为 fail-fast | P1 | Agent |
 | 隔离路线 A/B 决策 | ✅ 已定稿 A：行级隔离为正式架构（2026-07-28 钱敏健）；加固三件套=拦截器覆盖测试+跨租户越权测试+PG RLS 兜底；BIZ-001 维持挂起，遇采购方硬性物理隔离要求再启动 B | P1 | 钱敏健 |
 | 热线号码租户配置化 | SAFE-203 | P1 | Agent |
 | SessionState 外置 Redis（租户前缀） | STATE 系列（40） | P2 | Agent |

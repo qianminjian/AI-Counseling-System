@@ -10,7 +10,9 @@ import com.mindsafe.domain.mapper.CounselingSessionMapper;
 import com.mindsafe.domain.mapper.PromptVersionMapper;
 import com.mindsafe.domain.mapper.QualityScoreMapper;
 import com.mindsafe.service.audit.AuditLogService;
+import com.mindsafe.service.prompt.PromptEvalGovernance;
 import com.mindsafe.service.prompt.PromptVersionService;
+import com.mindsafe.service.prompt.TemplateMatrixRegistry;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
@@ -32,17 +34,23 @@ public class AdminPromptController {
     private final CounselingSessionMapper sessionMapper;
     private final QualityScoreMapper qualityScoreMapper;
     private final AuditLogService auditLogService;
+    private final TemplateMatrixRegistry templateMatrixRegistry;
+    private final PromptEvalGovernance promptEvalGovernance;
 
     public AdminPromptController(PromptVersionService promptVersionService,
                                  PromptVersionMapper promptVersionMapper,
                                  CounselingSessionMapper sessionMapper,
                                  QualityScoreMapper qualityScoreMapper,
-                                 AuditLogService auditLogService) {
+                                 AuditLogService auditLogService,
+                                 TemplateMatrixRegistry templateMatrixRegistry,
+                                 PromptEvalGovernance promptEvalGovernance) {
         this.promptVersionService = promptVersionService;
         this.promptVersionMapper = promptVersionMapper;
         this.sessionMapper = sessionMapper;
         this.qualityScoreMapper = qualityScoreMapper;
         this.auditLogService = auditLogService;
+        this.templateMatrixRegistry = templateMatrixRegistry;
+        this.promptEvalGovernance = promptEvalGovernance;
     }
 
     // ===== 版本 CRUD =====
@@ -185,6 +193,39 @@ public class AdminPromptController {
     }
 
     // ===== 工具方法 =====
+
+    /**
+     * PEVAL-003：查询模板矩阵（模板ID × 版本 × 适用人群 × 状态）
+     */
+    @GetMapping("/matrix")
+    public ApiResponse<List<TemplateMatrixRegistry.TemplateEntry>> templateMatrix() {
+        return ApiResponse.ok(templateMatrixRegistry.getMatrix());
+    }
+
+    /**
+     * PEVAL-003：查询红队护栏用例集
+     */
+    @GetMapping("/guardrails")
+    public ApiResponse<List<TemplateMatrixRegistry.GuardrailCase>> guardrails() {
+        return ApiResponse.ok(templateMatrixRegistry.getGuardrailCases());
+    }
+
+    /**
+     * PEVAL-004：灰度放量评估（判断是否可进入下一阶段）
+     */
+    @PostMapping("/rollout-eval")
+    public ApiResponse<PromptEvalGovernance.RolloutDecision> evaluateRollout(
+            @RequestBody Map<String, Object> body) {
+        int stageIndex = body.containsKey("stageIndex") ? ((Number) body.get("stageIndex")).intValue() : 0;
+        double safetyMean = body.containsKey("safetyMean") ? ((Number) body.get("safetyMean")).doubleValue() : 1.0;
+        double blockRate = body.containsKey("blockRate") ? ((Number) body.get("blockRate")).doubleValue() : 0.0;
+        double baselineBlock = body.containsKey("baselineBlockRate") ? ((Number) body.get("baselineBlockRate")).doubleValue() : 0.0;
+        double evalDelta = body.containsKey("evalDelta") ? ((Number) body.get("evalDelta")).doubleValue() : 0.0;
+
+        PromptEvalGovernance.RolloutDecision decision = promptEvalGovernance.evaluateRollout(
+                stageIndex, safetyMean, blockRate, baselineBlock, evalDelta);
+        return ApiResponse.ok(decision);
+    }
 
     private Map<String, Object> toVersionMap(PromptVersion pv) {
         Map<String, Object> m = new LinkedHashMap<>();

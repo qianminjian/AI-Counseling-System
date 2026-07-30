@@ -43,6 +43,8 @@ services:
     container_name: mindsafe-backend
     restart: unless-stopped
     environment:
+      # 激活 prod profile：启用 fail-fast 守卫（JWT/加密密钥缺失拒绝启动）、禁用 Swagger
+      SPRING_PROFILES_ACTIVE: prod
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/mindsafe
       SPRING_DATASOURCE_USERNAME: mindsafe
       DB_PASSWORD: ${DB_PASSWORD}
@@ -53,6 +55,11 @@ services:
       LLM_BASE_URL: ${LLM_BASE_URL:-https://api.deepseek.com}
       LLM_MODEL: ${LLM_MODEL:-deepseek-v4-flash}
       MINDSAFE_JWT_SECRET: ${JWT_SECRET}
+      MINDSAFE_ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      MINDSAFE_ENCRYPTION_KEY_VERSION: ${ENCRYPTION_KEY_VERSION:-1}
+      MINDSAFE_ENCRYPTION_PREVIOUS_KEYS: ${ENCRYPTION_PREVIOUS_KEYS:-}
+      MINDSAFE_ALERT_WECOM_WEBHOOK_URL: ${ALERT_WECOM_WEBHOOK_URL:-}
+      MINDSAFE_ALERT_WECOM_MENTIONED: ${ALERT_WECOM_MENTIONED:-}
       MINDSAFE_SMS_PROVIDER: ${SMS_PROVIDER:-logging}
       MINDSAFE_SMS_ALIYUN_ACCESS_KEY_ID: ${SMS_ALIYUN_ACCESS_KEY_ID:-}
       MINDSAFE_SMS_ALIYUN_ACCESS_KEY_SECRET: ${SMS_ALIYUN_ACCESS_KEY_SECRET:-}
@@ -124,8 +131,13 @@ services:
     restart: unless-stopped
     ports:
       - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
     volumes:
-      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      # TLS 版配置（80 仅 ACME 续期 + 301，443 承载全部流量）
+      - ./nginx/default-ssl.conf:/etc/nginx/conf.d/default.conf:ro
+      # Let's Encrypt 证书（宿主机 certbot 签发，见 DEPLOY-GUIDE.md）
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+      - /var/www/certbot:/var/www/certbot:ro
       - ../frontend/student-h5/dist:/app/student:ro
       - ../frontend/teacher-web/dist:/app/teacher:ro
       - ../frontend/parent-h5/dist:/app/parent:ro

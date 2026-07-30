@@ -7,6 +7,7 @@ import com.mindsafe.common.dto.ErrorCode;
 import com.mindsafe.common.dto.chat.SessionInfo;
 import com.mindsafe.common.dto.chat.StreamMessageEvent;
 import com.mindsafe.common.exception.BizException;
+import com.mindsafe.service.consent.GuardianConsentService;
 import com.mindsafe.service.conversation.ConversationService;
 import jakarta.validation.Valid;
 import org.springframework.http.MediaType;
@@ -27,9 +28,12 @@ import java.util.UUID;
 public class ChatController {
 
     private final ConversationService conversationService;
+    private final GuardianConsentService guardianConsentService;
 
-    public ChatController(ConversationService conversationService) {
+    public ChatController(ConversationService conversationService,
+                          GuardianConsentService guardianConsentService) {
         this.conversationService = conversationService;
+        this.guardianConsentService = guardianConsentService;
     }
 
     /**
@@ -40,6 +44,7 @@ public class ChatController {
             @Valid @RequestBody CreateSessionRequest request,
             Authentication authentication) {
         TenantContext ctx = extractContext(authentication);
+        requireGuardianConsent(ctx);
 
         SessionInfo response = conversationService.createSession(
                 ctx.tenantId(), ctx.userId(), request.emotionTag(), request.channel());
@@ -56,6 +61,7 @@ public class ChatController {
             @Valid @RequestBody SendMessageRequest request,
             Authentication authentication) {
         TenantContext ctx = extractContext(authentication);
+        requireGuardianConsent(ctx);
 
         if (request.hasVoiceEmotion()) {
             return conversationService.sendMessageStream(
@@ -77,6 +83,7 @@ public class ChatController {
             @Valid @RequestBody NudgeRequest request,
             Authentication authentication) {
         TenantContext ctx = extractContext(authentication);
+        requireGuardianConsent(ctx);
         return conversationService.sendNudgeStream(ctx.tenantId(), sessionId, request.silenceSeconds());
     }
 
@@ -97,5 +104,16 @@ public class ChatController {
             throw new BizException(ErrorCode.UNAUTHORIZED);
         }
         return ctx;
+    }
+
+    /**
+     * 监护人同意门禁（R-03，PIPL §31 未成年人单独同意）
+     * <p>
+     * 学生进入对话（创建会话/发消息/暖场）前必须已完成监护人同意闭环，否则拒绝。
+     */
+    private void requireGuardianConsent(TenantContext ctx) {
+        if (!guardianConsentService.hasGuardianConsent(ctx.tenantId(), ctx.userId())) {
+            throw new BizException(ErrorCode.CONSENT_REQUIRED, "需要先完成监护人同意才能开始对话");
+        }
     }
 }

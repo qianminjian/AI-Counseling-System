@@ -139,10 +139,13 @@ cd /opt/mindsafe
 vim .env
 ```
 
-填入：
+填入（完整模板见 `deploy/.env.example`）：
 ```env
 DB_PASSWORD=<强密码>
 REDIS_PASSWORD=<强密码>
+# 必填：prod profile 下缺失会 fail-fast 拒绝启动
+JWT_SECRET=<openssl rand -base64 48 生成>
+ENCRYPTION_KEY=<openssl rand -base64 32 生成>
 LLM_API_KEY=sk-your-deepseek-key
 LLM_BASE_URL=https://api.deepseek.com
 LLM_MODEL=deepseek-chat
@@ -206,6 +209,27 @@ vim /opt/mindsafe/nginx/default.conf
 # 将 server_name teacher.mindsafe.app 改为你的域名
 docker compose -f docker-compose.test.yml restart nginx
 ```
+
+### HTTPS 证书（生产必做，prod compose 默认启用 TLS）
+
+`docker-compose.prod.yml` 挂载的是 `nginx/default-ssl.conf`（443 承载全部流量，80 仅证书续期挑战 + 301 重定向），首次启动前必须先在宿主机签发证书，否则 nginx 启动失败：
+
+```bash
+# 1. 安装 certbot（Ubuntu）
+apt install -y certbot
+
+# 2. 首次签发（standalone 模式，需要 80 端口空闲，在 compose 启动前执行）
+mkdir -p /var/www/certbot
+certbot certonly --standalone -d yun.gxjugu.com --agree-tos -m <你的邮箱>
+
+# 3. 启动服务（nginx 容器只读挂载 /etc/letsencrypt 与 /var/www/certbot）
+cd /opt/mindsafe && docker compose -f docker-compose.prod.yml up -d
+
+# 4. 自动续期（续期走 webroot 挑战，无需停服；续期后 reload nginx）
+echo '0 3 * * 1 certbot renew --webroot -w /var/www/certbot --deploy-hook "docker exec mindsafe-nginx nginx -s reload" >> /var/log/certbot-renew.log 2>&1' | crontab -
+```
+
+> 域名变更时同步修改 `deploy/nginx/default-ssl.conf` 中的 `server_name` 与证书路径，以及 `.env` 的 `CORS_ORIGINS`。
 
 ---
 
@@ -276,6 +300,6 @@ sudo systemctl restart docker
 2. **GHCR 私有镜像**：需要在服务器上 `docker login` 才能 pull
 3. **x86_64 架构**：阿里云经济型为 x86，CI 构建无需指定 platform（默认 amd64）
 4. **数据备份**：定期 `pg_dump` 导出数据库（可加 cron job）
-5. **HTTPS**：测试阶段用 HTTP 即可；正式使用加 Let's Encrypt + certbot
+5. **HTTPS**：测试阶段（docker-compose.test.yml）用 HTTP 即可；生产（docker-compose.prod.yml）已强制 TLS，首次部署先按「HTTPS 证书」节签发证书
 6. **安全组**：SSH 端口建议限制来源 IP，避免暴力破解
 7. **续费**：经济型 e 实例首购 99元/年，续费同价（阿里云活动期）；关注续费提醒

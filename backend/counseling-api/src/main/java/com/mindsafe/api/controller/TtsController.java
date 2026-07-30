@@ -1,38 +1,73 @@
 package com.mindsafe.api.controller;
 
 import com.mindsafe.ai.voice.TtsService;
+import com.mindsafe.api.security.JwtAuthenticationFilter.TenantContext;
 import com.mindsafe.common.dto.ApiResponse;
+import com.mindsafe.service.tts.VoiceDegradationPolicy;
+import com.mindsafe.service.tts.VoicePersonaMatcher;
+import com.mindsafe.service.tts.TtsPipelineScheduler;
+import com.mindsafe.service.tts.VoiceEffectivenessTracker;
+import com.mindsafe.service.voice.VoicePersonaResolver;
+import com.mindsafe.service.voice.VoiceRenderProfile;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 /**
  * TTS 语音合成 API
  * <p>
- * 前端在 AI 回复完成后调用，将文字转为语音播放
+ * 前端在 AI 回复完成后调用，将文字转为语音播放。
+ * TMATCH-001：persona 未指定时由 {@link VoicePersonaResolver} 按画像自动匹配，
+ * 情绪同时驱动 prosody 基调（非仅 instruct）。
+ * TTSFX-002：风险场景由 {@link VoiceDegradationPolicy} 决定语音输出模式（S1 预合成/S0 静默）。
+ * TMATCH-002：安全/危机场景由 {@link VoicePersonaMatcher} 锁定稳定基调。
  */
 @RestController
 @RequestMapping("/api/v1/tts")
 public class TtsController {
 
-    private final TtsService ttsService;
+    private static final Logger log = LoggerFactory.getLogger(TtsController.class);
 
-    public TtsController(TtsService ttsService) {
+    private final TtsService ttsService;
+    private final VoicePersonaResolver personaResolver;
+    private final VoiceDegradationPolicy degradationPolicy;
+    private final VoicePersonaMatcher personaMatcher;
+    private final TtsPipelineScheduler pipelineScheduler;
+    private final VoiceEffectivenessTracker effectivenessTracker;
+
+    public TtsController(TtsService ttsService, VoicePersonaResolver personaResolver,
+                         VoiceDegradationPolicy degradationPolicy, VoicePersonaMatcher personaMatcher,
+                         TtsPipelineScheduler pipelineScheduler, VoiceEffectivenessTracker effectivenessTracker) {
         this.ttsService = ttsService;
+        this.personaResolver = personaResolver;
+        this.degradationPolicy = degradationPolicy;
+        this.personaMatcher = personaMatcher;
+        this.pipelineScheduler = pipelineScheduler;
+        this.effectivenessTracker = effectivenessTracker;
     }
 
     /**
      * 合成语音（返回音频流）
+     * <p>
+     * TTSFX-002：传入 riskLevel 时启用风险降级策略：
+     * S0/RED → 静默（返回 204）；S1/ORANGE → 预合成安抚话术；S2/YELLOW → 强制安抚基调。
      */
     @PostMapping("/synthesize")
-    public ResponseEntity<byte[]> synthesize(@RequestBody Map<String, Object> request) {
+    public ResponseEntity<byte[]> synthesize(@RequestBody Map<String, Object> request, Authentication auth) {
         String text = (String) request.get("text");
-        String persona = (String) request.getOrDefault("persona", "xiaoxing");
+        // persona 可缺省：前端显式传 = 学生手动选择（最高优先）；缺省 → 画像冷启动自动匹配
+        String persona = (String) request.get("persona");
         String emotion = (String) request.getOrDefault("emotion", "neutral");
+        String scene = (String) request.getOrDefault("scene", "chat");
+        String riskLevel = (String) request.get("riskLevel"); // TTSFX-002：可选风险等级
         double speed = request.containsKey("speed")
                 ? ((Number) request.get("speed")).doubleValue() : 1.0;
 
@@ -40,7 +75,32 @@ public class TtsController {
             return ResponseEntity.badRequest().build();
         }
 
-        byte[] audio = ttsService.synthesize(text, persona, emotion, speed);
+        // TTSFX-002：风险场景语音降级策略
+        if (riskLevel != null) {
+            VoiceDegradationPolicy.VoiceDecision decision = degradationPolicy.decide(riskLevel, emotion);
+            log.info("TTS 风险降级决策: riskLevel={}, mode={}, reason={}", riskLevel, decision.mode(), decision.reason());
+
+            if (decision.mode() == VoiceDegradationPolicy.VoiceMode.SILENT) {
+                // S0：转热线后不再播放语音
+                return ResponseEntity.noContent().build();
+            }
+            if (decision.preSynthesized()) {
+                // S1：使用预合成安抚话术库（零延迟+零合成事故）
+                // 当前版本：预合成音频库未建立，降级为强制安抚基调实时合成
+                emotion = decision.forcedEmotion() != null ? decision.forcedEmotion() : "calm";
+                speed = Math.min(speed, 0.9); // 语速降至下限
+            } else if (decision.forcedEmotion() != null) {
+                // S2：强制安抚基调
+                emotion = decision.forcedEmotion();
+            }
+        }
+
+        UUID userId = auth != null && auth.getPrincipal() instanceof UUID id ? id : null;
+        UUID tenantId = auth != null && auth.getDetails() instanceof TenantContext ctx ? ctx.tenantId() : null;
+        VoiceRenderProfile profile = personaResolver.resolve(tenantId, userId, persona, emotion, scene);
+
+        byte[] audio = ttsService.synthesize(text, profile.persona(), profile.emotionInstruct(),
+                speed * profile.speed(), profile.pitchScale(), profile.pauseStyle());
         if (audio == null) {
             return ResponseEntity.noContent().build();
         }
@@ -48,6 +108,8 @@ public class TtsController {
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_TYPE, detectAudioMimeType(audio))
                 .header(HttpHeaders.CACHE_CONTROL, "no-cache")
+                .header("X-Voice-Persona", profile.persona())
+                .header("X-Voice-Source", profile.source())
                 .body(audio);
     }
 
@@ -92,5 +154,53 @@ public class TtsController {
                 "service", "tts",
                 "engine", available ? "cosyvoice2/edge-tts" : "unavailable"
         ));
+    }
+
+    // ===== TTSFX-003：延迟流水线 + 帧率性能自动降级 =====
+
+    /**
+     * TTS 流水线调度（句子级延迟预算评估）
+     */
+    @PostMapping("/pipeline/schedule")
+    public ApiResponse<Map<String, Object>> schedulePipeline(@RequestBody Map<String, Object> request) {
+        String text = (String) request.getOrDefault("text", "");
+        int sentenceIndex = request.containsKey("sentenceIndex")
+                ? ((Number) request.get("sentenceIndex")).intValue() : 0;
+        boolean isLast = Boolean.TRUE.equals(request.get("isLast"));
+
+        TtsPipelineScheduler.SentenceTask task = new TtsPipelineScheduler.SentenceTask(
+                sentenceIndex, text, sentenceIndex == 0, false);
+        TtsPipelineScheduler.ScheduleResult result = pipelineScheduler.schedule(task);
+
+        return ApiResponse.ok(Map.of(
+                "sentenceIndex", result.sentenceIndex(),
+                "immediatePlay", result.immediatePlay(),
+                "parallelSynth", result.parallelSynth(),
+                "strategy", result.strategy()));
+    }
+
+    // ===== TMATCH-003：音色效果回收 =====
+
+    /**
+     * 音色效果评估（完成率/切换/参与度）
+     */
+    @PostMapping("/effectiveness/evaluate")
+    public ApiResponse<Map<String, Object>> evaluateEffectiveness(@RequestBody Map<String, Object> request) {
+        String voiceId = (String) request.getOrDefault("voiceId", "default");
+        int totalSessions = request.containsKey("totalSessions")
+                ? ((Number) request.get("totalSessions")).intValue() : 0;
+        double avgCompletion = request.containsKey("avgCompletionRate")
+                ? ((Number) request.get("avgCompletionRate")).doubleValue() : 0;
+        int switchCount = request.containsKey("manualSwitchCount")
+                ? ((Number) request.get("manualSwitchCount")).intValue() : 0;
+
+        VoiceEffectivenessTracker.VoiceMetrics metrics = new VoiceEffectivenessTracker.VoiceMetrics(
+                voiceId, totalSessions, avgCompletion, switchCount, 0, 0);
+        VoiceEffectivenessTracker.EffectivenessVerdict verdict = effectivenessTracker.evaluate(metrics);
+
+        return ApiResponse.ok(Map.of(
+                "effective", verdict.effective(),
+                "reason", verdict.reason(),
+                "suggestRuleChange", verdict.suggestRuleChange()));
     }
 }

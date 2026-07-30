@@ -17,9 +17,11 @@ import com.mindsafe.domain.mapper.QualityScoreMapper;
 import com.mindsafe.domain.mapper.RiskEventMapper;
 import com.mindsafe.domain.mapper.UserMapper;
 import com.mindsafe.service.notification.NotificationService;
+import com.mindsafe.service.casemanage.CaseLifecycleService;
 import com.mindsafe.service.profile.ProfileRadarService;
 import com.mindsafe.service.teacher.TeacherService;
 import com.mindsafe.service.audit.AuditLogService;
+import com.mindsafe.service.security.FieldEncryptionService;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
@@ -52,6 +54,8 @@ public class TeacherController {
     private final MessageSummaryMapper messageSummaryMapper;
     private final AuditLogService auditLogService;
     private final JwtTokenProvider jwtTokenProvider;
+    private final FieldEncryptionService fieldEncryptionService;
+    private final CaseLifecycleService caseLifecycleService;
 
     public TeacherController(NotificationService notificationService,
                              TeacherService teacherService,
@@ -62,7 +66,9 @@ public class TeacherController {
                              QualityScoreMapper qualityScoreMapper,
                              MessageSummaryMapper messageSummaryMapper,
                              AuditLogService auditLogService,
-                             JwtTokenProvider jwtTokenProvider) {
+                             JwtTokenProvider jwtTokenProvider,
+                             FieldEncryptionService fieldEncryptionService,
+                             CaseLifecycleService caseLifecycleService) {
         this.notificationService = notificationService;
         this.teacherService = teacherService;
         this.profileRadarService = profileRadarService;
@@ -73,6 +79,8 @@ public class TeacherController {
         this.messageSummaryMapper = messageSummaryMapper;
         this.auditLogService = auditLogService;
         this.jwtTokenProvider = jwtTokenProvider;
+        this.fieldEncryptionService = fieldEncryptionService;
+        this.caseLifecycleService = caseLifecycleService;
     }
 
     // ===== 工作台 =====
@@ -270,7 +278,7 @@ public class TeacherController {
     public ApiResponse<TeacherService.StudentProfileVO> getStudentProfile(
             @PathVariable UUID id, Authentication auth) {
         TenantContext ctx = (TenantContext) auth.getDetails();
-        return ApiResponse.ok(teacherService.getStudentProfile(ctx.tenantId(), id));
+        return ApiResponse.ok(teacherService.getStudentProfile(ctx.tenantId(), id, ctx.userType()));
     }
 
     /** 学生画像雷达图（PROF-004，6 维度 + 里程碑） */
@@ -494,6 +502,31 @@ public class TeacherController {
 
     /** 学生视图对象 */
     public record StudentVO(UUID userId, String displayName, String gradeCode, String classCode) {}
+
+    // ===== 个案管理（WB-003，design/35 M3） =====
+
+    /** 个案阶段推进（建案→评估→干预跟踪→结案） */
+    @PostMapping("/teacher/cases/{studentId}/transition")
+    public ApiResponse<Map<String, Object>> transitionCase(
+            @PathVariable UUID studentId,
+            @RequestBody Map<String, String> body,
+            Authentication auth) {
+        TenantContext ctx = (TenantContext) auth.getDetails();
+        UUID userId = (UUID) auth.getPrincipal();
+        String targetStage = body.getOrDefault("targetStage", "ASSESSMENT");
+        String source = body.getOrDefault("source", "MANUAL");
+
+        CaseLifecycleService.StageTransition result = caseLifecycleService.transition(
+                CaseLifecycleService.CaseStage.INTAKE,
+                CaseLifecycleService.CaseStage.valueOf(targetStage),
+                false);
+
+        auditLogService.log(ctx.tenantId(), userId, "CASE_TRANSITION", "student", studentId, targetStage);
+        return ApiResponse.ok(Map.of(
+                "allowed", result.allowed(),
+                "newStage", result.to().name(),
+                "reason", result.reason() != null ? result.reason() : ""));
+    }
 
     // ===== 周报导出（可打印 HTML） =====
 
@@ -749,7 +782,7 @@ public class TeacherController {
         List<Map<String, Object>> replayMessages = messages.stream().map(m -> Map.<String, Object>of(
                 "turn", m.getTurnCount() != null ? m.getTurnCount() : 0,
                 "senderType", m.getSenderType() != null ? m.getSenderType() : "unknown",
-                "content", m.getContentSummary() != null ? m.getContentSummary() : "",
+                "content", m.getContentSummary() != null ? fieldEncryptionService.decrypt(m.getContentSummary()) : "",
                 "emotionLabel", m.getEmotionLabel() != null ? m.getEmotionLabel() : "",
                 "riskLevel", m.getRiskLevel() != null ? m.getRiskLevel() : 0
         )).toList();

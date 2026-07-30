@@ -3,6 +3,15 @@
 # 用法：./deploy/init-school.sh <学校名称> <学校编码> <管理员姓名> [管理员密码]
 # 示例：./deploy/init-school.sh "南宁市青秀区实验小学" "NN-QX-001" "张老师" "Init@2026"
 #
+# 环境变量（可选）：
+#   MINDSAFE_SERVER  - SSH 目标（默认 root@116.8.109.229）
+#   MINDSAFE_PG_CONTAINER - PostgreSQL 容器名（默认 mindsafe-pg）
+#   MINDSAFE_DB_NAME - 数据库名（默认 mindsafe）
+#   MINDSAFE_DB_USER - 数据库用户（默认 mindsafe）
+#
+# SIT 示例：
+#   MINDSAFE_SERVER=root@10.0.1.50 ./deploy/init-school.sh "SIT测试学校" "SIT-001" "测试管理员"
+#
 # 功能：
 #   1. 创建租户（tenants）
 #   2. 创建学校（schools）
@@ -14,10 +23,10 @@
 #   - 已部署 MindSafe 后端（Flyway 迁移已完成）
 set -euo pipefail
 
-SERVER="root@116.8.109.229"
-CONTAINER="mindsafe-pg"
-DB_NAME="mindsafe"
-DB_USER="mindsafe"
+SERVER="${MINDSAFE_SERVER:-root@116.8.109.229}"
+CONTAINER="${MINDSAFE_PG_CONTAINER:-mindsafe-pg}"
+DB_NAME="${MINDSAFE_DB_NAME:-mindsafe}"
+DB_USER="${MINDSAFE_DB_USER:-mindsafe}"
 
 # ===== 参数校验 =====
 if [ $# -lt 3 ]; then

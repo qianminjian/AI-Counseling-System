@@ -26,9 +26,6 @@ import java.util.UUID;
 @Service
 public class ParentAuthService {
 
-    private static final UUID TRIAL_TENANT_ID =
-            UUID.fromString("90000000-0000-0000-0000-000000000001");
-
     private final ParentAccountMapper parentAccountMapper;
     private final ParentStudentLinkMapper parentStudentLinkMapper;
     private final UserMapper userMapper;
@@ -61,10 +58,9 @@ public class ParentAuthService {
             throw new BizException(ErrorCode.PARAM_INVALID, "密码至少 6 位");
         }
 
-        // 3. 校验家庭码 → 找到学生
+        // 3. 校验家庭码 → 找到学生（家庭码全局唯一，学生所属租户即家长租户）
         User student = userMapper.selectOne(
                 new LambdaQueryWrapper<User>()
-                        .eq(User::getTenantId, TRIAL_TENANT_ID)
                         .eq(User::getFamilyCode, familyCode != null ? familyCode.toUpperCase() : "")
                         .eq(User::getStatus, "active")
                         .last("LIMIT 1")
@@ -72,11 +68,13 @@ public class ParentAuthService {
         if (student == null) {
             throw new BizException(ErrorCode.PARAM_INVALID, "家庭码无效，请核对后重试");
         }
+        // 家长租户由家庭码关联的学生动态推导，不再硬编码
+        UUID tenantId = student.getTenantId();
 
-        // 4. 检查手机号是否已注册
+        // 4. 检查手机号是否已注册（限该租户内）
         ParentAccount existing = parentAccountMapper.selectOne(
                 new LambdaQueryWrapper<ParentAccount>()
-                        .eq(ParentAccount::getTenantId, TRIAL_TENANT_ID)
+                        .eq(ParentAccount::getTenantId, tenantId)
                         .eq(ParentAccount::getPhone, phone)
                         .last("LIMIT 1")
         );
@@ -92,14 +90,14 @@ public class ParentAuthService {
                 throw new BizException(ErrorCode.PARAM_INVALID, "该手机号已绑定此学生，请直接登录");
             }
             // 追加绑定
-            createLink(existing.getParentId(), student.getUserId(), relation);
+            createLink(existing.getParentId(), student.getUserId(), relation, tenantId);
             return existing;
         }
 
         // 5. 创建家长账号
         ParentAccount account = new ParentAccount();
         account.setParentId(UUID.randomUUID());
-        account.setTenantId(TRIAL_TENANT_ID);
+        account.setTenantId(tenantId);
         account.setPhone(phone);
         account.setPasswordHash(passwordEncoder.encode(password));
         account.setDisplayName(buildDisplayName(relation));
@@ -109,7 +107,7 @@ public class ParentAuthService {
         parentAccountMapper.insert(account);
 
         // 6. 创建关联
-        createLink(account.getParentId(), student.getUserId(), relation);
+        createLink(account.getParentId(), student.getUserId(), relation, tenantId);
 
         return account;
     }
@@ -120,7 +118,6 @@ public class ParentAuthService {
     public ParentAccount login(String phone, String password) {
         ParentAccount account = parentAccountMapper.selectOne(
                 new LambdaQueryWrapper<ParentAccount>()
-                        .eq(ParentAccount::getTenantId, TRIAL_TENANT_ID)
                         .eq(ParentAccount::getPhone, phone)
                         .eq(ParentAccount::getStatus, "active")
                         .last("LIMIT 1")
@@ -152,10 +149,10 @@ public class ParentAuthService {
                 .toList();
     }
 
-    private void createLink(UUID parentId, UUID studentUserId, String relation) {
+    private void createLink(UUID parentId, UUID studentUserId, String relation, UUID tenantId) {
         ParentStudentLink link = new ParentStudentLink();
         link.setLinkId(UUID.randomUUID());
-        link.setTenantId(TRIAL_TENANT_ID);
+        link.setTenantId(tenantId);
         link.setParentId(parentId);
         link.setStudentUserId(studentUserId);
         link.setRelation(relation != null ? relation : "parent");

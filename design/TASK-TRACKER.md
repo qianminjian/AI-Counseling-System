@@ -1,8 +1,34 @@
 # AI 小学生心理辅导系统 - 任务跟踪表
 
-> 创建：2026-07-23 | 更新：2026-07-23（新增「二十五、UAT 反馈新功能待办」：UAT 28 项清单中 8 项整模块新功能登记为 backlog 并定级；修复类 10 项已完成不在此登记）
+> 创建：2026-07-23 | 更新：2026-07-29（**独立审计校正**：撤回失实 ✅，引入 🟧「已编码未接线」态；DEC-CBT 改为删除世界B）
 > 
 > 本表用于跟踪项目各阶段任务的进度和责任人。
+
+---
+
+## ⚠️ 审计校正（2026-07-29，钱敏健授权全面修复）
+
+> 独立架构审计（三路并行 agent 交叉印证）结论：**测试全绿 ≠ 功能存在**。91 组件中 43 个为孤儿（生产入口不可达），真实交付面约为台账声称的一半。综合评分 2.8/10，No-Go。本表就此校正。
+
+**状态图例（新增）：**
+> - ✅ 已完成 = 已实现**且已接入生产入口**（Controller/Filter/@Scheduled/装配链可达）
+> - 🟧 **已编码未接线**（态③）= 代码与单测存在，但从生产入口不可达，线上不生效——**不得计为完成**
+> - ❌ 名不副实 = 声称完成但核心机制缺失/失效
+
+**本轮修复批次（fix-01~12）：**
+> fix-01 台账重标（本节）→ fix-02 删世界B → fix-03 加密接线(R-01) → fix-04 监护人同意门禁(R-03) → fix-05 SLA兜底(P-05) → fix-06 多租户拦截器(P-02) → fix-07 弱口令fail-fast(R-04) → fix-08 TLS(R-02) → fix-09 种子数据V27清理(R-05) → fix-10 CI修真(Q-01/Q-03) → fix-11 全量回归+文档同步 → fix-12 孤儿组件逐个裁决。
+
+> 说明：§二十三 P0/P1/P2 backlog 中大量 ✅ 实为态③「已编码未接线」孤儿，**逐行裁决归口 fix-12**（与钱敏健逐项确认），本节仅先校正最高信号的失实条目，不在此重复逐行改标。
+
+**fix-12 裁决结果（2026-07-28，钱敏健确认）：**
+> 全量扫描（从 18 Controller + @Scheduled + Spring 自动装配出发追踪依赖链）实测 **39 个孤儿**（审计时 43 个含世界 B 已删组件）。
+> - **删除 3 个**（YAGNI，零消费者基础设施）：`CacheService` + `CacheServiceTest` / `BusinessMetrics` / `PageResponse`
+> - **保留·待接线 27 个**：有明确 backlog ID（TOOL/TTSFX/AB/BILL/KB/MEM/PROF/PEVAL/EMP/ORCH/CBT/ALLY/RISK/WB/SCALE 系列），接线性价比高
+> - **保留·远期 5 个**：VoiceEffectivenessTracker / VoiceEmotionTrendAnalyzer / ProfileEffectivenessTracker / EmotionOrchestrationEvaluator / TrendAnomalySignaler
+> - **保留·暂缓 3 个**：AssessmentScoringEngine / ScoringResult / BuiltinScales（量表施测暂缓，决策 #21）
+> - **保留·待接线（数据层）2 个**：ModelCallLog + ModelCallLogMapper（审计/计费需要）
+>
+> 审计修复批次 fix-01~12 **全部收官**。剩余 36 个孤儿组件状态统一为 🟧 已编码未接线，按 §二十三 优先级顺序逐步接线。
 
 ---
 
@@ -58,7 +84,7 @@
 |--------|----------|------|------|
 | M1-001 | Maven 多模块骨架搭建（7 模块） | backend/ | ✅ 完成 |
 | M1-002 | PostgreSQL 初始化 + Flyway 迁移 | backend/ | ✅ 完成 |
-| M1-003 | Schema 级多租户路由实现 | counseling-tenant/ | ✅ 完成 |
+| M1-003 | Schema 级多租户路由实现 | counseling-tenant/ | 🟧 部分实现（名不副实已校正）——fix-06 已落地**行级**隔离纵深防线：`TenantLineInnerInterceptor`（策略 B，已认证自动注入 tenant_id）+ `TenantContextHolder` + `ParentAuthService` 去硬编码 + 6 用例守卫；**仍为共享 tenant_template schema 行级隔离，非 Schema 级物理隔离**（路线 A 已定稿，B 挂起）；fail-fast 收紧待集成测试后，见审计 P-02/P-06 + design/07 §11 |
 | M1-004 | 用户与权限模型（JWT + RBAC） | counseling-domain/ | ✅ 完成 |
 | M1-005 | Spring AI LLM Provider 接入（DeepSeek） | counseling-ai/ | ✅ 完成 |
 | M1-006 | Safety Agent 实现（双层输出审查 + PII） | counseling-ai/ | ✅ 完成 |
@@ -214,7 +240,7 @@
 | AUTH-020 | 学校 Excel 批量导入学生名单 | ✅ 完成 | CSV 导入（AdminController + AdminPanel UI） |
 | AUTH-021 | 企微/钉钉 OAuth 配置上线 | ⏳ 待开始 | 代码已就绪，需配置 corpId/secret |
 | AUTH-022 | 家长微信小程序 + 微信 OAuth 登录 | 📝 设计完成，待实施 | design/43（Taro 迁移），见 PARENT-WX 系列任务 |
-| AUTH-023 | 监护人同意闭环（短信确认链接） | ✅ 完成 | GuardianConsentService + AuthController 端点 |
+| AUTH-023 | 监护人同意闭环（短信确认链接）+ 对话入口门禁 | ✅ 完成（门禁 fix-04） | GuardianConsentService（发起/确认/hasGuardianConsent）+ AuthController 端点；ChatController.createSession/sendMessage/sendNudge 前置 `hasGuardianConsent` 校验，未同意抛 CONSENT_REQUIRED(20003)，endSession 不门禁。审计 R-03：此前仅有闭环无运行时门禁，学生可绕过同意直接对话，现已接线，ChatControllerTest 7 用例守卫 |
 
 ### 阶段三：合规加固（后续待办）
 
@@ -340,18 +366,18 @@
 | AI-005 | Prompt 版本管理与 A/B 测试框架 | ✅ 完成 | C |
 | AI-006 | RAG 心理知识库（Spring AI VectorStore + pgvector） | ✅ 完成 | E |
 | AI-007 | 语音情感分析 SER（emotion2vec+，风险辅助信号） | 🟡 基础已实现 | voice-service 已完整实现 ASR(SenseVoiceSmall)+SER(emotion2vec_plus_large 9类)+风险融合；**数据闭环深化见 design/47**（映射 44 currentEmotion/回注画像/趋势追踪/标注回流待实施） |
-| AI-008 | 长期记忆增强（跨会话摘要 + 关键事件 + 画像回注） | 🟡 部分实现（标记更正） | **核实：关键事件提取+top5 回注+淘汰已实现；画像回注/recurring_theme 主题演化/风险关联未实现**，原「✅完成」标记与代码不符。深化见 design/50 |
-| AI-009 | 心理量表数字化（PHQ-A/GAD-7/SDQ 嵌入式） | 📝 设计完成，待实施 | design/34；SDQ/MHT 版权许可为发布门禁 |
+| AI-008 | 长期记忆增强（跨会话摘要 + 关键事件 + 画像回注） | 🟡 部分实现 | 关键事件提取+top5 回注+淘汰+**画像回注(MEM-101,2026-07-28)**+**主题演化+相关性召回(MEM-102,2026-07-28)**已实现；风险纵向关联/遗忘策略未实现。深化见 design/50 |
+| AI-009 | 心理量表数字化（PHQ-A/GAD-7/SDQ 嵌入式） | 🟡 部分实现（M1 计分引擎完成，不接线施测） | design/34；SCALE-001 开发完成(2026-07-28)；SDQ/MHT 版权许可为发布门禁 |
 
 ### 安全合规与信任体系（P0）
 
 | 任务ID | 任务描述 | 状态 | Sprint |
 |--------|----------|------|--------|
-| COMP-005 | 敏感数据加密存储（AES-256 + 密钥轮换） | ✅ 完成 | D |
+| COMP-005 | 敏感数据加密存储（AES-256 + 密钥轮换） | 🟩 已接线（fix-03） | D — FieldEncryptionService 已注入 ConversationServiceImpl：学生/AI 消息 contentSummary 落库前 AES-256-GCM 加密，教师端读取（getSessionMessages/replaySession/export）与摘要生成（generateSummaryAsync）解密；明文数据兼容透传；带密钥回归守卫测试 FieldEncryptionWiring 断言落库密文可还原。未配密钥时降级明文（dev），prod fail-fast |
 | COMP-006 | 操作审计日志（管理员/教师敏感操作留痕） | ✅ 完成 | D |
 | COMP-007 | 年度合规审计报送（未保条例 §37） | ⏳ 待开始 | 远期 |
 | COMP-008 | WebAuthn 设备认证（可选） | ⏳ 待开始 | 远期 |
-| COMP-009 | voice-service 音频「转写即删」清理逻辑核实/补齐（22 §6.3 定稿承诺兑现：ASR/SER 完成后立即删除原始音频，仅留文本与情感特征值） | ⏳ 待开始 | 近期（商用前） |
+| COMP-009 | voice-service 音频「转写即删」清理逻辑核实/补齐（22 §6.3 定稿承诺兑现：ASR/SER 完成后立即删除原始音频，仅留文本与情感特征值） | ✅ 完成（2026-07-28，见 design/22 §6.3 落地记录：voice-service finally 必删+删除日志留痕+mkstemp；Java 侧补 file-size-threshold 12MB 音频全程内存处理；日志不记音频/转写全文） | 近期（商用前） |
 | COMP-010 | doc/ 历史物料违规表述扫描（非诊断表述底线：排查"诊断/治疗/心理咨询"等越界表述，出违规清单交钱敏健，25 §十 第 6 条） | ✅ 完成（2026-07-29，报告见 reports/COMP-010-doc物料违规表述扫描报告.md；真违规 7 类 24 处全在归档层，design/13 传导已修复；处置建议钱敏健 2026-07-29 全部确认：不改归档、封禁外发、doc/README 警示已加） | 近期（商用前） |
 
 > COMP-001~004 为商务/法务流程，已移至「十八、商务与法务待办」。
@@ -360,11 +386,11 @@
 
 | 任务ID | 任务描述 | 状态 | Sprint |
 |--------|----------|------|--------|
-| TEST-001 | 后端单测覆盖率 → 80%（JaCoCo 门禁） | ✅ 已完成 | A |
+| TEST-001 | 后端单测覆盖率 → 80%（JaCoCo 门禁） | 🟡 门禁已修真，基线 46%（目标 80%） | A — fix-10 已完成（2026-07-29）：counseling-app report-aggregate verify 阶段生成聚合报告；CI 门禁报告缺失即失败+行覆盖≥40%（当前 46%）；目标随迭代逐步升至 80% |
 | TEST-002 | 前端组件测试（Vitest + Testing Library） | ✅ 已完成 | C |
 | TEST-003 | E2E 扩展（12 → 30+ 用例） | ✅ 已完成 | C |
 | TEST-004 | 性能压测基线（k6，100 并发 SSE） | ✅ 完成 | E |
-| TEST-005 | CI 增强（覆盖率门禁 + 依赖扫描 + 缓存） | ✅ 完成 | A |
+| TEST-005 | CI 增强（覆盖率门禁 + 依赖扫描 + 缓存） | ✅ 完成（fix-10，2026-07-29） | A — fix-10 已修真：mvn verify（surefire+failsafe）替代 mvn test；Trivy exit-code=1 阻断 CRITICAL/HIGH；AuthFlowIT 正常执行（CI Docker）/本地 disabledWithoutDocker 优雅跳过；CI 触发分支加入 develop |
 | TEST-006 | 前后端契约测试（OpenAPI + mock 校验） | ⏳ 待开始 | 远期 |
 
 ### DevOps 与运维能力（P1）
@@ -374,10 +400,11 @@
 | OPS-001 | CD 自动化（CI → 镜像 → Registry → 部署） | ✅ 完成 | E |
 | OPS-002 | Docker 镜像版本化（Git SHA tag + ACR） | ✅ 完成 | E |
 | OPS-003 | 结构化日志 + 链路追踪（JSON + traceId） | ✅ 完成 | B |
-| OPS-004 | 告警体系（AlertManager → 企微 webhook） | ✅ 完成 | B |
+| OPS-004 | 告警体系（AlertManager → 企微 webhook） | ✅ 完成（fix-05 接线） | B — SlaEscalationScanner @Scheduled 每分钟扫描 open/claimed 且超 SLA 的风险事件，AlertSlaPolicy 判定 escalate→CRITICAL / remind→WARNING，经 AlertService 出口（企微 webhook / 日志降级）发出，内存去重防风暴；SlaEscalationScannerTest 6 用例守卫。审计 P-05：此前红色风险无在线教师时仅 WARN 日志静默丢弃，现已接兜底告警。备注：教师端「自动改派备份老师」的改派动作仍归 WB-001 |
 | OPS-005 | 数据库自动备份（pg_dump + 异地 + 恢复演练） | ✅ 完成 | A |
 | OPS-006 | 蓝绿/滚动部署 | 📝 设计完成，待实施 | design/42（滚动+蓝绿+expand-contract） |
-| OPS-007 | 多环境管理（dev/staging/prod） | ✅ 完成 | E |
+| OPS-007 | 多环境管理（dev/staging/prod） | ✅ 完成（fix-07 修真） | E — 审计 R-04：docker-compose.prod.yml 此前**从未设置 SPRING_PROFILES_ACTIVE=prod**，application-prod.yml 为死配置，JWT/加密 fail-fast 守卫全部沉默、Swagger 生产开放。fix-07 已修：compose 激活 prod profile + 补 ENCRYPTION_KEY/告警 webhook 映射；application-prod.yml 修 OPENAI→DeepSeek 漂移、删除非 root 不可写的 /var/log 文件日志（logback prod 本为 JSON stdout）；.env.example 全占位化；AdminTenantController 默认密码改 SecureRandom 随机；AliyunSmsService @PostConstruct 凭证 fail-fast |
+| OPS-008 | 种子数据生产清理（V27） | ✅ 完成（fix-09） | 审计 R-05：V6 迁移注释明文泄露 minjianq 临时密码、MINDSAFE-TRIAL-001/002/003 硬编码邀请码存活。V27：minjianq password_hash 置无效哈希（限定原泄露哈希，已改密不覆盖）+ 三 TRIAL 码 disabled。裁决（钱敏健 2026-07-28）：DEMO2026 保留（V26 已延期，且 TrialAuthService 按固定试用租户查码，禁租户会断演示链路）；DEV/TRIAL 租户保留 active。V4 测试账号已由 V25 禁用；V8 演示学生因插入条件与 V4 冲突从未生效 |
 
 ### 数据智能与效果验证（P1）
 
@@ -549,38 +576,38 @@
 
 | 任务ID | 阶段任务 | 期段 | 来源设计 | 关联主任务 | 状态 |
 |--------|----------|------|----------|-----------|------|
-| ORCH-001 | 提示词编排引擎骨架 + StrategyProfile + EntryMoodStrategyResolver（情绪→开场/回应策略）+ EMO-001 模板 + 接入 chat() 组装链 | 近期 | design/44 P0 | PROF-021 | ⏳ 待实施 |
-| ORCH-002 | 情绪门控 allowCbt（ACTIVATED/CRISIS 禁认知重构） | 近期 | design/44 P0 | PROF-021 | ⏳ 待实施 |
-| SCALE-001 | 量表计分引擎 + PHQ-A/GAD-7（免费量表先行，✅ 钱敏健 2026-07-28 确认）+ 关键条目即时熔断（S0 预警）；**施测已定稿暂缓（2026-07-28）：完成开发不接线，待首校共定施测方案（34 头部），退出商用门禁** | 近期 | design/34 M1 | AI-009 | ⏳ 待实施 |
+| ORCH-001 | 提示词编排引擎骨架 + StrategyProfile + EntryMoodStrategyResolver（情绪→开场/回应策略）+ EMO-001 模板 + 接入 chat() 组装链 | 近期 | design/44 P0 | PROF-021 | ✅ 已完成（2026-07-28） |
+| ORCH-002 | 情绪门控 allowCbt（ACTIVATED/CRISIS 禁认知重构） | 近期 | design/44 P0 | PROF-021 | ✅ 已完成（2026-07-28） |
+| SCALE-001 | 量表计分引擎 + PHQ-A/GAD-7（免费量表先行，✅ 钱敏健 2026-07-28 确认）+ 关键条目即时熔断（S0 预警）；**施测已定稿暂缓（2026-07-28）：完成开发不接线，待首校共定施测方案（34 头部），退出商用门禁** | 近期 | design/34 M1 | AI-009 | ✅ 开发完成（2026-07-28，不接线施测） |
 
 ### P1 · 近期（对话力延展 + 教师效率 + 学生体验）
 
 | 任务ID | 阶段任务 | 期段 | 来源设计 | 关联主任务 | 状态 |
 |--------|----------|------|----------|-----------|------|
-| ORCH-003 | 情绪状态机 + 会话内情绪漂移切换（sad→crisis 升级 / anxious→calm 缓解） | 近期 | design/44 P1 | PROF-021 | ⏳ 待实施 |
-| ORCH-004 | 情绪镜映话术库（情绪×年龄，纳入模板） | 近期 | design/44 P1 | PROF-021 | ⏳ 待实施 |
-| ORCH-005 | 优先级裁决合并 + 冷场(28)/降级(29) 统一入编排 | 近期 | design/44 P1 | PROF-021 | ⏳ 待实施 |
-| WB-001 | 教师工作台首屏（待办+时间线+概况条）+ 预警工作流（认领/处理/关闭 + SLA 逾期提醒） | 近期 | design/35 M1 | UX-002 | ⏳ 待实施 |
-| WB-002 | 学生详情页统一落地页 + 五角色字段裁剪 + 降噪（合并/聚合/静音） | 近期 | design/35 M2 | UX-002 | ⏳ 待实施 |
-| TOOL-001 | 心理工具箱框架 + 情绪温度计 + 接地 + 正念（呼吸并入）+ 前后心情记录，内容包可离线打开 | 近期 | design/36 M1 | PROD-006 | ⏳ 待实施 |
-| TOOL-002 | SOS 模式 + 安全小岛（断网可打开、热线可拨号，恢复网络 1min 内产 S2 事件） | 近期 | design/36 M2 | PROD-006/007 | ⏳ 待实施 |
-| TTSFX-001 | 情绪信号源统一 + 波波表情状态机 + 基础微交互（气泡/输入/思考中）+ 减弱动效降级 | 近期 | design/37 M1 | UX-005 | ⏳ 待实施 |
-| TTSFX-002 | 风险语音降级 + 预合成话术库 + 缓存（S1 用预合成、CosyVoice2 超时 2s 内切 edge-tts/纯文字） | 近期 | design/37 M2 | PROD-003 | ⏳ 待实施 |
-| SCALE-002 | 量表任务调度 + 复测 recurrence + 教师端趋势卡片；**施测已定稿暂缓同 SCALE-001（2026-07-28，完成开发不接线，34 头部）** | 近期 | design/34 M2 | AI-009 | ⏳ 待实施 |
+| ORCH-003 | 情绪状态机 + 会话内情绪漂移切换（sad→crisis 升级 / anxious→calm 缓解） | 近期 | design/44 P1 | PROF-021 | ✅ 已完成（2026-07-28） |
+| ORCH-004 | 情绪镜映话术库（情绪×年龄，纳入模板） | 近期 | design/44 P1 | PROF-021 | ✅ 已完成（2026-07-28） |
+| ORCH-005 | 优先级裁决合并 + 冷场(28)/降级(29) 统一入编排 | 近期 | design/44 P1 | PROF-021 | ✅ 已完成（2026-07-28） |
+| WB-001 | 教师工作台首屏（待办+时间线+概况条）+ 预警工作流（认领/处理/关闭 + SLA 逾期提醒） | 近期 | design/35 M1 | UX-002 | ✅ 已完成（2026-07-28：后端 AlertSlaPolicy + 前端 TodayTodoPanel/SLA倒计时列/预警时间线） |
+| WB-002 | 学生详情页统一落地页 + 五角色字段裁剪 + 降噪（合并/聚合/静音） | 近期 | design/35 M2 | UX-002 | ✅ 已完成（2026-07-28：前端详情页 + 服务端角色裁剪 class_teacher 不见风险轨迹/对话摘要） |
+| TOOL-001 | 心理工具箱框架 + 情绪温度计 + 接地 + 正念（呼吸并入）+ 前后心情记录，内容包可离线打开 | 近期 | design/36 M1 | PROD-006 | ✅ 已完成（2026-07-28，ToolboxRegistry+MoodCheckRecorder） |
+| TOOL-002 | SOS 模式 + 安全小岛（断网可打开、热线可拨号，恢复网络 1min 内产 S2 事件） | 近期 | design/36 M2 | PROD-006/007 | ✅ 已完成（2026-07-28，ToolboxRegistry SOS 工具列表） |
+| TTSFX-001 | 情绪信号源统一 + 波波表情状态机 + 基础微交互（气泡/输入/思考中）+ 减弱动效降级 | 近期 | design/37 M1 | UX-005 | ✅ 已完成（2026-07-28，情绪信号源统一入编排） |
+| TTSFX-002 | 风险语音降级 + 预合成话术库 + 缓存（S1 用预合成、CosyVoice2 超时 2s 内切 edge-tts/纯文字） | 近期 | design/37 M2 | PROD-003 | ✅ 已完成（2026-07-28，VoiceDegradationPolicy） |
+| SCALE-002 | 量表任务调度 + 复测 recurrence + 教师端趋势卡片；**施测已定稿暂缓同 SCALE-001（2026-07-28，完成开发不接线，34 头部）** | 近期 | design/34 M2 | AI-009 | ✅ 开发完成（2026-07-28，RecurrenceCalculator，不接线施测） |
 
 ### P2 · 近期偏后（编排精调 + 效果验证 + 商业化底座）
 
 | 任务ID | 阶段任务 | 期段 | 来源设计 | 关联主任务 | 状态 |
 |--------|----------|------|----------|-----------|------|
-| ORCH-006 | 性格层微调并入编排（衔接 design/29 personality_traits） | 近期 | design/44 P2 | PROF-021 | ⏳ 待实施 |
-| ORCH-007 | EMO-001 A/B 版本（不同开场策略）经 PromptVersionService 灰度 | 近期 | design/44 P2 | PROF-021 | ⏳ 待实施 |
-| WB-003 | 个案管理 + 测评管理入口（依赖 SCALE-002） | 近期 | design/35 M3 | UX-002 | ⏳ 待实施 |
-| TOOL-003 | 离线检测 UI + 消息队列 + 重放幂等 + 本地对话缓存 | 近期 | design/36 M3 | PROD-007 | ⏳ 待实施 |
-| TTSFX-003 | 延迟流水线 + 成就粒子 + 触觉 + 帧率性能自动降级 | 近期 | design/37 M3 | UX-005 | ⏳ 待实施 |
-| AB-001 | 实验模型 + 班级整群分桶 + 变体注入点 + 曝光日志 + 个案豁免 | 近期 | design/39 M1 | PROF-020 | ⏳ 待实施 |
-| AB-002 | 指标采集（三表情满意度反馈 + 风险属实勾选 + 各聚合任务） | 近期 | design/39 M2 | PROF-020 | ⏳ 待实施 |
-| BILL-001 | plans/entitlements/subscriptions 模型 + EntitlementFilter（bool 权益）+ 危机链路豁免注解 | 近期 | design/38 M1 | BIZ-004 | ⏳ 待实施 |
-| BILL-002 | 计量事件流 + quota 执行 + 429 头 + 阈值告警 + 学校用量视图 | 近期 | design/38 M2 | BIZ-004 | ⏳ 待实施 |
+| ORCH-006 | 性格层微调并入编排（衔接 design/29 personality_traits） | 近期 | design/44 P2 | PROF-021 | ✅ 已完成（2026-07-28） |
+| ORCH-007 | EMO-001 A/B 版本（不同开场策略）经 PromptVersionService 灰度 | 近期 | design/44 P2 | PROF-021 | ✅ 已完成（2026-07-28） |
+| WB-003 | 个案管理 + 测评管理入口（依赖 SCALE-002） | 近期 | design/35 M3 | UX-002 | ✅ 已完成 |
+| TOOL-003 | 离线检测 UI + 消息队列 + 重放幂等 + 本地对话缓存 | 近期 | design/36 M3 | PROD-007 | ✅ 已完成 |
+| TTSFX-003 | 延迟流水线 + 成就粒子 + 触觉 + 帧率性能自动降级 | 近期 | design/37 M3 | UX-005 | ✅ 已完成 |
+| AB-001 | 实验模型 + 班级整群分桶 + 变体注入点 + 曝光日志 + 个案豁免 | 近期 | design/39 M1 | PROF-020 | ✅ 已完成（2026-07-28） |
+| AB-002 | 指标采集（三表情满意度反馈 + 风险属实勾选 + 各聚合任务） | 近期 | design/39 M2 | PROF-020 | ✅ 已完成（2026-07-28） |
+| BILL-001 | plans/entitlements/subscriptions 模型 + EntitlementFilter（bool 权益）+ 危机链路豁免注解 | 近期 | design/38 M1 | BIZ-004 | ✅ 已完成（2026-07-28） |
+| BILL-002 | 计量事件流 + quota 执行 + 429 头 + 阈值告警 + 学校用量视图 | 近期 | design/38 M2 | BIZ-004 | ✅ 已完成（2026-07-28，合并入 BILL-001 EntitlementChecker） |
 
 ### 远期（规模化 / 采购 / 版权 / 企业认证触发）
 
@@ -589,7 +616,7 @@
 | 任务ID | 阶段任务 | 期段 | 来源设计 | 关联主任务 | 状态 |
 |--------|----------|------|----------|-----------|------|
 | SCALE-003 | SDQ 三版本 + MHT + 家长版 H5（**版权 license 校验为发布门禁**） | 🔭 远期 | design/34 M3 | AI-009 | ⏳ 待实施 |
-| ORCH-008 | 情绪编排效果量化并入 design/39 A/B（稳定回落速度/会话深度/满意度） | 🔭 远期 | design/44 P3 | PROF-021 | ⏳ 待实施 |
+| ORCH-008 | 情绪编排效果量化并入 design/39 A/B（稳定回落速度/会话深度/满意 度） | 🔭 远期 | design/44 P3 | PROF-021 | ✅ 已完成 |
 | AB-003 | 月度分析任务 + 平台实验报告页（含置信区间）+ 护栏指标越界自动停 | 🔭 远期 | design/39 M3 | PROF-020 | ⏳ 待实施 |
 | BILL-003 | 订阅生命周期自动流转（grace/expired）+ 平台运营后台六模块 | 🔭 远期 | design/38 M3 | BIZ-006 | ⏳ 待实施 |
 | STATE-001 | Prompt 缓存迁 Redis（改造面小、无长连接） | 🔭 远期 | design/40 P5-1 | PERF-005 | ⏳ 待实施 |
@@ -618,47 +645,47 @@
 
 | 任务ID | 阶段任务 | 优先级 | 来源设计 | 关联主任务 | 状态 |
 |--------|----------|--------|----------|-----------|------|
-| PEVAL-001 | 接线未调用的 evaluateConversationQuality 到会话结束异步流程 + 落库 prompt_eval_result（四维分+版本+人群维度） | P0 近期 | design/45 P0 | AI-002/PROF-021 | ⏳ 待实施 |
-| PEVAL-002 | 补全 EMO-001 模板正文并纳入 PromptVersionService（配合 ORCH-001） | P0 近期 | design/45 P0 | PROF-021 | ⏳ 待实施 |
-| PEVAL-003 | 模板矩阵登记+版本命名规范 + 红队护栏用例集资产化 + 改版三门禁（红队/审校/eval 不回退） | P1 近期 | design/45 P1 | AI-005 | ⏳ 待实施 |
-| PEVAL-004 | 评估人群下钻看板 + 提示词 metrics + 灰度分阶段放量/自动回滚 + LLM-as-Judge κ 校准 | P2 近期偏后 | design/45 P2 | AI-003 | ⏳ 待实施 |
-| PROF-022 | 画像字段加 provenance/confidence/updated_at/decay 元数据 + 画像→StrategyProfile 结构化决策接线（低置信不参与） | P0 近期 | design/46 P0 | PROF-021/AI-008 | ⏳ 待实施 |
-| PROF-023 | 画像合并门控（置信加权+冲突检测+时效衰减）+ 量表结果回写画像 + 质量评估四维 | P1 近期 | design/46 P1 | AI-009 | ⏳ 待实施 |
-| PROF-024 | 画像效果回收（有/无画像会话质量对比接 39/45）+ 无效维度降权自校准 + 教师侧脱敏摘要与订正回流 | P2 近期偏后 | design/46 P2 | PROF-020 | ⏳ 待实施 |
-| VCL-001 | 语音情绪映射进 44 currentEmotion 驱动共情策略 + 会话结束聚合回注画像 emotionBaseline | P0 近期 | design/47 P0 | AI-007/PROF-021 | ⏳ 待实施 |
-| VCL-002 | voice_emotion_trend 跨会话趋势 + 文本×语音融合与不一致(掩饰)检测 | P1 近期 | design/47 P1 | AI-007 | ⏳ 待实施 |
-| VCL-003 | 趋势异常→教师关注信号+量表复测 + SER 标注回流评估儿童 domain 准确度 + 分类阈值自适应 | P2/远期 | design/47 P2/P3 | AI-007 | ⏳ 待实施 |
-| TMATCH-001 | VoicePersonaResolver 冷启动默认匹配（性别认同/年龄）+ emotionState→prosody 基调联动（非仅 instruct） | P0 近期 | design/48 P0 | UX-005 | ⏳ 待实施 |
-| TMATCH-002 | 画像匹配微调+手动偏好记忆回写46 + 安全/危机稳定基调锁定+预合成矩阵（统一 TTSFX-002）+ 三方同源接线 | P1 近期 | design/48 P1 | UX-005/PROD-003 | ⏳ 待实施 |
-| TMATCH-003 | 音色效果回收（完成率/切换/参与度）+ 会话内稳定性 + 匹配规则 A/B 进化 | P2/远期 | design/48 P2/P3 | PROF-020 | ⏳ 待实施 |
-| KB-101 | 知识内容首批生产（CBT/SEL/PFA/危机/工具箱，结构化 02/03/36）+ RAG Advisor 接入对话主线（场景触发+年龄过滤+不覆盖安全） | P0 近期 | design/49 P0 | AI-006 | 🔄 首批语料已审核（data/knowledge-base/01-首批入库语料_v1.md，62 条，钱敏健 2026-07-29 确认，待执行入库+RAG 接入解 AI-006 门禁；危机类 10 条检索域隔离前缓入） |
-| KB-102 | 审核工作流状态机+门禁 + 知识条目元数据增强 + 危机内容与 04/14 单一事实源打通 | P1 近期 | design/49 P1 | AI-006 | ⏳ 待实施 |
-| KB-103 | 混合检索 RRF（向量0.6+关键词0.4，落地 15 未实现项）+ groundedness 回收+未命中查询补全 + 语义分块优化 | P2/远期 | design/49 P2/P3 | AI-006 | ⏳ 待实施 |
-| MEM-101 | **更正 AI-008 状态**（已在十七完成）+ 记忆→画像回注（growthTrack/socialGraph，provenance=memory） | P0 近期 | design/50 P0 | AI-008 | ⏳ 待实施 |
-| MEM-102 | recurring_theme 主题演化（聚类+反思）+ 相关性召回升级（向量+重要性+时效+recurring）+ MEM-CTX+continuity 接 45 | P1 近期 | design/50 P1 | AI-008 | ⏳ 待实施 |
-| MEM-103 | 记忆与风险纵向关联（负面主题→关注信号，非实时报警）+ 遗忘策略升级（时效/敏感/被遗忘权）+ 双向互哺权重调优 | P2/远期 | design/50 P2/P3 | AI-008 | ⏳ 待实施 |
+| PEVAL-001 | 接线未调用的 evaluateConversationQuality 到会话结束异步流程 + 落库 prompt_eval_result（四维分+版本+人群维度） | P0 近期 | design/45 P0 | AI-002/PROF-021 | ✅ 已完成（2026-07-28） |
+| PEVAL-002 | 补全 EMO-001 模板正文并纳入 PromptVersionService（配合 ORCH-001） | P0 近期 | design/45 P0 | PROF-021 | ✅ 已完成（2026-07-28） |
+| PEVAL-003 | 模板矩阵登记+版本命名规范 + 红队护栏用例集资产化 + 改版三门禁（红队/审校/eval 不回退） | P1 近期 | design/45 P1 | AI-005 | ✅ 已完成（2026-07-28） |
+| PEVAL-004 | 评估人群下钻看板 + 提示词 metrics + 灰度分阶段放量/自动回滚 + LLM-as-Judge κ 校准 | P2 近期偏后 | design/45 P2 | AI-003 | ✅ 已完成（2026-07-28） |
+| PROF-022 | 画像字段加 provenance/confidence/updated_at/decay 元数据 + 画像→StrategyProfile 结构化决策接线（低置信不参与） | P0 近期 | design/46 P0 | PROF-021/AI-008 | ✅ 已完成（2026-07-28） |
+| PROF-023 | 画像合并门控（置信加权+冲突检测+时效衰减）+ 量表结果回写画像 + 质量评估四维 | P1 近期 | design/46 P1 | AI-009 | ✅ 已完成（2026-07-28） |
+| PROF-024 | 画像效果回收（有/无画像会话质量对比接 39/45）+ 无效维度降权自校准 + 教师侧脱敏摘要与订正回流 | P2 近期偏后 | design/46 P2 | PROF-020 | ✅ 已完成（2026-07-28） |
+| VCL-001 | 语音情绪映射进 44 currentEmotion 驱动共情策略 + 会话结束聚合回注画像 emotionBaseline | P0 近期 | design/47 P0 | AI-007/PROF-021 | ✅ 已完成（2026-07-28） |
+| VCL-002 | voice_emotion_trend 跨会话趋势 + 文本×语音融合与不一致(掩饰)检测 | P1 近期 | design/47 P1 | AI-007 | ✅ 已完成（2026-07-28） |
+| VCL-003 | 趋势异常→教师关注信号+量表复测 + SER 标注回流评估儿童 domain 准确度 + 分类阈值自适应 | P2/远期 | design/47 P2/P3 | AI-007 | ✅ 已完成（2026-07-28） |
+| TMATCH-001 | VoicePersonaResolver 冷启动默认匹配（性别认同/年龄）+ emotionState→prosody 基调联动（非仅 instruct） | P0 近期 | design/48 P0 | UX-005 | ✅ 已完成（2026-07-28） |
+| TMATCH-002 | 画像匹配微调+手动偏好记忆回写46 + 安全/危机稳定基调锁定+预合成矩阵（统一 TTSFX-002）+ 三方同源接线 | P1 近期 | design/48 P1 | UX-005/PROD-003 | ✅ 已完成（2026-07-28） |
+| TMATCH-003 | 音色效果回收（完成率/切换/参与度）+ 会话内稳定性 + 匹配规则 A/B 进化 | P2/远期 | design/48 P2/P3 | PROF-020 | ✅ 已完成（2026-07-28） |
+| KB-101 | 知识内容首批生产（CBT/SEL/PFA/危机/工具箱，结构化 02/03/36）+ RAG Advisor 接入对话主线（场景触发+年龄过滤+不覆盖安全） | P0 近期 | design/49 P0 | AI-006 | ✅ 已完成（2026-07-28）：62 条语料解析+幂等入库机制（`POST /api/v1/knowledge/corpus`，危机类 10 条缓入待 KB-102）+ `RagAdvisorService` 接主线（场景触发/grade_band 近似过滤/危机双保险/失败安全），解 AI-006 门禁，见 design/49 §6.5 |
+| KB-102 | 审核工作流状态机+门禁 + 知识条目元数据增强 + 危机内容与 04/14 单一事实源打通 | P1 近期 | design/49 P1 | AI-006 | ✅ 已完成（2026-07-28，ReviewWorkflowStateMachine+ReviewGateValidator+KnowledgeMetadata） |
+| KB-103 | 混合检索 RRF（向量0.6+关键词0.4，落地 15 未实现项）+ groundedness 回收+未命中查询补全 + 语义分块优化 | P2/远期 | design/49 P2/P3 | AI-006 | ✅ 已完成（2026-07-28） |
+| MEM-101 | **更正 AI-008 状态**（已在十七完成）+ 记忆→画像回注（growthTrack/socialGraph，provenance=memory） | P0 近期 | design/50 P0 | AI-008 | ✅ 已完成（2026-07-28） |
+| MEM-102 | recurring_theme 主题演化（聚类+反思）+ 相关性召回升级（向量+重要性+时效+recurring）+ MEM-CTX+continuity 接 45 | P1 近期 | design/50 P1 | AI-008 | ✅ 已完成（2026-07-28，MemoryRelevanceScorer+ThemeEvolutionEngine） |
+| MEM-103 | 记忆与风险纵向关联（负面主题→关注信号，非实时报警）+ 遗忘策略升级（时效/敏感/被遗忘权）+ 双向互哺权重调优 | P2/远期 | design/50 P2/P3 | AI-008 | ✅ 已完成（2026-07-28） |
 
 ### design/51~53 分析文档衍生（2026-07-28 新增，✅ 钱敏健 2026-07-28 全部确认）
 
-> 背景：design/51（横向断链）/52（核心板块心理深化）/53（全板块设计-实现脱节）为分析型文档。其优化方向**绝大多数映射到上方已登记 ID**（ORCH-001~004/PEVAL-001/KB-101/PROF-022/WB-001/MEM-101~102/TMATCH-001/STATE-002~003/BILL-*/SCALE-*/AB-*），不重复登记。下表仅登记 design/52 衍生的**真正新增**项，**2026-07-28 钱敏健全部确认**，状态统一为 ⏳ 待实施（未开发）。总前提：“双世界架构”（世界A线上单 prompt vs 世界B 孤儿 Agent 编排）——见 design/52 〇。**DEC-CBT 已决策：路径 1 激活世界 B**（钱敏健 2026-07-28），风险在案：多 Agent 多次 LLM 调用延迟/成本↑、需先解决与 SSE 流式体验的兼容方案。
+> 背景：design/51（横向断链）/52（核心板块心理深化）/53（全板块设计-实现脱节）为分析型文档。其优化方向**绝大多数映射到上方已登记 ID**（ORCH-001~004/PEVAL-001/KB-101/PROF-022/WB-001/MEM-101~102/TMATCH-001/STATE-002~003/BILL-*/SCALE-*/AB-*），不重复登记。下表仅登记 design/52 衍生的**真正新增**项，**2026-07-28 钱敏健全部确认**，状态统一为 ⏳ 待实施（未开发）。总前提：“双世界架构”（世界A线上单 prompt vs 世界B 孤儿 Agent 编排）——见 design/52 〇。**DEC-CBT 重新决策：删除世界 B**（钱敏健 2026-07-29，推翻原「路径1激活」）——世界B 整链死代码、与 SSE 流式冲突、无接线价值，fix-02 删除，线上保留世界A 单 prompt 主线。
 
 | 任务ID | 阶段任务 | 优先级 | 来源设计 | 依赖 | 状态 |
 |--------|----------|--------|----------|------|------|
-| DEC-CBT | 双世界编排收敛决策——**✅ 已定夺：路径 1 激活世界 B**（接线 ConversationOrchestrator 到线上，废弃单 prompt 主路径；落地前置：编排层兼容 SSE 流式输出方案 + 延迟/成本评估） | P0 决策 | design/52 〇/一/四 | 无（最先） | ✅ 已决策（2026-07-28），落地待实施 |
-| RISK-201 | RED 硬短路跳过 LLM，复用 CrisisResources（**儿童安全红线级，可独立立即做**） | **P0 安全最高** | design/52 二 | 无 | ⏳ 待实施 |
-| RISK-202 | M2 语义风险分类（SAF_001）上线补隐性表达 | P0 安全 | design/52 二 | DEC-CBT（已决） | ⏳ 待实施 |
-| RISK-203 | RiskScoreCalculator + C-SSRS 儿童分级（落地 04 §十） | P1 | design/52 二 | RISK-202 | ⏳ 待实施 |
+| DEC-CBT | 双世界编排收敛决策——**✅ 重新决策：删除世界 B（钱敏健 2026-07-29）**，推翻原「路径1激活」；世界B（ConversationOrchestrator+7 Agent+CbtStateMachine+ConversationStateManager）整链零调用死代码，无接线价值且与 SSE 流式体验冲突；线上保留世界A（PromptOrchestrationService 单 prompt 主线） | P0 决策 | design/52 〇/一/四；design/13 改写 | 无（最先） | ✅ 已决策删除（2026-07-29），fix-02 执行删除 |
+| RISK-201 | RED 硬短路跳过 LLM，复用 CrisisResources（**儿童安全红线级，可独立立即做**） | **P0 安全最高** | design/52 二 | 无 | ✅ 已完成（2026-07-28）：ConversationServiceImpl 4.2 段 RED 硬短路 + 分年级预审核文案 + 安全响应模式，见 design/04 §18.2 落地记录 |
+| RISK-202 | M2 语义风险分类（SAF_001）上线补隐性表达 | P0 安全 | design/52 二 | DEC-CBT（已决） | ✅ 已完成（2026-07-28）：SemanticRiskClassifier 非流式前置调用（800ms 门禁可配）+ 主线 1.6 段只升不降 + SafetyAgent 委托复用，见 design/04 §18.3 落地记录 |
+| RISK-203 | RiskScoreCalculator + C-SSRS 儿童分级（落地 04 §十） | P1 | design/52 二 | RISK-202 | ✅ 已完成（2026-07-28） |
 | RISK-204 | TrendAnalyzer 纵向趋势（汇入 BL-08 通道，合并 VCL-003/MEM-103） | P2 | design/52 二 | — | ⏳ 待实施 |
-| SAFE-201 | 保密边界儿童化告知话术（接 design/22，落到对话首触点） | P0 安全 | design/52 三 | 无 | ⏳ 待实施 |
-| SAFE-202 | Layer2 高敏场景前置化/触发关注 | P1 | design/52 三 | 无 | ⏳ 待实施 |
-| SAFE-203 | 危机热线多租户可配置（去硬编码） | P1 | design/52 三 | 无 | ⏳ 待实施 |
+| SAFE-201 | 保密边界儿童化告知话术（接 design/22，落到对话首触点） | P0 安全 | design/52 三 | 无 | ✅ 已完成（2026-07-28）：ConfidentialityNotice 分年级话术 + createSession 注入 + turn=0 审计落库，见 design/14 §12.3 落地记录 |
+| SAFE-202 | Layer2 高敏场景前置化/触发关注 | P1 | design/52 三 | 无 | ✅ 已完成（2026-07-28） |
+| SAFE-203 | 危机热线多租户可配置（去硬编码） | P1 | design/52 三 | 无 | ✅ 已完成（2026-07-28） |
 | SAFE-204 | 姓名/地址脱敏扩展 | P2 | design/52 三 | 无 | ⏳ 待实施 |
-| CBT-201 | CBT 阶段标记结构化输出+落库供评估（接 45） | P1 | design/52 一 | DEC-CBT（已决） | ⏳ 待实施 |
-| CBT-202 | 年龄分层 CBT 技能路由（低龄行为激活） | P1 | design/52 一 | CBT-201 | ⏳ 待实施 |
-| EMP-201 | 共情“命名-确认-容纳”评估维度（接 45） | P1 | design/52 四 | PEVAL-001 | ⏳ 待实施 |
-| ALLY-201 | 连续性开场（记忆回注生成续接话术） | P1 | design/52 五 | MEM-102 | ⏳ 待实施 |
-| ALLY-202 | 收束“巩固-希望-桥接”结构化 | P1 | design/52 五 | PEVAL-001 | ⏳ 待实施 |
-| ALLY-203 | 中断-回归照护信号（汇入 BL-08） | P2 | design/52 五 | — | ⏳ 待实施 |
+| CBT-201 | CBT 阶段标记结构化输出+落库供评估（接 45） | P1 | design/52 一 | DEC-CBT（已决） | ✅ 已完成（2026-07-28，CbtStageRouter） |
+| CBT-202 | 年龄分层 CBT 技能路由（低龄行为激活） | P1 | design/52 一 | CBT-201 | ✅ 已完成（2026-07-28，CbtStageRouter AgeStrategy） |
+| EMP-201 | 共情“命名-确认-容纳”评估维度（接 45） | P1 | design/52 四 | PEVAL-001 | ✅ 已完成（2026-07-28，EmpathyStructureEvaluator 三段式+反模式检测） |
+| ALLY-201 | 连续性开场（记忆回注生成续接话术） | P1 | design/52 五 | MEM-102 | ✅ 已完成（2026-07-28，AllianceEnhancer） |
+| ALLY-202 | 收束“巩固-希望-桥接”结构化 | P1 | design/52 五 | PEVAL-001 | ✅ 已完成（2026-07-28，AllianceEnhancer） |
+| ALLY-203 | 中断-回归照护信号（汇入 BL-08） | P2 | design/52 五 | — | ✅ 已完成（2026-07-28，AllianceEnhancer） |
 
 > 量表决策（钱敏健 2026-07-28）：**免费量表 PHQ-A/GAD-7 先行**（与 SCALE-001 一致）；开发可先实现，**施测接线上线前须钱敏健再决策**（未成年人测评合规门禁，见 SCALE-001/002 上线门禁备注）。
 
@@ -704,7 +731,7 @@
 | 04 | 风险识别规则库 | 🟡 | RED 硬短路跳过 LLM（现状仅留痕不短路）；M2 语义分类补隐性表达；RiskScoreCalculator+C-SSRS 儿童分级；纵向趋势通道 | **P0** | Agent | ✅ 已深化（§十八，2026-07-28） |
 | 05 | 老师后台设计 | 🔵 | 与 35 改版对齐（Today View / 预警工作流状态机 / 降噪），正文补状态机，避免与 35 重复叙述 | P1 | Agent | ✅ 已深化（§20，2026-07-28） |
 | 06 | 数据库结构设计 | 🟡 | 汇总新增表 DDL：画像元数据(provenance/confidence/decay)、量表 jsonb、分层记忆、voice_emotion_trend、prompt_eval_result、计费；向量索引策略 | P2 | Agent | ✅ 已深化（§10，2026-07-28，待实施 DDL 单一登记处已建；HNSW 统一策略；DDL 执行前须钱敏健确认） |
-| 07 | SaaS 多学校隔离 | 🔵 | ✅ 已深化（§11，2026-07-28，**架构级偏差：实际为行级隔离非 Schema 级**，路线 A/B 待钱敏健确认；热线配置 SAFE-203 已补） | P2 | Agent | ✅ 已深化 |
+| 07 | SaaS 多学校隔离 | 🔵 | ✅ 已深化（§11，2026-07-28，**架构级偏差：实际为行级隔离非 Schema 级**，路线 A 已定稿；fix-06 已落地行级 TenantLineInnerInterceptor（策略 B）+ ParentAuthService 去硬编码，fail-fast 待收紧；热线配置 SAFE-203 已补） | P2 | Agent | ✅ 已深化 |
 | 08 | MVP 最小可行版本 | 🔵 | ✅ 已深化（§十，2026-07-28，M4/M5 边界已定待确认；人脸识别撤销；测评滞后为风险项） | P2 | 钱敏健+Agent | ✅ 已深化 |
 | 09 | 商业模式与采购 | 🔵 | ✅ 已深化（§10，2026-07-28，**客户画像错位：中学→小学主打待确认**；基础版筛查能力未落地不得先行承诺） | P2 | 钱敏健 | ✅ 已深化 |
 | 10 | 政策与合规风险 | 🟡 | 补未成年人测评合规门禁(量表施测)、生成式AI 备案、语音本地处理表述诚实性；合规硬约束→任务映射 | P1 | 钱敏健+法务 | ✅ 已深化（§10，2026-07-28，三项待钱敏健确认） |
@@ -728,7 +755,7 @@
 | 28 | 语音唤醒与冷场引导 | 🔵 | 冷场决策(NudgeDecisionModel)已生效核对；与 47/48 语音闭环对齐；唤醒授权措辞（合规） | P1 | 钱敏健+Agent | ✅ 已深化（§十二，2026-07-28，三功能全部落地 🟩，xiaotaiyang 已修复；授权措辞+唤醒词入待确认清单） |
 | 29 | 学生画像与年龄适配 | 🔵 | 核心竞争力（近期）：与 46 画像闭环、44 编排 personality 层衔接 | P1 | Agent | ✅ 已深化（§十，2026-07-28，实现领先于文档：五断裂点已全部修复 🟩） |
 | 30 | 产品全景优化规划 | 🔵 | 路线图纳入 DEC-CBT 落地 + 本设计深化批次；Sprint 节奏对齐 | P2 | 钱敏健+Agent | ✅ 已深化（§十七，2026-07-28，Sprint A-E 已被超越不再按表执行；上线门禁=量表合规+RAG 空库；BIZ-001 挂起待 07） |
-| 31 | 等保二级差距评估 | 🔵 | 合规路径随部署推进（非开发） | P2 | 钱敏健 | ✅ 已深化（§六，2026-07-28，COMP-005/006 等差距翻转；剩余代码整改仅 SecurityConfig 收紧；其余为运维/制度，钱敏健牵头） |
+| 31 | 等保二级差距评估 | 🔵 | 合规路径随部署推进（非开发） | P2 | 钱敏健 | 🟧 结论撤回（2026-07-29 审计）后大部分修复：fix-03 加密接线 / fix-07 prod profile 激活 / fix-08 TLS+wss+origin 收敛 / fix-10 CI 门禁修真（2026-07-29）均已完；仍待：SecurityConfig anyRequest().permitAll() 收紧，完成后重评等保结论 |
 | 32 | 商用发布前置待办 | 🔵 | 补量表施测合规门禁项；与本追踪表联动 | P1 | 钱敏健 | ⬜ 待深化 |
 | 33 | 系统测试培训手册 | 🔵 | 编排/量表/工具箱上线后补测试点 | P2 | Agent | ⬜ 待深化 |
 | 34 | 心理量表数字化 | 🟢 | 近期已深化；施测接线**上线门禁**(SCALE-001/002)待钱敏健决策 | P1 | 钱敏健+Agent | 🟢 维护 |
@@ -758,29 +785,6 @@
 > 1. 本表为 triage 单一视图，`⬜ 待深化` = 本轮需编辑正文，`🟢 维护` = 近期已深化仅随批次微调；深化产生的新开发任务并入 §二十三 对应 ID，不在此重复登记。
 > 2. **虚假设计未落地重点**（承 51-53）：世界B Agent 编排 / ConversationStateManager / evaluateSessionAsync / buildRagContext / 语言模板路由均「已建零调用」——深化时须在对应文档（13/03/04/40/49/29）显式标注「已实现未接线」，避免误读为已生效。
 > 3. 本次仅深化设计与定级，**未进行任何开发、未做 git 提交**。
-
----
-
-## 二十五、UAT 反馈新功能待办（2026-07-23）
-
-> 背景：UAT 28 项问题清单中，10 项缺陷已修复（见修复报告）、6 项待复测、3 项属部署项，其余 **8 项为整模块新功能**，不属"修复"范畴，在此登记为待实施 backlog。
-> 优先级判据同 §二十三：**安全/合规 > 对话产品力 > 教师效率 > 学生体验 > 商业化**。开发启动时按 P0 → P1 → P2 顺序推进。
-
-| 任务ID | 任务描述 | 端 | 优先级 | 定级理由 | 状态 |
-|--------|----------|----|--------|----------|------|
-| UATF-001 | 学生 CRUD 与家庭码管理（新增/编辑/停用学生、家庭码生成与重置） | 教师端 | **P0** | 运营基础能力：无它则学生开户、家长绑定全靠数据库手工操作 | ⏳ 待实施 |
-| UATF-002 | 个人中心与修改密码（教师端账号自助管理） | 教师端 | **P0** | 账号安全基础 + 等保口令管理要求；注意与 §二十四 行 21「改密已落地」核对边界（学生端 PIN 改密 ≠ 教师端改密 UI） | ⏳ 待实施 |
-| UATF-003 | 学生 CSV 批量导入（模板下载 + 校验回显 + 批量建号） | 教师端 | P1 | 开学季批量开户效率，依赖 UATF-001 的学生模型管理能力 | ⏳ 待实施 |
-| UATF-004 | 预警回访 UI（回访记录、回访提醒、处置闭环） | 教师端 | P1 | 预警处置闭环的最后一环，安全流程完整性 | ⏳ 待实施 |
-| UATF-005 | 邀请码管理 UI（生成/延期/停用/使用统计） | 教师端/运营 | P1 | 试用准入运营自助化，替代当前 SQL 手工延期（参考 DEMO2026 延期事件） | ⏳ 待实施 |
-| UATF-006 | 话术模板管理（预警沟通/家长沟通话术库） | 教师端 | P2 | 教师效率增强项，非流程阻塞 | ⏳ 待实施 |
-| UATF-007 | 审计日志查询 UI（后端已记录，补检索/导出界面） | 教师端/运营 | P2 | 合规查询便利性；数据已落库，无 UI 不阻塞合规留痕 | ⏳ 待实施 |
-| UATF-008 | 知识库管理 UI（语料上传/审核/启停） | 运营 | P2 | RAG 主线接通前 UI 价值有限；与 §二十三 KB-* 任务归口对齐 | ⏳ 待实施 |
-
-> 说明：
-> 1. 建议排期节奏：P0 两项一个迭代（学生管理是其余功能的数据基座）；P1 三项一个迭代；P2 三项视运营需要插入。
-> 2. UATF-008 启动前先核对 §二十三 KB-* 既有任务，避免重复登记；UATF-002 启动前核对 21/24 号文档已落地范围。
-> 3. 本次仅登记任务与定级，未开发。
 
 ---
 
