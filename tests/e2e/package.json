@@ -1,0 +1,14 @@
+{
+  "name": "mindsafe-e2e",
+  "private": true,
+  "scripts": {
+    "test": "playwright test",
+    "test:teacher": "playwright test --project=teacher-web",
+    "test:student": "playwright test --project=student-h5",
+    "test:parent": "playwright test --project=parent-h5",
+    "report": "playwright show-report"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.52.0"
+  }
+}

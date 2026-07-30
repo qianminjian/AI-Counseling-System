@@ -7,13 +7,11 @@ import com.mindsafe.common.dto.ApiResponse;
 import com.mindsafe.domain.entity.CounselingSession;
 import com.mindsafe.domain.entity.MessageSummary;
 import com.mindsafe.domain.entity.Notification;
-import com.mindsafe.domain.entity.QualityScore;
 import com.mindsafe.domain.entity.RiskEvent;
 import com.mindsafe.domain.entity.TeacherNote;
 import com.mindsafe.domain.entity.User;
 import com.mindsafe.domain.mapper.CounselingSessionMapper;
 import com.mindsafe.domain.mapper.MessageSummaryMapper;
-import com.mindsafe.domain.mapper.QualityScoreMapper;
 import com.mindsafe.domain.mapper.RiskEventMapper;
 import com.mindsafe.domain.mapper.UserMapper;
 import com.mindsafe.service.notification.NotificationService;
@@ -21,7 +19,6 @@ import com.mindsafe.service.casemanage.CaseLifecycleService;
 import com.mindsafe.service.profile.ProfileRadarService;
 import com.mindsafe.service.teacher.TeacherService;
 import com.mindsafe.service.audit.AuditLogService;
-import com.mindsafe.service.security.FieldEncryptionService;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
@@ -50,11 +47,9 @@ public class TeacherController {
     private final RiskEventMapper riskEventMapper;
     private final UserMapper userMapper;
     private final CounselingSessionMapper sessionMapper;
-    private final QualityScoreMapper qualityScoreMapper;
     private final MessageSummaryMapper messageSummaryMapper;
     private final AuditLogService auditLogService;
     private final JwtTokenProvider jwtTokenProvider;
-    private final FieldEncryptionService fieldEncryptionService;
     private final CaseLifecycleService caseLifecycleService;
 
     public TeacherController(NotificationService notificationService,
@@ -63,11 +58,9 @@ public class TeacherController {
                              RiskEventMapper riskEventMapper,
                              UserMapper userMapper,
                              CounselingSessionMapper sessionMapper,
-                             QualityScoreMapper qualityScoreMapper,
                              MessageSummaryMapper messageSummaryMapper,
                              AuditLogService auditLogService,
                              JwtTokenProvider jwtTokenProvider,
-                             FieldEncryptionService fieldEncryptionService,
                              CaseLifecycleService caseLifecycleService) {
         this.notificationService = notificationService;
         this.teacherService = teacherService;
@@ -75,11 +68,9 @@ public class TeacherController {
         this.riskEventMapper = riskEventMapper;
         this.userMapper = userMapper;
         this.sessionMapper = sessionMapper;
-        this.qualityScoreMapper = qualityScoreMapper;
         this.messageSummaryMapper = messageSummaryMapper;
         this.auditLogService = auditLogService;
         this.jwtTokenProvider = jwtTokenProvider;
-        this.fieldEncryptionService = fieldEncryptionService;
         this.caseLifecycleService = caseLifecycleService;
     }
 
@@ -108,49 +99,6 @@ public class TeacherController {
         return ApiResponse.ok(teacherService.getSatisfactionStats(ctx.tenantId()));
     }
 
-    /** 质量监控：低分会话列表（rating <= 2） */
-    @GetMapping("/teacher/quality/flagged")
-    public ApiResponse<java.util.List<java.util.Map<String, Object>>> getFlaggedSessions(Authentication auth) {
-        TenantContext ctx = (TenantContext) auth.getDetails();
-        var flagged = sessionMapper.selectList(
-                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.mindsafe.domain.entity.CounselingSession>()
-                        .eq(com.mindsafe.domain.entity.CounselingSession::getTenantId, ctx.tenantId())
-                        .isNotNull(com.mindsafe.domain.entity.CounselingSession::getSatisfactionRating)
-                        .le(com.mindsafe.domain.entity.CounselingSession::getSatisfactionRating, 2)
-                        .orderByDesc(com.mindsafe.domain.entity.CounselingSession::getStartedAt)
-                        .last("LIMIT 50")
-        );
-        var result = flagged.stream().map(s -> {
-            java.util.Map<String, Object> m = new java.util.LinkedHashMap<>();
-            m.put("sessionId", s.getSessionId());
-            m.put("studentUserId", s.getStudentUserId());
-            m.put("rating", s.getSatisfactionRating());
-            m.put("comment", s.getSatisfactionComment());
-            m.put("startedAt", s.getStartedAt());
-            m.put("sessionStatus", s.getSessionStatus());
-            return m;
-        }).toList();
-        return ApiResponse.ok(result);
-    }
-
-    /** 质量监控：概览指标 */
-    @GetMapping("/teacher/quality/stats")
-    public ApiResponse<java.util.Map<String, Object>> getQualityStats(Authentication auth) {
-        TenantContext ctx = (TenantContext) auth.getDetails();
-        var stats = teacherService.getSatisfactionStats(ctx.tenantId());
-        long flaggedCount = stats.distribution().stream()
-                .filter(d -> d.stars() <= 2).mapToLong(d -> d.count()).sum();
-        double flagRate = stats.totalRated() > 0 ? (double) flaggedCount / stats.totalRated() * 100 : 0;
-
-        java.util.Map<String, Object> result = new java.util.LinkedHashMap<>();
-        result.put("totalRated", stats.totalRated());
-        result.put("avgRating", stats.avgRating());
-        result.put("flaggedCount", flaggedCount);
-        result.put("flagRate", Math.round(flagRate * 10) / 10.0);
-        result.put("recentAvg", stats.recentAvg());
-        return ApiResponse.ok(result);
-    }
-
     // ===== 干预话术模板 =====
 
     private static final java.util.List<java.util.Map<String, String>> TEMPLATES = java.util.List.of(
@@ -167,100 +115,6 @@ public class TeacherController {
     @GetMapping("/teacher/templates")
     public ApiResponse<java.util.List<java.util.Map<String, String>>> getTemplates() {
         return ApiResponse.ok(TEMPLATES);
-    }
-
-    // ===== 预警队列 =====
-
-    /** 预警队列（分页/筛选/排序） */
-    @GetMapping("/alerts")
-    public ApiResponse<List<TeacherService.AlertVO>> getAlerts(
-            Authentication auth,
-            @RequestParam(required = false) String status,
-            @RequestParam(required = false) Integer minLevel,
-            @RequestParam(defaultValue = "50") int limit) {
-        TenantContext ctx = (TenantContext) auth.getDetails();
-        return ApiResponse.ok(teacherService.getAlerts(ctx.tenantId(), status, minLevel, limit));
-    }
-
-    /** 认领预警 */
-    @PostMapping("/alerts/{id}/claim")
-    public ApiResponse<Void> claimAlert(@PathVariable UUID id, Authentication auth) {
-        TenantContext ctx = (TenantContext) auth.getDetails();
-        UUID userId = (UUID) auth.getPrincipal();
-        teacherService.claimAlert(ctx.tenantId(), id, userId);
-        auditLogService.log(ctx.tenantId(), userId, "ALERT_CLAIM", "risk_event", id, null);
-        return ApiResponse.ok(null);
-    }
-
-    /** 标记误报 */
-    @PatchMapping("/alerts/{id}/false-positive")
-    public ApiResponse<Void> markFalsePositive(@PathVariable UUID id, Authentication auth) {
-        TenantContext ctx = (TenantContext) auth.getDetails();
-        UUID userId = (UUID) auth.getPrincipal();
-        teacherService.markFalsePositive(ctx.tenantId(), id, userId);
-        return ApiResponse.ok(null);
-    }
-
-    /** 处理完成（线下干预后标记 resolved，可附处理记录） */
-    @PostMapping("/alerts/{id}/resolve")
-    public ApiResponse<Void> resolveAlert(@PathVariable UUID id,
-                                          @RequestBody(required = false) Map<String, String> body,
-                                          Authentication auth) {
-        TenantContext ctx = (TenantContext) auth.getDetails();
-        UUID userId = (UUID) auth.getPrincipal();
-        String note = body != null ? body.get("resolutionNote") : null;
-        teacherService.resolveAlert(ctx.tenantId(), id, userId, note);
-        auditLogService.log(ctx.tenantId(), userId, "ALERT_RESOLVE", "risk_event", id, note);
-        return ApiResponse.ok(null);
-    }
-
-    /** DATA-004：安排回访（处置后计划回访确认效果） */
-    @PostMapping("/alerts/{id}/schedule-followup")
-    public ApiResponse<Void> scheduleFollowUp(@PathVariable UUID id,
-                                              @RequestBody Map<String, String> body,
-                                              Authentication auth) {
-        TenantContext ctx = (TenantContext) auth.getDetails();
-        UUID userId = (UUID) auth.getPrincipal();
-        String followUpAt = body.get("followUpAt"); // ISO-8601 格式
-        if (followUpAt == null || followUpAt.isBlank()) {
-            return ApiResponse.ok(null);
-        }
-        teacherService.scheduleFollowUp(ctx.tenantId(), id, userId, followUpAt);
-        auditLogService.log(ctx.tenantId(), userId, "ALERT_SCHEDULE_FOLLOWUP", "risk_event", id, followUpAt);
-        return ApiResponse.ok(null);
-    }
-
-    /** DATA-004：完成回访（填写回访记录 + 最终评估） */
-    @PostMapping("/alerts/{id}/complete-followup")
-    public ApiResponse<Void> completeFollowUp(@PathVariable UUID id,
-                                              @RequestBody Map<String, String> body,
-                                              Authentication auth) {
-        TenantContext ctx = (TenantContext) auth.getDetails();
-        UUID userId = (UUID) auth.getPrincipal();
-        String note = body.get("followUpNote");
-        String outcome = body.get("outcome"); // resolved_improved/resolved_stable/escalated_referral/false_positive
-        teacherService.completeFollowUp(ctx.tenantId(), id, userId, note, outcome);
-        auditLogService.log(ctx.tenantId(), userId, "ALERT_COMPLETE_FOLLOWUP", "risk_event", id, outcome);
-        return ApiResponse.ok(null);
-    }
-
-    /** DATA-004：待回访列表 */
-    @GetMapping("/alerts/pending-followups")
-    public ApiResponse<List<Map<String, Object>>> getPendingFollowUps(Authentication auth) {
-        TenantContext ctx = (TenantContext) auth.getDetails();
-        var events = teacherService.getPendingFollowUps(ctx.tenantId());
-        List<Map<String, Object>> result = events.stream().map(e -> {
-            Map<String, Object> row = new java.util.LinkedHashMap<>();
-            row.put("riskEventId", e.getRiskEventId());
-            row.put("studentUserId", e.getStudentUserId());
-            row.put("riskType", e.getRiskType());
-            row.put("riskLevel", e.getRiskLevel());
-            row.put("followUpAt", e.getFollowUpAt() != null ? e.getFollowUpAt().toString() : "");
-            row.put("resolutionNote", e.getResolutionNote() != null ? e.getResolutionNote() : "");
-            row.put("detectedAt", e.getDetectedAt() != null ? e.getDetectedAt().toString() : "");
-            return row;
-        }).toList();
-        return ApiResponse.ok(result);
     }
 
     // ===== 学生管理 =====
@@ -642,187 +496,5 @@ public class TeacherController {
     private static String emotionZh(String code) {
         if (code == null || code.isBlank()) return "";
         return EMOTION_ZH.getOrDefault(code, code);
-    }
-
-    // ===== AI-003：质量监控 =====
-
-    /**
-     * 质量评分列表（支持筛选：仅低分标记 / 学生 / 分页）
-     */
-    @GetMapping("/teacher/quality/scores")
-    public ApiResponse<Map<String, Object>> getQualityScores(
-            Authentication auth,
-            @RequestParam(required = false) Boolean flaggedOnly,
-            @RequestParam(required = false) UUID studentUserId,
-            @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "20") int size) {
-        TenantContext ctx = (TenantContext) auth.getDetails();
-
-        var wrapper = new LambdaQueryWrapper<QualityScore>()
-                .eq(QualityScore::getTenantId, ctx.tenantId());
-        if (Boolean.TRUE.equals(flaggedOnly)) {
-            wrapper.eq(QualityScore::getFlagged, true);
-        }
-        if (studentUserId != null) {
-            // 通过 session 关联学生
-            var sessions = sessionMapper.selectList(
-                    new LambdaQueryWrapper<CounselingSession>()
-                            .eq(CounselingSession::getTenantId, ctx.tenantId())
-                            .eq(CounselingSession::getStudentUserId, studentUserId)
-                            .select(CounselingSession::getSessionId));
-            var sessionIds = sessions.stream().map(CounselingSession::getSessionId).toList();
-            if (sessionIds.isEmpty()) {
-                return ApiResponse.ok(Map.of("items", List.of(), "total", 0, "page", page, "size", size));
-            }
-            wrapper.in(QualityScore::getSessionId, sessionIds);
-        }
-        wrapper.orderByDesc(QualityScore::getEvaluatedAt);
-
-        // 简单分页（MyBatis-Plus 无分页插件时用 last LIMIT）
-        long total = qualityScoreMapper.selectCount(wrapper);
-        wrapper.last("LIMIT " + size + " OFFSET " + (long) (page - 1) * size);
-        List<QualityScore> items = qualityScoreMapper.selectList(wrapper);
-
-        // 丰富学生信息（通过 session 查找学生昵称）
-        List<Map<String, Object>> enriched = new java.util.ArrayList<>();
-        for (QualityScore qs : items) {
-            var session2 = sessionMapper.selectById(qs.getSessionId());
-            String studentName = null;
-            if (session2 != null) {
-                var user = userMapper.selectById(session2.getStudentUserId());
-                if (user != null) studentName = user.getPseudonym();
-            }
-            java.util.Map<String, Object> row = new java.util.LinkedHashMap<>();
-            row.put("scoreId", qs.getScoreId());
-            row.put("sessionId", qs.getSessionId());
-            row.put("studentName", studentName != null ? studentName : "未知");
-            row.put("empathyScore", qs.getEmpathyScore() != null ? qs.getEmpathyScore() : 0);
-            row.put("cbtCompletion", qs.getCbtCompletion() != null ? qs.getCbtCompletion() : 0);
-            row.put("safetyCompliance", qs.getSafetyCompliance() != null ? qs.getSafetyCompliance() : 0);
-            row.put("engagementScore", qs.getEngagementScore() != null ? qs.getEngagementScore() : 0);
-            row.put("overallScore", qs.getOverallScore() != null ? qs.getOverallScore() : 0);
-            row.put("flagged", Boolean.TRUE.equals(qs.getFlagged()));
-            row.put("flagReason", qs.getFlagReason() != null ? qs.getFlagReason() : "");
-            row.put("evaluatedAt", qs.getEvaluatedAt() != null ? qs.getEvaluatedAt().toString() : "");
-            enriched.add(row);
-        }
-
-        java.util.Map<String, Object> result = new java.util.LinkedHashMap<>();
-        result.put("items", enriched);
-        result.put("total", total);
-        result.put("page", page);
-        result.put("size", size);
-        return ApiResponse.ok(result);
-    }
-
-    /**
-     * AI 质量统计概览（LLM-as-Judge 评分均值 / 低分率）
-     */
-    @GetMapping("/teacher/quality/ai-stats")
-    public ApiResponse<Map<String, Object>> getAiQualityStats(Authentication auth) {
-        TenantContext ctx = (TenantContext) auth.getDetails();
-
-        List<QualityScore> all = qualityScoreMapper.selectList(
-                new LambdaQueryWrapper<QualityScore>()
-                        .eq(QualityScore::getTenantId, ctx.tenantId())
-        );
-
-        if (all.isEmpty()) {
-            return ApiResponse.ok(Map.of("totalEvaluated", 0, "avgOverall", 0,
-                    "flaggedCount", 0, "flagRate", 0.0));
-        }
-
-        double avgOverall = all.stream()
-                .filter(q -> q.getOverallScore() != null)
-                .mapToDouble(q -> q.getOverallScore().doubleValue())
-                .average().orElse(0);
-        double avgEmpathy = all.stream()
-                .filter(q -> q.getEmpathyScore() != null)
-                .mapToDouble(q -> q.getEmpathyScore().doubleValue())
-                .average().orElse(0);
-        double avgSafety = all.stream()
-                .filter(q -> q.getSafetyCompliance() != null)
-                .mapToDouble(q -> q.getSafetyCompliance().doubleValue())
-                .average().orElse(0);
-        long flaggedCount = all.stream().filter(q -> Boolean.TRUE.equals(q.getFlagged())).count();
-
-        java.util.Map<String, Object> statsResult = new java.util.LinkedHashMap<>();
-        statsResult.put("totalEvaluated", all.size());
-        statsResult.put("avgOverall", Math.round(avgOverall * 100.0) / 100.0);
-        statsResult.put("avgEmpathy", Math.round(avgEmpathy * 100.0) / 100.0);
-        statsResult.put("avgSafety", Math.round(avgSafety * 100.0) / 100.0);
-        statsResult.put("flaggedCount", flaggedCount);
-        statsResult.put("flagRate", Math.round((double) flaggedCount / all.size() * 100.0) / 100.0);
-        return ApiResponse.ok(statsResult);
-    }
-
-    /**
-     * 会话抽检回放（对话摘要 + 质量评分叠加）
-     */
-    @GetMapping("/teacher/quality/sessions/{sessionId}/replay")
-    public ApiResponse<Map<String, Object>> replaySession(@PathVariable UUID sessionId, Authentication auth) {
-        TenantContext ctx = (TenantContext) auth.getDetails();
-        auditLogService.log(ctx.tenantId(), (UUID) auth.getPrincipal(), "QUALITY_REPLAY", "counseling_session", sessionId, null);
-
-        // 1. 会话基本信息
-        CounselingSession session = sessionMapper.selectById(sessionId);
-        if (session == null || !ctx.tenantId().equals(session.getTenantId())) {
-            return ApiResponse.ok(Map.of("error", "会话不存在"));
-        }
-
-        // 2. 对话摘要（回放内容）
-        List<MessageSummary> messages = messageSummaryMapper.selectList(
-                new LambdaQueryWrapper<MessageSummary>()
-                        .eq(MessageSummary::getTenantId, ctx.tenantId())
-                        .eq(MessageSummary::getSessionId, sessionId)
-                        .orderByAsc(MessageSummary::getTurnCount)
-                        .orderByAsc(MessageSummary::getCreatedAt)
-        );
-
-        List<Map<String, Object>> replayMessages = messages.stream().map(m -> Map.<String, Object>of(
-                "turn", m.getTurnCount() != null ? m.getTurnCount() : 0,
-                "senderType", m.getSenderType() != null ? m.getSenderType() : "unknown",
-                "content", m.getContentSummary() != null ? fieldEncryptionService.decrypt(m.getContentSummary()) : "",
-                "emotionLabel", m.getEmotionLabel() != null ? m.getEmotionLabel() : "",
-                "riskLevel", m.getRiskLevel() != null ? m.getRiskLevel() : 0
-        )).toList();
-
-        // 3. 质量评分
-        QualityScore score = qualityScoreMapper.selectOne(
-                new LambdaQueryWrapper<QualityScore>()
-                        .eq(QualityScore::getTenantId, ctx.tenantId())
-                        .eq(QualityScore::getSessionId, sessionId)
-        );
-
-        Map<String, Object> scoreInfo = null;
-        if (score != null) {
-            scoreInfo = Map.of(
-                    "empathyScore", score.getEmpathyScore() != null ? score.getEmpathyScore() : 0,
-                    "cbtCompletion", score.getCbtCompletion() != null ? score.getCbtCompletion() : 0,
-                    "safetyCompliance", score.getSafetyCompliance() != null ? score.getSafetyCompliance() : 0,
-                    "engagementScore", score.getEngagementScore() != null ? score.getEngagementScore() : 0,
-                    "overallScore", score.getOverallScore() != null ? score.getOverallScore() : 0,
-                    "flagged", Boolean.TRUE.equals(score.getFlagged()),
-                    "flagReason", score.getFlagReason() != null ? score.getFlagReason() : ""
-            );
-        }
-
-        // 4. 学生信息
-        String studentName = "未知";
-        if (session.getStudentUserId() != null) {
-            var user = userMapper.selectById(session.getStudentUserId());
-            if (user != null && user.getPseudonym() != null) studentName = user.getPseudonym();
-        }
-
-        java.util.Map<String, Object> replayResult = new java.util.LinkedHashMap<>();
-        replayResult.put("sessionId", sessionId);
-        replayResult.put("studentName", studentName);
-        replayResult.put("startedAt", session.getStartedAt() != null ? session.getStartedAt().toString() : "");
-        replayResult.put("endedAt", session.getEndedAt() != null ? session.getEndedAt().toString() : "");
-        replayResult.put("turnCount", session.getTurnCount() != null ? session.getTurnCount() : 0);
-        replayResult.put("sessionSummary", session.getSessionSummary() != null ? session.getSessionSummary() : "");
-        replayResult.put("messages", replayMessages);
-        replayResult.put("qualityScore", scoreInfo != null ? scoreInfo : Map.of());
-        return ApiResponse.ok(replayResult);
     }
 }

@@ -20,12 +20,14 @@
             <artifactId>counseling-common</artifactId>
         </dependency>
         <dependency>
-            <groupId>com.mindsafe</groupId>
-            <artifactId>counseling-tenant</artifactId>
-        </dependency>
-        <dependency>
             <groupId>com.baomidou</groupId>
             <artifactId>mybatis-plus-spring-boot3-starter</artifactId>
+        </dependency>
+        <!-- 3.5.6+ TenantLineInnerInterceptor 需要 jsqlparser（原 counseling-tenant 合并入） -->
+        <dependency>
+            <groupId>com.baomidou</groupId>
+            <artifactId>mybatis-plus-jsqlparser</artifactId>
+            <version>${mybatis-plus.version}</version>
         </dependency>
         <dependency>
             <groupId>com.pgvector</groupId>
