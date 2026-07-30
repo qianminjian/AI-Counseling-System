@@ -126,18 +126,6 @@ export function useTtsPlayer({ persona = 'xiaoxing', emotion = 'neutral', speed 
     }
   }, [])
 
-  // 后端失败后 60秒自动重置计数器（允许重试，避免永久困在浏览器降级）
-  useEffect(() => {
-    const timer = setInterval(() => {
-      if (backendFailCount.current > 0) {
-        backendFailCount.current = 0
-        setEngine('backend')
-        console.info('[TTS] 后端重试窗口已重置，下次合成将重新尝试后端服务')
-      }
-    }, 60000)
-    return () => clearInterval(timer)
-  }, [])
-
   /** 获取/创建持久 Audio 元素（复用全局已解锁实例，确保自动播放权限） */
   const getAudio = useCallback(() => {
     if (!audioRef.current) {
@@ -159,23 +147,18 @@ export function useTtsPlayer({ persona = 'xiaoxing', emotion = 'neutral', speed 
     }
   }, [])
 
-  /** 合成单句音频（后端 TTS，连续失败 1 次后降级为浏览器 TTS） */
+  /** 合成单句音频（后端 TTS，连续失败 3 次后降级为浏览器 TTS） */
   const synthesizeSentence = useCallback(async (text) => {
-    // 后端已失败过，直接用浏览器 TTS（避免用户等待超时）
-    if (backendFailCount.current >= 1) {
+    // 后端已连续失败多次，直接用浏览器 TTS
+    if (backendFailCount.current >= 3) {
       return null // 返回 null 触发 speak() 中的浏览器降级路径
     }
     try {
-      // 5秒超时：后端 TTS 服务不可达时快速降级，不让用户干等
-      const controller = new AbortController()
-      const timeout = setTimeout(() => controller.abort(), 5000)
       const res = await fetch('/api/v1/tts/synthesize', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text, persona, emotion, speed }),
-        signal: controller.signal,
       })
-      clearTimeout(timeout)
       if (!res.ok || res.status === 204) {
         backendFailCount.current++
         return null
@@ -258,7 +241,7 @@ export function useTtsPlayer({ persona = 'xiaoxing', emotion = 'neutral', speed 
     setCurrentSentenceIdx(-1)
     setSentences([])
     // 如果整段都用了浏览器降级且引擎不可用，恢复 backend 标记（下次重试）
-    if (usedBrowserFallback && backendFailCount.current < 1) {
+    if (usedBrowserFallback && backendFailCount.current < 3) {
       setEngine('backend')
     }
   }, [muted, synthesizeSentence, playBlob, speed])
