@@ -20,6 +20,7 @@ import com.mindsafe.service.notification.NotificationService;
 import com.mindsafe.service.profile.ProfileRadarService;
 import com.mindsafe.service.teacher.TeacherService;
 import com.mindsafe.service.audit.AuditLogService;
+import com.mindsafe.service.security.FieldEncryptionService;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
@@ -52,6 +53,7 @@ public class TeacherController {
     private final MessageSummaryMapper messageSummaryMapper;
     private final AuditLogService auditLogService;
     private final JwtTokenProvider jwtTokenProvider;
+    private final FieldEncryptionService fieldEncryptionService;
 
     public TeacherController(NotificationService notificationService,
                              TeacherService teacherService,
@@ -62,7 +64,8 @@ public class TeacherController {
                              QualityScoreMapper qualityScoreMapper,
                              MessageSummaryMapper messageSummaryMapper,
                              AuditLogService auditLogService,
-                             JwtTokenProvider jwtTokenProvider) {
+                             JwtTokenProvider jwtTokenProvider,
+                             FieldEncryptionService fieldEncryptionService) {
         this.notificationService = notificationService;
         this.teacherService = teacherService;
         this.profileRadarService = profileRadarService;
@@ -73,6 +76,7 @@ public class TeacherController {
         this.messageSummaryMapper = messageSummaryMapper;
         this.auditLogService = auditLogService;
         this.jwtTokenProvider = jwtTokenProvider;
+        this.fieldEncryptionService = fieldEncryptionService;
     }
 
     // ===== 工作台 =====
@@ -736,7 +740,7 @@ public class TeacherController {
         List<Map<String, Object>> replayMessages = messages.stream().map(m -> Map.<String, Object>of(
                 "turn", m.getTurnCount() != null ? m.getTurnCount() : 0,
                 "senderType", m.getSenderType() != null ? m.getSenderType() : "unknown",
-                "content", m.getContentSummary() != null ? m.getContentSummary() : "",
+                "content", m.getContentSummary() != null ? fieldEncryptionService.decrypt(m.getContentSummary()) : "",
                 "emotionLabel", m.getEmotionLabel() != null ? m.getEmotionLabel() : "",
                 "riskLevel", m.getRiskLevel() != null ? m.getRiskLevel() : 0
         )).toList();

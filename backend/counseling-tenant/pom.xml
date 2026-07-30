@@ -31,5 +31,11 @@
             <groupId>com.baomidou</groupId>
             <artifactId>mybatis-plus-spring-boot3-starter</artifactId>
         </dependency>
+        <!-- 3.5.6+ 起 jsqlparser 相关 InnerInterceptor（含 TenantLine）拆分为独立可选依赖 -->
+        <dependency>
+            <groupId>com.baomidou</groupId>
+            <artifactId>mybatis-plus-jsqlparser</artifactId>
+            <version>${mybatis-plus.version}</version>
+        </dependency>
     </dependencies>
 </project>

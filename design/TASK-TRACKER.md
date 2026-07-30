@@ -1,8 +1,24 @@
 # AI 小学生心理辅导系统 - 任务跟踪表
 
-> 创建：2026-07-23 | 更新：2026-07-28（EMP-201 完成：共情三段式评估器，第三档 P1 全清——643 测试全绿）
+> 创建：2026-07-23 | 更新：2026-07-29（**独立审计校正**：撤回失实 ✅，引入 🟧「已编码未接线」态；DEC-CBT 改为删除世界B）
 > 
 > 本表用于跟踪项目各阶段任务的进度和责任人。
+
+---
+
+## ⚠️ 审计校正（2026-07-29，钱敏健授权全面修复）
+
+> 独立架构审计（三路并行 agent 交叉印证）结论：**测试全绿 ≠ 功能存在**。91 组件中 43 个为孤儿（生产入口不可达），真实交付面约为台账声称的一半。综合评分 2.8/10，No-Go。本表就此校正。
+
+**状态图例（新增）：**
+> - ✅ 已完成 = 已实现**且已接入生产入口**（Controller/Filter/@Scheduled/装配链可达）
+> - 🟧 **已编码未接线**（态③）= 代码与单测存在，但从生产入口不可达，线上不生效——**不得计为完成**
+> - ❌ 名不副实 = 声称完成但核心机制缺失/失效
+
+**本轮修复批次（fix-01~12）：**
+> fix-01 台账重标（本节）→ fix-02 删世界B → fix-03 加密接线(R-01) → fix-04 监护人同意门禁(R-03) → fix-05 SLA兜底(P-05) → fix-06 多租户拦截器(P-02) → fix-07 弱口令fail-fast(R-04) → fix-08 TLS(R-02) → fix-09 种子数据V27清理(R-05) → fix-10 CI修真(Q-01/Q-03) → fix-11 全量回归+文档同步 → fix-12 孤儿组件逐个裁决。
+
+> 说明：§二十三 P0/P1/P2 backlog 中大量 ✅ 实为态③「已编码未接线」孤儿，**逐行裁决归口 fix-12**（与钱敏健逐项确认），本节仅先校正最高信号的失实条目，不在此重复逐行改标。
 
 ---
 
@@ -58,7 +74,7 @@
 |--------|----------|------|------|
 | M1-001 | Maven 多模块骨架搭建（7 模块） | backend/ | ✅ 完成 |
 | M1-002 | PostgreSQL 初始化 + Flyway 迁移 | backend/ | ✅ 完成 |
-| M1-003 | Schema 级多租户路由实现 | counseling-tenant/ | ✅ 完成 |
+| M1-003 | Schema 级多租户路由实现 | counseling-tenant/ | 🟧 部分实现（名不副实已校正）——fix-06 已落地**行级**隔离纵深防线：`TenantLineInnerInterceptor`（策略 B，已认证自动注入 tenant_id）+ `TenantContextHolder` + `ParentAuthService` 去硬编码 + 6 用例守卫；**仍为共享 tenant_template schema 行级隔离，非 Schema 级物理隔离**（路线 A 已定稿，B 挂起）；fail-fast 收紧待集成测试后，见审计 P-02/P-06 + design/07 §11 |
 | M1-004 | 用户与权限模型（JWT + RBAC） | counseling-domain/ | ✅ 完成 |
 | M1-005 | Spring AI LLM Provider 接入（DeepSeek） | counseling-ai/ | ✅ 完成 |
 | M1-006 | Safety Agent 实现（双层输出审查 + PII） | counseling-ai/ | ✅ 完成 |
@@ -214,7 +230,7 @@
 | AUTH-020 | 学校 Excel 批量导入学生名单 | ✅ 完成 | CSV 导入（AdminController + AdminPanel UI） |
 | AUTH-021 | 企微/钉钉 OAuth 配置上线 | ⏳ 待开始 | 代码已就绪，需配置 corpId/secret |
 | AUTH-022 | 家长微信小程序 + 微信 OAuth 登录 | 📝 设计完成，待实施 | design/43（Taro 迁移），见 PARENT-WX 系列任务 |
-| AUTH-023 | 监护人同意闭环（短信确认链接） | ✅ 完成 | GuardianConsentService + AuthController 端点 |
+| AUTH-023 | 监护人同意闭环（短信确认链接）+ 对话入口门禁 | ✅ 完成（门禁 fix-04） | GuardianConsentService（发起/确认/hasGuardianConsent）+ AuthController 端点；ChatController.createSession/sendMessage/sendNudge 前置 `hasGuardianConsent` 校验，未同意抛 CONSENT_REQUIRED(20003)，endSession 不门禁。审计 R-03：此前仅有闭环无运行时门禁，学生可绕过同意直接对话，现已接线，ChatControllerTest 7 用例守卫 |
 
 ### 阶段三：合规加固（后续待办）
 
@@ -347,7 +363,7 @@
 
 | 任务ID | 任务描述 | 状态 | Sprint |
 |--------|----------|------|--------|
-| COMP-005 | 敏感数据加密存储（AES-256 + 密钥轮换） | ✅ 完成 | D |
+| COMP-005 | 敏感数据加密存储（AES-256 + 密钥轮换） | 🟩 已接线（fix-03） | D — FieldEncryptionService 已注入 ConversationServiceImpl：学生/AI 消息 contentSummary 落库前 AES-256-GCM 加密，教师端读取（getSessionMessages/replaySession/export）与摘要生成（generateSummaryAsync）解密；明文数据兼容透传；带密钥回归守卫测试 FieldEncryptionWiring 断言落库密文可还原。未配密钥时降级明文（dev），prod fail-fast |
 | COMP-006 | 操作审计日志（管理员/教师敏感操作留痕） | ✅ 完成 | D |
 | COMP-007 | 年度合规审计报送（未保条例 §37） | ⏳ 待开始 | 远期 |
 | COMP-008 | WebAuthn 设备认证（可选） | ⏳ 待开始 | 远期 |
@@ -360,11 +376,11 @@
 
 | 任务ID | 任务描述 | 状态 | Sprint |
 |--------|----------|------|--------|
-| TEST-001 | 后端单测覆盖率 → 80%（JaCoCo 门禁） | ✅ 已完成 | A |
+| TEST-001 | 后端单测覆盖率 → 80%（JaCoCo 门禁） | ❌ 门禁失效（撤回✅） | A — 三层假象：pom 阈值 0.30 无 check execution、CI -Pcoverage profile 不存在、jacoco-aggregate 永不生成致 CI 恒走 skip 分支，见审计 Q-01；fix-10 修真中 |
 | TEST-002 | 前端组件测试（Vitest + Testing Library） | ✅ 已完成 | C |
 | TEST-003 | E2E 扩展（12 → 30+ 用例） | ✅ 已完成 | C |
 | TEST-004 | 性能压测基线（k6，100 并发 SSE） | ✅ 完成 | E |
-| TEST-005 | CI 增强（覆盖率门禁 + 依赖扫描 + 缓存） | ✅ 完成 | A |
+| TEST-005 | CI 增强（覆盖率门禁 + 依赖扫描 + 缓存） | 🟧 部分失效（撤回✅） | A — 覆盖率门禁失效（见 TEST-001）、Trivy exit-code=0 不阻断、AuthFlowIT 从不执行（CI 只跑 mvn test 不跑 verify），见审计 Q-01/Q-03；fix-10 修真中 |
 | TEST-006 | 前后端契约测试（OpenAPI + mock 校验） | ⏳ 待开始 | 远期 |
 
 ### DevOps 与运维能力（P1）
@@ -374,10 +390,11 @@
 | OPS-001 | CD 自动化（CI → 镜像 → Registry → 部署） | ✅ 完成 | E |
 | OPS-002 | Docker 镜像版本化（Git SHA tag + ACR） | ✅ 完成 | E |
 | OPS-003 | 结构化日志 + 链路追踪（JSON + traceId） | ✅ 完成 | B |
-| OPS-004 | 告警体系（AlertManager → 企微 webhook） | ✅ 完成 | B |
+| OPS-004 | 告警体系（AlertManager → 企微 webhook） | ✅ 完成（fix-05 接线） | B — SlaEscalationScanner @Scheduled 每分钟扫描 open/claimed 且超 SLA 的风险事件，AlertSlaPolicy 判定 escalate→CRITICAL / remind→WARNING，经 AlertService 出口（企微 webhook / 日志降级）发出，内存去重防风暴；SlaEscalationScannerTest 6 用例守卫。审计 P-05：此前红色风险无在线教师时仅 WARN 日志静默丢弃，现已接兜底告警。备注：教师端「自动改派备份老师」的改派动作仍归 WB-001 |
 | OPS-005 | 数据库自动备份（pg_dump + 异地 + 恢复演练） | ✅ 完成 | A |
 | OPS-006 | 蓝绿/滚动部署 | 📝 设计完成，待实施 | design/42（滚动+蓝绿+expand-contract） |
-| OPS-007 | 多环境管理（dev/staging/prod） | ✅ 完成 | E |
+| OPS-007 | 多环境管理（dev/staging/prod） | ✅ 完成（fix-07 修真） | E — 审计 R-04：docker-compose.prod.yml 此前**从未设置 SPRING_PROFILES_ACTIVE=prod**，application-prod.yml 为死配置，JWT/加密 fail-fast 守卫全部沉默、Swagger 生产开放。fix-07 已修：compose 激活 prod profile + 补 ENCRYPTION_KEY/告警 webhook 映射；application-prod.yml 修 OPENAI→DeepSeek 漂移、删除非 root 不可写的 /var/log 文件日志（logback prod 本为 JSON stdout）；.env.example 全占位化；AdminTenantController 默认密码改 SecureRandom 随机；AliyunSmsService @PostConstruct 凭证 fail-fast |
+| OPS-008 | 种子数据生产清理（V27） | ✅ 完成（fix-09） | 审计 R-05：V6 迁移注释明文泄露 minjianq 临时密码、MINDSAFE-TRIAL-001/002/003 硬编码邀请码存活。V27：minjianq password_hash 置无效哈希（限定原泄露哈希，已改密不覆盖）+ 三 TRIAL 码 disabled。裁决（钱敏健 2026-07-28）：DEMO2026 保留（V26 已延期，且 TrialAuthService 按固定试用租户查码，禁租户会断演示链路）；DEV/TRIAL 租户保留 active。V4 测试账号已由 V25 禁用；V8 演示学生因插入条件与 V4 冲突从未生效 |
 
 ### 数据智能与效果验证（P1）
 
@@ -640,11 +657,11 @@
 
 ### design/51~53 分析文档衍生（2026-07-28 新增，✅ 钱敏健 2026-07-28 全部确认）
 
-> 背景：design/51（横向断链）/52（核心板块心理深化）/53（全板块设计-实现脱节）为分析型文档。其优化方向**绝大多数映射到上方已登记 ID**（ORCH-001~004/PEVAL-001/KB-101/PROF-022/WB-001/MEM-101~102/TMATCH-001/STATE-002~003/BILL-*/SCALE-*/AB-*），不重复登记。下表仅登记 design/52 衍生的**真正新增**项，**2026-07-28 钱敏健全部确认**，状态统一为 ⏳ 待实施（未开发）。总前提：“双世界架构”（世界A线上单 prompt vs 世界B 孤儿 Agent 编排）——见 design/52 〇。**DEC-CBT 已决策：路径 1 激活世界 B**（钱敏健 2026-07-28），风险在案：多 Agent 多次 LLM 调用延迟/成本↑、需先解决与 SSE 流式体验的兼容方案。
+> 背景：design/51（横向断链）/52（核心板块心理深化）/53（全板块设计-实现脱节）为分析型文档。其优化方向**绝大多数映射到上方已登记 ID**（ORCH-001~004/PEVAL-001/KB-101/PROF-022/WB-001/MEM-101~102/TMATCH-001/STATE-002~003/BILL-*/SCALE-*/AB-*），不重复登记。下表仅登记 design/52 衍生的**真正新增**项，**2026-07-28 钱敏健全部确认**，状态统一为 ⏳ 待实施（未开发）。总前提：“双世界架构”（世界A线上单 prompt vs 世界B 孤儿 Agent 编排）——见 design/52 〇。**DEC-CBT 重新决策：删除世界 B**（钱敏健 2026-07-29，推翻原「路径1激活」）——世界B 整链死代码、与 SSE 流式冲突、无接线价值，fix-02 删除，线上保留世界A 单 prompt 主线。
 
 | 任务ID | 阶段任务 | 优先级 | 来源设计 | 依赖 | 状态 |
 |--------|----------|--------|----------|------|------|
-| DEC-CBT | 双世界编排收敛决策——**✅ 已定夺：路径 1 激活世界 B**（接线 ConversationOrchestrator 到线上，废弃单 prompt 主路径；落地前置：编排层兼容 SSE 流式输出方案 + 延迟/成本评估） | P0 决策 | design/52 〇/一/四 | 无（最先） | ✅ 已决策（2026-07-28），落地待实施 |
+| DEC-CBT | 双世界编排收敛决策——**✅ 重新决策：删除世界 B（钱敏健 2026-07-29）**，推翻原「路径1激活」；世界B（ConversationOrchestrator+7 Agent+CbtStateMachine+ConversationStateManager）整链零调用死代码，无接线价值且与 SSE 流式体验冲突；线上保留世界A（PromptOrchestrationService 单 prompt 主线） | P0 决策 | design/52 〇/一/四；design/13 改写 | 无（最先） | ✅ 已决策删除（2026-07-29），fix-02 执行删除 |
 | RISK-201 | RED 硬短路跳过 LLM，复用 CrisisResources（**儿童安全红线级，可独立立即做**） | **P0 安全最高** | design/52 二 | 无 | ✅ 已完成（2026-07-28）：ConversationServiceImpl 4.2 段 RED 硬短路 + 分年级预审核文案 + 安全响应模式，见 design/04 §18.2 落地记录 |
 | RISK-202 | M2 语义风险分类（SAF_001）上线补隐性表达 | P0 安全 | design/52 二 | DEC-CBT（已决） | ✅ 已完成（2026-07-28）：SemanticRiskClassifier 非流式前置调用（800ms 门禁可配）+ 主线 1.6 段只升不降 + SafetyAgent 委托复用，见 design/04 §18.3 落地记录 |
 | RISK-203 | RiskScoreCalculator + C-SSRS 儿童分级（落地 04 §十） | P1 | design/52 二 | RISK-202 | ✅ 已完成（2026-07-28） |
@@ -704,7 +721,7 @@
 | 04 | 风险识别规则库 | 🟡 | RED 硬短路跳过 LLM（现状仅留痕不短路）；M2 语义分类补隐性表达；RiskScoreCalculator+C-SSRS 儿童分级；纵向趋势通道 | **P0** | Agent | ✅ 已深化（§十八，2026-07-28） |
 | 05 | 老师后台设计 | 🔵 | 与 35 改版对齐（Today View / 预警工作流状态机 / 降噪），正文补状态机，避免与 35 重复叙述 | P1 | Agent | ✅ 已深化（§20，2026-07-28） |
 | 06 | 数据库结构设计 | 🟡 | 汇总新增表 DDL：画像元数据(provenance/confidence/decay)、量表 jsonb、分层记忆、voice_emotion_trend、prompt_eval_result、计费；向量索引策略 | P2 | Agent | ✅ 已深化（§10，2026-07-28，待实施 DDL 单一登记处已建；HNSW 统一策略；DDL 执行前须钱敏健确认） |
-| 07 | SaaS 多学校隔离 | 🔵 | ✅ 已深化（§11，2026-07-28，**架构级偏差：实际为行级隔离非 Schema 级**，路线 A/B 待钱敏健确认；热线配置 SAFE-203 已补） | P2 | Agent | ✅ 已深化 |
+| 07 | SaaS 多学校隔离 | 🔵 | ✅ 已深化（§11，2026-07-28，**架构级偏差：实际为行级隔离非 Schema 级**，路线 A 已定稿；fix-06 已落地行级 TenantLineInnerInterceptor（策略 B）+ ParentAuthService 去硬编码，fail-fast 待收紧；热线配置 SAFE-203 已补） | P2 | Agent | ✅ 已深化 |
 | 08 | MVP 最小可行版本 | 🔵 | ✅ 已深化（§十，2026-07-28，M4/M5 边界已定待确认；人脸识别撤销；测评滞后为风险项） | P2 | 钱敏健+Agent | ✅ 已深化 |
 | 09 | 商业模式与采购 | 🔵 | ✅ 已深化（§10，2026-07-28，**客户画像错位：中学→小学主打待确认**；基础版筛查能力未落地不得先行承诺） | P2 | 钱敏健 | ✅ 已深化 |
 | 10 | 政策与合规风险 | 🟡 | 补未成年人测评合规门禁(量表施测)、生成式AI 备案、语音本地处理表述诚实性；合规硬约束→任务映射 | P1 | 钱敏健+法务 | ✅ 已深化（§10，2026-07-28，三项待钱敏健确认） |
@@ -728,7 +745,7 @@
 | 28 | 语音唤醒与冷场引导 | 🔵 | 冷场决策(NudgeDecisionModel)已生效核对；与 47/48 语音闭环对齐；唤醒授权措辞（合规） | P1 | 钱敏健+Agent | ✅ 已深化（§十二，2026-07-28，三功能全部落地 🟩，xiaotaiyang 已修复；授权措辞+唤醒词入待确认清单） |
 | 29 | 学生画像与年龄适配 | 🔵 | 核心竞争力（近期）：与 46 画像闭环、44 编排 personality 层衔接 | P1 | Agent | ✅ 已深化（§十，2026-07-28，实现领先于文档：五断裂点已全部修复 🟩） |
 | 30 | 产品全景优化规划 | 🔵 | 路线图纳入 DEC-CBT 落地 + 本设计深化批次；Sprint 节奏对齐 | P2 | 钱敏健+Agent | ✅ 已深化（§十七，2026-07-28，Sprint A-E 已被超越不再按表执行；上线门禁=量表合规+RAG 空库；BIZ-001 挂起待 07） |
-| 31 | 等保二级差距评估 | 🔵 | 合规路径随部署推进（非开发） | P2 | 钱敏健 | ✅ 已深化（§六，2026-07-28，COMP-005/006 等差距翻转；剩余代码整改仅 SecurityConfig 收紧；其余为运维/制度，钱敏健牵头） |
+| 31 | 等保二级差距评估 | 🔵 | 合规路径随部署推进（非开发） | P2 | 钱敏健 | 🟧 结论撤回（2026-07-29 审计）后部分修复：fix-03 加密接线 / fix-07 prod profile 激活 / fix-08 TLS+wss+origin 收敛已完（§一已更新）；仍待：fix-10 CI 修真 + SecurityConfig anyRequest().permitAll() 收紧，完成后重评等保结论 |
 | 32 | 商用发布前置待办 | 🔵 | 补量表施测合规门禁项；与本追踪表联动 | P1 | 钱敏健 | ⬜ 待深化 |
 | 33 | 系统测试培训手册 | 🔵 | 编排/量表/工具箱上线后补测试点 | P2 | Agent | ⬜ 待深化 |
 | 34 | 心理量表数字化 | 🟢 | 近期已深化；施测接线**上线门禁**(SCALE-001/002)待钱敏健决策 | P1 | 钱敏健+Agent | 🟢 维护 |

@@ -47,7 +47,10 @@ class TeacherProfileTrimmingTest {
     @BeforeEach
     void setUp() {
         service = new TeacherService(riskEventMapper, sessionMapper, userMapper,
-                teacherNoteMapper, notificationMapper, messageSummaryMapper);
+                teacherNoteMapper, notificationMapper, messageSummaryMapper,
+                // R-01：未配密钥的真实加密服务 → 明文透传
+                new com.mindsafe.service.security.FieldEncryptionService(
+                        "", 1, "", new org.springframework.core.env.StandardEnvironment()));
 
         User student = new User();
         student.setUserId(studentId);

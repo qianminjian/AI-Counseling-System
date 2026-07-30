@@ -8,6 +8,7 @@ import com.mindsafe.service.tenant.TenantProvisioningService;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
+import java.security.SecureRandom;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -27,10 +28,25 @@ public class AdminTenantController {
     private final TenantProvisioningService provisioningService;
     private final AuditLogService auditLogService;
 
+    /** 临时密码字符集（排除易混淆字符 0/O/1/l/I）与长度。 */
+    private static final String PWD_ALPHABET =
+            "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789@#%$";
+    private static final int TEMP_PASSWORD_LENGTH = 14;
+    private static final SecureRandom SECURE_RANDOM = new SecureRandom();
+
     public AdminTenantController(TenantProvisioningService provisioningService,
                                  AuditLogService auditLogService) {
         this.provisioningService = provisioningService;
         this.auditLogService = auditLogService;
+    }
+
+    /** 生成强随机临时密码（首登强制修改），避免硬编码弱口令。 */
+    private static String generateTempPassword() {
+        StringBuilder sb = new StringBuilder(TEMP_PASSWORD_LENGTH);
+        for (int i = 0; i < TEMP_PASSWORD_LENGTH; i++) {
+            sb.append(PWD_ALPHABET.charAt(SECURE_RANDOM.nextInt(PWD_ALPHABET.length())));
+        }
+        return sb.toString();
     }
 
     /** 一键开通租户 */
@@ -42,7 +58,11 @@ public class AdminTenantController {
         String tenantName = body.get("tenantName");
         String adminPhone = body.get("adminPhone");
         String adminName = body.get("adminName");
-        String tempPassword = body.getOrDefault("tempPassword", "MindSafe@2026");
+        // 默认生成强随机临时密码（首登强制修改）；仅当调用方显式传入时才沿用。禁用硬编码默认弱口令。
+        String tempPassword = body.get("tempPassword");
+        if (tempPassword == null || tempPassword.isBlank()) {
+            tempPassword = generateTempPassword();
+        }
 
         if (tenantCode == null || tenantName == null || adminPhone == null) {
             return ApiResponse.ok(Map.of("error", "tenantCode/tenantName/adminPhone 为必填项"));

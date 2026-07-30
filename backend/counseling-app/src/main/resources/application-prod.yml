@@ -30,8 +30,9 @@ spring:
 
   ai:
     openai:
-      api-key: ${OPENAI_API_KEY}
-      base-url: ${OPENAI_BASE_URL:https://api.openai.com}
+      # 与 base 一致接 DeepSeek（OpenAI 兼容协议）；api-key 无默认值，未配置时 fail-fast
+      api-key: ${LLM_API_KEY}
+      base-url: ${LLM_BASE_URL:https://api.deepseek.com}
 
   flyway:
     enabled: true
@@ -53,17 +54,12 @@ mindsafe:
     overall-timeout-ms: 45000
   alert:
     wecom:
-      webhook-url: ${MINDSAFE_ALERT_WECOM_WEBHOOK_URL}
+      webhook-url: ${MINDSAFE_ALERT_WECOM_WEBHOOK_URL:}
       mentioned-list: ${MINDSAFE_ALERT_WECOM_MENTIONED:}
 
+# 容器化部署：日志走 stdout 由 Docker 收集（镜像以非 root 用户运行，/var/log 不可写）
 logging:
   level:
     com.mindsafe: INFO
     org.springframework: WARN
     org.springframework.ai: WARN
-  file:
-    name: /var/log/mindsafe/application.log
-  logback:
-    rollingpolicy:
-      max-file-size: 100MB
-      max-history: 30

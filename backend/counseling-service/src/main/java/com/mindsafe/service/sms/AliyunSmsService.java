@@ -6,6 +6,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 
+import jakarta.annotation.PostConstruct;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import java.net.URI;
@@ -51,6 +52,29 @@ public class AliyunSmsService implements SmsService {
     private final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10))
             .build();
+
+    /**
+     * 启动校验（R-04）：选定 aliyun 提供商时四项凭证必须非空，否则 fail-fast。
+     * <p>避免生产环境因凭证缺失导致短信静默发送失败（家长无法验证身份）。
+     */
+    @PostConstruct
+    void validateCredentials() {
+        StringBuilder missing = new StringBuilder();
+        if (isBlank(accessKeyId)) { missing.append(" access-key-id"); }
+        if (isBlank(accessKeySecret)) { missing.append(" access-key-secret"); }
+        if (isBlank(signName)) { missing.append(" sign-name"); }
+        if (isBlank(templateCode)) { missing.append(" template-code"); }
+        if (missing.length() > 0) {
+            throw new IllegalStateException(
+                    "[FATAL] 短信提供商为 aliyun 但以下凭证未配置：" + missing.toString().trim()
+                    + "。请配置 MINDSAFE_SMS_ALIYUN_* 环境变量，或将 MINDSAFE_SMS_PROVIDER 改为 logging。");
+        }
+        log.info("[SMS] 阿里云短信服务已启用 | signName={} | templateCode={}", signName, templateCode);
+    }
+
+    private static boolean isBlank(String s) {
+        return s == null || s.isBlank();
+    }
 
     @Override
     public boolean sendVerificationCode(String phone, String code, String purpose) {

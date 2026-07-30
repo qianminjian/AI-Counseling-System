@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.mindsafe.domain.entity.*;
 import com.mindsafe.domain.mapper.*;
+import com.mindsafe.service.security.FieldEncryptionService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -29,19 +30,22 @@ public class TeacherService {
     private final TeacherNoteMapper teacherNoteMapper;
     private final NotificationMapper notificationMapper;
     private final MessageSummaryMapper messageSummaryMapper;
+    private final FieldEncryptionService fieldEncryptionService;
 
     public TeacherService(RiskEventMapper riskEventMapper,
                           CounselingSessionMapper sessionMapper,
                           UserMapper userMapper,
                           TeacherNoteMapper teacherNoteMapper,
                           NotificationMapper notificationMapper,
-                          MessageSummaryMapper messageSummaryMapper) {
+                          MessageSummaryMapper messageSummaryMapper,
+                          FieldEncryptionService fieldEncryptionService) {
         this.riskEventMapper = riskEventMapper;
         this.sessionMapper = sessionMapper;
         this.userMapper = userMapper;
         this.teacherNoteMapper = teacherNoteMapper;
         this.notificationMapper = notificationMapper;
         this.messageSummaryMapper = messageSummaryMapper;
+        this.fieldEncryptionService = fieldEncryptionService;
     }
 
     // ===== 数据范围解析（RBAC） =====
@@ -395,7 +399,8 @@ public class TeacherService {
         );
         return summaries.stream().map(m -> new MessageSummaryVO(
                 m.getSummaryId(), m.getSenderType(), m.getTurnCount(),
-                m.getContentSummary(), m.getEmotionLabel(),
+                // R-01：contentSummary 字段级加密，教师端读取时解密（明文兼容透传）
+                fieldEncryptionService.decrypt(m.getContentSummary()), m.getEmotionLabel(),
                 m.getRiskLevel() != null ? m.getRiskLevel() : 0,
                 m.getCreatedAt()
         )).toList();

@@ -128,7 +128,10 @@ class ConversationServiceImplTest {
                 ragAdvisorService, semanticRiskClassifier,
                 // ORCH-001/003：编排引擎+情绪状态机纯规则无依赖，直接用真实实例
                 new PromptOrchestrationService(new EntryMoodStrategyResolver(), new EmotionStateMachine()),
-                conversationQualityService);
+                conversationQualityService,
+                // R-01：未配密钥的真实加密服务 → 明文透传，不影响 contentSummary 断言
+                new com.mindsafe.service.security.FieldEncryptionService(
+                        "", 1, "", new org.springframework.core.env.StandardEnvironment()));
     }
 
     /** createSession 并捕获内部生成的 sessionId */
@@ -295,6 +298,54 @@ class ConversationServiceImplTest {
             assertThat(ConfidentialityNotice.forGrade(2)).isEqualTo(ConfidentialityNotice.NOTICE_LOWER_GRADE);
             assertThat(ConfidentialityNotice.forGrade(3)).isEqualTo(ConfidentialityNotice.NOTICE_STANDARD);
             assertThat(ConfidentialityNotice.forGrade(6)).isEqualTo(ConfidentialityNotice.NOTICE_STANDARD);
+        }
+    }
+
+    @Nested
+    @DisplayName("R-01 字段级加密接线（contentSummary 落库加密/读取解密）")
+    class FieldEncryptionWiring {
+
+        /** 32 字节全零测试密钥（Base64），仅用于验证加解密接线，非生产密钥 */
+        private static final String TEST_KEY = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+
+        @Test
+        @DisplayName("AI 回复落库前经字段级加密（密文可解密还原）")
+        void aiReplyPersistedEncrypted() {
+            com.mindsafe.service.security.FieldEncryptionService keyedEnc =
+                    new com.mindsafe.service.security.FieldEncryptionService(
+                            TEST_KEY, 1, "", new org.springframework.core.env.StandardEnvironment());
+            ConversationServiceImpl keyedService = new ConversationServiceImpl(aiChatService, promptTemplateService,
+                    riskDetectorService, piiDesensitizer, sessionMapper, messageSummaryMapper,
+                    riskEventMapper, notificationService, userMapper, profileService,
+                    profileExtractorService, usageTimeLimitService, longTermMemoryService, promptVersionService,
+                    ragAdvisorService, semanticRiskClassifier,
+                    new PromptOrchestrationService(new EntryMoodStrategyResolver(), new EmotionStateMachine()),
+                    conversationQualityService, keyedEnc);
+
+            User user = new User();
+            user.setPseudonym("小明");
+            user.setGender("male");
+            when(userMapper.selectById(studentId)).thenReturn(user);
+            when(profileService.getExpressionDepth(tenantId, studentId)).thenReturn(null);
+            UUID sessionId = keyedService.createSession(tenantId, studentId, "happy", "web").sessionId();
+
+            mockSessionActive(sessionId);
+            when(promptTemplateService.render(eq(PromptTemplateService.TSK_004), anyMap()))
+                    .thenReturn("【暖场指令】强度=2");
+            when(profileService.buildProfilePrompt(eq(tenantId), eq(studentId), any(Integer.class), any()))
+                    .thenReturn(null);
+            when(aiChatService.chatProactive(eq(sessionId), eq("happy"), eq("male"), any(), eq("【暖场指令】强度=2"), any(Integer.class)))
+                    .thenReturn(Flux.just(StreamMessageEvent.token("波波在呢"), StreamMessageEvent.token("～")));
+
+            keyedService.sendNudgeStream(tenantId, sessionId, 30).collectList().block();
+
+            ArgumentCaptor<MessageSummary> captor = ArgumentCaptor.forClass(MessageSummary.class);
+            verify(messageSummaryMapper).insert(captor.capture());
+            MessageSummary record = captor.getValue();
+            // 落库值为密文（非明文），且可解密还原为原回复
+            assertThat(keyedEnc.isEncrypted(record.getContentSummary())).isTrue();
+            assertThat(record.getContentSummary()).doesNotContain("波波在呢");
+            assertThat(keyedEnc.decrypt(record.getContentSummary())).isEqualTo("波波在呢～");
         }
     }
 

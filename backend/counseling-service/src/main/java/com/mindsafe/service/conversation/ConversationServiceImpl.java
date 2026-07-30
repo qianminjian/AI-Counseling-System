@@ -31,6 +31,7 @@ import com.mindsafe.service.profile.ProfileExtractorService;
 import com.mindsafe.service.profile.StudentProfileService;
 import com.mindsafe.service.prompt.PromptVersionService;
 import com.mindsafe.service.quality.ConversationQualityService;
+import com.mindsafe.service.security.FieldEncryptionService;
 import com.mindsafe.service.usage.UsageTimeLimitService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -74,6 +75,7 @@ public class ConversationServiceImpl implements ConversationService {
     private final SemanticRiskClassifier semanticRiskClassifier;
     private final PromptOrchestrationService promptOrchestrationService;
     private final ConversationQualityService conversationQualityService;
+    private final FieldEncryptionService fieldEncryptionService;
 
     /** 活跃会话内存缓存（emotionTag 等非 DB 字段 + 轮次计数） */
     private final Map<UUID, SessionState> activeSessions = new ConcurrentHashMap<>();
@@ -98,7 +100,8 @@ public class ConversationServiceImpl implements ConversationService {
                                    RagAdvisorService ragAdvisorService,
                                    SemanticRiskClassifier semanticRiskClassifier,
                                    PromptOrchestrationService promptOrchestrationService,
-                                   ConversationQualityService conversationQualityService) {
+                                   ConversationQualityService conversationQualityService,
+                                   FieldEncryptionService fieldEncryptionService) {
         this.aiChatService = aiChatService;
         this.promptTemplateService = promptTemplateService;
         this.riskDetectorService = riskDetectorService;
@@ -117,6 +120,7 @@ public class ConversationServiceImpl implements ConversationService {
         this.semanticRiskClassifier = semanticRiskClassifier;
         this.promptOrchestrationService = promptOrchestrationService;
         this.conversationQualityService = conversationQualityService;
+        this.fieldEncryptionService = fieldEncryptionService;
     }
 
     @Override
@@ -526,7 +530,8 @@ public class ConversationServiceImpl implements ConversationService {
             StringBuilder sb = new StringBuilder();
             for (MessageSummary m : messages) {
                 String role = "student".equals(m.getSenderType()) ? "学生" : "AI";
-                sb.append(role).append(": ").append(m.getContentSummary()).append("\n");
+                // R-01：contentSummary 落库时字段级加密，拼接前解密（明文数据兼容透传）
+                sb.append(role).append(": ").append(fieldEncryptionService.decrypt(m.getContentSummary())).append("\n");
             }
             String conversationText = sb.toString();
 
@@ -581,6 +586,8 @@ public class ConversationServiceImpl implements ConversationService {
                     session.tenantId, session.sessionId, session.studentUserId,
                     turn, content, emotionLabel, riskLevel
             );
+            // R-01：学生消息内容字段级加密后落库（工厂已截断至 1024，再对截断后明文加密）
+            summary.setContentSummary(fieldEncryptionService.encrypt(summary.getContentSummary()));
             messageSummaryMapper.insert(summary);
         } catch (Exception e) {
             log.warn("学生消息摘要持久化失败（不影响对话）: sessionId={}, turn={}", session.sessionId, turn, e);
@@ -595,6 +602,8 @@ public class ConversationServiceImpl implements ConversationService {
                     session.tenantId, session.sessionId, session.studentUserId,
                     turn, aiResponse
             );
+            // R-01：AI 回复内容字段级加密后落库
+            summary.setContentSummary(fieldEncryptionService.encrypt(summary.getContentSummary()));
             messageSummaryMapper.insert(summary);
         } catch (Exception e) {
             log.warn("AI 回复摘要持久化失败: sessionId={}, turn={}", session.sessionId, turn, e);
