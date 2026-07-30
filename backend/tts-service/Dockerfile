@@ -7,9 +7,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Python 依赖（轻量：httpx + edge-tts + FastAPI）
+# Python 依赖（离线安装，避免服务器网络慢）
+COPY wheels/ /tmp/wheels/
 COPY requirements-lite.txt .
-RUN pip install --upgrade pip && pip install --no-cache-dir -r requirements-lite.txt
+RUN pip install --no-cache-dir --no-index --find-links=/tmp/wheels -r requirements-lite.txt \
+    && rm -rf /tmp/wheels
 
 # 应用代码
 COPY app.py .
