@@ -5,6 +5,13 @@ spring:
     locations: classpath:db/migration
     baseline-on-migrate: true
 
+  # HikariCP 连接池：CI 中 Testcontainers 启动后首次连接可能较慢，增大超时+重试
+  datasource:
+    hikari:
+      connection-timeout: 30000
+      initialization-fail-timeout: 60000
+      maximum-pool-size: 10
+
   # Redis 由 Testcontainers 动态注入
   data:
     redis:

@@ -18,14 +18,14 @@ import { isAuthenticated, getUser, clearToken, isConsentDone, markConsentDone } 
  * 4. /parent?token=xxx → ParentReport（家长周报，无需登录）
  */
 export default function App() {
+  const [authed, setAuthed] = useState(() => isAuthenticated())
+  const [showConsent, setShowConsent] = useState(false)
+  const [session, setSession] = useState(null)
+
   // 家长周报路由（无需登录）
   if (window.location.pathname === '/parent') {
     return <ParentReport />
   }
-
-  const [authed, setAuthed] = useState(() => isAuthenticated())
-  const [showConsent, setShowConsent] = useState(false)
-  const [session, setSession] = useState(null)
   const user = getUser()
 
   const handleLogin = () => {

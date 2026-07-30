@@ -11,6 +11,8 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.DockerImageName;
 
+import java.time.Duration;
+
 /**
  * 集成测试基类（Testcontainers: PostgreSQL 16 + Redis 7）
  * <p>
@@ -33,13 +35,16 @@ public abstract class AbstractIntegrationTest {
             .withUsername("test")
             .withPassword("test")
             // 预装迁移依赖的扩展（vector/uuid-ossp/pgcrypto），在 Flyway 迁移前执行
-            .withInitScript("init-test-db.sql");
+            .withInitScript("init-test-db.sql")
+            // CI 环境镜像拉取+初始化较慢，增大启动超时（默认 60s）
+            .withStartupTimeout(Duration.ofSeconds(180));
 
     @Container
     @SuppressWarnings("resource")
     static GenericContainer<?> redis = new GenericContainer<>(
             DockerImageName.parse("redis:7-alpine"))
-            .withExposedPorts(6379);
+            .withExposedPorts(6379)
+            .withStartupTimeout(Duration.ofSeconds(60));
 
     @DynamicPropertySource
     static void configureProperties(DynamicPropertyRegistry registry) {
