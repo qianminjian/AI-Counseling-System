@@ -8,6 +8,7 @@
 #   ./deploy.sh --teacher    强制部署教师端
 #   ./deploy.sh --parent     强制部署家长端
 #   ./deploy.sh --tts        强制部署 TTS 服务
+#   ./deploy.sh --voice      强制部署 Voice 服务（ASR+SER）
 #   ./deploy.sh --rollback backend   回滚后端到上一版本
 # 前置条件：已 commit + push，CI 通过
 set -eo pipefail
@@ -25,6 +26,7 @@ FORCE_STUDENT=false
 FORCE_TEACHER=false
 FORCE_PARENT=false
 FORCE_TTS=false
+FORCE_VOICE=false
 ROLLBACK_TARGET=""
 
 while [[ $# -gt 0 ]]; do
@@ -35,6 +37,7 @@ while [[ $# -gt 0 ]]; do
     --teacher)  FORCE_TEACHER=true; shift ;;
     --parent)   FORCE_PARENT=true; shift ;;
     --tts)      FORCE_TTS=true; shift ;;
+    --voice)    FORCE_VOICE=true; shift ;;
     --rollback) ROLLBACK_TARGET="${2:-backend}"; shift 2 ;;
     *) echo "未知参数: $1"; exit 1 ;;
   esac
@@ -52,8 +55,12 @@ if [ -n "$ROLLBACK_TARGET" ]; then
       ssh "$SERVER" "cd $REMOTE_DIR && docker compose up -d --build tts-service"
       echo "✅ TTS 服务已重建"
       ;;
+    voice)
+      ssh "$SERVER" "cd $REMOTE_DIR && docker compose up -d --build voice-service"
+      echo "✅ Voice 服务已重建"
+      ;;
     *)
-      echo "❌ 不支持回滚: $ROLLBACK_TARGET（支持 backend / tts）"
+      echo "❌ 不支持回滚: $ROLLBACK_TARGET（支持 backend / tts / voice）"
       exit 1
       ;;
   esac
@@ -86,6 +93,7 @@ DEPLOY_STUDENT=$FORCE_STUDENT
 DEPLOY_TEACHER=$FORCE_TEACHER
 DEPLOY_PARENT=$FORCE_PARENT
 DEPLOY_TTS=$FORCE_TTS
+DEPLOY_VOICE=$FORCE_VOICE
 
 if $FORCE_ALL; then
   DEPLOY_BACKEND=true
@@ -93,7 +101,8 @@ if $FORCE_ALL; then
   DEPLOY_TEACHER=true
   DEPLOY_PARENT=true
   DEPLOY_TTS=true
-elif ! $FORCE_BACKEND && ! $FORCE_STUDENT && ! $FORCE_TEACHER && ! $FORCE_PARENT && ! $FORCE_TTS; then
+  DEPLOY_VOICE=true
+elif ! $FORCE_BACKEND && ! $FORCE_STUDENT && ! $FORCE_TEACHER && ! $FORCE_PARENT && ! $FORCE_TTS && ! $FORCE_VOICE; then
   # 自动检测模式：基于 git diff
   if [ -f "$STATE_FILE" ]; then
     LAST_COMMIT=$(grep '^LAST_DEPLOYED_COMMIT=' "$STATE_FILE" | cut -d= -f2)
@@ -106,6 +115,7 @@ elif ! $FORCE_BACKEND && ! $FORCE_STUDENT && ! $FORCE_TEACHER && ! $FORCE_PARENT
     DEPLOY_TEACHER=true
     DEPLOY_PARENT=true
     DEPLOY_TTS=true
+    DEPLOY_VOICE=true
   else
     echo "📋 检测变更（$LAST_COMMIT → HEAD）..."
     CHANGED=$(git diff --name-only "$LAST_COMMIT" HEAD)
@@ -117,13 +127,14 @@ elif ! $FORCE_BACKEND && ! $FORCE_STUDENT && ! $FORCE_TEACHER && ! $FORCE_PARENT
 
     # 路径映射
     echo "$CHANGED" | grep -q '^backend/tts-service/' && DEPLOY_TTS=true
-    echo "$CHANGED" | grep '^backend/' | grep -qv '^backend/tts-service/' && DEPLOY_BACKEND=true
+    echo "$CHANGED" | grep -q '^backend/voice-service/' && DEPLOY_VOICE=true
+    echo "$CHANGED" | grep '^backend/' | grep -qv '^backend/tts-service/' | grep -qv '^backend/voice-service/' && DEPLOY_BACKEND=true
     echo "$CHANGED" | grep -q '^frontend/student-h5/' && DEPLOY_STUDENT=true
     echo "$CHANGED" | grep -q '^frontend/teacher-web/' && DEPLOY_TEACHER=true
     echo "$CHANGED" | grep -q '^frontend/parent-h5/' && DEPLOY_PARENT=true
     # deploy.sh / docker-compose 变更 → 全量
     echo "$CHANGED" | grep -qE '^(deploy\.sh|deploy/)' && {
-      DEPLOY_BACKEND=true; DEPLOY_TTS=true
+      DEPLOY_BACKEND=true; DEPLOY_TTS=true; DEPLOY_VOICE=true
     }
   fi
 fi
@@ -135,6 +146,7 @@ $DEPLOY_STUDENT && COMPONENTS="$COMPONENTS student"
 $DEPLOY_TEACHER && COMPONENTS="$COMPONENTS teacher"
 $DEPLOY_PARENT && COMPONENTS="$COMPONENTS parent"
 $DEPLOY_TTS && COMPONENTS="$COMPONENTS tts"
+$DEPLOY_VOICE && COMPONENTS="$COMPONENTS voice"
 
 if [ -z "$COMPONENTS" ]; then
   echo "✅ 无需部署的组件变更"
@@ -198,10 +210,15 @@ if $DEPLOY_TTS; then
   rsync -avz --delete "$PROJECT_ROOT/backend/tts-service/" "$SERVER:$REMOTE_DIR/tts-service/"
 fi
 
+if $DEPLOY_VOICE; then
+  rsync -avz --delete "$PROJECT_ROOT/backend/voice-service/" "$SERVER:$REMOTE_DIR/voice-service/"
+fi
+
 # ===== 选择性重启（仅 backend/tts 需要） =====
 RESTART_SERVICES=""
 $DEPLOY_BACKEND && RESTART_SERVICES="$RESTART_SERVICES backend"
 $DEPLOY_TTS && RESTART_SERVICES="$RESTART_SERVICES tts-service"
+$DEPLOY_VOICE && RESTART_SERVICES="$RESTART_SERVICES voice-service"
 
 if [ -n "$RESTART_SERVICES" ]; then
   echo "🔄 重启容器:$RESTART_SERVICES"
