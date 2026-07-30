@@ -1,15 +1,23 @@
 package com.mindsafe.service.conversation;
 
+import com.mindsafe.ai.ally.AllianceEnhancer;
+import com.mindsafe.ai.cbt.CbtStageRouter;
 import com.mindsafe.ai.chat.AiChatService;
 import com.mindsafe.ai.orchestrator.EmotionStateMachine;
 import com.mindsafe.ai.orchestrator.EntryMoodStrategyResolver;
 import com.mindsafe.ai.orchestrator.PromptOrchestrationService;
 import com.mindsafe.ai.prompt.PromptTemplateService;
 import com.mindsafe.ai.risk.RiskDetectorService;
+import com.mindsafe.ai.risk.RiskScoreCalculator;
 import com.mindsafe.ai.risk.SemanticRiskClassifier;
 import com.mindsafe.ai.safety.ConfidentialityNotice;
+import com.mindsafe.ai.safety.CrisisResourceProvider;
 import com.mindsafe.ai.safety.CrisisResources;
 import com.mindsafe.ai.safety.PiiDesensitizer;
+import com.mindsafe.ai.orchestrator.PromptVariantRouter;
+import com.mindsafe.service.experiment.ExperimentBucketAssigner;
+import com.mindsafe.service.experiment.ExperimentMetricsCollector;
+import com.mindsafe.service.offline.OfflineMessageReplayService;
 import com.mindsafe.common.dto.chat.SessionInfo;
 import com.mindsafe.common.dto.chat.StreamMessageEvent;
 import com.mindsafe.common.dto.risk.RiskDetectionResult;
@@ -80,6 +88,15 @@ class ConversationServiceImplTest {
     private RagAdvisorService ragAdvisorService;
     private SemanticRiskClassifier semanticRiskClassifier;
     private ConversationQualityService conversationQualityService;
+    private RiskScoreCalculator riskScoreCalculator;
+    private CrisisResourceProvider crisisResourceProvider;
+    private AllianceEnhancer allianceEnhancer;
+    private CbtStageRouter cbtStageRouter;
+    private ExperimentBucketAssigner experimentBucketAssigner;
+    private ExperimentMetricsCollector experimentMetricsCollector;
+    private SessionEndAnalyticsService sessionEndAnalyticsService;
+    private PromptVariantRouter promptVariantRouter;
+    private OfflineMessageReplayService offlineMessageReplayService;
 
     private ConversationServiceImpl service;
 
@@ -105,6 +122,26 @@ class ConversationServiceImplTest {
         ragAdvisorService = mock(RagAdvisorService.class);
         semanticRiskClassifier = mock(SemanticRiskClassifier.class);
         conversationQualityService = mock(ConversationQualityService.class);
+        riskScoreCalculator = mock(RiskScoreCalculator.class);
+        crisisResourceProvider = new CrisisResourceProvider();
+        allianceEnhancer = mock(AllianceEnhancer.class);
+        cbtStageRouter = mock(CbtStageRouter.class);
+        experimentBucketAssigner = mock(ExperimentBucketAssigner.class);
+        experimentMetricsCollector = mock(ExperimentMetricsCollector.class);
+        sessionEndAnalyticsService = mock(SessionEndAnalyticsService.class);
+        promptVariantRouter = mock(PromptVariantRouter.class);
+        offlineMessageReplayService = mock(OfflineMessageReplayService.class);
+
+        // AB-001: 默认分桶结果
+        when(experimentBucketAssigner.assignClass(anyString(), anyString(), any()))
+                .thenReturn(new ExperimentBucketAssigner.Assignment(
+                        ExperimentBucketAssigner.Variant.CONTROL, 10, false, true));
+        // CBT-201: 默认年龄策略
+        when(cbtStageRouter.resolveAgeStrategy(anyInt()))
+                .thenReturn(CbtStageRouter.AgeStrategy.BALANCED);
+        // RISK-203: 风险评分默认结果
+        when(riskScoreCalculator.calculate(any()))
+                .thenReturn(new RiskScoreCalculator.ScoreResult(50, RiskLevel.YELLOW, List.of("test_reason")));
 
         // AI-005: PromptVersionService 默认返回 classpath 降级结果
         when(promptVersionService.resolve(any(), anyString(), any(), anyMap()))
@@ -131,7 +168,11 @@ class ConversationServiceImplTest {
                 conversationQualityService,
                 // R-01：未配密钥的真实加密服务 → 明文透传，不影响 contentSummary 断言
                 new com.mindsafe.service.security.FieldEncryptionService(
-                        "", 1, "", new org.springframework.core.env.StandardEnvironment()));
+                        "", 1, "", new org.springframework.core.env.StandardEnvironment()),
+                riskScoreCalculator, crisisResourceProvider,
+                allianceEnhancer, cbtStageRouter,
+                experimentBucketAssigner, experimentMetricsCollector,
+                sessionEndAnalyticsService, promptVariantRouter, offlineMessageReplayService);
     }
 
     /** createSession 并捕获内部生成的 sessionId */
@@ -320,7 +361,11 @@ class ConversationServiceImplTest {
                     profileExtractorService, usageTimeLimitService, longTermMemoryService, promptVersionService,
                     ragAdvisorService, semanticRiskClassifier,
                     new PromptOrchestrationService(new EntryMoodStrategyResolver(), new EmotionStateMachine()),
-                    conversationQualityService, keyedEnc);
+                    conversationQualityService, keyedEnc,
+                    riskScoreCalculator, crisisResourceProvider,
+                    allianceEnhancer, cbtStageRouter,
+                    experimentBucketAssigner, experimentMetricsCollector,
+                    sessionEndAnalyticsService, promptVariantRouter, offlineMessageReplayService);
 
             User user = new User();
             user.setPseudonym("小明");

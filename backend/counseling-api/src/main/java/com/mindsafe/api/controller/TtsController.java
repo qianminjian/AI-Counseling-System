@@ -5,6 +5,8 @@ import com.mindsafe.api.security.JwtAuthenticationFilter.TenantContext;
 import com.mindsafe.common.dto.ApiResponse;
 import com.mindsafe.service.tts.VoiceDegradationPolicy;
 import com.mindsafe.service.tts.VoicePersonaMatcher;
+import com.mindsafe.service.tts.TtsPipelineScheduler;
+import com.mindsafe.service.tts.VoiceEffectivenessTracker;
 import com.mindsafe.service.voice.VoicePersonaResolver;
 import com.mindsafe.service.voice.VoiceRenderProfile;
 import org.slf4j.Logger;
@@ -38,13 +40,18 @@ public class TtsController {
     private final VoicePersonaResolver personaResolver;
     private final VoiceDegradationPolicy degradationPolicy;
     private final VoicePersonaMatcher personaMatcher;
+    private final TtsPipelineScheduler pipelineScheduler;
+    private final VoiceEffectivenessTracker effectivenessTracker;
 
     public TtsController(TtsService ttsService, VoicePersonaResolver personaResolver,
-                         VoiceDegradationPolicy degradationPolicy, VoicePersonaMatcher personaMatcher) {
+                         VoiceDegradationPolicy degradationPolicy, VoicePersonaMatcher personaMatcher,
+                         TtsPipelineScheduler pipelineScheduler, VoiceEffectivenessTracker effectivenessTracker) {
         this.ttsService = ttsService;
         this.personaResolver = personaResolver;
         this.degradationPolicy = degradationPolicy;
         this.personaMatcher = personaMatcher;
+        this.pipelineScheduler = pipelineScheduler;
+        this.effectivenessTracker = effectivenessTracker;
     }
 
     /**
@@ -147,5 +154,53 @@ public class TtsController {
                 "service", "tts",
                 "engine", available ? "cosyvoice2/edge-tts" : "unavailable"
         ));
+    }
+
+    // ===== TTSFX-003：延迟流水线 + 帧率性能自动降级 =====
+
+    /**
+     * TTS 流水线调度（句子级延迟预算评估）
+     */
+    @PostMapping("/pipeline/schedule")
+    public ApiResponse<Map<String, Object>> schedulePipeline(@RequestBody Map<String, Object> request) {
+        String text = (String) request.getOrDefault("text", "");
+        int sentenceIndex = request.containsKey("sentenceIndex")
+                ? ((Number) request.get("sentenceIndex")).intValue() : 0;
+        boolean isLast = Boolean.TRUE.equals(request.get("isLast"));
+
+        TtsPipelineScheduler.SentenceTask task = new TtsPipelineScheduler.SentenceTask(
+                sentenceIndex, text, sentenceIndex == 0, false);
+        TtsPipelineScheduler.ScheduleResult result = pipelineScheduler.schedule(task);
+
+        return ApiResponse.ok(Map.of(
+                "sentenceIndex", result.sentenceIndex(),
+                "immediatePlay", result.immediatePlay(),
+                "parallelSynth", result.parallelSynth(),
+                "strategy", result.strategy()));
+    }
+
+    // ===== TMATCH-003：音色效果回收 =====
+
+    /**
+     * 音色效果评估（完成率/切换/参与度）
+     */
+    @PostMapping("/effectiveness/evaluate")
+    public ApiResponse<Map<String, Object>> evaluateEffectiveness(@RequestBody Map<String, Object> request) {
+        String voiceId = (String) request.getOrDefault("voiceId", "default");
+        int totalSessions = request.containsKey("totalSessions")
+                ? ((Number) request.get("totalSessions")).intValue() : 0;
+        double avgCompletion = request.containsKey("avgCompletionRate")
+                ? ((Number) request.get("avgCompletionRate")).doubleValue() : 0;
+        int switchCount = request.containsKey("manualSwitchCount")
+                ? ((Number) request.get("manualSwitchCount")).intValue() : 0;
+
+        VoiceEffectivenessTracker.VoiceMetrics metrics = new VoiceEffectivenessTracker.VoiceMetrics(
+                voiceId, totalSessions, avgCompletion, switchCount, 0, 0);
+        VoiceEffectivenessTracker.EffectivenessVerdict verdict = effectivenessTracker.evaluate(metrics);
+
+        return ApiResponse.ok(Map.of(
+                "effective", verdict.effective(),
+                "reason", verdict.reason(),
+                "suggestRuleChange", verdict.suggestRuleChange()));
     }
 }

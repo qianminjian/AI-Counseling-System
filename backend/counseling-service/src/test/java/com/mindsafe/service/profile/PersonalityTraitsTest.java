@@ -40,6 +40,8 @@ class PersonalityTraitsTest {
     @Mock
     private AiChatService aiChatService;
 
+    private final ProfileMergeGate profileMergeGate = new ProfileMergeGate();
+
     private StudentProfileService studentProfileService;
     private ProfileExtractorService profileExtractorService;
 
@@ -49,7 +51,7 @@ class PersonalityTraitsTest {
     @BeforeEach
     void setUp() {
         studentProfileService = new StudentProfileService(profileMapper, sessionMapper, riskEventMapper);
-        profileExtractorService = new ProfileExtractorService(aiChatService, profileMapper);
+        profileExtractorService = new ProfileExtractorService(aiChatService, profileMapper, profileMergeGate);
     }
 
     @Nested

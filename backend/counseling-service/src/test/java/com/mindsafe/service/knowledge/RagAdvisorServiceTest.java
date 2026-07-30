@@ -27,6 +27,7 @@ import static org.mockito.Mockito.when;
 class RagAdvisorServiceTest {
 
     private KnowledgeBaseService knowledgeBaseService;
+    private HybridRetrievalService hybridRetrievalService;
     private RagAdvisorService service;
 
     private final UUID tenantId = UUID.randomUUID();
@@ -34,7 +35,8 @@ class RagAdvisorServiceTest {
     @BeforeEach
     void setUp() {
         knowledgeBaseService = mock(KnowledgeBaseService.class);
-        service = new RagAdvisorService(knowledgeBaseService);
+        hybridRetrievalService = mock(HybridRetrievalService.class);
+        service = new RagAdvisorService(knowledgeBaseService, hybridRetrievalService);
     }
 
     private KnowledgeChunk chunk(String title, String category, String content) {

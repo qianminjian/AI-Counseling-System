@@ -48,6 +48,15 @@ class LongTermMemoryServiceTest {
     @Mock
     private MemoryProfileBackfillService backfillService;
 
+    @Mock
+    private MemoryRiskCorrelator memoryRiskCorrelator;
+
+    @Mock
+    private MemoryRelevanceScorer memoryRelevanceScorer;
+
+    @Mock
+    private ThemeEvolutionEngine themeEvolutionEngine;
+
     private LongTermMemoryService service;
 
     private final UUID tenantId = UUID.randomUUID();
@@ -57,7 +66,8 @@ class LongTermMemoryServiceTest {
     @BeforeEach
     void setUp() {
         service = new LongTermMemoryService(
-                memoryMapper, aiChatService, new ObjectMapper(), backfillService);
+                memoryMapper, aiChatService, new ObjectMapper(), backfillService,
+                memoryRiskCorrelator, memoryRelevanceScorer, themeEvolutionEngine);
         // selectCount 两处调用（幂等检查 + evict），返回 0 同时满足
         when(memoryMapper.selectCount(any())).thenReturn(0L);
     }

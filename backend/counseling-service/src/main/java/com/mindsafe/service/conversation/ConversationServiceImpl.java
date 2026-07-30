@@ -2,8 +2,10 @@ package com.mindsafe.service.conversation;
 
 import com.mindsafe.ai.ally.AllianceEnhancer;
 import com.mindsafe.ai.cbt.CbtStageRouter;
+import com.mindsafe.ai.orchestrator.PromptVariantRouter;
 import com.mindsafe.service.experiment.ExperimentBucketAssigner;
 import com.mindsafe.service.experiment.ExperimentMetricsCollector;
+import com.mindsafe.service.offline.OfflineMessageReplayService;
 import com.mindsafe.ai.chat.AiChatService;
 import com.mindsafe.ai.orchestrator.OrchestrationContext;
 import com.mindsafe.ai.orchestrator.ProfileSignals;
@@ -88,6 +90,9 @@ public class ConversationServiceImpl implements ConversationService {
     private final CbtStageRouter cbtStageRouter;
     private final ExperimentBucketAssigner experimentBucketAssigner;
     private final ExperimentMetricsCollector experimentMetricsCollector;
+    private final SessionEndAnalyticsService sessionEndAnalyticsService;
+    private final PromptVariantRouter promptVariantRouter;
+    private final OfflineMessageReplayService offlineMessageReplayService;
 
     /** 活跃会话内存缓存（emotionTag 等非 DB 字段 + 轮次计数） */
     private final Map<UUID, SessionState> activeSessions = new ConcurrentHashMap<>();
@@ -119,7 +124,10 @@ public class ConversationServiceImpl implements ConversationService {
                                    AllianceEnhancer allianceEnhancer,
                                    CbtStageRouter cbtStageRouter,
                                    ExperimentBucketAssigner experimentBucketAssigner,
-                                   ExperimentMetricsCollector experimentMetricsCollector) {
+                                   ExperimentMetricsCollector experimentMetricsCollector,
+                                   SessionEndAnalyticsService sessionEndAnalyticsService,
+                                   PromptVariantRouter promptVariantRouter,
+                                   OfflineMessageReplayService offlineMessageReplayService) {
         this.aiChatService = aiChatService;
         this.promptTemplateService = promptTemplateService;
         this.riskDetectorService = riskDetectorService;
@@ -145,6 +153,9 @@ public class ConversationServiceImpl implements ConversationService {
         this.cbtStageRouter = cbtStageRouter;
         this.experimentBucketAssigner = experimentBucketAssigner;
         this.experimentMetricsCollector = experimentMetricsCollector;
+        this.sessionEndAnalyticsService = sessionEndAnalyticsService;
+        this.promptVariantRouter = promptVariantRouter;
+        this.offlineMessageReplayService = offlineMessageReplayService;
     }
 
     @Override
@@ -161,8 +172,18 @@ public class ConversationServiceImpl implements ConversationService {
         String pseudonym = (user != null) ? user.getPseudonym() : null;
         int grade = parseGradeCode(user != null ? user.getGradeCode() : null);
         
-        // 3. 问候语个性化：“哈喽，[昵称]！” + 情绪问候（唤醒词 onboarding，design/28 §2.2）
+        // 3. 问候语个性化："哈喽，[昵称]！" + 情绪问候（唤醒词 onboarding，design/28 §2.2）
         String greeting = buildGreeting(emotionTag, pseudonym);
+        
+        // ORCH-007：EMO-001 A/B 开场策略路由（确定性分桶，CRISIS 强制走 A）
+        try {
+            PromptVariantRouter.RouteResult variantRoute = promptVariantRouter.route(
+                    studentUserId.toString(), "emo001", null);
+            log.debug("开场策略路由: student={}, variant={}, bucket={}",
+                    studentUserId, variantRoute.variant(), variantRoute.bucket());
+        } catch (Exception e) {
+            log.debug("开场策略路由降级: {}", e.getMessage());
+        }
 
         // 3.5 SAFE-201：首次会话注入保密边界告知（design/14 §12.3，预审核模板）。
         // 告知完成标记复用 message_summary：senderType='ai' + turnCount=0（正常 AI 摘要 turn>=1，具唯一区分性），
@@ -218,6 +239,17 @@ public class ConversationServiceImpl implements ConversationService {
         int turn = session.turnCount.incrementAndGet();
         log.debug("收到消息: sessionId={}, turn={}, length={}, voiceEmotion={}",
                 sessionId, turn, content.length(), voiceEmotion);
+
+        // TOOL-003：离线消息幂等去重（clientMsgId 由前端传入，缺省时跳过）
+        // 当前版本：仅记录能力接入点，待前端支持 clientMsgId 后启用完整去重
+        if (content != null && content.startsWith("[offline_replay]")) {
+            var dedup = offlineMessageReplayService.deduplicate(
+                    sessionId + "_" + turn, java.util.Set.of());
+            if (!dedup.accepted()) {
+                log.info("离线消息重复，跳过: sessionId={}, turn={}", sessionId, turn);
+                return Flux.empty();
+            }
+        }
 
         // AUTH-030：累计每日使用时长（按距上次消息的间隔，上限 5 分钟）
         long elapsedSec = session.markActiveAndElapsed();
@@ -562,6 +594,18 @@ public class ConversationServiceImpl implements ConversationService {
                     .filter(Objects::nonNull)
                     .toList();
             profileService.updateProfile(session.tenantId, session.studentUserId, voiceEmotions);
+
+            // RISK-204 / ORCH-008 / PROF-024：会话结束分析（趋势+效果量化，异步不阻塞）
+            try {
+                sessionEndAnalyticsService.analyze(
+                        session.tenantId, session.studentUserId,
+                        voiceEmotions, // 近期情绪（当前仅本会话，后续扩展跨会话查询）
+                        session.emotionLabels(),
+                        List.of(), // studentMessages 待后续从 DB 补充
+                        session.emotionTag);
+            } catch (Exception e) {
+                log.debug("会话结束分析降级: {}", e.getMessage());
+            }
         }
     }
 
