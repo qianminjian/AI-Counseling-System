@@ -376,11 +376,11 @@
 
 | 任务ID | 任务描述 | 状态 | Sprint |
 |--------|----------|------|--------|
-| TEST-001 | 后端单测覆盖率 → 80%（JaCoCo 门禁） | ❌ 门禁失效（撤回✅） | A — 三层假象：pom 阈值 0.30 无 check execution、CI -Pcoverage profile 不存在、jacoco-aggregate 永不生成致 CI 恒走 skip 分支，见审计 Q-01；fix-10 修真中 |
+| TEST-001 | 后端单测覆盖率 → 80%（JaCoCo 门禁） | 🟡 门禁已修真，基线 46%（目标 80%） | A — fix-10 已完成（2026-07-29）：counseling-app report-aggregate verify 阶段生成聚合报告；CI 门禁报告缺失即失败+行覆盖≥40%（当前 46%）；目标随迭代逐步升至 80% |
 | TEST-002 | 前端组件测试（Vitest + Testing Library） | ✅ 已完成 | C |
 | TEST-003 | E2E 扩展（12 → 30+ 用例） | ✅ 已完成 | C |
 | TEST-004 | 性能压测基线（k6，100 并发 SSE） | ✅ 完成 | E |
-| TEST-005 | CI 增强（覆盖率门禁 + 依赖扫描 + 缓存） | 🟧 部分失效（撤回✅） | A — 覆盖率门禁失效（见 TEST-001）、Trivy exit-code=0 不阻断、AuthFlowIT 从不执行（CI 只跑 mvn test 不跑 verify），见审计 Q-01/Q-03；fix-10 修真中 |
+| TEST-005 | CI 增强（覆盖率门禁 + 依赖扫描 + 缓存） | ✅ 完成（fix-10，2026-07-29） | A — fix-10 已修真：mvn verify（surefire+failsafe）替代 mvn test；Trivy exit-code=1 阻断 CRITICAL/HIGH；AuthFlowIT 正常执行（CI Docker）/本地 disabledWithoutDocker 优雅跳过；CI 触发分支加入 develop |
 | TEST-006 | 前后端契约测试（OpenAPI + mock 校验） | ⏳ 待开始 | 远期 |
 
 ### DevOps 与运维能力（P1）
@@ -745,7 +745,7 @@
 | 28 | 语音唤醒与冷场引导 | 🔵 | 冷场决策(NudgeDecisionModel)已生效核对；与 47/48 语音闭环对齐；唤醒授权措辞（合规） | P1 | 钱敏健+Agent | ✅ 已深化（§十二，2026-07-28，三功能全部落地 🟩，xiaotaiyang 已修复；授权措辞+唤醒词入待确认清单） |
 | 29 | 学生画像与年龄适配 | 🔵 | 核心竞争力（近期）：与 46 画像闭环、44 编排 personality 层衔接 | P1 | Agent | ✅ 已深化（§十，2026-07-28，实现领先于文档：五断裂点已全部修复 🟩） |
 | 30 | 产品全景优化规划 | 🔵 | 路线图纳入 DEC-CBT 落地 + 本设计深化批次；Sprint 节奏对齐 | P2 | 钱敏健+Agent | ✅ 已深化（§十七，2026-07-28，Sprint A-E 已被超越不再按表执行；上线门禁=量表合规+RAG 空库；BIZ-001 挂起待 07） |
-| 31 | 等保二级差距评估 | 🔵 | 合规路径随部署推进（非开发） | P2 | 钱敏健 | 🟧 结论撤回（2026-07-29 审计）后部分修复：fix-03 加密接线 / fix-07 prod profile 激活 / fix-08 TLS+wss+origin 收敛已完（§一已更新）；仍待：fix-10 CI 修真 + SecurityConfig anyRequest().permitAll() 收紧，完成后重评等保结论 |
+| 31 | 等保二级差距评估 | 🔵 | 合规路径随部署推进（非开发） | P2 | 钱敏健 | 🟧 结论撤回（2026-07-29 审计）后大部分修复：fix-03 加密接线 / fix-07 prod profile 激活 / fix-08 TLS+wss+origin 收敛 / fix-10 CI 门禁修真（2026-07-29）均已完；仍待：SecurityConfig anyRequest().permitAll() 收紧，完成后重评等保结论 |
 | 32 | 商用发布前置待办 | 🔵 | 补量表施测合规门禁项；与本追踪表联动 | P1 | 钱敏健 | ⬜ 待深化 |
 | 33 | 系统测试培训手册 | 🔵 | 编排/量表/工具箱上线后补测试点 | P2 | Agent | ⬜ 待深化 |
 | 34 | 心理量表数字化 | 🟢 | 近期已深化；施测接线**上线门禁**(SCALE-001/002)待钱敏健决策 | P1 | 钱敏健+Agent | 🟢 维护 |
