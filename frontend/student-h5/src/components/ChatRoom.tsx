@@ -4,6 +4,7 @@ import VoiceCallConsentDialog, { useVoiceCallConsent } from './VoiceCallConsentD
 import SatisfactionDialog from './SatisfactionDialog'
 import SettingsPanel from './SettingsPanel'
 import BoBoPet from './BoBoPet'
+import DraggableVoiceButton from './DraggableVoiceButton'
 import MessageBubble, { EMOTION_EMOJI } from './MessageBubble'
 import { useTheme } from '../theme/ThemeProvider'
 import { useVoicePersona } from '../hooks/useVoicePersona'
@@ -541,7 +542,11 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: an
           </p>
           <p className="mt-3 text-sm text-gray-400">
             {recording ? '松开手指发送，上滑取消'
-              : voiceCall.mode === 'standby' ? '我在这里安静地等你叫我'
+              : voiceCall.mode === 'standby'
+                ? (voiceCall.wakeStatus === 'loading' ? '正在加载语音引擎...' :
+                   voiceCall.wakeStatus === 'listening' ? '我在这里安静地等你叫我' :
+                   voiceCall.wakeStatus === 'error' ? '语音引擎加载失败，请关闭再开启' :
+                   '我在这里安静地等你叫我')
               : voiceCall.mode === 'active' ? '不用按，直接说就行'
               : '按住波波，跟它说说话'}
           </p>
@@ -602,13 +607,6 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: an
             )}
 
             <div className="relative flex gap-3 max-w-lg lg:max-w-2xl mx-auto items-center">
-              {/* 波波悬浮输入框右上角（手机，design/27 §4.5/§5.4）：按住说话，删除麦克风按钮 */}
-              {/* -top-20 让波波悬于输入栏上方不遮挡发送按钮；气泡右对齐向左展开防溢出 */}
-              {supported && (
-                <div className="lg:hidden absolute -top-20 right-1 z-30">
-                  {boBoPet(72, 'right')}
-                </div>
-              )}
               <input
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
@@ -633,6 +631,21 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: an
           </footer>
         </div>
       </div>
+
+      {/* 手机端可拖拽悬浮语音按钮（design/27 §5.4） */}
+      {supported && (
+        <div className="lg:hidden">
+          <DraggableVoiceButton
+            disabled={streaming || analyzing}
+            onPointerDown={handleVoicePointerDown}
+            onPointerMove={handleVoicePointerMove}
+            onPointerUp={handleVoicePointerUp}
+            onPointerCancel={handleVoicePointerCancel}
+          >
+            {boBoPet(60, 'right')}
+          </DraggableVoiceButton>
+        </div>
+      )}
 
       {/* 语音授权弹窗（合规） */}
       {showConsent && (

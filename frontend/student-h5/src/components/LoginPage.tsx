@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { pinLogin, setToken, setRefreshToken, setUser } from '../api'
 import { CONSENT_VERSION } from './ConsentGate'
 import { useWakeWord } from '../hooks/useWakeWord'
-import { hasAnyVoiceprint } from '../utils/voiceprintStore'
+import { hasAnyVoiceprint, enrollVoiceprint } from '../utils/voiceprintStore'
 import { VP_IDLE_TIMEOUT } from '../config/voiceprint'
 import { useTheme, THEMES } from '../theme/ThemeProvider'
 import VoiceLoginOverlay from './VoiceLoginOverlay'
@@ -338,6 +338,8 @@ function RegisterForm({ themeId, onRegister }) {
   const [pinConfirm, setPinConfirm] = useState('')
   const [pinStep, setPinStep] = useState('input')
   const [pinError, setPinError] = useState('')
+  const [regUserId, setRegUserId] = useState(null) // 注册成功后的 userId（声纹采集用）
+  const [hasVoiceprint, setHasVoiceprint] = useState(false) // 是否已完成声纹采集
 
   const update = (key, value) => { setForm((f) => ({ ...f, [key]: value })); setError('') }
 
@@ -369,6 +371,7 @@ function RegisterForm({ themeId, onRegister }) {
       if (data.refreshToken) srt(data.refreshToken)
       su({ userId: data.userId, userType: data.userType, pseudonym: data.pseudonym, gender: form.gender, familyCode: data.familyCode })
       markConsentDone()
+      setRegUserId(data.userId)
       setStep('set-pin')
     } catch (err) {
       setError(err.message || '注册失败，请检查邀请码')
@@ -402,13 +405,68 @@ function RegisterForm({ themeId, onRegister }) {
     try {
       const { setPin: sp } = await import('../api')
       await sp(pin)
-      setStep('done')
+      // PIN 设置成功：若用户同意了声纹采集，进入声纹选择步骤（而非直接采集）
+      if (voiceConsent && regUserId) {
+        setStep('voice-choice')
+      } else {
+        setStep('done')
+      }
     } catch (err) {
       setPinError(err.message || '设置失败')
     }
   }
 
   const pinIndicator = themeId === 'ocean' ? 'pin-pearl' : themeId === 'garden' ? 'pin-jar' : 'pin-orb'
+
+  // === 声纹采集选择（注册后、PIN 设置后的中间步） ===
+  if (step === 'voice-choice') {
+    return (
+      <div className={`done-panel done-panel--${themeId}`}>
+        <span className="emoji">🎤</span>
+        <h2>要录入你的声音吗？</h2>
+        <p style={{ margin: '12px 0', lineHeight: 1.6, fontSize: 14, opacity: 0.8 }}>
+          录入后，下次登录时只要对波波说句话就能直接进入，<br />不用输秘密数字啦！
+        </p>
+        <p style={{ fontSize: 12, opacity: 0.5, marginBottom: 20 }}>
+          🔒 声音只保存在这台设备上，不会上传到任何服务器
+        </p>
+        <button
+          className={`btn-enter btn-enter--${themeId}`}
+          onClick={() => setStep('voice-enroll')}
+        >
+          好呀，现在录入！🎤
+        </button>
+        <button
+          className={`skip-pin skip-pin--${themeId}`}
+          style={{ marginTop: 12 }}
+          onClick={() => setStep('done')}
+        >
+          以后再说，先用秘密数字
+        </button>
+      </div>
+    )
+  }
+
+  // === 声纹采集（引导对话） ===
+  if (step === 'voice-enroll') {
+    return (
+      <VoiceLoginOverlay
+        mode="enroll"
+        onComplete={async (result) => {
+          if (result.embeddings && result.embeddings.length > 0) {
+            try {
+              await enrollVoiceprint(regUserId, form.pseudonym.trim(), result.embeddings)
+              setHasVoiceprint(true)
+            } catch (e) {
+              console.warn('[声纹注册] 存储失败:', e)
+            }
+          }
+          setStep('done')
+        }}
+        onCancel={() => setStep('done')}
+      />
+    )
+  }
 
   // === 注册成功 ===
   if (step === 'done') {
@@ -417,6 +475,11 @@ function RegisterForm({ themeId, onRegister }) {
         <span className="emoji">🎉</span>
         <h2>注册成功！</h2>
         <p>下次打开时用昵称和秘密数字就能登录啦</p>
+        {!hasVoiceprint && (
+          <p style={{ fontSize: 12, opacity: 0.55, marginTop: 8 }}>
+            💡 也可以在「设置」里录入声纹，用声音登录更方便
+          </p>
+        )}
         <button className={`btn-enter btn-enter--${themeId}`} onClick={onRegister} style={{ marginTop: 18 }}>
           开始使用 🚀
         </button>
@@ -459,7 +522,10 @@ function RegisterForm({ themeId, onRegister }) {
           {pinStep === 'input' ? '下一步' : '确认设置'}
         </button>
 
-        <button className={`skip-pin skip-pin--${themeId}`} onClick={() => setStep('done')}>
+        <button className={`skip-pin skip-pin--${themeId}`} onClick={() => {
+          if (voiceConsent && regUserId) setStep('voice-choice')
+          else setStep('done')
+        }}>
           先不设置，以后再说
         </button>
       </div>

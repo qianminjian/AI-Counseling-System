@@ -11,19 +11,26 @@ import { useState, useEffect } from 'react'
 import { useTheme, THEMES } from '../theme/ThemeProvider'
 import { useVoicePersona, VOICE_PERSONAS } from '../hooks/useVoicePersona'
 import { api, getUser } from '../api'
+import { hasAnyVoiceprint, deleteVoiceprint, enrollVoiceprint } from '../utils/voiceprintStore'
+import VoiceLoginOverlay from './VoiceLoginOverlay'
 
 export default function SettingsPanel({ open, onClose, muted, onToggleMute, wakeSupported = false, wakeOn = false, onToggleWake }) {
   const { themeId, changeTheme } = useTheme()
   const { personaId, changePersona } = useVoicePersona()
-  const [familyCode, setFamilyCode] = useState(getUser()?.familyCode || '')
+  const [familyCode, setFamilyCode] = useState<string>((getUser()?.familyCode as string) || '')
   const [copied, setCopied] = useState(false)
+  const [hasVoiceprint, setHasVoiceprint] = useState(false)
+  const [showEnroll, setShowEnroll] = useState(false)
 
-  // 打开时如果 sessionStorage 没有 familyCode，从后端获取
+  // 打开时检查声纹状态 + 获取 familyCode
   useEffect(() => {
-    if (open && !familyCode) {
-      api('/api/v1/auth/me').then((data) => {
-        if (data?.familyCode) setFamilyCode(data.familyCode)
-      }).catch(() => {})
+    if (open) {
+      hasAnyVoiceprint().then(setHasVoiceprint)
+      if (!familyCode) {
+        api('/api/v1/auth/me').then((data) => {
+          if (data?.familyCode) setFamilyCode(data.familyCode)
+        }).catch(() => {})
+      }
     }
   }, [open])
 
@@ -35,6 +42,28 @@ export default function SettingsPanel({ open, onClose, muted, onToggleMute, wake
   }
 
   if (!open) return null
+
+  // 声纹采集覆盖层（重新录入）
+  if (showEnroll) {
+    const user = getUser()
+    return (
+      <VoiceLoginOverlay
+        mode="enroll"
+        onComplete={async (result) => {
+          if (result.embeddings && result.embeddings.length > 0 && user?.userId) {
+            try {
+              await enrollVoiceprint(user.userId, user.pseudonym || '', result.embeddings)
+              setHasVoiceprint(true)
+            } catch (e) {
+              console.warn('[声纹重录] 存储失败:', e)
+            }
+          }
+          setShowEnroll(false)
+        }}
+        onCancel={() => setShowEnroll(false)}
+      />
+    )
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center">
@@ -148,7 +177,7 @@ export default function SettingsPanel({ open, onClose, muted, onToggleMute, wake
                   {!wakeSupported ? '当前设备不支持' : wakeOn ? '语音唤醒已开启' : '语音唤醒已关闭'}
                 </p>
                 <p className="text-xs text-gray-400">
-                  {!wakeSupported ? '需要支持麦克风和 AudioWorklet 的浏览器' : wakeOn ? '直接说"哈喽波波"就能叫我' : '开启后说"哈喽波波"就能和我说话'}
+                  {!wakeSupported ? '需要支持麦克风和 AudioWorklet 的浏览器' : wakeOn ? '直接说“哈喽波波”就能叫我' : '开启后说“哈喽波波”就能和我说话'}
                 </p>
               </div>
             </div>
@@ -160,6 +189,55 @@ export default function SettingsPanel({ open, onClose, muted, onToggleMute, wake
               }`} />
             </div>
           </button>
+        </section>
+        
+        {/* 声纹登录管理 */}
+        <section className="mb-4">
+          <h3 className="mb-3 text-sm font-semibold text-gray-500">🎤 声纹登录</h3>
+          {hasVoiceprint ? (
+            <div className="flex w-full items-center justify-between rounded-2xl border-2 border-green-100 bg-green-50 p-4">
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">✅</span>
+                <div className="text-left">
+                  <p className="text-sm font-medium text-gray-700">声纹已录入</p>
+                  <p className="text-xs text-gray-400">登录页可用声音直接登录</p>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={async () => {
+                    const user = getUser()
+                    if (user?.userId) {
+                      await deleteVoiceprint(user.userId)
+                      setHasVoiceprint(false)
+                    }
+                  }}
+                  className="rounded-xl bg-red-50 px-3 py-2 text-xs font-bold text-red-500 active:scale-95 transition-all"
+                >
+                  删除
+                </button>
+                <button
+                  onClick={() => setShowEnroll(true)}
+                  className="rounded-xl bg-[var(--primary)] px-3 py-2 text-xs font-bold text-white active:scale-95 transition-all"
+                >
+                  重新录入
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-2xl border-2 border-dashed border-[var(--primary)] bg-[var(--primary-light)] p-4 text-center">
+              <p className="text-2xl mb-2">🎤</p>
+              <p className="text-sm font-medium text-gray-700 mb-1">还没录入声纹</p>
+              <p className="text-xs text-gray-400 mb-3">录入后登录时只要对波波说句话就能直接进入，<br />不用输秘密数字啦！</p>
+              <button
+                onClick={() => setShowEnroll(true)}
+                className="rounded-xl bg-[var(--primary)] px-6 py-2.5 text-sm font-bold text-white active:scale-95 transition-all shadow-md"
+              >
+                现在录入 🎤
+              </button>
+            </div>
+          )}
+          <p className="mt-2 text-center text-[10px] text-gray-300">声音信息只保存在这台设备上，不会上传到任何服务器</p>
         </section>
 
         {/* 我的家庭码（家长绑定用） */}

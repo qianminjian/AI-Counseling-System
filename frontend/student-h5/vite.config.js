@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import basicSsl from '@vitejs/plugin-basic-ssl'
 import { VitePWA } from 'vite-plugin-pwa'
-import { copyFileSync, mkdirSync, rmSync, existsSync, readdirSync } from 'node:fs'
+import { copyFileSync, mkdirSync, rmSync, existsSync, readdirSync, readFileSync } from 'node:fs'
 import { resolve, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -17,20 +17,20 @@ const __dirname = fileURLToPath(new URL('.', import.meta.url))
  * 说明：asyncify 变体供 Chrome/Android 等，plain 变体供 Safari/iOS（与 transformers 默认选择一致）。
  */
 function copyOnnxWasm() {
+  const ORT_FILES = [
+    'ort-wasm-simd-threaded.asyncify.mjs',
+    'ort-wasm-simd-threaded.asyncify.wasm',
+    'ort-wasm-simd-threaded.mjs',
+    'ort-wasm-simd-threaded.wasm',
+  ]
   return {
     name: 'copy-onnx-wasm',
     apply: 'build',
     closeBundle() {
       const src = resolve(__dirname, 'node_modules/onnxruntime-web/dist')
       const outDir = resolve(__dirname, 'dist/ort')
-      const files = [
-        'ort-wasm-simd-threaded.asyncify.mjs',
-        'ort-wasm-simd-threaded.asyncify.wasm',
-        'ort-wasm-simd-threaded.mjs',
-        'ort-wasm-simd-threaded.wasm',
-      ]
       mkdirSync(outDir, { recursive: true })
-      for (const f of files) {
+      for (const f of ORT_FILES) {
         copyFileSync(join(src, f), join(outDir, f))
       }
       const assetsDir = resolve(__dirname, 'dist/assets')
@@ -42,6 +42,37 @@ function copyOnnxWasm() {
         }
       }
       console.log('[copy-onnx-wasm] ONNX Runtime WASM 已复制到 dist/ort/')
+    },
+  }
+}
+
+/**
+ * Dev 模式中间件：将 /mindsafe/ort/* 请求代理到 node_modules/onnxruntime-web/dist/。
+ * 生产构建由 copyOnnxWasm 插件复制静态文件，dev 模式不触发 closeBundle，
+ * 需要此中间件保证语音唤醒/声纹推理在本地开发时也能加载 WASM。
+ */
+function serveOnnxWasmDev() {
+  return {
+    name: 'serve-onnx-wasm-dev',
+    apply: 'serve',
+    configureServer(server) {
+      const src = resolve(__dirname, 'node_modules/onnxruntime-web/dist')
+      server.middlewares.use((req, res, next) => {
+        const url = req.url || ''
+        // 匹配 /mindsafe/ort/<file> 或 /ort/<file>
+        const match = url.match(/\/ort\/([\w.-]+)$/)
+        if (match) {
+          const filePath = join(src, match[1])
+          if (existsSync(filePath)) {
+            const ext = match[1].endsWith('.wasm') ? 'application/wasm' : 'application/javascript'
+            res.setHeader('Content-Type', ext)
+            res.setHeader('Cache-Control', 'public, max-age=86400')
+            res.end(readFileSync(filePath))
+            return
+          }
+        }
+        next()
+      })
     },
   }
 }
@@ -59,6 +90,7 @@ export default defineConfig({
     react(),
     tailwindcss(),
     copyOnnxWasm(),
+    serveOnnxWasmDev(),
     ...(useHttps ? [basicSsl()] : []),
     VitePWA({
       registerType: 'autoUpdate',
