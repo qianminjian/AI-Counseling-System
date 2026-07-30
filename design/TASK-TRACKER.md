@@ -20,6 +20,16 @@
 
 > 说明：§二十三 P0/P1/P2 backlog 中大量 ✅ 实为态③「已编码未接线」孤儿，**逐行裁决归口 fix-12**（与钱敏健逐项确认），本节仅先校正最高信号的失实条目，不在此重复逐行改标。
 
+**fix-12 裁决结果（2026-07-28，钱敏健确认）：**
+> 全量扫描（从 18 Controller + @Scheduled + Spring 自动装配出发追踪依赖链）实测 **39 个孤儿**（审计时 43 个含世界 B 已删组件）。
+> - **删除 3 个**（YAGNI，零消费者基础设施）：`CacheService` + `CacheServiceTest` / `BusinessMetrics` / `PageResponse`
+> - **保留·待接线 27 个**：有明确 backlog ID（TOOL/TTSFX/AB/BILL/KB/MEM/PROF/PEVAL/EMP/ORCH/CBT/ALLY/RISK/WB/SCALE 系列），接线性价比高
+> - **保留·远期 5 个**：VoiceEffectivenessTracker / VoiceEmotionTrendAnalyzer / ProfileEffectivenessTracker / EmotionOrchestrationEvaluator / TrendAnomalySignaler
+> - **保留·暂缓 3 个**：AssessmentScoringEngine / ScoringResult / BuiltinScales（量表施测暂缓，决策 #21）
+> - **保留·待接线（数据层）2 个**：ModelCallLog + ModelCallLogMapper（审计/计费需要）
+>
+> 审计修复批次 fix-01~12 **全部收官**。剩余 36 个孤儿组件状态统一为 🟧 已编码未接线，按 §二十三 优先级顺序逐步接线。
+
 ---
 
 ## 一、文档整合任务（当前阶段）
