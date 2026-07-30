@@ -9,7 +9,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Python 依赖（轻量：httpx + edge-tts + FastAPI）
 COPY requirements-lite.txt .
-RUN pip install --no-cache-dir -r requirements-lite.txt
+RUN pip install --upgrade pip && pip install --no-cache-dir -r requirements-lite.txt
 
 # 应用代码
 COPY app.py .
