@@ -15,6 +15,7 @@ import org.springframework.stereotype.Service;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -44,14 +45,17 @@ public class ConversationQualityService {
     private final AiChatService aiChatService;
     private final QualityScoreMapper qualityScoreMapper;
     private final CounselingSessionMapper sessionMapper;
+    private final EmpathyStructureEvaluator empathyStructureEvaluator;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     public ConversationQualityService(AiChatService aiChatService,
                                       QualityScoreMapper qualityScoreMapper,
-                                      CounselingSessionMapper sessionMapper) {
+                                      CounselingSessionMapper sessionMapper,
+                                      EmpathyStructureEvaluator empathyStructureEvaluator) {
         this.aiChatService = aiChatService;
         this.qualityScoreMapper = qualityScoreMapper;
         this.sessionMapper = sessionMapper;
+        this.empathyStructureEvaluator = empathyStructureEvaluator;
     }
 
     /**
@@ -113,6 +117,10 @@ public class ConversationQualityService {
         score.setEvaluator("llm-judge");
         score.setRawResponse(judgeResult);
         score.setEvaluatedAt(Instant.now());
+
+        // EMP-201：确定性共情结构评估（LLM-as-Judge 的确定性补充，design/52 §四）
+        supplementEmpathyStructure(score, conversationText);
+
         qualityScoreMapper.insert(score);
 
         log.info("质量评估完成: sessionId={}, overall={}, flagged={}",
@@ -179,5 +187,38 @@ public class ConversationQualityService {
             if (s.endsWith("```")) s = s.substring(0, s.length() - 3);
         }
         return s.trim();
+    }
+
+    /**
+     * EMP-201：确定性共情结构评估（LLM-as-Judge empathy_score 的规则化补充）。
+     * <p>
+     * 从对话文本提取 AI 回复，运行「命名-确认-容纳」三段式检测 + 反模式检测。
+     * 结果记录日志，低分且 LLM 给高分时记录差异（供后续校准）。
+     */
+    private void supplementEmpathyStructure(QualityScore score, String conversationText) {
+        try {
+            // 简化提取 AI 回复（按“波波”/“AI”/“助手”前缀分割）
+            List<String> aiResponses = java.util.Arrays.stream(conversationText.split("\n"))
+                    .filter(line -> line.startsWith("波波") || line.startsWith("AI") || line.startsWith("助手"))
+                    .toList();
+            if (aiResponses.isEmpty()) return;
+
+            EmpathyStructureEvaluator.SessionEmpathySummary summary =
+                    empathyStructureEvaluator.summarizeSession(aiResponses);
+
+            log.info("EMP-201 共情结构评估: sessionId={}, turns={}, avgScore={}, effectiveRatio={}, antiPatternTurns={}",
+                    score.getSessionId(), summary.turnsEvaluated(),
+                    summary.avgStructureScore(), summary.effectiveRatio(), summary.antiPatternTurns());
+
+            // 交叉校验：LLM 共情分高但规则检测低 → 记录差异（供后续校准）
+            if (score.getEmpathyScore() != null
+                    && score.getEmpathyScore().doubleValue() > 0.7
+                    && summary.avgStructureScore() < 0.3) {
+                log.warn("EMP-201 共情评分差异: sessionId={}, llm={}, rule={}",
+                        score.getSessionId(), score.getEmpathyScore(), summary.avgStructureScore());
+            }
+        } catch (Exception e) {
+            log.debug("EMP-201 共情结构评估失败（不影响主流程）: {}", e.getMessage());
+        }
     }
 }

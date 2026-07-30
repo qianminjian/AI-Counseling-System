@@ -45,9 +45,12 @@ public class RagAdvisorService {
             Pattern.compile("【适用年级段 grade_band: ([a-z,]+)】");
 
     private final KnowledgeBaseService knowledgeBaseService;
+    private final HybridRetrievalService hybridRetrievalService;
 
-    public RagAdvisorService(KnowledgeBaseService knowledgeBaseService) {
+    public RagAdvisorService(KnowledgeBaseService knowledgeBaseService,
+                             HybridRetrievalService hybridRetrievalService) {
         this.knowledgeBaseService = knowledgeBaseService;
+        this.hybridRetrievalService = hybridRetrievalService;
     }
 
     /**
@@ -70,11 +73,34 @@ public class RagAdvisorService {
             if (chunks.isEmpty()) {
                 return "";
             }
+
+            // KB-103：groundedness 回收评估（检索有效性日志，低分反哺内容补全）
+            evaluateRetrievalEffectiveness(tenantId, message, chunks);
+
             return format(chunks);
         } catch (Exception e) {
             // 失败安全：RAG 属增强能力，检索异常不影响对话主线
             log.warn("RAG 检索异常，跳过知识注入: {}", e.getMessage());
             return "";
+        }
+    }
+
+    /**
+     * KB-103 检索有效性评估（groundedness 回收）。
+     * 当前简化：以命中数/请求 topK 作为 groundedness 近似，低分记录日志供运营分析。
+     */
+    private void evaluateRetrievalEffectiveness(UUID tenantId, String query, List<KnowledgeChunk> chunks) {
+        try {
+            // 简化 groundedness：命中数 / 请求 topK（3）
+            int requestedTopK = 3;
+            HybridRetrievalService.GroundednessResult result = hybridRetrievalService.evaluateGroundedness(
+                    tenantId.toString(), requestedTopK, chunks.size());
+            if (!result.effective()) {
+                log.info("KB-103 检索低效: tenant={}, groundedness={}, feedback={}",
+                        tenantId, String.format("%.2f", result.groundednessScore()), result.feedback());
+            }
+        } catch (Exception e) {
+            log.debug("KB-103 groundedness 评估失败（不影响业务）: {}", e.getMessage());
         }
     }
 

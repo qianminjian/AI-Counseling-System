@@ -8,6 +8,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.mindsafe.ai.chat.AiChatService;
 import com.mindsafe.domain.entity.StudentProfile;
 import com.mindsafe.domain.mapper.StudentProfileMapper;
+import com.mindsafe.service.profile.ProfileMergeGate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -40,11 +41,14 @@ public class ProfileExtractorService {
 
     private final AiChatService aiChatService;
     private final StudentProfileMapper profileMapper;
+    private final ProfileMergeGate profileMergeGate;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    public ProfileExtractorService(AiChatService aiChatService, StudentProfileMapper profileMapper) {
+    public ProfileExtractorService(AiChatService aiChatService, StudentProfileMapper profileMapper,
+                                   ProfileMergeGate profileMergeGate) {
         this.aiChatService = aiChatService;
         this.profileMapper = profileMapper;
+        this.profileMergeGate = profileMergeGate;
     }
 
     /**
@@ -136,11 +140,25 @@ public class ProfileExtractorService {
         double newVal = patch.get(field).asDouble();
         if (existing.hasNonNull(field)) {
             double oldVal = existing.get(field).asDouble();
-            existing.put(field, Math.round((alpha * newVal + (1 - alpha) * oldVal) * 100.0) / 100.0);
+            // PROF-023：置信门控合并（冲突检测 + 时效衰减，防止异常单次翻转画像）
+            double existingConf = readMetaConfidence(existing, field);
+            ProfileMergeGate.MergeDecision decision = profileMergeGate.merge(
+                    oldVal, existingConf, newVal, 0.7); // LLM 提炼默认新证据置信 0.7
+            existing.put(field, Math.round(decision.mergedValue() * 100.0) / 100.0);
+            if (decision.conflictDetected()) {
+                log.debug("画像合并冲突检测: field={}, strategy={}, old={}, new={}",
+                        field, decision.strategy(), oldVal, newVal);
+            }
         } else {
             existing.put(field, Math.round(newVal * 100.0) / 100.0);
         }
         stampMeta(existing, field);
+    }
+
+    /** 从 _meta.<field>.confidence 读取字段级置信度（PROF-022），缺失默认 0.5 */
+    private double readMetaConfidence(ObjectNode dimension, String field) {
+        JsonNode meta = dimension.path("_meta").path(field).path("confidence");
+        return meta.isNumber() ? meta.asDouble() : 0.5;
     }
 
     private ObjectNode mergeCommunicationPref(ObjectNode existing, JsonNode patchNode) {

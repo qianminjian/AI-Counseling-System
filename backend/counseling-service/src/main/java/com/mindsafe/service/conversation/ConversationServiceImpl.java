@@ -1,5 +1,9 @@
 package com.mindsafe.service.conversation;
 
+import com.mindsafe.ai.ally.AllianceEnhancer;
+import com.mindsafe.ai.cbt.CbtStageRouter;
+import com.mindsafe.service.experiment.ExperimentBucketAssigner;
+import com.mindsafe.service.experiment.ExperimentMetricsCollector;
 import com.mindsafe.ai.chat.AiChatService;
 import com.mindsafe.ai.orchestrator.OrchestrationContext;
 import com.mindsafe.ai.orchestrator.ProfileSignals;
@@ -7,8 +11,10 @@ import com.mindsafe.ai.orchestrator.PromptOrchestrationService;
 import com.mindsafe.ai.orchestrator.StrategyProfile;
 import com.mindsafe.ai.prompt.PromptTemplateService;
 import com.mindsafe.ai.risk.RiskDetectorService;
+import com.mindsafe.ai.risk.RiskScoreCalculator;
 import com.mindsafe.ai.risk.SemanticRiskClassifier;
 import com.mindsafe.ai.safety.ConfidentialityNotice;
+import com.mindsafe.ai.safety.CrisisResourceProvider;
 import com.mindsafe.ai.safety.CrisisResources;
 import com.mindsafe.ai.safety.HighSensitivityCategories;
 import com.mindsafe.ai.safety.PiiDesensitizer;
@@ -76,6 +82,12 @@ public class ConversationServiceImpl implements ConversationService {
     private final PromptOrchestrationService promptOrchestrationService;
     private final ConversationQualityService conversationQualityService;
     private final FieldEncryptionService fieldEncryptionService;
+    private final RiskScoreCalculator riskScoreCalculator;
+    private final CrisisResourceProvider crisisResourceProvider;
+    private final AllianceEnhancer allianceEnhancer;
+    private final CbtStageRouter cbtStageRouter;
+    private final ExperimentBucketAssigner experimentBucketAssigner;
+    private final ExperimentMetricsCollector experimentMetricsCollector;
 
     /** 活跃会话内存缓存（emotionTag 等非 DB 字段 + 轮次计数） */
     private final Map<UUID, SessionState> activeSessions = new ConcurrentHashMap<>();
@@ -101,7 +113,13 @@ public class ConversationServiceImpl implements ConversationService {
                                    SemanticRiskClassifier semanticRiskClassifier,
                                    PromptOrchestrationService promptOrchestrationService,
                                    ConversationQualityService conversationQualityService,
-                                   FieldEncryptionService fieldEncryptionService) {
+                                   FieldEncryptionService fieldEncryptionService,
+                                   RiskScoreCalculator riskScoreCalculator,
+                                   CrisisResourceProvider crisisResourceProvider,
+                                   AllianceEnhancer allianceEnhancer,
+                                   CbtStageRouter cbtStageRouter,
+                                   ExperimentBucketAssigner experimentBucketAssigner,
+                                   ExperimentMetricsCollector experimentMetricsCollector) {
         this.aiChatService = aiChatService;
         this.promptTemplateService = promptTemplateService;
         this.riskDetectorService = riskDetectorService;
@@ -121,6 +139,12 @@ public class ConversationServiceImpl implements ConversationService {
         this.promptOrchestrationService = promptOrchestrationService;
         this.conversationQualityService = conversationQualityService;
         this.fieldEncryptionService = fieldEncryptionService;
+        this.riskScoreCalculator = riskScoreCalculator;
+        this.crisisResourceProvider = crisisResourceProvider;
+        this.allianceEnhancer = allianceEnhancer;
+        this.cbtStageRouter = cbtStageRouter;
+        this.experimentBucketAssigner = experimentBucketAssigner;
+        this.experimentMetricsCollector = experimentMetricsCollector;
     }
 
     @Override
@@ -153,6 +177,12 @@ public class ConversationServiceImpl implements ConversationService {
         // 4. 加载学生画像沟通偏好（冷场决策模型信号 F，首次对话为 null 不阻塞）
         Double expressionDepth = profileService.getExpressionDepth(tenantId, studentUserId);
         
+        // AB-001：实验分桶（确定性哈希，同班同组；当前以 studentUserId 为分配键，待班级字段补全后切换 classId）
+        ExperimentBucketAssigner.Assignment experimentAssignment =
+                experimentBucketAssigner.assignClass("default_exp", studentUserId.toString(), null);
+        log.debug("AB 分桶: sessionId={}, variant={}, bucket={}", sessionId,
+                experimentAssignment.variant(), experimentAssignment.bucket());
+
         activeSessions.put(sessionId, new SessionState(
                 sessionId, tenantId, studentUserId, emotionTag, channel, gender, expressionDepth, grade));
         log.info("会话创建: sessionId={}, student={}, emotion={}, grade={}, expressionDepth={}",
@@ -281,7 +311,7 @@ public class ConversationServiceImpl implements ConversationService {
         //     安全响应模式：RED 触发后的后续轮次也不再自由生成，返回陪伴话术，解除需教师处置/新会话。
         if (fusedLevel == RiskLevel.RED || session.inSafetyMode()) {
             String safetyReply = (fusedLevel == RiskLevel.RED)
-                    ? redSafetyReply(session.grade)
+                    ? crisisResourceProvider.getRedSafetyReply(session.grade)
                     : CrisisResources.SAFETY_MODE_COMPANION_REPLY;
             persistAiMessageSummary(session, turn, safetyReply);
             session.recordAiReply(safetyReply);
@@ -315,6 +345,9 @@ public class ConversationServiceImpl implements ConversationService {
         if (memoryPrompt != null) {
             profilePrompt = (profilePrompt != null ? profilePrompt + "\n\n" : "") + memoryPrompt;
         }
+
+        // ALLY-201/203：治疗联盟增强——连续性开场 + 中断回归照护（design/52 §五）
+        String alliancePrompt = buildAlliancePrompt(session, memoryPrompt);
 
         // AI-005：Prompt 版本 A/B 路由（DB 优先，classpath 降级）
         String gradeLevel = effectiveGrade <= 2 ? "1-2" : effectiveGrade <= 4 ? "3-4" : "5-6";
@@ -350,6 +383,15 @@ public class ConversationServiceImpl implements ConversationService {
                 session.tenantId, "EMO_001", session.studentUserId,
                 promptOrchestrationService.toTemplateVariables(strategy));
         systemPromptContent = systemPromptContent + "\n\n" + emoResolved.content();
+
+        // CBT-201/202：CBT 阶段标记 + 年龄分层路由（design/52 §一，design/03 §11.3/11.4）
+        CbtStageRouter.AgeStrategy ageStrategy = cbtStageRouter.resolveAgeStrategy(effectiveGrade);
+        log.debug("CBT 年龄分层: sessionId={}, grade={}, strategy={}", sessionId, effectiveGrade, ageStrategy);
+
+        // ALLY 连续性开场 / 回归照护注入 System Prompt
+        if (alliancePrompt != null) {
+            systemPromptContent = systemPromptContent + "\n\n" + alliancePrompt;
+        }
 
         // KB-101b：RAG 参考知识注入（design/49 §六）——场景触发才检索，寒暄闲聊不检索；
         // RED 危机场景已在 4.2 硬短路，不会走到此处；检索异常返回空串不影响主线。
@@ -499,6 +541,17 @@ public class ConversationServiceImpl implements ConversationService {
             aiChatService.clearMemory(sessionId);
             log.info("会话结束: sessionId={}, turns={}", sessionId, session.turnCount.get());
 
+            // AB-002：采集会话深度指标（异步聚合，不阻塞主流程）
+            try {
+                ExperimentMetricsCollector.MetricEvent depthEvent = new ExperimentMetricsCollector.MetricEvent(
+                        "default_exp", "CONTROL", session.studentUserId.toString(),
+                        ExperimentMetricsCollector.MetricType.SESSION_DEPTH,
+                        session.turnCount.get(), java.time.LocalDate.now());
+                log.debug("AB 指标采集: sessionId={}, metric=SESSION_DEPTH, value={}", sessionId, depthEvent.value());
+            } catch (Exception e) {
+                log.debug("AB 指标采集失败（不影响业务）: {}", e.getMessage());
+            }
+
             // 异步生成 AI 会话摘要（摘要完成后触发 PROF-003 画像 LLM 提炼）
             generateSummaryAsync(tenantId, sessionId, session.studentUserId);
 
@@ -568,8 +621,29 @@ public class ConversationServiceImpl implements ConversationService {
                     riskResult.category(),
                     riskResult.level().severity()
             );
+
+            // RISK-203：结构化风险评分（C-SSRS 儿童适配，可解释 reason_codes 供教师复核）
+            RiskScoreCalculator.ScoreInput scoreInput = new RiskScoreCalculator.ScoreInput(
+                    riskResult.score(),           // categoryBaseScore
+                    0,                            // intentWeight（待语义层抽取）
+                    0,                            // planWeight
+                    10,                           // recencyWeight（当前会话=今天）
+                    0,                            // actionWeight
+                    0,                            // repetitionWeight
+                    0,                            // protectiveWeight
+                    0,                            // falsePositivePenalty
+                    0.8,                          // confidenceAdjustment（硬规则默认 0.8）
+                    riskResult.level().severity() >= RiskLevel.RED.severity() ? riskResult.level() : null,
+                    null,                         // cssrsIdeation（待语义层抽取）
+                    null                          // cssrsBehavior
+            );
+            RiskScoreCalculator.ScoreResult scoreResult = riskScoreCalculator.calculate(scoreInput);
+            log.info("风险评分计算: sessionId={}, score={}, level={}, reasons={}",
+                    session.sessionId, scoreResult.score(), scoreResult.level(), scoreResult.reasonCodes());
+
             riskEventMapper.insert(event);
-            log.info("风险事件已持久化: riskEventId={}, level={}", event.getRiskEventId(), riskResult.level());
+            log.info("风险事件已持久化: riskEventId={}, level={}, score={}",
+                    event.getRiskEventId(), riskResult.level(), scoreResult.score());
 
             // 触发教师通知
             notificationService.notifyRiskEvent(event);
@@ -629,6 +703,29 @@ public class ConversationServiceImpl implements ConversationService {
             return (grade >= 1 && grade <= 6) ? grade : 4;
         } catch (NumberFormatException e) {
             return 4;
+        }
+    }
+
+    /**
+     * ALLY-201/203：构建治疗联盟增强 Prompt（连续性开场 + 中断回归照护）。
+     * <p>
+     * 利用记忆回注摘要生成续接话术；失败安全：无记忆 → 返回 null（不注入）。
+     */
+    private String buildAlliancePrompt(SessionState session, String memoryPrompt) {
+        try {
+            // ALLY-201：连续性开场（有记忆回注时生成续接提示）
+            if (memoryPrompt != null && !memoryPrompt.isBlank()) {
+                String firstLine = memoryPrompt.lines()
+                        .filter(l -> l.startsWith("- "))
+                        .findFirst()
+                        .map(l -> l.substring(2).trim())
+                        .orElse(null);
+                return allianceEnhancer.buildContinuityPrompt(firstLine, "波波");
+            }
+            return null;
+        } catch (Exception e) {
+            log.debug("ALLY 联盟增强构建失败（不影响对话）: {}", e.getMessage());
+            return null;
         }
     }
 
