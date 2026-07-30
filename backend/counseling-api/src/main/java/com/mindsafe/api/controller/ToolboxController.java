@@ -3,7 +3,7 @@ package com.mindsafe.api.controller;
 import com.mindsafe.common.dto.ApiResponse;
 import com.mindsafe.domain.entity.User;
 import com.mindsafe.domain.mapper.UserMapper;
-import com.mindsafe.service.conversation.ConversationServiceImpl;
+import com.mindsafe.service.conversation.ConversationUtils;
 import com.mindsafe.service.toolbox.MoodCheckRecorder;
 import com.mindsafe.service.toolbox.ToolboxRegistry;
 import com.mindsafe.service.toolbox.ToolboxRegistry.ToolDefinition;
@@ -123,6 +123,6 @@ public class ToolboxController {
         if (auth == null || !(auth.getPrincipal() instanceof UUID userId)) return 4;
         User user = userMapper.selectById(userId);
         if (user == null) return 4;
-        return ConversationServiceImpl.parseGradeCode(user.getGradeCode());
+        return ConversationUtils.parseGradeCode(user.getGradeCode());
     }
 }

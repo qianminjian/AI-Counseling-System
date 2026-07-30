@@ -12,7 +12,7 @@ export function getToken() {
   return sessionStorage.getItem(TOKEN_KEY)
 }
 
-export function setToken(token) {
+export function setToken(token: string) {
   sessionStorage.setItem(TOKEN_KEY, token)
 }
 
@@ -20,7 +20,7 @@ export function getRefreshToken() {
   return sessionStorage.getItem(REFRESH_KEY)
 }
 
-export function setRefreshToken(token) {
+export function setRefreshToken(token: string) {
   sessionStorage.setItem(REFRESH_KEY, token)
 }
 
@@ -30,7 +30,7 @@ export function clearToken() {
   sessionStorage.removeItem(USER_KEY)
 }
 
-export function getUser() {
+export function getUser(): Record<string, unknown> | null {
   try {
     return JSON.parse(sessionStorage.getItem(USER_KEY))
   } catch {
@@ -38,7 +38,7 @@ export function getUser() {
   }
 }
 
-export function setUser(user) {
+export function setUser(user: Record<string, unknown>) {
   sessionStorage.setItem(USER_KEY, JSON.stringify(user))
 }
 
@@ -122,11 +122,31 @@ export async function api(path: string, options: RequestInit & { headers?: Recor
   return json.data
 }
 
+export interface TrialRegisterData {
+  inviteCode: string
+  pseudonym: string
+  age: number
+  consentVersion: string
+  guardianPhone?: string
+  role?: string
+  gender?: string
+}
+
+export interface AuthResult {
+  token: string
+  refreshToken?: string
+  userId: string
+  tenantId?: string
+  userType?: string
+  pseudonym?: string
+  displayName?: string
+  familyCode?: string
+}
+
 /**
  * 试用注册
- * @returns {Promise<{token, userId, tenantId, userType, pseudonym}>}
  */
-export async function trialRegister(data) {
+export async function trialRegister(data: TrialRegisterData): Promise<AuthResult> {
   const res = await fetch('/api/v1/auth/trial/register', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -141,9 +161,8 @@ export async function trialRegister(data) {
 
 /**
  * PIN 码快捷登录（学生用昵称 + 4-6 位数字 PIN）
- * @returns {Promise<{token, refreshToken, userId, displayName, userType}>}
  */
-export async function pinLogin(pseudonym, pin) {
+export async function pinLogin(pseudonym: string, pin: string): Promise<AuthResult> {
   const res = await fetch('/api/v1/auth/pin-login', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -159,7 +178,7 @@ export async function pinLogin(pseudonym, pin) {
 /**
  * 设置 PIN 码（注册后引导设置，需已登录）
  */
-export async function setPin(pin) {
+export async function setPin(pin: string): Promise<void> {
   await api('/auth/set-pin', {
     method: 'POST',
     body: JSON.stringify({ pin }),

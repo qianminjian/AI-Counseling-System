@@ -29,15 +29,11 @@ import com.mindsafe.domain.mapper.MessageSummaryMapper;
 import com.mindsafe.domain.mapper.UserMapper;
 import com.mindsafe.service.knowledge.RagAdvisorService;
 import com.mindsafe.service.memory.LongTermMemoryService;
-import com.mindsafe.service.profile.ProfileExtractorService;
 import com.mindsafe.service.profile.StudentProfileService;
 import com.mindsafe.service.prompt.PromptVersionService;
-import com.mindsafe.service.quality.ConversationQualityService;
-import com.mindsafe.service.security.FieldEncryptionService;
 import com.mindsafe.service.usage.UsageTimeLimitService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 
@@ -63,14 +59,12 @@ public class ConversationServiceImpl implements ConversationService {
     private final MessageSummaryMapper messageSummaryMapper;
     private final UserMapper userMapper;
     private final StudentProfileService profileService;
-    private final ProfileExtractorService profileExtractorService;
-    private final UsageTimeLimitService usageTimeLimitService;
     private final LongTermMemoryService longTermMemoryService;
     private final PromptVersionService promptVersionService;
+    private final UsageTimeLimitService usageTimeLimitService;
     private final RagAdvisorService ragAdvisorService;
     private final PromptOrchestrationService promptOrchestrationService;
-    private final ConversationQualityService conversationQualityService;
-    private final FieldEncryptionService fieldEncryptionService;
+    private final MessageSummaryService messageSummaryService;
     private final CrisisResourceProvider crisisResourceProvider;
     private final AllianceEnhancer allianceEnhancer;
     private final CbtStageRouter cbtStageRouter;
@@ -92,14 +86,12 @@ public class ConversationServiceImpl implements ConversationService {
                                    MessageSummaryMapper messageSummaryMapper,
                                    UserMapper userMapper,
                                    StudentProfileService profileService,
-                                   ProfileExtractorService profileExtractorService,
                                    UsageTimeLimitService usageTimeLimitService,
                                    LongTermMemoryService longTermMemoryService,
                                    PromptVersionService promptVersionService,
                                    RagAdvisorService ragAdvisorService,
                                    PromptOrchestrationService promptOrchestrationService,
-                                   ConversationQualityService conversationQualityService,
-                                   FieldEncryptionService fieldEncryptionService,
+                                   MessageSummaryService messageSummaryService,
                                    CrisisResourceProvider crisisResourceProvider,
                                    AllianceEnhancer allianceEnhancer,
                                    CbtStageRouter cbtStageRouter,
@@ -117,14 +109,12 @@ public class ConversationServiceImpl implements ConversationService {
         this.messageSummaryMapper = messageSummaryMapper;
         this.userMapper = userMapper;
         this.profileService = profileService;
-        this.profileExtractorService = profileExtractorService;
         this.usageTimeLimitService = usageTimeLimitService;
         this.longTermMemoryService = longTermMemoryService;
         this.promptVersionService = promptVersionService;
         this.ragAdvisorService = ragAdvisorService;
         this.promptOrchestrationService = promptOrchestrationService;
-        this.conversationQualityService = conversationQualityService;
-        this.fieldEncryptionService = fieldEncryptionService;
+        this.messageSummaryService = messageSummaryService;
         this.crisisResourceProvider = crisisResourceProvider;
         this.allianceEnhancer = allianceEnhancer;
         this.cbtStageRouter = cbtStageRouter;
@@ -148,10 +138,10 @@ public class ConversationServiceImpl implements ConversationService {
         User user = userMapper.selectById(studentUserId);
         String gender = (user != null) ? user.getGender() : null;
         String pseudonym = (user != null) ? user.getPseudonym() : null;
-        int grade = parseGradeCode(user != null ? user.getGradeCode() : null);
+        int grade = ConversationUtils.parseGradeCode(user != null ? user.getGradeCode() : null);
         
         // 3. 问候语个性化："哈喽，[昵称]！" + 情绪问候（唤醒词 onboarding，design/28 §2.2）
-        String greeting = buildGreeting(emotionTag, pseudonym);
+        String greeting = ConversationUtils.buildGreeting(emotionTag, pseudonym);
         
         // ORCH-007：EMO-001 A/B 开场策略路由（确定性分桶，CRISIS 强制走 A）
         try {
@@ -309,10 +299,10 @@ public class ConversationServiceImpl implements ConversationService {
 
         // 4. 持久化学生消息摘要（异步，不阻塞主流程）
         int riskLevelValue = fusedLevel != null ? fusedLevel.severity() : 0;
-        persistStudentMessageSummary(session, turn, content, session.getEmotionTag(), riskLevelValue);
+        messageSummaryService.persistStudentMessageSummary(session, turn, content, session.getEmotionTag(), riskLevelValue);
 
         // 4.1 冷场决策模型信号更新：学生消息类型 + 风险快照（孩子说话即清零暖场计数）
-        session.recordStudentMessage(classifyStudentMessage(content, fusedLevel != null, session.getEmotionTag()));
+        session.recordStudentMessage(ConversationUtils.classifyStudentMessage(content, fusedLevel != null, session.getEmotionTag()));
         if (fusedLevel != null) {
             session.updateMaxRiskSeverity(fusedLevel.severity());
         }
@@ -326,7 +316,7 @@ public class ConversationServiceImpl implements ConversationService {
             String safetyReply = (fusedLevel == RiskLevel.RED)
                     ? crisisResourceProvider.getRedSafetyReply(session.getGrade())
                     : CrisisResources.SAFETY_MODE_COMPANION_REPLY;
-            persistAiMessageSummary(session, turn, safetyReply);
+            messageSummaryService.persistAiMessageSummary(session, turn, safetyReply);
             session.recordAiReply(safetyReply);
             sessionStateStore.save(sessionId, session);
             log.warn("RED 安全响应模式：跳过 LLM 自由生成: sessionId={}, turn={}, freshRed={}",
@@ -352,7 +342,7 @@ public class ConversationServiceImpl implements ConversationService {
 
         // 5. 调用 AI 服务获取流式回复（注入学生画像 + 长期记忆 + 年级适配，PROF-010/011/012/015 + AI-008 + AI-005）
         boolean riskBlocked = fusedLevel != null && fusedLevel.severity() >= RiskLevel.ORANGE.severity();
-        int effectiveGrade = computeEffectiveGrade(session.getGrade(), session.getExpressionDepth(), riskBlocked);
+        int effectiveGrade = ConversationUtils.computeEffectiveGrade(session.getGrade(), session.getExpressionDepth(), riskBlocked);
         String profilePrompt = profileService.buildProfilePrompt(session.getTenantId(), session.getStudentUserId(), session.getGrade(), session.getGender());
         // AI-008：追加长期记忆（跨会话关键事件回注）
         String memoryPrompt = longTermMemoryService.buildMemoryPrompt(session.getTenantId(), session.getStudentUserId());
@@ -433,7 +423,7 @@ public class ConversationServiceImpl implements ConversationService {
                 .concatWith(Flux.defer(() -> {
                     // AI 回复完成后持久化摘要
                     String fullReply = aiResponseCollector.toString();
-                    persistAiMessageSummary(session, turn, fullReply);
+                    messageSummaryService.persistAiMessageSummary(session, turn, fullReply);
                     // 冷场决策模型信号：AI 是否刚问了思考型问题
                     session.recordAiReply(fullReply);
                     sessionStateStore.save(sessionId, session);
@@ -501,7 +491,7 @@ public class ConversationServiceImpl implements ConversationService {
             profilePrompt = (profilePrompt != null ? profilePrompt + "\n\n" : "") + nudgeMemoryPrompt;
         }
         // PROF-015：暖场场景无风险（橙/红已拦截），仅根据表达深度降级
-        int effectiveGrade = computeEffectiveGrade(session.getGrade(), session.getExpressionDepth(), false);
+        int effectiveGrade = ConversationUtils.computeEffectiveGrade(session.getGrade(), session.getExpressionDepth(), false);
         int turn = session.getTurnCount();
         StringBuilder aiResponseCollector = new StringBuilder();
 
@@ -518,7 +508,7 @@ public class ConversationServiceImpl implements ConversationService {
                 })
                 .concatWith(Flux.defer(() -> {
                     String fullReply = aiResponseCollector.toString();
-                    persistAiMessageSummary(session, turn, fullReply);
+                    messageSummaryService.persistAiMessageSummary(session, turn, fullReply);
                     session.recordAiReply(fullReply);
                     sessionStateStore.save(sessionId, session);
                     return Flux.just(StreamMessageEvent.done(""));
@@ -572,7 +562,7 @@ public class ConversationServiceImpl implements ConversationService {
             }
 
             // 异步生成 AI 会话摘要（摘要完成后触发 PROF-003 画像 LLM 提炼）
-            generateSummaryAsync(tenantId, sessionId, session.getStudentUserId());
+            messageSummaryService.generateSummaryAsync(tenantId, sessionId, session.getStudentUserId());
 
             // 异步更新学生画像（基于历史会话统计；VCL-001：本会话语音情绪聚合回注 emotionBaseline.voice，
             // 只传可映射到规范集的标签，聚合衍生特征不留逐条流水，design/47 §5.1）
@@ -593,107 +583,6 @@ public class ConversationServiceImpl implements ConversationService {
             } catch (Exception e) {
                 log.debug("会话结束分析降级: {}", e.getMessage());
             }
-        }
-    }
-
-    /** 异步生成会话摘要（不阻塞主流程），摘要完成后触发画像 LLM 提炼（PROF-003） */
-    @Async
-    public void generateSummaryAsync(UUID tenantId, UUID sessionId, UUID studentUserId) {
-        try {
-            // 1. 查询该会话所有消息摘要
-            List<MessageSummary> messages = messageSummaryMapper.selectList(
-                    new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<MessageSummary>()
-                            .eq(MessageSummary::getTenantId, tenantId)
-                            .eq(MessageSummary::getSessionId, sessionId)
-                            .orderByAsc(MessageSummary::getTurnCount)
-                            .orderByAsc(MessageSummary::getCreatedAt)
-            );
-            if (messages.isEmpty()) return;
-
-            // 2. 拼接对话文本
-            StringBuilder sb = new StringBuilder();
-            for (MessageSummary m : messages) {
-                String role = "student".equals(m.getSenderType()) ? "学生" : "AI";
-                // R-01：contentSummary 落库时字段级加密，拼接前解密（明文数据兼容透传）
-                sb.append(role).append(": ").append(fieldEncryptionService.decrypt(m.getContentSummary())).append("\n");
-            }
-            String conversationText = sb.toString();
-
-            // PEVAL-001：异步评估会话质量并落库（服务内部按抽样率决定是否评估，失败静默降级）
-            conversationQualityService.evaluateSessionAsync(tenantId, sessionId, conversationText);
-
-            // 3. 调用 LLM 生成摘要
-            String summary = aiChatService.generateSessionSummary(conversationText);
-            if (summary != null && !summary.isBlank()) {
-                CounselingSession update = new CounselingSession();
-                update.setSessionId(sessionId);
-                update.setSessionSummary(summary);
-                update.setUpdatedAt(Instant.now());
-                sessionMapper.updateById(update);
-                log.info("会话摘要已生成: sessionId={}", sessionId);
-
-                // 4. PROF-003：基于摘要 + 对话文本提炼画像增量（沟通偏好/韧性/社交图谱）
-                profileExtractorService.extractAndMerge(tenantId, studentUserId, conversationText, summary);
-
-                // 5. AI-008：提取跨会话关键事件（长期记忆）
-                longTermMemoryService.extractAndStoreKeyEvents(tenantId, studentUserId, sessionId, conversationText, summary);
-            }
-        } catch (Exception e) {
-            log.warn("会话摘要生成失败（不影响业务）: sessionId={}", sessionId, e);
-        }
-    }
-
-    /** 持久化学生消息摘要（fire-and-forget，不影响主流程） */
-    private void persistStudentMessageSummary(SessionState session, int turn,
-                                              String content, String emotionLabel, int riskLevel) {
-        try {
-            MessageSummary summary = MessageSummary.studentMessage(
-                    session.getTenantId(), session.getSessionId(), session.getStudentUserId(),
-                    turn, content, emotionLabel, riskLevel
-            );
-            // R-01：学生消息内容字段级加密后落库（工厂已截断至 1024，再对截断后明文加密）
-            summary.setContentSummary(fieldEncryptionService.encrypt(summary.getContentSummary()));
-            messageSummaryMapper.insert(summary);
-        } catch (Exception e) {
-            log.warn("学生消息摘要持久化失败（不影响对话）: sessionId={}, turn={}", session.getSessionId(), turn, e);
-        }
-    }
-
-    /** 持久化 AI 回复摘要 */
-    private void persistAiMessageSummary(SessionState session, int turn, String aiResponse) {
-        try {
-            if (aiResponse == null || aiResponse.isBlank()) return;
-            MessageSummary summary = MessageSummary.aiMessage(
-                    session.getTenantId(), session.getSessionId(), session.getStudentUserId(),
-                    turn, aiResponse
-            );
-            // R-01：AI 回复内容字段级加密后落库
-            summary.setContentSummary(fieldEncryptionService.encrypt(summary.getContentSummary()));
-            messageSummaryMapper.insert(summary);
-        } catch (Exception e) {
-            log.warn("AI 回复摘要持久化失败: sessionId={}, turn={}", session.getSessionId(), turn, e);
-        }
-    }
-
-    /**
-     * 解析 gradeCode 为年级数字（1-6）。
-     * <p>
-     * 支持格式："G1"~"G6"、"1"~"6"、null/空/无法解析 → 默认 4（中间值，design/29 §3.3）
-     * <p>
-     * public：供 VoicePersonaResolver（TMATCH-001，voice 包）复用同一年级解析口径。
-     */
-    public static int parseGradeCode(String gradeCode) {
-        if (gradeCode == null || gradeCode.isBlank()) return 4;
-        String cleaned = gradeCode.trim().toUpperCase();
-        // 去掉 "G" 前缀（如 "G3" → "3"）
-        if (cleaned.startsWith("G")) {
-            cleaned = cleaned.substring(1);
-        }
-        try {
-            int grade = Integer.parseInt(cleaned);
-            return (grade >= 1 && grade <= 6) ? grade : 4;
-        } catch (NumberFormatException e) {
-            return 4;
         }
     }
 
@@ -718,96 +607,5 @@ public class ConversationServiceImpl implements ConversationService {
             log.debug("ALLY 联盟增强构建失败（不影响对话）: {}", e.getMessage());
             return null;
         }
-    }
-
-    /**
-     * PROF-015：动态降级机制——根据表达深度调整语言复杂度。
-     * <p>
-     * 规则（design/29 §3.11）：
-     * <ul>
-     *   <li>expressionDepth < 0.15（极端沉默）→ 直接使用 1-2 年级模板（effectiveGrade=1）</li>
-     *   <li>expressionDepth < 0.3 且 grade > 2 → 降 2 个年级（如 5→3）</li>
-     *   <li>风险场景（橙/红）→ 不降级（安全话术需要认知匹配）</li>
-     * </ul>
-     *
-     * @param grade           实际年级（1-6）
-     * @param expressionDepth 画像表达深度（null 表示无数据，不降级）
-     * @param riskBlocked     是否处于风险场景（橙/红）
-     * @return 有效年级（用于选择语言模板）
-     */
-    static int computeEffectiveGrade(int grade, Double expressionDepth, boolean riskBlocked) {
-        if (riskBlocked || expressionDepth == null) {
-            return grade;
-        }
-        if (expressionDepth < 0.15) {
-            return 1; // 极端沉默 → 直接用最简单语言
-        }
-        if (expressionDepth < 0.3 && grade > 2) {
-            return Math.max(1, grade - 2);
-        }
-        return grade;
-    }
-    
-    /**
-     * RISK-201：RED 短路安全文案选择（分年级两版，预审核模板，不由 LLM 生成）
-     * <p>
-     * 1-2 年级 → 短句版；3-6 年级 → 标准版（含热线，design/04 §18.2）。
-     */
-    static String redSafetyReply(int grade) {
-        return grade <= 2
-                ? CrisisResources.RED_SAFETY_REPLY_LOWER_GRADE
-                : CrisisResources.RED_SAFETY_REPLY;
-    }
-
-    /**
-     * 构建问候语：个性化“哈喽，[昵称]！” + 情绪问候（design/28 §2.2）
-     * <p>
-     * 唤醒词 onboarding：用"哈喽+名字"模式自然引导孩子回应"哈喽波波"；
-     * 始终生效（不依赖语音唤醒模式）；昵称缺失时回退通用问候。
-     */
-    private String buildGreeting(String emotionTag, String pseudonym) {
-        String hello = (pseudonym != null && !pseudonym.isBlank())
-                ? "哈喽，" + pseudonym + "！"
-                : "哈喽！";
-        String emotionGreeting = switch (emotionTag) {
-            case "happy" -> "看起来你今天心情不错呀！想和我聊聊什么开心的事吗？😊";
-            case "sad" -> "我感觉到你今天有点难过。没关系，我在这里陪着你，想和我说说吗？💙";
-            case "angry" -> "看起来你现在有些生气。生气是很正常的感受哦，想和我聊聊发生了什么吗？";
-            case "scared" -> "我感觉到你有些害怕。别担心，这里很安全，我会一直陪着你。🌟";
-            case "nervous" -> "看起来你有点紧张。深呼吸一下，我们慢慢聊，不着急。🌈";
-            default -> "我是波波，今天想和我聊些什么呢？";
-        };
-        return hello + emotionGreeting;
-    }
-    
-    // ===== 冷场决策模型辅助（design/28 §三 3.2 信号 C） =====
-
-    /** 敷衍回答词集（"嗯/哦/不知道"类短答） */
-    private static final java.util.Set<String> PERFUNCTORY_REPLIES = java.util.Set.of(
-            "嗯", "哦", "喔", "好", "好的", "是", "是的", "啊", "行", "可以",
-            "不知道", "不晓得", "随便", "还行", "还好", "嗯嗯", "哦哦", "没有", "没", "不想说");
-
-    /** 负面情绪标签集（用于轻微倾诉判定：表达了感受但未命中风险信号） */
-    private static final java.util.Set<String> DISTRESS_EMOTIONS = java.util.Set.of(
-            "sad", "angry", "scared", "nervous");
-
-    /**
-     * 分类学生消息类型（信号 C）：沉重倾诉（命中风险信号）/ 敷衍回答 / 轻微倾诉 / 普通
-     * <p>
-     * 轻微倾诉：负面情绪 + 有一定内容长度（表达了感受，但未命中风险信号）→ 决策模型只轻陪伴不深挖。
-     */
-    private String classifyStudentMessage(String content, boolean risky, String emotionTag) {
-        if (risky) {
-            return NudgeDecisionModel.MSG_HEAVY;
-        }
-        String stripped = content == null ? "" : content.replaceAll("[\\s，。！？!?~～…·、\"'“”（）()]", "");
-        if (!stripped.isEmpty() && stripped.length() <= 5 && PERFUNCTORY_REPLIES.contains(stripped)) {
-            return NudgeDecisionModel.MSG_PERFUNCTORY;
-        }
-        // 轻微倾诉：负面情绪 + 有内容（如"没人和我玩"），未命中风险信号
-        if (stripped.length() > 5 && emotionTag != null && DISTRESS_EMOTIONS.contains(emotionTag)) {
-            return NudgeDecisionModel.MSG_DISCLOSURE;
-        }
-        return NudgeDecisionModel.MSG_NORMAL;
     }
 }

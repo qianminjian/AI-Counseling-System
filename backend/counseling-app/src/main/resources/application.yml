@@ -85,7 +85,7 @@ management:
 # 日志配置（格式与级别由 logback-spring.xml 统一管理，此处仅保留全局开关）
 logging:
   level:
-    com.mindsafe: DEBUG
+    com.mindsafe: INFO
     org.springframework.ai: INFO
 
 # SpringDoc OpenAPI

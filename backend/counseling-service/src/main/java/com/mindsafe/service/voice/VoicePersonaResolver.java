@@ -4,7 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.mindsafe.ai.orchestrator.ProfileSignals;
 import com.mindsafe.domain.entity.User;
 import com.mindsafe.domain.mapper.UserMapper;
-import com.mindsafe.service.conversation.ConversationServiceImpl;
+import com.mindsafe.service.conversation.ConversationUtils;
 import com.mindsafe.service.profile.StudentProfileService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -59,7 +59,7 @@ public class VoicePersonaResolver {
     public VoiceRenderProfile resolve(UUID tenantId, UUID userId,
                                       String requestedPersona, String emotion, String scene) {
         User user = lookupUser(tenantId, userId);
-        int grade = user != null ? ConversationServiceImpl.parseGradeCode(user.getGradeCode()) : 4;
+        int grade = user != null ? ConversationUtils.parseGradeCode(user.getGradeCode()) : 4;
 
         // 1. persona 裁决：手动 > 画像冷启动
         String persona;

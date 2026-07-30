@@ -299,7 +299,27 @@ sudo systemctl restart docker
 1. **2C2G 内存紧张**：建议开启 swap（setup-server.sh 已自动配置 2GB swap）
 2. **GHCR 私有镜像**：需要在服务器上 `docker login` 才能 pull
 3. **x86_64 架构**：阿里云经济型为 x86，CI 构建无需指定 platform（默认 amd64）
-4. **数据备份**：定期 `pg_dump` 导出数据库（可加 cron job）
+4. **数据备份**：docker-compose.prod.yml 已包含 `db-backup` 定时容器（每 24h 自动 pg_dump，保留 7 天）。备份存储在 `dbbackups` volume 中，恢复用 `deploy/restore.sh`
 5. **HTTPS**：测试阶段（docker-compose.test.yml）用 HTTP 即可；生产（docker-compose.prod.yml）已强制 TLS，首次部署先按「HTTPS 证书」节签发证书
 6. **安全组**：SSH 端口建议限制来源 IP，避免暴力破解
 7. **续费**：经济型 e 实例首购 99元/年，续费同价（阿里云活动期）；关注续费提醒
+
+## 九、监控与告警
+
+生产环境建议启用 Prometheus + Grafana 监控栈：
+
+```bash
+# 在主服务运行后启动监控（独立 compose，不影响主服务）
+cd deploy
+docker compose -f docker-compose.monitoring.yml up -d
+```
+
+- **Prometheus**：`http://<服务器IP>:9090`（抓取后端 `/actuator/prometheus` 指标）
+- **Grafana**：`http://<服务器IP>:3000`（默认账号 admin/admin，首次登录强制改密）
+- **数据源**：Grafana 已预配置 Prometheus 数据源（`deploy/monitoring/grafana/provisioning/`）
+
+关键监控指标：
+- `http_server_requests_seconds`：API 响应时间
+- `hikaricp_connections_active`：数据库连接池
+- `jvm_memory_used_bytes`：JVM 内存
+- 告警通道：企业微信 Webhook（配置 `MINDSAFE_ALERT_WECOM_WEBHOOK_URL`）
