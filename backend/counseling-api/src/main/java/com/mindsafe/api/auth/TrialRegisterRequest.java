@@ -27,6 +27,10 @@ public record TrialRegisterRequest(
         String consentVersion,
 
         /** age<14 时必填（监护人手机号，脱敏存储） */
-        String guardianPhone
+        String guardianPhone,
+
+        /** PIN 码（4-6 位数字，可选；传入时注册原子写入，避免二次 API 中断导致半成品用户） */
+        @Pattern(regexp = "\\d{4,6}", message = "PIN 码必须为 4-6 位数字")
+        String pin
 ) {
 }

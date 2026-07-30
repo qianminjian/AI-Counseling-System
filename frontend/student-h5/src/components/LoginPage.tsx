@@ -329,7 +329,7 @@ function PinLoginForm({ themeId, onLogin }) {
 
 /* ===== 注册表单 ===== */
 function RegisterForm({ themeId, onRegister }) {
-  const [step, setStep] = useState('form')
+  const [step, setStep] = useState('form') // form → set-pin → done
   const [form, setForm] = useState({ inviteCode: '', pseudonym: '', gender: '', age: '', guardianPhone: '' })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -338,10 +338,12 @@ function RegisterForm({ themeId, onRegister }) {
   const [pinConfirm, setPinConfirm] = useState('')
   const [pinStep, setPinStep] = useState('input')
   const [pinError, setPinError] = useState('')
+  const [familyCode, setFamilyCode] = useState('') // 注册成功后展示
 
   const update = (key, value) => { setForm((f) => ({ ...f, [key]: value })); setError('') }
 
-  const handleRegister = async (e) => {
+  // 第一步：表单校验通过后进入 PIN 设置（此时尚未调 API，不写数据库）
+  const handleFormSubmit = (e) => {
     e.preventDefault()
     if (!form.inviteCode.trim() || !form.pseudonym.trim() || !form.age || !form.gender) {
       setError('请填写所有必填项'); return
@@ -351,30 +353,12 @@ function RegisterForm({ themeId, onRegister }) {
     if (form.pseudonym.trim().length < 2 || form.pseudonym.trim().length > 12) {
       setError('昵称长度 2-12 字'); return
     }
-    // 未成年人保护：不满 14 周岁必须提供监护人手机号（与后端 TrialAuthStrategy 校验对齐）
     if (age < 14) {
       if (!form.guardianPhone.trim()) { setError('不满 14 周岁需填写家长手机号'); return }
       if (!/^1\d{10}$/.test(form.guardianPhone.trim())) { setError('请输入正确的 11 位手机号'); return }
     }
-    setLoading(true); setError('')
-    try {
-      const { trialRegister, setToken: st, setRefreshToken: srt, setUser: su, markConsentDone } = await import('../api')
-      const data = await trialRegister({
-        inviteCode: form.inviteCode.trim(),
-        pseudonym: form.pseudonym.trim(),
-        age, role: 'student', gender: form.gender, consentVersion: CONSENT_VERSION,
-        ...(age < 14 ? { guardianPhone: form.guardianPhone.trim() } : {}),
-      })
-      st(data.token)
-      if (data.refreshToken) srt(data.refreshToken)
-      su({ userId: data.userId, userType: data.userType, pseudonym: data.pseudonym, gender: form.gender, familyCode: data.familyCode })
-      markConsentDone()
-      setStep('set-pin')
-    } catch (err) {
-      setError(err.message || '注册失败，请检查邀请码')
-    } finally {
-      setLoading(false)
-    }
+    setError('')
+    setStep('set-pin') // 先收 PIN，再调 API（原子性保障）
   }
 
   const pressPinKey = (key) => {
@@ -393,30 +377,81 @@ function RegisterForm({ themeId, onRegister }) {
     setPinStep('confirm')
   }
 
+  // 第二步：PIN 确认后，一次性调注册 API（含 PIN，后端原子写入）
   const handleSetPin = async () => {
     if (pinConfirm !== pin) {
       setPinError('两次输入不一致，请重新设置')
       setPin(''); setPinConfirm(''); setPinStep('input')
       return
     }
+    setLoading(true); setPinError('')
     try {
-      const { setPin: sp } = await import('../api')
-      await sp(pin)
+      const age = parseInt(form.age, 10)
+      const { trialRegister, setToken: st, setRefreshToken: srt, setUser: su, markConsentDone } = await import('../api')
+      const data = await trialRegister({
+        inviteCode: form.inviteCode.trim(),
+        pseudonym: form.pseudonym.trim(),
+        age, role: 'student', gender: form.gender, consentVersion: CONSENT_VERSION,
+        ...(age < 14 ? { guardianPhone: form.guardianPhone.trim() } : {}),
+        pin,
+      })
+      st(data.token)
+      if (data.refreshToken) srt(data.refreshToken)
+      su({ userId: data.userId, userType: data.userType, pseudonym: data.pseudonym, gender: form.gender, familyCode: data.familyCode })
+      markConsentDone()
+      if (data.familyCode) setFamilyCode(data.familyCode)
       setStep('done')
     } catch (err) {
-      setPinError(err.message || '设置失败')
+      setPinError(err.message || '注册失败，请检查邀请码')
+      setStep('form') // 注册失败回到表单（可能是邀请码问题）
+      setError(err.message || '注册失败，请检查邀请码')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // 跳过 PIN 设置，但仍然调注册 API（无 PIN 原子写入）
+  const handleSkipPin = async () => {
+    setLoading(true); setPinError('')
+    try {
+      const age = parseInt(form.age, 10)
+      const { trialRegister, setToken: st, setRefreshToken: srt, setUser: su, markConsentDone } = await import('../api')
+      const data = await trialRegister({
+        inviteCode: form.inviteCode.trim(),
+        pseudonym: form.pseudonym.trim(),
+        age, role: 'student', gender: form.gender, consentVersion: CONSENT_VERSION,
+        ...(age < 14 ? { guardianPhone: form.guardianPhone.trim() } : {}),
+      })
+      st(data.token)
+      if (data.refreshToken) srt(data.refreshToken)
+      su({ userId: data.userId, userType: data.userType, pseudonym: data.pseudonym, gender: form.gender, familyCode: data.familyCode })
+      markConsentDone()
+      if (data.familyCode) setFamilyCode(data.familyCode)
+      setStep('done')
+    } catch (err) {
+      setPinError(err.message || '注册失败，请检查邀请码')
+      setStep('form')
+      setError(err.message || '注册失败，请检查邀请码')
+    } finally {
+      setLoading(false)
     }
   }
 
   const pinIndicator = themeId === 'ocean' ? 'pin-pearl' : themeId === 'garden' ? 'pin-jar' : 'pin-orb'
 
-  // === 注册成功 ===
+  // === 注册成功（含家庭码展示） ===
   if (step === 'done') {
     return (
       <div className={`done-panel done-panel--${themeId}`}>
         <span className="emoji">🎉</span>
         <h2>注册成功！</h2>
         <p>下次打开时用昵称和秘密数字就能登录啦</p>
+        {familyCode && (
+          <div style={{ margin: '16px 0', padding: '16px', borderRadius: 16, border: '2px dashed #86efac', background: '#f0fdf4' }}>
+            <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>🏠 我的家庭码（告诉家长用于绑定）</p>
+            <p style={{ fontSize: 28, fontWeight: 'bold', fontFamily: 'monospace', letterSpacing: '0.2em', color: '#16a34a' }}>{familyCode}</p>
+          </div>
+        )}
         <button className={`btn-enter btn-enter--${themeId}`} onClick={onRegister} style={{ marginTop: 18 }}>
           开始使用 🚀
         </button>
@@ -459,8 +494,8 @@ function RegisterForm({ themeId, onRegister }) {
           {pinStep === 'input' ? '下一步' : '确认设置'}
         </button>
 
-        <button className={`skip-pin skip-pin--${themeId}`} onClick={() => setStep('done')}>
-          先不设置，以后再说
+        <button className={`skip-pin skip-pin--${themeId}`} onClick={handleSkipPin} disabled={loading}>
+          {loading ? '正在注册...' : '先不设置，以后再说'}
         </button>
       </div>
     )
@@ -468,7 +503,7 @@ function RegisterForm({ themeId, onRegister }) {
 
   // === 注册表单 ===
   return (
-    <form onSubmit={handleRegister}>
+    <form onSubmit={handleFormSubmit}>
       <div className={`login-field login-field--${themeId}`}>
         <label>邀请码 *</label>
         <input value={form.inviteCode} onChange={(e) => update('inviteCode', e.target.value)} placeholder="老师发的邀请码" />

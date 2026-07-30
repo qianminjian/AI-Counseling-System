@@ -54,18 +54,19 @@ public class TrialAuthService {
     }
 
     /**
-     * 试用注册：校验邀请码 → 创建 trial_student → 同意留痕 → 返回用户
+     * 试用注册：校验邀请码 → 创建 trial_student → 同意留痕 → PIN 原子写入 → 返回用户
      *
      * @param inviteCode     邀请码
      * @param pseudonym      昵称（2-12 字）
      * @param age            年龄
      * @param role           体验者身份（家长/老师/其他，可选）
      * @param consentVersion 同意的告知同意版本号
+     * @param pin            PIN 码（4-6 位数字，可为 null 表示暂不设置）
      * @return 创建的试用用户
      */
     @Transactional
     public User registerTrialUser(String inviteCode, String pseudonym, int age,
-                                  String role, String gender, String consentVersion) {
+                                  String role, String gender, String consentVersion, String pin) {
         // 1. 校验告知同意版本
         if (!CURRENT_CONSENT_VERSION.equals(consentVersion)) {
             throw new BizException(ErrorCode.CONSENT_VERSION_MISMATCH);
@@ -88,6 +89,11 @@ public class TrialAuthService {
         user.setMustChangePassword(false);
         user.setGender(gender);
         user.setFamilyCode(generateFamilyCode());
+        // PIN 原子写入：注册时一并设置，避免二次 API 中断导致半成品用户
+        if (pin != null && pin.matches("\\d{4,6}")) {
+            user.setPinHash(passwordEncoder.encode(pin));
+            user.setPinSetAt(Instant.now());
+        }
         user.setCreatedAt(Instant.now());
         user.setUpdatedAt(Instant.now());
         userMapper.insert(user);

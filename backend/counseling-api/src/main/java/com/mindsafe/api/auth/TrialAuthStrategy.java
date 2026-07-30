@@ -39,7 +39,7 @@ public class TrialAuthStrategy implements AuthStrategy {
 
         User user = trialAuthService.registerTrialUser(
                 req.inviteCode(), req.pseudonym(), req.age(),
-                req.role(), req.gender(), req.consentVersion());
+                req.role(), req.gender(), req.consentVersion(), req.pin());
 
         return new AuthenticatedUser(
                 user.getUserId(),

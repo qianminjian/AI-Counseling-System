@@ -130,6 +130,7 @@ export interface TrialRegisterData {
   guardianPhone?: string
   role?: string
   gender?: string
+  pin?: string
 }
 
 export interface AuthResult {
