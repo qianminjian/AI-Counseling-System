@@ -58,41 +58,41 @@ public class SecurityConfig {
                 })
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        // 公开端点：登录 + 试用注册 + PIN 登录 + Token 刷新
+                        // ─── 公开端点（无需 JWT）───
+                        // 认证流程入口
                         .requestMatchers("/api/v1/auth/login").permitAll()
                         .requestMatchers("/api/v1/auth/trial/register").permitAll()
                         .requestMatchers("/api/v1/auth/pin-login").permitAll()
                         .requestMatchers("/api/v1/auth/refresh").permitAll()
-                        // Actuator：生产仅暴露 health（供 Docker/Nginx 健康检查），开发全开
+                        // 企微 OAuth 回调（无 JWT，靠 code 换 token）
+                        .requestMatchers("/api/v1/auth/wecom/**").permitAll()
+                        // 监护人同意确认（SMS 链接触发，无 JWT，靠 confirmToken 校验）
+                        .requestMatchers("/api/v1/auth/guardian-consent/confirm").permitAll()
+                        // 家长端 API（内部 parentToken 验证，不走 Spring Security 角色）
+                        .requestMatchers("/api/v1/parent/**").permitAll()
+                        // 健康检查（Docker/Nginx 探针）
                         .requestMatchers("/actuator/health").permitAll()
+                        // WebSocket（握手后内部鉴权）
+                        .requestMatchers("/ws/**").permitAll()
+                        // ─── 环境受控端点 ───
+                        // Actuator：生产仅暴露 health，开发全开
                         .requestMatchers("/actuator/**").access(
                                 (authentication, context) -> new org.springframework.security.authorization.AuthorizationDecision(!isProd()))
-                        .requestMatchers("/ws/**").permitAll()
                         // Swagger：生产环境完全禁止访问
                         .requestMatchers("/swagger-ui/**", "/api-docs/**").access(
                                 (authentication, context) -> new org.springframework.security.authorization.AuthorizationDecision(!isProd()))
-                        // 家长端 API：内部 token 验证，不走 Spring Security 角色
-                        .requestMatchers("/api/v1/parent/**").permitAll()
-                        // 管理端 API：仅 ADMIN 角色
+                        // ─── 角色授权 ───
+                        // 管理端 + 平台后台：仅 ADMIN
                         .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
-                        // 平台管理后台：仅 ADMIN 角色
                         .requestMatchers("/api/v1/platform/**").hasRole("ADMIN")
-                        // 改密需已登录
-                        .requestMatchers("/api/v1/auth/change-password").authenticated()
-                        // 学生对话 API 需认证（前端已接入 JWT）
-                        .requestMatchers("/api/v1/chat/**").authenticated()
-                        // 教师端 API：所有教师角色 + ADMIN
+                        // 知识库管理：仅 ADMIN（内容审核/入库为管理职责）
+                        .requestMatchers("/api/v1/knowledge/**").hasRole("ADMIN")
+                        // 教师端 + 预警 + 数据分析：教师角色 + ADMIN
                         .requestMatchers("/api/v1/teacher/**").hasAnyRole("TEACHER", "PSYCH_TEACHER", "CLASS_TEACHER", "ADMIN")
-                        // 预警队列 API：所有教师角色 + ADMIN
                         .requestMatchers("/api/v1/alerts/**").hasAnyRole("TEACHER", "PSYCH_TEACHER", "CLASS_TEACHER", "ADMIN")
-                        // 会话 API 需认证
-                        .requestMatchers("/api/v1/sessions/**").authenticated()
-                        // 放松练习 API 需认证
-                        .requestMatchers("/api/v1/relaxation/**").authenticated()
-                        // 情绪日记 API 需认证
-                        .requestMatchers("/api/v1/diary/**").authenticated()
-                        // 其余请求放行（语音/TTS 等辅助 API）
-                        .anyRequest().permitAll()
+                        .requestMatchers("/api/v1/analytics/**").hasAnyRole("TEACHER", "PSYCH_TEACHER", "CLASS_TEACHER", "ADMIN")
+                        // ─── 兜底：其余全部需认证（TTS/Voice/Chat/Session/Diary/Relaxation/Auth 子端点等）───
+                        .anyRequest().authenticated()
                 )
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
