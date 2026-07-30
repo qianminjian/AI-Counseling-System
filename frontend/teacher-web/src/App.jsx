@@ -33,10 +33,6 @@ export default function App() {
     algorithm: darkMode ? theme.darkAlgorithm : theme.defaultAlgorithm,
   }
 
-  // 数据大屏路由（全屏展示，需已登录）
-  if (window.location.pathname === '/bigscreen' && getToken()) {
-    return <ConfigProvider locale={zhCN} theme={{ algorithm: theme.darkAlgorithm }}><BigScreen /></ConfigProvider>
-  }
   const [user, setUser] = useState(() => {
     const token = getToken()
     if (!token) return null
@@ -51,6 +47,11 @@ export default function App() {
       return null
     }
   })
+
+  // 数据大屏路由（全屏展示，需已登录）
+  if (window.location.pathname === '/bigscreen' && getToken()) {
+    return <ConfigProvider locale={zhCN} theme={{ algorithm: theme.darkAlgorithm }}><BigScreen /></ConfigProvider>
+  }
 
   const handleLogin = (userData) => {
     // 持久化 mustChangePassword 标记（刷新页面后仍需强制改密）
