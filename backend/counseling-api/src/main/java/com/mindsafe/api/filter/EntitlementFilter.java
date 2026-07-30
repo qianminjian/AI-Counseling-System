@@ -1,5 +1,8 @@
 package com.mindsafe.api.filter;
 
+import com.mindsafe.common.tenant.TenantContextHolder;
+import com.mindsafe.domain.entity.Tenant;
+import com.mindsafe.domain.mapper.TenantMapper;
 import com.mindsafe.service.billing.EntitlementChecker;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -13,6 +16,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.util.UUID;
 
 /**
  * 权益过滤器（BILL-001，design/38 §4.2）
@@ -21,10 +25,11 @@ import java.io.IOException;
  * <ul>
  *   <li>豁免路径（预警/SOS/危机）直接放行，不可配置覆盖</li>
  *   <li>功能权益不满足 → 403</li>
- *   <li>配额超限 → 429（TODO：需订阅服务提供当前用量）</li>
+ *   <li>配额超限 → 429（需订阅服务提供当前用量后激活）</li>
  * </ul>
- * 当前阶段：订阅基础设施未就绪，默认 plan=STANDARD 放行所有功能权益检查，
- * 仅落地豁免路径判断 + 路径→功能映射框架，待 BILL-002 订阅服务完成后激活完整拦截。
+ * Plan 解析策略：从 TenantContextHolder 获取 tenantId → 查 tenants 表 →
+ * 根据 status 映射 Plan（active→STANDARD, trial→TRIAL, suspended/其他→TRIAL）。
+ * 无上下文（未认证路径）默认 STANDARD 放行。
  */
 @Component
 @Order(Ordered.LOWEST_PRECEDENCE - 10)
@@ -33,9 +38,11 @@ public class EntitlementFilter extends OncePerRequestFilter {
     private static final Logger log = LoggerFactory.getLogger(EntitlementFilter.class);
 
     private final EntitlementChecker entitlementChecker;
+    private final TenantMapper tenantMapper;
 
-    public EntitlementFilter(EntitlementChecker entitlementChecker) {
+    public EntitlementFilter(EntitlementChecker entitlementChecker, TenantMapper tenantMapper) {
         this.entitlementChecker = entitlementChecker;
+        this.tenantMapper = tenantMapper;
     }
 
     @Override
@@ -58,7 +65,6 @@ public class EntitlementFilter extends OncePerRequestFilter {
             return;
         }
 
-        // TODO BILL-002：从订阅服务获取租户 plan + 当前用量；当前默认 STANDARD
         EntitlementChecker.Plan plan = resolveTenantPlan(request);
 
         EntitlementChecker.CheckResult result = entitlementChecker.checkFeature(plan, feature, path);
@@ -105,10 +111,42 @@ public class EntitlementFilter extends OncePerRequestFilter {
     }
 
     /**
-     * 解析租户订阅计划（TODO BILL-002：查订阅表；当前默认 STANDARD）。
+     * 解析租户订阅计划：从 TenantContextHolder 取 tenantId → 查 tenants 表 → 映射 Plan。
+     * <ul>
+     *   <li>active → STANDARD（当前无独立 plan 字段，active 租户享有标准版权益）</li>
+     *   <li>trial → TRIAL</li>
+     *   <li>suspended / 其他 / 查不到 → TRIAL（最严格权益）</li>
+     *   <li>无租户上下文（未认证路径）→ STANDARD 放行（受 SecurityConfig 保护）</li>
+     * </ul>
      */
     private EntitlementChecker.Plan resolveTenantPlan(HttpServletRequest request) {
-        // 未来从 JWT claims 或订阅服务获取
-        return EntitlementChecker.Plan.STANDARD;
+        UUID tenantId = TenantContextHolder.get();
+        if (tenantId == null) {
+            // 未认证路径（登录/注册等），由 SecurityConfig 控制访问
+            return EntitlementChecker.Plan.STANDARD;
+        }
+        try {
+            Tenant tenant = tenantMapper.selectById(tenantId);
+            if (tenant == null) {
+                log.warn("租户不存在: tenantId={}", tenantId);
+                return EntitlementChecker.Plan.TRIAL;
+            }
+            return mapStatusToPlan(tenant.getStatus());
+        } catch (Exception e) {
+            // 查库异常降级为 STANDARD，避免阻断核心业务
+            log.error("解析租户计划异常，降级为 STANDARD: tenantId={}", tenantId, e);
+            return EntitlementChecker.Plan.STANDARD;
+        }
+    }
+
+    private static EntitlementChecker.Plan mapStatusToPlan(String status) {
+        if (status == null) {
+            return EntitlementChecker.Plan.TRIAL;
+        }
+        return switch (status) {
+            case "active" -> EntitlementChecker.Plan.STANDARD;
+            case "trial" -> EntitlementChecker.Plan.TRIAL;
+            default -> EntitlementChecker.Plan.TRIAL; // suspended/inactive/未知 → 最严格
+        };
     }
 }

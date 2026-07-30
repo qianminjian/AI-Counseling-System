@@ -1,0 +1,316 @@
+/**
+ * TTS 语音播放 Hook
+ * - 逐句合成 + 队列播放
+ * - 单一持久 Audio 元素（规避浏览器自动播放拦截）
+ * - 后端 TTS 不可用时降级为浏览器 speechSynthesis
+ * - 无可用语音引擎时友好提示（修复安卓 Pad "找不到google语音引擎" 问题）
+ * - 支持暂停/重播/停止
+ */
+import { useState, useRef, useCallback, useEffect } from 'react'
+import { getGlobalAudioElement, getGlobalAudioContext, unlockAudio } from '../utils/audioUnlock'
+
+/** 去除 emoji 和特殊符号（TTS 不需要朗读） */
+function stripEmoji(text) {
+  return text
+    // Unicode 属性转义：覆盖所有图形化 emoji（含新版）
+    .replace(/\p{Extended_Pictographic}/gu, '')
+    .replace(/\p{Emoji_Presentation}/gu, '')
+    .replace(/[\u{FE00}-\u{FE0F}]/gu, '')    // 变体选择器
+    .replace(/[\u{200D}]/gu, '')             // 零宽连接
+    .replace(/[\u{20E3}]/gu, '')             // 组合用包围键帽
+    .replace(/[\u{E0020}-\u{E007F}]/gu, '')  // 标签
+    .replace(/[\u{1F3FB}-\u{1F3FF}]/gu, '')  // 肤色修饰
+    .replace(/[#*0-9]\uFE0F?\u20E3/g, '')    // 键帽序列
+    .replace(/\s{2,}/g, ' ')                 // 多余空格
+    .trim()
+}
+
+/** 将文本按标点切分为句子 */
+function splitSentences(text) {
+  if (!text) return []
+  const cleaned = stripEmoji(text)
+  if (!cleaned) return []
+  // 按句号、问号、感叹号、换行切分
+  const parts = cleaned.split(/(?<=[。！？\n])/).filter(s => s.trim())
+  // 超长句二次切分（>40字在逗号处断开）
+  const result = []
+  for (const part of parts) {
+    if (part.length > 40) {
+      const subParts = part.split(/(?<=[，、；])/).filter(s => s.trim())
+      result.push(...subParts)
+    } else {
+      result.push(part)
+    }
+  }
+  return result
+}
+
+/** 合并过短的句子，避免"短句瞬间播完、下一句还没合成好"造成的句间间隔 */
+function mergeShortSentences(sentences, minLen = 10) {
+  const merged = []
+  let buffer = ''
+  for (const s of sentences) {
+    buffer += s
+    if (buffer.length >= minLen) {
+      merged.push(buffer)
+      buffer = ''
+    }
+  }
+  if (buffer) {
+    if (merged.length > 0) merged[merged.length - 1] += buffer
+    else merged.push(buffer)
+  }
+  return merged
+}
+
+/** 检测浏览器 speechSynthesis 是否可用（安卓无 Google TTS 时 getVoices 为空） */
+function checkBrowserTts() {
+  if (!('speechSynthesis' in window)) return false
+  const voices = window.speechSynthesis.getVoices()
+  // 部分浏览器异步加载 voices，首次可能为空但引擎存在
+  return voices.length > 0 || true // 引擎存在即认为可用，voices 异步加载
+}
+
+/** 浏览器降级时的人设音色参数（speechSynthesis 无法选音色，用 pitch/rate 区分人设） */
+const PERSONA_VOICE_PROFILES = {
+  xiaoxing: { pitch: 1.1, rateScale: 1.0 },   // 小星：温暖大姐姐
+  qiqiu: { pitch: 1.4, rateScale: 1.1 },      // 气球：活泼俏皮，音调高、语速快
+  yueliang: { pitch: 1.0, rateScale: 0.9 },   // 月亮：温柔轻语，语速慢
+  xiaotaiyang: { pitch: 0.7, rateScale: 1.0 },// 小太阳：阳光大哥哥，低音调模拟男声
+}
+
+/** 用浏览器 speechSynthesis 朗读（后端 TTS 不可用时的降级，按人设调整音高语速） */
+function browserSpeak(text: string, { rate = 1.0, persona = 'xiaoxing', onEnd }: { rate?: number; persona?: string; onEnd?: () => void } = {}) {
+  if (!('speechSynthesis' in window)) { onEnd?.(); return false }
+  try {
+    window.speechSynthesis.cancel()
+    const utter = new SpeechSynthesisUtterance(text)
+    const profile = PERSONA_VOICE_PROFILES[persona] || PERSONA_VOICE_PROFILES.xiaoxing
+    utter.lang = 'zh-CN'
+    utter.rate = Math.max(0.5, Math.min(2, rate * profile.rateScale))
+    utter.pitch = profile.pitch
+    // 优先选中文语音
+    const voices = window.speechSynthesis.getVoices()
+    const zhVoice = voices.find(v => v.lang.startsWith('zh'))
+    if (zhVoice) utter.voice = zhVoice
+    utter.onend = () => onEnd?.()
+    utter.onerror = () => onEnd?.()
+    window.speechSynthesis.speak(utter)
+    return true
+  } catch {
+    onEnd?.()
+    return false
+  }
+}
+
+export function useTtsPlayer({ persona = 'xiaoxing', emotion = 'neutral', speed = 1.0 } = {}) {
+  const [playing, setPlaying] = useState(false)
+  const [currentSentenceIdx, setCurrentSentenceIdx] = useState(-1)
+  // 当前正在播放的句子数组（供波波话语气泡逐句展示，见 design/27 §4.4）
+  const [sentences, setSentences] = useState([])
+  const [muted, setMuted] = useState(false)
+  // 语音引擎状态：'backend' | 'browser' | 'none'
+  const [engine, setEngine] = useState('backend')
+  // 单一持久 Audio 元素（在用户手势中创建，规避自动播放拦截）
+  const audioRef = useRef(null)
+  const audioCtxRef = useRef(null)
+  const abortRef = useRef(false)
+  const backendFailCount = useRef(0) // 连续后端失败计数
+
+  // 初始化时检测浏览器 TTS 可用性（voiceschanged 事件确保异步加载完成）
+  useEffect(() => {
+    if ('speechSynthesis' in window) {
+      const handler = () => window.speechSynthesis.getVoices()
+      window.speechSynthesis.addEventListener?.('voiceschanged', handler)
+      return () => window.speechSynthesis.removeEventListener?.('voiceschanged', handler)
+    }
+  }, [])
+
+  /** 获取/创建持久 Audio 元素（复用全局已解锁实例，确保自动播放权限） */
+  const getAudio = useCallback(() => {
+    if (!audioRef.current) {
+      audioRef.current = getGlobalAudioElement()
+    }
+    return audioRef.current
+  }, [])
+
+  /** 在用户手势中调用，解锁浏览器音频自动播放限制（增强多浏览器兼容） */
+  const unlock = useCallback(() => {
+    // 委托全局解锁模块（幂等，EmotionSelect 点击时已调用过则跳过）
+    unlockAudio()
+    // 确保 ref 指向全局实例
+    if (!audioRef.current) {
+      audioRef.current = getGlobalAudioElement()
+    }
+    if (!audioCtxRef.current) {
+      audioCtxRef.current = getGlobalAudioContext()
+    }
+  }, [])
+
+  /** 合成单句音频（后端 TTS，连续失败 3 次后降级为浏览器 TTS） */
+  const synthesizeSentence = useCallback(async (text) => {
+    // 后端已连续失败多次，直接用浏览器 TTS
+    if (backendFailCount.current >= 3) {
+      return null // 返回 null 触发 speak() 中的浏览器降级路径
+    }
+    try {
+      const res = await fetch('/api/v1/tts/synthesize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, persona, emotion, speed }),
+      })
+      if (!res.ok || res.status === 204) {
+        backendFailCount.current++
+        return null
+      }
+      backendFailCount.current = 0 // 成功则重置
+      setEngine('backend')
+      return await res.blob()
+    } catch {
+      backendFailCount.current++
+      return null
+    }
+  }, [persona, emotion, speed])
+
+  /** 用持久 Audio 元素播放一个 blob */
+  const playBlob = useCallback((blob) => {
+    return new Promise((resolve) => {
+      const audio = getAudio()
+      const url = URL.createObjectURL(blob)
+
+      const cleanup = () => {
+        URL.revokeObjectURL(url)
+        audio.onended = null
+        audio.onerror = null
+      }
+
+      audio.onended = () => { cleanup(); resolve(undefined) }
+      audio.onerror = () => {
+        console.warn('[TTS] 音频解码失败（MIME 不匹配？）', blob.type, blob.size)
+        cleanup(); resolve(undefined)
+      }
+      audio.src = url
+      audio.play().catch((err) => {
+        console.warn('[TTS] play() 被拒绝:', err.name, err.message)
+        cleanup(); resolve(undefined)
+      })
+    })
+  }, [getAudio])
+
+  /** 播放完整 AI 回复（短句合并 + 全句并行合成，消除句间停顿） */
+  const speak = useCallback(async (text) => {
+    if (muted) return
+
+    stop()
+
+    const sentences = mergeShortSentences(splitSentences(text))
+    if (sentences.length === 0) return
+
+    abortRef.current = false
+    setSentences(sentences)
+    setPlaying(true)
+
+    // 所有句子同时并行合成：播放第 i 句时，第 i+1..n 句早已在后台合成
+    const audioPromises = sentences.map(s => synthesizeSentence(s))
+
+    let usedBrowserFallback = false
+    for (let i = 0; i < audioPromises.length; i++) {
+      if (abortRef.current) break
+      setCurrentSentenceIdx(i)
+      const audioBlob = await audioPromises[i]
+      if (abortRef.current) break
+      if (audioBlob) {
+        await playBlob(audioBlob)
+      } else {
+        // 后端 TTS 不可用 → 浏览器 speechSynthesis 降级
+        usedBrowserFallback = true
+        setEngine('browser')
+        await new Promise<void>((resolve) => {
+          const ok = browserSpeak(sentences[i], { rate: speed, persona, onEnd: resolve })
+          if (!ok) {
+            // 浏览器 TTS 也不可用（安卓无 Google 语音引擎）
+            setEngine('none')
+            resolve()
+          }
+        })
+      }
+    }
+
+    // 播放完毕
+    setPlaying(false)
+    setCurrentSentenceIdx(-1)
+    setSentences([])
+    // 如果整段都用了浏览器降级且引擎不可用，恢复 backend 标记（下次重试）
+    if (usedBrowserFallback && backendFailCount.current < 3) {
+      setEngine('backend')
+    }
+  }, [muted, synthesizeSentence, playBlob, speed])
+
+  /** 播放单句（点击气泡重播） */
+  const speakSentence = useCallback(async (text) => {
+    if (muted) return
+    stop()
+
+    const cleaned = stripEmoji(text)
+    const audioBlob = await synthesizeSentence(cleaned)
+
+    setPlaying(true)
+    if (audioBlob) {
+      await playBlob(audioBlob)
+    } else {
+      // 后端不可用 → 浏览器 TTS 降级
+      setEngine('browser')
+      await new Promise<void>((resolve) => {
+        const ok = browserSpeak(cleaned, { rate: speed, persona, onEnd: resolve })
+        if (!ok) {
+          setEngine('none')
+          resolve()
+        }
+      })
+    }
+    setPlaying(false)
+  }, [muted, synthesizeSentence, playBlob, speed])
+
+  /** 停止播放 */
+  const stop = useCallback(() => {
+    abortRef.current = true
+    if (audioRef.current) {
+      audioRef.current.pause()
+    }
+    // 停止浏览器 TTS
+    if ('speechSynthesis' in window) {
+      try { window.speechSynthesis.cancel() } catch { /* ignore */ }
+    }
+    setPlaying(false)
+    setCurrentSentenceIdx(-1)
+    setSentences([])
+  }, [])
+
+  /** 切换静音 */
+  const toggleMute = useCallback(() => {
+    setMuted(prev => {
+      if (!prev) stop() // 静音时停止播放
+      return !prev
+    })
+  }, [stop])
+
+  // 当前正在朗读的那一句（波波话语气泡用，逐句滚动）
+  const currentSentenceText =
+    currentSentenceIdx >= 0 && currentSentenceIdx < sentences.length
+      ? sentences[currentSentenceIdx]
+      : ''
+
+  return {
+    playing,
+    muted,
+    engine, // 'backend' | 'browser' | 'none'
+    currentSentenceIdx,
+    currentSentenceText,
+    speak,
+    speakSentence,
+    stop,
+    toggleMute,
+    setMuted,
+    unlock,
+  }
+}

@@ -7,9 +7,6 @@ import com.mindsafe.ai.orchestrator.EmotionStateMachine;
 import com.mindsafe.ai.orchestrator.EntryMoodStrategyResolver;
 import com.mindsafe.ai.orchestrator.PromptOrchestrationService;
 import com.mindsafe.ai.prompt.PromptTemplateService;
-import com.mindsafe.ai.risk.RiskDetectorService;
-import com.mindsafe.ai.risk.RiskScoreCalculator;
-import com.mindsafe.ai.risk.SemanticRiskClassifier;
 import com.mindsafe.ai.safety.ConfidentialityNotice;
 import com.mindsafe.ai.safety.CrisisResourceProvider;
 import com.mindsafe.ai.safety.CrisisResources;
@@ -27,11 +24,9 @@ import com.mindsafe.domain.entity.MessageSummary;
 import com.mindsafe.domain.entity.User;
 import com.mindsafe.domain.mapper.CounselingSessionMapper;
 import com.mindsafe.domain.mapper.MessageSummaryMapper;
-import com.mindsafe.domain.mapper.RiskEventMapper;
 import com.mindsafe.domain.mapper.UserMapper;
 import com.mindsafe.service.knowledge.RagAdvisorService;
 import com.mindsafe.service.memory.LongTermMemoryService;
-import com.mindsafe.service.notification.NotificationService;
 import com.mindsafe.service.profile.ProfileExtractorService;
 import com.mindsafe.service.profile.StudentProfileService;
 import com.mindsafe.service.prompt.PromptVersionService;
@@ -44,12 +39,11 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import reactor.core.publisher.Flux;
 
-import java.lang.reflect.Field;
 import java.time.Instant;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -73,12 +67,10 @@ class ConversationServiceImplTest {
 
     private AiChatService aiChatService;
     private PromptTemplateService promptTemplateService;
-    private RiskDetectorService riskDetectorService;
+    private ConversationRiskProcessor riskProcessor;
     private PiiDesensitizer piiDesensitizer;
     private CounselingSessionMapper sessionMapper;
     private MessageSummaryMapper messageSummaryMapper;
-    private RiskEventMapper riskEventMapper;
-    private NotificationService notificationService;
     private UserMapper userMapper;
     private StudentProfileService profileService;
     private ProfileExtractorService profileExtractorService;
@@ -86,9 +78,7 @@ class ConversationServiceImplTest {
     private LongTermMemoryService longTermMemoryService;
     private PromptVersionService promptVersionService;
     private RagAdvisorService ragAdvisorService;
-    private SemanticRiskClassifier semanticRiskClassifier;
     private ConversationQualityService conversationQualityService;
-    private RiskScoreCalculator riskScoreCalculator;
     private CrisisResourceProvider crisisResourceProvider;
     private AllianceEnhancer allianceEnhancer;
     private CbtStageRouter cbtStageRouter;
@@ -97,6 +87,10 @@ class ConversationServiceImplTest {
     private SessionEndAnalyticsService sessionEndAnalyticsService;
     private PromptVariantRouter promptVariantRouter;
     private OfflineMessageReplayService offlineMessageReplayService;
+    private RedisSessionStateStore sessionStateStore;
+
+    /** 测试用内存模拟 Redis 存储 */
+    private final Map<UUID, SessionState> testSessionStore = new HashMap<>();
 
     private ConversationServiceImpl service;
 
@@ -107,12 +101,10 @@ class ConversationServiceImplTest {
     void setUp() {
         aiChatService = mock(AiChatService.class);
         promptTemplateService = mock(PromptTemplateService.class);
-        riskDetectorService = mock(RiskDetectorService.class);
+        riskProcessor = mock(ConversationRiskProcessor.class);
         piiDesensitizer = mock(PiiDesensitizer.class);
         sessionMapper = mock(CounselingSessionMapper.class);
         messageSummaryMapper = mock(MessageSummaryMapper.class);
-        riskEventMapper = mock(RiskEventMapper.class);
-        notificationService = mock(NotificationService.class);
         userMapper = mock(UserMapper.class);
         profileService = mock(StudentProfileService.class);
         profileExtractorService = mock(ProfileExtractorService.class);
@@ -120,9 +112,7 @@ class ConversationServiceImplTest {
         longTermMemoryService = mock(LongTermMemoryService.class);
         promptVersionService = mock(PromptVersionService.class);
         ragAdvisorService = mock(RagAdvisorService.class);
-        semanticRiskClassifier = mock(SemanticRiskClassifier.class);
         conversationQualityService = mock(ConversationQualityService.class);
-        riskScoreCalculator = mock(RiskScoreCalculator.class);
         crisisResourceProvider = new CrisisResourceProvider();
         allianceEnhancer = mock(AllianceEnhancer.class);
         cbtStageRouter = mock(CbtStageRouter.class);
@@ -131,6 +121,18 @@ class ConversationServiceImplTest {
         sessionEndAnalyticsService = mock(SessionEndAnalyticsService.class);
         promptVariantRouter = mock(PromptVariantRouter.class);
         offlineMessageReplayService = mock(OfflineMessageReplayService.class);
+        sessionStateStore = mock(RedisSessionStateStore.class);
+
+        // 用内存 Map 模拟 Redis 存储行为
+        org.mockito.Mockito.doAnswer(inv -> {
+            testSessionStore.put(inv.getArgument(0), inv.getArgument(1));
+            return null;
+        }).when(sessionStateStore).save(any(UUID.class), any(SessionState.class));
+        when(sessionStateStore.get(any(UUID.class))).thenAnswer(inv -> testSessionStore.get(inv.getArgument(0)));
+        org.mockito.Mockito.doAnswer(inv -> {
+            testSessionStore.remove(inv.getArgument(0));
+            return null;
+        }).when(sessionStateStore).remove(any(UUID.class));
 
         // AB-001: 默认分桶结果
         when(experimentBucketAssigner.assignClass(anyString(), anyString(), any()))
@@ -139,9 +141,12 @@ class ConversationServiceImplTest {
         // CBT-201: 默认年龄策略
         when(cbtStageRouter.resolveAgeStrategy(anyInt()))
                 .thenReturn(CbtStageRouter.AgeStrategy.BALANCED);
-        // RISK-203: 风险评分默认结果
-        when(riskScoreCalculator.calculate(any()))
-                .thenReturn(new RiskScoreCalculator.ScoreResult(50, RiskLevel.YELLOW, List.of("test_reason")));
+        // P0-2: ConversationRiskProcessor 默认行为（无风险正常流程）
+        when(riskProcessor.detectKeywordRisk(anyString())).thenReturn(RiskDetectionResult.safe());
+        when(riskProcessor.applySemanticRisk(any(RiskDetectionResult.class), anyString(), anyInt()))
+                .thenAnswer(inv -> inv.getArgument(0));
+        when(riskProcessor.fuseRiskSignals(any(RiskDetectionResult.class), any(), any(), anyInt()))
+                .thenReturn(null);
 
         // AI-005: PromptVersionService 默认返回 classpath 降级结果
         when(promptVersionService.resolve(any(), anyString(), any(), anyMap()))
@@ -155,24 +160,22 @@ class ConversationServiceImplTest {
         // KB-101b: RAG 默认不触发（空串），RAG 注入测试组内单独覆盖
         when(ragAdvisorService.buildRagContext(any(), anyString(), anyInt())).thenReturn("");
 
-        // RISK-202: 语义分类默认无风险（null=降级纯硬规则），语义升级测试组内单独覆盖
-        when(semanticRiskClassifier.classify(anyString(), any(), any(), anyInt())).thenReturn(null);
 
         service = new ConversationServiceImpl(aiChatService, promptTemplateService,
-                riskDetectorService, piiDesensitizer, sessionMapper, messageSummaryMapper,
-                riskEventMapper, notificationService, userMapper, profileService,
+                riskProcessor, piiDesensitizer, sessionMapper, messageSummaryMapper,
+                userMapper, profileService,
                 profileExtractorService, usageTimeLimitService, longTermMemoryService, promptVersionService,
-                ragAdvisorService, semanticRiskClassifier,
+                ragAdvisorService,
                 // ORCH-001/003：编排引擎+情绪状态机纯规则无依赖，直接用真实实例
                 new PromptOrchestrationService(new EntryMoodStrategyResolver(), new EmotionStateMachine()),
                 conversationQualityService,
                 // R-01：未配密钥的真实加密服务 → 明文透传，不影响 contentSummary 断言
                 new com.mindsafe.service.security.FieldEncryptionService(
                         "", 1, "", new org.springframework.core.env.StandardEnvironment()),
-                riskScoreCalculator, crisisResourceProvider,
+                crisisResourceProvider,
                 allianceEnhancer, cbtStageRouter,
                 experimentBucketAssigner, experimentMetricsCollector,
-                sessionEndAnalyticsService, promptVariantRouter, offlineMessageReplayService);
+                sessionEndAnalyticsService, promptVariantRouter, offlineMessageReplayService, sessionStateStore);
     }
 
     /** createSession 并捕获内部生成的 sessionId */
@@ -199,23 +202,16 @@ class ConversationServiceImplTest {
         when(sessionMapper.selectById(sessionId)).thenReturn(entity);
     }
 
-    // ===== 反射工具：直接设置 SessionState 的 nudge 状态（模拟时间流逝/次数累积） =====
+    // ===== 会话状态工具：直接操作 testSessionStore 中的 SessionState =====
 
-    private Object getSessionState(UUID sessionId) throws Exception {
-        Field f = ConversationServiceImpl.class.getDeclaredField("activeSessions");
-        f.setAccessible(true);
-        Map<?, ?> map = (Map<?, ?>) f.get(service);
-        return map.get(sessionId);
+    private SessionState getSessionState(UUID sessionId) {
+        return testSessionStore.get(sessionId);
     }
 
-    private void forceNudgeState(UUID sessionId, int count, Instant lastNudgeAt) throws Exception {
-        Object state = getSessionState(sessionId);
-        Field countField = state.getClass().getDeclaredField("nudgeCount");
-        countField.setAccessible(true);
-        ((AtomicInteger) countField.get(state)).set(count);
-        Field lastField = state.getClass().getDeclaredField("lastNudgeAt");
-        lastField.setAccessible(true);
-        lastField.set(state, lastNudgeAt);
+    private void forceNudgeState(UUID sessionId, int count, Instant lastNudgeAt) {
+        SessionState state = testSessionStore.get(sessionId);
+        state.setNudgeCount(count);
+        state.setLastNudgeAt(lastNudgeAt);
     }
 
     @Nested
@@ -356,16 +352,16 @@ class ConversationServiceImplTest {
                     new com.mindsafe.service.security.FieldEncryptionService(
                             TEST_KEY, 1, "", new org.springframework.core.env.StandardEnvironment());
             ConversationServiceImpl keyedService = new ConversationServiceImpl(aiChatService, promptTemplateService,
-                    riskDetectorService, piiDesensitizer, sessionMapper, messageSummaryMapper,
-                    riskEventMapper, notificationService, userMapper, profileService,
+                    riskProcessor, piiDesensitizer, sessionMapper, messageSummaryMapper,
+                    userMapper, profileService,
                     profileExtractorService, usageTimeLimitService, longTermMemoryService, promptVersionService,
-                    ragAdvisorService, semanticRiskClassifier,
+                    ragAdvisorService,
                     new PromptOrchestrationService(new EntryMoodStrategyResolver(), new EmotionStateMachine()),
                     conversationQualityService, keyedEnc,
-                    riskScoreCalculator, crisisResourceProvider,
+                    crisisResourceProvider,
                     allianceEnhancer, cbtStageRouter,
                     experimentBucketAssigner, experimentMetricsCollector,
-                    sessionEndAnalyticsService, promptVariantRouter, offlineMessageReplayService);
+                    sessionEndAnalyticsService, promptVariantRouter, offlineMessageReplayService, sessionStateStore);
 
             User user = new User();
             user.setPseudonym("小明");
@@ -517,7 +513,6 @@ class ConversationServiceImplTest {
             assertThat(service.sendNudgeStream(tenantId, sessionId, 50).collectList().block()).isEmpty();
 
             // 孩子说话（走 sendMessage 全流程）
-            when(riskDetectorService.detect(anyString())).thenReturn(RiskDetectionResult.safe());
             when(piiDesensitizer.desensitize(anyString())).thenAnswer(inv -> inv.getArgument(0));
             when(usageTimeLimitService.isExceeded(any(), any())).thenReturn(false);
             when(profileService.buildProfilePrompt(eq(tenantId), eq(studentId), any(Integer.class), any()))
@@ -571,8 +566,11 @@ class ConversationServiceImplTest {
                     List.of("硬规则关键词"), 90, true, "立即通知教师");
         }
 
-        /** 通用 mock：脱敏透传 + 时长未超限 */
+        /** 通用 mock：风险检测 RED + 脱敏透传 + 时长未超限 */
         private void mockPipeline() {
+            when(riskProcessor.detectKeywordRisk(anyString())).thenReturn(redResult());
+            when(riskProcessor.fuseRiskSignals(any(RiskDetectionResult.class), any(), any(), anyInt()))
+                    .thenReturn(RiskLevel.RED);
             when(piiDesensitizer.desensitize(anyString())).thenAnswer(inv -> inv.getArgument(0));
             when(usageTimeLimitService.isExceeded(any(), any())).thenReturn(false);
         }
@@ -581,7 +579,6 @@ class ConversationServiceImplTest {
         @DisplayName("RED → 跳过 LLM，返回 risk + 预审核安全文案 + done")
         void red_skipsLlm_returnsSafetyReply() {
             UUID sessionId = createSession("sad");
-            when(riskDetectorService.detect(anyString())).thenReturn(redResult());
             mockPipeline();
 
             List<StreamMessageEvent> events = service
@@ -603,14 +600,12 @@ class ConversationServiceImplTest {
         @DisplayName("RED → 教师告警照发 + 会话升级 escalated")
         void red_notifiesTeacher_andEscalates() {
             UUID sessionId = createSession("sad");
-            when(riskDetectorService.detect(anyString())).thenReturn(redResult());
             mockPipeline();
 
             service.sendMessageStream(tenantId, sessionId, "我不想活了").collectList().block();
 
-            // 风险事件落库 + 教师通知
-            verify(riskEventMapper).insert(any(com.mindsafe.domain.entity.RiskEvent.class));
-            verify(notificationService).notifyRiskEvent(any(com.mindsafe.domain.entity.RiskEvent.class));
+            // 风险事件持久化 + 教师通知（委托 riskProcessor）
+            verify(riskProcessor).persistRiskEvent(any(SessionState.class), any(RiskDetectionResult.class));
 
             // 会话状态升级 escalated
             ArgumentCaptor<CounselingSession> captor = ArgumentCaptor.forClass(CounselingSession.class);
@@ -629,7 +624,6 @@ class ConversationServiceImplTest {
             when(profileService.getExpressionDepth(tenantId, studentId)).thenReturn(null);
             UUID sessionId = service.createSession(tenantId, studentId, "sad", "web").sessionId();
 
-            when(riskDetectorService.detect(anyString())).thenReturn(redResult());
             mockPipeline();
 
             List<StreamMessageEvent> events = service
@@ -643,12 +637,12 @@ class ConversationServiceImplTest {
         @DisplayName("安全响应模式：RED 后的后续轮次也不自由生成，返回陪伴话术")
         void safetyMode_subsequentTurns_noLlm() {
             UUID sessionId = createSession("sad");
-            when(riskDetectorService.detect(anyString())).thenReturn(redResult());
             mockPipeline();
             service.sendMessageStream(tenantId, sessionId, "我不想活了").collectList().block();
 
-            // 后续普通消息（无风险）
-            when(riskDetectorService.detect(anyString())).thenReturn(RiskDetectionResult.safe());
+            // 后续普通消息（无风险，setUp 默认 detectKeywordRisk 返回 safe）
+            when(riskProcessor.fuseRiskSignals(any(RiskDetectionResult.class), any(), any(), anyInt()))
+                    .thenReturn(null);
             List<StreamMessageEvent> events = service
                     .sendMessageStream(tenantId, sessionId, "嗯")
                     .collectList().block();
@@ -664,9 +658,13 @@ class ConversationServiceImplTest {
         @DisplayName("ORANGE → 不短路，仍走 LLM（附风险事件）")
         void orange_notShortCircuited() {
             UUID sessionId = createSession("sad");
-            when(riskDetectorService.detect(anyString())).thenReturn(new RiskDetectionResult(
-                    RiskLevel.ORANGE, "bullying", List.of("被打"), 60, false, "建议关注"));
-            mockPipeline();
+            RiskDetectionResult orangeResult = new RiskDetectionResult(
+                    RiskLevel.ORANGE, "bullying", List.of("被打"), 60, false, "建议关注");
+            when(riskProcessor.detectKeywordRisk(anyString())).thenReturn(orangeResult);
+            when(riskProcessor.fuseRiskSignals(any(RiskDetectionResult.class), any(), any(), anyInt()))
+                    .thenReturn(RiskLevel.ORANGE);
+            when(piiDesensitizer.desensitize(anyString())).thenAnswer(inv -> inv.getArgument(0));
+            when(usageTimeLimitService.isExceeded(any(), any())).thenReturn(false);
             when(profileService.buildProfilePrompt(eq(tenantId), eq(studentId), any(Integer.class), any()))
                     .thenReturn(null);
             when(aiChatService.chatWithPrompt(any(), any(), any(), any(), any(), anyInt(), anyString()))
@@ -695,9 +693,8 @@ class ConversationServiceImplTest {
     @DisplayName("语义风险升级（RISK-202，design/04 §18.3）")
     class SemanticRiskUpgrade {
 
-        /** 通用 mock：硬规则 GREEN + 脱敏透传 + 时长未超限 */
+        /** 通用 mock：脱敏透传 + 时长未超限（detectKeywordRisk 默认 safe 由 setUp 提供） */
         private void mockPipeline() {
-            when(riskDetectorService.detect(anyString())).thenReturn(RiskDetectionResult.safe());
             when(piiDesensitizer.desensitize(anyString())).thenAnswer(inv -> inv.getArgument(0));
             when(usageTimeLimitService.isExceeded(any(), any())).thenReturn(false);
         }
@@ -715,7 +712,11 @@ class ConversationServiceImplTest {
         void semanticRed_triggersShortCircuit() {
             UUID sessionId = createSession("sad");
             mockPipeline();
-            when(semanticRiskClassifier.classify(anyString(), any(), any(), anyInt()))
+            RiskDetectionResult semanticRedResult = new RiskDetectionResult(
+                    RiskLevel.RED, "llm_semantic", List.of(), 85, false, "语义分析识别到隐性风险表达");
+            when(riskProcessor.applySemanticRisk(any(RiskDetectionResult.class), anyString(), anyInt()))
+                    .thenReturn(semanticRedResult);
+            when(riskProcessor.fuseRiskSignals(any(RiskDetectionResult.class), any(), any(), anyInt()))
                     .thenReturn(RiskLevel.RED);
 
             List<StreamMessageEvent> events = service
@@ -728,7 +729,7 @@ class ConversationServiceImplTest {
             assertThat(events.get(1).content()).isEqualTo(CrisisResources.RED_SAFETY_REPLY);
             assertThat(events.get(2).type()).isEqualTo("done");
             verify(aiChatService, never()).chatWithPrompt(any(), any(), any(), any(), any(), anyInt(), anyString());
-            verify(notificationService).notifyRiskEvent(any(com.mindsafe.domain.entity.RiskEvent.class));
+            verify(riskProcessor).persistRiskEvent(any(SessionState.class), any(RiskDetectionResult.class));
         }
 
         @Test
@@ -737,29 +738,32 @@ class ConversationServiceImplTest {
             UUID sessionId = createSession("sad");
             mockPipeline();
             mockLlmReply();
-            // setUp 默认 classify 返回 null，无需额外 stub
+            // setUp 默认 applySemanticRisk 透传输入（safe），fuseRiskSignals 返回 null
 
             List<StreamMessageEvent> events = service
                     .sendMessageStream(tenantId, sessionId, "今天有点累")
                     .collectList().block();
 
-            verify(semanticRiskClassifier).classify(anyString(), any(), any(), anyInt());
+            verify(riskProcessor).applySemanticRisk(any(RiskDetectionResult.class), anyString(), anyInt());
             verify(aiChatService).chatWithPrompt(any(), any(), any(), any(), any(), anyInt(), anyString());
             assertThat(events).noneMatch(e -> "risk".equals(e.type()));
         }
 
         @Test
-        @DisplayName("硬规则已 RED → 不调语义分类（已被硬规则接住，省 LLM 调用）")
-        void keywordRed_skipsClassifier() {
+        @DisplayName("硬规则已 RED → 服务层仍调 applySemanticRisk（内部跳过逻辑在 processor 内）")
+        void keywordRed_stillCallsProcessor() {
             UUID sessionId = createSession("sad");
-            when(riskDetectorService.detect(anyString())).thenReturn(new RiskDetectionResult(
-                    RiskLevel.RED, "self_harm", List.of("硬规则关键词"), 90, true, "立即通知教师"));
+            RiskDetectionResult redResult = new RiskDetectionResult(
+                    RiskLevel.RED, "self_harm", List.of("硬规则关键词"), 90, true, "立即通知教师");
+            when(riskProcessor.detectKeywordRisk(anyString())).thenReturn(redResult);
+            when(riskProcessor.fuseRiskSignals(any(RiskDetectionResult.class), any(), any(), anyInt()))
+                    .thenReturn(RiskLevel.RED);
             when(piiDesensitizer.desensitize(anyString())).thenAnswer(inv -> inv.getArgument(0));
             when(usageTimeLimitService.isExceeded(any(), any())).thenReturn(false);
 
             service.sendMessageStream(tenantId, sessionId, "我不想活了").collectList().block();
 
-            verify(semanticRiskClassifier, never()).classify(anyString(), any(), any(), anyInt());
+            verify(riskProcessor).applySemanticRisk(eq(redResult), anyString(), anyInt());
         }
 
         @Test
@@ -768,7 +772,11 @@ class ConversationServiceImplTest {
             UUID sessionId = createSession("sad");
             mockPipeline();
             mockLlmReply();
-            when(semanticRiskClassifier.classify(anyString(), any(), any(), anyInt()))
+            RiskDetectionResult yellowResult = new RiskDetectionResult(
+                    RiskLevel.YELLOW, "llm_semantic", List.of(), 40, false, "语义分析识别到低风险表达");
+            when(riskProcessor.applySemanticRisk(any(RiskDetectionResult.class), anyString(), anyInt()))
+                    .thenReturn(yellowResult);
+            when(riskProcessor.fuseRiskSignals(any(RiskDetectionResult.class), any(), any(), anyInt()))
                     .thenReturn(RiskLevel.YELLOW);
 
             List<StreamMessageEvent> events = service
@@ -777,21 +785,20 @@ class ConversationServiceImplTest {
 
             assertThat(events).anyMatch(e -> "risk".equals(e.type()));
             verify(aiChatService).chatWithPrompt(any(), any(), any(), any(), any(), anyInt(), anyString());
-            verify(riskEventMapper).insert(any(com.mindsafe.domain.entity.RiskEvent.class));
+            verify(riskProcessor).persistRiskEvent(any(SessionState.class), any(RiskDetectionResult.class));
         }
 
         @Test
         @DisplayName("语义分类只收脱敏文（原始 PII 不进 LLM）")
         void classifierReceivesDesensitizedText() {
             UUID sessionId = createSession("sad");
-            when(riskDetectorService.detect(anyString())).thenReturn(RiskDetectionResult.safe());
             when(piiDesensitizer.desensitize(anyString())).thenReturn("我住在[地址]，很难过");
             when(usageTimeLimitService.isExceeded(any(), any())).thenReturn(false);
             mockLlmReply();
 
             service.sendMessageStream(tenantId, sessionId, "我住在幸福路1号，很难过").collectList().block();
 
-            verify(semanticRiskClassifier).classify(eq("我住在[地址]，很难过"), any(), any(), anyInt());
+            verify(riskProcessor).applySemanticRisk(any(RiskDetectionResult.class), eq("我住在[地址]，很难过"), anyInt());
         }
     }
 
@@ -800,7 +807,6 @@ class ConversationServiceImplTest {
     class RagInjection {
 
         private void mockChatPipeline() {
-            when(riskDetectorService.detect(anyString())).thenReturn(RiskDetectionResult.safe());
             when(piiDesensitizer.desensitize(anyString())).thenAnswer(inv -> inv.getArgument(0));
             when(usageTimeLimitService.isExceeded(any(), any())).thenReturn(false);
             when(profileService.buildProfilePrompt(eq(tenantId), eq(studentId), any(Integer.class), any()))
@@ -849,8 +855,10 @@ class ConversationServiceImplTest {
         @DisplayName("RED 硬短路 → 不调用 RAG 检索（危机场景固定话术优先）")
         void redShortCircuit_noRagRetrieval() {
             UUID sessionId = createSession("sad");
-            when(riskDetectorService.detect(anyString())).thenReturn(new RiskDetectionResult(
+            when(riskProcessor.detectKeywordRisk(anyString())).thenReturn(new RiskDetectionResult(
                     RiskLevel.RED, "self_harm", List.of("硬规则关键词"), 90, true, "立即通知教师"));
+            when(riskProcessor.fuseRiskSignals(any(RiskDetectionResult.class), any(), any(), anyInt()))
+                    .thenReturn(RiskLevel.RED);
             when(piiDesensitizer.desensitize(anyString())).thenAnswer(inv -> inv.getArgument(0));
 
             service.sendMessageStream(tenantId, sessionId, "我不想活了").collectList().block();
@@ -922,7 +930,6 @@ class ConversationServiceImplTest {
     class VoiceEmotionOrchestration {
 
         private void mockChatPipeline() {
-            when(riskDetectorService.detect(anyString())).thenReturn(RiskDetectionResult.safe());
             when(piiDesensitizer.desensitize(anyString())).thenAnswer(inv -> inv.getArgument(0));
             when(usageTimeLimitService.isExceeded(any(), any())).thenReturn(false);
             when(profileService.buildProfilePrompt(eq(tenantId), eq(studentId), any(Integer.class), any()))

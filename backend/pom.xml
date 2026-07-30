@@ -21,7 +21,6 @@
 
     <modules>
         <module>counseling-common</module>
-        <module>counseling-tenant</module>
         <module>counseling-domain</module>
         <module>counseling-ai</module>
         <module>counseling-service</module>
@@ -63,11 +62,6 @@
             <dependency>
                 <groupId>com.mindsafe</groupId>
                 <artifactId>counseling-common</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.mindsafe</groupId>
-                <artifactId>counseling-tenant</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>

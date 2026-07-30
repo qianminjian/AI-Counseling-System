@@ -1,0 +1,309 @@
+/**
+ * 声纹登录引导对话覆盖层
+ *
+ * 唤醒词命中后全屏展示：
+ * 1. 波波 TTS 提问（字幕动画）
+ * 2. 麦克风采集孩子回答（音量动画）
+ * 3. 提取 embedding → 比对 → 成功/失败
+ *
+ * 状态机：idle → speaking（TTS播放）→ listening（采集）→ processing（推理）→ success/fail
+ */
+import { useState, useEffect, useRef, useCallback } from 'react'
+import { VP_GUIDE_SCRIPTS, VP_SAMPLE_RATE, VP_SEGMENT_DURATION, VP_SILENCE_THRESHOLD } from '../config/voiceprint'
+import { useVoiceprint } from '../hooks/useVoiceprint'
+import { unlockAudio } from '../utils/audioUnlock'
+
+/** AudioWorklet 处理器：采集 PCM 转发主线程 */
+const CAPTURE_WORKLET = `
+class VPCaptureProcessor extends AudioWorkletProcessor {
+  process(inputs) {
+    const input = inputs[0]
+    if (input && input[0] && input[0].length > 0) {
+      this.port.postMessage(input[0])
+    }
+    return true
+  }
+}
+registerProcessor('vp-capture-processor', VPCaptureProcessor)
+`
+
+/**
+ * @param {object} props
+ * @param {'verify'|'enroll'} props.mode - 验证模式 / 注册采集模式
+ * @param {(result: {matched: boolean, userId?: string, pseudonym?: string}) => void} props.onComplete
+ * @param {() => void} props.onCancel - 取消/返回
+ */
+export default function VoiceLoginOverlay({ mode = 'verify', onComplete, onCancel }) {
+  const scripts = VP_GUIDE_SCRIPTS[mode] || VP_GUIDE_SCRIPTS.verify
+  const [phase, setPhase] = useState('intro') // intro | speaking | listening | processing | success | fail
+  const [stepIndex, setStepIndex] = useState(0)
+  const [volume, setVolume] = useState(0)
+  const [statusText, setStatusText] = useState('')
+  const [failCount, setFailCount] = useState(0)
+
+  const { extractEmbedding, verify, loading } = useVoiceprint()
+  const collectedEmbeddings = useRef([])
+  const audioCtxRef = useRef(null)
+  const streamRef = useRef(null)
+  const workletRef = useRef(null)
+  const chunksRef = useRef([])
+  const listeningRef = useRef(false)
+  const cancelledRef = useRef(false)
+
+  // 清理资源
+  const cleanup = useCallback(() => {
+    cancelledRef.current = true
+    listeningRef.current = false
+    try { workletRef.current?.port.close() } catch { /* ignore */ }
+    streamRef.current?.getTracks().forEach((t) => t.stop())
+    audioCtxRef.current?.close().catch(() => {})
+  }, [])
+
+  useEffect(() => () => cleanup(), [cleanup])
+
+  /** TTS 播放引导语（speechSynthesis 降级方案） */
+  const speakPrompt = useCallback((text) => {
+    return new Promise<void>((resolve) => {
+      if (!('speechSynthesis' in window)) {
+        // 无 TTS：显示字幕 2 秒后继续
+        setTimeout(resolve, 2000)
+        return
+      }
+      window.speechSynthesis.cancel()
+      const utter = new SpeechSynthesisUtterance(text)
+      utter.lang = 'zh-CN'
+      utter.rate = 0.9
+      const voices = window.speechSynthesis.getVoices()
+      const zhVoice = voices.find((v) => v.lang.startsWith('zh'))
+      if (zhVoice) utter.voice = zhVoice
+      utter.onend = () => resolve()
+      utter.onerror = () => resolve()
+      window.speechSynthesis.speak(utter)
+      // 超时保护
+      setTimeout(resolve, 8000)
+    })
+  }, [])
+
+  /** 初始化麦克风 + AudioWorklet */
+  const initMic = useCallback(async () => {
+    if (audioCtxRef.current) return true
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      })
+      streamRef.current = stream
+      const ctx = new (window.AudioContext || window.webkitAudioContext)()
+      if (ctx.state === 'suspended') await ctx.resume().catch(() => {})
+      audioCtxRef.current = ctx
+
+      const workletUrl = URL.createObjectURL(new Blob([CAPTURE_WORKLET], { type: 'application/javascript' }))
+      try {
+        await ctx.audioWorklet.addModule(workletUrl)
+      } finally {
+        URL.revokeObjectURL(workletUrl)
+      }
+
+      const source = ctx.createMediaStreamSource(stream)
+      const worklet = new AudioWorkletNode(ctx, 'vp-capture-processor')
+      workletRef.current = worklet
+
+      worklet.port.onmessage = (e) => {
+        if (!listeningRef.current) return
+        const pcm = e.data
+        chunksRef.current.push(pcm)
+        // 计算音量（UI 动画）
+        let sum = 0
+        for (let i = 0; i < pcm.length; i++) sum += pcm[i] * pcm[i]
+        setVolume(Math.min(1, Math.sqrt(sum / pcm.length) * 10))
+      }
+
+      source.connect(worklet)
+      return true
+    } catch (err) {
+      console.warn('[VoiceLogin] 麦克风初始化失败:', err?.message)
+      setStatusText('麦克风不可用，请用秘密数字登录')
+      setPhase('fail')
+      return false
+    }
+  }, [])
+
+  /** 采集一段音频（duration 秒）→ 返回 Float32Array */
+  const captureSegment = useCallback((duration) => {
+    return new Promise((resolve) => {
+      chunksRef.current = []
+      listeningRef.current = true
+      setVolume(0)
+
+      const timer = setTimeout(() => {
+        listeningRef.current = false
+        setVolume(0)
+        // 合并 chunks
+        const totalLen = chunksRef.current.reduce((s, c) => s + c.length, 0)
+        const merged = new Float32Array(totalLen)
+        let offset = 0
+        for (const c of chunksRef.current) {
+          merged.set(c, offset)
+          offset += c.length
+        }
+        resolve(merged)
+      }, duration * 1000)
+
+      // 保存 timer 以便取消
+      return () => clearTimeout(timer)
+    })
+  }, [])
+
+  /** 主流程：逐轮引导对话 */
+  const runFlow = useCallback(async () => {
+    // 解锁音频（用户已交互——点击了声纹入口或唤醒词触发）
+    unlockAudio()
+
+    const micOk = await initMic()
+    if (!micOk) return
+
+    collectedEmbeddings.current = []
+
+    for (let i = 0; i < scripts.length; i++) {
+      if (cancelledRef.current) return
+      setStepIndex(i)
+
+      // 1. 播放引导语
+      setPhase('speaking')
+      setStatusText(scripts[i].prompt)
+      await speakPrompt(scripts[i].prompt)
+      if (cancelledRef.current) return
+
+      // 2. 采集回答
+      setPhase('listening')
+      setStatusText('正在听你说...')
+      const audio = await captureSegment(scripts[i].duration)
+      if (cancelledRef.current) return
+
+      // 3. 提取 embedding
+      setPhase('processing')
+      setStatusText('正在识别...')
+      const sampleRate = audioCtxRef.current?.sampleRate || VP_SAMPLE_RATE
+      const embedding = await extractEmbedding(audio, sampleRate)
+
+      if (embedding) {
+        collectedEmbeddings.current.push(embedding)
+      } else {
+        // 静音或提取失败：提示重试（不计入失败次数）
+        setStatusText('没有听清，再说一次吧~')
+        await new Promise((r) => setTimeout(r, 1500))
+        i-- // 重试当前轮
+        continue
+      }
+    }
+
+    if (cancelledRef.current) return
+
+    // 4. 比对/完成
+    setPhase('processing')
+    setStatusText('正在确认身份...')
+
+    if (mode === 'verify') {
+      const result = await verify(collectedEmbeddings.current)
+      if (result.matched) {
+        setPhase('success')
+        setStatusText(`是${result.pseudonym}呀！欢迎回来！`)
+        setTimeout(() => onComplete(result), 1500)
+      } else {
+        const newCount = failCount + 1
+        setFailCount(newCount)
+        setPhase('fail')
+        setStatusText('嗯？我好像不认识你，用秘密数字登录吧')
+      }
+    } else {
+      // 注册模式：返回采集的 embeddings
+      setPhase('success')
+      setStatusText('声音录入成功！')
+      setTimeout(() => onComplete({ matched: true, embeddings: collectedEmbeddings.current }), 1500)
+    }
+  }, [scripts, mode, initMic, speakPrompt, captureSegment, extractEmbedding, verify, failCount, onComplete])
+
+  // 启动流程
+  useEffect(() => {
+    runFlow()
+    return () => { cancelledRef.current = true }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ===== UI =====
+
+  const phaseEmoji = {
+    intro: '🐬',
+    speaking: '🐬',
+    listening: '🎤',
+    processing: '⏳',
+    success: '🎉',
+    fail: '🤔',
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col items-center justify-center p-6"
+      style={{ background: 'linear-gradient(to bottom, #E0F7FA, #B2EBF2)' }}>
+
+      {/* 取消按钮 */}
+      <button
+        onClick={() => { cleanup(); onCancel() }}
+        className="absolute top-6 right-6 w-10 h-10 rounded-full bg-white/60 flex items-center justify-center text-gray-500 hover:bg-white transition-colors"
+      >
+        ✕
+      </button>
+
+      {/* 波波动画 */}
+      <div className={`text-7xl mb-6 transition-transform ${phase === 'listening' ? 'animate-bounce' : 'animate-pulse'}`}>
+        {phaseEmoji[phase] || '🐬'}
+      </div>
+
+      {/* 进度指示 */}
+      <div className="flex gap-2 mb-6">
+        {scripts.map((_, i) => (
+          <div key={i} className={`w-3 h-3 rounded-full transition-colors ${
+            i < stepIndex ? 'bg-green-400' : i === stepIndex ? 'bg-blue-500' : 'bg-gray-300'
+          }`} />
+        ))}
+      </div>
+
+      {/* 对话字幕 */}
+      <div className="w-full max-w-sm bg-white rounded-2xl shadow-lg p-6 text-center mb-6">
+        <p className="text-lg font-medium text-gray-800 leading-relaxed">{statusText}</p>
+      </div>
+
+      {/* 音量动画（采集时） */}
+      {phase === 'listening' && (
+        <div className="flex items-end gap-1 h-16 mb-6">
+          {Array.from({ length: 12 }).map((_, i) => {
+            const h = Math.max(8, volume * 60 * (0.5 + Math.random() * 0.5))
+            return (
+              <div key={i} className="w-2 rounded-full bg-blue-400 transition-all duration-100"
+                style={{ height: `${h}px` }} />
+            )
+          })}
+        </div>
+      )}
+
+      {/* 加载动画（推理时） */}
+      {phase === 'processing' && (
+        <div className="mb-6">
+          <div className="w-10 h-10 border-4 border-blue-200 border-t-blue-500 rounded-full animate-spin" />
+        </div>
+      )}
+
+      {/* 失败时显示降级入口 */}
+      {phase === 'fail' && (
+        <button
+          onClick={() => { cleanup(); onCancel() }}
+          className="mt-4 px-8 py-3.5 rounded-full bg-blue-500 text-white font-medium hover:bg-blue-600 active:scale-[0.98] transition-all shadow-lg"
+        >
+          用秘密数字登录
+        </button>
+      )}
+
+      {/* 底部提示 */}
+      <p className="absolute bottom-8 text-xs text-gray-400 text-center px-6">
+        声音信息只保存在这台设备上，不会上传到任何服务器
+      </p>
+    </div>
+  )
+}

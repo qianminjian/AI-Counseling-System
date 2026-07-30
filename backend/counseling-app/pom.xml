@@ -20,10 +20,6 @@
             <groupId>com.mindsafe</groupId>
             <artifactId>counseling-api</artifactId>
         </dependency>
-        <dependency>
-            <groupId>com.mindsafe</groupId>
-            <artifactId>counseling-tenant</artifactId>
-        </dependency>
         <!-- 以下四个为传递依赖显式声明：jacoco report-aggregate 仅聚合直接依赖模块 -->
         <dependency>
             <groupId>com.mindsafe</groupId>

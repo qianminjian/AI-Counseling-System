@@ -2,12 +2,17 @@ package com.mindsafe.api.controller;
 
 import com.mindsafe.api.security.JwtTokenProvider;
 import com.mindsafe.common.dto.ApiResponse;
+import com.mindsafe.domain.entity.User;
+import com.mindsafe.domain.mapper.UserMapper;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.client.RestTemplate;
 
+import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
@@ -37,10 +42,12 @@ public class WeComOAuthController {
     private String redirectUri;
 
     private final JwtTokenProvider jwtTokenProvider;
+    private final UserMapper userMapper;
     private final RestTemplate restTemplate = new RestTemplate();
 
-    public WeComOAuthController(JwtTokenProvider jwtTokenProvider) {
+    public WeComOAuthController(JwtTokenProvider jwtTokenProvider, UserMapper userMapper) {
         this.jwtTokenProvider = jwtTokenProvider;
+        this.userMapper = userMapper;
     }
 
     /** 获取企微 OAuth 授权 URL（前端跳转用） */
@@ -88,17 +95,42 @@ public class WeComOAuthController {
                 return ApiResponse.error(401, "企微授权失败，未获取到用户身份");
             }
 
-            // Step 3: 匹配系统用户（用 pseudonym 或扩展字段匹配）
-            // 简化：直接用 wecomUserId 作为 pseudonym 查找
-            // 生产环境应查 users 表的 wecom_user_id 字段
+            // Step 3: 匹配系统用户（用 pseudonym 字段匹配企微 userId，待 wecom_user_id 字段上线后切换）
             log.info("企微 OAuth 登录: wecomUserId={}", wecomUserId);
+            User matchedUser = userMapper.selectOne(
+                    new LambdaQueryWrapper<User>()
+                            .eq(User::getPseudonym, wecomUserId)
+                            .eq(User::getUserType, "teacher")
+                            .last("LIMIT 1"));
 
-            // TODO: 查库匹配用户，此处返回占位响应
-            return ApiResponse.ok(Map.of(
-                    "matched", false,
-                    "wecomUserId", wecomUserId,
-                    "message", "企微用户已识别，请在管理后台绑定系统账号"
-            ));
+            if (matchedUser == null) {
+                return ApiResponse.ok(Map.of(
+                        "matched", false,
+                        "wecomUserId", wecomUserId,
+                        "message", "企微用户已识别，请在管理后台绑定系统账号"
+                ));
+            }
+
+            // Step 4: 更新最后登录时间 + 签发 JWT
+            User loginUpdate = new User();
+            loginUpdate.setUserId(matchedUser.getUserId());
+            loginUpdate.setLastLoginAt(Instant.now());
+            userMapper.updateById(loginUpdate);
+
+            String token = jwtTokenProvider.generateToken(
+                    matchedUser.getUserId(), matchedUser.getUserType(), matchedUser.getTenantId());
+            String refreshToken = jwtTokenProvider.generateRefreshToken(
+                    matchedUser.getUserId(), matchedUser.getUserType(), matchedUser.getTenantId());
+
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("matched", true);
+            result.put("token", token);
+            result.put("refreshToken", refreshToken);
+            result.put("userId", matchedUser.getUserId().toString());
+            result.put("userType", matchedUser.getUserType());
+            result.put("tenantId", matchedUser.getTenantId().toString());
+            log.info("企微 OAuth 登录成功: userId={}, tenant={}", matchedUser.getUserId(), matchedUser.getTenantId());
+            return ApiResponse.ok(result);
         } catch (Exception e) {
             log.error("企微 OAuth 回调处理失败", e);
             return ApiResponse.error(500, "企微登录处理失败: " + e.getMessage());
