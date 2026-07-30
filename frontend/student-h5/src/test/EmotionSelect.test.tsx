@@ -5,7 +5,7 @@ import { describe, it, expect, vi } from 'vitest';
 vi.mock('../theme/ThemeProvider', () => ({
   useTheme: () => ({ theme: { companion: '🐻', primary: '#FF6B6B' } }),
 }));
-vi.mock('../api', () => ({ api: vi.fn() }));
+vi.mock('../api', () => ({ api: vi.fn(), getUser: vi.fn(() => null) }));
 vi.mock('../utils/audioUnlock', () => ({ unlockAudio: vi.fn() }));
 vi.mock('../components/SessionHistory', () => ({ default: () => <div data-testid="session-history" /> }));
 vi.mock('../components/RelaxationExercises', () => ({ default: ({ onBack }) => <div data-testid="relaxation">放松练习</div> }));
