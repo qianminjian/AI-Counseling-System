@@ -15,7 +15,7 @@ import { api, getUser } from '../api'
 export default function SettingsPanel({ open, onClose, muted, onToggleMute, wakeSupported = false, wakeOn = false, onToggleWake }) {
   const { themeId, changeTheme } = useTheme()
   const { personaId, changePersona } = useVoicePersona()
-  const [familyCode, setFamilyCode] = useState(getUser()?.familyCode || '')
+  const [familyCode, setFamilyCode] = useState<string>(getUser()?.familyCode || '')
   const [copied, setCopied] = useState(false)
 
   // 打开时如果 sessionStorage 没有 familyCode，从后端获取
