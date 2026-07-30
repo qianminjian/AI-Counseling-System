@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { pinLogin, setToken, setRefreshToken, setUser } from '../api'
 import { CONSENT_VERSION } from './ConsentGate'
 import { useWakeWord } from '../hooks/useWakeWord'
-import { hasAnyVoiceprint } from '../utils/voiceprintStore'
+import { hasAnyVoiceprint, enrollVoiceprint } from '../utils/voiceprintStore'
 import { VP_IDLE_TIMEOUT } from '../config/voiceprint'
 import { useTheme, THEMES } from '../theme/ThemeProvider'
 import VoiceLoginOverlay from './VoiceLoginOverlay'
@@ -338,12 +338,14 @@ function RegisterForm({ themeId, onRegister }) {
   const [pinConfirm, setPinConfirm] = useState('')
   const [pinStep, setPinStep] = useState('input')
   const [pinError, setPinError] = useState('')
+  const [regUserId, setRegUserId] = useState(null) // 注册成功后的 userId（声纹采集用）
+  const [hasVoiceprint, setHasVoiceprint] = useState(false) // 是否已完成声纹采集
   const [familyCode, setFamilyCode] = useState('') // 注册成功后展示
 
   const update = (key, value) => { setForm((f) => ({ ...f, [key]: value })); setError('') }
 
   // 第一步：表单校验通过后进入 PIN 设置（此时尚未调 API，不写数据库）
-  const handleFormSubmit = (e) => {
+  const handleFormSubmit = async (e) => {
     e.preventDefault()
     if (!form.inviteCode.trim() || !form.pseudonym.trim() || !form.age || !form.gender) {
       setError('请填写所有必填项'); return
@@ -357,8 +359,27 @@ function RegisterForm({ themeId, onRegister }) {
       if (!form.guardianPhone.trim()) { setError('不满 14 周岁需填写家长手机号'); return }
       if (!/^1\d{10}$/.test(form.guardianPhone.trim())) { setError('请输入正确的 11 位手机号'); return }
     }
-    setError('')
-    setStep('set-pin') // 先收 PIN，再调 API（原子性保障）
+    setLoading(true); setError('')
+    try {
+      const { trialRegister, setToken: st, setRefreshToken: srt, setUser: su, markConsentDone } = await import('../api')
+      const data = await trialRegister({
+        inviteCode: form.inviteCode.trim(),
+        pseudonym: form.pseudonym.trim(),
+        age, role: 'student', gender: form.gender, consentVersion: CONSENT_VERSION,
+        ...(age < 14 ? { guardianPhone: form.guardianPhone.trim() } : {}),
+      })
+      st(data.token)
+      if (data.refreshToken) srt(data.refreshToken)
+      su({ userId: data.userId, userType: data.userType, pseudonym: data.pseudonym, gender: form.gender, familyCode: data.familyCode })
+      markConsentDone()
+      setRegUserId(data.userId)
+      if (data.familyCode) setFamilyCode(data.familyCode)
+      setStep('set-pin')
+    } catch (err) {
+      setError(err.message || '注册失败，请检查邀请码')
+    } finally {
+      setLoading(false)
+    }
   }
 
   const pressPinKey = (key) => {
@@ -386,21 +407,14 @@ function RegisterForm({ themeId, onRegister }) {
     }
     setLoading(true); setPinError('')
     try {
-      const age = parseInt(form.age, 10)
-      const { trialRegister, setToken: st, setRefreshToken: srt, setUser: su, markConsentDone } = await import('../api')
-      const data = await trialRegister({
-        inviteCode: form.inviteCode.trim(),
-        pseudonym: form.pseudonym.trim(),
-        age, role: 'student', gender: form.gender, consentVersion: CONSENT_VERSION,
-        ...(age < 14 ? { guardianPhone: form.guardianPhone.trim() } : {}),
-        pin,
-      })
-      st(data.token)
-      if (data.refreshToken) srt(data.refreshToken)
-      su({ userId: data.userId, userType: data.userType, pseudonym: data.pseudonym, gender: form.gender, familyCode: data.familyCode })
-      markConsentDone()
-      if (data.familyCode) setFamilyCode(data.familyCode)
-      setStep('done')
+      const { setPin: sp } = await import('../api')
+      await sp(pin)
+      // PIN 设置成功：若用户同意了声纹采集，进入声纹选择步骤
+      if (voiceConsent && regUserId) {
+        setStep('voice-choice')
+      } else {
+        setStep('done')
+      }
     } catch (err) {
       setPinError(err.message || '注册失败，请检查邀请码')
       setStep('form') // 注册失败回到表单（可能是邀请码问题）
@@ -410,34 +424,57 @@ function RegisterForm({ themeId, onRegister }) {
     }
   }
 
-  // 跳过 PIN 设置，但仍然调注册 API（无 PIN 原子写入）
-  const handleSkipPin = async () => {
-    setLoading(true); setPinError('')
-    try {
-      const age = parseInt(form.age, 10)
-      const { trialRegister, setToken: st, setRefreshToken: srt, setUser: su, markConsentDone } = await import('../api')
-      const data = await trialRegister({
-        inviteCode: form.inviteCode.trim(),
-        pseudonym: form.pseudonym.trim(),
-        age, role: 'student', gender: form.gender, consentVersion: CONSENT_VERSION,
-        ...(age < 14 ? { guardianPhone: form.guardianPhone.trim() } : {}),
-      })
-      st(data.token)
-      if (data.refreshToken) srt(data.refreshToken)
-      su({ userId: data.userId, userType: data.userType, pseudonym: data.pseudonym, gender: form.gender, familyCode: data.familyCode })
-      markConsentDone()
-      if (data.familyCode) setFamilyCode(data.familyCode)
-      setStep('done')
-    } catch (err) {
-      setPinError(err.message || '注册失败，请检查邀请码')
-      setStep('form')
-      setError(err.message || '注册失败，请检查邀请码')
-    } finally {
-      setLoading(false)
-    }
+  const pinIndicator = themeId === 'ocean' ? 'pin-pearl' : themeId === 'garden' ? 'pin-jar' : 'pin-orb'
+
+  // === 声纹采集选择（注册后、PIN 设置后的中间步） ===
+  if (step === 'voice-choice') {
+    return (
+      <div className={`done-panel done-panel--${themeId}`}>
+        <span className="emoji">🎤</span>
+        <h2>要录入你的声音吗？</h2>
+        <p style={{ margin: '12px 0', lineHeight: 1.6, fontSize: 14, opacity: 0.8 }}>
+          录入后，下次登录时只要对波波说句话就能直接进入，<br />不用输秘密数字啦！
+        </p>
+        <p style={{ fontSize: 12, opacity: 0.5, marginBottom: 20 }}>
+          🔒 声音只保存在这台设备上，不会上传到任何服务器
+        </p>
+        <button
+          className={`btn-enter btn-enter--${themeId}`}
+          onClick={() => setStep('voice-enroll')}
+        >
+          好呀，现在录入！🎤
+        </button>
+        <button
+          className={`skip-pin skip-pin--${themeId}`}
+          style={{ marginTop: 12 }}
+          onClick={() => setStep('done')}
+        >
+          以后再说，先用秘密数字
+        </button>
+      </div>
+    )
   }
 
-  const pinIndicator = themeId === 'ocean' ? 'pin-pearl' : themeId === 'garden' ? 'pin-jar' : 'pin-orb'
+  // === 声纹采集（引导对话） ===
+  if (step === 'voice-enroll') {
+    return (
+      <VoiceLoginOverlay
+        mode="enroll"
+        onComplete={async (result) => {
+          if (result.embeddings && result.embeddings.length > 0) {
+            try {
+              await enrollVoiceprint(regUserId, form.pseudonym.trim(), result.embeddings)
+              setHasVoiceprint(true)
+            } catch (e) {
+              console.warn('[声纹注册] 存储失败:', e)
+            }
+          }
+          setStep('done')
+        }}
+        onCancel={() => setStep('done')}
+      />
+    )
+  }
 
   // === 注册成功（含家庭码展示） ===
   if (step === 'done') {
@@ -451,6 +488,11 @@ function RegisterForm({ themeId, onRegister }) {
             <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>🏠 我的家庭码（告诉家长用于绑定）</p>
             <p style={{ fontSize: 28, fontWeight: 'bold', fontFamily: 'monospace', letterSpacing: '0.2em', color: '#16a34a' }}>{familyCode}</p>
           </div>
+        )}
+        {!hasVoiceprint && (
+          <p style={{ fontSize: 12, opacity: 0.55, marginTop: 8 }}>
+            💡 也可以在「设置」里录入声纹，用声音登录更方便
+          </p>
         )}
         <button className={`btn-enter btn-enter--${themeId}`} onClick={onRegister} style={{ marginTop: 18 }}>
           开始使用 🚀
@@ -494,8 +536,11 @@ function RegisterForm({ themeId, onRegister }) {
           {pinStep === 'input' ? '下一步' : '确认设置'}
         </button>
 
-        <button className={`skip-pin skip-pin--${themeId}`} onClick={handleSkipPin} disabled={loading}>
-          {loading ? '正在注册...' : '先不设置，以后再说'}
+        <button className={`skip-pin skip-pin--${themeId}`} onClick={() => {
+          if (voiceConsent && regUserId) setStep('voice-choice')
+          else setStep('done')
+        }}>
+          先不设置，以后再说
         </button>
       </div>
     )

@@ -300,6 +300,16 @@ export default function VoiceLoginOverlay({ mode = 'verify', onComplete, onCance
         </button>
       )}
 
+      {/* 注册模式：显式跳过按钮（儿童友好，比右上角✕更明显） */}
+      {mode === 'enroll' && phase !== 'success' && (
+        <button
+          onClick={() => { cleanup(); onCancel() }}
+          className="mt-6 px-6 py-2.5 rounded-full bg-white/70 text-gray-500 text-sm font-medium hover:bg-white active:scale-[0.97] transition-all"
+        >
+          先不录了，以后再说
+        </button>
+      )}
+
       {/* 底部提示 */}
       <p className="absolute bottom-8 text-xs text-gray-400 text-center px-6">
         声音信息只保存在这台设备上，不会上传到任何服务器

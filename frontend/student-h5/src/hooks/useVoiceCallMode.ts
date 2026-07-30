@@ -100,13 +100,13 @@ export function useVoiceCallMode({ enabled, tts, busy, onFinalTranscript }) {
 
   useEffect(() => { startListeningRoundRef.current = startListeningRound })
 
-  /* ===== 唤醒监听：仅 standby 且 AI 不忙时监听"哈喽波波"（busy 期间暂停，防自听） ===== */
-  const { supported: wakeSupported } = useWakeWord({
+  /* ===== 唤醒监听：仅 standby 且 AI 不忙时监听“哈喽波波”（busy 期间暂停，防自听） ===== */
+  const { supported: wakeSupported, wakeStatus } = useWakeWord({
     active: enabled && mode === 'standby' && !busy,
     onDetected: () => {
       if (modeRef.current !== 'standby') return
       setMode('active')
-      // 唤醒确认：TTS"我在呢！"播完（busy 转 false）后，下方捕捉 effect 自动开始聆听
+      // 唤醒确认：TTS“我在呢！”播完（busy 转 false）后，下方捕捉 effect 自动开始聆听
       ttsRef.current.unlock?.()
       ttsRef.current.speak(WAKE_CONFIRM_TEXT)
     },
@@ -155,5 +155,5 @@ export function useVoiceCallMode({ enabled, tts, busy, onFinalTranscript }) {
   // 离开对话（卸载）：释放语音捕捉（唤醒引擎由 useWakeWord 自身 cleanup 释放）
   useEffect(() => () => stopListening(), [stopListening])
 
-  return { mode, wakeSupported }
+  return { mode, wakeSupported, wakeStatus }
 }

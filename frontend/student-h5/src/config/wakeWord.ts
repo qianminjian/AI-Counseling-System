@@ -38,12 +38,23 @@ export const WAKE_PATTERNS = [
   'halo波波',
   'hellobobo',
   'halobobo',
-  // 声纹登录唤醒词扩展（"你好波波" / "你好bobo"）
+  // 声纹登录唤醒词扩展（“你好波波” / “你好bobo”）
   '你好波波',
   '你好啵啵',
   '你好bobo',
   'nihao波波',
   'nijaobobo',
+  // Whisper-tiny 中文常见误识别变体（同音字/近音字）
+  '哈喽波播',
+  '哈喽播播',
+  '哈罗波播',
+  '哈喍波波',
+  '哈喍啵啵',
+  '蛤喽波波',
+  '哈喽铂铂',
+  '哈喽伯伯',
+  'hello bobo',
+  'hello 波波',
 ]
 
 /** 滑窗长度（秒）：累积满后送一次 Whisper 转写 */
@@ -65,9 +76,16 @@ export function normalizeWakeText(text) {
     .replace(/[\s，。！？、,.!?~·"'"':：;；…\-—()（）]/g, '')
 }
 
-/** 判断转写文本是否命中唤醒词（任一变体子串匹配） */
+/** 判断转写文本是否命中唤醒词（任一变体子串匹配 + 拼音模糊匹配） */
 export function matchesWakeWord(text) {
   const t = normalizeWakeText(text)
   if (!t) return false
-  return WAKE_PATTERNS.some((p) => t.includes(p))
+  // 精确匹配（已归一化）
+  if (WAKE_PATTERNS.some((p) => t.includes(p))) return true
+  // 拼音模糊匹配：Whisper 可能输出其他同音字，用“哈/蛤/嘿” + “喽/罗/楼/喍” + “波/啵/播/伯/铂” + “波/啵/播/伯/铂” 容错
+  const fuzzy = /^[\u54c8\u86e4\u563f\u54ce][\u55bd\u7f57\u697c\u558d\u565c][\u6ce2\u5575\u64ad\u4f2f\u94c2][\u6ce2\u5575\u64ad\u4f2f\u94c2]/
+  if (fuzzy.test(t)) return true
+  // 英文部分匹配："hello"/"halo" + "bobo"/"波波"
+  if (/hello|halo/.test(t) && /bobo|波波|啵啵/.test(t)) return true
+  return false
 }

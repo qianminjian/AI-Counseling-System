@@ -130,10 +130,11 @@ function getTranscriber() {
  * @param {object} opts
  * @param {boolean} opts.active      是否监听（仅对话内且处于待唤醒态时为 true）
  * @param {(detection: {label: string, text: string}) => void} opts.onDetected 检测到唤醒词回调
- * @returns {{ supported: boolean }} 环境是否支持语音唤醒（false 时 UI 应隐藏开关）
+ * @returns {{ supported: boolean, wakeStatus: string }} 环境是否支持 + 当前状态（诊断用）
  */
 export function useWakeWord({ active, onDetected }) {
   const [supported, setSupported] = useState(false)
+  const [wakeStatus, setWakeStatus] = useState('idle') // idle | loading | listening | error
   const onDetectedRef = useRef(onDetected)
   useEffect(() => { onDetectedRef.current = onDetected })
 
@@ -169,8 +170,12 @@ export function useWakeWord({ active, onDetected }) {
         const output = await transcriber(audio, { language: 'chinese', task: 'transcribe' })
         if (cancelled) return
         const text = output?.text || ''
-        if (text && matchesWakeWord(text)) {
-          onDetectedRef.current?.({ label: 'halou-bobo', text })
+        if (text) {
+          console.debug('[WakeWord] 转写结果:', JSON.stringify(text))
+          if (matchesWakeWord(text)) {
+            console.info('[WakeWord] 🎉 检测到唤醒词:', text)
+            onDetectedRef.current?.({ label: 'halou-bobo', text })
+          }
         }
       } catch (err) {
         console.warn('[WakeWord] 转写失败（忽略，下窗重试）:', err?.message || err)
@@ -196,8 +201,11 @@ export function useWakeWord({ active, onDetected }) {
     ;(async () => {
       try {
         // 预加载模型（首次约 20MB 下载，之后浏览器缓存）
+        setWakeStatus('loading')
+        console.info('[WakeWord] 开始加载 Whisper 模型...')
         await getTranscriber()
         if (cancelled) return
+        console.info('[WakeWord] ✅ 模型加载完成，启动麦克风监听')
 
         stream = await navigator.mediaDevices.getUserMedia({
           audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
@@ -245,8 +253,11 @@ export function useWakeWord({ active, onDetected }) {
 
         sourceNode.connect(workletNode)
         // 不连接 destination：只采集不回放（避免反馈啸叫）
+        setWakeStatus('listening')
+        console.info('[WakeWord] 🎤 麦克风已启动，等待唤醒词...')
       } catch (err) {
         console.warn('[WakeWord] 初始化失败（下次激活时重试）:', err?.message || err)
+        setWakeStatus('error')
         // 不再 setSupported(false)：保持 UI 开关可见，允许用户重试
         // 清理已获取的部分资源
         stream?.getTracks().forEach((t) => t.stop())
@@ -257,6 +268,7 @@ export function useWakeWord({ active, onDetected }) {
     // 释放：关闭开关 / 离开对话 / 切出待唤醒态 均走这里（麦克风立即释放，模型单例保留）
     return () => {
       cancelled = true
+      setWakeStatus('idle')
       if (iosResumeHandler) document.removeEventListener('pointerdown', iosResumeHandler)
       try { workletNode?.port.close() } catch { /* ignore */ }
       try { sourceNode?.disconnect() } catch { /* ignore */ }
@@ -265,5 +277,5 @@ export function useWakeWord({ active, onDetected }) {
     }
   }, [active, supported])
 
-  return { supported }
+  return { supported, wakeStatus }
 }
