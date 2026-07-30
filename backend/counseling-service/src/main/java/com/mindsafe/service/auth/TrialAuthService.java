@@ -97,11 +97,13 @@ public class TrialAuthService {
                 user.getUserId(), TRIAL_TENANT_ID, "trial_terms", consentVersion);
         consentRecordMapper.insert(consent);
 
-        // 6. 邀请码绑定用户（一人一码）+ 使用计数 +1
+        // 6. 邀请码使用计数 +1；单次码（max_uses=1）绑定用户，共享码不绑定
         TrialInviteCode update = new TrialInviteCode();
         update.setCodeId(code.getCodeId());
         update.setUsedCount(code.getUsedCount() + 1);
-        update.setBoundUserId(user.getUserId());
+        if (code.getMaxUses() != null && code.getMaxUses() == 1) {
+            update.setBoundUserId(user.getUserId());
+        }
         update.setUsedAt(Instant.now());
         inviteCodeMapper.updateById(update);
 
