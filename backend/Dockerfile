@@ -6,7 +6,6 @@ WORKDIR /build
 # 先复制 pom 利用 Docker 缓存层
 COPY pom.xml .
 COPY counseling-common/pom.xml counseling-common/
-COPY counseling-tenant/pom.xml counseling-tenant/
 COPY counseling-domain/pom.xml counseling-domain/
 COPY counseling-ai/pom.xml counseling-ai/
 COPY counseling-service/pom.xml counseling-service/
