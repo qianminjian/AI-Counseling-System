@@ -24,24 +24,26 @@ import { getAllVoiceprints } from '../utils/voiceprintStore'
 
 // ===== 模型单例（模块级，懒加载） =====
 
-let extractorPromise = null
+let modelBundlePromise = null
 
 /**
  * 预加载声纹模型（不启动麦克风）：在登录页提前下载模型，
  * 避免用户点击声纹登录时还要等待模型加载。
  */
 export function preloadVoiceprintModel() {
-  getExtractor().catch(() => {}) // 静默失败，实际使用时会重试
+  getModelBundle().catch(() => {}) // 静默失败，实际使用时会重试
 }
 
 /**
- * 获取 Speaker Embedding 提取器（单例，首次调用时下载模型）
- * 使用 Transformers.js feature-extraction pipeline
+ * 获取 WeSpeaker 模型 + FeatureExtractor（单例，首次调用时下载模型）
+ *
+ * 注意：WeSpeaker 是音频模型，不能用 pipeline('feature-extraction')（那是文本模型专用）。
+ * 正确方式：AutoModel + AutoFeatureExtractor 分别加载，手动编排推理。
  */
-function getExtractor() {
-  if (!extractorPromise) {
-    extractorPromise = (async () => {
-      const { pipeline, env } = await import('@huggingface/transformers')
+function getModelBundle() {
+  if (!modelBundlePromise) {
+    modelBundlePromise = (async () => {
+      const { AutoModel, AutoFeatureExtractor, env } = await import('@huggingface/transformers')
       // 模型同源部署：从自己服务器加载（/mindsafe/models/）
       const base = import.meta.env.BASE_URL || '/'
       env.remoteHost = VP_MODEL_REMOTE_HOST === 'SAME_ORIGIN'
@@ -57,19 +59,23 @@ function getExtractor() {
         mjs: `${base}ort/${variant}.mjs`,
         wasm: `${base}ort/${variant}.wasm`,
       }
-      return pipeline('feature-extraction', VP_MODEL_ID, {
-        progress_callback: (p) => {
-          if (p.status === 'progress' && p.file && typeof p.progress === 'number') {
-            console.debug(`[Voiceprint] 模型加载 ${p.file} ${p.progress.toFixed(0)}%`)
-          }
-        },
-      } as any)
+      const progress_callback = (p) => {
+        if (p.status === 'progress' && p.file && typeof p.progress === 'number') {
+          console.debug(`[Voiceprint] 模型加载 ${p.file} ${p.progress.toFixed(0)}%`)
+        }
+      }
+      // 并行加载模型和特征提取器
+      const [model, featureExtractor] = await Promise.all([
+        AutoModel.from_pretrained(VP_MODEL_ID, { progress_callback }),
+        AutoFeatureExtractor.from_pretrained(VP_MODEL_ID, { progress_callback }),
+      ])
+      return { model, featureExtractor }
     })().catch((err) => {
-      extractorPromise = null
+      modelBundlePromise = null
       throw err
     })
   }
-  return extractorPromise
+  return modelBundlePromise
 }
 
 // ===== 数学工具 =====
@@ -160,9 +166,9 @@ export function useVoiceprint() {
     setLoading(true)
     try {
       // 模型加载（失败 = 模型未就绪，区别于推理失败）
-      let extractor
+      let bundle
       try {
-        extractor = await getExtractor()
+        bundle = await getModelBundle()
         setModelError(false)
         modelErrorRef.current = false
       } catch (loadErr) {
@@ -172,26 +178,36 @@ export function useVoiceprint() {
         return null
       }
 
+      const { model, featureExtractor } = bundle
+
       // 推理（失败 = 音频问题，非模型问题）
       const result = await Promise.race([
-        extractor(pcm16k, { return_tensor: false }),
+        (async () => {
+          // WeSpeaker 正确推理流程：FeatureExtractor 提取 mel 频谱 → 模型前向 → embedding
+          const { input_features } = await featureExtractor(pcm16k)
+          const outputs = await model({ input_features })
+          return outputs
+        })(),
         new Promise((_, reject) =>
           setTimeout(() => reject(new Error('推理超时')), VP_INFERENCE_TIMEOUT)
         ),
       ])
 
-      // feature-extraction 输出格式：
-      // - Whisper encoder: Tensor { data: Float32Array, dims: [1, seq_len, 384] }
-      // - 其他模型: 可能是嵌套数组或 1D 向量
+      // WeSpeakerResNetModel 输出：{ embeddings: Tensor [1, 256] } 或 { last_hidden_state: ... }
       let embedding: number[] | null = null
       const raw: any = result
 
-      if (raw?.dims && raw?.data) {
-        // Tensor 对象：根据维度处理
-        const dims = raw.dims as number[]
-        const data = raw.data as Float32Array | number[]
-        if (dims.length === 3) {
-          // [batch, seq_len, hidden_dim] → mean pooling over seq_len
+      // 优先取 embeddings 字段（WeSpeaker 专用输出）
+      const tensor = raw?.embeddings ?? raw?.last_hidden_state ?? raw?.logits
+      if (tensor?.dims && tensor?.data) {
+        const dims = tensor.dims as number[]
+        const data = tensor.data as Float32Array | number[]
+        if (dims.length === 2) {
+          // [batch, hidden_dim] → 取第一行
+          const hiddenDim = dims[1]
+          embedding = Array.from(data.slice(0, hiddenDim))
+        } else if (dims.length === 3) {
+          // [batch, seq_len, hidden_dim] → mean pooling
           const [, seqLen, hiddenDim] = dims
           const pooled = new Float32Array(hiddenDim)
           for (let s = 0; s < seqLen; s++) {
@@ -201,31 +217,15 @@ export function useVoiceprint() {
           }
           for (let h = 0; h < hiddenDim; h++) pooled[h] /= seqLen
           embedding = Array.from(pooled)
-        } else if (dims.length === 2) {
-          // [batch, hidden_dim] → 直接取第一行
-          const hiddenDim = dims[1]
-          embedding = Array.from(data.slice(0, hiddenDim))
         } else {
-          // 1D: 直接作为 embedding
           embedding = Array.from(data)
         }
       } else if (Array.isArray(raw)) {
-        // 嵌套数组解包
         let arr = raw
         if (arr.length === 1 && Array.isArray(arr[0])) arr = arr[0]
-        if (arr.length > 0 && Array.isArray(arr[0])) {
-          // 2D array: mean pooling
-          const hiddenDim = arr[0].length
-          const pooled = new Float32Array(hiddenDim)
-          for (const row of arr) for (let h = 0; h < hiddenDim; h++) pooled[h] += row[h]
-          for (let h = 0; h < hiddenDim; h++) pooled[h] /= arr.length
-          embedding = Array.from(pooled)
-        } else {
-          embedding = arr as number[]
-        }
-      } else if (raw?.embedding) {
-        embedding = Array.from(raw.embedding as Iterable<number>)
+        embedding = arr as number[]
       }
+
       if (embedding && embedding.length > 0) {
         // L2 归一化
         const norm = Math.sqrt(embedding.reduce((s, v) => s + v * v, 0))
