@@ -160,7 +160,10 @@ export function useWakeWord({ active, onDetected }) {
           console.debug('[WakeWord] 转写结果:', JSON.stringify(text))
           if (matchesWakeWord(text)) {
             console.info('[WakeWord] 🎉 检测到唤醒词:', text)
-            onDetectedRef.current?.({ label: 'halou-bobo', text })
+            // 立即更新状态给 UI 反馈（让用户知道“听到了，别重复了”）
+            setWakeStatus('detected')
+            // 延迟 300ms 再触发 onDetected，让 UI 先渲染“听到了”反馈，避免用户因无反馈而重复说唤醒词
+            setTimeout(() => onDetectedRef.current?.({ label: 'halou-bobo', text }), 300)
           }
         }
       } catch (err) {
