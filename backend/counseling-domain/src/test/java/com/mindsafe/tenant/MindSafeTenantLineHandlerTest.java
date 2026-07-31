@@ -16,7 +16,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * P-02 租户行隔离处理器 单元测试（策略 B）
+ * P-02 租户行隔离处理器 单元测试（M1-003 fail-fast 收紧版）
  */
 class MindSafeTenantLineHandlerTest {
 
@@ -28,10 +28,33 @@ class MindSafeTenantLineHandlerTest {
     }
 
     @Test
-    @DisplayName("无租户上下文 → 所有表跳过注入（前置认证/@Scheduled/迁移）")
-    void noContext_ignoresAllTables() {
-        assertTrue(handler.ignoreTable("users"));
-        assertTrue(handler.ignoreTable("tenant_template.risk_events"));
+    @DisplayName("无上下文且非系统作用域 → 业务表 fail-fast 抛异常（M1-003）")
+    void noContext_failsFastOnBusinessTables() {
+        assertThrows(IllegalStateException.class, () -> handler.ignoreTable("users"));
+        assertThrows(IllegalStateException.class, () -> handler.ignoreTable("tenant_template.risk_events"));
+    }
+
+    @Test
+    @DisplayName("无上下文 → 公共标识表 tenants 仍恒定忽略（EntitlementFilter 前置查询合法）")
+    void noContext_stillIgnoresTenantsTable() {
+        assertTrue(handler.ignoreTable("tenants"));
+        assertTrue(handler.ignoreTable("public.tenants"));
+    }
+
+    @Test
+    @DisplayName("系统作用域 → 所有表跳过注入（前置认证/@Scheduled 显式声明）")
+    void systemScope_ignoresAllTables() {
+        TenantContextHolder.runAsSystem(() -> {
+            assertTrue(handler.ignoreTable("users"));
+            assertTrue(handler.ignoreTable("tenant_template.risk_events"));
+        });
+    }
+
+    @Test
+    @DisplayName("系统作用域退出后 → 恢复 fail-fast")
+    void systemScope_restoresFailFastAfterExit() {
+        TenantContextHolder.runAsSystem(() -> assertTrue(handler.ignoreTable("users")));
+        assertThrows(IllegalStateException.class, () -> handler.ignoreTable("users"));
     }
 
     @Test

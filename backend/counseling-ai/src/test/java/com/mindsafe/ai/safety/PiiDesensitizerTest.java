@@ -134,4 +134,93 @@ class PiiDesensitizerTest {
             assertThat(desensitizer.desensitize("123456789012")).isEqualTo("123456789012");
         }
     }
+
+    // ===== SAFE-204：姓名脱敏 =====
+
+    @Nested
+    @DisplayName("SAFE-204：姓名脱敏")
+    class NameMasking {
+
+        @Test
+        @DisplayName("上下文句式「我叫+姓名」→ 某人")
+        void should_mask_name_with_context() {
+            assertThat(desensitizer.desensitize("我叫张小明"))
+                    .isEqualTo("我叫某人");
+        }
+
+        @Test
+        @DisplayName("上下文句式「同桌叫+姓名」→ 某人")
+        void should_mask_classmate_name() {
+            assertThat(desensitizer.desensitize("同桌叫李明"))
+                    .isEqualTo("同桌叫某人");
+        }
+
+        @Test
+        @DisplayName("上下文句式「老师叫+姓名」→ 某人")
+        void should_mask_teacher_name() {
+            assertThat(desensitizer.desensitize("老师叫王丽华"))
+                    .isEqualTo("老师叫某人");
+        }
+
+        @Test
+        @DisplayName("独立姓名（百家姓开头，标点边界）→ 某同学")
+        void should_mask_standalone_name() {
+            assertThat(desensitizer.desensitize("今天，陈明说了坏话。"))
+                    .isEqualTo("今天，某同学说了坏话。");
+        }
+
+        @Test
+        @DisplayName("不误伤常用两字词（非百家姓开头）")
+        void should_not_mask_common_words() {
+            // "今天" 不以百家姓开头 → 保留
+            assertThat(desensitizer.desensitize("今天，很开心。"))
+                    .isEqualTo("今天，很开心。");
+        }
+
+        @Test
+        @DisplayName("不误伤没有标点边界的中文")
+        void should_not_mask_without_boundary() {
+            // "张明" 无标点边界 → 不触发独立姓名规则
+            assertThat(desensitizer.desensitize("我和张明去玩了"))
+                    .isEqualTo("我和张明去玩了");
+        }
+    }
+
+    // ===== SAFE-204：地址脱敏 =====
+
+    @Nested
+    @DisplayName("SAFE-204：地址脱敏")
+    class AddressMasking {
+
+        @Test
+        @DisplayName("完整地址（省市区路号）→ 某地")
+        void should_mask_full_address() {
+            String result = desensitizer.desensitize("我家在北京市朝阳区建国路88号");
+            assertThat(result).contains("某地");
+            assertThat(result).doesNotContain("朝阳区");
+        }
+
+        @Test
+        @DisplayName("小区名 → 某地")
+        void should_mask_community_name() {
+            String result = desensitizer.desensitize("我住在阳光花园3栋");
+            assertThat(result).contains("某地");
+            assertThat(result).doesNotContain("阳光花园");
+        }
+
+        @Test
+        @DisplayName("街道地址 + 门牌号 → 某地")
+        void should_mask_street_address() {
+            String result = desensitizer.desensitize("学校在中关村大街5号");
+            assertThat(result).contains("某地");
+            assertThat(result).doesNotContain("中关村大街");
+        }
+
+        @Test
+        @DisplayName("不误伤普通文字")
+        void should_not_mask_normal_chinese() {
+            assertThat(desensitizer.desensitize("今天下午放学回家很开心"))
+                    .isEqualTo("今天下午放学回家很开心");
+        }
+    }
 }

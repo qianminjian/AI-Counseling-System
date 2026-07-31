@@ -58,6 +58,9 @@ public class SecurityConfig {
                 })
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
+                        // ASYNC/ERROR 分发放行：SSE 流式响应经 ASYNC 二次分发时 SecurityContext 不传播，
+                        // 初始 REQUEST 分发已完成鉴权，二次分发再拦会掐断流（IT: sendRedRiskMessage 回归）
+                        .dispatcherTypeMatchers(jakarta.servlet.DispatcherType.ASYNC, jakarta.servlet.DispatcherType.ERROR).permitAll()
                         // ─── 公开端点（无需 JWT）───
                         // 认证流程入口
                         .requestMatchers("/api/v1/auth/login").permitAll()

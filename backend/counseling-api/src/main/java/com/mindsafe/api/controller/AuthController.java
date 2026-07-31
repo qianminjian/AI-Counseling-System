@@ -9,6 +9,7 @@ import com.mindsafe.api.security.JwtTokenProvider;
 import com.mindsafe.common.dto.ApiResponse;
 import com.mindsafe.common.dto.ErrorCode;
 import com.mindsafe.common.exception.BizException;
+import com.mindsafe.common.tenant.TenantContextHolder;
 import com.mindsafe.domain.entity.User;
 import com.mindsafe.domain.mapper.UserMapper;
 import com.mindsafe.service.auth.TrialAuthService;
@@ -81,12 +82,13 @@ public class AuthController {
         // 登录失败锁定检查
         lockoutService.checkLockout(request.username());
 
-        User user = userMapper.selectOne(
+        // 前置认证链路（无 JWT，跨租户按昵称查用户）：显式声明系统作用域（M1-003 fail-fast 配套）
+        User user = TenantContextHolder.callAsSystem(() -> userMapper.selectOne(
                 new LambdaQueryWrapper<User>()
                         .eq(User::getPseudonym, request.username())
                         .eq(User::getStatus, "active")
                         .last("LIMIT 1")
-        );
+        ));
 
         if (user == null || user.getPasswordHash() == null
                 || !passwordEncoder.matches(request.password(), user.getPasswordHash())) {
@@ -97,19 +99,24 @@ public class AuthController {
         // 登录成功，清除失败计数
         lockoutService.clearFailures(request.username());
 
-        // 更新最后登录时间
-        User update = new User();
-        update.setUserId(user.getUserId());
-        update.setLastLoginAt(Instant.now());
-        userMapper.updateById(update);
+        // 更新最后登录时间（已识别出用户租户，绑定真实租户上下文执行）
+        TenantContextHolder.set(user.getTenantId());
+        try {
+            User update = new User();
+            update.setUserId(user.getUserId());
+            update.setLastLoginAt(Instant.now());
+            userMapper.updateById(update);
+
+            // 审计：登录成功（@Async 经 TaskDecorator 继承本线程租户上下文）
+            auditLogService.log(user.getTenantId(), user.getUserId(), "LOGIN", "user", user.getUserId(), null);
+        } finally {
+            TenantContextHolder.clear();
+        }
 
         String token = jwtTokenProvider.generateToken(
                 user.getUserId(), user.getUserType(), user.getTenantId());
         String refreshToken = jwtTokenProvider.generateRefreshToken(
                 user.getUserId(), user.getUserType(), user.getTenantId());
-
-        // 审计：登录成功
-        auditLogService.log(user.getTenantId(), user.getUserId(), "LOGIN", "user", user.getUserId(), null);
 
         boolean mustChange = Boolean.TRUE.equals(user.getMustChangePassword())
                 || passwordPolicyService.isExpired(user.getPasswordChangedAt());
@@ -134,8 +141,13 @@ public class AuthController {
             @Valid @RequestBody TrialRegisterRequest request) {
         AuthenticatedUser authUser = trialAuthStrategy.authenticate(request);
 
-        // 查询完整用户信息（含 familyCode）
-        User fullUser = userMapper.selectById(authUser.userId());
+        // 查询完整用户信息（含 familyCode）+ 监护人同意状态——注册响应期尚无 JWT 上下文，系统作用域执行（M1-003）
+        User fullUser = TenantContextHolder.callAsSystem(
+                () -> userMapper.selectById(authUser.userId()));
+        // age<14 且尚无同意记录 → 前端须引导 SMS 闭环（AUTH-040；试运行 auto-grant 时注册已写入，此处为 false）
+        boolean guardianConsentPending = request.age() < 14
+                && !TenantContextHolder.callAsSystem(
+                        () -> guardianConsentService.hasGuardianConsent(authUser.tenantId(), authUser.userId()));
 
         String token = jwtTokenProvider.generateToken(
                 authUser.userId(), authUser.userType(), authUser.tenantId());
@@ -149,7 +161,8 @@ public class AuthController {
                 authUser.tenantId(),
                 authUser.userType(),
                 authUser.pseudonym(),
-                fullUser != null ? fullUser.getFamilyCode() : null
+                fullUser != null ? fullUser.getFamilyCode() : null,
+                guardianConsentPending
         ));
     }
 
@@ -195,7 +208,13 @@ public class AuthController {
                     user.getUserId(), user.getUserType(), user.getTenantId());
             String refreshToken = jwtTokenProvider.generateRefreshToken(
                     user.getUserId(), user.getUserType(), user.getTenantId());
-            auditLogService.log(user.getTenantId(), user.getUserId(), "PIN_LOGIN", "user", user.getUserId(), null);
+            // 审计需绑定真实租户上下文提交（@Async 经 TaskDecorator 继承，否则 fail-fast 拒绝写入）
+            TenantContextHolder.set(user.getTenantId());
+            try {
+                auditLogService.log(user.getTenantId(), user.getUserId(), "PIN_LOGIN", "user", user.getUserId(), null);
+            } finally {
+                TenantContextHolder.clear();
+            }
             return ApiResponse.ok(new LoginResponse(
                     token, refreshToken, user.getUserId(), user.getPseudonym(),
                     user.getUserType(), user.getGradeCode(), user.getClassCode(), false
@@ -311,7 +330,9 @@ public class AuthController {
             UUID tenantId,
             String userType,
             String pseudonym,
-            String familyCode
+            String familyCode,
+            /** age<14 且尚无监护人同意记录 → 前端须走 SMS 验证码闭环（AUTH-040） */
+            boolean guardianConsentPending
     ) {}
 
     public record ChangePasswordRequest(

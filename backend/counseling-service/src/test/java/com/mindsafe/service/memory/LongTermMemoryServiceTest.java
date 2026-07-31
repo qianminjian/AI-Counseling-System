@@ -57,6 +57,9 @@ class LongTermMemoryServiceTest {
     @Mock
     private ThemeEvolutionEngine themeEvolutionEngine;
 
+    @Mock
+    private com.mindsafe.domain.mapper.RiskEventMapper riskEventMapper;
+
     private LongTermMemoryService service;
 
     private final UUID tenantId = UUID.randomUUID();
@@ -67,7 +70,7 @@ class LongTermMemoryServiceTest {
     void setUp() {
         service = new LongTermMemoryService(
                 memoryMapper, aiChatService, new ObjectMapper(), backfillService,
-                memoryRiskCorrelator, memoryRelevanceScorer, themeEvolutionEngine);
+                memoryRiskCorrelator, memoryRelevanceScorer, themeEvolutionEngine, riskEventMapper);
         // selectCount 两处调用（幂等检查 + evict），返回 0 同时满足
         when(memoryMapper.selectCount(any())).thenReturn(0L);
     }

@@ -151,6 +151,8 @@ LLM_BASE_URL=https://api.deepseek.com
 LLM_MODEL=deepseek-chat
 GITHUB_OWNER=<your-github-username>
 HTTP_PORT=80
+# 监护人同意（AUTH-040）：生产保持 false（age<14 走 SMS 验证码闭环，需配 SMS_PROVIDER=aliyun）
+CONSENT_TRIAL_AUTO_GRANT=false
 ```
 
 ### Step 5：GHCR 登录（服务器上）

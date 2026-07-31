@@ -7,8 +7,6 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.PostgreSQLContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.DockerImageName;
 
 import java.time.Duration;
@@ -21,15 +19,18 @@ import java.time.Duration;
  * - 真实 Redis（限流/缓存）
  * - Spring Boot 完整上下文
  * <p>
+ * 容器采用单例模式（static 块手动 start，不用 @Container/@Testcontainers）：
+ * JUnit 的 @Container 按测试类启停容器，但 Spring TestContext 会跨 IT 类缓存上下文，
+ * 第二个类会拿到缓存里指向已销毁容器旧端口的连接池 → 拒连。单例容器与 JVM 同生命周期，
+ * 结束后由 Testcontainers Ryuk 兜底回收。
+ * <p>
  * 注意：需要本机 Docker 运行。CI 中由 GitHub Actions 提供 Docker 环境。
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, classes = MindSafeApplication.class)
-@Testcontainers(disabledWithoutDocker = true)
 @ActiveProfiles("test")
 public abstract class AbstractIntegrationTest {
 
-    @Container
-    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>(
+    static final PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>(
             DockerImageName.parse("pgvector/pgvector:pg16").asCompatibleSubstituteFor("postgres"))
             .withDatabaseName("mindsafe_test")
             .withUsername("test")
@@ -39,12 +40,17 @@ public abstract class AbstractIntegrationTest {
             // CI 环境镜像拉取+初始化较慢，增大启动超时（默认 60s）
             .withStartupTimeout(Duration.ofSeconds(180));
 
-    @Container
     @SuppressWarnings("resource")
-    static GenericContainer<?> redis = new GenericContainer<>(
+    static final GenericContainer<?> redis = new GenericContainer<>(
             DockerImageName.parse("redis:7-alpine"))
             .withExposedPorts(6379)
             .withStartupTimeout(Duration.ofSeconds(60));
+
+    static {
+        // JVM 内只启动一次，所有 IT 类共享同一容器实例与端口
+        postgres.start();
+        redis.start();
+    }
 
     @DynamicPropertySource
     static void configureProperties(DynamicPropertyRegistry registry) {

@@ -1,6 +1,8 @@
 package com.mindsafe.service.conversation;
 
 import com.mindsafe.ai.orchestrator.EmotionOrchestrationEvaluator;
+import com.mindsafe.domain.entity.RiskEvent;
+import com.mindsafe.domain.mapper.RiskEventMapper;
 import com.mindsafe.service.profile.ProfileEffectivenessTracker;
 import com.mindsafe.service.voice.TrendAnomalySignaler;
 import com.mindsafe.service.voice.VoiceEmotionTrendAnalyzer;
@@ -21,6 +23,9 @@ import java.util.UUID;
  *   <li>EmotionOrchestrationEvaluator：情绪编排效果量化（稳定回落/深度/适配）</li>
  *   <li>ProfileEffectivenessTracker：画像效果回收（有/无画像质量对比）</li>
  * </ul>
+ * <p>
+ * RISK-204 接线（BL-08 通道）：趋势关注信号持久化到 risk_events（source_type=attention，
+ * risk_level=YELLOW），由教师工作台统一展示降噪（与实时风险事件共用通道，降噪靠 level 区分）。
  */
 @Service
 public class SessionEndAnalyticsService {
@@ -31,15 +36,18 @@ public class SessionEndAnalyticsService {
     private final TrendAnomalySignaler anomalySignaler;
     private final EmotionOrchestrationEvaluator orchestrationEvaluator;
     private final ProfileEffectivenessTracker effectivenessTracker;
+    private final RiskEventMapper riskEventMapper;
 
     public SessionEndAnalyticsService(VoiceEmotionTrendAnalyzer trendAnalyzer,
                                       TrendAnomalySignaler anomalySignaler,
                                       EmotionOrchestrationEvaluator orchestrationEvaluator,
-                                      ProfileEffectivenessTracker effectivenessTracker) {
+                                      ProfileEffectivenessTracker effectivenessTracker,
+                                      RiskEventMapper riskEventMapper) {
         this.trendAnalyzer = trendAnalyzer;
         this.anomalySignaler = anomalySignaler;
         this.orchestrationEvaluator = orchestrationEvaluator;
         this.effectivenessTracker = effectivenessTracker;
+        this.riskEventMapper = riskEventMapper;
     }
 
     /** 会话结束分析结果 */
@@ -76,7 +84,7 @@ public class SessionEndAnalyticsService {
             // VCL-002：跨会话语音情绪趋势
             trendResult = trendAnalyzer.analyzeTrend(recentEmotions);
 
-            // RISK-204 / VCL-003：趋势异常→教师关注信号
+            // RISK-204 / VCL-003：趋势异常→教师关注信号 + 持久化 BL-08 通道
             if (trendAnalyzer.shouldNotifyTeacher(trendResult)) {
                 int worseningCount = countWorsening(recentEmotions);
                 signal = anomalySignaler.evaluate(
@@ -88,6 +96,8 @@ public class SessionEndAnalyticsService {
                 if (signal != null) {
                     log.info("趋势关注信号: student={}, type={}, desc={}",
                             studentUserId, signal.signalType(), signal.description());
+                    // RISK-204：写入 risk_events（BL-08 非实时关注信号通道）
+                    persistAttentionSignal(tenantId, studentUserId, signal);
                 }
             }
 
@@ -131,5 +141,33 @@ public class SessionEndAnalyticsService {
     private boolean isNegative(String emotion) {
         return emotion != null && List.of("sad", "angry", "anxious", "fearful", "disgusted", "crisis")
                 .contains(emotion.toLowerCase());
+    }
+
+    /**
+     * RISK-204：将趋势关注信号持久化到 risk_events（BL-08 非实时关注信号通道）。
+     * <p>
+     * source_type=attention 区分于即时风险事件（session/assessment/manual），
+     * risk_level=YELLOW(1) 确保不触发即时紧急通知但可在教师工作台关注队列中展示。
+     * 失败安全：异常仅记日志，绝不中断主流程。
+     */
+    private void persistAttentionSignal(UUID tenantId, UUID studentUserId, TrendAnomalySignaler.AttentionSignal signal) {
+        try {
+            RiskEvent event = new RiskEvent();
+            event.setRiskEventId(UUID.randomUUID());
+            event.setTenantId(tenantId);
+            event.setStudentUserId(studentUserId);
+            event.setSourceType("attention");
+            event.setRiskType("voice_trend:" + signal.signalType());
+            event.setRiskLevel(1); // YELLOW：非实时关注
+            event.setDetectedBy("trend_analyzer");
+            event.setDetectedAt(java.time.Instant.now());
+            event.setStatus("open");
+            event.setCreatedAt(java.time.Instant.now());
+            event.setUpdatedAt(java.time.Instant.now());
+            riskEventMapper.insert(event);
+            log.info("RISK-204 趋势关注信号已持久化: riskEventId={}, type={}", event.getRiskEventId(), signal.signalType());
+        } catch (Exception e) {
+            log.warn("RISK-204 持久化降级（不影响业务）: {}", e.getMessage());
+        }
     }
 }

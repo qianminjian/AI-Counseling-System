@@ -9,16 +9,18 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * 租户行隔离处理器（P-02，稳健渐进策略 B）
+ * 租户行隔离处理器（P-02 → M1-003 fail-fast 收紧版）
  * <p>
  * 为已认证请求的 SQL 自动追加 {@code AND tenant_id = <当前租户>}，构成行级隔离的纵深防线，
  * 弥补此前「隔离仅靠开发者手工 {@code .eq(tenantId)}」的漏防风险（见 design/07 §11）。
  * <ul>
- *   <li><b>无租户上下文</b>（{@link TenantContextHolder#get()} 为 null）→ {@link #ignoreTable} 返回 true，
- *       跳过条件注入。覆盖前置认证流程（登录/注册）、{@code @Scheduled}、Flyway 迁移、{@code @Async} 线程。</li>
  *   <li><b>公共标识表</b> {@code tenants}（public schema，tenant_id 为主键身份而非归属列）→ 恒定忽略，
  *       否则平台级「列出所有租户」会被误注入条件。</li>
- *   <li>其余 20 张业务表均含 tenant_id 列，正常注入。</li>
+ *   <li><b>系统作用域</b>（{@link TenantContextHolder#isSystemScope()}）→ 跳过注入。
+ *       覆盖显式声明的跨租户链路：登录/注册等前置认证、{@code @Scheduled} 全租户扫描。</li>
+ *   <li><b>无租户上下文且非系统作用域</b> → 抛 {@link IllegalStateException} 拒绝执行（fail-fast 铁律，
+ *       design/07 §11.4）。原「策略 B 静默跳过」已废止：漏绑定上下文的 SQL 必须在测试期暴露而非带病放行。</li>
+ *   <li>其余业务表均含 tenant_id 列，正常注入。</li>
  * </ul>
  * PG 中未定型字符串字面量会隐式转为 uuid 列类型，故用 {@link StringValue} 承载租户 UUID。
  */
@@ -31,7 +33,7 @@ public class MindSafeTenantLineHandler implements TenantLineHandler {
     public Expression getTenantId() {
         UUID tenantId = TenantContextHolder.get();
         if (tenantId == null) {
-            // 理论不可达：ignoreTable 已在无上下文时返回 true 而不会走到取值
+            // 理论不可达：ignoreTable 已在无上下文时抛出或返回 true
             throw new IllegalStateException("TenantLineHandler.getTenantId 在无租户上下文时被调用");
         }
         return new StringValue(tenantId.toString());
@@ -44,11 +46,21 @@ public class MindSafeTenantLineHandler implements TenantLineHandler {
 
     @Override
     public boolean ignoreTable(String tableName) {
-        // 策略 B：无上下文一律跳过注入，交由调用方显式 ID / 手工过滤兜底
-        if (TenantContextHolder.get() == null) {
+        // 公共标识表恒定忽略（在 fail-fast 之前判断：前置过滤器查 tenants 表属合法路径）
+        if (IGNORE_TABLES.contains(normalize(tableName))) {
             return true;
         }
-        return IGNORE_TABLES.contains(normalize(tableName));
+        // 显式系统作用域：跨租户链路（前置认证/定时任务）跳过注入
+        if (TenantContextHolder.isSystemScope()) {
+            return true;
+        }
+        // fail-fast 铁律（M1-003）：无上下文且未声明系统作用域 → 拒绝执行
+        if (TenantContextHolder.get() == null) {
+            throw new IllegalStateException(
+                    "[租户 fail-fast] 表 " + tableName + " 的 SQL 在无租户上下文且非系统作用域下执行被拒绝；"
+                            + "前置认证/定时任务等合法跨租户链路请用 TenantContextHolder.runAsSystem/callAsSystem 显式声明（M1-003）");
+        }
+        return false;
     }
 
     /** 去除 schema 前缀与反引号/双引号，取小写简单表名。 */

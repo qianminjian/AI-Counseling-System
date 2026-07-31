@@ -4,6 +4,9 @@ import com.mindsafe.ai.prompt.PromptTemplateService;
 import com.mindsafe.ai.safety.OutputContentFilter;
 import com.mindsafe.ai.safety.OutputReviewService;
 import com.mindsafe.common.dto.chat.StreamMessageEvent;
+import com.mindsafe.common.tenant.TenantContextHolder;
+import com.mindsafe.domain.entity.ModelCallLog;
+import com.mindsafe.domain.mapper.ModelCallLogMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
@@ -36,16 +39,19 @@ public class AiChatServiceImpl implements AiChatService {
     private final OutputReviewService outputReviewService;
     private final PromptTemplateService promptTemplateService;
     private final LlmStreamEnhancer llmStreamEnhancer;
+    private final ModelCallLogMapper modelCallLogMapper;
 
     public AiChatServiceImpl(ChatClient.Builder chatClientBuilder, ChatMemory chatMemory,
                              OutputContentFilter outputContentFilter, OutputReviewService outputReviewService,
-                             PromptTemplateService promptTemplateService, LlmStreamEnhancer llmStreamEnhancer) {
+                             PromptTemplateService promptTemplateService, LlmStreamEnhancer llmStreamEnhancer,
+                             ModelCallLogMapper modelCallLogMapper) {
         this.chatClient = chatClientBuilder.build();
         this.chatMemory = chatMemory;
         this.outputContentFilter = outputContentFilter;
         this.outputReviewService = outputReviewService;
         this.promptTemplateService = promptTemplateService;
         this.llmStreamEnhancer = llmStreamEnhancer;
+        this.modelCallLogMapper = modelCallLogMapper;
     }
 
     @Override
@@ -130,6 +136,7 @@ public class AiChatServiceImpl implements AiChatService {
         }
 
         // 4. 流式调用 LLM
+        long streamStart = System.currentTimeMillis();
         StringBuilder responseCollector = new StringBuilder();
         Flux<String> rawTokens = chatClient.prompt()
                 .system(fullSystem)
@@ -149,8 +156,12 @@ public class AiChatServiceImpl implements AiChatService {
                     chatMemory.add(conversationId, List.of(new AssistantMessage(fullReply)));
                     log.debug("AI 回复完成(AI-005): sessionId={}, responseLength={}", sessionId, fullReply.length());
                     outputReviewService.reviewAsync(sessionId, fullReply, emotionTag);
+                    logModelCall(sessionId, "chat", System.currentTimeMillis() - streamStart, "success", null);
                 })
-                .doOnError(e -> log.error("AI 流式调用失败(AI-005): sessionId={}", sessionId, e));
+                .doOnError(e -> {
+                    log.error("AI 流式调用失败(AI-005): sessionId={}", sessionId, e);
+                    logModelCall(sessionId, "chat", System.currentTimeMillis() - streamStart, "error", e.getMessage());
+                });
     }
 
     @Override
@@ -234,6 +245,7 @@ public class AiChatServiceImpl implements AiChatService {
         if (conversationText == null || conversationText.isBlank()) {
             return null;
         }
+        long start = System.currentTimeMillis();
         try {
             String result = chatClient.prompt()
                     .system(SUMMARY_SYSTEM_PROMPT)
@@ -241,9 +253,11 @@ public class AiChatServiceImpl implements AiChatService {
                     .call()
                     .content();
             log.debug("会话摘要生成完成, length={}", result != null ? result.length() : 0);
+            logModelCall(null, "session_summary", System.currentTimeMillis() - start, "success", null);
             return result;
         } catch (Exception e) {
             log.error("会话摘要生成失败", e);
+            logModelCall(null, "session_summary", System.currentTimeMillis() - start, "error", e.getMessage());
             return null;
         }
     }
@@ -303,6 +317,7 @@ public class AiChatServiceImpl implements AiChatService {
         if (conversationText == null || conversationText.isBlank()) {
             return null;
         }
+        long start = System.currentTimeMillis();
         try {
             String userPrompt = "会话摘要文本：\n" + conversationText
                     + "\n\n结构化摘要：\n" + (sessionSummary == null ? "无" : sessionSummary)
@@ -313,9 +328,11 @@ public class AiChatServiceImpl implements AiChatService {
                     .call()
                     .content();
             log.debug("画像提炼完成, length={}", result != null ? result.length() : 0);
+            logModelCall(null, "profile_extract", System.currentTimeMillis() - start, "success", null);
             return result;
         } catch (Exception e) {
             log.error("画像提炼失败", e);
+            logModelCall(null, "profile_extract", System.currentTimeMillis() - start, "error", e.getMessage());
             return null;
         }
     }
@@ -356,6 +373,7 @@ public class AiChatServiceImpl implements AiChatService {
         if (conversationText == null || conversationText.isBlank()) {
             return null;
         }
+        long start = System.currentTimeMillis();
         try {
             String userPrompt = "请评估以下会话的 AI 辅导质量：\n\n" + conversationText + "\n\n请输出评分 JSON：";
             String result = chatClient.prompt()
@@ -364,9 +382,11 @@ public class AiChatServiceImpl implements AiChatService {
                     .call()
                     .content();
             log.debug("质量评估完成, length={}", result != null ? result.length() : 0);
+            logModelCall(null, "quality_judge", System.currentTimeMillis() - start, "success", null);
             return result;
         } catch (Exception e) {
             log.error("质量评估 LLM 调用失败", e);
+            logModelCall(null, "quality_judge", System.currentTimeMillis() - start, "error", e.getMessage());
             return null;
         }
     }
@@ -406,6 +426,7 @@ public class AiChatServiceImpl implements AiChatService {
         if (conversationText == null || conversationText.isBlank()) {
             return null;
         }
+        long start = System.currentTimeMillis();
         try {
             String userPrompt = "对话文本：\n" + conversationText
                     + "\n\n结构化摘要：\n" + (sessionSummary == null ? "无" : sessionSummary)
@@ -416,9 +437,11 @@ public class AiChatServiceImpl implements AiChatService {
                     .call()
                     .content();
             log.debug("关键事件提取完成, length={}", result != null ? result.length() : 0);
+            logModelCall(null, "key_events_extract", System.currentTimeMillis() - start, "success", null);
             return result;
         } catch (Exception e) {
             log.error("关键事件提取 LLM 调用失败", e);
+            logModelCall(null, "key_events_extract", System.currentTimeMillis() - start, "error", e.getMessage());
             return null;
         }
     }
@@ -499,5 +522,22 @@ public class AiChatServiceImpl implements AiChatService {
                     - 先共情，再一起探索，尊重孩子的节奏
                     """;
         };
+    }
+
+    /**
+     * 模型调用审计日志（降级不影响业务）。
+     * tenantId 从 TenantContextHolder 读取；sessionId 为 null 时表示非会话关联调用。
+     */
+    private void logModelCall(UUID sessionId, String agentName, long latencyMs, String status, String errorMessage) {
+        try {
+            UUID tenantId = TenantContextHolder.get();
+            ModelCallLog callLog = ModelCallLog.create(tenantId, sessionId, agentName, null, null, (int) latencyMs, status);
+            if (errorMessage != null) {
+                callLog.setErrorMessage(errorMessage.length() > 500 ? errorMessage.substring(0, 500) : errorMessage);
+            }
+            modelCallLogMapper.insert(callLog);
+        } catch (Exception e) {
+            log.debug("ModelCallLog 审计写入降级（不影响业务）: {}", e.getMessage());
+        }
     }
 }
