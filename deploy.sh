@@ -201,7 +201,7 @@ if $DEPLOY_BACKEND; then
   rsync -avz "$PROJECT_ROOT/backend/$JAR" "$SERVER:$REMOTE_DIR/app.jar"
 fi
 
-$DEPLOY_STUDENT && rsync -avz --delete "$PROJECT_ROOT/frontend/student-h5/dist/" "$SERVER:$REMOTE_DIR/frontend/student/"
+$DEPLOY_STUDENT && rsync -avz --delete --exclude 'models/' "$PROJECT_ROOT/frontend/student-h5/dist/" "$SERVER:$REMOTE_DIR/frontend/student/"
 $DEPLOY_TEACHER && rsync -avz --delete "$PROJECT_ROOT/frontend/teacher-web/dist/" "$SERVER:$REMOTE_DIR/frontend/teacher/"
 $DEPLOY_PARENT && rsync -avz --delete "$PROJECT_ROOT/frontend/parent-h5/dist/" "$SERVER:$REMOTE_DIR/frontend/parent/"
 
