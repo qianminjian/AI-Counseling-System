@@ -91,12 +91,17 @@ function getTranscriber() {
     transcriberPromise = (async () => {
       // 动态导入：Transformers.js 独立分包，未启用唤醒时主路径零开销
       const { pipeline, env } = await import('@huggingface/transformers')
-      env.remoteHost = WAKE_MODEL_REMOTE_HOST
+      // 模型同源部署：从自己服务器加载（/mindsafe/models/），浏览器 HTTP 缓存持久化
+      const base = import.meta.env.BASE_URL || '/'
+      env.remoteHost = WAKE_MODEL_REMOTE_HOST === 'SAME_ORIGIN'
+        ? `${base}models/`
+        : WAKE_MODEL_REMOTE_HOST
       env.allowLocalModels = false
+      // 请求持久化存储（防止浏览器在存储压力下清除模型缓存）
+      navigator.storage?.persist?.().catch(() => {})
       // ONNX Runtime WASM 走本地（dist/ort/ → /mindsafe/ort/）
       const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent)
       const variant = isSafari ? 'ort-wasm-simd-threaded' : 'ort-wasm-simd-threaded.asyncify'
-      const base = import.meta.env.BASE_URL || '/'
       env.backends.onnx.wasm.wasmPaths = {
         mjs: `${base}ort/${variant}.mjs`,
         wasm: `${base}ort/${variant}.wasm`,

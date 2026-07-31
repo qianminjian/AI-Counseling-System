@@ -23,8 +23,8 @@
  */
 export const VP_MODEL_ID = 'onnx-community/wespeaker-voxceleb-resnet34-LM'
 
-/** 模型下载源（与唤醒词共用 HF 国内镜像） */
-export const VP_MODEL_REMOTE_HOST = 'https://hf-mirror.com/'
+/** 模型下载源：同源部署（与唤醒词模型共用 /mindsafe/models/ 目录） */
+export const VP_MODEL_REMOTE_HOST = 'SAME_ORIGIN' // 运行时由 hook 替换为 import.meta.env.BASE_URL + 'models/'
 
 /** Embedding 维度 */
 export const VP_EMBEDDING_DIM = 256

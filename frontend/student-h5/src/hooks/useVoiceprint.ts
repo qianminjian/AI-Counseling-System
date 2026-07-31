@@ -34,12 +34,17 @@ function getExtractor() {
   if (!extractorPromise) {
     extractorPromise = (async () => {
       const { pipeline, env } = await import('@huggingface/transformers')
-      env.remoteHost = VP_MODEL_REMOTE_HOST
+      // 模型同源部署：从自己服务器加载（/mindsafe/models/）
+      const base = import.meta.env.BASE_URL || '/'
+      env.remoteHost = VP_MODEL_REMOTE_HOST === 'SAME_ORIGIN'
+        ? `${base}models/`
+        : VP_MODEL_REMOTE_HOST
       env.allowLocalModels = false
+      // 请求持久化存储
+      navigator.storage?.persist?.().catch(() => {})
       // ONNX Runtime WASM 走本地（与唤醒词共用）
       const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent)
       const variant = isSafari ? 'ort-wasm-simd-threaded' : 'ort-wasm-simd-threaded.asyncify'
-      const base = import.meta.env.BASE_URL || '/'
       env.backends.onnx.wasm.wasmPaths = {
         mjs: `${base}ort/${variant}.mjs`,
         wasm: `${base}ort/${variant}.wasm`,

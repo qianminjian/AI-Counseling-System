@@ -15,12 +15,13 @@
 export const WAKE_MODEL_ID = 'onnx-community/whisper-tiny'
 
 /**
- * 模型下载源：默认 HF 国内镜像（学校网络可能无法直连 huggingface.co）
- * - 国内：https://hf-mirror.com/
- * - 海外/可直连：https://huggingface.co/
- * - 离线部署：将模型文件放入 public/models/ 并改用本地加载（见 useWakeWord.js 注释）
+ * 模型下载源：同源部署（模型文件在服务器 /mindsafe/models/ 目录下）
+ * - 浏览器 HTTP 缓存 + 同源高速下载，不依赖外部 CDN
+ * - 回退：若同源不可用，Transformers.js 内部 Cache API 仍会缓存
+ * - 历史：曾用 https://hf-mirror.com/（国内 HF 镜像），但手机浏览器
+ *   CacheStorage 易被系统清理导致反复下载，故改为自托管
  */
-export const WAKE_MODEL_REMOTE_HOST = 'https://hf-mirror.com/'
+export const WAKE_MODEL_REMOTE_HOST = 'SAME_ORIGIN' // 运行时由 hook 替换为 import.meta.env.BASE_URL + 'models/'
 
 /**
  * 唤醒词匹配变体（Whisper 中文转写可能输出同音字，做容错匹配）
