@@ -9,6 +9,7 @@ vi.mock('../api', () => ({ api: vi.fn(), getUser: vi.fn(() => null) }));
 vi.mock('../utils/audioUnlock', () => ({ unlockAudio: vi.fn() }));
 vi.mock('../components/SceneDecor', () => ({ default: () => <div data-testid="scene-decor" /> }));
 vi.mock('../components/SettingsPanel', () => ({ default: () => null }));
+vi.mock('../components/ConfirmDialog', () => ({ default: () => null }));
 vi.mock('../components/RelaxationExercises', () => ({ default: ({ onBack }) => <div data-testid="relaxation">放松练习</div> }));
 vi.mock('../components/EmotionDiary', () => ({ default: ({ onBack }) => <div data-testid="diary">心情日记</div> }));
 vi.mock('../components/Achievements', () => ({ default: () => <div data-testid="achievements" /> }));
@@ -51,19 +52,19 @@ describe('EmotionSelect', () => {
 
   it('点击放松练习切换到放松页面', () => {
     render(<EmotionSelect {...defaultProps} />);
-    fireEvent.click(screen.getByText(/做个放松练习/));
+    fireEvent.click(screen.getByText('放松练习'));
     expect(screen.getByTestId('relaxation')).toBeInTheDocument();
   });
 
   it('点击心情日记切换到日记页面', () => {
     render(<EmotionSelect {...defaultProps} />);
-    fireEvent.click(screen.getByText(/记录今天的心情/));
+    fireEvent.click(screen.getByText('心情日记'));
     expect(screen.getByTestId('diary')).toBeInTheDocument();
   });
 
-  it('切换同学入口已移至设置面板（页面不再直接显示）', () => {
+  it('切换同学入口已移至顶栏（与设置并排显示）', () => {
     render(<EmotionSelect {...defaultProps} />);
-    expect(screen.queryByText(/切换同学/)).toBeNull();
+    expect(screen.getByText('换人')).toBeInTheDocument();
   });
 
   it('userName 为空时显示"同学"', () => {

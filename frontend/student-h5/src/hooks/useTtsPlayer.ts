@@ -8,7 +8,7 @@
  */
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { getGlobalAudioElement, getGlobalAudioContext, unlockAudio } from '../utils/audioUnlock'
-import { getToken } from '../api'
+import { authFetch } from '../api'
 
 /** 去除 emoji 和特殊符号（TTS 不需要朗读） */
 function stripEmoji(text) {
@@ -155,13 +155,9 @@ export function useTtsPlayer({ persona = 'xiaoxing', emotion = 'neutral', speed 
       return null // 返回 null 触发 speak() 中的浏览器降级路径
     }
     try {
-      const token = getToken()
-      const res = await fetch('/api/v1/tts/synthesize', {
+      const res = await authFetch('/api/v1/tts/synthesize', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text, persona, emotion, speed }),
       })
       if (!res.ok || res.status === 204) {

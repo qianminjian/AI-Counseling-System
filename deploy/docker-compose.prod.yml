@@ -93,6 +93,10 @@ services:
       dockerfile: Dockerfile
     container_name: mindsafe-voice
     restart: unless-stopped
+    environment:
+      # ASR 引擎选择：funasr=本地自部署（需 6GB 内存）/ dashscope=阿里云云端（低资源）
+      ASR_ENGINE: ${ASR_ENGINE:-dashscope}
+      DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:-}
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:10095/health')"]
       interval: 30s

@@ -30,11 +30,15 @@ services:
     environment:
       DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:-}
 
-  # ===== 语音识别与情绪分析微服务（FunASR） =====
+  # ===== 语音识别与情绪分析微服务（FunASR / DashScope 双引擎） =====
   voice-service:
     build:
       context: ../backend/voice-service
       dockerfile: Dockerfile
+    environment:
+      # ASR 引擎选择：funasr=本地自部署（需 6GB 内存）/ dashscope=阿里云云端（低资源）
+      ASR_ENGINE: ${ASR_ENGINE:-dashscope}
+      DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:-}
     deploy:
       resources:
         limits:

@@ -7,6 +7,7 @@ import RelaxationExercises from './RelaxationExercises'
 import EmotionDiary from './EmotionDiary'
 import Achievements from './Achievements'
 import SettingsPanel from './SettingsPanel'
+import ConfirmDialog from './ConfirmDialog'
 
 const EMOTIONS = [
   { tag: 'happy', emoji: '😊', label: '开心', desc: '有好事发生', color: 'bg-yellow-100 border-yellow-400 text-yellow-800' },
@@ -24,6 +25,7 @@ export default function EmotionSelect({ onStart, userName, onLogout }) {
   const [showDiary, setShowDiary] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [muted, setMuted] = useState(false)
+  const [confirmSwitch, setConfirmSwitch] = useState(false)
   const { theme, themeId } = useTheme()
 
   const handleStart = async () => {
@@ -64,21 +66,41 @@ export default function EmotionSelect({ onStart, userName, onLogout }) {
       {/* 三主题场景装饰（与登录页同款） */}
       <SceneDecor themeId={themeId} />
 
-      {/* 设置按钮（右上角） */}
-      <button
-        onClick={() => setSettingsOpen(true)}
-        className="fixed top-4 right-4 z-40 w-10 h-10 flex items-center justify-center rounded-full bg-white/80 shadow-md border border-gray-100 text-gray-500 hover:text-gray-700 active:scale-90 transition-all"
-        title="设置"
-      >
-        ⚙️
-      </button>
+      {/* 顶栏操作区（右上角）：切换同学 + 设置 */}
+      <div className="fixed top-4 right-4 z-40 flex items-center gap-2">
+        <button
+          onClick={() => setConfirmSwitch(true)}
+          className="h-10 flex items-center gap-1.5 px-3 rounded-full bg-white/80 shadow-md border border-gray-100 text-gray-500 hover:text-gray-700 active:scale-90 transition-all"
+          title="切换同学"
+        >
+          <span className="text-base">🔄</span>
+          <span className="text-xs font-medium">换人</span>
+        </button>
+        <button
+          onClick={() => setSettingsOpen(true)}
+          className="w-10 h-10 flex items-center justify-center rounded-full bg-white/80 shadow-md border border-gray-100 text-gray-500 hover:text-gray-700 active:scale-90 transition-all"
+          title="设置"
+        >
+          ⚙️
+        </button>
+      </div>
       <SettingsPanel
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
         muted={muted}
         onToggleMute={() => setMuted(v => !v)}
         onToggleWake={() => {}}
-        onSwitchUser={onLogout}
+      />
+      {/* 切换同学二次确认 */}
+      <ConfirmDialog
+        open={confirmSwitch}
+        emoji="👋"
+        title="要退出让别的同学用吗？"
+        message="退出后需要重新登录哦"
+        confirmText="确认退出"
+        danger
+        onConfirm={() => { setConfirmSwitch(false); onLogout?.() }}
+        onCancel={() => setConfirmSwitch(false)}
       />
 
       {/* 标题区：儿童化圆体标题 + 伙伴漂浮动画 */}
@@ -108,11 +130,11 @@ export default function EmotionSelect({ onStart, userName, onLogout }) {
       </div>
 
       {/* 开始按钮 + 放松练习入口 */}
-      <div className="relative z-10 flex flex-col items-center gap-4">
+      <div className="relative z-10 flex flex-col items-center gap-4 w-full max-w-sm lg:max-w-md">
         <button
           onClick={handleStart}
           disabled={!selected || loading}
-          className={`px-10 lg:px-16 py-4 lg:py-5 rounded-full text-white font-medium text-lg lg:text-2xl transition-all
+          className={`w-full px-10 lg:px-16 py-4 lg:py-5 rounded-full text-white font-medium text-lg lg:text-2xl transition-all
             ${selected
               ? 'active:scale-95 shadow-lg'
               : 'bg-gray-300 cursor-not-allowed'
@@ -124,22 +146,35 @@ export default function EmotionSelect({ onStart, userName, onLogout }) {
         {error && (
           <p className="text-sm text-red-500 text-center max-w-xs animate-pulse">{error}</p>
         )}
-        <button
-          onClick={() => setShowRelaxation(true)}
-          className={`text-sm transition-colors underline underline-offset-4 emotion-link--${themeId}`}
-        >
-          不想聊天？做个放松练习 🌿
-        </button>
-        <button
-          onClick={() => setShowDiary(true)}
-          className={`text-sm transition-colors underline underline-offset-4 emotion-link--${themeId}`}
-        >
-          记录今天的心情 📔
-        </button>
+        {/* 底部功能入口（卡片式，深色/浅色主题都清晰可辨） */}
+        <div className="flex gap-3 w-full mt-2">
+          <button
+            onClick={() => setShowRelaxation(true)}
+            className={`flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-2xl backdrop-blur-sm shadow-sm transition-all active:scale-95
+              ${themeId === 'garden'
+                ? 'bg-white/70 border border-pink-200 hover:bg-white/90'
+                : 'bg-white/20 border border-white/30 hover:bg-white/30'
+              }`}
+          >
+            <span className="text-lg">🌿</span>
+            <span className={`text-sm font-medium drop-shadow-sm ${themeId === 'garden' ? 'text-pink-700' : 'text-white'}`}>放松练习</span>
+          </button>
+          <button
+            onClick={() => setShowDiary(true)}
+            className={`flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-2xl backdrop-blur-sm shadow-sm transition-all active:scale-95
+              ${themeId === 'garden'
+                ? 'bg-white/70 border border-pink-200 hover:bg-white/90'
+                : 'bg-white/20 border border-white/30 hover:bg-white/30'
+              }`}
+          >
+            <span className="text-lg">📔</span>
+            <span className={`text-sm font-medium drop-shadow-sm ${themeId === 'garden' ? 'text-pink-700' : 'text-white'}`}>心情日记</span>
+          </button>
+        </div>
       </div>
 
       {/* 成就徽章 */}
-      <div className="relative z-10 w-full flex flex-col items-center">
+      <div className="relative z-10 w-full max-w-sm lg:max-w-md flex flex-col items-center mt-4">
         <Achievements />
       </div>
     </div>

@@ -3,6 +3,7 @@ import VoiceConsentDialog, { useVoiceConsent } from './VoiceConsentDialog'
 import VoiceCallConsentDialog, { useVoiceCallConsent } from './VoiceCallConsentDialog'
 import SatisfactionDialog from './SatisfactionDialog'
 import SettingsPanel from './SettingsPanel'
+import ConfirmDialog from './ConfirmDialog'
 import BoBoPet from './BoBoPet'
 import DraggableVoiceButton from './DraggableVoiceButton'
 import MessageBubble, { EMOTION_EMOJI } from './MessageBubble'
@@ -12,7 +13,7 @@ import { useTtsPlayer } from '../hooks/useTtsPlayer'
 import { useVoiceCallMode } from '../hooks/useVoiceCallMode'
 import { useSilenceNudge } from '../hooks/useSilenceNudge'
 import { useAudioRecorder } from '../hooks/useAudioRecorder'
-import { getToken, api, getUser } from '../api'
+import { authFetch, api, getUser } from '../api'
 
 /** 语音唤醒开关持久化 key（design/28 §1.1） */
 const WAKE_PREF_KEY = 'mindsafe_wake_enabled'
@@ -29,6 +30,7 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: an
   const [voiceNotice, setVoiceNotice] = useState('')
   const [cancelArmed, setCancelArmed] = useState(false) // 按住说话：上滑进入取消态
   const [liveTranscript, setLiveTranscript] = useState('') // 录音中实时转写（浏览器识别，作反馈展示）
+  const [confirmSwitch, setConfirmSwitch] = useState(false) // 切换同学确认弹窗
   const bottomRef = useRef(null)
   const browserTranscriptRef = useRef('')
   const speechRecRef = useRef(null)
@@ -105,11 +107,9 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: an
     formData.append('file', audioBlob, 'recording.webm')
 
     try {
-      const res = await fetch('/api/v1/voice/analyze', {
+      // authFetch 统一处理 JWT 认证 + 401 自动刷新，避免 token 过期导致降级到不可靠的浏览器识别
+      const res = await authFetch('/api/v1/voice/analyze', {
         method: 'POST',
-        headers: {
-          ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}),
-        },
         body: formData,
       })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
@@ -210,12 +210,27 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: an
         rec.continuous = true
         rec.interimResults = true
         rec.onresult = (e) => {
-          let transcript = ''
+          // 根因修复：Android Chrome 中文识别 continuous 模式下，
+          // 语句结束后可能在 results 列表中产生内容相同的重复 final 条目。
+          // 修复策略：只拼接 final 结果 + 跳过连续相同文本；interim 仅用于实时展示。
+          let finalTranscript = ''
+          let interimTranscript = ''
+          let prevFinalText = ''
           for (let i = 0; i < e.results.length; i++) {
-            transcript += e.results[i][0].transcript
+            const text = e.results[i][0].transcript
+            if (e.results[i].isFinal) {
+              // 跳过与前一个 final result 完全相同的条目（Android 重复 bug）
+              if (text !== prevFinalText) {
+                finalTranscript += text
+                prevFinalText = text
+              }
+            } else {
+              interimTranscript += text
+            }
           }
-          browserTranscriptRef.current = transcript
-          setLiveTranscript(transcript) // 实时转写展示在录音遮罩内
+          // 发送用 final（去重后）；实时展示用 final + 当前 interim
+          browserTranscriptRef.current = finalTranscript || interimTranscript
+          setLiveTranscript(finalTranscript + interimTranscript)
         }
         rec.onerror = () => {}
         rec.start()
@@ -314,8 +329,22 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: an
     tts.speakSentence(text).then(() => setSpeakingMsgIdx(-1))
   }, [tts, releaseStream])
 
+  /** 语音识别去重：检测文本后半段是否与前半段重复（Android 语音识别/Whisper 偶发） */
+  const deduplicateText = (raw: string): string => {
+    const t = raw.trim()
+    if (t.length < 6) return t
+    // 尝试从中间偏后位置检测：后半段 === 前半段（允许标点差异）
+    const len = t.length
+    for (let mid = Math.floor(len * 0.4); mid <= Math.ceil(len * 0.6); mid++) {
+      const first = t.slice(0, mid).replace(/[，。！？、\s]/g, '')
+      const second = t.slice(mid).replace(/[，。！？、\s]/g, '')
+      if (first && second && first === second) return t.slice(0, mid)
+    }
+    return t
+  }
+
   const sendMessage = async (autoText?: string, autoEmotion?: any) => {
-    const text = (autoText ?? input).trim()
+    const text = deduplicateText((autoText ?? input).trim())
     if (!text || streaming) return false
 
     // 先停止当前播放，再在用户手势中解锁音频（避免 unlock 被 stop 打断）
@@ -347,14 +376,12 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: an
     setMessages((prev) => [...prev, { role: 'assistant', content: '', emotion: msgEmotion || session.emotionTag }])
 
     let fullResponse = ''
+    let timeoutChecker: ReturnType<typeof setInterval> | null = null
 
     try {
-      const res = await fetch(`/api/v1/chat/sessions/${session.sessionId}/messages`, {
+      const res = await authFetch(`/api/v1/chat/sessions/${session.sessionId}/messages`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}),
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       })
 
@@ -363,10 +390,20 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: an
       const reader = res.body.getReader()
       const decoder = new TextDecoder()
       let buffer = ''
+      let lastDataTime = Date.now()
+
+      // SSE 流超时保护：30s 无数据 → 自动结束（防止永远卡在 streaming 态）
+      timeoutChecker = setInterval(() => {
+        if (Date.now() - lastDataTime > 30000) {
+          if (timeoutChecker) clearInterval(timeoutChecker)
+          reader.cancel()
+        }
+      }, 5000)
 
       while (true) {
         const { done, value } = await reader.read()
         if (done) break
+        lastDataTime = Date.now()
 
         buffer += decoder.decode(value, { stream: true })
         const lines = buffer.split('\n')
@@ -410,6 +447,7 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: an
         })
       }
     } finally {
+      if (timeoutChecker) clearInterval(timeoutChecker)
       // AI 回复完成 → 自动 TTS 播放（无论流是否正常结束，只要收到内容就播放）
       if (fullResponse && !tts.muted) {
         tts.speak(fullResponse)
@@ -511,6 +549,17 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: an
               <path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
             </svg>
           </button>
+          {/* 切换同学（与设置并排，共享 Pad 场景） */}
+          {onSwitchUser && (
+            <button
+              onClick={() => setConfirmSwitch(true)}
+              className="flex items-center gap-1 px-2.5 py-1.5 lg:px-3 lg:py-2 rounded-full text-gray-400 hover:text-orange-500 hover:bg-orange-50 transition-colors"
+              title="切换同学"
+            >
+              <span className="text-sm lg:text-base">🔄</span>
+              <span className="text-xs lg:text-sm font-medium">换人</span>
+            </button>
+          )}
           {/* 结束对话 */}
           <button
             onClick={handleEnd}
@@ -675,7 +724,17 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: an
         wakeSupported={voiceCall.wakeSupported}
         wakeOn={wakeEnabled}
         onToggleWake={handleToggleWake}
-        onSwitchUser={onSwitchUser}
+      />
+      {/* 切换同学二次确认 */}
+      <ConfirmDialog
+        open={confirmSwitch}
+        emoji="👋"
+        title="要退出让别的同学用吗？"
+        message="退出后需要重新登录哦"
+        confirmText="确认退出"
+        danger
+        onConfirm={() => { setConfirmSwitch(false); onSwitchUser?.() }}
+        onCancel={() => setConfirmSwitch(false)}
       />
     </div>
   )

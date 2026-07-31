@@ -1,8 +1,11 @@
 """
 MindSafe 语音分析微服务
-- ASR（语音转文字）：SenseVoiceSmall
-- SER（语音情感识别）：emotion2vec_plus_large
+- ASR（语音转文字）：双引擎
+  - funasr 模式：SenseVoiceSmall（自部署，适合私有化/信创环境）
+  - dashscope 模式：Paraformer-V2（阿里云 DashScope API，低资源占用）
+- SER（语音情感识别）：emotion2vec_plus_large（仅 funasr 模式加载）
 - 部署：Docker 容器，端口 10095
+- 切换方式：环境变量 ASR_ENGINE=funasr|dashscope
 """
 
 import io
@@ -18,12 +21,21 @@ import soundfile as sf
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from funasr import AutoModel
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("voice-service")
 
-app = FastAPI(title="MindSafe Voice Analysis", version="1.0.0")
+# ===== 引擎选择（环境变量驱动） =====
+ASR_ENGINE = os.environ.get("ASR_ENGINE", "funasr").lower()
+DASHSCOPE_API_KEY = os.environ.get("DASHSCOPE_API_KEY", "")
+
+if ASR_ENGINE not in ("funasr", "dashscope"):
+    raise ValueError(f"ASR_ENGINE 必须为 funasr 或 dashscope，当前值: {ASR_ENGINE}")
+
+if ASR_ENGINE == "dashscope" and not DASHSCOPE_API_KEY:
+    raise ValueError("ASR_ENGINE=dashscope 时 DASHSCOPE_API_KEY 不能为空")
+
+app = FastAPI(title="MindSafe Voice Analysis", version="2.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -32,22 +44,36 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ===== 模型初始化（启动时加载） =====
+# ===== 模型初始化（按引擎选择性加载） =====
 
-logger.info("正在加载 ASR 模型 (SenseVoiceSmall)...")
-asr_model = AutoModel(
-    model="iic/SenseVoiceSmall",
-    vad_model="fsmn-vad",
-    vad_kwargs={"max_single_segment_time": 30000},
-    device="cpu",
-)
-logger.info("ASR 模型加载完成")
+asr_model = None
+emotion_model = None
 
-logger.info("正在加载 SER 模型 (emotion2vec+)...")
-emotion_model = AutoModel(model="iic/emotion2vec_plus_large", device="cpu")
-logger.info("SER 模型加载完成")
+if ASR_ENGINE == "funasr":
+    from funasr import AutoModel
 
-logger.info("✅ 语音分析服务就绪，端口 10095")
+    logger.info("正在加载 ASR 模型 (SenseVoiceSmall)...")
+    asr_model = AutoModel(
+        model="iic/SenseVoiceSmall",
+        vad_model="fsmn-vad",
+        vad_kwargs={"max_single_segment_time": 30000},
+        device="cpu",
+    )
+    logger.info("ASR 模型加载完成")
+
+    logger.info("正在加载 SER 模型 (emotion2vec+)...")
+    emotion_model = AutoModel(model="iic/emotion2vec_plus_large", device="cpu")
+    logger.info("SER 模型加载完成")
+
+    logger.info("✅ 语音分析服务就绪 [引擎: FunASR + emotion2vec]，端口 10095")
+
+elif ASR_ENGINE == "dashscope":
+    import dashscope
+    from dashscope.audio.asr import Recognition, RecognitionCallback, RecognitionResult
+
+    dashscope.api_key = DASHSCOPE_API_KEY
+    logger.info(f"✅ 语音分析服务就绪 [引擎: DashScope Paraformer-V2]，端口 10095")
+    logger.info("  DashScope API Key: ...%s", DASHSCOPE_API_KEY[-6:] if len(DASHSCOPE_API_KEY) > 6 else "***")
 
 
 # ===== 数据模型 =====
@@ -99,7 +125,54 @@ def parse_emotion_result(raw: dict) -> EmotionResult:
 
 @app.get("/health")
 def health():
-    return {"status": "UP", "models": ["SenseVoiceSmall", "emotion2vec_plus_large"]}
+    models = ["SenseVoiceSmall", "emotion2vec_plus_large"] if ASR_ENGINE == "funasr" else ["DashScope-Paraformer-V2"]
+    return {"status": "UP", "engine": ASR_ENGINE, "models": models}
+
+
+# ===== DashScope ASR 实现 =====
+
+
+def _dashscope_asr(wav_path: str) -> str:
+    """通过 DashScope Recognition SDK 进行语音转写（Paraformer-V2，WebSocket 协议，同步模式）"""
+    recognition = Recognition(
+        model="paraformer-realtime-v2",
+        format="wav",
+        sample_rate=16000,
+        callback=RecognitionCallback(),  # no-op callback, call() 模式同步返回
+    )
+    result = recognition.call(file=wav_path)
+
+    if result.status_code != 200:
+        logger.error(f"DashScope ASR 调用失败: status={result.status_code}, code={result.code}, msg={result.message}")
+        raise HTTPException(status_code=502, detail=f"DashScope ASR 服务错误: {result.message}")
+
+    # 提取所有句子文本拼接
+    sentences = result.get_sentence() if hasattr(result, 'get_sentence') else []
+    if isinstance(sentences, dict):
+        sentences = [sentences]
+    text = "".join(s.get("text", "") for s in (sentences or []))
+    logger.info(f"DashScope ASR 转写完成: text_len={len(text)}, sentences={len(sentences or [])}")
+    return text.strip()
+
+
+# ===== FunASR 本地实现 =====
+
+def _funasr_asr(wav_path: str) -> str:
+    """本地 FunASR SenseVoiceSmall 转写"""
+    result = asr_model.generate(input=wav_path, language="zh", use_itn=True)
+    text = ""
+    if result and len(result) > 0:
+        text = result[0].get("text", "")
+    # 清洗 SenseVoice 特殊标记
+    return re.sub(r"<\|[^|]*\|>", "", text).strip()
+
+
+def _funasr_ser(wav_path: str) -> EmotionResult:
+    """本地 emotion2vec+ 情感识别"""
+    result = emotion_model.generate(input=wav_path)
+    if result and len(result) > 0:
+        return parse_emotion_result(result[0])
+    return EmotionResult(label="未知", label_en="unknown", confidence=0.0, scores=[0.0] * 9)
 
 
 @app.post("/api/v1/voice/analyze", response_model=VoiceAnalysisResponse)
@@ -109,6 +182,7 @@ async def analyze_voice(file: UploadFile = File(...)):
     - 接收：audio/webm, audio/wav, audio/mp3 等
     - 返回：转写文字 + 情绪标签 + 置信度
     - 合规：处理完立即删除临时文件，不存储原始音频
+    - 引擎：由 ASR_ENGINE 环境变量控制（funasr=本地 / dashscope=云端）
     """
     if not file.content_type or not file.content_type.startswith("audio/"):
         raise HTTPException(status_code=400, detail="仅支持音频文件")
@@ -141,28 +215,21 @@ async def analyze_voice(file: UploadFile = File(...)):
         audio_data, sample_rate = sf.read(wav_path)
         duration = len(audio_data) / sample_rate if sample_rate > 0 else 0.0
 
-        # 1+2. ASR 转写 + 情感识别（并行执行，减少总延迟）
-        def run_asr():
-            result = asr_model.generate(input=wav_path, language="zh", use_itn=True)
-            text = ""
-            if result and len(result) > 0:
-                text = result[0].get("text", "")
-            # 清洗 SenseVoice 特殊标记
-            return re.sub(r"<\|[^|]*\|>", "", text).strip()
+        # ===== 按引擎分发 ASR =====
+        if ASR_ENGINE == "dashscope":
+            # DashScope 云端 ASR（无 SER，情绪返回 neutral）
+            text = _dashscope_asr(wav_path)
+            emotion = EmotionResult(label="中性", label_en="neutral", confidence=1.0, scores=[0.0] * 9)
+            logger.info(f"分析完成 [DashScope]: text_len={len(text)}, duration={duration:.1f}s")
 
-        def run_ser():
-            result = emotion_model.generate(input=wav_path)
-            if result and len(result) > 0:
-                return parse_emotion_result(result[0])
-            return EmotionResult(label="未知", label_en="unknown", confidence=0.0, scores=[0.0] * 9)
-
-        with ThreadPoolExecutor(max_workers=2) as executor:
-            asr_future = executor.submit(run_asr)
-            ser_future = executor.submit(run_ser)
-            text = asr_future.result()
-            emotion = ser_future.result()
-
-        logger.info(f"分析完成: text_len={len(text)}, emotion={emotion.label_en}({emotion.confidence:.2f}), duration={duration:.1f}s")
+        else:
+            # FunASR 本地 ASR + emotion2vec SER（并行执行）
+            with ThreadPoolExecutor(max_workers=2) as executor:
+                asr_future = executor.submit(_funasr_asr, wav_path)
+                ser_future = executor.submit(_funasr_ser, wav_path)
+                text = asr_future.result()
+                emotion = ser_future.result()
+            logger.info(f"分析完成 [FunASR]: text_len={len(text)}, emotion={emotion.label_en}({emotion.confidence:.2f}), duration={duration:.1f}s")
 
         return VoiceAnalysisResponse(
             text=text,
@@ -173,6 +240,8 @@ async def analyze_voice(file: UploadFile = File(...)):
     except subprocess.CalledProcessError as e:
         logger.error(f"音频转码失败: {e.stderr.decode(errors='ignore') if e.stderr else e}")
         raise HTTPException(status_code=500, detail="音频格式转换失败")
+    except HTTPException:
+        raise  # DashScope 502 等已包装的异常直接抛出
     except Exception as e:
         logger.error(f"语音分析失败: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"语音分析失败: {str(e)}")

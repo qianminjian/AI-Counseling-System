@@ -59,8 +59,36 @@ export function isAuthenticated() {
   return !!getToken()
 }
 
+/**
+ * 带 JWT 认证的 fetch（自动携带 token + 401 自动刷新重试）
+ * 
+ * 适用于不经过 api() 的场景（如 multipart 上传、SSE 流、音频下载），
+ * 不解析 JSON、不检查 success 字段——调用方自行处理 Response。
+ */
+export async function authFetch(url: string, init?: RequestInit): Promise<Response> {
+  const doFetch = () => {
+    const token = getToken()
+    return fetch(url, {
+      ...init,
+      headers: {
+        ...(init?.headers instanceof Headers
+          ? Object.fromEntries((init.headers as Headers).entries())
+          : init?.headers || {}),
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+    })
+  }
+  let res = await doFetch()
+  if (res.status === 401) {
+    if (await tryRefresh()) {
+      res = await doFetch()
+    }
+  }
+  return res
+}
+
 /** 尝试刷新 Token，成功返回 true */
-async function tryRefresh() {
+export async function tryRefresh() {
   const rt = getRefreshToken()
   if (!rt) return false
   try {
