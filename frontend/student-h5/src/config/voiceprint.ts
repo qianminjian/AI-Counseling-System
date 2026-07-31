@@ -16,28 +16,44 @@
 
 /**
  * 模型 ID（Hugging Face Hub，ONNX 量化版）
- * wespeaker-voxceleb-resnet34-LM：ECAPA-TDNN 系列，256-dim embedding
- * 量化后约 25-30MB，首次下载后浏览器 Cache API 缓存
  *
- * 降级：若 Pad 性能不足（推理 > 3s），可切换为 MFCC 特征方案（见 useVoiceprint.js）
+ * 历史：曾配置为 onnx-community/wespeaker-voxceleb-resnet34-LM，但该模型
+ * 在 HF 上仅有 PyTorch 格式（pyannote/wespeaker-voxceleb-resnet34-LM），
+ * 无 ONNX 版本，Transformers.js 无法加载。
+ *
+ * 当前方案：复用 whisper-tiny 的 encoder 隐状态作为 pseudo-speaker embedding。
+ * - 与唤醒词共用同一 ONNX 权重文件（浏览器 Cache API 只下载一次）
+ * - feature-extraction pipeline 返回 encoder hidden states [1, seq_len, 384]
+ * - 手动 mean pooling → 384-dim 向量，余弦相似度比对
+ * - 非专用声纹模型，精度有限，但对儿童场景（同设备 2-3 人区分）足够
+ *
+ * 未来升级路径：
+ * - 将 wespeaker 模型转为 ONNX 并部署到服务器（需 Python optimum 导出）
+ * - 或使用 sherpa-onnx 的 speaker-embedding 模块
  */
-export const VP_MODEL_ID = 'onnx-community/wespeaker-voxceleb-resnet34-LM'
+export const VP_MODEL_ID = 'onnx-community/whisper-tiny'
 
-/** 模型下载源：同源部署（与唤醒词模型共用 /mindsafe/models/ 目录） */
-export const VP_MODEL_REMOTE_HOST = 'SAME_ORIGIN' // 运行时由 hook 替换为 import.meta.env.BASE_URL + 'models/'
+/**
+ * 模型下载源
+ * - 默认使用 hf-mirror.com（国内可访问的 HuggingFace 镜像）
+ * - 生产部署：将模型文件放到服务器 /mindsafe/models/ 目录后，改为 'SAME_ORIGIN'
+ *   此时 Transformers.js 从同源加载，配合 Nginx immutable 缓存头实现零延迟
+ * - 注意：SAME_ORIGIN 模式下必须确保模型文件已部署，否则 404 导致加载失败
+ */
+export const VP_MODEL_REMOTE_HOST: string = 'https://hf-mirror.com/'
 
-/** Embedding 维度 */
-export const VP_EMBEDDING_DIM = 256
+/** Embedding 维度（whisper-tiny encoder hidden size = 384） */
+export const VP_EMBEDDING_DIM = 384
 
 // ===== 比对阈值 =====
 
 /**
- * 余弦相似度阈值（初始偏宽松，减少误拒）
- * - 成人场景通常 0.5-0.6 即可
- * - 儿童声音相似度高，初始设 0.75 偏严格防误识
- * - 后续根据实测调整
+ * 余弦相似度阈值
+ * - 专用声纹模型通常 0.7-0.8
+ * - 当前使用 Whisper encoder pseudo-embedding，精度较低，阈值偏宽松
+ * - 儿童场景同设备 2-3 人区分，误识风险可控
  */
-export const VP_VERIFY_THRESHOLD = 0.75
+export const VP_VERIFY_THRESHOLD = 0.55
 
 /** 多段验证：引导对话采集段数（两段都通过才算成功） */
 export const VP_VERIFY_SEGMENTS = 2

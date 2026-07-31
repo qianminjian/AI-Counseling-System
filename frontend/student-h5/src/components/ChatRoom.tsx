@@ -159,7 +159,10 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: an
     busy: streaming || tts.playing || recording || analyzing,
     onFinalTranscript: (text) => {
       // 唤醒后孩子说话 → 走与按住说话相同的自动发送流程
-      sendMessageRef.current?.(text, null)
+      // 失败时回填输入框防丢字（与 handleRecordingComplete 保持一致）
+      sendMessageRef.current?.(text, null).then((sent) => {
+        if (!sent) setInput(text)
+      })
     },
   })
 
@@ -507,7 +510,7 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: an
     <BoBoPet
       state={boboState}
       colors={theme.bobo}
-      sentenceText={tts.currentSentenceText}
+      sentenceText=""
       liveTranscript={liveTranscript}
       size={size}
       interactive={supported}
@@ -641,6 +644,48 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: an
 
           {/* 输入区 */}
           <footer className="p-4 lg:px-8 lg:py-5 bg-white/80 backdrop-blur border-t border-gray-100">
+            {/* 手机端语音唤醒状态指示器（Pad 在左栏已有，手机无左栏故需单独展示） */}
+            {wakeEnabled && wakeConsent.hasConsent() && voiceCall.mode !== 'off' && !recording && !analyzing && (
+              <div className="flex lg:hidden items-center justify-center gap-2 mb-3 text-xs">
+                {voiceCall.wakeStatus === 'loading' && (
+                  <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-blue-50 text-blue-500">
+                    <span className="relative flex h-2 w-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
+                    </span>
+                    语音引擎加载中...
+                  </span>
+                )}
+                {voiceCall.wakeStatus === 'listening' && voiceCall.mode === 'standby' && (
+                  <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-green-50 text-green-600">
+                    <span className="relative flex h-2 w-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+                    </span>
+                    说“哈喽波波”唤醒我
+                  </span>
+                )}
+                {voiceCall.wakeStatus === 'detected' && (
+                  <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-50 text-amber-600">
+                    🎉 听到了！正在准备听你说话...
+                  </span>
+                )}
+                {voiceCall.mode === 'active' && voiceCall.wakeStatus !== 'detected' && (
+                  <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-green-50 text-green-600">
+                    <span className="relative flex h-2 w-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+                    </span>
+                    我在听，直接说吧
+                  </span>
+                )}
+                {voiceCall.wakeStatus === 'error' && (
+                  <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-red-50 text-red-500">
+                    语音引擎加载失败，可在设置中重试
+                  </span>
+                )}
+              </div>
+            )}
             {/* 语音降级提示 */}
             {voiceNotice && (
               <div className="flex items-center justify-center gap-2 mb-3 px-4 py-2 rounded-xl bg-amber-50 text-amber-700 text-sm">

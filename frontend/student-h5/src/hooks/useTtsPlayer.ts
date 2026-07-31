@@ -247,31 +247,41 @@ export function useTtsPlayer({ persona = 'xiaoxing', emotion = 'neutral', speed 
     }
   }, [muted, synthesizeSentence, playBlob, speed])
 
-  /** 播放单句（点击气泡重播） */
+  /** 播放单条消息（点击气泡重播）—— 与自动播放相同的分句 + 并行合成逻辑，避免长文本单次合成音质下降 */
   const speakSentence = useCallback(async (text) => {
     if (muted) return
     stop()
 
-    const cleaned = stripEmoji(text)
-    // 设置 sentences 状态，让波波话语气泡能显示正在朗读的文字
-    setSentences([cleaned])
-    setCurrentSentenceIdx(0)
-    const audioBlob = await synthesizeSentence(cleaned)
+    const sentences = mergeShortSentences(splitSentences(text))
+    if (sentences.length === 0) return
 
+    abortRef.current = false
+    setSentences(sentences)
     setPlaying(true)
-    if (audioBlob) {
-      await playBlob(audioBlob)
-    } else {
-      // 后端不可用 → 浏览器 TTS 降级
-      setEngine('browser')
-      await new Promise<void>((resolve) => {
-        const ok = browserSpeak(cleaned, { rate: speed, persona, onEnd: resolve })
-        if (!ok) {
-          setEngine('none')
-          resolve()
-        }
-      })
+
+    // 并行合成所有句子，播放第 i 句时后续句已在后台合成
+    const audioPromises = sentences.map(s => synthesizeSentence(s))
+
+    for (let i = 0; i < audioPromises.length; i++) {
+      if (abortRef.current) break
+      setCurrentSentenceIdx(i)
+      const audioBlob = await audioPromises[i]
+      if (abortRef.current) break
+      if (audioBlob) {
+        await playBlob(audioBlob)
+      } else {
+        // 后端 TTS 不可用 → 浏览器 speechSynthesis 降级
+        setEngine('browser')
+        await new Promise<void>((resolve) => {
+          const ok = browserSpeak(sentences[i], { rate: speed, persona, onEnd: resolve })
+          if (!ok) {
+            setEngine('none')
+            resolve()
+          }
+        })
+      }
     }
+
     setPlaying(false)
     setCurrentSentenceIdx(-1)
     setSentences([])

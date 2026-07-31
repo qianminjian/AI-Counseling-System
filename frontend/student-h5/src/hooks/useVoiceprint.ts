@@ -57,13 +57,13 @@ function getExtractor() {
         mjs: `${base}ort/${variant}.mjs`,
         wasm: `${base}ort/${variant}.wasm`,
       }
-      return pipeline('automatic-speech-recognition', VP_MODEL_ID, {
+      return pipeline('feature-extraction', VP_MODEL_ID, {
         progress_callback: (p) => {
           if (p.status === 'progress' && p.file && typeof p.progress === 'number') {
             console.debug(`[Voiceprint] 模型加载 ${p.file} ${p.progress.toFixed(0)}%`)
           }
         },
-      })
+      } as any)
     })().catch((err) => {
       extractorPromise = null
       throw err
@@ -180,13 +180,56 @@ export function useVoiceprint() {
         ),
       ])
 
-      // Transformers.js 输出格式：{ data: Float32Array } 或 { embedding: [...] }
-      const embedding = result?.data || result?.embedding || result
-      if (embedding && (embedding as any).length > 0) {
-        // 归一化
-        const arr = Array.from(embedding as Iterable<number>) as number[]
-        const norm = Math.sqrt(arr.reduce((s, v) => s + v * v, 0))
-        return norm > 0 ? arr.map((v) => v / norm) : null
+      // feature-extraction 输出格式：
+      // - Whisper encoder: Tensor { data: Float32Array, dims: [1, seq_len, 384] }
+      // - 其他模型: 可能是嵌套数组或 1D 向量
+      let embedding: number[] | null = null
+      const raw: any = result
+
+      if (raw?.dims && raw?.data) {
+        // Tensor 对象：根据维度处理
+        const dims = raw.dims as number[]
+        const data = raw.data as Float32Array | number[]
+        if (dims.length === 3) {
+          // [batch, seq_len, hidden_dim] → mean pooling over seq_len
+          const [, seqLen, hiddenDim] = dims
+          const pooled = new Float32Array(hiddenDim)
+          for (let s = 0; s < seqLen; s++) {
+            for (let h = 0; h < hiddenDim; h++) {
+              pooled[h] += data[s * hiddenDim + h]
+            }
+          }
+          for (let h = 0; h < hiddenDim; h++) pooled[h] /= seqLen
+          embedding = Array.from(pooled)
+        } else if (dims.length === 2) {
+          // [batch, hidden_dim] → 直接取第一行
+          const hiddenDim = dims[1]
+          embedding = Array.from(data.slice(0, hiddenDim))
+        } else {
+          // 1D: 直接作为 embedding
+          embedding = Array.from(data)
+        }
+      } else if (Array.isArray(raw)) {
+        // 嵌套数组解包
+        let arr = raw
+        if (arr.length === 1 && Array.isArray(arr[0])) arr = arr[0]
+        if (arr.length > 0 && Array.isArray(arr[0])) {
+          // 2D array: mean pooling
+          const hiddenDim = arr[0].length
+          const pooled = new Float32Array(hiddenDim)
+          for (const row of arr) for (let h = 0; h < hiddenDim; h++) pooled[h] += row[h]
+          for (let h = 0; h < hiddenDim; h++) pooled[h] /= arr.length
+          embedding = Array.from(pooled)
+        } else {
+          embedding = arr as number[]
+        }
+      } else if (raw?.embedding) {
+        embedding = Array.from(raw.embedding as Iterable<number>)
+      }
+      if (embedding && embedding.length > 0) {
+        // L2 归一化
+        const norm = Math.sqrt(embedding.reduce((s, v) => s + v * v, 0))
+        return norm > 0 ? embedding.map((v) => v / norm) : null
       }
       return null
     } catch (err) {

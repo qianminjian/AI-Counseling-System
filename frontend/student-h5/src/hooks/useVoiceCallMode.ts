@@ -117,14 +117,16 @@ export function useVoiceCallMode({ enabled, tts, busy, onFinalTranscript }) {
 
   useEffect(() => { startListeningRoundRef.current = startListeningRound })
 
-  /* ===== 唤醒监听：仅 standby 且 AI 不忙时监听"哈喽波波"（busy 期间暂停，防自听） ===== */
+  /* ===== 唤醒监听：standby 时启动引擎（加载模型 + 麦克风），busy 时暂停检测但保持就绪（防自听回声） ===== */
   const { supported: wakeSupported, wakeStatus } = useWakeWord({
-    active: enabled && mode === 'standby' && !busy,
+    active: enabled && mode === 'standby',
+    paused: busy,
     onDetected: () => {
       // 双重防护：modeRef 检查 + detectingRef 锁（防 Whisper 多窗在 React 渲染前重复触发）
       if (modeRef.current !== 'standby' || detectingRef.current) return
       detectingRef.current = true
       firstRoundRef.current = true // 标记首轮，用于过滤唤醒词残留
+      console.info('[VoiceCall] 状态转换: standby → active（检测到唤醒词，播放确认句）')
       setMode('active')
       // 唤醒确认：TTS"我在呢！"播完（busy 转 false）后，下方捕捉 effect 自动开始聆听
       ttsRef.current.unlock?.()
@@ -150,8 +152,11 @@ export function useVoiceCallMode({ enabled, tts, busy, onFinalTranscript }) {
       if (modeRef.current !== 'active') return
       stopListening()
       await ttsRef.current.speak(COOLDOWN_CLOSE_TEXT)
-      // 收尾句播完，恢复唤醒词监听（需再说"哈喽波波"开启新会话窗）
-      if (modeRef.current === 'active' && enabledRef.current) setMode('standby')
+      // 收尾句播完，恢复唤醒词监听（需再说“哈喽波波”开启新会话窗）
+      if (modeRef.current === 'active' && enabledRef.current) {
+        console.info('[VoiceCall] 状态转换: active → standby（冷却期满，恢复待唤醒）')
+        setMode('standby')
+      }
     }, COOLDOWN_SECONDS * 1000)
     return () => clearTimeout(timer)
   }, [mode, busy, enabled, stopListening])
@@ -159,8 +164,12 @@ export function useVoiceCallMode({ enabled, tts, busy, onFinalTranscript }) {
   /* ===== 开关：开启 → off 进 standby；关闭/撤销授权 → 立即 off 并释放 ===== */
   useEffect(() => {
     if (enabled) {
-      if (modeRef.current === 'off') setMode('standby')
+      if (modeRef.current === 'off') {
+        console.info('[VoiceCall] 状态转换: off → standby（唤醒引擎启动中）')
+        setMode('standby')
+      }
     } else if (modeRef.current !== 'off') {
+      console.info('[VoiceCall] 状态转换:', modeRef.current, '→ off（关闭/撤销授权）')
       stopListening()
       setMode('off')
     }

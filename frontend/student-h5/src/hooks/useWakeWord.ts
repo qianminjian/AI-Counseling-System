@@ -22,7 +22,7 @@
  * - 串行识别：上一窗未识别完不提交新窗，识别慢时丢弃过老的积压音频（保最新 2.5s）；
  * - VAD 预过滤：静音窗直接跳过转写，省 CPU 并抑制 Whisper 静音幻觉。
  */
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useSyncExternalStore } from 'react'
 import {
   WAKE_MODEL_ID,
   WAKE_MODEL_REMOTE_HOST,
@@ -77,6 +77,28 @@ function rms(f32) {
   return Math.sqrt(sum / (f32.length || 1))
 }
 
+/* ===== 全局模型加载状态（跨组件共享，EmotionSelect / ChatRoom / 设置面板均可订阅） ===== */
+type ModelStatus = 'idle' | 'loading' | 'ready' | 'error'
+let _modelStatus: ModelStatus = 'idle'
+const _modelSubscribers = new Set<() => void>()
+
+function setModelStatus(s: ModelStatus) {
+  if (_modelStatus === s) return
+  _modelStatus = s
+  _modelSubscribers.forEach((fn) => fn())
+}
+
+/** 订阅唤醒模型加载状态（React Hook，任意组件可调用） */
+export function useWakeModelStatus(): ModelStatus {
+  return useSyncExternalStore(
+    (cb) => { _modelSubscribers.add(cb); return () => { _modelSubscribers.delete(cb) } },
+    () => _modelStatus,
+  )
+}
+
+/** 非 React 环境读取当前状态（如 console 调试） */
+export function getWakeModelStatus(): ModelStatus { return _modelStatus }
+
 /**
  * 模块级模型单例：加载一次，跨会话复用。
  * 失败时重置为 null，允许下次重试（如网络恢复）。
@@ -88,6 +110,7 @@ function rms(f32) {
 let transcriberPromise = null
 function getTranscriber() {
   if (!transcriberPromise) {
+    setModelStatus('loading')
     transcriberPromise = (async () => {
       // 动态导入：Transformers.js 独立分包，未启用唤醒时主路径零开销
       const { pipeline, env } = await import('@huggingface/transformers')
@@ -106,15 +129,18 @@ function getTranscriber() {
         mjs: `${base}ort/${variant}.mjs`,
         wasm: `${base}ort/${variant}.wasm`,
       }
-      return pipeline('automatic-speech-recognition', WAKE_MODEL_ID, {
+      const t = await pipeline('automatic-speech-recognition', WAKE_MODEL_ID, {
         progress_callback: (p) => {
           if (p.status === 'progress' && p.file && typeof p.progress === 'number') {
             console.debug(`[WakeWord] 模型加载 ${p.file} ${p.progress.toFixed(0)}%`)
           }
         },
       })
+      setModelStatus('ready')
+      return t
     })().catch((err) => {
       transcriberPromise = null
+      setModelStatus('error')
       throw err
     })
   }
@@ -122,25 +148,35 @@ function getTranscriber() {
 }
 
 /**
- * 预加载模型（不启动麦克风）：在 TTS 播放期间提前下载模型，
- * 避免 TTS 播完后用户还要等模型加载。
- * 调用时机：ChatRoom 挂载 + 语音模式开启时立即调用。
+ * 预加载模型（不启动麦克风）：在情绪选择页停留时提前下载模型，
+ * 进对话时直接就绪。状态可通过 useWakeModelStatus() 订阅查看。
+ * 调用时机：EmotionSelect 挂载 + ChatRoom 挂载。
  */
 export function preloadWakeModel() {
-  getTranscriber().catch(() => {}) // 静默失败，active 时会重试
+  getTranscriber().catch(() => {}) // 失败时 active 会重试
 }
 
 /**
  * @param {object} opts
- * @param {boolean} opts.active      是否监听（仅对话内且处于待唤醒态时为 true）
+ * @param {boolean} opts.active      是否启动引擎（加载模型 + 启动麦克风）——仅对话内且处于待唤醒态时为 true
+ * @param {boolean} opts.paused      暂停检测（AI 忙碌时防自听回声，但保持模型 + 麦克风就绪，忙碌结束立即恢复检测）
  * @param {(detection: {label: string, text: string}) => void} opts.onDetected 检测到唤醒词回调
  * @returns {{ supported: boolean, wakeStatus: string }} 环境是否支持 + 当前状态（诊断用）
  */
-export function useWakeWord({ active, onDetected }) {
+export function useWakeWord({ active, paused, onDetected }) {
   const [supported, setSupported] = useState(false)
-  const [wakeStatus, setWakeStatus] = useState('idle') // idle | loading | listening | error
+  const [wakeStatus, setWakeStatus] = useState('idle') // idle | loading | listening | error | detected
   const onDetectedRef = useRef(onDetected)
+  const pausedRef = useRef(paused)
   useEffect(() => { onDetectedRef.current = onDetected })
+  useEffect(() => {
+    pausedRef.current = paused
+    if (paused) {
+      console.debug('[WakeWord] 检测暂停（AI 忙碌，防自听回声）')
+    } else {
+      console.debug('[WakeWord] 检测恢复（AI 空闲，继续监听唤醒词）')
+    }
+  }, [paused])
 
   // 环境探测：仅需麦克风（AudioWorklet 不可用时自动降级 ScriptProcessor）
   useEffect(() => {
@@ -155,86 +191,107 @@ export function useWakeWord({ active, onDetected }) {
     let audioCtx: AudioContext | null = null
     let captureHandle: PcmCaptureHandle | null = null
     let iosResumeHandler: (() => void) | null = null
+    let worker: Worker | null = null
+    let transcribeId = 0
 
     // 滑窗状态
     let chunks = []
     let totalSamples = 0
     let analyzing = false
 
-    /** 识别一个音频窗（串行，避免积压） */
-    const analyzeWindow = async (audio) => {
-      analyzing = true
-      try {
-        const transcriber = await getTranscriber()
-        if (cancelled) return
-        const output = await transcriber(audio, { language: 'chinese', task: 'transcribe' })
-        if (cancelled) return
-        const text = output?.text || ''
-        if (text) {
-          console.debug('[WakeWord] 转写结果:', JSON.stringify(text))
-          if (matchesWakeWord(text)) {
-            console.info('[WakeWord] 🎉 检测到唤醒词:', text)
-            // 立即更新状态给 UI 反馈（让用户知道“听到了，别重复了”）
-            setWakeStatus('detected')
-            // 延迟 300ms 再触发 onDetected，让 UI 先渲染“听到了”反馈，避免用户因无反馈而重复说唤醒词
-            setTimeout(() => onDetectedRef.current?.({ label: 'halou-bobo', text }), 300)
-          }
-        }
-      } catch (err) {
-        console.warn('[WakeWord] 转写失败（忽略，下窗重试）:', err?.message || err)
-      } finally {
-        analyzing = false
-        maybeAnalyze() // 识别期间若有新音频积满，立即处理下一窗
-      }
+    // 构建 Worker 配置（同源部署路径）
+    const base = import.meta.env.BASE_URL || '/'
+    const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent)
+    const variant = isSafari ? 'ort-wasm-simd-threaded' : 'ort-wasm-simd-threaded.asyncify'
+    const workerConfig = {
+      modelId: WAKE_MODEL_ID,
+      remoteHost: WAKE_MODEL_REMOTE_HOST === 'SAME_ORIGIN' ? `${base}models/` : WAKE_MODEL_REMOTE_HOST,
+      wasmPaths: {
+        mjs: `${base}ort/${variant}.mjs`,
+        wasm: `${base}ort/${variant}.wasm`,
+      },
     }
 
-    /** 尝试提交一个滑窗（累积满 + 未在识别中 才提交） */
+    /** 处理 Worker 转写结果 */
+    const handleTranscribeResult = (text: string) => {
+      if (cancelled) return
+      if (text) {
+        console.debug('[WakeWord] 转写结果:', JSON.stringify(text))
+        if (matchesWakeWord(text)) {
+          console.info('[WakeWord] 🎉 检测到唤醒词:', text)
+          setWakeStatus('detected')
+          setTimeout(() => onDetectedRef.current?.({ label: 'halou-bobo', text }), 300)
+        }
+      }
+      analyzing = false
+      maybeAnalyze()
+    }
+
+    /** 识别一个音频窗（通过 Worker 执行，主线程零阻塞） */
+    const analyzeWindow = (audio: Float32Array) => {
+      analyzing = true
+      const id = ++transcribeId
+      // 将音频数据转移到 Worker（zero-copy，主线程不再持有）
+      worker?.postMessage(
+        { type: 'transcribe', audio, id, config: workerConfig },
+        [audio.buffer],
+      )
+    }
+
+    /** 尝试提交一个滑窗（累积满 + 未在识别中 才提交；paused 时跳过检测但继续累积音频） */
     const maybeAnalyze = () => {
       if (cancelled || analyzing || totalSamples < WINDOW_SAMPLES) return
       const merged = concatChunks(chunks, totalSamples)
-      // 保留尾部作为下一窗前缀（避免唤醒词被窗口边界切断）
       const keep = merged.slice(-KEEP_SAMPLES)
       chunks = [keep]
       totalSamples = keep.length
-      // VAD：静音窗跳过转写
+      if (pausedRef.current) return
       if (rms(merged) < SILENCE_RMS_THRESHOLD) return
       analyzeWindow(merged)
     }
 
-    ;(async () => {
-      // 模型加载重试（最多 3 次，间隔 5s，应对手机网络不稳定）
-      const MAX_RETRIES = 3
-      const RETRY_DELAY = 5000
-      let lastErr: any = null
+    // 创建 Worker 并初始化模型
+    worker = new Worker(
+      new URL('../workers/wakeWordWorker.ts', import.meta.url),
+      { type: 'module' },
+    )
 
-      for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-        if (cancelled) return
-        try {
-          setWakeStatus('loading')
-          console.info(`[WakeWord] 加载 Whisper 模型... (尝试 ${attempt}/${MAX_RETRIES})`)
-          await getTranscriber()
-          if (cancelled) return
-          console.info('[WakeWord] ✅ 模型加载完成')
-          lastErr = null
-          break // 成功，跳出重试循环
-        } catch (err) {
-          lastErr = err
-          console.warn(`[WakeWord] 模型加载失败 (${attempt}/${MAX_RETRIES}):`, err?.message || err)
-          // getTranscriber 内部失败时已置 transcriberPromise=null，下次调用会重新加载
-          if (attempt < MAX_RETRIES && !cancelled) {
-            setWakeStatus('loading') // 保持 loading 状态，让用户知道在重试
-            await new Promise(r => setTimeout(r, RETRY_DELAY))
-          }
+    worker.onmessage = (event) => {
+      const { type } = event.data
+      if (type === 'status') {
+        const { status } = event.data
+        if (status === 'loading') {
+          if (_modelStatus !== 'ready') setWakeStatus('loading')
+        } else if (status === 'ready') {
+          setModelStatus('ready')
+          console.info('[WakeWord] ✅ Worker 模型加载完成')
+        } else if (status === 'error') {
+          setModelStatus('error')
+          setWakeStatus('error')
+          console.warn('[WakeWord] Worker 模型加载失败:', event.data.message)
         }
+      } else if (type === 'result') {
+        handleTranscribeResult(event.data.text)
+      } else if (type === 'error') {
+        console.warn('[WakeWord] 转写失败（忽略，下窗重试）:', event.data.message)
+        analyzing = false
+        maybeAnalyze()
+      } else if (type === 'progress') {
+        console.debug(`[WakeWord] 模型加载 ${event.data.file} ${event.data.progress.toFixed(0)}%`)
       }
+    }
 
-      if (cancelled) return
-      if (lastErr) {
-        console.warn('[WakeWord] 模型加载最终失败，等待用户手动重试')
-        setWakeStatus('error')
-        return
-      }
+    worker.onerror = (err) => {
+      console.warn('[WakeWord] Worker 错误:', err.message)
+      setWakeStatus('error')
+    }
 
+    // 发送初始化消息（触发模型加载，若已在情绪页预加载则从 Cache API 秒开）
+    setModelStatus('loading')
+    worker.postMessage({ type: 'init', config: workerConfig })
+
+    // 启动麦克风
+    ;(async () => {
       try {
         stream = await navigator.mediaDevices.getUserMedia({
           audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
@@ -247,7 +304,6 @@ export function useWakeWord({ active, onDetected }) {
         audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)()
         if (audioCtx.state === 'suspended') {
           await audioCtx.resume().catch(() => {})
-          // iOS Safari：AudioContext 须在用户手势内 resume，异步创建可能被挂起 → 等待任意点击恢复
           if (audioCtx.state === 'suspended') {
             iosResumeHandler = () => { audioCtx?.resume().catch(() => {}) }
             document.addEventListener('pointerdown', iosResumeHandler)
@@ -260,12 +316,11 @@ export function useWakeWord({ active, onDetected }) {
           const pcm = downsampleTo16kFloat(rawPcm, inputRate)
           chunks.push(pcm)
           totalSamples += pcm.length
-          // 积压上限：识别慢于采集时丢弃过老音频，只保最新一窗
           if (totalSamples > MAX_BUFFER_SAMPLES) {
-            const merged = concatChunks(chunks, totalSamples)
-            const keep = merged.slice(-WINDOW_SAMPLES)
-            chunks = [keep]
-            totalSamples = keep.length
+            const mergedAll = concatChunks(chunks, totalSamples)
+            const keepLatest = mergedAll.slice(-WINDOW_SAMPLES)
+            chunks = [keepLatest]
+            totalSamples = keepLatest.length
           }
           maybeAnalyze()
         })
@@ -281,7 +336,7 @@ export function useWakeWord({ active, onDetected }) {
       }
     })()
 
-    // 释放：关闭开关 / 离开对话 / 切出待唤醒态 均走这里（麦克风立即释放，模型单例保留）
+    // 释放：关闭开关 / 离开对话 / 切出待唤醒态 均走这里
     return () => {
       cancelled = true
       setWakeStatus('idle')
@@ -289,6 +344,8 @@ export function useWakeWord({ active, onDetected }) {
       captureHandle?.cleanup()
       stream?.getTracks().forEach((t) => t.stop())
       audioCtx?.close().catch(() => {})
+      worker?.terminate()
+      worker = null
     }
   }, [active, supported])
 

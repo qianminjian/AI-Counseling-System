@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect } from 'react'
 import { useTheme } from '../theme/ThemeProvider'
 import { api } from '../api'
 import { unlockAudio } from '../utils/audioUnlock'
-import { preloadWakeModel } from '../hooks/useWakeWord'
+import { preloadWakeModel, useWakeModelStatus } from '../hooks/useWakeWord'
 import SceneDecor from './SceneDecor'
 import RelaxationExercises from './RelaxationExercises'
 import EmotionDiary from './EmotionDiary'
@@ -18,6 +18,8 @@ const EMOTIONS = [
   { tag: 'nervous', emoji: '😰', label: '紧张', desc: '心跳加速', color: 'bg-orange-100 border-orange-400 text-orange-800' },
 ]
 
+const WAKE_PREF_KEY = 'mindsafe_wake_enabled'
+
 export default function EmotionSelect({ onStart, userName, onLogout }) {
   const [selected, setSelected] = useState(null)
   const [loading, setLoading] = useState(false)
@@ -27,6 +29,7 @@ export default function EmotionSelect({ onStart, userName, onLogout }) {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [muted, setMuted] = useState(false)
   const [confirmSwitch, setConfirmSwitch] = useState(false)
+  const [wakeEnabled, setWakeEnabled] = useState(() => localStorage.getItem(WAKE_PREF_KEY) !== '0')
   const { theme, themeId } = useTheme()
 
   // 麦克风环境检测（传给设置面板，避免误显"不支持"）
@@ -102,7 +105,12 @@ export default function EmotionSelect({ onStart, userName, onLogout }) {
         muted={muted}
         onToggleMute={() => setMuted(v => !v)}
         wakeSupported={micSupported}
-        onToggleWake={() => {}}
+        wakeOn={wakeEnabled}
+        onToggleWake={() => {
+          const next = !wakeEnabled
+          setWakeEnabled(next)
+          localStorage.setItem(WAKE_PREF_KEY, next ? '1' : '0')
+        }}
       />
       {/* 切换同学二次确认 */}
       <ConfirmDialog
@@ -190,6 +198,26 @@ export default function EmotionSelect({ onStart, userName, onLogout }) {
       <div className="relative z-10 w-full max-w-sm lg:max-w-md flex flex-col items-center mt-4">
         <Achievements />
       </div>
+
+      {/* 语音模型加载状态（底部微妙提示，让孩子/家长知道语音功能是否就绪） */}
+      {micSupported && <WakeModelStatusPill />}
+    </div>
+  )
+}
+
+/** 语音模型加载状态胶囊（底部微妙提示） */
+function WakeModelStatusPill() {
+  const status = useWakeModelStatus()
+  if (status === 'idle') return null // 未触发加载（如未开启语音）
+  const map = {
+    loading: { text: '🎧 语音耳朵准备中…', cls: 'bg-amber-50 text-amber-600 border-amber-200 animate-pulse' },
+    ready:   { text: '🎧 语音耳朵已就绪', cls: 'bg-green-50 text-green-600 border-green-200' },
+    error:   { text: '⚠️ 语音加载失败，进对话后重试', cls: 'bg-red-50 text-red-500 border-red-200' },
+  }[status]
+  if (!map) return null
+  return (
+    <div className={`relative z-10 mt-4 px-4 py-1.5 rounded-full border text-xs font-medium ${map.cls}`}>
+      {map.text}
     </div>
   )
 }

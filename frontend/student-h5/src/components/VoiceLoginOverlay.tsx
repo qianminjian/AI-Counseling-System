@@ -143,6 +143,7 @@ export default function VoiceLoginOverlay({ mode = 'verify', onComplete, onCance
     if (!micOk) return
 
     collectedEmbeddings.current = []
+    let modelRetryCount = 0 // 模型加载失败重试计数（避免死循环）
 
     for (let i = 0; i < scripts.length; i++) {
       if (cancelledRef.current) return
@@ -168,8 +169,16 @@ export default function VoiceLoginOverlay({ mode = 'verify', onComplete, onCance
 
       if (embedding) {
         collectedEmbeddings.current.push(embedding)
+        modelRetryCount = 0 // 成功则重置
       } else if (modelErrorRef.current) {
-        // 模型加载失败：提示用户等待，而非误导“没听清”
+        // 模型加载失败：最多重试 2 次，避免死循环“准备中”
+        modelRetryCount++
+        if (modelRetryCount > 2) {
+          setFailKind('mic')
+          setPhase('fail')
+          setStatusText('语音引擎加载失败，请先用秘密数字登录，稍后再试')
+          return
+        }
         setStatusText('语音引擎准备中，请稍候...')
         await new Promise((r) => setTimeout(r, 3000))
         i-- // 重试当前轮
