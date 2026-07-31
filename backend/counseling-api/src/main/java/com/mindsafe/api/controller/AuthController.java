@@ -209,6 +209,60 @@ public class AuthController {
     // ===== Request / Response Records =====
 
     /**
+     * 签发声纹设备凭证（声纹录入完成后调用，需已登录）
+     * <p>
+     * 凭证与声纹模板一起存学生设备本地（IndexedDB），声纹登录时凭其换取正式双 token。
+     * 声纹比对在设备本地完成（design/25 §3.7 Phase 1），本端点补齐 Phase 2 后端签发链路。
+     */
+    @PostMapping("/voice-credential")
+    public ApiResponse<Map<String, String>> issueVoiceCredential(Authentication authentication) {
+        if (authentication == null || !(authentication.getDetails() instanceof TenantContext ctx)) {
+            throw new BizException(ErrorCode.UNAUTHORIZED);
+        }
+        String credential = jwtTokenProvider.generateVoiceCredential(
+                ctx.userId(), ctx.userType(), ctx.tenantId());
+        auditLogService.log(ctx.tenantId(), ctx.userId(), "VOICE_CREDENTIAL_ISSUE", "user", ctx.userId(), null);
+        return ApiResponse.ok(Map.of("voiceCredential", credential));
+    }
+
+    /**
+     * 声纹登录（设备本地声纹比对通过后，用设备凭证换取正式 access + refresh token）
+     */
+    @PostMapping("/voice-login")
+    public ApiResponse<LoginResponse> voiceLogin(@Valid @RequestBody VoiceLoginRequest request) {
+        String vc = request.voiceCredential();
+        if (vc == null || !jwtTokenProvider.validateToken(vc) || !jwtTokenProvider.isVoiceCredential(vc)) {
+            throw new BizException(ErrorCode.UNAUTHORIZED, "设备凭证无效或已过期，请重新录入声纹");
+        }
+        if (tokenBlacklistService.isBlacklisted(vc)) {
+            throw new BizException(ErrorCode.UNAUTHORIZED, "设备凭证已失效，请重新录入声纹");
+        }
+
+        User user = userMapper.selectById(jwtTokenProvider.getUserId(vc));
+        if (user == null || !"active".equals(user.getStatus())) {
+            throw new BizException(ErrorCode.UNAUTHORIZED, "账号不可用，请联系老师");
+        }
+
+        // 更新最后登录时间
+        User update = new User();
+        update.setUserId(user.getUserId());
+        update.setLastLoginAt(Instant.now());
+        userMapper.updateById(update);
+
+        String token = jwtTokenProvider.generateToken(
+                user.getUserId(), user.getUserType(), user.getTenantId());
+        String refreshToken = jwtTokenProvider.generateRefreshToken(
+                user.getUserId(), user.getUserType(), user.getTenantId());
+
+        auditLogService.log(user.getTenantId(), user.getUserId(), "VOICE_LOGIN", "user", user.getUserId(), null);
+
+        return ApiResponse.ok(new LoginResponse(
+                token, refreshToken, user.getUserId(), user.getPseudonym(),
+                user.getUserType(), user.getGradeCode(), user.getClassCode(), false
+        ));
+    }
+
+    /**
      * 获取当前用户信息（前端刷新页面恢复状态）
      */
     @GetMapping("/me")
@@ -332,6 +386,10 @@ public class AuthController {
     ) {}
 
     public record RefreshRequest(String refreshToken) {}
+
+    public record VoiceLoginRequest(
+            @NotBlank(message = "设备凭证不能为空") String voiceCredential
+    ) {}
 
     public record LogoutRequest(String refreshToken) {}
 

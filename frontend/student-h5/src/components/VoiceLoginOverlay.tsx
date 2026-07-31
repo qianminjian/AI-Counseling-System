@@ -1,18 +1,21 @@
 /**
  * 声纹登录引导对话覆盖层
  *
- * 唤醒词命中后全屏展示：
+ * 登录页点击"声音进入"后全屏展示：
  * 1. 波波 TTS 提问（字幕动画）
  * 2. 麦克风采集孩子回答（音量动画）
- * 3. 提取 embedding → 比对 → 成功/失败
+ * 3. 提取 embedding → 本地比对 → 设备凭证换后端 token → 成功/失败
  *
  * 状态机：idle → speaking（TTS播放）→ listening（采集）→ processing（推理）→ success/fail
+ * 失败细分（failKind）：mic（麦克风不可用）/ mismatch（声纹不匹配，可重试 2 次）/ credential（设备凭证缺失或过期）
  */
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { VP_GUIDE_SCRIPTS, VP_SAMPLE_RATE, VP_SEGMENT_DURATION, VP_SILENCE_THRESHOLD } from '../config/voiceprint'
 import { useVoiceprint } from '../hooks/useVoiceprint'
 import { unlockAudio } from '../utils/audioUnlock'
 import { createPcmCapture, type PcmCaptureHandle } from '../utils/createPcmCapture'
+import { getVoiceprint } from '../utils/voiceprintStore'
+import { voiceLogin, setToken, setRefreshToken, setUser } from '../api'
 
 /**
  * @param {object} props
@@ -27,6 +30,7 @@ export default function VoiceLoginOverlay({ mode = 'verify', onComplete, onCance
   const [volume, setVolume] = useState(0)
   const [statusText, setStatusText] = useState('')
   const [failCount, setFailCount] = useState(0)
+  const [failKind, setFailKind] = useState('') // mic | mismatch | credential
 
   const { extractEmbedding, verify, loading } = useVoiceprint()
   const collectedEmbeddings = useRef([])
@@ -97,6 +101,7 @@ export default function VoiceLoginOverlay({ mode = 'verify', onComplete, onCance
       return true
     } catch (err) {
       console.warn('[VoiceLogin] 麦克风初始化失败:', (err as Error)?.message)
+      setFailKind('mic')
       setStatusText('麦克风不可用，请用秘密数字登录')
       setPhase('fail')
       return false
@@ -181,14 +186,34 @@ export default function VoiceLoginOverlay({ mode = 'verify', onComplete, onCance
     if (mode === 'verify') {
       const result = await verify(collectedEmbeddings.current)
       if (result.matched) {
-        setPhase('success')
-        setStatusText(`是${result.pseudonym}呀！欢迎回来！`)
-        setTimeout(() => onComplete(result), 1500)
+        // Phase 2：本地声纹匹配通过后，用设备凭证换取后端正式 token
+        const vp = await getVoiceprint(result.userId) as any
+        const cred = vp?.voiceCredential
+        if (!cred) {
+          setFailKind('credential')
+          setPhase('fail')
+          setStatusText('这台设备的登录钥匙还没办好，先用秘密数字进入，再到「设置」里重录一次声音吧')
+          return
+        }
+        try {
+          const data = await voiceLogin(cred)
+          setToken(data.token)
+          if (data.refreshToken) setRefreshToken(data.refreshToken)
+          setUser({ userId: data.userId, userType: data.userType, pseudonym: data.displayName })
+          setPhase('success')
+          setStatusText(`是${result.pseudonym}呀！欢迎回来！`)
+          setTimeout(() => onComplete(result), 1500)
+        } catch {
+          setFailKind('credential')
+          setPhase('fail')
+          setStatusText('登录钥匙过期啦，先用秘密数字进入，再到「设置」里重录一次声音吧')
+        }
       } else {
         const newCount = failCount + 1
         setFailCount(newCount)
+        setFailKind('mismatch')
         setPhase('fail')
-        setStatusText('嗯？我好像不认识你，用秘密数字登录吧')
+        setStatusText(newCount < 2 ? '嗯？听起来不太像你，要不再试一次？' : '还是没认出来，用秘密数字登录吧')
       }
     } else {
       // 注册模式：返回采集的 embeddings
@@ -203,6 +228,18 @@ export default function VoiceLoginOverlay({ mode = 'verify', onComplete, onCance
     runFlow()
     return () => { cancelledRef.current = true }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 始终指向最新 runFlow（重试时避免闭包过期）
+  const runFlowRef = useRef(runFlow)
+  useEffect(() => { runFlowRef.current = runFlow })
+
+  /** 声纹不匹配时重试（麦克风保持打开，直接重跑引导流程） */
+  const handleRetry = () => {
+    setFailKind('')
+    setStepIndex(0)
+    setPhase('intro')
+    runFlowRef.current()
+  }
 
   // ===== UI =====
 
@@ -266,14 +303,26 @@ export default function VoiceLoginOverlay({ mode = 'verify', onComplete, onCance
         </div>
       )}
 
-      {/* 失败时显示降级入口 */}
+      {/* 失败时显示重试/降级入口（声纹不匹配可重试 2 次；凭证/麦克风问题直接引导 PIN） */}
       {phase === 'fail' && (
-        <button
-          onClick={() => { cleanup(); onCancel() }}
-          className="mt-4 px-8 py-3.5 rounded-full bg-blue-500 text-white font-medium hover:bg-blue-600 active:scale-[0.98] transition-all shadow-lg"
-        >
-          用秘密数字登录
-        </button>
+        <div className="mt-4 flex flex-col items-center gap-3">
+          {failKind === 'mismatch' && failCount < 2 && (
+            <button
+              onClick={handleRetry}
+              className="px-8 py-3.5 rounded-full bg-blue-500 text-white font-medium hover:bg-blue-600 active:scale-[0.98] transition-all shadow-lg"
+            >
+              🎤 再试一次
+            </button>
+          )}
+          <button
+            onClick={() => { cleanup(); onCancel() }}
+            className={failKind === 'mismatch' && failCount < 2
+              ? 'px-6 py-2.5 rounded-full bg-white/70 text-gray-500 text-sm font-medium hover:bg-white active:scale-[0.97] transition-all'
+              : 'px-8 py-3.5 rounded-full bg-blue-500 text-white font-medium hover:bg-blue-600 active:scale-[0.98] transition-all shadow-lg'}
+          >
+            用秘密数字登录
+          </button>
+        </div>
       )}
 
       {/* 注册模式：显式跳过按钮（儿童友好，比右上角✕更明显） */}

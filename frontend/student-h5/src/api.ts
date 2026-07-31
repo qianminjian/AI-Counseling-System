@@ -185,3 +185,28 @@ export async function setPin(pin: string): Promise<void> {
     body: JSON.stringify({ pin }),
   })
 }
+
+/**
+ * 声纹录入后签发设备登录凭证（需已登录）
+ * 凭证与声纹模板一起存本机 IndexedDB，声纹登录时凭其换取正式 token
+ */
+export async function issueVoiceCredential(): Promise<string> {
+  const data = await api('/auth/voice-credential', { method: 'POST' })
+  return data.voiceCredential
+}
+
+/**
+ * 声纹登录：本地声纹比对通过后，用设备凭证换取正式双 token
+ */
+export async function voiceLogin(voiceCredential: string): Promise<AuthResult> {
+  const res = await fetch('/api/v1/auth/voice-login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ voiceCredential }),
+  })
+  const json = await res.json()
+  if (!json.success) {
+    throw new Error(json.message || '声纹登录失败')
+  }
+  return json.data
+}

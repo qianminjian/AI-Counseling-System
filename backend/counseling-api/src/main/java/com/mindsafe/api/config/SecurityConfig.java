@@ -63,6 +63,8 @@ public class SecurityConfig {
                         .requestMatchers("/api/v1/auth/login").permitAll()
                         .requestMatchers("/api/v1/auth/trial/register").permitAll()
                         .requestMatchers("/api/v1/auth/pin-login").permitAll()
+                        // 声纹登录（本地声纹比对通过后凭设备凭证换 token，凭证在端点内校验）
+                        .requestMatchers("/api/v1/auth/voice-login").permitAll()
                         .requestMatchers("/api/v1/auth/refresh").permitAll()
                         // 企微 OAuth 回调（无 JWT，靠 code 换 token）
                         .requestMatchers("/api/v1/auth/wecom/**").permitAll()

@@ -13,7 +13,7 @@ import java.util.Date;
 import java.util.UUID;
 
 /**
- * JWT 令牌工具（双 Token 模式：access 2h + refresh 7d）
+ * JWT 令牌工具（双 Token 模式：access 2h + refresh 7d；另有声纹设备凭证 90d）
  * <p>
  * 生产环境必须配置 mindsafe.jwt.secret（≥ 32 字符），否则启动失败。
  */
@@ -26,11 +26,13 @@ public class JwtTokenProvider {
     private final SecretKey key;
     private final long accessExpirationMs;
     private final long refreshExpirationMs;
+    private final long voiceCredentialExpirationMs;
 
     public JwtTokenProvider(
             @Value("${mindsafe.jwt.secret:}") String secret,
             @Value("${mindsafe.jwt.access-expiration-ms:7200000}") long accessExpirationMs,
             @Value("${mindsafe.jwt.refresh-expiration-ms:604800000}") long refreshExpirationMs,
+            @Value("${mindsafe.jwt.voice-credential-expiration-ms:7776000000}") long voiceCredentialExpirationMs,
             @Value("${spring.profiles.active:dev}") String activeProfile) {
 
         // 生产环境强制配置密钥
@@ -50,6 +52,7 @@ public class JwtTokenProvider {
         this.key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
         this.accessExpirationMs = accessExpirationMs;
         this.refreshExpirationMs = refreshExpirationMs;
+        this.voiceCredentialExpirationMs = voiceCredentialExpirationMs;
     }
 
     /** 生成 Access Token（2h） */
@@ -60,6 +63,11 @@ public class JwtTokenProvider {
     /** 生成 Refresh Token（7d） */
     public String generateRefreshToken(UUID userId, String userType, UUID tenantId) {
         return buildToken(userId, userType, tenantId, "refresh", refreshExpirationMs);
+    }
+
+    /** 生成声纹设备凭证（90d）：声纹录入时签发，存学生设备本地，声纹登录时凭其换取正式双 token */
+    public String generateVoiceCredential(UUID userId, String userType, UUID tenantId) {
+        return buildToken(userId, userType, tenantId, "voice_credential", voiceCredentialExpirationMs);
     }
 
     private String buildToken(UUID userId, String userType, UUID tenantId, String tokenType, long ttl) {
@@ -107,6 +115,16 @@ public class JwtTokenProvider {
         try {
             Claims claims = parseToken(token);
             return "refresh".equals(claims.get("tokenType", String.class));
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /** 验证是否为声纹设备凭证 */
+    public boolean isVoiceCredential(String token) {
+        try {
+            Claims claims = parseToken(token);
+            return "voice_credential".equals(claims.get("tokenType", String.class));
         } catch (Exception e) {
             return false;
         }

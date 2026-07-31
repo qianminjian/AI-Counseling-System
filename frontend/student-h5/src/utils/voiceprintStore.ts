@@ -7,6 +7,7 @@
  *   pseudonym: string,       // 昵称（辅助索引，用于显示）
  *   embeddings: number[][],  // 多段 embedding 向量（序列化后存 JSON）
  *   sampleCount: number,     // 当前模板数
+ *   voiceCredential?: string, // 后端签发的设备登录凭证（声纹匹配后凭其换正式 token）
  *   createdAt: number,       // 首次注册时间戳
  *   updatedAt: number,       // 最后更新时间戳
  * }
@@ -93,13 +94,16 @@ export async function getVoiceprint(userId) {
  */
 export async function enrollVoiceprint(userId, pseudonym, embeddings) {
   const db = await getDB()
+  const existing = await getVoiceprint(userId) as any
   const now = Date.now()
   const record = {
     userId,
     pseudonym,
     embeddings: embeddings.slice(0, VP_MAX_TEMPLATES),
     sampleCount: embeddings.length,
-    createdAt: now,
+    // 重录时保留旧凭证（仍有效），随后签发成功会覆盖
+    ...(existing?.voiceCredential ? { voiceCredential: existing.voiceCredential } : {}),
+    createdAt: existing?.createdAt || now,
     updatedAt: now,
   }
   return new Promise((resolve, reject) => {
@@ -109,6 +113,29 @@ export async function enrollVoiceprint(userId, pseudonym, embeddings) {
     request.onsuccess = () => resolve(record)
     request.onerror = () => reject(request.error)
   })
+}
+
+/**
+ * 保存后端签发的设备登录凭证（声纹录入成功后调用）
+ * @param {string} userId
+ * @param {string} credential - 后端 /auth/voice-credential 签发的凭证 JWT
+ */
+export async function saveVoiceCredential(userId, credential) {
+  try {
+    const existing = await getVoiceprint(userId) as any
+    if (!existing) return
+    const db = await getDB()
+    const updated = { ...existing, voiceCredential: credential, updatedAt: Date.now() }
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(VP_STORE_NAME, 'readwrite')
+      const store = tx.objectStore(VP_STORE_NAME)
+      const request = store.put(updated)
+      request.onsuccess = () => resolve(updated)
+      request.onerror = () => reject(request.error)
+    })
+  } catch {
+    // 凭证保存失败不影响声纹主流程（下次可在设置中重录补发）
+  }
 }
 
 /**
