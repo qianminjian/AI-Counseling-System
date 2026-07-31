@@ -8,9 +8,9 @@ describe('SpeechBubble', () => {
     expect(container.innerHTML).toBe('');
   });
 
-  it('thinking 模式显示三个跳动圆点', () => {
+  it('thinking 模式显示三颗上浮小水泡', () => {
     const { container } = render(<SpeechBubble mode="thinking" text="" />);
-    const dots = container.querySelectorAll('.animate-bounce');
+    const dots = container.querySelectorAll('[class*="think-rise"]');
     expect(dots).toHaveLength(3);
   });
 
@@ -36,8 +36,10 @@ describe('SpeechBubble', () => {
 
   it('cancelArmed 时气泡背景为红色', () => {
     const { container } = render(<SpeechBubble mode="listening" text="" cancelArmed={true} />);
-    const bubble = container.querySelector('.bg-red-500');
-    expect(bubble).not.toBeNull();
+    const bubble = Array.from(container.querySelectorAll('div')).find(
+      (el) => (el as HTMLElement).style.background.includes('239, 68, 68') || (el as HTMLElement).style.background === 'rgb(239, 68, 68)'
+    );
+    expect(bubble).toBeTruthy();
   });
 
   it('align=right 时右对齐', () => {

@@ -3,8 +3,9 @@
  *
  * 交互设计：
  * - 短按（位移 < 10px）= 按住说话（透传 press-to-talk handlers）
- * - 长按拖动（位移 ≥ 10px）= 重新定位悬浮球
- * - 松手后自动吸附到最近的左/右边缘（防遮挡内容）
+ * - 长按拖动（位移 ≥ 10px）= 重新定位悬浮球，支持任意位置摆放
+ * - 松手后仅收敛回可视安全区（不遮顶栏/输入栏），不再强制吸附左右边缘
+ * - 初始默认位置：发送按钮正上方（右下角、输入栏之上）
  * - 位置持久化到 localStorage，下次进入保持
  *
  * 视觉：
@@ -14,10 +15,12 @@
  */
 import { useState, useRef, useCallback, useEffect } from 'react'
 
-const STORAGE_KEY = 'mindsafe_voice_btn_pos'
+const STORAGE_KEY = 'mindsafe_voice_btn_pos_v2'  // v2：改为任意位置摆放，旧的边缘吸附坐标作废
 const DRAG_THRESHOLD = 10   // px，超过即判定为拖拽
-const EDGE_MARGIN = 12      // 吸附后距边缘间距
+const EDGE_MARGIN = 12      // 距屏幕边缘最小间距
 const BTN_SIZE = 72         // 按钮尺寸（px）
+const TOP_SAFE = 80         // 顶部安全区（不遮顶栏）
+const BOTTOM_SAFE = 92      // 底部安全区（不遮输入栏，footer 约 80px + 余量）
 
 interface Position { x: number; y: number }
 
@@ -33,14 +36,22 @@ function savePosition(pos: Position) {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(pos)) } catch { /* ignore */ }
 }
 
-/** 吸附到最近左/右边缘 */
-function snapToEdge(x: number, y: number): Position {
+/** 收敛到可视安全区内（任意位置摆放，仅防溢出屏幕/遮挡顶栏输入栏） */
+function clampToSafeArea(x: number, y: number): Position {
   const vw = window.innerWidth
   const vh = window.innerHeight
-  const snappedX = x < vw / 2 ? EDGE_MARGIN : vw - BTN_SIZE - EDGE_MARGIN
-  // Y 轴限制在安全区内（不超出顶栏/底栏）
-  const snappedY = Math.max(80, Math.min(y, vh - BTN_SIZE - 100))
-  return { x: snappedX, y: snappedY }
+  return {
+    x: Math.max(EDGE_MARGIN, Math.min(x, vw - BTN_SIZE - EDGE_MARGIN)),
+    y: Math.max(TOP_SAFE, Math.min(y, vh - BTN_SIZE - BOTTOM_SAFE)),
+  }
+}
+
+/** 默认初始位置：发送按钮正上方（右下角、输入栏之上） */
+function defaultPosition(): Position {
+  return clampToSafeArea(
+    window.innerWidth - BTN_SIZE - EDGE_MARGIN,
+    window.innerHeight - BTN_SIZE - BOTTOM_SAFE,
+  )
 }
 
 export default function DraggableVoiceButton({
@@ -51,18 +62,18 @@ export default function DraggableVoiceButton({
   onPointerUp,
   onPointerCancel,
 }: {
-  children: React.ReactNode
+  children: React.ReactNode | ((side: 'left' | 'right') => React.ReactNode)
   disabled?: boolean
   onPointerDown?: (e: React.PointerEvent) => void
   onPointerMove?: (e: React.PointerEvent) => void
   onPointerUp?: (e: React.PointerEvent) => void
   onPointerCancel?: (e: React.PointerEvent) => void
 }) {
-  // 初始位置：默认右下角（输入栏上方），或从 localStorage 恢复
+  // 初始位置：默认发送按钮上方，或从 localStorage 恢复
   const [pos, setPos] = useState<Position>(() => {
     const saved = loadPosition()
-    if (saved) return saved
-    return { x: window.innerWidth - BTN_SIZE - EDGE_MARGIN, y: window.innerHeight - 200 }
+    if (saved) return clampToSafeArea(saved.x, saved.y)
+    return defaultPosition()
   })
   const [dragging, setDragging] = useState(false)
 
@@ -100,9 +111,11 @@ export default function DraggableVoiceButton({
     }
 
     if (isDraggingRef.current) {
-      const newX = startBtnPosRef.current.x + dx
-      const newY = startBtnPosRef.current.y + dy
-      setPos({ x: newX, y: newY })
+      // 拖动过程中实时收敛，球不会被拖出安全区
+      setPos(clampToSafeArea(
+        startBtnPosRef.current.x + dx,
+        startBtnPosRef.current.y + dy,
+      ))
     } else {
       onPointerMove?.(e)
     }
@@ -115,12 +128,13 @@ export default function DraggableVoiceButton({
     if (isDraggingRef.current) {
       isDraggingRef.current = false
       setDragging(false)
-      const snapped = snapToEdge(
+      // 任意位置摆放：仅收敛回安全区，不吸附边缘
+      const clamped = clampToSafeArea(
         startBtnPosRef.current.x + (e.clientX - startPosRef.current.x),
         startBtnPosRef.current.y + (e.clientY - startPosRef.current.y),
       )
-      setPos(snapped)
-      savePosition(snapped)
+      setPos(clamped)
+      savePosition(clamped)
     } else {
       onPointerUp?.(e)
     }
@@ -139,13 +153,10 @@ export default function DraggableVoiceButton({
     talkStartedRef.current = false
   }, [onPointerCancel])
 
-  // 窗口 resize 时确保按钮仍在可视区内
+  // 窗口 resize 时确保按钮仍在安全区内
   useEffect(() => {
     const onResize = () => {
-      setPos(prev => ({
-        x: Math.min(prev.x, window.innerWidth - BTN_SIZE - EDGE_MARGIN),
-        y: Math.min(prev.y, window.innerHeight - BTN_SIZE - 80),
-      }))
+      setPos(prev => clampToSafeArea(prev.x, prev.y))
     }
     window.addEventListener('resize', onResize)
     return () => window.removeEventListener('resize', onResize)
@@ -174,9 +185,11 @@ export default function DraggableVoiceButton({
           ? 'bg-white/90 shadow-xl ring-2 ring-sky-300/60'
           : 'bg-white/70 shadow-lg ring-1 ring-white/50'}`}
       />
-      {/* 内容（BoBoPet） */}
+      {/* 内容（BoBoPet）：任意位置摆放后，把所在半屏告知子组件用于气泡展开方向 */}
       <div className="relative w-full h-full flex items-center justify-center">
-        {children}
+        {typeof children === 'function'
+          ? children(pos.x + BTN_SIZE / 2 < window.innerWidth / 2 ? 'left' : 'right')
+          : children}
       </div>
       {/* 拖拽提示小把手（底部三点） */}
       <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 flex gap-0.5 opacity-40">
