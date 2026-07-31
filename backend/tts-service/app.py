@@ -20,7 +20,22 @@ from pydantic import BaseModel
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("tts-service")
 
-app = FastAPI(title="MindSafe TTS Service", version="2.0.0")
+app = FastAPI(title="MindSafe TTS Service", version="2.1.0")
+
+# 全局复用 httpx 客户端（连接池复用，减少每次请求的 TCP/TLS 握手延迟）
+http_client: httpx.AsyncClient = None
+
+
+@app.on_event("startup")
+async def _startup():
+    global http_client
+    http_client = httpx.AsyncClient(timeout=20.0, limits=httpx.Limits(max_connections=20))
+
+
+@app.on_event("shutdown")
+async def _shutdown():
+    if http_client:
+        await http_client.aclose()
 
 app.add_middleware(
     CORSMiddleware,
@@ -187,7 +202,9 @@ async def _synthesize_dashscope(text: str, voice: str, speed: float):
         "parameters": params,
     }
 
-    async with httpx.AsyncClient(timeout=20.0) as client:
+    # 复用全局 httpx 客户端（连接池）
+    client = http_client or httpx.AsyncClient(timeout=20.0)
+    try:
         # 第一步：调用合成 API，获取音频 URL
         resp = await client.post(DASHSCOPE_TTS_URL, headers=headers, json=body)
 
@@ -204,6 +221,9 @@ async def _synthesize_dashscope(text: str, voice: str, speed: float):
         audio_resp = await client.get(audio_url)
         if audio_resp.status_code != 200:
             raise RuntimeError(f"音频下载失败: HTTP {audio_resp.status_code}")
+    finally:
+        if not http_client:
+            await client.aclose()
 
     audio_bytes = audio_resp.content
     if not audio_bytes or len(audio_bytes) < 100:

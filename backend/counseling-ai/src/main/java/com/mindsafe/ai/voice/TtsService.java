@@ -8,6 +8,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 
@@ -30,6 +31,9 @@ public class TtsService {
                 .codecs(config -> config.defaultCodecs().maxInMemorySize(8 * 1024 * 1024))
                 .build();
     }
+
+    /** TTS 合成超时（秒）：超过此时间未返回则静默降级，避免前端无限等待 */
+    private static final Duration SYNTH_TIMEOUT = Duration.ofSeconds(15);
 
     /**
      * 合成语音（返回音频二进制）
@@ -60,6 +64,7 @@ public class TtsService {
                     .bodyValue(body)
                     .retrieve()
                     .bodyToMono(byte[].class)
+                    .timeout(SYNTH_TIMEOUT)
                     .block();
 
             if (audio != null && audio.length > 0) {

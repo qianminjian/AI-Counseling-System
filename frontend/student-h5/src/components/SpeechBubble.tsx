@@ -39,7 +39,7 @@ export default function SpeechBubble({ mode, text, cancelArmed = false, align = 
           </p>
         ) : (
           <p className={`text-[13px] leading-relaxed text-center break-words ${mode === 'listening' ? 'text-gray-600' : 'text-gray-700'}`}>
-            {mode === 'listening' ? (text || '正在聆听…') : text}
+            {mode === 'listening' ? (text || '正在聆听…') : (text || <span className="inline-flex gap-0.5 items-center justify-center py-0.5"><span className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: '0ms' }} /><span className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: '150ms' }} /><span className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: '300ms' }} /></span>)}
           </p>
         )}
         {/* 指向头部的小尾巴 */}

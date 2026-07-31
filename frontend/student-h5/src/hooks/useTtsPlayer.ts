@@ -257,6 +257,9 @@ export function useTtsPlayer({ persona = 'xiaoxing', emotion = 'neutral', speed 
     stop()
 
     const cleaned = stripEmoji(text)
+    // 设置 sentences 状态，让波波话语气泡能显示正在朗读的文字
+    setSentences([cleaned])
+    setCurrentSentenceIdx(0)
     const audioBlob = await synthesizeSentence(cleaned)
 
     setPlaying(true)
@@ -274,6 +277,8 @@ export function useTtsPlayer({ persona = 'xiaoxing', emotion = 'neutral', speed 
       })
     }
     setPlaying(false)
+    setCurrentSentenceIdx(-1)
+    setSentences([])
   }, [muted, synthesizeSentence, playBlob, speed])
 
   /** 停止播放 */
