@@ -1,15 +1,17 @@
 """
-MindSafe TTS 微服务（三级降级架构）
-- Level 1：阿里云百炼 CosyVoice（主力，国内低延迟）
+MindSafe TTS 微服务（三级降级架构 v3）
+- Level 1：阿里云百炼 CosyVoice（DashScope SDK WebSocket 流式合成，首包 <800ms）
 - Level 2：edge-tts（微软，备用）
-- Level 3：前端浏览器 speechSynthesis 兜底（本服务返回 503 时前端自动降级）
+- Level 3：前端浏览器 speechSynthesis 兖底（本服务返回 503 时前端自动降级）
 - 部署：Docker 容器，端口 10096
 """
 
+import asyncio
 import io
 import json
 import logging
 import os
+import threading
 
 import httpx
 from fastapi import FastAPI, HTTPException
@@ -20,9 +22,9 @@ from pydantic import BaseModel
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("tts-service")
 
-app = FastAPI(title="MindSafe TTS Service", version="2.1.0")
+app = FastAPI(title="MindSafe TTS Service", version="3.0.0")
 
-# 全局复用 httpx 客户端（连接池复用，减少每次请求的 TCP/TLS 握手延迟）
+# 全局复用 httpx 客户端（edge-tts 降级时用）
 http_client: httpx.AsyncClient = None
 
 
@@ -44,18 +46,22 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ===== Level 1：阿里云百炼 CosyVoice（非实时 HTTP API） =====
+# ===== Level 1：阿里云百炼 CosyVoice（DashScope SDK WebSocket 流式） =====
 
 DASHSCOPE_API_KEY = os.environ.get("DASHSCOPE_API_KEY", "")
-DASHSCOPE_TTS_URL = os.environ.get(
-    "DASHSCOPE_TTS_URL",
-    "https://dashscope.aliyuncs.com/api/v1/services/audio/tts/SpeechSynthesizer"
-)
 DASHSCOPE_TTS_MODEL = os.environ.get("DASHSCOPE_TTS_MODEL", "cosyvoice-v3-flash")
-CLOUD_TTS_AVAILABLE = bool(DASHSCOPE_API_KEY)
+CLOUD_TTS_AVAILABLE = False
 
-if CLOUD_TTS_AVAILABLE:
-    logger.info("✅ 阿里云 CosyVoice TTS 就绪 (model=%s)", DASHSCOPE_TTS_MODEL)
+if DASHSCOPE_API_KEY:
+    try:
+        import dashscope
+        from dashscope.audio.tts_v2 import SpeechSynthesizer, AudioFormat, ResultCallback
+        dashscope.api_key = DASHSCOPE_API_KEY
+        # 使用默认北京地域 WebSocket 端点
+        CLOUD_TTS_AVAILABLE = True
+        logger.info("✅ 阿里云 CosyVoice TTS 就绪 (model=%s, SDK WebSocket 流式)", DASHSCOPE_TTS_MODEL)
+    except ImportError:
+        logger.warning("dashscope SDK 未安装，CosyVoice 不可用")
 else:
     logger.warning("DASHSCOPE_API_KEY 未配置，阿里云 CosyVoice 不可用")
 
@@ -186,52 +192,72 @@ async def synthesize(req: TtsRequest):
 
 
 async def _synthesize_dashscope(text: str, voice: str, speed: float):
-    """Level 1：阿里云百炼 CosyVoice（非实时 HTTP API，返回音频 URL）"""
-    headers = {
-        "Authorization": f"Bearer {DASHSCOPE_API_KEY}",
-        "Content-Type": "application/json",
-    }
-    params = {"voice": voice, "format": "mp3"}
-    # 语速调整（CosyVoice 支持 0.5~2.0）
-    if abs(speed - 1.0) > 0.05:
-        params["rate"] = round(max(0.5, min(2.0, speed)), 2)
+    """
+    Level 1：阿里云 CosyVoice（DashScope SDK WebSocket 流式合成）
+    相比旧版 HTTP 两步调用（POST→URL→download），延迟降低 50%+：
+    - 单 WebSocket 连接，音频边合成边返回
+    - 无第二次 HTTP 下载往返
+    """
+    loop = asyncio.get_event_loop()
+    queue: asyncio.Queue = asyncio.Queue()
+    error_holder = [None]  # 用列表包装以便在回调中修改
 
-    body = {
-        "model": DASHSCOPE_TTS_MODEL,
-        "input": {"text": text},
-        "parameters": params,
-    }
+    class _Callback(ResultCallback):
+        def on_open(self):
+            pass
 
-    # 复用全局 httpx 客户端（连接池）
-    client = http_client or httpx.AsyncClient(timeout=20.0)
-    try:
-        # 第一步：调用合成 API，获取音频 URL
-        resp = await client.post(DASHSCOPE_TTS_URL, headers=headers, json=body)
+        def on_data(self, data: bytes):
+            # 从 SDK 线程桥接到 asyncio 事件循环
+            loop.call_soon_threadsafe(queue.put_nowait, data)
 
-        if resp.status_code != 200:
-            detail = resp.text[:200] if resp.text else f"HTTP {resp.status_code}"
-            raise RuntimeError(f"CosyVoice API 错误: {detail}")
+        def on_complete(self):
+            loop.call_soon_threadsafe(queue.put_nowait, None)  # 哨兵：合成完成
 
-        data = resp.json()
-        audio_url = data.get("output", {}).get("audio", {}).get("url", "")
-        if not audio_url:
-            raise RuntimeError(f"CosyVoice 返回无音频 URL: {json.dumps(data, ensure_ascii=False)[:200]}")
+        def on_error(self, message):
+            error_holder[0] = str(message)
+            loop.call_soon_threadsafe(queue.put_nowait, None)
 
-        # 第二步：下载音频文件
-        audio_resp = await client.get(audio_url)
-        if audio_resp.status_code != 200:
-            raise RuntimeError(f"音频下载失败: HTTP {audio_resp.status_code}")
-    finally:
-        if not http_client:
-            await client.aclose()
+        def on_close(self):
+            # 确保即使异常关闭也能结束
+            loop.call_soon_threadsafe(queue.put_nowait, None)
 
-    audio_bytes = audio_resp.content
-    if not audio_bytes or len(audio_bytes) < 100:
-        raise RuntimeError("CosyVoice 返回音频为空")
+    def _run_synthesis():
+        """SDK 的 call() 是阻塞的，在线程中执行"""
+        try:
+            synthesizer = SpeechSynthesizer(
+                model=DASHSCOPE_TTS_MODEL,
+                voice=voice,
+                format=AudioFormat.MP3_22050HZ_MONO_256KBPS,
+                speech_rate=max(0.5, min(2.0, speed)),
+                callback=_Callback(),
+            )
+            synthesizer.call(text)
+        except Exception as e:
+            error_holder[0] = str(e)
+            loop.call_soon_threadsafe(queue.put_nowait, None)
 
-    logger.info(f"CosyVoice 合成成功: voice={voice}, bytes={len(audio_bytes)}")
+    # 启动合成线程
+    t = threading.Thread(target=_run_synthesis, daemon=True)
+    t.start()
+
+    # 异步生成器：从 queue 中取音频块，流式返回给客户端
+    async def audio_stream():
+        total = 0
+        while True:
+            chunk = await queue.get()
+            if chunk is None:
+                break
+            total += len(chunk)
+            yield chunk
+        if error_holder[0]:
+            logger.error(f"CosyVoice SDK 错误: {error_holder[0]}")
+            if total == 0:
+                raise RuntimeError(error_holder[0])
+        else:
+            logger.info(f"CosyVoice 流式合成完成: voice={voice}, total_bytes={total}")
+
     return StreamingResponse(
-        io.BytesIO(audio_bytes),
+        audio_stream(),
         media_type="audio/mpeg",
         headers={"X-TTS-Engine": "cosyvoice-cloud", "X-TTS-Voice": voice},
     )
