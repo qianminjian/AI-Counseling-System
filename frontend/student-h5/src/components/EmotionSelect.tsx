@@ -70,11 +70,11 @@ export default function EmotionSelect({ onStart, userName, onLogout }) {
       <div className="fixed top-4 right-4 z-40 flex items-center gap-2">
         <button
           onClick={() => setConfirmSwitch(true)}
-          className="h-10 flex items-center gap-1.5 px-3 rounded-full bg-white/80 shadow-md border border-gray-100 text-gray-500 hover:text-gray-700 active:scale-90 transition-all"
+          className="h-10 flex items-center gap-1.5 px-3 rounded-full bg-orange-50 border border-orange-200 text-orange-600 hover:bg-orange-100 active:scale-90 transition-all shadow-md"
           title="切换同学"
         >
           <span className="text-base">🔄</span>
-          <span className="text-xs font-medium">换人</span>
+          <span className="text-xs font-semibold">换人</span>
         </button>
         <button
           onClick={() => setSettingsOpen(true)}

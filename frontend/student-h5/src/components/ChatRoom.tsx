@@ -553,11 +553,11 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: an
           {onSwitchUser && (
             <button
               onClick={() => setConfirmSwitch(true)}
-              className="flex items-center gap-1 px-2.5 py-1.5 lg:px-3 lg:py-2 rounded-full text-gray-400 hover:text-orange-500 hover:bg-orange-50 transition-colors"
+              className="flex items-center gap-1 px-3 py-1.5 lg:px-3.5 lg:py-2 rounded-full bg-orange-50 border border-orange-200 text-orange-600 hover:bg-orange-100 active:scale-95 transition-all"
               title="切换同学"
             >
               <span className="text-sm lg:text-base">🔄</span>
-              <span className="text-xs lg:text-sm font-medium">换人</span>
+              <span className="text-xs lg:text-sm font-semibold">换人</span>
             </button>
           )}
           {/* 结束对话 */}

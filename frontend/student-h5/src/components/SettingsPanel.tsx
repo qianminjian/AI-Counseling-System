@@ -16,7 +16,7 @@ import { hasAnyVoiceprint, deleteVoiceprint, enrollVoiceprint, saveVoiceCredenti
 import VoiceLoginOverlay from './VoiceLoginOverlay'
 import ConfirmDialog from './ConfirmDialog'
 
-export default function SettingsPanel({ open, onClose, muted, onToggleMute, wakeSupported = false, wakeOn = false, onToggleWake, onSwitchUser }: {
+export default function SettingsPanel({ open, onClose, muted, onToggleMute, wakeSupported = false, wakeOn = false, onToggleWake }: {
   open: boolean
   onClose: () => void
   muted: boolean
@@ -24,7 +24,6 @@ export default function SettingsPanel({ open, onClose, muted, onToggleMute, wake
   wakeSupported?: boolean
   wakeOn?: boolean
   onToggleWake?: () => void
-  onSwitchUser?: () => void
 }) {
   const { themeId, changeTheme } = useTheme()
   const { personaId, changePersona } = useVoicePersona()
@@ -32,7 +31,7 @@ export default function SettingsPanel({ open, onClose, muted, onToggleMute, wake
   const [copied, setCopied] = useState(false)
   const [hasVoiceprint, setHasVoiceprint] = useState(false)
   const [showEnroll, setShowEnroll] = useState(false)
-  const [confirmAction, setConfirmAction] = useState<'switch' | 'deleteVp' | null>(null)
+  const [confirmAction, setConfirmAction] = useState<'deleteVp' | null>(null)
 
   // 打开时检查声纹状态 + 获取 familyCode
   useEffect(() => {
@@ -272,26 +271,6 @@ export default function SettingsPanel({ open, onClose, muted, onToggleMute, wake
           </section>
         )}
 
-        {/* 切换同学（退出当前用户，共享 Pad 场景） */}
-        {onSwitchUser && (
-          <section className="mb-6">
-            <h3 className="mb-3 text-sm font-semibold text-gray-500">👋 换人使用</h3>
-            <button
-              onClick={() => setConfirmAction('switch')}
-              className="flex w-full items-center justify-between rounded-2xl border-2 border-red-100 bg-red-50 p-4 transition-all active:scale-[0.98]"
-            >
-              <div className="flex items-center gap-3">
-                <span className="text-2xl">🔄</span>
-                <div className="text-left">
-                  <p className="text-sm font-medium text-red-500">切换同学</p>
-                  <p className="text-xs text-gray-400">退出当前账号，让别的同学登录使用</p>
-                </div>
-              </div>
-              <span className="text-red-300">›</span>
-            </button>
-          </section>
-        )}
-
         {/* 关闭按钮 */}
         <button
           onClick={onClose}
@@ -300,18 +279,6 @@ export default function SettingsPanel({ open, onClose, muted, onToggleMute, wake
           完成 ✓
         </button>
       </div>
-
-      {/* 切换同学二次确认 */}
-      <ConfirmDialog
-        open={confirmAction === 'switch'}
-        emoji="👋"
-        title="要退出让别的同学用吗？"
-        message="退出后需要重新登录哦"
-        confirmText="确认退出"
-        danger
-        onConfirm={() => { setConfirmAction(null); onSwitchUser?.() }}
-        onCancel={() => setConfirmAction(null)}
-      />
 
       {/* 删除声纹二次确认 */}
       <ConfirmDialog

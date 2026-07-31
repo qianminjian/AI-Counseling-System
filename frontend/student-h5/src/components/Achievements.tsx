@@ -34,16 +34,16 @@ export default function Achievements() {
             <div key={b.id} className={`text-center p-3 rounded-xl border transition-all
               ${b.unlocked
                 ? isDark
-                  ? 'bg-white/12 border-yellow-400/40 opacity-100'
-                  : 'bg-white/80 border-yellow-300 opacity-100'
+                  ? 'bg-white/20 border-yellow-400/60 opacity-100'
+                  : 'bg-white/90 border-yellow-300 opacity-100'
                 : isDark
-                  ? 'bg-white/4 border-white/8 opacity-40'
-                  : 'bg-white/40 border-gray-200 opacity-40'
+                  ? 'bg-white/8 border-white/15 opacity-60'
+                  : 'bg-white/50 border-gray-200 opacity-50'
               }`}
             >
               <div className="text-2xl">{b.emoji}</div>
-              <div className={`text-xs font-semibold mt-1 ${isDark ? 'text-white' : 'text-gray-700'}`}>{b.title}</div>
-              <div className={`text-[10px] mt-0.5 ${isDark ? 'text-white/60' : 'text-gray-400'}`}>{b.desc}</div>
+              <div className={`text-xs font-semibold mt-1 ${isDark ? 'text-white/90' : 'text-gray-700'}`}>{b.title}</div>
+              <div className={`text-[10px] mt-0.5 ${isDark ? 'text-white/70' : 'text-gray-400'}`}>{b.desc}</div>
               {b.unlocked && <div className="text-[10px] text-yellow-400 mt-1 font-medium">✓ 已解锁</div>}
             </div>
           ))}
