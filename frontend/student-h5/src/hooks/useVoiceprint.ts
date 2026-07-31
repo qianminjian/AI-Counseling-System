@@ -27,6 +27,14 @@ import { getAllVoiceprints } from '../utils/voiceprintStore'
 let extractorPromise = null
 
 /**
+ * 预加载声纹模型（不启动麦克风）：在登录页提前下载模型，
+ * 避免用户点击声纹登录时还要等待模型加载。
+ */
+export function preloadVoiceprintModel() {
+  getExtractor().catch(() => {}) // 静默失败，实际使用时会重试
+}
+
+/**
  * 获取 Speaker Embedding 提取器（单例，首次调用时下载模型）
  * 使用 Transformers.js feature-extraction pipeline
  */

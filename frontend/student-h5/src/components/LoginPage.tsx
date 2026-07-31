@@ -3,6 +3,7 @@ import { pinLogin, setToken, setRefreshToken, setUser, issueVoiceCredential } fr
 import { CONSENT_VERSION } from './ConsentGate'
 import { hasAnyVoiceprint, enrollVoiceprint, saveVoiceCredential } from '../utils/voiceprintStore'
 import { useTheme, THEMES } from '../theme/ThemeProvider'
+import { preloadVoiceprintModel } from '../hooks/useVoiceprint'
 import VoiceLoginOverlay from './VoiceLoginOverlay'
 import SceneDecor from './SceneDecor'
 import ConfirmDialog from './ConfirmDialog'
@@ -24,6 +25,11 @@ export default function LoginPage({ onLogin, onRegister, onNeedConsent, initialT
 
   useEffect(() => {
     hasAnyVoiceprint().then((has) => setHasVoiceprint(has))
+  }, [])
+
+  // 预加载声纹模型：登录页一打开就开始下载，用户点击声纹登录时直接就绪
+  useEffect(() => {
+    preloadVoiceprintModel()
   }, [])
 
   // 浏览器是否支持麦克风（决定是否显示声音进入按钮）
