@@ -1,7 +1,8 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useTheme } from '../theme/ThemeProvider'
 import { api } from '../api'
 import { unlockAudio } from '../utils/audioUnlock'
+import { preloadWakeModel } from '../hooks/useWakeWord'
 import SceneDecor from './SceneDecor'
 import RelaxationExercises from './RelaxationExercises'
 import EmotionDiary from './EmotionDiary'
@@ -28,11 +29,16 @@ export default function EmotionSelect({ onStart, userName, onLogout }) {
   const [confirmSwitch, setConfirmSwitch] = useState(false)
   const { theme, themeId } = useTheme()
 
-  // 麦克风环境检测（传给设置面板，避免误显“不支持”）
+  // 麦克风环境检测（传给设置面板，避免误显"不支持"）
   const micSupported = useMemo(
     () => typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getUserMedia,
     []
   )
+
+  // 预加载唤醒模型：情绪选择页停留时间足够下载模型，进对话时直接就绪
+  useEffect(() => {
+    if (micSupported) preloadWakeModel()
+  }, [micSupported])
 
   const handleStart = async () => {
     if (!selected) return
