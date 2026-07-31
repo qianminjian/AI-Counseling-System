@@ -7,8 +7,6 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.PostgreSQLContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.DockerImageName;
 
 import java.time.Duration;
@@ -18,34 +16,39 @@ import java.time.Duration;
  * <p>
  * 双模式运行：
  * - CI 模式（检测到 CI_DB_URL 环境变量）：使用 GitHub Actions services 提供的外部 PG/Redis，
- *   Testcontainers 不启动（disabledWithoutDocker + 容器声明为 null-safe）
+ *   Testcontainers 不启动
  * - 本地模式（无 CI_DB_URL）：使用 Testcontainers 自动启动 PostgreSQL 16 + Redis 7
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, classes = MindSafeApplication.class)
-@Testcontainers(disabledWithoutDocker = true)
 @ActiveProfiles("test")
 public abstract class AbstractIntegrationTest {
 
     /** CI 环境下由 GitHub Actions services 提供 DB，此时为 true */
     private static final boolean USE_EXTERNAL_DB = System.getenv("CI_DB_URL") != null;
 
-    @Container
-    static PostgreSQLContainer<?> postgres = USE_EXTERNAL_DB ? null :
-            new PostgreSQLContainer<>(
+    static PostgreSQLContainer<?> postgres;
+    @SuppressWarnings("resource")
+    static GenericContainer<?> redis;
+
+    // 静态初始化块：本地模式时启动 Testcontainers（在 @DynamicPropertySource 之前执行）
+    static {
+        if (!USE_EXTERNAL_DB) {
+            postgres = new PostgreSQLContainer<>(
                     DockerImageName.parse("pgvector/pgvector:pg16").asCompatibleSubstituteFor("postgres"))
                     .withDatabaseName("mindsafe_test")
                     .withUsername("test")
                     .withPassword("test")
                     .withInitScript("init-test-db.sql")
                     .withStartupTimeout(Duration.ofSeconds(180));
+            postgres.start();
 
-    @Container
-    @SuppressWarnings("resource")
-    static GenericContainer<?> redis = USE_EXTERNAL_DB ? null :
-            new GenericContainer<>(
+            redis = new GenericContainer<>(
                     DockerImageName.parse("redis:7-alpine"))
                     .withExposedPorts(6379)
                     .withStartupTimeout(Duration.ofSeconds(60));
+            redis.start();
+        }
+    }
 
     @DynamicPropertySource
     static void configureProperties(DynamicPropertyRegistry registry) {
