@@ -93,12 +93,18 @@ services:
     build:
       context: ../backend/voice-service
       dockerfile: Dockerfile
+      args:
+        ASR_ENGINE: ${ASR_ENGINE:-dashscope}
     container_name: mindsafe-voice
     restart: unless-stopped
     environment:
-      # ASR 引擎选择：funasr=本地自部署（需 6GB 内存）/ dashscope=阿里云云端（低资源）
+      # ASR 引擎选择：funasr=本地自部署（需 6GB 内存）/ dashscope=阿里云云端（<512MB）
       ASR_ENGINE: ${ASR_ENGINE:-dashscope}
       DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:-}
+    volumes:
+      # FunASR 模型缓存：宿主机持久化，避免每次重建容器重新下载 3GB+ 模型
+      # 使用前需运行: bash deploy/scripts/prepare-funasr.sh
+      - ${MODEL_CACHE_DIR:-./cache/modelscope}:/root/.cache/modelscope
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:10095/health')"]
       interval: 30s
@@ -108,7 +114,8 @@ services:
     deploy:
       resources:
         limits:
-          memory: 6G
+          # funasr 模式需 6G / dashscope 模式仅需 512M
+          memory: ${VOICE_MEM_LIMIT:-512M}
     networks:
       - internal
 
