@@ -15,7 +15,7 @@ import { useVoiceprint } from '../hooks/useVoiceprint'
 import { unlockAudio } from '../utils/audioUnlock'
 import { createPcmCapture, type PcmCaptureHandle } from '../utils/createPcmCapture'
 import { getVoiceprint } from '../utils/voiceprintStore'
-import { voiceLogin, remoteVoiceprintVerify, remoteVoiceprintEnroll, getVoiceprintConfig, setToken, setRefreshToken, setUser } from '../api'
+import { voiceLogin, remoteVoiceprintVerify, getVoiceprintConfig, setToken, setRefreshToken, setUser } from '../api'
 
 /**
  * @param {object} props
@@ -258,25 +258,10 @@ export default function VoiceLoginOverlay({ mode = 'verify', onComplete, onCance
         }
       }
     } else {
-      // 注册模式
-      if (vpMode === 'remote') {
-        // remote 模式：embedding 上传服务端存储
-        try {
-          await remoteVoiceprintEnroll(collectedEmbeddings.current)
-          setPhase('success')
-          setStatusText('声音录入成功！')
-          setTimeout(() => onComplete({ matched: true, embeddings: collectedEmbeddings.current }), 1500)
-        } catch {
-          setFailKind('credential')
-          setPhase('fail')
-          setStatusText('网络异常，录入失败，请稍后再试')
-        }
-      } else {
-        // local 模式：返回采集的 embeddings（由调用方存 IndexedDB）
-        setPhase('success')
-        setStatusText('声音录入成功！')
-        setTimeout(() => onComplete({ matched: true, embeddings: collectedEmbeddings.current }), 1500)
-      }
+      // 注册模式：返回采集的 embeddings（由调用方根据模式决定存储方式）
+      setPhase('success')
+      setStatusText('声音录入成功！')
+      setTimeout(() => onComplete({ matched: true, embeddings: collectedEmbeddings.current }), 1500)
     }
   }, [scripts, mode, initMic, speakPrompt, captureSegment, extractEmbedding, verify, failCount, onComplete])
 
