@@ -128,7 +128,7 @@ elif ! $FORCE_BACKEND && ! $FORCE_STUDENT && ! $FORCE_TEACHER && ! $FORCE_PARENT
     # 路径映射
     echo "$CHANGED" | grep -q '^backend/tts-service/' && DEPLOY_TTS=true
     echo "$CHANGED" | grep -q '^backend/voice-service/' && DEPLOY_VOICE=true
-    echo "$CHANGED" | grep '^backend/' | grep -qv '^backend/tts-service/' | grep -qv '^backend/voice-service/' && DEPLOY_BACKEND=true
+    echo "$CHANGED" | grep '^backend/' | grep -v '^backend/tts-service/' | grep -qv '^backend/voice-service/' && DEPLOY_BACKEND=true
     echo "$CHANGED" | grep -q '^frontend/student-h5/' && DEPLOY_STUDENT=true
     echo "$CHANGED" | grep -q '^frontend/teacher-web/' && DEPLOY_TEACHER=true
     echo "$CHANGED" | grep -q '^frontend/parent-h5/' && DEPLOY_PARENT=true
