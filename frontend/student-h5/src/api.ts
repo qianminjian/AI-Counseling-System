@@ -260,3 +260,47 @@ export async function confirmGuardianConsent(guardianPhone: string, code: string
     body: JSON.stringify({ guardianPhone, code }),
   })
 }
+
+// ===== 声纹双模式（local / remote） =====
+
+export interface VoiceprintConfig {
+  mode: 'local' | 'remote'
+  privacyNote: string
+}
+
+/**
+ * 获取声纹模式配置（公开，无需登录）
+ * 前端启动时调用，决定走 local 还是 remote 流程
+ */
+export async function getVoiceprintConfig(): Promise<VoiceprintConfig> {
+  const res = await fetch('/api/v1/voiceprint/config')
+  const json = await res.json()
+  if (!json.success) throw new Error(json.message || '获取声纹配置失败')
+  return json.data
+}
+
+/**
+ * 声纹远程验证登录（remote 模式，公开端点）
+ * 前端提取 embedding 后传服务端比对，通过则直接签发双 token
+ */
+export async function remoteVoiceprintVerify(embeddings: number[][]): Promise<AuthResult & { matched: boolean; score: number }> {
+  const res = await fetch('/api/v1/voiceprint/verify', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ embeddings }),
+  })
+  const json = await res.json()
+  if (!json.success) throw new Error(json.message || '声纹验证失败')
+  return json.data
+}
+
+/**
+ * 声纹远程录入（remote 模式，需已登录）
+ * 前端提取 embedding 后传服务端存储
+ */
+export async function remoteVoiceprintEnroll(embeddings: number[][]): Promise<{ enrolled: number }> {
+  return api('/voiceprint/enroll', {
+    method: 'POST',
+    body: JSON.stringify({ embeddings }),
+  })
+}

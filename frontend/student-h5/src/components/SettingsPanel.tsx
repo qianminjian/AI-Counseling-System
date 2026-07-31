@@ -11,7 +11,7 @@
 import { useState, useEffect } from 'react'
 import { useTheme, THEMES } from '../theme/ThemeProvider'
 import { useVoicePersona, VOICE_PERSONAS } from '../hooks/useVoicePersona'
-import { api, getUser, issueVoiceCredential } from '../api'
+import { api, getUser, issueVoiceCredential, getVoiceprintConfig, remoteVoiceprintEnroll } from '../api'
 import { hasAnyVoiceprint, deleteVoiceprint, enrollVoiceprint, saveVoiceCredential } from '../utils/voiceprintStore'
 import VoiceLoginOverlay from './VoiceLoginOverlay'
 import ConfirmDialog from './ConfirmDialog'
@@ -32,11 +32,17 @@ export default function SettingsPanel({ open, onClose, muted, onToggleMute, wake
   const [hasVoiceprint, setHasVoiceprint] = useState(false)
   const [showEnroll, setShowEnroll] = useState(false)
   const [confirmAction, setConfirmAction] = useState<'deleteVp' | null>(null)
+  const [vpMode, setVpMode] = useState<'local' | 'remote'>('local')
+  const [vpPrivacyNote, setVpPrivacyNote] = useState('声音信息只保存在这台设备上，不会上传到任何服务器')
 
-  // 打开时检查声纹状态 + 获取 familyCode
+  // 打开时检查声纹状态 + 获取 familyCode + 获取声纹模式
   useEffect(() => {
     if (open) {
       hasAnyVoiceprint().then(setHasVoiceprint)
+      getVoiceprintConfig().then((cfg) => {
+        setVpMode(cfg.mode)
+        setVpPrivacyNote(cfg.privacyNote)
+      }).catch(() => {})
       if (!familyCode) {
         api('/api/v1/auth/me').then((data) => {
           if (data?.familyCode) setFamilyCode(data.familyCode)
@@ -63,15 +69,20 @@ export default function SettingsPanel({ open, onClose, muted, onToggleMute, wake
         onComplete={async (result) => {
           if (result.embeddings && result.embeddings.length > 0 && user?.userId) {
             try {
-              await enrollVoiceprint(user.userId, user.pseudonym || '', result.embeddings)
-              setHasVoiceprint(true)
-              // 签发设备凭证：下次声音登录时凭其换取正式 token
-              try {
-                const cred = await issueVoiceCredential()
-                await saveVoiceCredential(user.userId as string, cred)
-              } catch (e) {
-                console.warn('[声纹重录] 设备凭证签发失败（不影响本次录入）:', e)
+              if (vpMode === 'remote') {
+                // remote 模式：embedding 传服务端存储
+                await remoteVoiceprintEnroll(result.embeddings)
+              } else {
+                // local 模式：存 IndexedDB + 签发设备凭证
+                await enrollVoiceprint(user.userId, user.pseudonym || '', result.embeddings)
+                try {
+                  const cred = await issueVoiceCredential()
+                  await saveVoiceCredential(user.userId as string, cred)
+                } catch (e) {
+                  console.warn('[声纹重录] 设备凭证签发失败（不影响本次录入）:', e)
+                }
               }
+              setHasVoiceprint(true)
             } catch (e) {
               console.warn('[声纹重录] 存储失败:', e)
             }
@@ -249,7 +260,7 @@ export default function SettingsPanel({ open, onClose, muted, onToggleMute, wake
               </button>
             </div>
           )}
-          <p className="mt-2 text-center text-[10px] text-gray-300">声音信息只保存在这台设备上，不会上传到任何服务器</p>
+          <p className="mt-2 text-center text-[10px] text-gray-300">{vpPrivacyNote}</p>
         </section>
 
         {/* 我的家庭码（家长绑定用） */}

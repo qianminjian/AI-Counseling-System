@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { pinLogin, setToken, setRefreshToken, setUser, issueVoiceCredential } from '../api'
+import { pinLogin, setToken, setRefreshToken, setUser, issueVoiceCredential, getVoiceprintConfig, remoteVoiceprintEnroll } from '../api'
 import { CONSENT_VERSION } from './ConsentGate'
 import { hasAnyVoiceprint, enrollVoiceprint, saveVoiceCredential } from '../utils/voiceprintStore'
 import { useTheme, THEMES } from '../theme/ThemeProvider'
@@ -255,6 +255,12 @@ function RegisterForm({ themeId, onRegister }) {
   const [hasVoiceprint, setHasVoiceprint] = useState(false) // 是否已完成声纹采集
   const [familyCode, setFamilyCode] = useState('') // 注册成功后展示
   const [showConfirm, setShowConfirm] = useState(false) // 注册信息二次确认
+  const [vpMode, setVpMode] = useState<'local' | 'remote'>('local')
+
+  // 获取声纹模式配置
+  useEffect(() => {
+    getVoiceprintConfig().then((cfg) => setVpMode(cfg.mode)).catch(() => {})
+  }, [])
 
   const update = (key, value) => { setForm((f) => ({ ...f, [key]: value })); setError('') }
 
@@ -384,15 +390,20 @@ function RegisterForm({ themeId, onRegister }) {
         onComplete={async (result) => {
           if (result.embeddings && result.embeddings.length > 0) {
             try {
-              await enrollVoiceprint(regUserId, form.pseudonym.trim(), result.embeddings)
-              setHasVoiceprint(true)
-              // 签发设备凭证：下次声音登录时凭其换取正式 token
-              try {
-                const cred = await issueVoiceCredential()
-                await saveVoiceCredential(regUserId, cred)
-              } catch (e) {
-                console.warn('[声纹注册] 设备凭证签发失败（不影响本次注册）:', e)
+              if (vpMode === 'remote') {
+                // remote 模式：embedding 传服务端存储
+                await remoteVoiceprintEnroll(result.embeddings)
+              } else {
+                // local 模式：存 IndexedDB + 签发设备凭证
+                await enrollVoiceprint(regUserId, form.pseudonym.trim(), result.embeddings)
+                try {
+                  const cred = await issueVoiceCredential()
+                  await saveVoiceCredential(regUserId, cred)
+                } catch (e) {
+                  console.warn('[声纹注册] 设备凭证签发失败（不影响本次注册）:', e)
+                }
               }
+              setHasVoiceprint(true)
             } catch (e) {
               console.warn('[声纹注册] 存储失败:', e)
             }

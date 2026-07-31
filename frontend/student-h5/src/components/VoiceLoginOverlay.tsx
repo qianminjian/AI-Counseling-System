@@ -15,7 +15,7 @@ import { useVoiceprint } from '../hooks/useVoiceprint'
 import { unlockAudio } from '../utils/audioUnlock'
 import { createPcmCapture, type PcmCaptureHandle } from '../utils/createPcmCapture'
 import { getVoiceprint } from '../utils/voiceprintStore'
-import { voiceLogin, setToken, setRefreshToken, setUser } from '../api'
+import { voiceLogin, remoteVoiceprintVerify, remoteVoiceprintEnroll, getVoiceprintConfig, setToken, setRefreshToken, setUser } from '../api'
 
 /**
  * @param {object} props
@@ -31,6 +31,8 @@ export default function VoiceLoginOverlay({ mode = 'verify', onComplete, onCance
   const [statusText, setStatusText] = useState('')
   const [failCount, setFailCount] = useState(0)
   const [failKind, setFailKind] = useState('') // mic | mismatch | credential
+  const [vpMode, setVpMode] = useState<'local' | 'remote'>('local')
+  const [privacyNote, setPrivacyNote] = useState('声音信息只保存在这台设备上，不会上传到任何服务器')
 
   const { extractEmbedding, verify, loading, modelErrorRef } = useVoiceprint()
   const collectedEmbeddings = useRef([])
@@ -199,44 +201,92 @@ export default function VoiceLoginOverlay({ mode = 'verify', onComplete, onCance
     setStatusText('正在确认身份...')
 
     if (mode === 'verify') {
-      const result = await verify(collectedEmbeddings.current)
-      if (result.matched) {
-        // Phase 2：本地声纹匹配通过后，用设备凭证换取后端正式 token
-        const vp = await getVoiceprint(result.userId) as any
-        const cred = vp?.voiceCredential
-        if (!cred) {
-          setFailKind('credential')
-          setPhase('fail')
-          setStatusText('这台设备的登录钥匙还没办好，先用秘密数字进入，再到「设置」里重录一次声音吧')
-          return
-        }
+      if (vpMode === 'remote') {
+        // remote 模式：embedding 传服务端比对，服务端直接签发 token
         try {
-          const data = await voiceLogin(cred)
-          setToken(data.token)
-          if (data.refreshToken) setRefreshToken(data.refreshToken)
-          setUser({ userId: data.userId, userType: data.userType, pseudonym: data.displayName })
-          setPhase('success')
-          setStatusText(`是${result.pseudonym}呀！欢迎回来！`)
-          setTimeout(() => onComplete(result), 1500)
+          const data = await remoteVoiceprintVerify(collectedEmbeddings.current)
+          if (data.matched) {
+            setToken(data.token)
+            if (data.refreshToken) setRefreshToken(data.refreshToken)
+            setUser({ userId: data.userId, userType: data.userType, pseudonym: data.displayName })
+            setPhase('success')
+            setStatusText(`是${data.displayName}呀！欢迎回来！`)
+            setTimeout(() => onComplete({ matched: true, userId: data.userId, pseudonym: data.displayName }), 1500)
+          } else {
+            const newCount = failCount + 1
+            setFailCount(newCount)
+            setFailKind('mismatch')
+            setPhase('fail')
+            setStatusText(newCount < 2 ? '嗯？听起来不太像你，要不再试一次？' : '还是没认出来，用秘密数字登录吧')
+          }
         } catch {
           setFailKind('credential')
           setPhase('fail')
-          setStatusText('登录钥匙过期啦，先用秘密数字进入，再到「设置」里重录一次声音吧')
+          setStatusText('网络不太好，先用秘密数字登录吧')
         }
       } else {
-        const newCount = failCount + 1
-        setFailCount(newCount)
-        setFailKind('mismatch')
-        setPhase('fail')
-        setStatusText(newCount < 2 ? '嗯？听起来不太像你，要不再试一次？' : '还是没认出来，用秘密数字登录吧')
+        // local 模式：本地 IndexedDB 比对 → 设备凭证换 token
+        const result = await verify(collectedEmbeddings.current)
+        if (result.matched) {
+          const vp = await getVoiceprint(result.userId) as any
+          const cred = vp?.voiceCredential
+          if (!cred) {
+            setFailKind('credential')
+            setPhase('fail')
+            setStatusText('这台设备的登录钥匙还没办好，先用秘密数字进入，再到「设置」里重录一次声音吧')
+            return
+          }
+          try {
+            const data = await voiceLogin(cred)
+            setToken(data.token)
+            if (data.refreshToken) setRefreshToken(data.refreshToken)
+            setUser({ userId: data.userId, userType: data.userType, pseudonym: data.displayName })
+            setPhase('success')
+            setStatusText(`是${result.pseudonym}呀！欢迎回来！`)
+            setTimeout(() => onComplete(result), 1500)
+          } catch {
+            setFailKind('credential')
+            setPhase('fail')
+            setStatusText('登录钥匙过期啦，先用秘密数字进入，再到「设置」里重录一次声音吧')
+          }
+        } else {
+          const newCount = failCount + 1
+          setFailCount(newCount)
+          setFailKind('mismatch')
+          setPhase('fail')
+          setStatusText(newCount < 2 ? '嗯？听起来不太像你，要不再试一次？' : '还是没认出来，用秘密数字登录吧')
+        }
       }
     } else {
-      // 注册模式：返回采集的 embeddings
-      setPhase('success')
-      setStatusText('声音录入成功！')
-      setTimeout(() => onComplete({ matched: true, embeddings: collectedEmbeddings.current }), 1500)
+      // 注册模式
+      if (vpMode === 'remote') {
+        // remote 模式：embedding 上传服务端存储
+        try {
+          await remoteVoiceprintEnroll(collectedEmbeddings.current)
+          setPhase('success')
+          setStatusText('声音录入成功！')
+          setTimeout(() => onComplete({ matched: true, embeddings: collectedEmbeddings.current }), 1500)
+        } catch {
+          setFailKind('credential')
+          setPhase('fail')
+          setStatusText('网络异常，录入失败，请稍后再试')
+        }
+      } else {
+        // local 模式：返回采集的 embeddings（由调用方存 IndexedDB）
+        setPhase('success')
+        setStatusText('声音录入成功！')
+        setTimeout(() => onComplete({ matched: true, embeddings: collectedEmbeddings.current }), 1500)
+      }
     }
   }, [scripts, mode, initMic, speakPrompt, captureSegment, extractEmbedding, verify, failCount, onComplete])
+
+  // 启动时获取声纹模式配置
+  useEffect(() => {
+    getVoiceprintConfig().then((cfg) => {
+      setVpMode(cfg.mode)
+      setPrivacyNote(cfg.privacyNote)
+    }).catch(() => { /* 默认 local */ })
+  }, [])
 
   // 启动流程
   useEffect(() => {
@@ -350,9 +400,9 @@ export default function VoiceLoginOverlay({ mode = 'verify', onComplete, onCance
         </button>
       )}
 
-      {/* 底部提示 */}
+      {/* 底部隐私提示（根据模式动态显示） */}
       <p className="absolute bottom-8 text-xs text-gray-400 text-center px-6">
-        声音信息只保存在这台设备上，不会上传到任何服务器
+        {privacyNote}
       </p>
     </div>
   )
