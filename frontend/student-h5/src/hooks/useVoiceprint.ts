@@ -49,6 +49,8 @@ function getModelBundle() {
       env.remoteHost = VP_MODEL_REMOTE_HOST === 'SAME_ORIGIN'
         ? `${base}models/`
         : VP_MODEL_REMOTE_HOST
+      // 自托管模型不带 /resolve/{revision}/ 路径段
+      env.remotePathTemplate = '{model}/'
       env.allowLocalModels = false
       // 请求持久化存储
       navigator.storage?.persist?.().catch(() => {})

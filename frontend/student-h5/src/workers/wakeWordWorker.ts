@@ -22,6 +22,7 @@ async function ensureModel(config) {
 
     // 同源部署配置（与主线程 getTranscriber 保持一致）
     env.remoteHost = config.remoteHost
+    env.remotePathTemplate = '{model}/'
     env.allowLocalModels = false
 
     // ONNX WASM 路径

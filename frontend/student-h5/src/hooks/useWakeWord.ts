@@ -119,6 +119,8 @@ function getTranscriber() {
       env.remoteHost = WAKE_MODEL_REMOTE_HOST === 'SAME_ORIGIN'
         ? `${base}models/`
         : WAKE_MODEL_REMOTE_HOST
+      // 自托管模型不带 /resolve/{revision}/ 路径段
+      env.remotePathTemplate = '{model}/'
       env.allowLocalModels = false
       // 请求持久化存储（防止浏览器在存储压力下清除模型缓存）
       navigator.storage?.persist?.().catch(() => {})
