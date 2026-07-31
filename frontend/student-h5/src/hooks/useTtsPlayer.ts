@@ -8,6 +8,7 @@
  */
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { getGlobalAudioElement, getGlobalAudioContext, unlockAudio } from '../utils/audioUnlock'
+import { getToken } from '../api'
 
 /** 去除 emoji 和特殊符号（TTS 不需要朗读） */
 function stripEmoji(text) {
@@ -115,10 +116,7 @@ export function useTtsPlayer({ persona = 'xiaoxing', emotion = 'neutral', speed 
   const audioRef = useRef(null)
   const audioCtxRef = useRef(null)
   const abortRef = useRef(false)
-  const backendFailCount = useRef(
-    // 上次会话后端 TTS 连续失败→本次直接跳过，避免每次等 3 次超时
-    sessionStorage.getItem('mindsafe_tts_backend_failed') === '1' ? 3 : 0
-  )
+  const backendFailCount = useRef(0)
 
   // 初始化时检测浏览器 TTS 可用性（voiceschanged 事件确保异步加载完成）
   useEffect(() => {
@@ -157,23 +155,24 @@ export function useTtsPlayer({ persona = 'xiaoxing', emotion = 'neutral', speed 
       return null // 返回 null 触发 speak() 中的浏览器降级路径
     }
     try {
+      const token = getToken()
       const res = await fetch('/api/v1/tts/synthesize', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({ text, persona, emotion, speed }),
       })
       if (!res.ok || res.status === 204) {
         backendFailCount.current++
-        if (backendFailCount.current >= 2) sessionStorage.setItem('mindsafe_tts_backend_failed', '1')
         return null
       }
       backendFailCount.current = 0 // 成功则重置
-      sessionStorage.removeItem('mindsafe_tts_backend_failed')
       setEngine('backend')
       return await res.blob()
     } catch {
       backendFailCount.current++
-      if (backendFailCount.current >= 2) sessionStorage.setItem('mindsafe_tts_backend_failed', '1')
       return null
     }
   }, [persona, emotion, speed])

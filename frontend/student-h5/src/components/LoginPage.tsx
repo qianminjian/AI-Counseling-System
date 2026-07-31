@@ -536,7 +536,8 @@ function RegisterForm({ themeId, onRegister }) {
           {pinStep === 'input' ? '下一步' : '确认设置'}
         </button>
 
-        <button className={`skip-pin skip-pin--${themeId}`} onClick={() => {
+        <button className={`skip-pin skip-pin--${themeId}`} onClick={async () => {
+          // 跳过 PIN 设置：不调 setPin API，用户后续可在设置中补设
           if (voiceConsent && regUserId) setStep('voice-choice')
           else setStep('done')
         }}>
