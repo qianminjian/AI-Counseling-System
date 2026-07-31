@@ -151,12 +151,14 @@ body {
 .login-scene--ocean {
   background: linear-gradient(180deg, #0c4a6e 0%, #155e75 30%, #0e7490 60%, #06b6d4 100%);
 }
-.login-scene--ocean .sea-floor {
+.login-scene--ocean .sea-floor,
+.emotion-scene--ocean .sea-floor {
   position: absolute; bottom: 0; left: 0; right: 0; height: 80px;
   background: linear-gradient(0deg, #164e63, transparent);
   pointer-events: none;
 }
-.login-scene--ocean .sea-floor::before {
+.login-scene--ocean .sea-floor::before,
+.emotion-scene--ocean .sea-floor::before {
   content: '🪸 🌿 🐚 🪸 🌿';
   position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%);
   font-size: 24px; letter-spacing: 16px; opacity: 0.5;
@@ -222,6 +224,41 @@ body {
   15%  { transform: translateX(280px) translateY(70px); opacity: 0; }
   100% { opacity: 0; }
 }
+
+/* ============================================================
+   情绪选择场景（与登录页同款三主题场景化，2026-07-23）
+   复用 .bubble/.fish/.sea-floor/.candy-float/.star/.planet/.shooting-star 装饰
+   ============================================================ */
+.emotion-scene {
+  min-height: 100dvh;
+  position: relative;
+  overflow: hidden;
+}
+.emotion-scene--ocean {
+  background: linear-gradient(180deg, #0c4a6e 0%, #155e75 30%, #0e7490 60%, #06b6d4 100%);
+}
+.emotion-scene--garden {
+  background: linear-gradient(160deg, #fff1f2 0%, #fce7f3 30%, #fbcfe8 60%, #f9a8d4 100%);
+}
+.emotion-scene--rainbow {
+  background: radial-gradient(ellipse at 50% 0%, #1e1b4b 0%, #0f0a2e 40%, #030014 100%);
+}
+
+/* 标题/副标题：深色场景用白字，糖果乐园用深粉字 */
+.emotion-title--ocean   { color: #fff; text-shadow: 0 1px 8px rgba(0,0,0,0.2); }
+.emotion-sub--ocean     { color: rgba(255,255,255,0.65); }
+.emotion-title--garden  { color: #be185d; }
+.emotion-sub--garden    { color: #9d174d; opacity: 0.6; }
+.emotion-title--rainbow { color: #e0e7ff; text-shadow: 0 0 14px rgba(139,92,246,0.3); }
+.emotion-sub--rainbow   { color: #818cf8; }
+
+/* 次级链接（放松练习/心情日记） */
+.emotion-link--ocean,
+.emotion-link--rainbow  { color: rgba(255,255,255,0.55); }
+.emotion-link--ocean:hover,
+.emotion-link--rainbow:hover { color: rgba(255,255,255,0.85); }
+.emotion-link--garden   { color: #9d174d; opacity: 0.55; }
+.emotion-link--garden:hover  { opacity: 0.85; }
 
 /* --- 卡片（ocean/rainbow 用玻璃卡片；garden 无卡片漂浮） --- */
 .login-card {

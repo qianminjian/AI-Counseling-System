@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useTheme } from '../theme/ThemeProvider'
 import { api } from '../api'
 import { unlockAudio } from '../utils/audioUnlock'
-import SessionHistory from './SessionHistory'
+import SceneDecor from './SceneDecor'
 import RelaxationExercises from './RelaxationExercises'
 import EmotionDiary from './EmotionDiary'
 import Achievements from './Achievements'
@@ -24,7 +24,7 @@ export default function EmotionSelect({ onStart, userName, onLogout }) {
   const [showDiary, setShowDiary] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [muted, setMuted] = useState(false)
-  const { theme } = useTheme()
+  const { theme, themeId } = useTheme()
 
   const handleStart = async () => {
     if (!selected) return
@@ -59,8 +59,11 @@ export default function EmotionSelect({ onStart, userName, onLogout }) {
   }
 
   return (
-    <div className="min-h-screen flex flex-col items-center pt-10 pb-16 px-6 lg:p-10"
-      style={{ background: 'linear-gradient(to bottom, var(--bg-start), var(--bg-end))', paddingBottom: 'calc(4rem + env(safe-area-inset-bottom))' }}>
+    <div className={`emotion-scene emotion-scene--${themeId} flex flex-col items-center pt-10 pb-16 px-6 lg:p-10`}
+      style={{ paddingBottom: 'calc(4rem + env(safe-area-inset-bottom))' }}>
+      {/* 三主题场景装饰（与登录页同款） */}
+      <SceneDecor themeId={themeId} />
+
       {/* 设置按钮（右上角） */}
       <button
         onClick={() => setSettingsOpen(true)}
@@ -75,17 +78,18 @@ export default function EmotionSelect({ onStart, userName, onLogout }) {
         muted={muted}
         onToggleMute={() => setMuted(v => !v)}
         onToggleWake={() => {}}
+        onSwitchUser={onLogout}
       />
 
       {/* 标题区：儿童化圆体标题 + 伙伴漂浮动画 */}
-      <div className="text-6xl lg:text-8xl mb-4 lg:mb-6 float-companion">{theme.companion}</div>
-      <h1 className="kid-title text-2xl lg:text-4xl text-gray-800 mb-2">
+      <div className="relative z-10 text-6xl lg:text-8xl mb-4 lg:mb-6 float-companion">{theme.companion}</div>
+      <h1 className={`relative z-10 kid-title text-2xl lg:text-4xl mb-2 emotion-title--${themeId}`}>
         嗨，{userName || '同学'}！
       </h1>
-      <p className="text-gray-500 lg:text-xl mb-8 lg:mb-12">今天你的心情怎么样呀？</p>
+      <p className={`relative z-10 lg:text-xl mb-8 lg:mb-12 emotion-sub--${themeId}`}>今天你的心情怎么样呀？</p>
 
-      {/* 情绪选择：手机 3+2 网格 / Pad 横排大卡片 */}
-      <div className="grid grid-cols-3 lg:flex lg:gap-6 gap-4 mb-8 lg:mb-12 max-w-sm lg:max-w-none w-full lg:w-auto">
+      {/* 情绪选择：手机 3+2 网格 / Pad 横排大卡片（选中态保留情绪本色） */}
+      <div className="relative z-10 grid grid-cols-3 lg:flex lg:gap-6 gap-4 mb-8 lg:mb-12 max-w-sm lg:max-w-none w-full lg:w-auto">
         {EMOTIONS.map((e) => (
           <button
             key={e.tag}
@@ -93,7 +97,7 @@ export default function EmotionSelect({ onStart, userName, onLogout }) {
             className={`flex flex-col items-center gap-2 lg:gap-3 p-4 lg:p-8 lg:w-44 rounded-2xl lg:rounded-3xl border-2 transition-all
               ${selected === e.tag
                 ? e.color + ' scale-105 shadow-lg'
-                : 'bg-white border-gray-200 hover:border-gray-300 active:scale-95'
+                : 'bg-white/90 border-transparent shadow-md hover:shadow-lg active:scale-95'
               }`}
           >
             <span className="text-3xl lg:text-6xl">{e.emoji}</span>
@@ -104,7 +108,7 @@ export default function EmotionSelect({ onStart, userName, onLogout }) {
       </div>
 
       {/* 开始按钮 + 放松练习入口 */}
-      <div className="flex flex-col items-center gap-4">
+      <div className="relative z-10 flex flex-col items-center gap-4">
         <button
           onClick={handleStart}
           disabled={!selected || loading}
@@ -122,31 +126,22 @@ export default function EmotionSelect({ onStart, userName, onLogout }) {
         )}
         <button
           onClick={() => setShowRelaxation(true)}
-          className="text-sm text-gray-400 hover:text-gray-600 transition-colors underline underline-offset-4"
+          className={`text-sm transition-colors underline underline-offset-4 emotion-link--${themeId}`}
         >
           不想聊天？做个放松练习 🌿
         </button>
         <button
           onClick={() => setShowDiary(true)}
-          className="text-sm text-gray-400 hover:text-gray-600 transition-colors underline underline-offset-4"
+          className={`text-sm transition-colors underline underline-offset-4 emotion-link--${themeId}`}
         >
           记录今天的心情 📔
         </button>
       </div>
 
-      {/* 会话历史 */}
-      <SessionHistory />
-
       {/* 成就徽章 */}
-      <Achievements />
-
-      {/* 切换用户（共享 Pad 场景） */}
-      <button
-        onClick={onLogout}
-        className="mt-8 px-6 py-2.5 rounded-full border border-gray-200 text-sm text-gray-400 hover:text-gray-600 hover:border-gray-300 transition-all"
-      >
-        🔄 切换同学
-      </button>
+      <div className="relative z-10 w-full flex flex-col items-center">
+        <Achievements />
+      </div>
     </div>
   )
 }

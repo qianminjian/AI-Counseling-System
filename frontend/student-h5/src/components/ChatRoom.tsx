@@ -642,7 +642,7 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: an
             onPointerUp={handleVoicePointerUp}
             onPointerCancel={handleVoicePointerCancel}
           >
-            {boBoPet(60, 'right')}
+            {(side) => boBoPet(60, side)}
           </DraggableVoiceButton>
         </div>
       )}
@@ -662,6 +662,7 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: an
         <SatisfactionDialog
           onSubmit={(rating, comment) => closeSession(rating, comment)}
           onSkip={() => closeSession(null)}
+          onResume={() => setShowSatisfaction(false)}
         />
       )}
 
@@ -674,6 +675,7 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: an
         wakeSupported={voiceCall.wakeSupported}
         wakeOn={wakeEnabled}
         onToggleWake={handleToggleWake}
+        onSwitchUser={onSwitchUser}
       />
     </div>
   )

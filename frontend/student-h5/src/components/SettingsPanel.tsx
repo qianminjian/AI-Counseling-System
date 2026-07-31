@@ -5,22 +5,34 @@
  * - 语音开关
  * - 语音唤醒开关（design/28 §1.1；不支持/未配置时隐藏）
  * - 我的家庭码（家长绑定用）
+ * - 切换同学（退出当前用户，二次确认）
  * 适合儿童操作：大图标 + 简短文字
  */
 import { useState, useEffect } from 'react'
 import { useTheme, THEMES } from '../theme/ThemeProvider'
 import { useVoicePersona, VOICE_PERSONAS } from '../hooks/useVoicePersona'
-import { api, getUser } from '../api'
-import { hasAnyVoiceprint, deleteVoiceprint, enrollVoiceprint } from '../utils/voiceprintStore'
+import { api, getUser, issueVoiceCredential } from '../api'
+import { hasAnyVoiceprint, deleteVoiceprint, enrollVoiceprint, saveVoiceCredential } from '../utils/voiceprintStore'
 import VoiceLoginOverlay from './VoiceLoginOverlay'
+import ConfirmDialog from './ConfirmDialog'
 
-export default function SettingsPanel({ open, onClose, muted, onToggleMute, wakeSupported = false, wakeOn = false, onToggleWake }) {
+export default function SettingsPanel({ open, onClose, muted, onToggleMute, wakeSupported = false, wakeOn = false, onToggleWake, onSwitchUser }: {
+  open: boolean
+  onClose: () => void
+  muted: boolean
+  onToggleMute: () => void
+  wakeSupported?: boolean
+  wakeOn?: boolean
+  onToggleWake?: () => void
+  onSwitchUser?: () => void
+}) {
   const { themeId, changeTheme } = useTheme()
   const { personaId, changePersona } = useVoicePersona()
   const [familyCode, setFamilyCode] = useState<string>((getUser()?.familyCode as string) || '')
   const [copied, setCopied] = useState(false)
   const [hasVoiceprint, setHasVoiceprint] = useState(false)
   const [showEnroll, setShowEnroll] = useState(false)
+  const [confirmAction, setConfirmAction] = useState<'switch' | 'deleteVp' | null>(null)
 
   // 打开时检查声纹状态 + 获取 familyCode
   useEffect(() => {
@@ -54,6 +66,13 @@ export default function SettingsPanel({ open, onClose, muted, onToggleMute, wake
             try {
               await enrollVoiceprint(user.userId, user.pseudonym || '', result.embeddings)
               setHasVoiceprint(true)
+              // 签发设备凭证：下次声音登录时凭其换取正式 token
+              try {
+                const cred = await issueVoiceCredential()
+                await saveVoiceCredential(user.userId as string, cred)
+              } catch (e) {
+                console.warn('[声纹重录] 设备凭证签发失败（不影响本次录入）:', e)
+              }
             } catch (e) {
               console.warn('[声纹重录] 存储失败:', e)
             }
@@ -205,13 +224,7 @@ export default function SettingsPanel({ open, onClose, muted, onToggleMute, wake
               </div>
               <div className="flex gap-2">
                 <button
-                  onClick={async () => {
-                    const user = getUser()
-                    if (user?.userId) {
-                      await deleteVoiceprint(user.userId)
-                      setHasVoiceprint(false)
-                    }
-                  }}
+                  onClick={() => setConfirmAction('deleteVp')}
                   className="rounded-xl bg-red-50 px-3 py-2 text-xs font-bold text-red-500 active:scale-95 transition-all"
                 >
                   删除
@@ -259,6 +272,26 @@ export default function SettingsPanel({ open, onClose, muted, onToggleMute, wake
           </section>
         )}
 
+        {/* 切换同学（退出当前用户，共享 Pad 场景） */}
+        {onSwitchUser && (
+          <section className="mb-6">
+            <h3 className="mb-3 text-sm font-semibold text-gray-500">👋 换人使用</h3>
+            <button
+              onClick={() => setConfirmAction('switch')}
+              className="flex w-full items-center justify-between rounded-2xl border-2 border-red-100 bg-red-50 p-4 transition-all active:scale-[0.98]"
+            >
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">🔄</span>
+                <div className="text-left">
+                  <p className="text-sm font-medium text-red-500">切换同学</p>
+                  <p className="text-xs text-gray-400">退出当前账号，让别的同学登录使用</p>
+                </div>
+              </div>
+              <span className="text-red-300">›</span>
+            </button>
+          </section>
+        )}
+
         {/* 关闭按钮 */}
         <button
           onClick={onClose}
@@ -267,6 +300,37 @@ export default function SettingsPanel({ open, onClose, muted, onToggleMute, wake
           完成 ✓
         </button>
       </div>
+
+      {/* 切换同学二次确认 */}
+      <ConfirmDialog
+        open={confirmAction === 'switch'}
+        emoji="👋"
+        title="要退出让别的同学用吗？"
+        message="退出后需要重新登录哦"
+        confirmText="确认退出"
+        danger
+        onConfirm={() => { setConfirmAction(null); onSwitchUser?.() }}
+        onCancel={() => setConfirmAction(null)}
+      />
+
+      {/* 删除声纹二次确认 */}
+      <ConfirmDialog
+        open={confirmAction === 'deleteVp'}
+        emoji="🗑️"
+        title="真的要删掉声音钥匙吗？"
+        message="删掉后就不能用声音登录啦，需要重新录入"
+        confirmText="删掉"
+        danger
+        onConfirm={async () => {
+          setConfirmAction(null)
+          const user = getUser()
+          if (user?.userId) {
+            await deleteVoiceprint(user.userId)
+            setHasVoiceprint(false)
+          }
+        }}
+        onCancel={() => setConfirmAction(null)}
+      />
     </div>
   )
 }

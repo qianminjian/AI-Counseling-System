@@ -10,9 +10,9 @@ const FACES = [
 
 /**
  * 结束会话满意度评价弹窗（儿童友好）
- * 可选评价后关闭，也可跳过
+ * 可选评价后关闭，也可跳过；点「再聊一会儿」返回聊天（结束前的反悔出口）
  */
-export default function SatisfactionDialog({ onSubmit, onSkip }) {
+export default function SatisfactionDialog({ onSubmit, onSkip, onResume }: { onSubmit: any; onSkip: any; onResume?: () => void }) {
   const [selected, setSelected] = useState(null)
   const [comment, setComment] = useState('')
 
@@ -75,6 +75,16 @@ export default function SatisfactionDialog({ onSubmit, onSkip }) {
             提交
           </button>
         </div>
+
+        {/* 反悔出口：返回聊天（结束对话的二次确认） */}
+        {onResume && (
+          <button
+            onClick={onResume}
+            className="mt-4 w-full text-center text-sm text-gray-400 underline underline-offset-4 hover:text-gray-600 transition-colors"
+          >
+            💬 还想说说话？再聊一会儿
+          </button>
+        )}
       </div>
     </div>
   )

@@ -6,6 +6,8 @@ import WelcomeGuide from './components/WelcomeGuide'
 import EmotionSelect from './components/EmotionSelect'
 import ChatRoom from './components/ChatRoom'
 import ParentReport from './components/ParentReport'
+import IdleWarning from './components/IdleWarning'
+import { useIdleLogout } from './hooks/useIdleLogout'
 import { isAuthenticated, getUser, clearToken, isConsentDone, markConsentDone } from './api'
 
 /**
@@ -23,6 +25,15 @@ export default function App() {
   const [session, setSession] = useState(null)
   const [loginTab, setLoginTab] = useState('login')
 
+  const handleLogout = () => {
+    clearToken()
+    setAuthed(false)
+    setSession(null)
+  }
+
+  // 无操作超时自动退出（共享 Pad 隐私保护）：5 分钟无操作 → 60 秒倒计时 → 回登录页
+  const idle = useIdleLogout({ enabled: authed, onTimeout: handleLogout })
+
   // 家长周报路由（无需登录）
   if (window.location.pathname === '/parent') {
     return <ParentReport />
@@ -36,12 +47,6 @@ export default function App() {
   const handleRegister = () => {
     markConsentDone()
     setAuthed(true)
-  }
-
-  const handleLogout = () => {
-    clearToken()
-    setAuthed(false)
-    setSession(null)
   }
 
   // 注册前检查设备级告知同意
@@ -66,6 +71,8 @@ export default function App() {
       ) : (
         <ChatRoom session={session} onEnd={() => setSession(null)} onSwitchUser={handleLogout} />
       )}
+      {/* 无操作超时警告卡 */}
+      {authed && idle.warning && <IdleWarning secondsLeft={idle.secondsLeft} onStay={idle.stay} />}
     </ThemeProvider>
   )
 }

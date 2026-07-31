@@ -3,11 +3,12 @@ import { describe, it, expect, vi } from 'vitest';
 
 // Mock 依赖模块
 vi.mock('../theme/ThemeProvider', () => ({
-  useTheme: () => ({ theme: { companion: '🐻', primary: '#FF6B6B' } }),
+  useTheme: () => ({ theme: { companion: '🐻', primary: '#FF6B6B' }, themeId: 'ocean' }),
 }));
 vi.mock('../api', () => ({ api: vi.fn(), getUser: vi.fn(() => null) }));
 vi.mock('../utils/audioUnlock', () => ({ unlockAudio: vi.fn() }));
-vi.mock('../components/SessionHistory', () => ({ default: () => <div data-testid="session-history" /> }));
+vi.mock('../components/SceneDecor', () => ({ default: () => <div data-testid="scene-decor" /> }));
+vi.mock('../components/SettingsPanel', () => ({ default: () => null }));
 vi.mock('../components/RelaxationExercises', () => ({ default: ({ onBack }) => <div data-testid="relaxation">放松练习</div> }));
 vi.mock('../components/EmotionDiary', () => ({ default: ({ onBack }) => <div data-testid="diary">心情日记</div> }));
 vi.mock('../components/Achievements', () => ({ default: () => <div data-testid="achievements" /> }));
@@ -60,10 +61,9 @@ describe('EmotionSelect', () => {
     expect(screen.getByTestId('diary')).toBeInTheDocument();
   });
 
-  it('点击切换同学触发 onLogout', () => {
+  it('切换同学入口已移至设置面板（页面不再直接显示）', () => {
     render(<EmotionSelect {...defaultProps} />);
-    fireEvent.click(screen.getByText(/切换同学/));
-    expect(defaultProps.onLogout).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText(/切换同学/)).toBeNull();
   });
 
   it('userName 为空时显示"同学"', () => {

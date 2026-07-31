@@ -1,56 +1,36 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
-import { pinLogin, setToken, setRefreshToken, setUser } from '../api'
+import { useState, useEffect, useCallback, useMemo } from 'react'
+import { pinLogin, setToken, setRefreshToken, setUser, issueVoiceCredential } from '../api'
 import { CONSENT_VERSION } from './ConsentGate'
-import { useWakeWord } from '../hooks/useWakeWord'
-import { hasAnyVoiceprint, enrollVoiceprint } from '../utils/voiceprintStore'
-import { VP_IDLE_TIMEOUT } from '../config/voiceprint'
+import { hasAnyVoiceprint, enrollVoiceprint, saveVoiceCredential } from '../utils/voiceprintStore'
 import { useTheme, THEMES } from '../theme/ThemeProvider'
 import VoiceLoginOverlay from './VoiceLoginOverlay'
+import SceneDecor from './SceneDecor'
+import ConfirmDialog from './ConfirmDialog'
 
 /**
  * 学生端登录页（三主题 + 共享 Pad 适配）
  * - 主题跟随 ThemeProvider：ocean(海底世界) / garden(糖果乐园) / rainbow(星际探险)
  * - 登录 tab：昵称 + 彩虹键盘 PIN（0 占两格，无 ✓）
  * - 注册 tab：邀请码 + 昵称 + 性别 + 年龄
- * - 语音唤醒：一体化勾选框 + 声纹入口
+ * - 声音进入：与 PIN 并列的显式按钮触发（无被动监听，design/28 §2.4 隐私即设计）
  * - Pad 横屏：左品牌右表单
  */
 export default function LoginPage({ onLogin, onRegister, onNeedConsent, initialTab = 'login' }) {
   const { themeId, changeTheme } = useTheme()
   const [tab, setTab] = useState(initialTab)
   const [showVoiceOverlay, setShowVoiceOverlay] = useState(false)
-  const [voiceSupported, setVoiceSupported] = useState(false)
-  const [idle, setIdle] = useState(false)
-  const idleTimerRef = useRef(null)
+  const [hasVoiceprint, setHasVoiceprint] = useState(false)
+  const [showNoVpTip, setShowNoVpTip] = useState(false)
 
   useEffect(() => {
-    hasAnyVoiceprint().then((has) => setVoiceSupported(has))
+    hasAnyVoiceprint().then((has) => setHasVoiceprint(has))
   }, [])
 
-  const wakeActive = tab === 'login' && voiceSupported && !showVoiceOverlay && !idle
-  const { supported: wakeEnvSupported } = useWakeWord({
-    active: wakeActive,
-    onDetected: () => {
-      resetIdleTimer()
-      setShowVoiceOverlay(true)
-    },
-  })
-
-  const resetIdleTimer = useCallback(() => {
-    setIdle(false)
-    if (idleTimerRef.current) clearTimeout(idleTimerRef.current)
-    idleTimerRef.current = setTimeout(() => setIdle(true), VP_IDLE_TIMEOUT)
-  }, [])
-
-  useEffect(() => {
-    resetIdleTimer()
-    const handler = () => resetIdleTimer()
-    document.addEventListener('pointerdown', handler)
-    return () => {
-      document.removeEventListener('pointerdown', handler)
-      if (idleTimerRef.current) clearTimeout(idleTimerRef.current)
-    }
-  }, [resetIdleTimer])
+  // 浏览器是否支持麦克风（决定是否显示声音进入按钮）
+  const micSupported = useMemo(
+    () => typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getUserMedia,
+    []
+  )
 
   const switchToRegister = () => {
     onNeedConsent?.()
@@ -65,7 +45,15 @@ export default function LoginPage({ onLogin, onRegister, onNeedConsent, initialT
   }
 
   const handleVoiceCancel = () => setShowVoiceOverlay(false)
-  const handleVoiceClick = () => { resetIdleTimer(); setShowVoiceOverlay(true) }
+
+  /** 点击"声音进入"：有声纹进识别流程，没有给引导提示 */
+  const handleVoiceClick = useCallback(() => {
+    if (hasVoiceprint) {
+      setShowVoiceOverlay(true)
+    } else {
+      setShowNoVpTip(true)
+    }
+  }, [hasVoiceprint])
 
   return (
     <div className={`login-scene login-scene--${themeId}`}>
@@ -119,110 +107,46 @@ export default function LoginPage({ onLogin, onRegister, onNeedConsent, initialT
           <RegisterForm themeId={themeId} onRegister={onRegister} />
         )}
 
-        {/* 声纹登录入口 */}
-        {tab === 'login' && voiceSupported && wakeEnvSupported && (
-          <div className={`voice-entry voice-entry--${themeId} ${idle ? 'disabled' : ''}`}>
+        {/* 声音进入（显式按钮触发，与 PIN 并列；无被动监听） */}
+        {tab === 'login' && micSupported && (
+          <div className={`voice-entry voice-entry--${themeId}`}>
             <div className="divider"><span>或</span></div>
-            {idle ? (
-              <button className={`voice-btn voice-btn--${themeId}`} onClick={() => resetIdleTimer()}>
-                👆 点击屏幕唤醒
-              </button>
-            ) : (
-              <button className={`voice-btn voice-btn--${themeId}`} onClick={handleVoiceClick}>
-                🎤 对我说"你好，波波" <i className="dot" />
-              </button>
-            )}
-            {!idle && <p className="sub">声纹识别，无需动手</p>}
+            <p className="sub" style={{ marginTop: 0, marginBottom: 8 }}>对波波说句话，直接进入</p>
+            <button className={`voice-btn voice-btn--${themeId}`} onClick={handleVoiceClick}>
+              🎤 声音进入
+            </button>
           </div>
         )}
       </div>
+
+      {/* 未录声纹引导提示 */}
+      {showNoVpTip && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-6" onClick={() => setShowNoVpTip(false)}>
+          <div className="absolute inset-0 bg-black/40" />
+          <div
+            className="relative w-full max-w-xs rounded-3xl bg-white p-6 text-center shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <span className="text-5xl">🎤</span>
+            <h3 className="mt-3 text-lg font-bold text-gray-800">还没录过你的声音哦</h3>
+            <p className="mt-2 text-sm leading-relaxed text-gray-500">
+              先用秘密数字进入，<br />再到「设置」里录一段声音，<br />下次就能喊着进来啦～
+            </p>
+            <button
+              className="mt-5 w-full rounded-full bg-blue-500 py-3 font-medium text-white active:scale-[0.98] transition-all"
+              onClick={() => setShowNoVpTip(false)}
+            >
+              知道啦
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* 声纹识别覆盖层 */}
       {showVoiceOverlay && (
         <VoiceLoginOverlay mode="verify" onComplete={handleVoiceComplete} onCancel={handleVoiceCancel} />
       )}
     </div>
-  )
-}
-
-/* ===== 动画背景装饰 ===== */
-function SceneDecor({ themeId }) {
-  const items = useMemo(() => {
-    if (themeId === 'ocean') {
-      return {
-        bubbles: Array.from({ length: 8 }, (_, i) => ({
-          id: i,
-          size: 8 + Math.random() * 24,
-          left: `${5 + Math.random() * 90}%`,
-          dur: `${6 + Math.random() * 8}s`,
-          delay: `${Math.random() * 5}s`,
-        })),
-        fish: [
-          { emoji: '🐠', top: '25%', dur: '14s', delay: '0s' },
-          { emoji: '🐟', top: '55%', dur: '18s', delay: '3s' },
-          { emoji: '🐡', top: '72%', dur: '16s', delay: '7s' },
-        ],
-      }
-    }
-    if (themeId === 'garden') {
-      return {
-        candies: ['🍬', '🍭', '🧁', '🍩', '🍪', '🎀'].map((emoji, i) => ({
-          id: i, emoji,
-          left: `${8 + i * 16}%`,
-          top: `${10 + (i % 3) * 30}%`,
-          delay: `${i * 0.7}s`,
-        })),
-      }
-    }
-    // rainbow
-    return {
-      stars: Array.from({ length: 30 }, (_, i) => ({
-        id: i,
-        left: `${Math.random() * 100}%`,
-        top: `${Math.random() * 100}%`,
-        delay: `${Math.random() * 3}s`,
-      })),
-      planets: [
-        { size: 40, color: 'rgba(139,92,246,0.3)', left: '12%', top: '18%' },
-        { size: 24, color: 'rgba(236,72,153,0.25)', left: '80%', top: '30%' },
-        { size: 16, color: 'rgba(6,182,212,0.3)', left: '65%', top: '70%' },
-      ],
-    }
-  }, [themeId])
-
-  if (themeId === 'ocean') {
-    return (
-      <>
-        {items.bubbles.map((b) => (
-          <div key={b.id} className="bubble" style={{ width: b.size, height: b.size, left: b.left, bottom: '-30px', animationDuration: b.dur, animationDelay: b.delay }} />
-        ))}
-        {items.fish.map((f, i) => (
-          <span key={i} className="fish" style={{ top: f.top, animationDuration: f.dur, animationDelay: f.delay, fontSize: 22 }}>{f.emoji}</span>
-        ))}
-        <div className="sea-floor" />
-      </>
-    )
-  }
-  if (themeId === 'garden') {
-    return (
-      <>
-        {items.candies.map((c) => (
-          <span key={c.id} className="candy-float" style={{ left: c.left, top: c.top, animationDelay: c.delay, fontSize: 28 }}>{c.emoji}</span>
-        ))}
-      </>
-    )
-  }
-  return (
-    <>
-      {items.stars.map((s) => (
-        <div key={s.id} className="star" style={{ left: s.left, top: s.top, animationDelay: s.delay }} />
-      ))}
-      {items.planets.map((p, i) => (
-        <div key={i} className="planet" style={{ width: p.size, height: p.size, background: p.color, left: p.left, top: p.top }} />
-      ))}
-      <div className="shooting-star" style={{ top: '15%', left: '20%', animationDelay: '1s' }} />
-      <div className="shooting-star" style={{ top: '40%', left: '60%', animationDelay: '3.5s' }} />
-    </>
   )
 }
 
@@ -233,7 +157,6 @@ function PinLoginForm({ themeId, onLogin }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [shakeKey, setShakeKey] = useState(0)
-  const [wakeOn, setWakeOn] = useState(() => localStorage.getItem('mindsafe_wake_enabled') !== '0')
 
   const pressKey = (key) => {
     setError('')
@@ -307,22 +230,6 @@ function PinLoginForm({ themeId, onLogin }) {
       >
         {loading ? '正在进入...' : '进入 🚀'}
       </button>
-
-      {/* 语音唤醒一体化勾选框 */}
-      <div className="voice-row" style={{ marginTop: 14 }}>
-        <label className={`wake-check wake-check--${themeId}`}>
-          <input
-            type="checkbox"
-            checked={wakeOn}
-            onChange={(e) => {
-              const next = e.target.checked
-              setWakeOn(next)
-              localStorage.setItem('mindsafe_wake_enabled', next ? '1' : '0')
-            }}
-          />
-          🎙️ 语音唤醒（说"哈喽波波"对话）
-        </label>
-      </div>
     </div>
   )
 }
@@ -341,11 +248,12 @@ function RegisterForm({ themeId, onRegister }) {
   const [regUserId, setRegUserId] = useState(null) // 注册成功后的 userId（声纹采集用）
   const [hasVoiceprint, setHasVoiceprint] = useState(false) // 是否已完成声纹采集
   const [familyCode, setFamilyCode] = useState('') // 注册成功后展示
+  const [showConfirm, setShowConfirm] = useState(false) // 注册信息二次确认
 
   const update = (key, value) => { setForm((f) => ({ ...f, [key]: value })); setError('') }
 
-  // 第一步：表单校验通过后进入 PIN 设置（此时尚未调 API，不写数据库）
-  const handleFormSubmit = async (e) => {
+  // 第一步：表单校验通过后弹二次确认（确认后才调 API）
+  const handleFormSubmit = (e) => {
     e.preventDefault()
     if (!form.inviteCode.trim() || !form.pseudonym.trim() || !form.age || !form.gender) {
       setError('请填写所有必填项'); return
@@ -359,6 +267,13 @@ function RegisterForm({ themeId, onRegister }) {
       if (!form.guardianPhone.trim()) { setError('不满 14 周岁需填写家长手机号'); return }
       if (!/^1\d{10}$/.test(form.guardianPhone.trim())) { setError('请输入正确的 11 位手机号'); return }
     }
+    setShowConfirm(true)
+  }
+
+  // 确认后真正提交注册（进入 PIN 设置；此时尚未写 PIN）
+  const doRegister = async () => {
+    setShowConfirm(false)
+    const age = parseInt(form.age, 10)
     setLoading(true); setError('')
     try {
       const { trialRegister, setToken: st, setRefreshToken: srt, setUser: su, markConsentDone } = await import('../api')
@@ -465,6 +380,13 @@ function RegisterForm({ themeId, onRegister }) {
             try {
               await enrollVoiceprint(regUserId, form.pseudonym.trim(), result.embeddings)
               setHasVoiceprint(true)
+              // 签发设备凭证：下次声音登录时凭其换取正式 token
+              try {
+                const cred = await issueVoiceCredential()
+                await saveVoiceCredential(regUserId, cred)
+              } catch (e) {
+                console.warn('[声纹注册] 设备凭证签发失败（不影响本次注册）:', e)
+              }
             } catch (e) {
               console.warn('[声纹注册] 存储失败:', e)
             }
@@ -607,6 +529,25 @@ function RegisterForm({ themeId, onRegister }) {
       <button type="submit" className={`btn-enter btn-enter--${themeId}`} disabled={loading}>
         {loading ? '正在注册...' : '注册 🚀'}
       </button>
+
+      {/* 注册信息二次确认（防误触） */}
+      <ConfirmDialog
+        open={showConfirm}
+        emoji="📝"
+        title="确认要注册吗？"
+        message="检查一下信息对不对哦"
+        confirmText="没错，注册！"
+        cancelText="再改改"
+        onConfirm={doRegister}
+        onCancel={() => setShowConfirm(false)}
+      >
+        <div className="mt-3 rounded-2xl bg-gray-50 p-3 text-left text-sm text-gray-600">
+          <p>昵称：<strong>{form.pseudonym.trim()}</strong></p>
+          <p>性别：{form.gender === 'male' ? '👦 男生' : '👧 女生'}</p>
+          <p>年龄：{form.age} 岁</p>
+          {form.guardianPhone.trim() && <p>家长手机：{form.guardianPhone.trim()}</p>}
+        </div>
+      </ConfirmDialog>
     </form>
   )
 }
