@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useTheme } from '../theme/ThemeProvider'
 import { api } from '../api'
 import { unlockAudio } from '../utils/audioUnlock'
@@ -27,6 +27,12 @@ export default function EmotionSelect({ onStart, userName, onLogout }) {
   const [muted, setMuted] = useState(false)
   const [confirmSwitch, setConfirmSwitch] = useState(false)
   const { theme, themeId } = useTheme()
+
+  // 麦克风环境检测（传给设置面板，避免误显“不支持”）
+  const micSupported = useMemo(
+    () => typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getUserMedia,
+    []
+  )
 
   const handleStart = async () => {
     if (!selected) return
@@ -89,6 +95,7 @@ export default function EmotionSelect({ onStart, userName, onLogout }) {
         onClose={() => setSettingsOpen(false)}
         muted={muted}
         onToggleMute={() => setMuted(v => !v)}
+        wakeSupported={micSupported}
         onToggleWake={() => {}}
       />
       {/* 切换同学二次确认 */}

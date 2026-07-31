@@ -586,6 +586,8 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: an
               : streaming ? '让我想想...'
               : tts.playing ? '我在说给你听...'
               : voiceCall.wakeStatus === 'detected' ? '听到了！🎉'
+              : voiceCall.wakeStatus === 'loading' ? '语音引擎加载中...'
+              : voiceCall.wakeStatus === 'error' ? '语音引擎未就绪'
               : voiceCall.mode === 'standby' ? '叫我“哈喽波波”'
               : voiceCall.mode === 'active' ? '我在听，直接说吧'
               : '想说什么就说什么吧'}

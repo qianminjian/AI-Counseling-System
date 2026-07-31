@@ -188,14 +188,40 @@ export function useWakeWord({ active, onDetected }) {
     }
 
     ;(async () => {
-      try {
-        // 预加载模型（首次约 20MB 下载，之后浏览器缓存）
-        setWakeStatus('loading')
-        console.info('[WakeWord] 开始加载 Whisper 模型...')
-        await getTranscriber()
-        if (cancelled) return
-        console.info('[WakeWord] ✅ 模型加载完成，启动麦克风监听')
+      // 模型加载重试（最多 3 次，间隔 5s，应对手机网络不稳定）
+      const MAX_RETRIES = 3
+      const RETRY_DELAY = 5000
+      let lastErr: any = null
 
+      for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+        if (cancelled) return
+        try {
+          setWakeStatus('loading')
+          console.info(`[WakeWord] 加载 Whisper 模型... (尝试 ${attempt}/${MAX_RETRIES})`)
+          await getTranscriber()
+          if (cancelled) return
+          console.info('[WakeWord] ✅ 模型加载完成')
+          lastErr = null
+          break // 成功，跳出重试循环
+        } catch (err) {
+          lastErr = err
+          console.warn(`[WakeWord] 模型加载失败 (${attempt}/${MAX_RETRIES}):`, err?.message || err)
+          // getTranscriber 内部失败时已置 transcriberPromise=null，下次调用会重新加载
+          if (attempt < MAX_RETRIES && !cancelled) {
+            setWakeStatus('loading') // 保持 loading 状态，让用户知道在重试
+            await new Promise(r => setTimeout(r, RETRY_DELAY))
+          }
+        }
+      }
+
+      if (cancelled) return
+      if (lastErr) {
+        console.warn('[WakeWord] 模型加载最终失败，等待用户手动重试')
+        setWakeStatus('error')
+        return
+      }
+
+      try {
         stream = await navigator.mediaDevices.getUserMedia({
           audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
         })
@@ -234,10 +260,8 @@ export function useWakeWord({ active, onDetected }) {
         setWakeStatus('listening')
         console.info('[WakeWord] 🎤 麦克风已启动，等待唤醒词...')
       } catch (err) {
-        console.warn('[WakeWord] 初始化失败（下次激活时重试）:', err?.message || err)
+        console.warn('[WakeWord] 麦克风初始化失败:', err?.message || err)
         setWakeStatus('error')
-        // 不再 setSupported(false)：保持 UI 开关可见，允许用户重试
-        // 清理已获取的部分资源
         stream?.getTracks().forEach((t) => t.stop())
         audioCtx?.close().catch(() => {})
       }
