@@ -3,6 +3,7 @@ package com.mindsafe.service.auth;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.mindsafe.common.dto.ErrorCode;
 import com.mindsafe.common.exception.BizException;
+import com.mindsafe.common.tenant.TenantContextHolder;
 import com.mindsafe.domain.entity.ConsentRecord;
 import com.mindsafe.domain.entity.TrialInviteCode;
 import com.mindsafe.domain.entity.User;
@@ -41,6 +42,13 @@ public class TrialAuthService {
     private final PasswordEncoder passwordEncoder;
     private final PasswordPolicyService passwordPolicyService;
 
+    /**
+     * 试运行开关：age<14 注册时自动写入监护人同意（跳过 SMS 闭环）。
+     * 生产环境须置 false，走 GuardianConsentService 真实 SMS 闭环（AUTH-040，PIPL §31）。
+     */
+    @org.springframework.beans.factory.annotation.Value("${mindsafe.consent.trial-auto-grant:true}")
+    private boolean trialAutoGrantGuardianConsent;
+
     public TrialAuthService(TrialInviteCodeMapper inviteCodeMapper,
                             UserMapper userMapper,
                             ConsentRecordMapper consentRecordMapper,
@@ -67,6 +75,13 @@ public class TrialAuthService {
     @Transactional
     public User registerTrialUser(String inviteCode, String pseudonym, int age,
                                   String role, String gender, String consentVersion, String pin) {
+        // 前置认证链路（无 JWT，无租户上下文）：显式声明系统作用域（M1-003 fail-fast 配套）
+        return TenantContextHolder.callAsSystem(() ->
+                doRegisterTrialUser(inviteCode, pseudonym, age, role, gender, consentVersion, pin));
+    }
+
+    private User doRegisterTrialUser(String inviteCode, String pseudonym, int age,
+                                     String role, String gender, String consentVersion, String pin) {
         // 1. 校验告知同意版本
         if (!CURRENT_CONSENT_VERSION.equals(consentVersion)) {
             throw new BizException(ErrorCode.CONSENT_VERSION_MISMATCH);
@@ -103,9 +118,11 @@ public class TrialAuthService {
                 user.getUserId(), TRIAL_TENANT_ID, "trial_terms", consentVersion);
         consentRecordMapper.insert(consent);
 
-        // 5.1 试运行阶段：age<14 自动写入监护人同意记录（无 SMS 网关，注册时已收集监护人手机号）
-        //     正式上线后由 GuardianConsentService SMS 闭环替代，见 TASK-TRACKER AUTH-040
-        if (age < 14) {
+        // 5.1 监护人同意（AUTH-040，PIPL §31：仅 age<14 需监护人同意；14+ 本人同意即生效）
+        //     - age>=14：注册即写入记录（本人已勾选告知同意），否则 ChatController 门禁永久拦截
+        //     - age<14 且试运行开关开（mindsafe.consent.trial-auto-grant=true）：自动写入，跳过 SMS
+        //     - age<14 且开关关（生产）：不写入，由前端引导 /guardian-consent/request+confirm 走 SMS 闭环
+        if (age >= 14 || trialAutoGrantGuardianConsent) {
             ConsentRecord guardianConsent = ConsentRecord.create(
                     user.getUserId(), TRIAL_TENANT_ID, "guardian_consent", "v1.0");
             consentRecordMapper.insert(guardianConsent);
@@ -181,6 +198,11 @@ public class TrialAuthService {
      * @return 登录成功的用户
      */
     public User loginWithPin(String pseudonym, String pin) {
+        // 前置认证链路（无 JWT，跨租户按昵称查用户）：显式声明系统作用域（M1-003 fail-fast 配套）
+        return TenantContextHolder.callAsSystem(() -> doLoginWithPin(pseudonym, pin));
+    }
+
+    private User doLoginWithPin(String pseudonym, String pin) {
         User user = userMapper.selectOne(
                 new LambdaQueryWrapper<User>()
                         .eq(User::getPseudonym, pseudonym)

@@ -3,6 +3,7 @@ package com.mindsafe.service.auth;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.mindsafe.common.dto.ErrorCode;
 import com.mindsafe.common.exception.BizException;
+import com.mindsafe.common.tenant.TenantContextHolder;
 import com.mindsafe.domain.entity.ParentAccount;
 import com.mindsafe.domain.entity.ParentStudentLink;
 import com.mindsafe.domain.entity.User;
@@ -48,6 +49,11 @@ public class ParentAuthService {
      */
     @Transactional
     public ParentAccount register(String familyCode, String phone, String password, String relation) {
+        // 前置认证链路（无 JWT，家庭码跨租户找学生）：显式声明系统作用域（M1-003 fail-fast 配套）
+        return TenantContextHolder.callAsSystem(() -> doRegister(familyCode, phone, password, relation));
+    }
+
+    private ParentAccount doRegister(String familyCode, String phone, String password, String relation) {
         // 1. 校验手机号格式
         if (phone == null || !phone.matches("^1[3-9]\\d{9}$")) {
             throw new BizException(ErrorCode.PARAM_INVALID, "手机号格式不正确");
@@ -116,6 +122,11 @@ public class ParentAuthService {
      * 家长登录：手机号 + 密码
      */
     public ParentAccount login(String phone, String password) {
+        // 前置认证链路（无 JWT，手机号跨租户找账号）：显式声明系统作用域（M1-003 fail-fast 配套）
+        return TenantContextHolder.callAsSystem(() -> doLogin(phone, password));
+    }
+
+    private ParentAccount doLogin(String phone, String password) {
         ParentAccount account = parentAccountMapper.selectOne(
                 new LambdaQueryWrapper<ParentAccount>()
                         .eq(ParentAccount::getPhone, phone)
@@ -139,14 +150,17 @@ public class ParentAuthService {
      * 查询家长绑定的所有学生
      */
     public List<User> getLinkedStudents(UUID parentId) {
-        List<ParentStudentLink> links = parentStudentLinkMapper.selectList(
-                new LambdaQueryWrapper<ParentStudentLink>()
-                        .eq(ParentStudentLink::getParentId, parentId)
-        );
-        return links.stream()
-                .map(link -> userMapper.selectById(link.getStudentUserId()))
-                .filter(u -> u != null && "active".equals(u.getStatus()))
-                .toList();
+        // 注册/登录响应内调用时无租户上下文（家长租户跨校不定）：系统作用域 + parentId 显式过滤
+        return TenantContextHolder.callAsSystem(() -> {
+            List<ParentStudentLink> links = parentStudentLinkMapper.selectList(
+                    new LambdaQueryWrapper<ParentStudentLink>()
+                            .eq(ParentStudentLink::getParentId, parentId)
+            );
+            return links.stream()
+                    .map(link -> userMapper.selectById(link.getStudentUserId()))
+                    .filter(u -> u != null && "active".equals(u.getStatus()))
+                    .toList();
+        });
     }
 
     private void createLink(UUID parentId, UUID studentUserId, String relation, UUID tenantId) {

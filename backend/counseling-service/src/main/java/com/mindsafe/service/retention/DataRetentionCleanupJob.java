@@ -1,6 +1,7 @@
 package com.mindsafe.service.retention;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.mindsafe.common.tenant.TenantContextHolder;
 import com.mindsafe.domain.entity.CounselingSession;
 import com.mindsafe.domain.entity.MessageSummary;
 import com.mindsafe.domain.mapper.CounselingSessionMapper;
@@ -59,6 +60,11 @@ public class DataRetentionCleanupJob {
      */
     @Scheduled(cron = "${mindsafe.security.data-retention.cleanup-cron:0 0 3 * * ?}")
     public void executeCleanup() {
+        // 全租户清理属合法跨租户链路：显式声明系统作用域（M1-003 fail-fast 配套）
+        TenantContextHolder.runAsSystem(this::doCleanup);
+    }
+
+    private void doCleanup() {
         log.info("数据保留期清理任务开始: normalDays={}, highRiskDays={}", normalRetentionDays, highRiskRetentionDays);
 
         Instant normalCutoff = Instant.now().minus(normalRetentionDays, ChronoUnit.DAYS);

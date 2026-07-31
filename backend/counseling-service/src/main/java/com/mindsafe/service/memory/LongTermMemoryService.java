@@ -5,7 +5,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mindsafe.ai.chat.AiChatService;
 import com.mindsafe.domain.entity.LongTermMemory;
+import com.mindsafe.domain.entity.RiskEvent;
 import com.mindsafe.domain.mapper.LongTermMemoryMapper;
+import com.mindsafe.domain.mapper.RiskEventMapper;
 import com.mindsafe.service.profile.MemoryProfileBackfillService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -51,6 +53,7 @@ public class LongTermMemoryService {
     private final MemoryRiskCorrelator memoryRiskCorrelator;
     private final MemoryRelevanceScorer memoryRelevanceScorer;
     private final ThemeEvolutionEngine themeEvolutionEngine;
+    private final RiskEventMapper riskEventMapper;
 
     public LongTermMemoryService(LongTermMemoryMapper memoryMapper,
                                  AiChatService aiChatService,
@@ -58,7 +61,8 @@ public class LongTermMemoryService {
                                  MemoryProfileBackfillService backfillService,
                                  MemoryRiskCorrelator memoryRiskCorrelator,
                                  MemoryRelevanceScorer memoryRelevanceScorer,
-                                 ThemeEvolutionEngine themeEvolutionEngine) {
+                                 ThemeEvolutionEngine themeEvolutionEngine,
+                                 RiskEventMapper riskEventMapper) {
         this.memoryMapper = memoryMapper;
         this.aiChatService = aiChatService;
         this.objectMapper = objectMapper;
@@ -66,6 +70,7 @@ public class LongTermMemoryService {
         this.memoryRiskCorrelator = memoryRiskCorrelator;
         this.memoryRelevanceScorer = memoryRelevanceScorer;
         this.themeEvolutionEngine = themeEvolutionEngine;
+        this.riskEventMapper = riskEventMapper;
     }
 
     /**
@@ -290,6 +295,8 @@ public class LongTermMemoryService {
                 if ("ELEVATED".equals(signal.signalLevel())) {
                     log.warn("📊 MEM-103 纵向风险信号[ELEVATED]: student={}, theme={}, count={}次/{}天, 建议量表复测",
                             studentUserId, signal.theme(), signal.occurrenceCount(), signal.windowDays());
+                    // RISK-204 / BL-08：持久化到 risk_events 教师关注通道
+                    persistMemoryRiskSignal(tenantId, studentUserId, signal);
                 } else {
                     log.info("📊 MEM-103 纵向风险信号[WATCH]: student={}, theme={}, count={}次/{}天",
                             studentUserId, signal.theme(), signal.occurrenceCount(), signal.windowDays());
@@ -412,5 +419,32 @@ public class LongTermMemoryService {
             return node.get(field).asText();
         }
         return null;
+    }
+
+    /**
+     * RISK-204 / BL-08：将 MEM-103 纵向风险 ELEVATED 信号持久化到 risk_events。
+     * <p>
+     * source_type=attention 标识非实时关注信号；risk_level=YELLOW(1) 不触发紧急通知；
+     * detected_by=memory_correlator 标识信号来源。失败安全：异常仅记日志。
+     */
+    private void persistMemoryRiskSignal(UUID tenantId, UUID studentUserId, MemoryRiskCorrelator.RiskSignal signal) {
+        try {
+            RiskEvent event = new RiskEvent();
+            event.setRiskEventId(UUID.randomUUID());
+            event.setTenantId(tenantId);
+            event.setStudentUserId(studentUserId);
+            event.setSourceType("attention");
+            event.setRiskType("memory_risk:" + signal.theme());
+            event.setRiskLevel(1); // YELLOW：非实时关注
+            event.setDetectedBy("memory_correlator");
+            event.setDetectedAt(Instant.now());
+            event.setStatus("open");
+            event.setCreatedAt(Instant.now());
+            event.setUpdatedAt(Instant.now());
+            riskEventMapper.insert(event);
+            log.info("RISK-204 记忆风险信号已持久化: riskEventId={}, theme={}", event.getRiskEventId(), signal.theme());
+        } catch (Exception e) {
+            log.warn("RISK-204 记忆风险持久化降级（不影响业务）: {}", e.getMessage());
+        }
     }
 }

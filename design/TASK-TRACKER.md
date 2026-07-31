@@ -23,12 +23,12 @@
 **fix-12 裁决结果（2026-07-28，钱敏健确认）：**
 > 全量扫描（从 18 Controller + @Scheduled + Spring 自动装配出发追踪依赖链）实测 **39 个孤儿**（审计时 43 个含世界 B 已删组件）。
 > - **删除 3 个**（YAGNI，零消费者基础设施）：`CacheService` + `CacheServiceTest` / `BusinessMetrics` / `PageResponse`
-> - **保留·待接线 27 个**：有明确 backlog ID（TOOL/TTSFX/AB/BILL/KB/MEM/PROF/PEVAL/EMP/ORCH/CBT/ALLY/RISK/WB/SCALE 系列），接线性价比高
-> - **保留·远期 5 个**：VoiceEffectivenessTracker / VoiceEmotionTrendAnalyzer / ProfileEffectivenessTracker / EmotionOrchestrationEvaluator / TrendAnomalySignaler
+> - **~~保留·待接线 27 个~~** ✅ 全部接线完成（2026-07-28 P0+P1 批次）：ORCH/CBT/MEM/EMP/ALLY/WB/PEVAL/TOOL/TTSFX/AB/BILL/RISK-204/SAFE-204 全系列生产可达
+> - **保留·远期 5 个** ✅ 已接线（2026-07-28）：SessionEndAnalyticsService 聚合调用（VoiceEmotionTrendAnalyzer/TrendAnomalySignaler/EmotionOrchestrationEvaluator/ProfileEffectivenessTracker）+ endSession 链
 > - **保留·暂缓 3 个**：AssessmentScoringEngine / ScoringResult / BuiltinScales（量表施测暂缓，决策 #21）
-> - **保留·待接线（数据层）2 个**：ModelCallLog + ModelCallLogMapper（审计/计费需要）
+> - **~~保留·待接线（数据层）2 个~~** ✅ 已接线（2026-07-28，AiChatServiceImpl 审计落库）
 >
-> 审计修复批次 fix-01~12 **全部收官**。剩余 36 个孤儿组件状态统一为 🟧 已编码未接线，按 §二十三 优先级顺序逐步接线。
+> 审计修复批次 fix-01~12 **全部收官**。P0+P1 接线批次 **全部收官**（2026-07-28）。剩余待实施项均为 🔭 远期或暂缓。
 
 ---
 
@@ -84,7 +84,7 @@
 |--------|----------|------|------|
 | M1-001 | Maven 多模块骨架搭建（7 模块） | backend/ | ✅ 完成 |
 | M1-002 | PostgreSQL 初始化 + Flyway 迁移 | backend/ | ✅ 完成 |
-| M1-003 | Schema 级多租户路由实现 | counseling-tenant/ | 🟧 部分实现（名不副实已校正）——fix-06 已落地**行级**隔离纵深防线：`TenantLineInnerInterceptor`（策略 B，已认证自动注入 tenant_id）+ `TenantContextHolder` + `ParentAuthService` 去硬编码 + 6 用例守卫；**仍为共享 tenant_template schema 行级隔离，非 Schema 级物理隔离**（路线 A 已定稿，B 挂起）；fail-fast 收紧待集成测试后，见审计 P-02/P-06 + design/07 §11 |
+| M1-003 | Schema 级多租户路由实现 | counseling-tenant/ | 🟧 部分实现（名不副实已校正）——fix-06 落地**行级**隔离纵深防线：`TenantLineInnerInterceptor` + `TenantContextHolder` + `ParentAuthService` 去硬编码；2026-07-28 M1-003 fail-fast 已收紧：无上下文且非系统作用域的业务表 DAO 调用抛 `IllegalStateException`，合法跨租户链路（8 处）经 `runAsSystem`/`callAsSystem` 显式声明 + `TaskDecorator` 异步传播，单测+IT 全绿；**仍为共享 tenant_template schema 行级隔离，非 Schema 级物理隔离**（路线 A 已定稿，B 挂起），见审计 P-02/P-06 + design/07 §11 |
 | M1-004 | 用户与权限模型（JWT + RBAC） | counseling-domain/ | ✅ 完成 |
 | M1-005 | Spring AI LLM Provider 接入（DeepSeek） | counseling-ai/ | ✅ 完成 |
 | M1-006 | Safety Agent 实现（双层输出审查 + PII） | counseling-ai/ | ✅ 完成 |
@@ -251,7 +251,7 @@
 | AUTH-032 | 家长撤回同意 → 冻结+删除 | ✅ 完成 | PIPL §47，ConsentWithdrawalService + ParentController 端点 |
 | AUTH-033 | 年度合规审计报送 | ⏳ 待开始 | 未保条例 §37，流程性报送（非代码） |
 | AUTH-034 | WebAuthn 设备端指纹/Face ID（可选） | ⏳ 待开始 | 不采集生物数据，需真机测试 |
-| AUTH-040 | 监护人同意 SMS 闭环（替代试运行自动写入） | ⏳ 待开始 | PIPL §31 完整合规：接入短信网关→发送验证码→监护人确认→写入 guardian_consent。前置：DEPLOY-010 阿里云 SMS 签名/模板。当前试运行阶段由 TrialAuthService 注册时自动写入（无 SMS 网关），正式上线前必须替换为真实闭环 |
+| AUTH-040 | 监护人同意 SMS 闭环（替代试运行自动写入） | ✅ 代码侧完成（2026-07-31） | PIPL §31 完整闭环已落地：配置开关 `mindsafe.consent.trial-auto-grant`（默认 true=试运行自动写入；prod compose 默认 false）→ 注册响应 `guardianConsentPending` → 前端收集监护人手机号 + 验证码确认页（student-h5）→ `/guardian-consent/request+confirm` 写入 guardian_consent；age≥14 本人同意注册即写入（修复 14+ 被门禁卡死 bug）。测试：单测 7 用例 + GuardianConsentFlowIT 6 用例全绿。剩余前置：DEPLOY-010 阿里云 SMS 签名/模板（生产开启 `SMS_PROVIDER=aliyun`） |
 
 ---
 
@@ -676,11 +676,11 @@
 | RISK-201 | RED 硬短路跳过 LLM，复用 CrisisResources（**儿童安全红线级，可独立立即做**） | **P0 安全最高** | design/52 二 | 无 | ✅ 已完成（2026-07-28）：ConversationServiceImpl 4.2 段 RED 硬短路 + 分年级预审核文案 + 安全响应模式，见 design/04 §18.2 落地记录 |
 | RISK-202 | M2 语义风险分类（SAF_001）上线补隐性表达 | P0 安全 | design/52 二 | DEC-CBT（已决） | ✅ 已完成（2026-07-28）：SemanticRiskClassifier 非流式前置调用（800ms 门禁可配）+ 主线 1.6 段只升不降 + SafetyAgent 委托复用，见 design/04 §18.3 落地记录 |
 | RISK-203 | RiskScoreCalculator + C-SSRS 儿童分级（落地 04 §十） | P1 | design/52 二 | RISK-202 | ✅ 已完成（2026-07-28） |
-| RISK-204 | TrendAnalyzer 纵向趋势（汇入 BL-08 通道，合并 VCL-003/MEM-103） | P2 | design/52 二 | — | ⏳ 待实施 |
+| RISK-204 | TrendAnalyzer 纵向趋势（汇入 BL-08 通道，合并 VCL-003/MEM-103） | P2 | design/52 二 | — | ✅ 已完成（2026-07-28）：SessionEndAnalyticsService+LongTermMemoryService 持久化 attention 信号到 risk_events（source_type=attention, risk_level=YELLOW），复用 BL-08 通道 |
 | SAFE-201 | 保密边界儿童化告知话术（接 design/22，落到对话首触点） | P0 安全 | design/52 三 | 无 | ✅ 已完成（2026-07-28）：ConfidentialityNotice 分年级话术 + createSession 注入 + turn=0 审计落库，见 design/14 §12.3 落地记录 |
 | SAFE-202 | Layer2 高敏场景前置化/触发关注 | P1 | design/52 三 | 无 | ✅ 已完成（2026-07-28） |
 | SAFE-203 | 危机热线多租户可配置（去硬编码） | P1 | design/52 三 | 无 | ✅ 已完成（2026-07-28） |
-| SAFE-204 | 姓名/地址脱敏扩展 | P2 | design/52 三 | 无 | ⏳ 待实施 |
+| SAFE-204 | 姓名/地址脱敏扩展 | P2 | design/52 三 | 无 | ✅ 已完成（2026-07-28）：PiiDesensitizer 扩展百家姓词典+上下文句式姓名正则+地址三层正则，maskName/maskAddress 方法，26 用例全绿 |
 | CBT-201 | CBT 阶段标记结构化输出+落库供评估（接 45） | P1 | design/52 一 | DEC-CBT（已决） | ✅ 已完成（2026-07-28，CbtStageRouter） |
 | CBT-202 | 年龄分层 CBT 技能路由（低龄行为激活） | P1 | design/52 一 | CBT-201 | ✅ 已完成（2026-07-28，CbtStageRouter AgeStrategy） |
 | EMP-201 | 共情“命名-确认-容纳”评估维度（接 45） | P1 | design/52 四 | PEVAL-001 | ✅ 已完成（2026-07-28，EmpathyStructureEvaluator 三段式+反模式检测） |
@@ -756,7 +756,7 @@
 | 28 | 语音唤醒与冷场引导 | 🔵 | 冷场决策(NudgeDecisionModel)已生效核对；与 47/48 语音闭环对齐；唤醒授权措辞（合规） | P1 | 钱敏健+Agent | ✅ 已深化（§十二，2026-07-28，三功能全部落地 🟩，xiaotaiyang 已修复；授权措辞+唤醒词入待确认清单） |
 | 29 | 学生画像与年龄适配 | 🔵 | 核心竞争力（近期）：与 46 画像闭环、44 编排 personality 层衔接 | P1 | Agent | ✅ 已深化（§十，2026-07-28，实现领先于文档：五断裂点已全部修复 🟩） |
 | 30 | 产品全景优化规划 | 🔵 | 路线图纳入 DEC-CBT 落地 + 本设计深化批次；Sprint 节奏对齐 | P2 | 钱敏健+Agent | ✅ 已深化（§十七，2026-07-28，Sprint A-E 已被超越不再按表执行；上线门禁=量表合规+RAG 空库；BIZ-001 挂起待 07） |
-| 31 | 等保二级差距评估 | 🔵 | 合规路径随部署推进（非开发） | P2 | 钱敏健 | 🟧 结论撤回（2026-07-29 审计）后大部分修复：fix-03 加密接线 / fix-07 prod profile 激活 / fix-08 TLS+wss+origin 收敛 / fix-10 CI 门禁修真（2026-07-29）均已完；仍待：SecurityConfig anyRequest().permitAll() 收紧，完成后重评等保结论 |
+| 31 | 等保二级差距评估 | 🔵 | 合规路径随部署推进（非开发） | P2 | 钱敏健 | ✅ 代码侧差距全部修复（2026-07-29）：fix-03 加密接线 / fix-07 prod profile 激活 / fix-08 TLS+wss+origin 收敛 / fix-10 CI 门禁修真 / SecurityConfig anyRequest().authenticated() 收紧（commit 701a3a0，白名单仅 auth 入口/wecom/guardian-consent confirm/parent/health/ws，教师端点已核实全落 /teacher/**+/alerts/** 匹配器）；剩余为运维/文档项（云安全组审计、异地备份、WAF、管理制度 3 份），钱敏健牵头 |
 | 32 | 商用发布前置待办 | 🔵 | 补量表施测合规门禁项；与本追踪表联动 | P1 | 钱敏健 | ⬜ 待深化 |
 | 33 | 系统测试培训手册 | 🔵 | 编排/量表/工具箱上线后补测试点 | P2 | Agent | ⬜ 待深化 |
 | 34 | 心理量表数字化 | 🟢 | 近期已深化；施测接线**上线门禁**(SCALE-001/002)待钱敏健决策 | P1 | 钱敏健+Agent | 🟢 维护 |

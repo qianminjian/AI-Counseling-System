@@ -1,6 +1,7 @@
 package com.mindsafe.service.teacher;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.mindsafe.common.tenant.TenantContextHolder;
 import com.mindsafe.domain.entity.RiskEvent;
 import com.mindsafe.domain.mapper.RiskEventMapper;
 import com.mindsafe.service.alert.AlertService;
@@ -78,6 +79,11 @@ public class SlaEscalationScanner {
         if (!enabled) {
             return;
         }
+        // 全租户扫描属合法跨租户链路：显式声明系统作用域（M1-003 fail-fast 配套）
+        TenantContextHolder.runAsSystem(this::doScan);
+    }
+
+    private void doScan() {
         Instant now = Instant.now();
         try {
             List<RiskEvent> candidates = riskEventMapper.selectList(

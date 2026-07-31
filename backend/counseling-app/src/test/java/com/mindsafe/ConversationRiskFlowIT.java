@@ -118,6 +118,8 @@ class ConversationRiskFlowIT extends AbstractIntegrationTest {
         Long count = jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM tenant_template.consent_records WHERE user_id = ? AND consent_type = 'guardian_consent'",
                 Long.class, studentUserId);
+        // 试运行阶段注册时 age<14 会自动写入一条（TrialAuthService，AUTH-040 SMS 闭环后移除），
+        // 加上本测试直插的一条 ≥ 1 即满足门禁前提
         assertThat(count).isGreaterThanOrEqualTo(1);
     }
 

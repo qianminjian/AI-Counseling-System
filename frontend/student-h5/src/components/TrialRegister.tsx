@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { trialRegister, setToken, setRefreshToken, setUser } from '../api'
+import { trialRegister, setToken, setRefreshToken, setUser, requestGuardianConsent, confirmGuardianConsent } from '../api'
 
 /** 家长绑定（POST /api/v1/parent/auth/register） */
 async function parentBind(familyCode, phone, password, relation) {
@@ -127,6 +127,106 @@ function FamilyCodePage({ familyCode, onDone }) {
 }
 
 /**
+ * 监护人同意验证码确认页（AUTH-040，PIPL §31）
+ * <p>
+ * 注册响应 guardianConsentPending=true（age<14 且后端未自动写入同意记录）时进入：
+ * 监护人手机收到验证码 → 告知孩子输入 → 确认后写入 guardian_consent，对话门禁放行。
+ */
+function GuardianConsentPage({ guardianPhone, onConfirmed }) {
+  const [code, setCode] = useState('')
+  const [sending, setSending] = useState(false)
+  const [confirming, setConfirming] = useState(false)
+  const [sent, setSent] = useState(false)
+  const [error, setError] = useState('')
+
+  const maskedPhone = guardianPhone.replace(/^(\d{3})\d{4}(\d{4})$/, '$1****$2')
+
+  const handleSend = async () => {
+    setSending(true)
+    setError('')
+    try {
+      await requestGuardianConsent(guardianPhone)
+      setSent(true)
+    } catch (err) {
+      setError(err.message || '验证码发送失败')
+    } finally {
+      setSending(false)
+    }
+  }
+
+  const handleConfirm = async (e) => {
+    e.preventDefault()
+    if (!/^\d{6}$/.test(code)) {
+      setError('请输入 6 位数字验证码')
+      return
+    }
+    setConfirming(true)
+    setError('')
+    try {
+      await confirmGuardianConsent(guardianPhone, code)
+      onConfirmed()
+    } catch (err) {
+      setError(err.message || '验证码错误，请重试')
+    } finally {
+      setConfirming(false)
+    }
+  }
+
+  return (
+    <div className="min-h-screen flex flex-col items-center justify-center p-6"
+      style={{ background: 'linear-gradient(to bottom, #fff8f0, #fdf3e8)' }}>
+      <div className="w-full max-w-sm text-center">
+        <div className="text-5xl mb-4">🛡️</div>
+        <h1 className="text-2xl font-bold text-gray-800 mb-2">需要家长同意</h1>
+        <p className="text-sm text-gray-500 mb-6">
+          不满 14 周岁需要监护人确认后才能开始对话
+        </p>
+
+        <form onSubmit={handleConfirm} className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 text-left space-y-4">
+          <p className="text-sm text-gray-600">
+            验证码将发送到监护人手机 <strong>{maskedPhone}</strong>，
+            请让爸爸妈妈把验证码告诉你
+          </p>
+
+          <div className="flex gap-2">
+            <input
+              type="tel" value={code}
+              onChange={(e) => { setCode(e.target.value.replace(/\D/g, '')); setError('') }}
+              placeholder="6 位验证码" maxLength={6}
+              className="flex-1 px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-amber-200 text-sm tracking-widest"
+            />
+            <button type="button" onClick={handleSend} disabled={sending}
+              className={`px-4 py-3 rounded-xl text-sm font-medium whitespace-nowrap transition-all ${
+                sending ? 'bg-gray-100 text-gray-400 cursor-wait' : 'bg-amber-100 text-amber-700 hover:bg-amber-200'
+              }`}
+            >{sending ? '发送中...' : sent ? '重新发送' : '发送验证码'}</button>
+          </div>
+
+          {sent && !error && (
+            <p className="text-xs text-green-600 bg-green-50 px-3 py-2 rounded-lg">
+              ✅ 验证码已发送（5 分钟内有效）
+            </p>
+          )}
+          {error && (
+            <p className="text-xs text-red-500 bg-red-50 px-3 py-2 rounded-lg">{error}</p>
+          )}
+
+          <button type="submit" disabled={confirming || !sent}
+            className={`w-full py-3.5 rounded-full text-white font-medium transition-all ${
+              confirming || !sent ? 'bg-gray-300 cursor-not-allowed' : 'bg-amber-500 hover:bg-amber-600 active:scale-[0.98]'
+            }`}
+          >{confirming ? '确认中...' : '确认同意'}</button>
+        </form>
+
+        <p className="text-center text-xs text-gray-400 mt-4">
+          依据《个人信息保护法》第 31 条，处理不满 14 周岁未成年人个人信息须取得监护人同意
+        </p>
+      </div>
+    </div>
+  )
+}
+
+/**
  * 试用注册页（邀请码 + 昵称 + 年龄 + 角色）
  * D1=成人体验者 / D2=邀请码 / D3=邀请码+昵称+年龄
  */
@@ -136,10 +236,12 @@ export default function TrialRegister({ consentVersion, onRegistered }) {
     pseudonym: '',
     gender: '',
     age: '',
+    guardianPhone: '',
   })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [familyCode, setFamilyCode] = useState(null) // 注册成功后显示
+  const [consentPending, setConsentPending] = useState(false) // 需监护人 SMS 确认（AUTH-040）
 
   const update = (key, value) => {
     setForm((f) => ({ ...f, [key]: value }))
@@ -161,6 +263,11 @@ export default function TrialRegister({ consentVersion, onRegistered }) {
       setError('昵称长度 2-12 字')
       return
     }
+    // age<14 后端强制要求监护人手机号（PIPL §31）
+    if (age < 14 && !/^1[3-9]\d{9}$/.test(form.guardianPhone.trim())) {
+      setError('不满 14 周岁需填写正确的监护人手机号')
+      return
+    }
 
     setLoading(true)
     setError('')
@@ -172,6 +279,7 @@ export default function TrialRegister({ consentVersion, onRegistered }) {
         role: 'student',
         gender: form.gender,
         consentVersion,
+        ...(age < 14 ? { guardianPhone: form.guardianPhone.trim() } : {}),
       })
       // 存储 token 和用户信息
       setToken(data.token)
@@ -183,8 +291,12 @@ export default function TrialRegister({ consentVersion, onRegistered }) {
         gender: form.gender,
         familyCode: data.familyCode,
       })
-      // 显示家庭码成功页
-      if (data.familyCode) {
+      // 后端未自动写入监护人同意 → 先走 SMS 验证码确认（AUTH-040）
+      if (data.guardianConsentPending) {
+        setFamilyCode(data.familyCode || null)
+        setConsentPending(true)
+      } else if (data.familyCode) {
+        // 显示家庭码成功页
         setFamilyCode(data.familyCode)
       } else {
         onRegistered(data)
@@ -194,6 +306,19 @@ export default function TrialRegister({ consentVersion, onRegistered }) {
     } finally {
       setLoading(false)
     }
+  }
+
+  // 需监护人确认：验证码闭环完成后再进家庭码页/正式进入
+  if (consentPending) {
+    return (
+      <GuardianConsentPage
+        guardianPhone={form.guardianPhone.trim()}
+        onConfirmed={() => {
+          setConsentPending(false)
+          if (!familyCode) onRegistered()
+        }}
+      />
+    )
   }
 
  // 注册成功：显示家庭码 + 家长绑定入口
@@ -289,10 +414,30 @@ export default function TrialRegister({ consentVersion, onRegistered }) {
             />
             {form.age && parseInt(form.age) < 14 && (
               <p className="mt-1.5 text-xs text-amber-600 bg-amber-50 px-3 py-2 rounded-lg">
-                ⚠️ 不满 14 周岁建议在家长陪同下使用
+                ⚠️ 不满 14 周岁需监护人同意后才能开始对话
               </p>
             )}
           </div>
+
+          {/* 监护人手机号（age<14 必填，PIPL §31） */}
+          {form.age && parseInt(form.age) < 14 && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                监护人手机号 <span className="text-red-400">*</span>
+              </label>
+              <input
+                type="tel"
+                value={form.guardianPhone}
+                onChange={(e) => update('guardianPhone', e.target.value.replace(/\D/g, ''))}
+                placeholder="爸爸或妈妈的手机号"
+                maxLength={11}
+                className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-200 text-sm"
+              />
+              <p className="mt-1.5 text-xs text-gray-400">
+                注册后将发送验证码到该手机，确认后才能开始对话
+              </p>
+            </div>
+          )}
 
           {/* 邀请码说明 */}
           <p className="text-xs text-gray-400 bg-gray-50 px-4 py-2.5 rounded-xl">

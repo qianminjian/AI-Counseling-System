@@ -143,6 +143,10 @@ mindsafe:
       access-key-secret: ${MINDSAFE_SMS_ALIYUN_ACCESS_KEY_SECRET:}
       sign-name: ${MINDSAFE_SMS_ALIYUN_SIGN_NAME:}
       template-code: ${MINDSAFE_SMS_ALIYUN_TEMPLATE_CODE:}
+  # 监护人同意（AUTH-040，PIPL §31）
+  consent:
+    # true=试运行：age<14 注册时自动写入监护人同意（跳过 SMS）；生产须置 false 走 SMS 闭环
+    trial-auto-grant: ${MINDSAFE_CONSENT_TRIAL_AUTO_GRANT:true}
   # 告警体系（OPS-004）
   alert:
     wecom:

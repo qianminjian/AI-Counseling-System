@@ -2,6 +2,7 @@ package com.mindsafe.api.controller;
 
 import com.mindsafe.api.security.JwtTokenProvider;
 import com.mindsafe.common.dto.ApiResponse;
+import com.mindsafe.common.tenant.TenantContextHolder;
 import com.mindsafe.domain.entity.User;
 import com.mindsafe.domain.mapper.UserMapper;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
@@ -96,12 +97,13 @@ public class WeComOAuthController {
             }
 
             // Step 3: 匹配系统用户（用 pseudonym 字段匹配企微 userId，待 wecom_user_id 字段上线后切换）
+            // 前置认证链路（无 JWT，跨租户匹配教师）：显式声明系统作用域（M1-003 fail-fast 配套）
             log.info("企微 OAuth 登录: wecomUserId={}", wecomUserId);
-            User matchedUser = userMapper.selectOne(
+            User matchedUser = TenantContextHolder.callAsSystem(() -> userMapper.selectOne(
                     new LambdaQueryWrapper<User>()
                             .eq(User::getPseudonym, wecomUserId)
                             .eq(User::getUserType, "teacher")
-                            .last("LIMIT 1"));
+                            .last("LIMIT 1")));
 
             if (matchedUser == null) {
                 return ApiResponse.ok(Map.of(
@@ -111,11 +113,16 @@ public class WeComOAuthController {
                 ));
             }
 
-            // Step 4: 更新最后登录时间 + 签发 JWT
-            User loginUpdate = new User();
-            loginUpdate.setUserId(matchedUser.getUserId());
-            loginUpdate.setLastLoginAt(Instant.now());
-            userMapper.updateById(loginUpdate);
+            // Step 4: 更新最后登录时间（已识别出租户，绑定真实租户上下文执行）+ 签发 JWT
+            TenantContextHolder.set(matchedUser.getTenantId());
+            try {
+                User loginUpdate = new User();
+                loginUpdate.setUserId(matchedUser.getUserId());
+                loginUpdate.setLastLoginAt(Instant.now());
+                userMapper.updateById(loginUpdate);
+            } finally {
+                TenantContextHolder.clear();
+            }
 
             String token = jwtTokenProvider.generateToken(
                     matchedUser.getUserId(), matchedUser.getUserType(), matchedUser.getTenantId());

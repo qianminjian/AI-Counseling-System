@@ -13,6 +13,7 @@ vi.mock('../components/ConfirmDialog', () => ({ default: () => null }));
 vi.mock('../components/RelaxationExercises', () => ({ default: ({ onBack }) => <div data-testid="relaxation">放松练习</div> }));
 vi.mock('../components/EmotionDiary', () => ({ default: ({ onBack }) => <div data-testid="diary">心情日记</div> }));
 vi.mock('../components/Achievements', () => ({ default: () => <div data-testid="achievements" /> }));
+vi.mock('../components/SettingsPanel', () => ({ default: () => <div data-testid="settings-panel" /> }));
 
 import EmotionSelect from '../components/EmotionSelect';
 

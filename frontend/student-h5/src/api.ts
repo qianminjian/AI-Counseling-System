@@ -170,6 +170,8 @@ export interface AuthResult {
   pseudonym?: string
   displayName?: string
   familyCode?: string
+  /** age<14 且尚无监护人同意记录 → 需走 SMS 验证码闭环（AUTH-040） */
+  guardianConsentPending?: boolean
 }
 
 /**
@@ -237,4 +239,24 @@ export async function voiceLogin(voiceCredential: string): Promise<AuthResult> {
     throw new Error(json.message || '声纹登录失败')
   }
   return json.data
+}
+
+/**
+ * 发起监护人同意请求：发送短信验证码到监护人手机（AUTH-040，需已登录）
+ */
+export async function requestGuardianConsent(guardianPhone: string): Promise<void> {
+  await api('/auth/guardian-consent/request', {
+    method: 'POST',
+    body: JSON.stringify({ guardianPhone }),
+  })
+}
+
+/**
+ * 确认监护人同意：校验短信验证码并写入同意记录（AUTH-040，需已登录）
+ */
+export async function confirmGuardianConsent(guardianPhone: string, code: string): Promise<void> {
+  await api('/auth/guardian-consent/confirm', {
+    method: 'POST',
+    body: JSON.stringify({ guardianPhone, code }),
+  })
 }
