@@ -111,11 +111,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 120s
-    deploy:
-      resources:
-        limits:
-          # funasr 模式需 6G / dashscope 模式仅需 512M
-          memory: ${VOICE_MEM_LIMIT:-512M}
     networks:
       - internal
 

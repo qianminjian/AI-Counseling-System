@@ -45,12 +45,6 @@ services:
       # FunASR 模型缓存：宿主机持久化，避免每次重建容器重新下载 3GB+ 模型
       # 使用前需运行: bash deploy/scripts/prepare-funasr.sh
       - ${MODEL_CACHE_DIR:-./cache/modelscope}:/root/.cache/modelscope
-    deploy:
-      resources:
-        limits:
-          # funasr 模式需 6G（加载 SenseVoiceSmall + emotion2vec）
-          # dashscope 模式仅需 512M（纯 API 调用）
-          memory: ${VOICE_MEM_LIMIT:-512M}
     restart: unless-stopped
 
   # ===== Spring Boot 后端 =====
