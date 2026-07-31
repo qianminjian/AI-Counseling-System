@@ -22,7 +22,7 @@ export const WAKE_MODEL_ID = 'onnx-community/whisper-tiny'
  * - 注意：SAME_ORIGIN 模式下必须确保模型文件已部署，否则 404 导致加载失败
  * - 历史：曾用 hf-mirror.com，后改 SAME_ORIGIN 但未部署文件导致加载失败，现回退
  */
-export const WAKE_MODEL_REMOTE_HOST: string = 'https://hf-mirror.com/'
+export const WAKE_MODEL_REMOTE_HOST: string = 'SAME_ORIGIN'
 
 /**
  * 唤醒词匹配变体（Whisper 中文转写可能输出同音字，做容错匹配）
