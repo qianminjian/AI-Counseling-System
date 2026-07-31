@@ -5,12 +5,13 @@ spring:
     locations: classpath:db/migration
     baseline-on-migrate: true
 
-  # HikariCP 连接池：CI 中 Testcontainers 启动后首次连接可能较慢，增大超时+重试
+  # HikariCP 连接池：多 IT 类共享上下文时 SSE 等异步处理可能暂占连接
   datasource:
     hikari:
       connection-timeout: 30000
       initialization-fail-timeout: 60000
-      maximum-pool-size: 10
+      maximum-pool-size: 20
+      leak-detection-threshold: 60000
 
   # Redis 由 Testcontainers 动态注入
   data:
@@ -46,3 +47,12 @@ logging:
   level:
     com.mindsafe: DEBUG
     org.testcontainers: INFO
+
+# 集成测试中禁用定时任务（SlaEscalationScanner/DataRetentionCleanupJob）
+# 避免后台调度消耗连接池、干扰 IT 类间隔离
+mindsafe:
+  security:
+    sla-escalation:
+      scan-cron: "-"
+    data-retention:
+      cleanup-cron: "-"
