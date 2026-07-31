@@ -122,6 +122,15 @@ function getTranscriber() {
 }
 
 /**
+ * 预加载模型（不启动麦克风）：在 TTS 播放期间提前下载模型，
+ * 避免 TTS 播完后用户还要等模型加载。
+ * 调用时机：ChatRoom 挂载 + 语音模式开启时立即调用。
+ */
+export function preloadWakeModel() {
+  getTranscriber().catch(() => {}) // 静默失败，active 时会重试
+}
+
+/**
  * @param {object} opts
  * @param {boolean} opts.active      是否监听（仅对话内且处于待唤醒态时为 true）
  * @param {(detection: {label: string, text: string}) => void} opts.onDetected 检测到唤醒词回调

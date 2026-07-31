@@ -11,6 +11,7 @@ import { useTheme } from '../theme/ThemeProvider'
 import { useVoicePersona } from '../hooks/useVoicePersona'
 import { useTtsPlayer } from '../hooks/useTtsPlayer'
 import { useVoiceCallMode } from '../hooks/useVoiceCallMode'
+import { preloadWakeModel } from '../hooks/useWakeWord'
 import { useSilenceNudge } from '../hooks/useSilenceNudge'
 import { useAudioRecorder } from '../hooks/useAudioRecorder'
 import { authFetch, api, getUser } from '../api'
@@ -84,6 +85,14 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: an
     if (wakeEnabled && !wakeConsent.hasConsent()) {
       const t = setTimeout(() => wakeConsent.requestConsent(), 800)
       return () => clearTimeout(t)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // 预加载唤醒模型：一进对话就开始下载，利用 TTS 播放时间窗口
+  useEffect(() => {
+    if (wakeEnabled && wakeConsent.hasConsent()) {
+      preloadWakeModel()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
