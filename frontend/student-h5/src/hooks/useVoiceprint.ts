@@ -115,6 +115,8 @@ function downsample(f32, inputRate) {
 export function useVoiceprint() {
   const [supported, setSupported] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [modelError, setModelError] = useState(false) // 模型加载失败标记
+  const modelErrorRef = useRef(false) // 同步 ref，供调用方立即读取
   const initRef = useRef(false)
 
   /** 检测环境是否支持声纹功能 */
@@ -149,9 +151,20 @@ export function useVoiceprint() {
 
     setLoading(true)
     try {
-      const extractor = await getExtractor()
+      // 模型加载（失败 = 模型未就绪，区别于推理失败）
+      let extractor
+      try {
+        extractor = await getExtractor()
+        setModelError(false)
+        modelErrorRef.current = false
+      } catch (loadErr) {
+        console.warn('[Voiceprint] 模型加载失败:', loadErr?.message || loadErr)
+        setModelError(true)
+        modelErrorRef.current = true
+        return null
+      }
 
-      // 超时保护
+      // 推理（失败 = 音频问题，非模型问题）
       const result = await Promise.race([
         extractor(pcm16k, { return_tensor: false }),
         new Promise((_, reject) =>
@@ -169,7 +182,7 @@ export function useVoiceprint() {
       }
       return null
     } catch (err) {
-      console.warn('[Voiceprint] embedding 提取失败:', err?.message || err)
+      console.warn('[Voiceprint] 推理失败:', err?.message || err)
       return null
     } finally {
       setLoading(false)
@@ -215,6 +228,8 @@ export function useVoiceprint() {
   return {
     supported,
     loading,
+    modelError,
+    modelErrorRef,
     extractEmbedding,
     verify,
     checkSupport,

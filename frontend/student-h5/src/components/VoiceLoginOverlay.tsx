@@ -32,7 +32,7 @@ export default function VoiceLoginOverlay({ mode = 'verify', onComplete, onCance
   const [failCount, setFailCount] = useState(0)
   const [failKind, setFailKind] = useState('') // mic | mismatch | credential
 
-  const { extractEmbedding, verify, loading } = useVoiceprint()
+  const { extractEmbedding, verify, loading, modelErrorRef } = useVoiceprint()
   const collectedEmbeddings = useRef([])
   const audioCtxRef = useRef<AudioContext | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
@@ -168,6 +168,12 @@ export default function VoiceLoginOverlay({ mode = 'verify', onComplete, onCance
 
       if (embedding) {
         collectedEmbeddings.current.push(embedding)
+      } else if (modelErrorRef.current) {
+        // 模型加载失败：提示用户等待，而非误导“没听清”
+        setStatusText('语音引擎准备中，请稍候...')
+        await new Promise((r) => setTimeout(r, 3000))
+        i-- // 重试当前轮
+        continue
       } else {
         // 静音或提取失败：提示重试（不计入失败次数）
         setStatusText('没有听清，再说一次吧~')
