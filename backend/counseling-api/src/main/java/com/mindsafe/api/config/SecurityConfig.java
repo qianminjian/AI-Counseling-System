@@ -71,6 +71,8 @@ public class SecurityConfig {
                         // 声纹双模式：config 公开查询模式，verify 公开接收 embedding 比对签发 token
                         .requestMatchers("/api/v1/voiceprint/config").permitAll()
                         .requestMatchers("/api/v1/voiceprint/verify").permitAll()
+                        // 声纹登录引导语 TTS（白名单文本，无需认证）
+                        .requestMatchers("/api/v1/tts/login-prompt").permitAll()
                         .requestMatchers("/api/v1/auth/refresh").permitAll()
                         // 企微 OAuth 回调（无 JWT，靠 code 换 token）
                         .requestMatchers("/api/v1/auth/wecom/**").permitAll()

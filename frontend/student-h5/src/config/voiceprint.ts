@@ -79,18 +79,23 @@ export const VP_IDLE_TIMEOUT = 5 * 60 * 1000
 /**
  * 唤醒后 AI 引导对话（固定脚本，非真正 AI 对话）
  * 每轮：波波 TTS 提问 → 等待孩子回答（采集音频）→ 下一轮
+ *
+ * 设计原则：
+ * - 复述式引导：明确告诉学生“跟我说”，确保采集时长充足且内容稳定
+ * - 固定短语：每次采集内容一致，提高声纹 embedding 稳定性
+ * - 文本与后端 TTS 白名单严格一致（/api/v1/tts/login-prompt）
  */
 export const VP_GUIDE_SCRIPTS = {
   /** 验证模式（已有声纹，2 轮） */
   verify: [
-    { prompt: '嗨！是谁来找我玩啦？告诉我你的名字吧~', duration: 4 },
-    { prompt: '今天想和我做什么呀？聊天还是做游戏？', duration: 4 },
+    { prompt: '嗨！我是波波，跟我打个招呼吧！', hint: '对波波说“你好”就行', duration: 4 },
+    { prompt: '真棒！再跟我说一句：今天心情真好呀！', hint: '跟我说：今天心情真好呀！', duration: 4 },
   ],
   /** 注册模式（首次采集，3 轮） */
   enroll: [
-    { prompt: '嗨！我是波波，你叫什么名字呀？', duration: 4 },
-    { prompt: '你今年几岁啦？最喜欢什么呀？', duration: 4 },
-    { prompt: '跟我说一句：今天天气真好，我想出去玩！', duration: 5 },
+    { prompt: '嗨！我是波波，很高兴认识你！跟我打个招呼吧！', hint: '对波波说“你好”就行', duration: 4 },
+    { prompt: '真好听！再跟我说一句：我喜欢唱歌和画画！', hint: '跟我说：我喜欢唱歌和画画！', duration: 5 },
+    { prompt: '最后一句啦！跟我说：今天天气真好，我想出去玩！', hint: '跟我说：今天天气真好，我想出去玩！', duration: 5 },
   ],
 }
 

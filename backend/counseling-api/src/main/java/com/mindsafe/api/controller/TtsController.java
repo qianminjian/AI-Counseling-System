@@ -19,6 +19,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -141,6 +142,45 @@ public class TtsController {
     @GetMapping("/personas")
     public ApiResponse<List<Map<String, Object>>> personas() {
         return ApiResponse.ok(ttsService.getPersonas());
+    }
+
+    /**
+     * 声纹登录引导语 TTS（公开端点，无需认证）
+     * <p>
+     * 声纹登录发生在用户未登录状态，无法走 /synthesize（需 JWT）。
+     * 本端点仅允许白名单内的固定引导语文本，防止滥用。
+     */
+    private static final Set<String> LOGIN_PROMPT_WHITELIST = Set.of(
+            // verify 模式
+            "嗨！我是波波，跟我打个招呼吧！",
+            "真棒！再跟我说一句：今天心情真好呀！",
+            // enroll 模式
+            "嗨！我是波波，很高兴认识你！跟我打个招呼吧！",
+            "真好听！再跟我说一句：我喜欢唱歌和画画！",
+            "最后一句啦！跟我说：今天天气真好，我想出去玩！"
+    );
+
+    @PostMapping("/login-prompt")
+    public ResponseEntity<byte[]> loginPrompt(@RequestBody Map<String, String> request) {
+        String text = request.get("text");
+        String persona = request.getOrDefault("persona", "xiaoxing");
+
+        if (text == null || !LOGIN_PROMPT_WHITELIST.contains(text.trim())) {
+            return ResponseEntity.badRequest().build();
+        }
+        // 仅允许合法 persona
+        if (!Set.of("xiaoxing", "qiqiu", "yueliang", "xiaotaiyang").contains(persona)) {
+            persona = "xiaoxing";
+        }
+
+        byte[] audio = ttsService.synthesize(text.trim(), persona, "happy", 0.9, 1.0, 0);
+        if (audio == null) {
+            return ResponseEntity.noContent().build();
+        }
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_TYPE, detectAudioMimeType(audio))
+                .header(HttpHeaders.CACHE_CONTROL, "public, max-age=86400")
+                .body(audio);
     }
 
     /**

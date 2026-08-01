@@ -12,10 +12,21 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { VP_GUIDE_SCRIPTS, VP_SAMPLE_RATE, VP_SEGMENT_DURATION, VP_SILENCE_THRESHOLD } from '../config/voiceprint'
 import { useVoiceprint } from '../hooks/useVoiceprint'
-import { unlockAudio } from '../utils/audioUnlock'
+import { unlockAudio, getGlobalAudioElement } from '../utils/audioUnlock'
 import { createPcmCapture, type PcmCaptureHandle } from '../utils/createPcmCapture'
 import { getVoiceprint } from '../utils/voiceprintStore'
 import { voiceLogin, remoteVoiceprintVerify, getVoiceprintConfig, setToken, setRefreshToken, setUser } from '../api'
+
+/** 主题 → 音色映射（登录页未登录，读 localStorage 主题） */
+const THEME_PERSONA_MAP: Record<string, string> = {
+  ocean: 'xiaoxing',    // 海洋蓝 → 小星（温暖大姐姐）
+  garden: 'qiqiu',      // 花园粉 → 气球（活泼小伙伴）
+  rainbow: 'yueliang',  // 彩虹紫 → 月亮（温柔讲故事）
+}
+function getLoginPersona(): string {
+  const themeId = localStorage.getItem('mindsafe_theme_v1') || 'ocean'
+  return THEME_PERSONA_MAP[themeId] || 'xiaoxing'
+}
 
 /**
  * @param {object} props
@@ -55,26 +66,55 @@ export default function VoiceLoginOverlay({ mode = 'verify', onComplete, onCance
 
   useEffect(() => () => cleanup(), [cleanup])
 
-  /** TTS 播放引导语（speechSynthesis 降级方案） */
+  /** TTS 播放引导语（后端 CosyVoice 优先，降级 speechSynthesis） */
   const speakPrompt = useCallback((text) => {
-    return new Promise<void>((resolve) => {
-      if (!('speechSynthesis' in window)) {
-        // 无 TTS：显示字幕 2 秒后继续
-        setTimeout(resolve, 2000)
-        return
-      }
-      window.speechSynthesis.cancel()
-      const utter = new SpeechSynthesisUtterance(text)
-      utter.lang = 'zh-CN'
-      utter.rate = 0.9
-      const voices = window.speechSynthesis.getVoices()
-      const zhVoice = voices.find((v) => v.lang.startsWith('zh'))
-      if (zhVoice) utter.voice = zhVoice
-      utter.onend = () => resolve()
-      utter.onerror = () => resolve()
-      window.speechSynthesis.speak(utter)
+    return new Promise<void>(async (resolve) => {
+      let resolved = false
+      const done = () => { if (!resolved) { resolved = true; resolve() } }
       // 超时保护
-      setTimeout(resolve, 8000)
+      const timer = setTimeout(done, 10000)
+
+      // 1. 尝试后端 TTS（CosyVoice 音色）
+      try {
+        const persona = getLoginPersona()
+        const res = await fetch('/api/v1/tts/login-prompt', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text, persona }),
+        })
+        if (res.ok) {
+          const blob = await res.blob()
+          if (blob.size > 0) {
+            const audio = getGlobalAudioElement()
+            const url = URL.createObjectURL(blob)
+            audio.src = url
+            audio.onended = () => { URL.revokeObjectURL(url); clearTimeout(timer); done() }
+            audio.onerror = () => { URL.revokeObjectURL(url); clearTimeout(timer); done() }
+            await audio.play()
+            return
+          }
+        }
+      } catch { /* 后端 TTS 不可用，降级 */ }
+
+      // 2. 降级：浏览器 speechSynthesis
+      if ('speechSynthesis' in window) {
+        try {
+          window.speechSynthesis.cancel()
+          const utter = new SpeechSynthesisUtterance(text)
+          utter.lang = 'zh-CN'
+          utter.rate = 0.9
+          const voices = window.speechSynthesis.getVoices()
+          const zhVoice = voices.find((v) => v.lang.startsWith('zh'))
+          if (zhVoice) utter.voice = zhVoice
+          utter.onend = () => { clearTimeout(timer); done() }
+          utter.onerror = () => { clearTimeout(timer); done() }
+          window.speechSynthesis.speak(utter)
+          return
+        } catch { /* ignore */ }
+      }
+
+      // 3. 无 TTS：显示字幕 2 秒后继续
+      setTimeout(() => { clearTimeout(timer); done() }, 2000)
     })
   }, [])
 
@@ -159,7 +199,7 @@ export default function VoiceLoginOverlay({ mode = 'verify', onComplete, onCance
 
       // 2. 采集回答
       setPhase('listening')
-      setStatusText('正在听你说...')
+      setStatusText(scripts[i].hint || '正在听你说...')
       const audio = await captureSegment(scripts[i].duration)
       if (cancelledRef.current) return
 
