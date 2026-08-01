@@ -78,10 +78,11 @@ export const WAKE_KEEP_SECONDS = 1.5
 
 /**
  * 静音 RMS 阈值（Float32 采样）：低于此值的窗口直接跳过转写
- * 作用：① 省 CPU  ② 抑制 Whisper 对静音的幻觉输出（如“谢谢观看”类文本）
+ * 作用：① 省 CPU  ② 抑制 Whisper 对静音的幻觉输出（如"谢谢观看"类文本）
  * 注意：不能太高，否则用户轻声说唤醒词会被跳过
+ * 实测：底噪约 0.005-0.012，正常说话约 0.05-0.3，取 0.02 可有效过滤底噪
  */
-export const SILENCE_RMS_THRESHOLD = 0.005
+export const SILENCE_RMS_THRESHOLD = 0.02
 
 /** 归一化转写文本：小写 + 去标点/空白，便于容错匹配 */
 export function normalizeWakeText(text) {
@@ -94,6 +95,8 @@ export function normalizeWakeText(text) {
 export function matchesWakeWord(text) {
   const t = normalizeWakeText(text)
   if (!t) return false
+  // 幻觉检测：Whisper 对静音/底噪会产生大量重复字符（如“好好好好...”），直接丢弃
+  if (isHallucination(t)) return false
   // 精确匹配（已归一化）
   if (WAKE_PATTERNS.some((p) => t.includes(p))) return true
   // 拼音模糊匹配：Whisper 可能输出其他同音字，用“哈/蛤/嘿” + “喽/罗/楼/喍” + “波/啵/播/伯/铂” + “波/啵/播/伯/铂” 容错
@@ -101,5 +104,24 @@ export function matchesWakeWord(text) {
   if (fuzzy.test(t)) return true
   // 英文部分匹配："hello"/"halo" + "bobo"/"波波"
   if (/hello|halo/.test(t) && /bobo|波波|啵啵/.test(t)) return true
+  return false
+}
+
+/**
+ * 检测 Whisper 幻觉输出：
+ * - 单个字符重复占比 > 60%（如“好好好好...”）
+ * - 文本长度 > 20 且去重后字符数 < 3（如“谢谢观看谢谢观看...”）
+ */
+export function isHallucination(text: string): boolean {
+  if (!text || text.length < 4) return false
+  // 规则 1：单字符重复占比 > 60%
+  const charCounts = new Map<string, number>()
+  for (const ch of text) {
+    charCounts.set(ch, (charCounts.get(ch) || 0) + 1)
+  }
+  const maxCount = Math.max(...charCounts.values())
+  if (maxCount / text.length > 0.6) return true
+  // 规则 2：长文本但去重后字符极少（循环幻觉）
+  if (text.length > 20 && charCounts.size < 3) return true
   return false
 }

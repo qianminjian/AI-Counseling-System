@@ -30,6 +30,7 @@ import {
   WAKE_KEEP_SECONDS,
   SILENCE_RMS_THRESHOLD,
   matchesWakeWord,
+  isHallucination,
 } from '../config/wakeWord'
 import { createPcmCapture, type PcmCaptureHandle } from '../utils/createPcmCapture'
 
@@ -273,7 +274,7 @@ export function useWakeWord({ active, paused, onDetected }) {
     const handleTranscribeResult = (text: string) => {
       if (cancelled) return
       if (text) {
-        console.info('[WakeWord] 转写结果:', JSON.stringify(text), '匹配:', matchesWakeWord(text))
+        console.info('[WakeWord] 转写结果:', JSON.stringify(text), '幻觉:', isHallucination(text), '匹配:', matchesWakeWord(text))
         if (matchesWakeWord(text)) {
           console.info('[WakeWord] 🎉 检测到唤醒词:', text)
           setWakeStatus('detected')
