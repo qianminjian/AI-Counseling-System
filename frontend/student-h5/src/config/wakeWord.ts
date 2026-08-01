@@ -57,19 +57,31 @@ export const WAKE_PATTERNS = [
   '哈喽伯伯',
   'hello bobo',
   'hello 波波',
+  // 英文唤醒词变体（Whisper 对短英文音频识别不稳定，多覆盖）
+  'hellobobo',
+  'halobobo',
+  'hello波波',
+  'halo波波',
+  'hello啵啵',
+  'halo啵啵',
+  '哈喽bobo',
+  '哈罗bobo',
+  '哈喽 bobo',
+  '哈罗 bobo',
 ]
 
-/** 滑窗长度（秒）：累积满后送一次 Whisper 转写 */
-export const WAKE_WINDOW_SECONDS = 2.5
+/** 滑窗长度（秒）：累积满后送一次 Whisper 转写（2.0s 兼顾响应速度与识别准确率） */
+export const WAKE_WINDOW_SECONDS = 2.0
 
 /** 滑窗重叠保留（秒）：每次转写后保留尾部作为下一窗前缀，避免唤醒词被窗口边界切断 */
-export const WAKE_KEEP_SECONDS = 1.0
+export const WAKE_KEEP_SECONDS = 1.5
 
 /**
  * 静音 RMS 阈值（Float32 采样）：低于此值的窗口直接跳过转写
- * 作用：① 省 CPU  ② 抑制 Whisper 对静音的幻觉输出（如"谢谢观看"类文本）
+ * 作用：① 省 CPU  ② 抑制 Whisper 对静音的幻觉输出（如“谢谢观看”类文本）
+ * 注意：不能太高，否则用户轻声说唤醒词会被跳过
  */
-export const SILENCE_RMS_THRESHOLD = 0.008
+export const SILENCE_RMS_THRESHOLD = 0.005
 
 /** 归一化转写文本：小写 + 去标点/空白，便于容错匹配 */
 export function normalizeWakeText(text) {

@@ -273,7 +273,7 @@ export function useWakeWord({ active, paused, onDetected }) {
     const handleTranscribeResult = (text: string) => {
       if (cancelled) return
       if (text) {
-        console.debug('[WakeWord] 转写结果:', JSON.stringify(text))
+        console.info('[WakeWord] 转写结果:', JSON.stringify(text), '匹配:', matchesWakeWord(text))
         if (matchesWakeWord(text)) {
           console.info('[WakeWord] 🎉 检测到唤醒词:', text)
           setWakeStatus('detected')
