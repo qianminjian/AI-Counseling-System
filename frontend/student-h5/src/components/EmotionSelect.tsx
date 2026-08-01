@@ -207,10 +207,10 @@ export default function EmotionSelect({ onStart, userName, onLogout }) {
 
 /** 语音模型加载状态胶囊（底部微妙提示） */
 function WakeModelStatusPill() {
-  const status = useWakeModelStatus()
+  const { status, progress } = useWakeModelStatus()
   if (status === 'idle') return null // 未触发加载（如未开启语音）
   const map = {
-    loading: { text: '🎧 语音耳朵准备中…', cls: 'bg-amber-50 text-amber-600 border-amber-200 animate-pulse' },
+    loading: { text: `🎧 语音耳朵准备中 ${progress > 0 ? progress + '%' : '…'}`, cls: 'bg-amber-50 text-amber-600 border-amber-200 animate-pulse' },
     ready:   { text: '🎧 语音耳朵已就绪', cls: 'bg-green-50 text-green-600 border-green-200' },
     error:   { text: '⚠️ 语音加载失败，进对话后重试', cls: 'bg-red-50 text-red-500 border-red-200' },
   }[status]

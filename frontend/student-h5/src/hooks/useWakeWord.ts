@@ -80,19 +80,21 @@ function rms(f32) {
 /* ===== 全局模型加载状态（跨组件共享，EmotionSelect / ChatRoom / 设置面板均可订阅） ===== */
 type ModelStatus = 'idle' | 'loading' | 'ready' | 'error'
 let _modelStatus: ModelStatus = 'idle'
+let _modelProgress = 0 // 0-100 下载进度
 const _modelSubscribers = new Set<() => void>()
 
-function setModelStatus(s: ModelStatus) {
-  if (_modelStatus === s) return
+function setModelStatus(s: ModelStatus, progress?: number) {
+  if (progress !== undefined) _modelProgress = progress
+  if (_modelStatus === s && progress === undefined) return
   _modelStatus = s
   _modelSubscribers.forEach((fn) => fn())
 }
 
 /** 订阅唤醒模型加载状态（React Hook，任意组件可调用） */
-export function useWakeModelStatus(): ModelStatus {
+export function useWakeModelStatus(): { status: ModelStatus; progress: number } {
   return useSyncExternalStore(
     (cb) => { _modelSubscribers.add(cb); return () => { _modelSubscribers.delete(cb) } },
-    () => _modelStatus,
+    () => ({ status: _modelStatus, progress: _modelProgress }),
   )
 }
 
@@ -135,6 +137,7 @@ function getTranscriber() {
         progress_callback: (p) => {
           if (p.status === 'progress' && p.file && typeof p.progress === 'number') {
             console.debug(`[WakeWord] 模型加载 ${p.file} ${p.progress.toFixed(0)}%`)
+            setModelStatus('loading', Math.round(p.progress))
           }
         },
       })
