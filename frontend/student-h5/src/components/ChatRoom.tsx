@@ -50,7 +50,7 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: Se
 
   // 主题 + 音色
   const { theme } = useTheme()
-  const { personaId } = useVoicePersona()
+  const { personaId, changePersona } = useVoicePersona()
 
   // 语音授权（合规）
   const { showDialog: showConsent, hasConsent, requestConsent, grantConsent, denyConsent } = useVoiceConsent()
@@ -784,6 +784,8 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: Se
         wakeSupported={voiceCall.wakeSupported}
         wakeOn={wakeEnabled}
         onToggleWake={handleToggleWake}
+        personaId={personaId}
+        onPersonaChange={changePersona}
       />
       {/* 切换同学二次确认 */}
       <ConfirmDialog

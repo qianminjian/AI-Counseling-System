@@ -16,7 +16,7 @@ import { hasAnyVoiceprint, deleteVoiceprint, enrollVoiceprint, saveVoiceCredenti
 import VoiceLoginOverlay from './VoiceLoginOverlay'
 import ConfirmDialog from './ConfirmDialog'
 
-export default function SettingsPanel({ open, onClose, muted, onToggleMute, wakeSupported = false, wakeOn = false, onToggleWake }: {
+export default function SettingsPanel({ open, onClose, muted, onToggleMute, wakeSupported = false, wakeOn = false, onToggleWake, personaId: externalPersonaId, onPersonaChange }: {
   open: boolean
   onClose: () => void
   muted: boolean
@@ -24,9 +24,14 @@ export default function SettingsPanel({ open, onClose, muted, onToggleMute, wake
   wakeSupported?: boolean
   wakeOn?: boolean
   onToggleWake?: () => void
+  personaId?: string
+  onPersonaChange?: (id: string) => void
 }) {
   const { themeId, changeTheme } = useTheme()
-  const { personaId, changePersona } = useVoicePersona()
+  const internalPersona = useVoicePersona()
+  // 优先使用外部传入的 persona 状态（与 ChatRoom TTS 共享同一份 state）
+  const personaId = externalPersonaId ?? internalPersona.personaId
+  const changePersona = onPersonaChange ?? internalPersona.changePersona
   const [familyCode, setFamilyCode] = useState<string>((getUser()?.familyCode as string) || '')
   const [copied, setCopied] = useState(false)
   const [hasVoiceprint, setHasVoiceprint] = useState(false)
