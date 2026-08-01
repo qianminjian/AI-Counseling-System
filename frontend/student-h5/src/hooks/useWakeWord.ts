@@ -81,21 +81,23 @@ function rms(f32) {
 type ModelStatus = 'idle' | 'loading' | 'ready' | 'error' | 'unsupported'
 let _modelStatus: ModelStatus = 'idle'
 let _modelProgress = 0 // 0-100 下载进度
+let _modelError = '' // 详细错误信息
 const _modelSubscribers = new Set<() => void>()
 
-function setModelStatus(s: ModelStatus, progress?: number) {
+function setModelStatus(s: ModelStatus, progress?: number, error?: string) {
   if (progress !== undefined) _modelProgress = progress
-  if (_modelStatus === s && progress === undefined) return
+  if (error !== undefined) _modelError = error
+  if (_modelStatus === s && progress === undefined && error === undefined) return
   _modelStatus = s
   // 更新缓存快照（保证引用稳定，避免 useSyncExternalStore 无限循环）
-  _modelSnapshot = { status: _modelStatus, progress: _modelProgress }
+  _modelSnapshot = { status: _modelStatus, progress: _modelProgress, error: _modelError }
   _modelSubscribers.forEach((fn) => fn())
 }
 
-let _modelSnapshot: { status: ModelStatus; progress: number } = { status: _modelStatus, progress: _modelProgress }
+let _modelSnapshot: { status: ModelStatus; progress: number; error: string } = { status: _modelStatus, progress: _modelProgress, error: _modelError }
 
 /** 订阅唤醒模型加载状态（React Hook，任意组件可调用） */
-export function useWakeModelStatus(): { status: ModelStatus; progress: number } {
+export function useWakeModelStatus(): { status: ModelStatus; progress: number; error: string } {
   return useSyncExternalStore(
     (cb) => { _modelSubscribers.add(cb); return () => { _modelSubscribers.delete(cb) } },
     () => _modelSnapshot,
@@ -176,7 +178,11 @@ function getTranscriber() {
         setModelStatus('unsupported')
         return null as any
       }
-      setModelStatus('error')
+      const errMsg = err?.message || String(err)
+      const errStack = err?.stack?.split('\n').slice(0, 3).join(' | ') || ''
+      const fullMsg = `${errMsg}${errStack ? ' @ ' + errStack : ''}`
+      console.error('[WakeWord] 模型加载失败:', fullMsg, err)
+      setModelStatus('error', undefined, fullMsg)
       throw err
     })
   }

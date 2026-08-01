@@ -598,7 +598,7 @@ function ModelDownloadProgress() {
     items.push({ label: '声纹引擎', status: vp.status, progress: vp.progress, error: vp.error })
   }
   if (wake.status === 'loading' || wake.status === 'error') {
-    items.push({ label: '语音引擎', status: wake.status, progress: wake.progress })
+    items.push({ label: '语音引擎', status: wake.status, progress: wake.progress, error: wake.error })
   }
 
   if (items.length === 0) return null
