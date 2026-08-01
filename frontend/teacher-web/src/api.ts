@@ -44,14 +44,20 @@ async function tryRefresh() {
 
 export async function api(path: string, options: RequestInit & { headers?: Record<string, string> } = {}): Promise<any> {
   const token = getToken()
-  const res = await fetch(`/api/v1${path}`, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...options.headers,
-    },
-  })
+  let res: Response
+  try {
+    res = await fetch(`/api/v1${path}`, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...options.headers,
+      },
+    })
+  } catch (e) {
+    // 网络层失败（后端未启动 / 代理不可达）
+    throw new Error('后端服务不可达，请确认服务已启动')
+  }
   if (res.status === 401) {
     if (await tryRefresh()) {
       const newToken = getToken()

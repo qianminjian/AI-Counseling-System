@@ -83,16 +83,41 @@ export default function Dashboard({ user, onLogout, darkMode, toggleDark }) {
       }
       prevUnreadRef.current = count
     } catch (e) {
-      if (!silent) message.error('加载失败: ' + e.message)
+      if (!silent) {
+        const isNetwork = e.message?.includes('Failed to fetch') || e.message?.includes('NetworkError')
+        message.warning(isNetwork ? '后端服务暂不可达，稍后自动重试' : '加载失败: ' + e.message)
+      }
     }
   }, [])
 
+  // 首次加载：带重试的静默探测，避免后端启动延迟导致立即报错
   useEffect(() => {
     if ('Notification' in window && Notification.permission === 'default') {
       Notification.requestPermission()
     }
-    pollUnread(false)
-  }, [pollUnread])
+    let cancelled = false
+    const delays = [0, 2000, 5000] // 立即 → 2s → 5s 三次探测
+    let attempt = 0
+    const tryPoll = async () => {
+      if (cancelled) return
+      try {
+        const count = await getUnreadCount()
+        if (!cancelled) {
+          setUnreadCount(count)
+          prevUnreadRef.current = count
+        }
+      } catch {
+        attempt++
+        if (attempt < delays.length && !cancelled) {
+          setTimeout(tryPoll, delays[attempt])
+        } else if (!cancelled) {
+          message.warning('后端服务暂不可达，请确认服务已启动')
+        }
+      }
+    }
+    tryPoll()
+    return () => { cancelled = true }
+  }, [])
 
   useEffect(() => {
     const timer = setInterval(() => pollUnread(true), POLL_INTERVAL)

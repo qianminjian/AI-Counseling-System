@@ -138,9 +138,15 @@ function getTranscriber() {
       const { pipeline, env } = await import('@huggingface/transformers')
       // 模型同源部署：从自己服务器加载（/mindsafe/models/），浏览器 HTTP 缓存持久化
       const base = import.meta.env.BASE_URL || '/'
-      env.remoteHost = WAKE_MODEL_REMOTE_HOST === 'SAME_ORIGIN'
+      // 关键：remoteHost 必须是绝对 URL，否则 get_file_metadata 内的 new URL() 会失败，
+      // 导致 preprocessor_config.json 存在性检查返回 false → processor 不加载 → 转写崩溃
+      let remoteHost = WAKE_MODEL_REMOTE_HOST === 'SAME_ORIGIN'
         ? `${base}models/`
         : WAKE_MODEL_REMOTE_HOST
+      if (remoteHost && !remoteHost.startsWith('http')) {
+        remoteHost = window.location.origin + remoteHost
+      }
+      env.remoteHost = remoteHost
       // 自托管模型不带 /resolve/{revision}/ 路径段
       env.remotePathTemplate = '{model}/'
       env.allowLocalModels = false
@@ -238,26 +244,32 @@ export function useWakeWord({ active, paused, onDetected }) {
     let iosResumeHandler: (() => void) | null = null
     let worker: Worker | null = null
     let transcribeId = 0
+    /** Worker 不可用时降级为主线程推理（确保唤醒功能可用，代价是推理期间短暂阻塞 UI） */
+    let useMainThread = false
 
     // 滑窗状态
     let chunks = []
     let totalSamples = 0
     let analyzing = false
 
-    // 构建 Worker 配置（同源部署路径）
+    // 构建 Worker 配置（同源部署路径，绝对 URL 确保 get_file_metadata 的 Range 请求能正确验证文件存在性）
     const base = import.meta.env.BASE_URL || '/'
     // 始终用非 asyncify 变体（ORT 主代码非 asyncify 编译）
     const variant = 'ort-wasm-simd-threaded'
+    let workerRemoteHost = WAKE_MODEL_REMOTE_HOST === 'SAME_ORIGIN' ? `${base}models/` : WAKE_MODEL_REMOTE_HOST
+    if (workerRemoteHost && !workerRemoteHost.startsWith('http')) {
+      workerRemoteHost = window.location.origin + workerRemoteHost
+    }
     const workerConfig = {
       modelId: WAKE_MODEL_ID,
-      remoteHost: WAKE_MODEL_REMOTE_HOST === 'SAME_ORIGIN' ? `${base}models/` : WAKE_MODEL_REMOTE_HOST,
+      remoteHost: workerRemoteHost,
       wasmPaths: {
         mjs: `${base}ort/${variant}.mjs`,
         wasm: `${base}ort/${variant}.wasm`,
       },
     }
 
-    /** 处理 Worker 转写结果 */
+    /** 处理转写结果（Worker 和主线程共用） */
     const handleTranscribeResult = (text: string) => {
       if (cancelled) return
       if (text) {
@@ -272,9 +284,29 @@ export function useWakeWord({ active, paused, onDetected }) {
       maybeAnalyze()
     }
 
-    /** 识别一个音频窗（通过 Worker 执行，主线程零阻塞） */
+    /** 主线程推理（Worker 不可用时的降级路径） */
+    const analyzeOnMainThread = async (audio: Float32Array) => {
+      analyzing = true
+      try {
+        const transcriber = await getTranscriber()
+        if (!transcriber || cancelled) { analyzing = false; return }
+        const output = await transcriber(audio, { language: 'chinese', task: 'transcribe' })
+        handleTranscribeResult(output?.text || '')
+      } catch (err) {
+        console.warn('[WakeWord] 主线程转写失败:', (err as Error)?.message)
+        analyzing = false
+        maybeAnalyze()
+      }
+    }
+
+    /** 识别一个音频窗（Worker 优先，降级主线程） */
     const analyzeWindow = (audio: Float32Array) => {
       analyzing = true
+      console.info(`[WakeWord] 📨 提交音频窗分析 (useMainThread=${useMainThread}, 长度=${audio.length}, rms=${rms(audio).toFixed(5)})`)
+      if (useMainThread) {
+        analyzeOnMainThread(audio)
+        return
+      }
       const id = ++transcribeId
       // 将音频数据转移到 Worker（zero-copy，主线程不再持有）
       worker?.postMessage(
@@ -298,45 +330,84 @@ export function useWakeWord({ active, paused, onDetected }) {
       analyzeWindow(merged)
     }
 
-    // 创建 Worker 并初始化模型
-    worker = new Worker(
-      new URL('../workers/wakeWordWorker.ts', import.meta.url),
-      { type: 'module' },
-    )
-
-    worker.onmessage = (event) => {
-      const { type } = event.data
-      if (type === 'status') {
-        const { status } = event.data
-        if (status === 'loading') {
-          if (_modelStatus !== 'ready') setWakeStatus('loading')
-        } else if (status === 'ready') {
+    /** 切换到主线程推理模式（Worker 失败时调用） */
+    const fallbackToMainThread = (reason: string) => {
+      if (useMainThread) return
+      console.warn('[WakeWord] Worker 不可用，降级主线程推理:', reason)
+      useMainThread = true
+      worker?.terminate()
+      worker = null
+      // 触发主线程模型加载（如果尚未加载）
+      setModelStatus('loading')
+      getTranscriber().then((t) => {
+        if (t && !cancelled) {
           setModelStatus('ready')
-          console.info('[WakeWord] ✅ Worker 模型加载完成')
-        } else if (status === 'error') {
-          setModelStatus('error')
-          setWakeStatus('error')
-          console.warn('[WakeWord] Worker 模型加载失败:', event.data.message)
+          setWakeStatus('listening')
+          console.info('[WakeWord] ✅ 主线程模型就绪')
+          // 如果缓冲区已有足够音频，立即分析
+          maybeAnalyze()
         }
-      } else if (type === 'result') {
-        handleTranscribeResult(event.data.text)
-      } else if (type === 'error') {
-        console.warn('[WakeWord] 转写失败（忽略，下窗重试）:', event.data.message)
-        analyzing = false
-        maybeAnalyze()
-      } else if (type === 'progress') {
-        console.debug(`[WakeWord] 模型加载 ${event.data.file} ${event.data.progress.toFixed(0)}%`)
+      }).catch((err) => {
+        console.error('[WakeWord] 主线程模型也失败:', (err as Error)?.message)
+        setModelStatus('error')
+        setWakeStatus('error')
+      })
+    }
+
+    // 创建 Worker 并初始化模型
+    try {
+      worker = new Worker(
+        new URL('../workers/wakeWordWorker.ts', import.meta.url),
+        { type: 'module' },
+      )
+    } catch (err) {
+      console.warn('[WakeWord] Worker 创建失败:', (err as Error)?.message)
+      fallbackToMainThread('Worker 创建异常')
+    }
+
+    if (worker) {
+      // Worker 超时保护：15s 内未收到 ready/result → 降级主线程
+      const workerTimeout = setTimeout(() => {
+        if (!useMainThread && !cancelled) {
+          fallbackToMainThread('Worker 15s 无响应')
+        }
+      }, 15000)
+
+      worker.onmessage = (event) => {
+        const { type } = event.data
+        if (type === 'status') {
+          const { status } = event.data
+          if (status === 'loading') {
+            if (_modelStatus !== 'ready') setWakeStatus('loading')
+          } else if (status === 'ready') {
+            clearTimeout(workerTimeout)
+            setModelStatus('ready')
+            console.info('[WakeWord] ✅ Worker 模型加载完成')
+          } else if (status === 'error') {
+            clearTimeout(workerTimeout)
+            fallbackToMainThread(event.data.message || 'Worker 模型加载失败')
+          }
+        } else if (type === 'result') {
+          clearTimeout(workerTimeout)
+          handleTranscribeResult(event.data.text)
+        } else if (type === 'error') {
+          console.warn('[WakeWord] 转写失败（忽略，下窗重试）:', event.data.message)
+          analyzing = false
+          maybeAnalyze()
+        } else if (type === 'progress') {
+          console.debug(`[WakeWord] 模型加载 ${event.data.file} ${event.data.progress.toFixed(0)}%`)
+        }
       }
-    }
 
-    worker.onerror = (err) => {
-      console.warn('[WakeWord] Worker 错误:', err.message)
-      setWakeStatus('error')
-    }
+      worker.onerror = (err) => {
+        console.warn('[WakeWord] Worker 错误:', err.message)
+        fallbackToMainThread(err.message || 'Worker onerror')
+      }
 
-    // 发送初始化消息（触发模型加载，若已在情绪页预加载则从 Cache API 秒开）
-    setModelStatus('loading')
-    worker.postMessage({ type: 'init', config: workerConfig })
+      // 发送初始化消息（触发模型加载，若已在情绪页预加载则从 Cache API 秒开）
+      setModelStatus('loading')
+      worker.postMessage({ type: 'init', config: workerConfig })
+    }
 
     // 启动麦克风
     ;(async () => {
@@ -359,11 +430,17 @@ export function useWakeWord({ active, paused, onDetected }) {
         }
 
         const inputRate = audioCtx.sampleRate
+        let chunkCount = 0
         captureHandle = await createPcmCapture(audioCtx, stream, (rawPcm: Float32Array) => {
           if (cancelled) return
           const pcm = downsampleTo16kFloat(rawPcm, inputRate)
           chunks.push(pcm)
           totalSamples += pcm.length
+          chunkCount++
+          // 每 50 个 chunk 打一次诊断日志（约 4s@48kHz/4096）
+          if (chunkCount % 50 === 1) {
+            console.debug(`[WakeWord] 音频流入: chunks=${chunkCount}, totalSamples=${totalSamples}/${WINDOW_SAMPLES}, paused=${pausedRef.current}, analyzing=${analyzing}, useMainThread=${useMainThread}`)
+          }
           if (totalSamples > MAX_BUFFER_SAMPLES) {
             const mergedAll = concatChunks(chunks, totalSamples)
             const keepLatest = mergedAll.slice(-WINDOW_SAMPLES)
@@ -372,7 +449,7 @@ export function useWakeWord({ active, paused, onDetected }) {
           }
           maybeAnalyze()
         })
-        console.info('[WakeWord] 音频引擎:', captureHandle.engine)
+        console.info('[WakeWord] 音频引擎:', captureHandle.engine, '采样率:', inputRate)
 
         setWakeStatus('listening')
         console.info('[WakeWord] 🎤 麦克风已启动，等待唤醒词...')

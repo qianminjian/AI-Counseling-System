@@ -95,9 +95,14 @@ function getModelBundle() {
       const { AutoModel, AutoFeatureExtractor, env } = await import('@huggingface/transformers')
       // 模型同源部署：从自己服务器加载（/mindsafe/models/）
       const base = import.meta.env.BASE_URL || '/'
-      env.remoteHost = VP_MODEL_REMOTE_HOST === 'SAME_ORIGIN'
+      // 关键：remoteHost 必须是绝对 URL，否则 get_file_metadata 内的 new URL() 会失败
+      let vpRemoteHost = VP_MODEL_REMOTE_HOST === 'SAME_ORIGIN'
         ? `${base}models/`
         : VP_MODEL_REMOTE_HOST
+      if (vpRemoteHost && !vpRemoteHost.startsWith('http')) {
+        vpRemoteHost = window.location.origin + vpRemoteHost
+      }
+      env.remoteHost = vpRemoteHost
       // 自托管模型不带 /resolve/{revision}/ 路径段
       env.remotePathTemplate = '{model}/'
       env.allowLocalModels = false

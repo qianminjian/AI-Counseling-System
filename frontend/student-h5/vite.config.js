@@ -122,6 +122,11 @@ export default defineConfig({
         ],
       },
       workbox: {
+        // 新 SW 立即接管，不等旧页面关闭（解决旧 SW 缓存无 COOP/COEP 头的 HTML）
+        skipWaiting: true,
+        clientsClaim: true,
+        // 清除旧版预缓存
+        cleanupOutdatedCaches: true,
         // 缓存静态资源，API 请求走网络优先
         globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
         // Transformers.js（Whisper 唤醒引擎）是按需动态 chunk（约 516KB，仅开启语音唤醒时加载），
