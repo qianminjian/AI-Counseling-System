@@ -13,6 +13,23 @@
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      // SW 缓存清理：在模块加载前执行，确保新代码不被旧 SW 拦截
+      (function(){
+        var K='__sw_cleaned_v2';
+        if('serviceWorker' in navigator && !sessionStorage.getItem(K)){
+          navigator.serviceWorker.getRegistrations().then(function(r){
+            if(r.length>0){
+              Promise.all(r.map(function(s){return s.unregister()})).then(function(){
+                if('caches' in window) caches.keys().then(function(k){k.forEach(function(n){caches.delete(n)})});
+                sessionStorage.setItem(K,'1');
+                location.reload();
+              });
+            } else { sessionStorage.setItem(K,'1'); }
+          });
+        }
+      })();
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

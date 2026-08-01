@@ -144,8 +144,8 @@ function getTranscriber() {
       // 请求持久化存储（防止浏览器在存储压力下清除模型缓存）
       navigator.storage?.persist?.().catch(() => {})
       // ONNX Runtime WASM 走本地（dist/ort/ → /mindsafe/ort/）
-      const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent)
-      const variant = isSafari ? 'ort-wasm-simd-threaded' : 'ort-wasm-simd-threaded.asyncify'
+      // 始终用非 asyncify 变体（ORT 主代码非 asyncify 编译，asyncify 调用约定不匹配）
+      const variant = 'ort-wasm-simd-threaded'
       env.backends.onnx.wasm.wasmPaths = {
         mjs: `${base}ort/${variant}.mjs`,
         wasm: `${base}ort/${variant}.wasm`,
@@ -226,8 +226,8 @@ export function useWakeWord({ active, paused, onDetected }) {
 
     // 构建 Worker 配置（同源部署路径）
     const base = import.meta.env.BASE_URL || '/'
-    const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent)
-    const variant = isSafari ? 'ort-wasm-simd-threaded' : 'ort-wasm-simd-threaded.asyncify'
+    // 始终用非 asyncify 变体（ORT 主代码非 asyncify 编译）
+    const variant = 'ort-wasm-simd-threaded'
     const workerConfig = {
       modelId: WAKE_MODEL_ID,
       remoteHost: WAKE_MODEL_REMOTE_HOST === 'SAME_ORIGIN' ? `${base}models/` : WAKE_MODEL_REMOTE_HOST,

@@ -73,10 +73,23 @@ function getModelBundle() {
     setVpModelStatus('loading')
     modelBundlePromise = (async () => {
       // ━━ 环境前置检查：SharedArrayBuffer 是 ORT WASM 的硬性依赖 ━━
-      // 缺少 cross-origin isolation (COOP/COEP 头) 时，iOS Safari 不暴露 SharedArrayBuffer，
+      // 缺少 cross-origin isolation (COOP/COEP 头) 时，浏览器不暴露 SharedArrayBuffer，
       // ORT 工厂顶层语句 `var SharedArrayBuffer = globalThis.SharedArrayBuffer ?? ...` 会直接崩溃。
-      if (typeof SharedArrayBuffer === 'undefined') {
-        const msg = '浏览器不支持 SharedArrayBuffer（需要服务器配置 Cross-Origin-Opener-Policy / Cross-Origin-Embedder-Policy 响应头）'
+      const hasSAB = typeof SharedArrayBuffer !== 'undefined'
+      const isIsolated = (globalThis as any).crossOriginIsolated === true
+      // WebAssembly SIMD 检测：ort-wasm-simd-threaded 二进制包含 SIMD 指令，不支持则无法编译
+      let hasSimd = false
+      try {
+        hasSimd = WebAssembly.validate(new Uint8Array([0,97,115,109,1,0,0,0,1,5,1,96,0,1,123,3,2,1,0,10,10,1,8,0,65,0,253,15,26,11]))
+      } catch { /* ignore */ }
+      console.info('[Voiceprint] 环境诊断:', { hasSAB, isIsolated, hasSimd, ua: navigator.userAgent.slice(0, 100) })
+      if (!hasSAB) {
+        const msg = `SharedArrayBuffer不可用(isolated=${isIsolated})，请清除网站数据后重试`
+        console.error('[Voiceprint]', msg)
+        throw new Error(msg)
+      }
+      if (!hasSimd) {
+        const msg = '浏览器不支持WebAssembly SIMD，无法运行语音模型(需Chrome 91+/Safari 16.4+)'
         console.error('[Voiceprint]', msg)
         throw new Error(msg)
       }
@@ -102,8 +115,10 @@ function getModelBundle() {
       // 请求持久化存储
       navigator.storage?.persist?.().catch(() => {})
       // ONNX Runtime WASM 走本地（与唤醒词共用）
-      const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent)
-      const variant = isSafari ? 'ort-wasm-simd-threaded' : 'ort-wasm-simd-threaded.asyncify'
+      // 始终使用非 asyncify 变体：ORT 主代码(ort.wasm.mjs)非 asyncify 编译，
+      // asyncify 工厂的调用约定与主代码不匹配 → TypeError。
+      // 所有现代浏览器均支持 native async/await，无需 asyncify 回退。
+      const variant = 'ort-wasm-simd-threaded'
       env.backends.onnx.wasm.wasmPaths = {
         mjs: `${base}ort/${variant}.mjs`,
         wasm: `${base}ort/${variant}.wasm`,
@@ -129,8 +144,19 @@ function getModelBundle() {
     })().catch((err) => {
       modelBundlePromise = null
       const errMsg = err?.message || String(err)
-      console.error('[Voiceprint] 模型加载失败（详细）:', errMsg, err)
-      setVpModelStatus('error', undefined, errMsg)
+      const errStack = err?.stack?.split('\n').slice(0, 3).join(' | ') || ''
+      const fullMsg = `${errMsg}${errStack ? ' @ ' + errStack : ''}`
+      console.error('[Voiceprint] 模型加载失败（详细）:', fullMsg, err)
+      setVpModelStatus('error', undefined, fullMsg)
+      // 模型加载失败时清理 SW 缓存（排除旧 SW 缓存无 COOP/COEP 头的 HTML）
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(regs => {
+          regs.forEach(r => r.unregister())
+        }).catch(() => {})
+      }
+      if ('caches' in window) {
+        caches.keys().then(keys => keys.forEach(k => caches.delete(k))).catch(() => {})
+      }
       throw err
     })
   }
