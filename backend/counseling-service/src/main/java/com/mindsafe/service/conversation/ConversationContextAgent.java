@@ -87,6 +87,28 @@ public class ConversationContextAgent {
             sb.append("- 昵称：未知（这是新同学，可以温和地询问怎么称呼）\n");
         }
 
+        // 会话级个人信息（对话中收集，每轮注入，确保 AI 不遗忘）
+        Map<String, String> personalInfo = session.getPersonalInfo();
+        if (personalInfo != null && !personalInfo.isEmpty()) {
+            sb.append("- 孩子告诉你的个人信息（必须记住，不可遗忘）：\n");
+            String realName = personalInfo.get("realName");
+            if (realName != null) {
+                sb.append("  - 真实名字：").append(realName).append("（优先用这个名字称呼）\n");
+            }
+            String age = personalInfo.get("age");
+            if (age != null) {
+                sb.append("  - 年龄：").append(age).append("\n");
+            }
+            String grade = personalInfo.get("grade");
+            if (grade != null) {
+                sb.append("  - 年级：").append(grade).append("\n");
+            }
+            String clazz = personalInfo.get("class");
+            if (clazz != null) {
+                sb.append("  - 班级：").append(clazz).append("\n");
+            }
+        }
+
         // 年级 + 年龄估算
         int grade = session.getGrade();
         int approxAge = grade + 5;

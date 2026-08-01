@@ -43,6 +43,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * 对话服务实现（M1 核心闭环 + 风险识别 + DB 持久化）
@@ -318,6 +320,9 @@ public class ConversationServiceImpl implements ConversationService {
 
         // 4.1b CTX-Agent Phase 5：主题线索提取（轻量规则，零 LLM）
         extractTopicHint(session, content, riskResult, turn);
+
+        // 4.1c CTX-Agent：会话级个人信息提取（轻量规则，零 LLM，会话结束即销毁）
+        extractPersonalInfo(session, content);
 
         // 持久化本轮状态变更（覆盖 RED 短路 / 时长超限等提前返回路径）
         sessionStateStore.save(sessionId, session);
@@ -676,6 +681,64 @@ public class ConversationServiceImpl implements ConversationService {
             }
         } catch (Exception e) {
             log.debug("CTX-Agent 主题提取失败（不影响对话）: {}", e.getMessage());
+        }
+    }
+
+    // ===== 会话级个人信息提取（轻量规则，零 LLM） =====
+
+    /** 名字提取：我叫XX / 我的名字是XX / 你可以叫我XX */
+    private static final Pattern NAME_PATTERN = Pattern.compile(
+            "(?:我叫|我的名字是?|你可以叫我|我名字是|叫我)([\\u4e00-\\u9fa5a-zA-Z]{1,6})");
+    /** 年龄提取：我X岁 / 我今年X岁 */
+    private static final Pattern AGE_PATTERN = Pattern.compile(
+            "我(?:今年)?(\\d{1,2})\\s*岁");
+    /** 年级提取：我在X年级 / 我上X年级 / 我读X年级 */
+    private static final Pattern GRADE_PATTERN = Pattern.compile(
+            "我(?:在|上|读|是)([一二三四五六1-6])\\s*年级");
+    /** 班级提取：我在X班 / 我是X班的 */
+    private static final Pattern CLASS_PATTERN = Pattern.compile(
+            "我(?:在|是)([\\u4e00-\\u9fa5a-zA-Z0-9]{1,6}班)");
+
+    /**
+     * 从学生消息中提取个人信息（真实名字/年龄/年级/班级）。
+     * 存入 SessionState.personalInfo，注入 CTX-Agent 身份简报，会话结束即销毁。
+     * 零 LLM 调用，纯正则匹配。
+     */
+    private void extractPersonalInfo(SessionState session, String content) {
+        try {
+            if (content == null || content.length() < 2) return;
+
+            Matcher m;
+
+            // 名字
+            m = NAME_PATTERN.matcher(content);
+            if (m.find()) {
+                String name = m.group(1);
+                // 过滤常见误匹配（语气词/动词）
+                if (!name.matches("(?:是|的|了|吗|呢|吧|啊|哦|哈|嗯|不|没|在|有|要|会|能|可以|知道)")) {
+                    session.updatePersonalInfo("realName", name);
+                }
+            }
+
+            // 年龄
+            m = AGE_PATTERN.matcher(content);
+            if (m.find()) {
+                session.updatePersonalInfo("age", m.group(1) + "岁");
+            }
+
+            // 年级
+            m = GRADE_PATTERN.matcher(content);
+            if (m.find()) {
+                session.updatePersonalInfo("grade", m.group(1) + "年级");
+            }
+
+            // 班级
+            m = CLASS_PATTERN.matcher(content);
+            if (m.find()) {
+                session.updatePersonalInfo("class", m.group(1));
+            }
+        } catch (Exception e) {
+            log.debug("个人信息提取失败（不影响对话）: {}", e.getMessage());
         }
     }
 }

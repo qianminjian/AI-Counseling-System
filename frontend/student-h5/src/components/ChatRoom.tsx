@@ -187,9 +187,10 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: Se
   })
 
   // AI 活动结束（回复流/朗读完毕）→ 从此刻起算沉默
+  // 唤醒开关切换时也重置（用户操作设置面板不算“沉默”，避免关闭唤醒后立即触发 nudge）
   useEffect(() => {
     resetSilenceBase()
-  }, [streaming, tts.playing, resetSilenceBase])
+  }, [streaming, tts.playing, wakeEnabled, resetSilenceBase])
 
   // 安卓音频路由保护：活跃麦克风会让 Chrome 切到“通话模式”（像打电话），把 TTS 路由到听筒且切不回扬声器。
   // 对策：播放期间释放麦克风（保证走扬声器）；播放结束 600ms 后再预热（保证下次录音秒开）。
@@ -535,12 +536,14 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: Se
     : 'idle'
 
   /* ===== 波波宠物（手机悬浮输入栏右上角 / Pad 左栏共用）— 按住说话 ===== */
+  // 唤醒 active 模式下不展示残留转写，气泡显示聆听提示
+  const effectiveTranscript = voiceCall.mode === 'active' ? '' : liveTranscript
   const boBoPet = (size, bubbleAlign = 'center') => (
     <BoBoPet
       state={boboState}
       colors={theme.bobo}
       sentenceText=""
-      liveTranscript={liveTranscript}
+      liveTranscript={effectiveTranscript}
       size={size}
       interactive={supported}
       cancelArmed={cancelArmed}

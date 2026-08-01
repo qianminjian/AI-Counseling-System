@@ -6,7 +6,9 @@ import com.mindsafe.ai.orchestrator.StrategyProfile;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -62,6 +64,9 @@ public class SessionState {
     private String sessionSummary;         // 滚动摘要（每 4 轮异步更新）
     private List<TopicHint> topicHints = new ArrayList<>();  // 本次会话主题线索（最多 5 条，含轮次追踪）
     private int lastSummaryTurn;           // 上次生成摘要的轮次
+
+    // ===== 会话级个人信息（对话中结构化收集，会话结束即销毁） =====
+    private Map<String, String> personalInfo = new LinkedHashMap<>();  // realName/age/grade/class 等
 
     /** Jackson 反序列化需要无参构造 */
     public SessionState() {}
@@ -224,6 +229,15 @@ public class SessionState {
     public void setTopicHints(List<TopicHint> topicHints) { this.topicHints = topicHints != null ? topicHints : new ArrayList<>(); }
     public int getLastSummaryTurn() { return lastSummaryTurn; }
     public void setLastSummaryTurn(int lastSummaryTurn) { this.lastSummaryTurn = lastSummaryTurn; }
+    public Map<String, String> getPersonalInfo() { return personalInfo; }
+    public void setPersonalInfo(Map<String, String> personalInfo) { this.personalInfo = personalInfo != null ? personalInfo : new LinkedHashMap<>(); }
+
+    /** 更新个人信息（仅当新值非空时覆盖） */
+    public void updatePersonalInfo(String key, String value) {
+        if (key != null && value != null && !value.isBlank()) {
+            personalInfo.put(key, value.trim());
+        }
+    }
 
     /** 添加主题线索（最多保留 5 条，去重，记录轮次和出现次数） */
     public void addTopicHint(String topic, int turn) {

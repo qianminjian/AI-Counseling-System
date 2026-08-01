@@ -33,7 +33,7 @@ export default function BoBoPet({
     : state === 'speaking' ? 'speaking'
     : state === 'thinking' ? 'thinking'
     : null
-  const bubbleText = state === 'listening' ? liveTranscript : sentenceText
+  const bubbleText = state === 'listening' ? (liveTranscript || '我在听...') : sentenceText
   const listening = state === 'listening'
 
   const handleDown = (e) => {
