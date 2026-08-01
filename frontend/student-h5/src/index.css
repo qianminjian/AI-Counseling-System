@@ -1,22 +1,22 @@
 @import "tailwindcss";
 
 /* ===== 儿童圆体（源泉圆体 GenSenRounded） =====
-   将子集化后的 woff2 放入 public/fonts/ 即自动加载；
-   文件缺失时 font-display: swap 平滑回退系统字体，不阻塞、不白屏 */
-@font-face {
+   字体文件未部署，依赖系统回退字体（幼圆/Yuanti SC）。
+   若后续部署子集化 woff2 到 public/fonts/，取消下方注释即可启用。 */
+/* @font-face {
   font-family: 'GenSenRounded';
-  src: url('/fonts/GenSenRounded-Regular.woff2') format('woff2');
+  src: url('./fonts/GenSenRounded-Regular.woff2') format('woff2');
   font-weight: 400 500;
   font-style: normal;
   font-display: swap;
 }
 @font-face {
   font-family: 'GenSenRounded';
-  src: url('/fonts/GenSenRounded-Bold.woff2') format('woff2');
+  src: url('./fonts/GenSenRounded-Bold.woff2') format('woff2');
   font-weight: 700;
   font-style: normal;
   font-display: swap;
-}
+} */
 
 :root {
   /* 默认主题变量（海洋探险）- 会被 ThemeProvider 动态覆盖 */

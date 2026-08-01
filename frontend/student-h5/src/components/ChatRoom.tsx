@@ -193,16 +193,17 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: Se
 
   // 安卓音频路由保护：活跃麦克风会让 Chrome 切到"通话模式"（像打电话），把 TTS 路由到听筒且切不回扬声器。
   // 对策：播放期间释放麦克风（保证走扬声器）；播放结束 600ms 后再预热（保证下次录音秒开）。
-  // 无问候语播放时，本 effect 在挂载后即完成首次预热（替代原"挂载即预热"，还避免与问候语抢路由）
+  // 无问候语播放时，本 effect 在挂载后即完成首次预热（替代原“挂载即预热”，还避免与问候语抢路由）
+  // 注意：仅当唤醒词开启时才预热（否则用户关闭唤醒后仍看到录音指示器，体验差）
   useEffect(() => {
     if (tts.playing) {
       releaseStream()
-    } else if (hasConsent()) {
+    } else if (hasConsent() && wakeEnabled) {
       const timer = setTimeout(() => warmUpMic(), 600)
       return () => clearTimeout(timer)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tts.playing])
+  }, [tts.playing, wakeEnabled])
 
   // 录音 30 秒上限：到时自动停止并发送（等价于松手），防止长时间占用麦克风
   // 用 ref 持有最新 stopRecording，计时器只随 recording 变化重置，不被每次渲染重置
@@ -322,6 +323,8 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: Se
     if (wakeEnabled) {
       setWakeEnabled(false)
       localStorage.setItem(WAKE_PREF_KEY, '0')
+      // 关闭唤醒时释放预热的麦克风流（消除浏览器录音指示器）
+      releaseStream()
     } else if (wakeConsent.requestConsent()) {
       setWakeEnabled(true)
       localStorage.setItem(WAKE_PREF_KEY, '1')
