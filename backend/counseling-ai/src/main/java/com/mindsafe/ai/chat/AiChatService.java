@@ -108,4 +108,15 @@ public interface AiChatService {
      * @return JSON 数组（key_events），失败返回 null
      */
     String extractKeyEvents(String conversationText, String sessionSummary);
+
+    /**
+     * CTX-Agent Phase 3：渐进式会话摘要（非流式，每 4 轮异步调用）。
+     * <p>
+     * 将当前对话压缩为 3-5 句摘要，保留关键事件/人物/情绪变化/待跟进点，
+     * 供下一轮 System Prompt 注入，解决 ChatMemory 窗口外早期对话丢失问题。
+     *
+     * @param conversationText 当前会话对话文本（截至当前轮）
+     * @return 纯文本摘要（≤150字），失败返回 null
+     */
+    String summarizeSessionProgress(String conversationText);
 }

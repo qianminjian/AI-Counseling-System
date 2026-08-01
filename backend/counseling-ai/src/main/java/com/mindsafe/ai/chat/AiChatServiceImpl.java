@@ -421,6 +421,18 @@ public class AiChatServiceImpl implements AiChatService {
             - 最多提取 3 个事件（质量优先于数量）
             """;
 
+    // ===== CTX-Agent Phase 3: 渐进式会话摘要 =====
+
+    private static final String SESSION_PROGRESS_SUMMARY_PROMPT = """
+            你是对话记录员。请将以下对话压缩为 3-5 句摘要，保留：
+            1. 孩子提到的关键事件/人物
+            2. 情绪变化节点
+            3. AI 已给出的引导/承诺
+            4. 未解决的悬念/待跟进点
+
+            输出纯文本，不超过 150 字。不要输出 JSON，不要加标题，直接写摘要内容。
+            """;
+
     @Override
     public String extractKeyEvents(String conversationText, String sessionSummary) {
         if (conversationText == null || conversationText.isBlank()) {
@@ -442,6 +454,28 @@ public class AiChatServiceImpl implements AiChatService {
         } catch (Exception e) {
             log.error("关键事件提取 LLM 调用失败", e);
             logModelCall(null, "key_events_extract", System.currentTimeMillis() - start, "error", e.getMessage());
+            return null;
+        }
+    }
+
+    @Override
+    public String summarizeSessionProgress(String conversationText) {
+        if (conversationText == null || conversationText.isBlank()) {
+            return null;
+        }
+        long start = System.currentTimeMillis();
+        try {
+            String result = chatClient.prompt()
+                    .system(SESSION_PROGRESS_SUMMARY_PROMPT)
+                    .user("请为以下对话生成进展摘要：\n\n" + conversationText)
+                    .call()
+                    .content();
+            log.debug("会话进展摘要完成, length={}", result != null ? result.length() : 0);
+            logModelCall(null, "session_progress_summary", System.currentTimeMillis() - start, "success", null);
+            return result;
+        } catch (Exception e) {
+            log.error("会话进展摘要 LLM 调用失败", e);
+            logModelCall(null, "session_progress_summary", System.currentTimeMillis() - start, "error", e.getMessage());
             return null;
         }
     }

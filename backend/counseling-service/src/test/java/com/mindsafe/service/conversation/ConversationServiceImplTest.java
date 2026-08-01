@@ -88,6 +88,8 @@ class ConversationServiceImplTest {
     private PromptVariantRouter promptVariantRouter;
     private OfflineMessageReplayService offlineMessageReplayService;
     private RedisSessionStateStore sessionStateStore;
+    private ConversationContextAgent contextAgent;
+    private SessionSummaryUpdater sessionSummaryUpdater;
 
     /** 测试用内存模拟 Redis 存储 */
     private final Map<UUID, SessionState> testSessionStore = new HashMap<>();
@@ -123,6 +125,10 @@ class ConversationServiceImplTest {
         promptVariantRouter = mock(PromptVariantRouter.class);
         offlineMessageReplayService = mock(OfflineMessageReplayService.class);
         sessionStateStore = mock(RedisSessionStateStore.class);
+        contextAgent = mock(ConversationContextAgent.class);
+        sessionSummaryUpdater = mock(SessionSummaryUpdater.class);
+        // CTX-Agent: 默认返回空简报（不阻塞 sendMessageStream 测试）
+        when(contextAgent.buildContextBrief(any(), any(), any(), any(), anyInt())).thenReturn("");
 
         // 用内存 Map 模拟 Redis 存储行为
         org.mockito.Mockito.doAnswer(inv -> {
@@ -180,7 +186,8 @@ class ConversationServiceImplTest {
                 crisisResourceProvider,
                 allianceEnhancer, cbtStageRouter,
                 experimentBucketAssigner, experimentMetricsCollector,
-                sessionEndAnalyticsService, promptVariantRouter, offlineMessageReplayService, sessionStateStore);
+                sessionEndAnalyticsService, promptVariantRouter, offlineMessageReplayService, sessionStateStore,
+                contextAgent, sessionSummaryUpdater);
     }
 
     /** createSession 并捕获内部生成的 sessionId */
@@ -367,7 +374,8 @@ class ConversationServiceImplTest {
                     crisisResourceProvider,
                     allianceEnhancer, cbtStageRouter,
                     experimentBucketAssigner, experimentMetricsCollector,
-                    sessionEndAnalyticsService, promptVariantRouter, offlineMessageReplayService, sessionStateStore);
+                    sessionEndAnalyticsService, promptVariantRouter, offlineMessageReplayService, sessionStateStore,
+                    contextAgent, sessionSummaryUpdater);
 
             User user = new User();
             user.setPseudonym("小明");
@@ -834,10 +842,10 @@ class ConversationServiceImplTest {
 
             ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
             verify(aiChatService).chatWithPrompt(any(), any(), any(), any(), any(), anyInt(), promptCaptor.capture());
-            // 拼在系统 Prompt 之后：安全规则在前，参考资料在尾部
+            // Fix 3: RAG 拼在系统 Prompt 之后，ContextBrief 追加在最尾部（recency bias）
             assertThat(promptCaptor.getValue())
                     .startsWith("mock-system-prompt")
-                    .endsWith(ragContext);
+                    .contains(ragContext);
         }
 
         @Test
@@ -851,9 +859,9 @@ class ConversationServiceImplTest {
 
             ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
             verify(aiChatService).chatWithPrompt(any(), any(), any(), any(), any(), anyInt(), promptCaptor.capture());
-            // ORCH-002：组装链 SYS → LANG → EMO（EMO_001 经 mock resolve 同样返回 mock-system-prompt）
+            // ORCH-002：组装链 SYS → LANG → EMO + Fix 3: ContextBrief 追加在尾部
             assertThat(promptCaptor.getValue())
-                    .isEqualTo("mock-system-prompt\n\nmock-lang-rules\n\nmock-system-prompt")
+                    .startsWith("mock-system-prompt\n\nmock-lang-rules\n\nmock-system-prompt")
                     .doesNotContain("参考资料");
         }
 

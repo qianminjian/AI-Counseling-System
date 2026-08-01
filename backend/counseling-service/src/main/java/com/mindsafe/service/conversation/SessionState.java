@@ -57,6 +57,12 @@ public class SessionState {
     // ===== SAFE-202：高敏模式 =====
     private boolean highSensitivity;
 
+    // ===== CTX-Agent：上下文主 Agent 状态 =====
+    private String pseudonym;              // 孩子昵称（创建时从 User 表读取）
+    private String sessionSummary;         // 滚动摘要（每 4 轮异步更新）
+    private List<TopicHint> topicHints = new ArrayList<>();  // 本次会话主题线索（最多 5 条，含轮次追踪）
+    private int lastSummaryTurn;           // 上次生成摘要的轮次
+
     /** Jackson 反序列化需要无参构造 */
     public SessionState() {}
 
@@ -210,6 +216,31 @@ public class SessionState {
     public void setReliefCount(int reliefCount) { this.reliefCount = reliefCount; }
     public boolean isHighSensitivity() { return highSensitivity; }
     public void setHighSensitivity(boolean highSensitivity) { this.highSensitivity = highSensitivity; }
+    public String getPseudonym() { return pseudonym; }
+    public void setPseudonym(String pseudonym) { this.pseudonym = pseudonym; }
+    public String getSessionSummary() { return sessionSummary; }
+    public void setSessionSummary(String sessionSummary) { this.sessionSummary = sessionSummary; }
+    public List<TopicHint> getTopicHints() { return topicHints; }
+    public void setTopicHints(List<TopicHint> topicHints) { this.topicHints = topicHints != null ? topicHints : new ArrayList<>(); }
+    public int getLastSummaryTurn() { return lastSummaryTurn; }
+    public void setLastSummaryTurn(int lastSummaryTurn) { this.lastSummaryTurn = lastSummaryTurn; }
+
+    /** 添加主题线索（最多保留 5 条，去重，记录轮次和出现次数） */
+    public void addTopicHint(String topic, int turn) {
+        if (topic == null || topic.isBlank()) return;
+        for (int i = 0; i < topicHints.size(); i++) {
+            if (topicHints.get(i).topic().equals(topic)) {
+                topicHints.set(i, new TopicHint(topic, topicHints.get(i).firstTurn(), topicHints.get(i).count() + 1));
+                return;
+            }
+        }
+        topicHints.add(new TopicHint(topic, turn, 1));
+        if (topicHints.size() > 5) topicHints.remove(0);
+    }
+
+    /** 主题线索记录（含轮次追踪） */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record TopicHint(String topic, int firstTurn, int count) {}
 
     /** 语音情绪记录 */
     @JsonIgnoreProperties(ignoreUnknown = true)
