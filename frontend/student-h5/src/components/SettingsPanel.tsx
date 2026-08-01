@@ -44,7 +44,7 @@ export default function SettingsPanel({ open, onClose, muted, onToggleMute, wake
         setVpPrivacyNote(cfg.privacyNote)
       }).catch(() => {})
       if (!familyCode) {
-        api('/api/v1/auth/me').then((data) => {
+        api('/auth/me').then((data) => {
           if (data?.familyCode) setFamilyCode(data.familyCode)
         }).catch(() => {})
       }
