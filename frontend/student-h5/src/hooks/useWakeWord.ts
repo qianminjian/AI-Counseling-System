@@ -87,14 +87,18 @@ function setModelStatus(s: ModelStatus, progress?: number) {
   if (progress !== undefined) _modelProgress = progress
   if (_modelStatus === s && progress === undefined) return
   _modelStatus = s
+  // 更新缓存快照（保证引用稳定，避免 useSyncExternalStore 无限循环）
+  _modelSnapshot = { status: _modelStatus, progress: _modelProgress }
   _modelSubscribers.forEach((fn) => fn())
 }
+
+let _modelSnapshot: { status: ModelStatus; progress: number } = { status: _modelStatus, progress: _modelProgress }
 
 /** 订阅唤醒模型加载状态（React Hook，任意组件可调用） */
 export function useWakeModelStatus(): { status: ModelStatus; progress: number } {
   return useSyncExternalStore(
     (cb) => { _modelSubscribers.add(cb); return () => { _modelSubscribers.delete(cb) } },
-    () => ({ status: _modelStatus, progress: _modelProgress }),
+    () => _modelSnapshot,
   )
 }
 
@@ -135,9 +139,12 @@ function getTranscriber() {
       }
       const t = await pipeline('automatic-speech-recognition', WAKE_MODEL_ID, {
         progress_callback: (p) => {
-          if (p.status === 'progress' && p.file && typeof p.progress === 'number') {
-            console.debug(`[WakeWord] 模型加载 ${p.file} ${p.progress.toFixed(0)}%`)
+          if (p.status === 'progress_total' && typeof p.progress === 'number') {
+            // 聚合进度（跨所有文件的总百分比）
+            console.debug(`[WakeWord] 模型总进度 ${p.progress.toFixed(0)}%`)
             setModelStatus('loading', Math.round(p.progress))
+          } else if (p.status === 'progress' && p.file && typeof p.progress === 'number') {
+            console.debug(`[WakeWord] ${p.file} ${p.progress.toFixed(0)}%`)
           }
         },
       })

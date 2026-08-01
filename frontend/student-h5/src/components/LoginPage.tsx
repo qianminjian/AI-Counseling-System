@@ -3,7 +3,8 @@ import { pinLogin, setToken, setRefreshToken, setUser, issueVoiceCredential, get
 import { CONSENT_VERSION } from './ConsentGate'
 import { hasAnyVoiceprint, enrollVoiceprint, saveVoiceCredential } from '../utils/voiceprintStore'
 import { useTheme, THEMES } from '../theme/ThemeProvider'
-import { preloadVoiceprintModel } from '../hooks/useVoiceprint'
+import { preloadVoiceprintModel, useVoiceprintModelStatus } from '../hooks/useVoiceprint'
+import { preloadWakeModel, useWakeModelStatus } from '../hooks/useWakeWord'
 import VoiceLoginOverlay from './VoiceLoginOverlay'
 import SceneDecor from './SceneDecor'
 import ConfirmDialog from './ConfirmDialog'
@@ -27,9 +28,10 @@ export default function LoginPage({ onLogin, onRegister, onNeedConsent, initialT
     hasAnyVoiceprint().then((has) => setHasVoiceprint(has))
   }, [])
 
-  // 预加载声纹模型：登录页一打开就开始下载，用户点击声纹登录时直接就绪
+  // 预加载声纹模型 + 唤醒词模型：登录页一打开就开始下载
   useEffect(() => {
     preloadVoiceprintModel()
+    preloadWakeModel()
   }, [])
 
   // 浏览器是否支持麦克风（决定是否显示声音进入按钮）
@@ -152,6 +154,9 @@ export default function LoginPage({ onLogin, onRegister, onNeedConsent, initialT
       {showVoiceOverlay && (
         <VoiceLoginOverlay mode="verify" onComplete={handleVoiceComplete} onCancel={handleVoiceCancel} />
       )}
+
+      {/* 语音模型下载进度（底部微妙提示） */}
+      <ModelDownloadProgress />
     </div>
   )
 }
@@ -567,4 +572,48 @@ function RegisterForm({ themeId, onRegister }) {
       </ConfirmDialog>
     </form>
   )
+}
+
+/** 本地模型下载进度（登录页底部，合并显示声纹 + 唤醒词模型） */
+function ModelDownloadProgress() {
+  const wake = useWakeModelStatus()
+  const vp = useVoiceprintModelStatus()
+
+  // 汇总两个模型的状态
+  const items: { label: string; status: string; progress: number }[] = []
+  if (vp.status === 'loading' || vp.status === 'error') {
+    items.push({ label: '声纹引擎', status: vp.status, progress: vp.progress })
+  }
+  if (wake.status === 'loading' || wake.status === 'error') {
+    items.push({ label: '语音引擎', status: wake.status, progress: wake.progress })
+  }
+
+  if (items.length === 0) return null
+
+  const hasError = items.some((i) => i.status === 'error')
+  const allLoading = items.filter((i) => i.status === 'loading')
+
+  // 有失败：显示错误提示
+  if (hasError) {
+    const failedNames = items.filter((i) => i.status === 'error').map((i) => i.label).join('、')
+    return (
+      <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 px-4 py-1.5 rounded-full border text-xs font-medium bg-red-50 text-red-500 border-red-200">
+        ⚠️ {failedNames}加载失败，不影响登录
+      </div>
+    )
+  }
+
+  // 正在下载：显示进度
+  if (allLoading.length > 0) {
+    const text = allLoading.length === 2
+      ? `🎧 语音引擎准备中 ${Math.round((allLoading[0].progress + allLoading[1].progress) / 2) || 0}%`
+      : `🎧 ${allLoading[0].label}准备中 ${allLoading[0].progress > 0 ? `${allLoading[0].progress}%` : '…'}`
+    return (
+      <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 px-4 py-1.5 rounded-full border text-xs font-medium bg-amber-50 text-amber-600 border-amber-200 animate-pulse">
+        {text}
+      </div>
+    )
+  }
+
+  return null
 }

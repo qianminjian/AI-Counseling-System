@@ -11,7 +11,7 @@
  *
  * 降级：模型加载失败 → supported=false → UI 隐藏声纹入口，PIN 主路径不受影响。
  */
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback, useSyncExternalStore } from 'react'
 import {
   VP_MODEL_ID,
   VP_MODEL_REMOTE_HOST,
@@ -22,6 +22,31 @@ import {
 } from '../config/voiceprint'
 import { getAllVoiceprints } from '../utils/voiceprintStore'
 
+// ===== 全局模型加载状态（跨组件共享，LoginPage / VoiceLoginOverlay 均可订阅） =====
+
+type VpModelStatus = 'idle' | 'loading' | 'ready' | 'error'
+let _vpStatus: VpModelStatus = 'idle'
+let _vpProgress = 0 // 0-100 下载进度
+const _vpSubscribers = new Set<() => void>()
+
+function setVpModelStatus(s: VpModelStatus, progress?: number) {
+  if (progress !== undefined) _vpProgress = progress
+  if (_vpStatus === s && progress === undefined) return
+  _vpStatus = s
+  _vpSnapshot = { status: _vpStatus, progress: _vpProgress }
+  _vpSubscribers.forEach((fn) => fn())
+}
+
+let _vpSnapshot: { status: VpModelStatus; progress: number } = { status: _vpStatus, progress: _vpProgress }
+
+/** 订阅声纹模型加载状态（React Hook，任意组件可调用） */
+export function useVoiceprintModelStatus(): { status: VpModelStatus; progress: number } {
+  return useSyncExternalStore(
+    (cb) => { _vpSubscribers.add(cb); return () => { _vpSubscribers.delete(cb) } },
+    () => _vpSnapshot,
+  )
+}
+
 // ===== 模型单例（模块级，懒加载） =====
 
 let modelBundlePromise = null
@@ -29,6 +54,7 @@ let modelBundlePromise = null
 /**
  * 预加载声纹模型（不启动麦克风）：在登录页提前下载模型，
  * 避免用户点击声纹登录时还要等待模型加载。
+ * 状态可通过 useVoiceprintModelStatus() 订阅查看。
  */
 export function preloadVoiceprintModel() {
   getModelBundle().catch(() => {}) // 静默失败，实际使用时会重试
@@ -42,6 +68,7 @@ export function preloadVoiceprintModel() {
  */
 function getModelBundle() {
   if (!modelBundlePromise) {
+    setVpModelStatus('loading')
     modelBundlePromise = (async () => {
       const { AutoModel, AutoFeatureExtractor, env } = await import('@huggingface/transformers')
       // 模型同源部署：从自己服务器加载（/mindsafe/models/）
@@ -61,8 +88,14 @@ function getModelBundle() {
         mjs: `${base}ort/${variant}.mjs`,
         wasm: `${base}ort/${variant}.wasm`,
       }
+      // 跟踪各文件下载进度，聚合为总百分比
+      const fileProgress: Record<string, number> = {}
       const progress_callback = (p) => {
         if (p.status === 'progress' && p.file && typeof p.progress === 'number') {
+          fileProgress[p.file] = p.progress
+          const files = Object.keys(fileProgress)
+          const avg = files.reduce((s, f) => s + fileProgress[f], 0) / files.length
+          setVpModelStatus('loading', Math.round(avg))
           console.debug(`[Voiceprint] 模型加载 ${p.file} ${p.progress.toFixed(0)}%`)
         }
       }
@@ -71,9 +104,11 @@ function getModelBundle() {
         AutoModel.from_pretrained(VP_MODEL_ID, { progress_callback }),
         AutoFeatureExtractor.from_pretrained(VP_MODEL_ID, { progress_callback }),
       ])
+      setVpModelStatus('ready', 100)
       return { model, featureExtractor }
     })().catch((err) => {
       modelBundlePromise = null
+      setVpModelStatus('error')
       throw err
     })
   }
