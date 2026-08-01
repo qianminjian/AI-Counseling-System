@@ -191,19 +191,29 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: Se
     resetSilenceBase()
   }, [streaming, tts.playing, resetSilenceBase])
 
-  // 安卓音频路由保护：活跃麦克风会让 Chrome 切到"通话模式"（像打电话），把 TTS 路由到听筒且切不回扬声器。
+  // 安卓音频路由保护：活跃麦克风会让 Chrome 切到“通话模式”（像打电话），把 TTS 路由到听筒且切不回扬声器。
   // 对策：播放期间释放麦克风（保证走扬声器）；播放结束 600ms 后再预热（保证下次录音秒开）。
-  // 无问候语播放时，本 effect 在挂载后即完成首次预热（替代原“挂载即预热”，还避免与问候语抢路由）
-  // 注意：仅当唤醒词开启时才预热（否则用户关闭唤醒后仍看到录音指示器，体验差）
+  // 预热策略：
+  //   - 唤醒开启：挂载即预热（唤醒引擎本身也需要麦克风，指示器亮是预期行为）
+  //   - 唤醒关闭：等用户首次触摸页面后再预热（此时有用户手势，且用户已表达交互意图）
+  //   - 两种情况 TTS 播放期间都释放（安卓路由保护）
+  const [userInteracted, setUserInteracted] = useState(false)
+  useEffect(() => {
+    if (userInteracted) return
+    const handler = () => setUserInteracted(true)
+    document.addEventListener('pointerdown', handler, { once: true })
+    return () => document.removeEventListener('pointerdown', handler)
+  }, [userInteracted])
+  
   useEffect(() => {
     if (tts.playing) {
       releaseStream()
-    } else if (hasConsent() && wakeEnabled) {
+    } else if (hasConsent() && (wakeEnabled || userInteracted)) {
       const timer = setTimeout(() => warmUpMic(), 600)
       return () => clearTimeout(timer)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tts.playing, wakeEnabled])
+  }, [tts.playing, wakeEnabled, userInteracted])
 
   // 录音 30 秒上限：到时自动停止并发送（等价于松手），防止长时间占用麦克风
   // 用 ref 持有最新 stopRecording，计时器只随 recording 变化重置，不被每次渲染重置
