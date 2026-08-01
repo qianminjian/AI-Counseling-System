@@ -69,6 +69,7 @@ public class TtsController {
         String emotion = (String) request.getOrDefault("emotion", "neutral");
         String scene = (String) request.getOrDefault("scene", "chat");
         String riskLevel = (String) request.get("riskLevel"); // TTSFX-002：可选风险等级
+        String dialect = (String) request.get("dialect"); // design/56：方言代码（可选，仅 dialect_capable 音色生效）
         double speed = request.containsKey("speed")
                 ? ((Number) request.get("speed")).doubleValue() : 1.0;
 
@@ -98,10 +99,10 @@ public class TtsController {
 
         UUID userId = auth != null && auth.getPrincipal() instanceof UUID id ? id : null;
         UUID tenantId = auth != null && auth.getDetails() instanceof TenantContext ctx ? ctx.tenantId() : null;
-        VoiceRenderProfile profile = personaResolver.resolve(tenantId, userId, persona, emotion, scene);
+        VoiceRenderProfile profile = personaResolver.resolve(tenantId, userId, persona, emotion, scene, dialect);
 
         byte[] audio = ttsService.synthesize(text, profile.persona(), profile.emotionInstruct(),
-                speed * profile.speed(), profile.pitchScale(), profile.pauseStyle());
+                speed * profile.speed(), profile.pitchScale(), profile.pauseStyle(), profile.dialect());
         if (audio == null) {
             return ResponseEntity.noContent().build();
         }
@@ -168,12 +169,12 @@ public class TtsController {
         if (text == null || !LOGIN_PROMPT_WHITELIST.contains(text.trim())) {
             return ResponseEntity.badRequest().build();
         }
-        // 仅允许合法 persona
-        if (!Set.of("xiaoxing", "qiqiu", "yueliang", "xiaotaiyang").contains(persona)) {
+        // 仅允许合法 persona（design/56 7 音色）
+        if (!Set.of("xiaoxing", "bobo", "yueliang", "xiaotaiyang", "dashu", "doudou", "qiqiu").contains(persona)) {
             persona = "xiaoxing";
         }
 
-        byte[] audio = ttsService.synthesize(text.trim(), persona, "happy", 0.9, 1.0, 0);
+        byte[] audio = ttsService.synthesize(text.trim(), persona, "happy", 0.9, 1.0, 0, null);
         if (audio == null) {
             return ResponseEntity.noContent().build();
         }

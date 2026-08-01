@@ -16,7 +16,7 @@ import { hasAnyVoiceprint, deleteVoiceprint, enrollVoiceprint, saveVoiceCredenti
 import VoiceLoginOverlay from './VoiceLoginOverlay'
 import ConfirmDialog from './ConfirmDialog'
 
-export default function SettingsPanel({ open, onClose, muted, onToggleMute, wakeSupported = false, wakeOn = false, onToggleWake, personaId: externalPersonaId, onPersonaChange }: {
+export default function SettingsPanel({ open, onClose, muted, onToggleMute, wakeSupported = false, wakeOn = false, onToggleWake, personaId: externalPersonaId, onPersonaChange, dialectEnabled = false, onToggleDialect, selectedDialect, onDialectChange, supportedDialects, currentPersonaDialectCapable = false }: {
   open: boolean
   onClose: () => void
   muted: boolean
@@ -26,6 +26,12 @@ export default function SettingsPanel({ open, onClose, muted, onToggleMute, wake
   onToggleWake?: () => void
   personaId?: string
   onPersonaChange?: (id: string) => void
+  dialectEnabled?: boolean
+  onToggleDialect?: (enabled: boolean) => void
+  selectedDialect?: string | null
+  onDialectChange?: (id: string) => void
+  supportedDialects?: Record<string, { id: string; label: string }>
+  currentPersonaDialectCapable?: boolean
 }) {
   const { themeId, changeTheme } = useTheme()
   const internalPersona = useVoicePersona()
@@ -135,27 +141,80 @@ export default function SettingsPanel({ open, onClose, muted, onToggleMute, wake
           </div>
         </section>
 
-        {/* 音色选择 */}
+        {/* 音色选择（design/56：4+3 布局） */}
         <section className="mb-6">
           <h3 className="mb-3 text-sm font-semibold text-gray-500">🎵 选择声音</h3>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-4 gap-2.5">
             {Object.values(VOICE_PERSONAS).map((p) => (
               <button
                 key={p.id}
                 onClick={() => changePersona(p.id)}
-                className={`flex flex-col items-center gap-1 rounded-2xl border-2 p-3 transition-all active:scale-95 ${
+                className={`flex flex-col items-center gap-1 rounded-2xl border-2 p-2.5 transition-all active:scale-95 ${
                   personaId === p.id
                     ? 'border-[var(--primary)] bg-[var(--primary-light)] shadow-md'
                     : 'border-gray-100 bg-gray-50'
                 }`}
               >
-                <span className="text-3xl">{p.emoji}</span>
-                <span className="text-xs font-medium text-gray-700">{p.name}</span>
-                <span className="text-[10px] text-gray-400">{p.desc}</span>
+                <span className="text-2xl">{p.emoji}</span>
+                <span className="text-[11px] font-medium text-gray-700">{p.name}</span>
+                <span className="text-[9px] text-gray-400 leading-tight">{p.desc}</span>
               </button>
             ))}
           </div>
         </section>
+
+        {/* 方言选择（design/56 §三：仅 dialectCapable 音色显示） */}
+        {currentPersonaDialectCapable && (
+          <section className="mb-6">
+            <h3 className="mb-3 text-sm font-semibold text-gray-500">🏠 用家乡话聊天</h3>
+            {/* 方言开关 */}
+            <button
+              onClick={() => onToggleDialect?.(!dialectEnabled)}
+              className={`flex w-full items-center justify-between rounded-2xl border-2 p-4 transition-all active:scale-[0.98] ${
+                dialectEnabled
+                  ? 'border-[var(--primary)] bg-[var(--primary-light)]'
+                  : 'border-gray-100 bg-gray-50'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">{dialectEnabled ? '🗣️' : '💬'}</span>
+                <div className="text-left">
+                  <p className="text-sm font-medium text-gray-700">
+                    {dialectEnabled ? '方言已开启' : '方言已关闭'}
+                  </p>
+                  <p className="text-xs text-gray-400">
+                    {dialectEnabled ? '波波会用家乡话和你说话' : '开启后可以用方言聊天'}
+                  </p>
+                </div>
+              </div>
+              <div className={`h-7 w-12 rounded-full p-1 transition-colors ${
+                dialectEnabled ? 'bg-[var(--primary)]' : 'bg-gray-300'
+              }`}>
+                <div className={`h-5 w-5 rounded-full bg-white shadow transition-transform ${
+                  dialectEnabled ? 'translate-x-5' : 'translate-x-0'
+                }`} />
+              </div>
+            </button>
+            {/* 方言类型选择（开启后展开） */}
+            {dialectEnabled && supportedDialects && (
+              <div className="mt-3 grid grid-cols-4 gap-2">
+                {Object.values(supportedDialects).map((d) => (
+                  <button
+                    key={d.id}
+                    onClick={() => onDialectChange?.(d.id)}
+                    className={`rounded-xl border-2 px-2 py-2 text-xs font-medium transition-all active:scale-95 ${
+                      selectedDialect === d.id
+                        ? 'border-[var(--primary)] bg-[var(--primary-light)] text-[var(--primary)]'
+                        : 'border-gray-100 bg-gray-50 text-gray-600'
+                    }`}
+                  >
+                    {d.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </section>
+        )}
 
         {/* 语音开关 */}
         <section className="mb-4">

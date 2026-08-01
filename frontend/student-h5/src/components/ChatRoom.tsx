@@ -50,7 +50,7 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: Se
 
   // 主题 + 音色
   const { theme } = useTheme()
-  const { personaId, changePersona } = useVoicePersona()
+  const { personaId, changePersona, activeDialect, dialectEnabled, toggleDialect, selectedDialect, changeDialect, supportedDialects, persona } = useVoicePersona()
 
   // 语音授权（合规）
   const { showDialog: showConsent, hasConsent, requestConsent, grantConsent, denyConsent } = useVoiceConsent()
@@ -65,6 +65,7 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: Se
     persona: personaId,
     emotion: voiceEmotion?.labelEn || 'neutral',
     speed: userGender === 'male' ? 1.05 : userGender === 'female' ? 0.95 : 1.0,
+    dialect: activeDialect,
   })
 
   // 进入聊天室自动朗读打招呼语
@@ -805,6 +806,12 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: Se
         onToggleWake={handleToggleWake}
         personaId={personaId}
         onPersonaChange={changePersona}
+        dialectEnabled={dialectEnabled}
+        onToggleDialect={toggleDialect}
+        selectedDialect={selectedDialect}
+        onDialectChange={changeDialect}
+        supportedDialects={supportedDialects}
+        currentPersonaDialectCapable={persona?.dialectCapable ?? false}
       />
       {/* 切换同学二次确认 */}
       <ConfirmDialog

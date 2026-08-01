@@ -39,24 +39,28 @@ public class TtsService {
      * 合成语音（返回音频二进制）
      *
      * @param text       要合成的文本
-     * @param persona    音色人设（xiaoxing/qiqiu/yueliang/xiaotaiyang）
+     * @param persona    音色人设（xiaoxing/bobo/yueliang/xiaotaiyang/dashu/doudou/qiqiu）
      * @param emotion    孩子当前情绪
      * @param speed      语速倍率
      * @param pitch      音高基调（TMATCH-001 prosody，1.0=自然）
      * @param pauseStyle 停顿风格（0=轻快 1=自然 2=多停顿安抚）
+     * @param dialect    方言代码（可为 null，仅 dialect_capable 音色生效，design/56）
      * @return 音频字节数组（wav/mp3）
      */
     public byte[] synthesize(String text, String persona, String emotion, double speed,
-                             double pitch, int pauseStyle) {
+                             double pitch, int pauseStyle, String dialect) {
         try {
-            Map<String, Object> body = Map.of(
-                    "text", text,
-                    "persona", persona != null ? persona : "xiaoxing",
-                    "emotion", emotion != null ? emotion : "neutral",
-                    "speed", speed,
-                    "pitch", pitch,
-                    "pause_style", pauseStyle
-            );
+            var bodyBuilder = new java.util.HashMap<String, Object>();
+            bodyBuilder.put("text", text);
+            bodyBuilder.put("persona", persona != null ? persona : "xiaoxing");
+            bodyBuilder.put("emotion", emotion != null ? emotion : "neutral");
+            bodyBuilder.put("speed", speed);
+            bodyBuilder.put("pitch", pitch);
+            bodyBuilder.put("pause_style", pauseStyle);
+            if (dialect != null && !dialect.isBlank()) {
+                bodyBuilder.put("dialect", dialect);
+            }
+            Map<String, Object> body = bodyBuilder;
 
             byte[] audio = webClient.post()
                     .uri("/api/v1/tts/synthesize")

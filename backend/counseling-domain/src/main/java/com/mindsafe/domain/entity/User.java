@@ -46,6 +46,9 @@ public class User {
     /** 家庭码（6位字母数字，学生注册时生成，家长绑定凭证） */
     private String familyCode;
 
+    /** 方言偏好（管理端配置，可为空，design/56 §三：cantonese/northeastern/sichuan/henan/shandong/hunan/shaanxi/anhui） */
+    private String dialect;
+
     public User() {
     }
 
@@ -131,4 +134,7 @@ public class User {
 
     public String getFamilyCode() { return familyCode; }
     public void setFamilyCode(String familyCode) { this.familyCode = familyCode; }
+
+    public String getDialect() { return dialect; }
+    public void setDialect(String dialect) { this.dialect = dialect; }
 }

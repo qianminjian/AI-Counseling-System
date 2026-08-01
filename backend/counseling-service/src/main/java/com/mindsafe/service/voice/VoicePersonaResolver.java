@@ -27,8 +27,9 @@ public class VoicePersonaResolver {
 
     private static final Logger log = LoggerFactory.getLogger(VoicePersonaResolver.class);
 
-    /** tts-service VOICE_PERSONAS 同源集合 */
-    private static final Set<String> VALID_PERSONAS = Set.of("xiaoxing", "qiqiu", "yueliang", "xiaotaiyang");
+    /** tts-service VOICE_PERSONAS 同源集合（design/56 7 音色矩阵） */
+    private static final Set<String> VALID_PERSONAS = Set.of(
+            "xiaoxing", "bobo", "yueliang", "xiaotaiyang", "dashu", "doudou", "qiqiu");
 
     /** 通用安全默认（design/48 §5.1：中年级+中性/未知 → 温暖大姐姐） */
     private static final String FALLBACK_PERSONA = "xiaoxing";
@@ -55,9 +56,11 @@ public class VoicePersonaResolver {
      * @param requestedPersona 前端显式指定的 persona（学生手动选择，最高优先；null/非法 → 自动匹配）
      * @param emotion          当前情绪标签（happy/sad/angry/fearful/nervous/neutral）
      * @param scene            场景（chat/safety/crisis），安全/危机强制稳定基调锁定
+     * @param dialect          方言代码（可为 null，透传给 tts-service，design/56 §三）
      */
     public VoiceRenderProfile resolve(UUID tenantId, UUID userId,
-                                      String requestedPersona, String emotion, String scene) {
+                                      String requestedPersona, String emotion, String scene,
+                                      String dialect) {
         User user = lookupUser(tenantId, userId);
         int grade = user != null ? ConversationUtils.parseGradeCode(user.getGradeCode()) : 4;
 
@@ -75,7 +78,7 @@ public class VoicePersonaResolver {
 
         // 2. 安全/危机场景：锁定稳定基调 + 中性 instruct（红线：情绪 instruct 不得干扰合规话术）
         if ("safety".equals(scene) || "crisis".equals(scene)) {
-            return new VoiceRenderProfile(persona, "neutral", 0.95, 0.88, 2, true, source);
+            return new VoiceRenderProfile(persona, "neutral", 0.95, 0.88, 2, true, source, dialect);
         }
 
         // 3. 情绪 → prosody 基调（design/48 §6.1）
@@ -104,7 +107,7 @@ public class VoicePersonaResolver {
         }
 
         String instruct = emotion != null && !emotion.isBlank() ? emotion : "neutral";
-        return new VoiceRenderProfile(persona, instruct, pitchScale, speed, pauseStyle, false, source);
+        return new VoiceRenderProfile(persona, instruct, pitchScale, speed, pauseStyle, false, source, dialect);
     }
 
     private record PersonaChoice(String persona, String source) {
