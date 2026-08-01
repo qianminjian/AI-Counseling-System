@@ -80,7 +80,7 @@ function getModelBundle() {
       // WebAssembly SIMD 检测：ort-wasm-simd-threaded 二进制包含 SIMD 指令，不支持则无法编译
       let hasSimd = false
       try {
-        hasSimd = WebAssembly.validate(new Uint8Array([0,97,115,109,1,0,0,0,1,5,1,96,0,1,123,3,2,1,0,10,10,1,8,0,65,0,253,15,26,11]))
+        hasSimd = WebAssembly.validate(new Uint8Array([0,97,115,109,1,0,0,0,1,5,1,96,0,1,123,3,2,1,0,10,8,1,6,0,65,0,253,15,11]))
       } catch { /* ignore */ }
       console.info('[Voiceprint] 环境诊断:', { hasSAB, isIsolated, hasSimd, ua: navigator.userAgent.slice(0, 100) })
       if (!hasSAB) {
