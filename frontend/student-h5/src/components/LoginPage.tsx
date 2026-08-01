@@ -130,11 +130,11 @@ export default function LoginPage({ onLogin, onRegister, onNeedConsent, initialT
         )}
         {/* 浏览器不支持语音功能时的提示 */}
         {tab === 'login' && !voiceSupported && micSupported && vpStatus.status === 'unsupported' && (
-          <div className={`voice-entry voice-entry--${themeId}`} style={{ opacity: 0.6 }}>
+          <div className={`voice-entry voice-entry--${themeId}`}>
             <div className="divider"><span>或</span></div>
-            <p className="sub" style={{ marginTop: 0, marginBottom: 8, fontSize: 12, color: '#9ca3af' }}>
+            <p className="sub" style={{ marginTop: 0, marginBottom: 8, fontSize: 13, color: 'rgba(255,255,255,0.85)', lineHeight: 1.6 }}>
               🎤 语音功能暂不可用<br/>
-              <span style={{ fontSize: 11 }}>当前浏览器不支持，请使用 Chrome 或 Firefox 打开</span>
+              <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.65)' }}>当前浏览器不支持，请使用 Chrome 或 Firefox 打开</span>
             </p>
           </div>
         )}
