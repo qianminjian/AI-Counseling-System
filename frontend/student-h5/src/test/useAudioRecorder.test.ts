@@ -135,7 +135,7 @@ describe('useAudioRecorder', () => {
 
   it('无支持的 MIME 类型时用默认格式创建 MediaRecorder', async () => {
     // isTypeSupported 全部返回 false → getSupportedMimeType 返回 ''
-    MockMediaRecorder.isTypeSupported = vi.fn(() => false)
+    MockMediaRecorder.isTypeSupported = vi.fn(() => false) as any
     vi.stubGlobal('MediaRecorder', MockMediaRecorder)
     const onComplete = vi.fn().mockResolvedValue(undefined)
     const { result } = renderHook(() => useAudioRecorder(onComplete))

@@ -27,7 +27,7 @@ export interface SessionInfo {
 }
 
 export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: SessionInfo; onEnd: () => void; onSwitchUser?: () => void }) {
-  const [messages, setMessages] = useState([
+  const [messages, setMessages] = useState<import('./MessageBubble').ChatMessage[]>([
     { role: 'assistant', content: session.greeting, emotion: session.emotionTag },
   ])
   const [input, setInput] = useState('')

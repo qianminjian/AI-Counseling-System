@@ -66,14 +66,14 @@ describe('LoginPage', () => {
   })
 
   it('渲染品牌和 tab', () => {
-    render(<LoginPage onLogin={vi.fn()} onRegister={vi.fn()} />)
+    render(<LoginPage onLogin={vi.fn()} onRegister={vi.fn()} onNeedConsent={vi.fn()} />)
     expect(screen.getAllByText('波波小精灵').length).toBeGreaterThanOrEqual(1)
     expect(screen.getByText('登录')).toBeTruthy()
     expect(screen.getByText('新注册')).toBeTruthy()
   })
 
   it('默认显示登录 tab（PIN 表单）', () => {
-    render(<LoginPage onLogin={vi.fn()} onRegister={vi.fn()} />)
+    render(<LoginPage onLogin={vi.fn()} onRegister={vi.fn()} onNeedConsent={vi.fn()} />)
     expect(screen.getByText('你的昵称')).toBeTruthy()
     expect(screen.getByPlaceholderText('输入注册时的昵称')).toBeTruthy()
   })
@@ -87,12 +87,12 @@ describe('LoginPage', () => {
   })
 
   it('initialTab=register 直接显示注册表单', () => {
-    render(<LoginPage onLogin={vi.fn()} onRegister={vi.fn()} initialTab="register" />)
+    render(<LoginPage onLogin={vi.fn()} onRegister={vi.fn()} onNeedConsent={vi.fn()} initialTab="register" />)
     expect(screen.getByText('邀请码 *')).toBeTruthy()
   })
 
   it('主题切换浮标渲染 3 个按钮', () => {
-    render(<LoginPage onLogin={vi.fn()} onRegister={vi.fn()} />)
+    render(<LoginPage onLogin={vi.fn()} onRegister={vi.fn()} onNeedConsent={vi.fn()} />)
     expect(screen.getByText('🌊')).toBeTruthy()
     expect(screen.getByText('🍬')).toBeTruthy()
     expect(screen.getByText('🚀')).toBeTruthy()
@@ -100,7 +100,7 @@ describe('LoginPage', () => {
 
   describe('PIN 登录', () => {
     it('彩虹键盘 1-9 + 0 + 删除', () => {
-      render(<LoginPage onLogin={vi.fn()} onRegister={vi.fn()} />)
+      render(<LoginPage onLogin={vi.fn()} onRegister={vi.fn()} onNeedConsent={vi.fn()} />)
       expect(screen.getByText('1')).toBeTruthy()
       expect(screen.getByText('9')).toBeTruthy()
       expect(screen.getByText('0')).toBeTruthy()
@@ -108,13 +108,13 @@ describe('LoginPage', () => {
     })
 
     it('未输入昵称和 PIN 时按钮禁用', () => {
-      render(<LoginPage onLogin={vi.fn()} onRegister={vi.fn()} />)
+      render(<LoginPage onLogin={vi.fn()} onRegister={vi.fn()} onNeedConsent={vi.fn()} />)
       const btn = screen.getByText('进入 🚀') as HTMLButtonElement
       expect(btn.disabled).toBe(true)
     })
 
     it('输入昵称 + 4 位 PIN 后按钮启用', () => {
-      render(<LoginPage onLogin={vi.fn()} onRegister={vi.fn()} />)
+      render(<LoginPage onLogin={vi.fn()} onRegister={vi.fn()} onNeedConsent={vi.fn()} />)
       fireEvent.change(screen.getByPlaceholderText('输入注册时的昵称'), { target: { value: '小明' } })
       fireEvent.click(screen.getByText('1'))
       fireEvent.click(screen.getByText('2'))
@@ -129,7 +129,7 @@ describe('LoginPage', () => {
         token: 'tk', refreshToken: 'rtk', userId: 'u1', userType: 'student', displayName: '小明',
       })
       const onLogin = vi.fn()
-      render(<LoginPage onLogin={onLogin} onRegister={vi.fn()} />)
+      render(<LoginPage onLogin={onLogin} onRegister={vi.fn()} onNeedConsent={vi.fn()} />)
       fireEvent.change(screen.getByPlaceholderText('输入注册时的昵称'), { target: { value: '小明' } })
       fireEvent.click(screen.getByText('1'))
       fireEvent.click(screen.getByText('2'))
@@ -143,7 +143,7 @@ describe('LoginPage', () => {
 
     it('登录失败显示错误', async () => {
       ;(pinLogin as any).mockRejectedValue(new Error('昵称或密码错误'))
-      render(<LoginPage onLogin={vi.fn()} onRegister={vi.fn()} />)
+      render(<LoginPage onLogin={vi.fn()} onRegister={vi.fn()} onNeedConsent={vi.fn()} />)
       fireEvent.change(screen.getByPlaceholderText('输入注册时的昵称'), { target: { value: 'X' } })
       fireEvent.click(screen.getByText('1'))
       fireEvent.click(screen.getByText('2'))
@@ -154,12 +154,12 @@ describe('LoginPage', () => {
     })
 
     it('删除键回退 PIN', () => {
-      render(<LoginPage onLogin={vi.fn()} onRegister={vi.fn()} />)
+      render(<LoginPage onLogin={vi.fn()} onRegister={vi.fn()} onNeedConsent={vi.fn()} />)
       fireEvent.click(screen.getByText('1'))
       fireEvent.click(screen.getByText('2'))
       fireEvent.click(screen.getByText('⌫'))
       // PIN 指示器只有 1 个 filled
-      const { container } = render(<LoginPage onLogin={vi.fn()} onRegister={vi.fn()} />)
+      const { container } = render(<LoginPage onLogin={vi.fn()} onRegister={vi.fn()} onNeedConsent={vi.fn()} />)
       // 简单验证删除键存在且可点击
       expect(screen.getAllByText('⌫').length).toBeGreaterThanOrEqual(1)
     })
@@ -167,12 +167,12 @@ describe('LoginPage', () => {
 
   describe('声音进入', () => {
     it('麦克风支持时显示声音进入按钮', () => {
-      render(<LoginPage onLogin={vi.fn()} onRegister={vi.fn()} />)
+      render(<LoginPage onLogin={vi.fn()} onRegister={vi.fn()} onNeedConsent={vi.fn()} />)
       expect(screen.getByText('🎤 声音进入')).toBeTruthy()
     })
 
     it('无声纹时点击声音进入显示引导提示', async () => {
-      render(<LoginPage onLogin={vi.fn()} onRegister={vi.fn()} />)
+      render(<LoginPage onLogin={vi.fn()} onRegister={vi.fn()} onNeedConsent={vi.fn()} />)
       fireEvent.click(screen.getByText('🎤 声音进入'))
       await waitFor(() => {
         expect(screen.getByText('还没录过你的声音哦')).toBeTruthy()
@@ -180,7 +180,7 @@ describe('LoginPage', () => {
     })
 
     it('引导提示点击"知道啦"关闭', async () => {
-      render(<LoginPage onLogin={vi.fn()} onRegister={vi.fn()} />)
+      render(<LoginPage onLogin={vi.fn()} onRegister={vi.fn()} onNeedConsent={vi.fn()} />)
       fireEvent.click(screen.getByText('🎤 声音进入'))
       await waitFor(() => expect(screen.getByText('知道啦')).toBeTruthy())
       fireEvent.click(screen.getByText('知道啦'))
@@ -190,7 +190,7 @@ describe('LoginPage', () => {
 
   describe('注册表单', () => {
     it('渲染所有必填字段', () => {
-      render(<LoginPage onLogin={vi.fn()} onRegister={vi.fn()} initialTab="register" />)
+      render(<LoginPage onLogin={vi.fn()} onRegister={vi.fn()} onNeedConsent={vi.fn()} initialTab="register" />)
       expect(screen.getByText('邀请码 *')).toBeTruthy()
       expect(screen.getByText(/昵称/)).toBeTruthy()
       expect(screen.getByText('性别 *')).toBeTruthy()
@@ -198,27 +198,27 @@ describe('LoginPage', () => {
     })
 
     it('未填必填项提交显示错误', () => {
-      render(<LoginPage onLogin={vi.fn()} onRegister={vi.fn()} initialTab="register" />)
+      render(<LoginPage onLogin={vi.fn()} onRegister={vi.fn()} onNeedConsent={vi.fn()} initialTab="register" />)
       fireEvent.click(screen.getByText('注册 🚀'))
       expect(screen.getByText('请填写所有必填项')).toBeTruthy()
     })
 
     it('年龄 < 14 显示家长手机号字段和警告', () => {
-      render(<LoginPage onLogin={vi.fn()} onRegister={vi.fn()} initialTab="register" />)
+      render(<LoginPage onLogin={vi.fn()} onRegister={vi.fn()} onNeedConsent={vi.fn()} initialTab="register" />)
       fireEvent.change(screen.getByPlaceholderText('你的年龄'), { target: { value: '10' } })
       expect(screen.getByText('家长手机号 *')).toBeTruthy()
       expect(screen.getByText(/不满 14 周岁/)).toBeTruthy()
     })
 
     it('性别选择', () => {
-      render(<LoginPage onLogin={vi.fn()} onRegister={vi.fn()} initialTab="register" />)
+      render(<LoginPage onLogin={vi.fn()} onRegister={vi.fn()} onNeedConsent={vi.fn()} initialTab="register" />)
       fireEvent.click(screen.getByText('👦 男生'))
       // 选中后 class 包含 sel
       expect(screen.getByText('👦 男生').className).toContain('sel')
     })
 
     it('填写完整后提交弹出二次确认', () => {
-      render(<LoginPage onLogin={vi.fn()} onRegister={vi.fn()} initialTab="register" />)
+      render(<LoginPage onLogin={vi.fn()} onRegister={vi.fn()} onNeedConsent={vi.fn()} initialTab="register" />)
       fireEvent.change(screen.getByPlaceholderText('老师发的邀请码'), { target: { value: 'DEMO2026' } })
       fireEvent.change(screen.getByPlaceholderText('给自己取个名字吧'), { target: { value: '花花' } })
       fireEvent.click(screen.getByText('👧 女生'))
@@ -231,7 +231,7 @@ describe('LoginPage', () => {
       ;(trialRegister as any).mockResolvedValue({
         token: 'tk', refreshToken: 'rtk', userId: 'u1', userType: 'student', pseudonym: '花花',
       })
-      render(<LoginPage onLogin={vi.fn()} onRegister={vi.fn()} initialTab="register" />)
+      render(<LoginPage onLogin={vi.fn()} onRegister={vi.fn()} onNeedConsent={vi.fn()} initialTab="register" />)
       fireEvent.change(screen.getByPlaceholderText('老师发的邀请码'), { target: { value: 'DEMO2026' } })
       fireEvent.change(screen.getByPlaceholderText('给自己取个名字吧'), { target: { value: '花花' } })
       fireEvent.click(screen.getByText('👧 女生'))
@@ -251,7 +251,7 @@ describe('LoginPage', () => {
       })
       ;(setPin as any).mockResolvedValue({})
       const onRegister = vi.fn()
-      render(<LoginPage onLogin={vi.fn()} onRegister={onRegister} initialTab="register" />)
+      render(<LoginPage onLogin={vi.fn()} onRegister={onRegister} onNeedConsent={vi.fn()} initialTab="register" />)
       fireEvent.change(screen.getByPlaceholderText('老师发的邀请码'), { target: { value: 'DEMO2026' } })
       fireEvent.change(screen.getByPlaceholderText('给自己取个名字吧'), { target: { value: '花花' } })
       fireEvent.click(screen.getByText('👧 女生'))
@@ -283,7 +283,7 @@ describe('LoginPage', () => {
       ;(trialRegister as any).mockResolvedValue({
         token: 'tk', userId: 'u1', userType: 'student', pseudonym: '花花',
       })
-      render(<LoginPage onLogin={vi.fn()} onRegister={vi.fn()} initialTab="register" />)
+      render(<LoginPage onLogin={vi.fn()} onRegister={vi.fn()} onNeedConsent={vi.fn()} initialTab="register" />)
       fireEvent.change(screen.getByPlaceholderText('老师发的邀请码'), { target: { value: 'DEMO2026' } })
       fireEvent.change(screen.getByPlaceholderText('给自己取个名字吧'), { target: { value: '花花' } })
       fireEvent.click(screen.getByText('👧 女生'))
@@ -311,7 +311,7 @@ describe('LoginPage', () => {
       ;(trialRegister as any).mockResolvedValue({
         token: 'tk', userId: 'u1', userType: 'student', pseudonym: '花花',
       })
-      render(<LoginPage onLogin={vi.fn()} onRegister={vi.fn()} initialTab="register" />)
+      render(<LoginPage onLogin={vi.fn()} onRegister={vi.fn()} onNeedConsent={vi.fn()} initialTab="register" />)
       fireEvent.change(screen.getByPlaceholderText('老师发的邀请码'), { target: { value: 'DEMO2026' } })
       fireEvent.change(screen.getByPlaceholderText('给自己取个名字吧'), { target: { value: '花花' } })
       fireEvent.click(screen.getByText('👧 女生'))
@@ -330,7 +330,7 @@ describe('LoginPage', () => {
       ;(trialRegister as any).mockResolvedValue({
         token: 'tk', userId: 'u1', userType: 'student', pseudonym: '花花',
       })
-      render(<LoginPage onLogin={vi.fn()} onRegister={vi.fn()} initialTab="register" />)
+      render(<LoginPage onLogin={vi.fn()} onRegister={vi.fn()} onNeedConsent={vi.fn()} initialTab="register" />)
       fireEvent.change(screen.getByPlaceholderText('老师发的邀请码'), { target: { value: 'DEMO2026' } })
       fireEvent.change(screen.getByPlaceholderText('给自己取个名字吧'), { target: { value: '花花' } })
       fireEvent.click(screen.getByText('👧 女生'))
@@ -346,7 +346,7 @@ describe('LoginPage', () => {
 
     it('注册失败显示错误信息', async () => {
       ;(trialRegister as any).mockRejectedValue(new Error('邀请码无效'))
-      render(<LoginPage onLogin={vi.fn()} onRegister={vi.fn()} initialTab="register" />)
+      render(<LoginPage onLogin={vi.fn()} onRegister={vi.fn()} onNeedConsent={vi.fn()} initialTab="register" />)
       fireEvent.change(screen.getByPlaceholderText('老师发的邀请码'), { target: { value: 'BAD' } })
       fireEvent.change(screen.getByPlaceholderText('给自己取个名字吧'), { target: { value: '花花' } })
       fireEvent.click(screen.getByText('👧 女生'))
@@ -362,7 +362,7 @@ describe('LoginPage', () => {
       ;(trialRegister as any).mockResolvedValue({
         token: 'tk', userId: 'u1', userType: 'student', pseudonym: '花花', familyCode: 'FAM-8899',
       })
-      render(<LoginPage onLogin={vi.fn()} onRegister={vi.fn()} initialTab="register" />)
+      render(<LoginPage onLogin={vi.fn()} onRegister={vi.fn()} onNeedConsent={vi.fn()} initialTab="register" />)
       fireEvent.change(screen.getByPlaceholderText('老师发的邀请码'), { target: { value: 'DEMO2026' } })
       fireEvent.change(screen.getByPlaceholderText('给自己取个名字吧'), { target: { value: '花花' } })
       fireEvent.click(screen.getByText('👧 女生'))
@@ -384,7 +384,7 @@ describe('LoginPage', () => {
         token: 'tk', userId: 'u1', userType: 'student', pseudonym: '花花',
       })
       ;(setPin as any).mockResolvedValue({})
-      render(<LoginPage onLogin={vi.fn()} onRegister={vi.fn()} initialTab="register" />)
+      render(<LoginPage onLogin={vi.fn()} onRegister={vi.fn()} onNeedConsent={vi.fn()} initialTab="register" />)
       // 取消声纹授权 checkbox
       fireEvent.click(screen.getByRole('checkbox'))
       fireEvent.change(screen.getByPlaceholderText('老师发的邀请码'), { target: { value: 'DEMO2026' } })
@@ -402,7 +402,7 @@ describe('LoginPage', () => {
 
   describe('Tab 切换', () => {
     it('从注册 tab 切回登录 tab', () => {
-      render(<LoginPage onLogin={vi.fn()} onRegister={vi.fn()} initialTab="register" />)
+      render(<LoginPage onLogin={vi.fn()} onRegister={vi.fn()} onNeedConsent={vi.fn()} initialTab="register" />)
       expect(screen.getByText('邀请码 *')).toBeTruthy()
       fireEvent.click(screen.getByText('登录'))
       expect(screen.getByText('你的昵称')).toBeTruthy()
@@ -416,7 +416,7 @@ describe('LoginPage', () => {
         token: 'tk', userId: 'u1', userType: 'student', pseudonym: '花花',
       })
       ;(setPin as any).mockRejectedValue(new Error('网络异常'))
-      render(<LoginPage onLogin={vi.fn()} onRegister={vi.fn()} initialTab="register" />)
+      render(<LoginPage onLogin={vi.fn()} onRegister={vi.fn()} onNeedConsent={vi.fn()} initialTab="register" />)
       fireEvent.change(screen.getByPlaceholderText('老师发的邀请码'), { target: { value: 'DEMO2026' } })
       fireEvent.change(screen.getByPlaceholderText('给自己取个名字吧'), { target: { value: '花花' } })
       fireEvent.click(screen.getByText('👧 女生'))
@@ -450,7 +450,7 @@ describe('LoginPage', () => {
         token: 'tk', userId: 'u1', userType: 'student', pseudonym: '花花', familyCode: 'FAM-X',
       })
       ;(setPin as any).mockResolvedValue({})
-      render(<LoginPage onLogin={vi.fn()} onRegister={vi.fn()} initialTab="register" />)
+      render(<LoginPage onLogin={vi.fn()} onRegister={vi.fn()} onNeedConsent={vi.fn()} initialTab="register" />)
       fireEvent.change(screen.getByPlaceholderText('老师发的邀请码'), { target: { value: 'DEMO2026' } })
       fireEvent.change(screen.getByPlaceholderText('给自己取个名字吧'), { target: { value: '花花' } })
       fireEvent.click(screen.getByText('👧 女生'))
@@ -478,13 +478,13 @@ describe('LoginPage', () => {
 
   describe('补充函数覆盖', () => {
     it('点击主题按钮触发 changeTheme', () => {
-      render(<LoginPage onLogin={vi.fn()} onRegister={vi.fn()} />)
+      render(<LoginPage onLogin={vi.fn()} onRegister={vi.fn()} onNeedConsent={vi.fn()} />)
       fireEvent.click(screen.getByText('🍬'))
       // changeTheme 是 vi.fn()，不报错即可
     })
 
     it('登录键盘点击 0 键', () => {
-      render(<LoginPage onLogin={vi.fn()} onRegister={vi.fn()} />)
+      render(<LoginPage onLogin={vi.fn()} onRegister={vi.fn()} onNeedConsent={vi.fn()} />)
       fireEvent.click(screen.getByText('0'))
       // 0 被输入到 PIN，检查 filled 指示器出现
       const container = document.querySelector('.pin-row')
@@ -493,7 +493,7 @@ describe('LoginPage', () => {
 
     it('注册确认弹窗点击“再改改”取消', async () => {
       const onRegister = vi.fn()
-      render(<LoginPage onLogin={vi.fn()} onRegister={onRegister} initialTab="register" />)
+      render(<LoginPage onLogin={vi.fn()} onRegister={onRegister} onNeedConsent={vi.fn()} initialTab="register" />)
       fireEvent.change(screen.getByPlaceholderText('老师发的邀请码'), { target: { value: 'DEMO2026' } })
       fireEvent.change(screen.getByPlaceholderText('给自己取个名字吧'), { target: { value: '花花' } })
       fireEvent.click(screen.getByText('👧 女生'))
@@ -511,7 +511,7 @@ describe('LoginPage', () => {
       const { hasAnyVoiceprint } = await import('../utils/voiceprintStore')
       ;(hasAnyVoiceprint as any).mockResolvedValue(true)
       const onLogin = vi.fn()
-      render(<LoginPage onLogin={onLogin} onRegister={vi.fn()} />)
+      render(<LoginPage onLogin={onLogin} onRegister={vi.fn()} onNeedConsent={vi.fn()} />)
       await waitFor(() => expect(screen.getByText('🎤 声音进入')).toBeTruthy())
       fireEvent.click(screen.getByText('🎤 声音进入'))
       await waitFor(() => expect(screen.getByTestId('voice-overlay')).toBeTruthy())
@@ -522,7 +522,7 @@ describe('LoginPage', () => {
     it('有声纹时声音进入覆盖层取消关闭', async () => {
       const { hasAnyVoiceprint } = await import('../utils/voiceprintStore')
       ;(hasAnyVoiceprint as any).mockResolvedValue(true)
-      render(<LoginPage onLogin={vi.fn()} onRegister={vi.fn()} />)
+      render(<LoginPage onLogin={vi.fn()} onRegister={vi.fn()} onNeedConsent={vi.fn()} />)
       await waitFor(() => expect(screen.getByText('🎤 声音进入')).toBeTruthy())
       fireEvent.click(screen.getByText('🎤 声音进入'))
       await waitFor(() => expect(screen.getByTestId('voice-overlay')).toBeTruthy())
@@ -531,7 +531,7 @@ describe('LoginPage', () => {
     })
 
     it('注册表单家长手机号输入', () => {
-      render(<LoginPage onLogin={vi.fn()} onRegister={vi.fn()} initialTab="register" />)
+      render(<LoginPage onLogin={vi.fn()} onRegister={vi.fn()} onNeedConsent={vi.fn()} initialTab="register" />)
       fireEvent.change(screen.getByPlaceholderText('你的年龄'), { target: { value: '10' } })
       const phoneInput = screen.getByPlaceholderText('监护人的 11 位手机号')
       fireEvent.change(phoneInput, { target: { value: '13800138000' } })

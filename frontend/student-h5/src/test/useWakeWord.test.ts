@@ -50,26 +50,26 @@ describe('useWakeWord', () => {
     Object.defineProperty(navigator, 'mediaDevices', {
       value: undefined, writable: true, configurable: true,
     })
-    const { result } = renderHook(() => useWakeWord({ active: true, onDetected: vi.fn() }))
+    const { result } = renderHook(() => useWakeWord({ active: true, paused: false, onDetected: vi.fn() }))
     await act(async () => {})
     expect(result.current.supported).toBe(false)
     expect(result.current.wakeStatus).toBe('idle')
   })
 
   it('有麦克风时 supported=true', async () => {
-    const { result } = renderHook(() => useWakeWord({ active: false, onDetected: vi.fn() }))
+    const { result } = renderHook(() => useWakeWord({ active: false, paused: false, onDetected: vi.fn() }))
     await act(async () => {})
     expect(result.current.supported).toBe(true)
   })
 
   it('active=false 时保持 idle', async () => {
-    const { result } = renderHook(() => useWakeWord({ active: false, onDetected: vi.fn() }))
+    const { result } = renderHook(() => useWakeWord({ active: false, paused: false, onDetected: vi.fn() }))
     await act(async () => {})
     expect(result.current.wakeStatus).toBe('idle')
   })
 
   it('active=true 时加载模型并进入 listening', async () => {
-    const { result } = renderHook(() => useWakeWord({ active: true, onDetected: vi.fn() }))
+    const { result } = renderHook(() => useWakeWord({ active: true, paused: false, onDetected: vi.fn() }))
     await waitFor(() => {
       expect(result.current.wakeStatus).toBe('listening')
     })
@@ -77,7 +77,7 @@ describe('useWakeWord', () => {
   })
 
   it('卸载时释放资源', async () => {
-    const { result, unmount } = renderHook(() => useWakeWord({ active: true, onDetected: vi.fn() }))
+    const { result, unmount } = renderHook(() => useWakeWord({ active: true, paused: false, onDetected: vi.fn() }))
     await waitFor(() => expect(result.current.wakeStatus).toBe('listening'))
     unmount()
     expect(mockCaptureCleanup).toHaveBeenCalled()
@@ -87,7 +87,7 @@ describe('useWakeWord', () => {
     // 让 pipeline 抛异常模拟模型下载失败
     const { pipeline } = await import('@huggingface/transformers')
     ;(pipeline as any).mockRejectedValueOnce(new Error('model download failed'))
-    const { result } = renderHook(() => useWakeWord({ active: true, onDetected: vi.fn() }))
+    const { result } = renderHook(() => useWakeWord({ active: true, paused: false, onDetected: vi.fn() }))
     await waitFor(() => {
       expect(result.current.wakeStatus).toBe('error')
     })
@@ -102,7 +102,7 @@ describe('useWakeWord', () => {
       return { engine: 'worklet', cleanup: mockCaptureCleanup }
     })
 
-    const { result } = renderHook(() => useWakeWord({ active: true, onDetected }))
+    const { result } = renderHook(() => useWakeWord({ active: true, paused: false, onDetected }))
     await waitFor(() => expect(result.current.wakeStatus).toBe('listening'))
 
     // 模拟音频数据输入（需要超过 WINDOW_SAMPLES = 3.5s * 16000 = 56000 samples）
@@ -126,7 +126,7 @@ describe('useWakeWord', () => {
       return { engine: 'worklet', cleanup: mockCaptureCleanup }
     })
 
-    const { result } = renderHook(() => useWakeWord({ active: true, onDetected }))
+    const { result } = renderHook(() => useWakeWord({ active: true, paused: false, onDetected }))
     await waitFor(() => expect(result.current.wakeStatus).toBe('listening'))
 
     // 极低振幅（静音）
@@ -150,7 +150,7 @@ describe('useWakeWord', () => {
       return { engine: 'worklet', cleanup: mockCaptureCleanup }
     })
 
-    const { result } = renderHook(() => useWakeWord({ active: true, onDetected }))
+    const { result } = renderHook(() => useWakeWord({ active: true, paused: false, onDetected }))
     await waitFor(() => expect(result.current.wakeStatus).toBe('listening'))
 
     const bigChunk = new Float32Array(60000).fill(0.5)
@@ -172,7 +172,7 @@ describe('useWakeWord', () => {
       return { engine: 'worklet', cleanup: mockCaptureCleanup }
     })
 
-    const { result } = renderHook(() => useWakeWord({ active: true, onDetected }))
+    const { result } = renderHook(() => useWakeWord({ active: true, paused: false, onDetected }))
     await waitFor(() => expect(result.current.wakeStatus).toBe('listening'))
 
     const bigChunk = new Float32Array(60000).fill(0.5)
@@ -195,7 +195,7 @@ describe('useWakeWord', () => {
       return { engine: 'worklet', cleanup: mockCaptureCleanup }
     })
 
-    const { result } = renderHook(() => useWakeWord({ active: true, onDetected: vi.fn() }))
+    const { result } = renderHook(() => useWakeWord({ active: true, paused: false, onDetected: vi.fn() }))
     await waitFor(() => expect(result.current.wakeStatus).toBe('listening'))
 
     const bigChunk = new Float32Array(60000).fill(0.5)
@@ -217,7 +217,7 @@ describe('useWakeWord', () => {
     let resolveTranscribe: any
     mockTranscriber.mockImplementation(() => new Promise((r) => { resolveTranscribe = r }))
 
-    const { result } = renderHook(() => useWakeWord({ active: true, onDetected }))
+    const { result } = renderHook(() => useWakeWord({ active: true, paused: false, onDetected }))
     await waitFor(() => expect(result.current.wakeStatus).toBe('listening'))
 
     // 输入大量数据超过 MAX_BUFFER_SAMPLES (WINDOW_SAMPLES * 2 = 112000)
@@ -250,7 +250,7 @@ describe('useWakeWord', () => {
       return { engine: 'worklet', cleanup: mockCaptureCleanup }
     })
 
-    const { result } = renderHook(() => useWakeWord({ active: true, onDetected }))
+    const { result } = renderHook(() => useWakeWord({ active: true, paused: false, onDetected }))
     await waitFor(() => expect(result.current.wakeStatus).toBe('listening'))
 
     // 48kHz 输入，需要 3x 的样本数才能达到 16kHz 的 WINDOW_SAMPLES
@@ -274,7 +274,7 @@ describe('useWakeWord', () => {
       close: vi.fn().mockResolvedValue(undefined),
     }))
 
-    const { result } = renderHook(() => useWakeWord({ active: true, onDetected: vi.fn() }))
+    const { result } = renderHook(() => useWakeWord({ active: true, paused: false, onDetected: vi.fn() }))
     await waitFor(() => expect(result.current.wakeStatus).toBe('listening'))
     // resume 后仍为 suspended → 注册 pointerdown
     expect(addEventSpy).toHaveBeenCalledWith('pointerdown', expect.any(Function))
@@ -292,7 +292,7 @@ describe('useWakeWord', () => {
     let resolvePipeline: (v: any) => void = () => {}
     ;(pipeline as any).mockImplementationOnce(() => new Promise(r => { resolvePipeline = r }))
 
-    const { result, unmount } = renderHook(() => useWakeWord({ active: true, onDetected: vi.fn() }))
+    const { result, unmount } = renderHook(() => useWakeWord({ active: true, paused: false, onDetected: vi.fn() }))
     // pipeline 挂起 → wakeStatus 应为 loading
     await waitFor(() => expect(result.current.wakeStatus).toBe('loading'))
 
@@ -338,7 +338,7 @@ describe('useWakeWord 模块级错误路径', () => {
     ;(pipeline as any).mockRejectedValueOnce(new Error('model download failed'))
 
     const mod = await import('../hooks/useWakeWord')
-    const { result, unmount } = renderHook(() => mod.useWakeWord({ active: true, onDetected: vi.fn() }))
+    const { result, unmount } = renderHook(() => mod.useWakeWord({ active: true, paused: false, onDetected: vi.fn() }))
     await waitFor(() => expect(result.current.wakeStatus).toBe('error'))
     unmount()
   })
@@ -358,7 +358,7 @@ describe('useWakeWord 模块级错误路径', () => {
     })
 
     const mod = await import('../hooks/useWakeWord')
-    const { result, unmount } = renderHook(() => mod.useWakeWord({ active: true, onDetected: vi.fn() }))
+    const { result, unmount } = renderHook(() => mod.useWakeWord({ active: true, paused: false, onDetected: vi.fn() }))
     // 等待流程完成或失败（progress_callback 已在 pipeline 调用时触发）
     await waitFor(() => {
       expect(['listening', 'error']).toContain(result.current.wakeStatus)

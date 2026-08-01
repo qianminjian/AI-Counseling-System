@@ -79,7 +79,7 @@ export default function SettingsPanel({ open, onClose, muted, onToggleMute, wake
                 await remoteVoiceprintEnroll(result.embeddings)
               } else {
                 // local 模式：存 IndexedDB + 签发设备凭证
-                await enrollVoiceprint(user.userId, user.pseudonym || '', result.embeddings)
+                await enrollVoiceprint(user.userId as string, (user.pseudonym || '') as string, result.embeddings)
                 try {
                   const cred = await issueVoiceCredential()
                   await saveVoiceCredential(user.userId as string, cred)
@@ -308,7 +308,7 @@ export default function SettingsPanel({ open, onClose, muted, onToggleMute, wake
           setConfirmAction(null)
           const user = getUser()
           if (user?.userId) {
-            await deleteVoiceprint(user.userId)
+            await deleteVoiceprint(user.userId as string)
             setHasVoiceprint(false)
           }
         }}

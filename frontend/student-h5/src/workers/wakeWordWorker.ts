@@ -12,7 +12,7 @@ const TAG = '[WakeWordWorker]'
 console.info(TAG, '脚本已加载, self=', typeof self, 'SAB=', typeof SharedArrayBuffer)
 
 // 捕获所有未处理错误（诊断用）
-self.onerror = (e) => {
+self.onerror = (e: any) => {
   console.error(TAG, '未捕获错误:', e.message, e.filename, e.lineno)
 }
 self.onunhandledrejection = (e) => {

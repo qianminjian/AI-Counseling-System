@@ -54,9 +54,9 @@ export default function MessageBubble({ msg, isLast, streaming, onReplay, isSpea
           borderLeft: `4px solid ${typo.accent}`,
         } as React.CSSProperties : undefined}
       >
-        {msg.role === 'user' && msg.emotion && msg.emotion.labelEn !== 'unknown' && (
+        {msg.role === 'user' && msg.emotion && msg.emotion !== 'unknown' && (
           <span className="inline-block mr-1 text-xs lg:text-sm opacity-80">
-            {EMOTION_EMOJI[msg.emotion.labelEn] || '🎵'}
+            {EMOTION_EMOJI[msg.emotion] || '🎵'}
           </span>
         )}
         {msg.content || (streaming && isLast ? '...' : '')}

@@ -144,7 +144,7 @@ export function useVoiceCallMode({ enabled, tts, busy, onFinalTranscript }) {
           restartTimerRef.current = setTimeout(() => startListeningRoundRef.current?.(), RESTART_DELAY_MS)
         }
       }
-      rec.onerror = (e) => {
+      rec.onerror = (e: any) => {
         // no-speech 错误忽略（用户没说话），其他错误记录
         if (e.error !== 'no-speech') {
           console.warn('[VoiceCall] 识别错误:', e.error)

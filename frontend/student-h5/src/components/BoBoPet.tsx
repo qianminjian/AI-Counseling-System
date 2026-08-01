@@ -23,10 +23,10 @@ export default function BoBoPet({
   cancelArmed = false,       // 上滑取消态（圆球变红）
   disabled = false,
   bubbleAlign = 'center',    // 气泡对齐：'center'（Pad）| 'right'（手机悬浮，向左展开防溢出）
-  onPointerDown,
-  onPointerMove,
-  onPointerUp,
-  onPointerCancel,
+  onPointerDown = undefined,
+  onPointerMove = undefined,
+  onPointerUp = undefined,
+  onPointerCancel = undefined,
   className = '',
 }) {
   const bubbleMode = state === 'listening' ? 'listening'

@@ -15,7 +15,7 @@ vi.mock('../theme/emotionTypography', () => ({
 
 describe('MessageBubble', () => {
   const defaultProps = {
-    msg: { role: 'assistant', content: '你好呀', emotion: 'happy' },
+    msg: { role: 'assistant' as const, content: '你好呀', emotion: 'happy' },
     isLast: false,
     streaming: false,
     onReplay: vi.fn(),
@@ -90,7 +90,7 @@ describe('MessageBubble', () => {
       render(
         <MessageBubble
           {...defaultProps}
-          msg={{ role: 'user', content: '我生气了', emotion: { labelEn: 'angry' } }}
+          msg={{ role: 'user' as const, content: '我生气了', emotion: 'angry' }}
         />
       )
       expect(screen.getByText('😠')).toBeTruthy()
@@ -100,7 +100,7 @@ describe('MessageBubble', () => {
       const { container } = render(
         <MessageBubble
           {...defaultProps}
-          msg={{ role: 'user', content: '嗯', emotion: { labelEn: 'unknown' } }}
+          msg={{ role: 'user' as const, content: '嗯', emotion: 'unknown' }}
         />
       )
       // 不应有 emoji span
