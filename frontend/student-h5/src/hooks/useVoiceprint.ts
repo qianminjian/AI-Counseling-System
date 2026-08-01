@@ -91,12 +91,13 @@ function getModelBundle() {
       env.remotePathTemplate = '{model}/'
       env.allowLocalModels = false
 
-      // ━━ 关键修复：禁用 Transformers.js 的 WASM 缓存机制 ━━
-      // 原因：useWasmCache=true 时，Transformers.js 会把 .mjs 工厂转成 blob URL，
-      // 工厂内部用 `new Worker(new URL(import.meta.url))` 创建 pthread 线程，
-      // iOS Safari 不支持从 blob URL 创建 module Worker → 崩溃。
-      // 设为 false 后，ORT 直接从服务器 URL 导入工厂，import.meta.url 是真实 URL，Worker 创建正常。
+      // ━━ 关键修复 1：禁用 WASM 缓存，避免 blob URL 工厂导致 Worker 创建失败 ━━
       env.useWasmCache = false
+      // ━━ 关键修复 2：单线程模式，避免 ORT 创建 pthread Worker ━━
+      // ort-wasm-simd-threaded 变体初始化时会 new Worker() 创建线程池，
+      // 部分浏览器/WebView 对 module Worker 有限制导致 TypeError。
+      // numThreads=1 时 ORT 不创建任何 Worker，WASM 在主线程运行。
+      env.backends.onnx.wasm.numThreads = 1
 
       // 请求持久化存储
       navigator.storage?.persist?.().catch(() => {})

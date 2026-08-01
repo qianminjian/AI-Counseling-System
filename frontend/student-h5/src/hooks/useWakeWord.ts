@@ -136,8 +136,10 @@ function getTranscriber() {
       env.remotePathTemplate = '{model}/'
       env.allowLocalModels = false
 
-      // ━━ 关键修复：禁用 WASM 缓存，避免 blob URL 工厂导致 iOS Safari Worker 创建失败 ━━
+      // ━━ 关键修复 1：禁用 WASM 缓存，避免 blob URL 工厂导致 Worker 创建失败 ━━
       env.useWasmCache = false
+      // ━━ 关键修复 2：单线程模式，避免 ORT 创建 pthread Worker ━━
+      env.backends.onnx.wasm.numThreads = 1
 
       // 请求持久化存储（防止浏览器在存储压力下清除模型缓存）
       navigator.storage?.persist?.().catch(() => {})
