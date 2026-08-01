@@ -44,6 +44,9 @@
         <postgresql.version>42.7.12</postgresql.version>
         <!-- 0.8.15：支持 Java 25 运行时（本地 Homebrew JDK），0.8.12 遇 class file 69 插桩失败 -->
         <jacoco.version>0.8.15</jacoco.version>
+        <!-- 1.18.11 / 5.23.0：支持 Java 25 运行时（ByteBuddy 1.17.8 遇 class file 69 "Could not create type" 失败） -->
+        <byte-buddy.version>1.18.11</byte-buddy.version>
+        <mockito.version>5.23.0</mockito.version>
         <!-- 覆盖率门禁在 CI 层基于 counseling-app 的 jacoco-aggregate 聚合报告检查（.github/workflows/ci.yml），非 pom 内 check -->
     </properties>
 
@@ -147,6 +150,9 @@
                     <excludes>
                         <exclude>**/*IT.java</exclude>
                     </excludes>
+                    <!-- JDK 21+ 禁止动态 agent 加载（JEP 451），显式挂载 byte-buddy-agent 供 Mockito 使用 -->
+                    <!-- @{argLine} 保留 JaCoCo prepare-agent 注入的参数 -->
+                    <argLine>@{argLine} -javaagent:${settings.localRepository}/net/bytebuddy/byte-buddy-agent/${byte-buddy.version}/byte-buddy-agent-${byte-buddy.version}.jar</argLine>
                 </configuration>
             </plugin>
             <!-- 集成测试：failsafe（匹配 *IT） -->

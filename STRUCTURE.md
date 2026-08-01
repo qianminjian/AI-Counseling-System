@@ -23,7 +23,7 @@ AI-Counseling-System/
 ├── scripts/                # 工具脚本：文档生成、数据处理等一次性/辅助脚本
 │
 ├── backend/                # 后端源代码（Java 21 + Spring Boot 3 + Spring AI，Maven 多模块，详见 §2.5）
-├── apps/                   # 前端应用组（React + TS + Vite，详见 §2.6）
+├── frontend/               # 前端应用组（React + Vite，详见 §2.6）
 ├── tests/                  # 跨模块测试（常规测试在模块/应用内，详见 §2.7）
 │   ├── unit/               #   跨模块单元测试（备用；常规单元测试在模块内）
 │   ├── integration/        #   集成测试：跨模块、含 DB/API/LLM 调用
@@ -86,34 +86,37 @@ AI-Counseling-System/
 backend/
 ├── pom.xml                     # parent：依赖版本管理、模块聚合
 ├── counseling-common/          # 通用：配置、工具、异常、常量、统一响应
-├── counseling-tenant/          # 多租户：Schema 路由（AbstractRoutingDataSource）、租户上下文
 ├── counseling-domain/          # 领域模型：实体、MyBatis Mapper（落地 design/06 的 DDL）
-├── counseling-ai/              # AI 编排：Spring AI、7 Agent、CBT 状态机、风险识别、prompt 模板
+├── counseling-ai/              # AI 编排：Spring AI、Agent、CBT 状态机、风险识别、prompt 模板
 ├── counseling-service/         # 业务服务：对话编排、预警通知、档案
-├── counseling-api/             # Web 层：Controller、DTO、Spring Security + JWT
-└── counseling-app/             # 启动模块：Spring Boot 主类、配置、打包（fat jar / Docker）
+├── counseling-api/             # Web 层：Controller、DTO、Spring Security + JWT、WebSocket
+├── counseling-app/             # 启动模块：Spring Boot 主类、配置、打包（fat jar / Docker）
+├── tts-service/                # TTS 微服务（Python，可选）
+└── voice-service/              # 语音情感分析微服务（Python，可选）
 ```
 
 - **架构形态**：模块化单体（不建微服务，决策 #8）；Maven 模块边界即领域边界，未来可拆
-- **多租户**：Schema 级隔离（`tenant_{tenant_id}`，按 design/07），动态数据源路由在 `counseling-tenant/`
-- **LLM 接入**：供应商无关，Spring AI 配置驱动（决策 #7），任意国产合规 LLM 可接入，主备降级按 design/13 §6.2
+- **多租户**：当前通过 tenant_id 字段级隔离（行级），Schema 级隔离待后续升级
+- **LLM 接入**：供应商无关，Spring AI 配置驱动（决策 #7），任意国产合规 LLM 可接入
 - **Agent 编排**：Spring AI ChatClient + Advisor 链 + 状态机（决策 #9），7 Agent 职责按 design/13
 - **测试**：各模块 `src/test/java`（JUnit 5 + Mockito），集成测试用 Testcontainers（PG/Redis），命名与管理规则见 §2.7
 - **DB 脚本**：`backend/scripts/sql/`，Flyway 版本化命名（`V{n}__desc.sql`），详见 §2.10
 - **Prompt 资源**：`counseling-ai/src/main/resources/prompts/`（classpath 加载，与 design/18 一一对应），详见 §2.12
 
-### 2.6 `apps/` — 前端应用组
+### 2.6 `frontend/` — 前端应用组
 
-技术基线：React 18 + TypeScript + Vite + Tailwind CSS；包管理 **pnpm**（workspace）。
+技术基线：React 18 + Vite + Tailwind CSS；包管理 **npm**（各应用独立）。
 
 ```
-apps/
-├── student/        # 学生端 H5（M1）：儿童友好 UI，自绘轻组件
-└── teacher/        # 教师后台 Web（M2）：Ant Design
+frontend/
+├── student-h5/     # 学生端 H5（M1）：儿童友好 UI，自绘轻组件
+├── teacher-web/    # 教师后台 Web（M2）：数据看板 + 预警管理
+├── parent-h5/      # 家长端 H5：家庭报告 + 亲子建议
+└── Dockerfile      # 前端统一构建镜像
 ```
 
-- 每个应用独立 `package.json`，共享配置放 `apps/shared/`（需要时再建，YAGNI）
-- 前端测试就近放置（`*.test.ts`），Vitest 运行
+- 每个应用独立 `package.json`，独立构建
+- 前端测试就近放置（`src/test/`），Vitest 运行
 
 ### 2.7 测试约定（命名 / 目录 / 管理）
 
@@ -125,7 +128,7 @@ apps/
 | 集成测试 | 各模块 `src/test/java/`（`*IT.java` 后缀区分） | Testcontainers + Spring Boot Test | merge 前 / CI |
 | 跨模块集成 | `tests/integration/` | 同上 | M 里程碑验收 |
 | E2E | `tests/e2e/` | Playwright | 发布前 |
-| 前端单元/组件 | `apps/*/src/`（就近放置） | Vitest + React Testing Library | 每次 commit 前 |
+| 前端单元/组件 | `frontend/*/src/test/`（就近放置） | Vitest + React Testing Library | 每次 commit 前 |
 
 #### 2.7.2 后端测试命名规则
 
@@ -146,7 +149,7 @@ apps/
 | `mvn test` | 单元测试（surefire，匹配 `*Test`） | `target/surefire-reports/` |
 | `mvn verify` | 单元 + 集成（failsafe，匹配 `*IT`） | `target/failsafe-reports/` |
 | `mvn test -Dtest=XxxTest` | 单个测试类 | 同上 |
-| `pnpm test` | 前端单元/组件（Vitest） | `apps/*/coverage/` |
+| `pnpm test` | 前端单元/组件（Vitest） | `frontend/*/coverage/` |
 | `pnpm test:e2e` | E2E（Playwright，需先启动服务） | `tests/e2e/playwright-report/` |
 
 - 覆盖率：JaCoCo，报告 `target/site/jacoco/index.html`
@@ -184,7 +187,7 @@ apps/
 | 产物 | 位置 | gitignore |
 |------|------|-----------|
 | Maven 构建 | `backend/**/target/` | ✅ |
-| Vite 构建 | `apps/*/dist/` | ✅ |
+| Vite 构建 | `frontend/*/dist/` | ✅ |
 | pnpm 依赖 | `**/node_modules/` | ✅ |
 | Playwright 产物 | `tests/e2e/playwright-report/`、`test-results/` | ✅ |
 
@@ -203,7 +206,7 @@ deploy/
     └── redis.conf              # Redis 最小配置（maxmemory/持久化策略）
 ```
 
-- 应用 Dockerfile 随模块：`backend/counseling-app/Dockerfile`、`apps/*/Dockerfile`
+- 应用 Dockerfile 随模块：`backend/Dockerfile`、`frontend/Dockerfile`
 - 容器命名前缀 `mindsafe-`（如 `mindsafe-pg`、`mindsafe-redis`、`mindsafe-app`）
 - 本地开发端口约定：PG 5432、Redis 6379、后端 8080、学生端 5173、教师端 5174
 - 启动服务前必须执行端口检查（红线，见 AGENTS.md §6）
@@ -226,7 +229,7 @@ deploy/
 | 应用日志 | 控制台（dev）/ 容器内 `/app/logs/`（prod） | — | logback-spring.xml 配置 |
 | 单元/集成测试报告 | `target/surefire-reports/`、`target/failsafe-reports/` | ✅ | Maven 自动生成 |
 | 覆盖率报告 | `target/site/jacoco/` | ✅ | JaCoCo |
-| 前端覆盖率 | `apps/*/coverage/` | ✅ | Vitest c8 |
+| 前端覆盖率 | `frontend/*/coverage/` | ✅ | Vitest c8 |
 | E2E 报告 | `tests/e2e/playwright-report/` | ✅ | Playwright HTML 报告 |
 | 汇总报告 | `reports/`（项目根） | ✅ | CI 聚合产物、手工分析报告暂存 |
 
@@ -272,7 +275,7 @@ prompts/
 | 路径 | 性质 | 规则 |
 |------|------|------|
 | `AGENTS.md`、`.qoder/rules/` | 中央库同步区 | **禁止写入项目特有内容**，会被 sync-rules.sh 覆盖/告警；改规则去中央库改 |
-| `STRUCTURE.md`、`README.md`、`design/`、`doc/`（含 `doc/his/`）、`scripts/`、`backend/`、`apps/`、`tests/`、`deploy/`、`data/`、`reports/`、`tmp/` | 项目自留区 | 项目特有内容全部放这里 |
+| `STRUCTURE.md`、`README.md`、`design/`、`doc/`（含 `doc/his/`）、`scripts/`、`backend/`、`frontend/`、`tests/`、`deploy/`、`data/`、`reports/`、`tmp/` | 项目自留区 | 项目特有内容全部放这里 |
 
 ---
 
@@ -283,7 +286,7 @@ prompts/
 3. **iCloud 注意**：项目位于 `~/Documents`（iCloud「桌面与文稿」同步范围），大文件/高频写入目录（如未来的 `node_modules`、`.venv`）已被 gitignore 且建议关注同步流量
 4. **密钥红线**：`.env` 等密钥文件禁止入库（gitignore 已挡），示例配置用 `.env.example`；LLM API Key 一律走环境变量，禁止硬编码
 5. **变更流程**：调整目录结构 → 先改本文件 → 再动目录 → commit 中说明
-6. **技术栈基线**（2026-07-23 定，详见 design/BEACON.md 决策 #5/#8/#9）：后端 Java 21 + Spring Boot 3 + Spring AI + MyBatis-Plus（Maven 多模块，模块化单体）；前端 React 18 + TS + Vite + Tailwind；数据库 PostgreSQL 16 + pgvector（信创期评估达梦/人大金仓）；缓存 Redis 7；构建 Maven + pnpm。**YAGNI 清单**（MVP 禁止引入）：K8s、Kafka、微服务拆分、API 网关、ELK、Milvus、语音/生物识别组件
+6. **技术栈基线**（2026-07-23 定，详见 design/BEACON.md 决策 #5/#8/#9）：后端 Java 21 + Spring Boot 3 + Spring AI + MyBatis-Plus（Maven 多模块，模块化单体）；前端 React 18 + TSX + Vite + Tailwind；数据库 PostgreSQL 16 + pgvector（信创期评估达梦/人大金仓）；缓存 Redis 7；构建 Maven + npm。**YAGNI 清单**（MVP 禁止引入）：K8s、Kafka、微服务拆分、API 网关、ELK、Milvus
 7. **构建产物红线**：`target/`、`dist/`、`node_modules/`、`coverage/`、`playwright-report/` 等机器产物永不入库（gitignore 已拦截）
 8. **报告输出红线**：所有测试/覆盖率/E2E 报告只输出到 §2.11 约定位置，汇总归 `reports/`，禁止散落到其他目录
 9. **包名约定**：后端统一 `com.mindsafe.{module}.*`（如 `com.mindsafe.ai`、`com.mindsafe.tenant`、`com.mindsafe.api`）；前端包名 `@mindsafe/student`、`@mindsafe/teacher`
@@ -304,3 +307,4 @@ prompts/
 | 2026-07-28 | §2.2 新增 `design/demo/` 子目录约定（交互原型 HTML Demo） | 学生端登录页三风格 Demo 需纳入版本管理，从 tmp/ 迁入正式目录 |
 | 2026-07-28 | 目录结构纠偏补漏：`design/docs/` 残留 2 份 md（16_语音情感分析/17_全感官交互）迁入 `design/` 并重编号为 54/55，删除空 `design/docs/` 目录 | 完成 2026-07-23 “拍平”决策的遗漏收尾 |
 | 2026-07-29 | 新增 §2.14 `data/` 内容资产目录（`data/knowledge-base/` 知识库语料，待审/已审约定） | KB-101 首批语料落档需正式位置（非 tmp 非 design），约束先行 |
+| 2026-07-28 | 重大修订：`apps/`→`frontend/`、`student/`→`student-h5/`、`teacher/`→`teacher-web/`、新增 `parent-h5/`；移除 counseling-tenant 描述（未进入构建）；pnpm→npm；YAGNI 清单移除“语音/生物识别”（已实现） | 审计发现文档与实际严重不符，纠正失实描述 |
