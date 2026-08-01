@@ -27,20 +27,22 @@ import { getAllVoiceprints } from '../utils/voiceprintStore'
 type VpModelStatus = 'idle' | 'loading' | 'ready' | 'error'
 let _vpStatus: VpModelStatus = 'idle'
 let _vpProgress = 0 // 0-100 下载进度
+let _vpError = '' // 详细错误信息（诊断用）
 const _vpSubscribers = new Set<() => void>()
 
-function setVpModelStatus(s: VpModelStatus, progress?: number) {
+function setVpModelStatus(s: VpModelStatus, progress?: number, error?: string) {
   if (progress !== undefined) _vpProgress = progress
-  if (_vpStatus === s && progress === undefined) return
+  if (error !== undefined) _vpError = error
+  if (_vpStatus === s && progress === undefined && error === undefined) return
   _vpStatus = s
-  _vpSnapshot = { status: _vpStatus, progress: _vpProgress }
+  _vpSnapshot = { status: _vpStatus, progress: _vpProgress, error: _vpError }
   _vpSubscribers.forEach((fn) => fn())
 }
 
-let _vpSnapshot: { status: VpModelStatus; progress: number } = { status: _vpStatus, progress: _vpProgress }
+let _vpSnapshot: { status: VpModelStatus; progress: number; error: string } = { status: _vpStatus, progress: _vpProgress, error: _vpError }
 
 /** 订阅声纹模型加载状态（React Hook，任意组件可调用） */
-export function useVoiceprintModelStatus(): { status: VpModelStatus; progress: number } {
+export function useVoiceprintModelStatus(): { status: VpModelStatus; progress: number; error: string } {
   return useSyncExternalStore(
     (cb) => { _vpSubscribers.add(cb); return () => { _vpSubscribers.delete(cb) } },
     () => _vpSnapshot,
@@ -70,6 +72,15 @@ function getModelBundle() {
   if (!modelBundlePromise) {
     setVpModelStatus('loading')
     modelBundlePromise = (async () => {
+      // ━━ 环境前置检查：SharedArrayBuffer 是 ORT WASM 的硬性依赖 ━━
+      // 缺少 cross-origin isolation (COOP/COEP 头) 时，iOS Safari 不暴露 SharedArrayBuffer，
+      // ORT 工厂顶层语句 `var SharedArrayBuffer = globalThis.SharedArrayBuffer ?? ...` 会直接崩溃。
+      if (typeof SharedArrayBuffer === 'undefined') {
+        const msg = '浏览器不支持 SharedArrayBuffer（需要服务器配置 Cross-Origin-Opener-Policy / Cross-Origin-Embedder-Policy 响应头）'
+        console.error('[Voiceprint]', msg)
+        throw new Error(msg)
+      }
+
       const { AutoModel, AutoFeatureExtractor, env } = await import('@huggingface/transformers')
       // 模型同源部署：从自己服务器加载（/mindsafe/models/）
       const base = import.meta.env.BASE_URL || '/'
@@ -79,6 +90,14 @@ function getModelBundle() {
       // 自托管模型不带 /resolve/{revision}/ 路径段
       env.remotePathTemplate = '{model}/'
       env.allowLocalModels = false
+
+      // ━━ 关键修复：禁用 Transformers.js 的 WASM 缓存机制 ━━
+      // 原因：useWasmCache=true 时，Transformers.js 会把 .mjs 工厂转成 blob URL，
+      // 工厂内部用 `new Worker(new URL(import.meta.url))` 创建 pthread 线程，
+      // iOS Safari 不支持从 blob URL 创建 module Worker → 崩溃。
+      // 设为 false 后，ORT 直接从服务器 URL 导入工厂，import.meta.url 是真实 URL，Worker 创建正常。
+      env.useWasmCache = false
+
       // 请求持久化存储
       navigator.storage?.persist?.().catch(() => {})
       // ONNX Runtime WASM 走本地（与唤醒词共用）
@@ -108,7 +127,9 @@ function getModelBundle() {
       return { model, featureExtractor }
     })().catch((err) => {
       modelBundlePromise = null
-      setVpModelStatus('error')
+      const errMsg = err?.message || String(err)
+      console.error('[Voiceprint] 模型加载失败（详细）:', errMsg, err)
+      setVpModelStatus('error', undefined, errMsg)
       throw err
     })
   }

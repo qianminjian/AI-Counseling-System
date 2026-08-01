@@ -18,12 +18,20 @@ async function ensureModel(config) {
   initPromise = (async () => {
     self.postMessage({ type: 'status', status: 'loading' })
 
+    // ━━ 环境前置检查：SharedArrayBuffer 是 ORT WASM 的硬性依赖 ━━
+    if (typeof SharedArrayBuffer === 'undefined') {
+      throw new Error('浏览器不支持 SharedArrayBuffer（需要 COOP/COEP 响应头）')
+    }
+
     const { pipeline, env } = await import('@huggingface/transformers')
 
     // 同源部署配置（与主线程 getTranscriber 保持一致）
     env.remoteHost = config.remoteHost
     env.remotePathTemplate = '{model}/'
     env.allowLocalModels = false
+
+    // ━━ 关键修复：禁用 WASM 缓存，避免 blob URL 工厂导致 iOS Safari Worker 创建失败 ━━
+    env.useWasmCache = false
 
     // ONNX WASM 路径
     env.backends.onnx.wasm.wasmPaths = config.wasmPaths

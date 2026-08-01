@@ -57,6 +57,16 @@ function serveOnnxWasmDev() {
     apply: 'serve',
     configureServer(server) {
       const src = resolve(__dirname, 'node_modules/onnxruntime-web/dist')
+
+      // ━━ Cross-Origin Isolation 头：启用 SharedArrayBuffer（ORT WASM 多线程必需） ━━
+      // 没有这个头，iOS Safari 上 SharedArrayBuffer 为 undefined，模型加载 100% 后崩溃
+      server.middlewares.use((req, res, next) => {
+        res.setHeader('Cross-Origin-Opener-Policy', 'same-origin')
+        res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp')
+        res.setHeader('Cross-Origin-Resource-Policy', 'same-origin')
+        next()
+      })
+
       server.middlewares.use((req, res, next) => {
         const url = req.url || ''
         // 匹配 /mindsafe/ort/<file> 或 /ort/<file>

@@ -118,6 +118,13 @@ function getTranscriber() {
   if (!transcriberPromise) {
     setModelStatus('loading')
     transcriberPromise = (async () => {
+      // ━━ 环境前置检查：SharedArrayBuffer 是 ORT WASM 的硬性依赖 ━━
+      if (typeof SharedArrayBuffer === 'undefined') {
+        const msg = '浏览器不支持 SharedArrayBuffer（需要 COOP/COEP 响应头）'
+        console.error('[WakeWord]', msg)
+        throw new Error(msg)
+      }
+
       // 动态导入：Transformers.js 独立分包，未启用唤醒时主路径零开销
       const { pipeline, env } = await import('@huggingface/transformers')
       // 模型同源部署：从自己服务器加载（/mindsafe/models/），浏览器 HTTP 缓存持久化
@@ -128,6 +135,10 @@ function getTranscriber() {
       // 自托管模型不带 /resolve/{revision}/ 路径段
       env.remotePathTemplate = '{model}/'
       env.allowLocalModels = false
+
+      // ━━ 关键修复：禁用 WASM 缓存，避免 blob URL 工厂导致 iOS Safari Worker 创建失败 ━━
+      env.useWasmCache = false
+
       // 请求持久化存储（防止浏览器在存储压力下清除模型缓存）
       navigator.storage?.persist?.().catch(() => {})
       // ONNX Runtime WASM 走本地（dist/ort/ → /mindsafe/ort/）

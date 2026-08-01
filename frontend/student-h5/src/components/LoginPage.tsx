@@ -580,9 +580,9 @@ function ModelDownloadProgress() {
   const vp = useVoiceprintModelStatus()
 
   // 汇总两个模型的状态
-  const items: { label: string; status: string; progress: number }[] = []
+  const items: { label: string; status: string; progress: number; error?: string }[] = []
   if (vp.status === 'loading' || vp.status === 'error') {
-    items.push({ label: '声纹引擎', status: vp.status, progress: vp.progress })
+    items.push({ label: '声纹引擎', status: vp.status, progress: vp.progress, error: vp.error })
   }
   if (wake.status === 'loading' || wake.status === 'error') {
     items.push({ label: '语音引擎', status: wake.status, progress: wake.progress })
@@ -593,12 +593,15 @@ function ModelDownloadProgress() {
   const hasError = items.some((i) => i.status === 'error')
   const allLoading = items.filter((i) => i.status === 'loading')
 
-  // 有失败：显示错误提示
+  // 有失败：显示错误提示（含详细原因，方便诊断）
   if (hasError) {
-    const failedNames = items.filter((i) => i.status === 'error').map((i) => i.label).join('、')
+    const failedItems = items.filter((i) => i.status === 'error')
+    const failedNames = failedItems.map((i) => i.label).join('、')
+    const detail = failedItems.find((i) => i.error)?.error || ''
     return (
-      <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 px-4 py-1.5 rounded-full border text-xs font-medium bg-red-50 text-red-500 border-red-200">
+      <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 px-4 py-1.5 rounded-full border text-xs font-medium bg-red-50 text-red-500 border-red-200 max-w-[90vw]">
         ⚠️ {failedNames}加载失败，不影响登录
+        {detail && <span className="block text-[10px] text-red-400 mt-0.5 truncate">{detail}</span>}
       </div>
     )
   }
