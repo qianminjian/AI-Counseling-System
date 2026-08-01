@@ -68,6 +68,10 @@ public class SessionState {
     // ===== 会话级个人信息（对话中结构化收集，会话结束即销毁） =====
     private Map<String, String> personalInfo = new LinkedHashMap<>();  // realName/age/grade/class 等
 
+    // ===== 前端设置状态（每轮消息同步，让 AI 知道自己的能力边界） =====
+    private Boolean ttsMuted;       // TTS 朗读是否被用户关闭（null=未知/未传）
+    private Boolean wakeEnabled;    // 语音唤醒是否开启（null=未知/未传）
+
     /** Jackson 反序列化需要无参构造 */
     public SessionState() {}
 
@@ -231,6 +235,10 @@ public class SessionState {
     public void setLastSummaryTurn(int lastSummaryTurn) { this.lastSummaryTurn = lastSummaryTurn; }
     public Map<String, String> getPersonalInfo() { return personalInfo; }
     public void setPersonalInfo(Map<String, String> personalInfo) { this.personalInfo = personalInfo != null ? personalInfo : new LinkedHashMap<>(); }
+    public Boolean getTtsMuted() { return ttsMuted; }
+    public void setTtsMuted(Boolean ttsMuted) { this.ttsMuted = ttsMuted; }
+    public Boolean getWakeEnabled() { return wakeEnabled; }
+    public void setWakeEnabled(Boolean wakeEnabled) { this.wakeEnabled = wakeEnabled; }
 
     /** 更新个人信息（仅当新值非空时覆盖） */
     public void updatePersonalInfo(String key, String value) {

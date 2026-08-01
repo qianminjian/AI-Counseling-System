@@ -21,11 +21,12 @@ vi.mock('../utils/createPcmCapture', () => ({
   createPcmCapture: (...args: any[]) => mockCreatePcmCapture(...args),
 }))
 
-import { useWakeWord } from '../hooks/useWakeWord'
+import { useWakeWord, __resetWakeWordForTest } from '../hooks/useWakeWord'
 
 describe('useWakeWord', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    __resetWakeWordForTest()
     mockCreatePcmCapture.mockResolvedValue({ engine: 'worklet', cleanup: mockCaptureCleanup })
     mockTranscriber.mockResolvedValue({ text: '' })
     Object.defineProperty(navigator, 'mediaDevices', {
@@ -83,7 +84,9 @@ describe('useWakeWord', () => {
   })
 
   it('模型加载失败时 wakeStatus=error', async () => {
-    ;(navigator.mediaDevices.getUserMedia as any).mockRejectedValue(new Error('mic denied'))
+    // 让 pipeline 抛异常模拟模型下载失败
+    const { pipeline } = await import('@huggingface/transformers')
+    ;(pipeline as any).mockRejectedValueOnce(new Error('model download failed'))
     const { result } = renderHook(() => useWakeWord({ active: true, onDetected: vi.fn() }))
     await waitFor(() => {
       expect(result.current.wakeStatus).toBe('error')
@@ -107,8 +110,8 @@ describe('useWakeWord', () => {
     const bigChunk = new Float32Array(60000).fill(0.5)
     await act(async () => {
       pcmCallback(bigChunk)
-      // 等待异步转写完成
-      await new Promise((r) => setTimeout(r, 50))
+      // 等待异步转写完成 + 300ms onDetected setTimeout
+      await new Promise((r) => setTimeout(r, 400))
     })
 
     expect(mockTranscriber).toHaveBeenCalled()
@@ -254,7 +257,8 @@ describe('useWakeWord', () => {
     const chunk48k = new Float32Array(180000).fill(0.5)
     await act(async () => {
       pcmCallback(chunk48k)
-      await new Promise((r) => setTimeout(r, 50))
+      // 等待异步转写完成 + 300ms onDetected setTimeout
+      await new Promise((r) => setTimeout(r, 400))
     })
 
     expect(mockTranscriber).toHaveBeenCalled()
@@ -283,16 +287,22 @@ describe('useWakeWord', () => {
     ;(navigator.mediaDevices.getUserMedia as any).mockImplementation(
       () => new Promise(r => { resolveGetUserMedia = r })
     )
+    // 让 pipeline 挂起，保证 wakeStatus 停留在 loading
+    const { pipeline } = await import('@huggingface/transformers')
+    let resolvePipeline: (v: any) => void = () => {}
+    ;(pipeline as any).mockImplementationOnce(() => new Promise(r => { resolvePipeline = r }))
 
     const { result, unmount } = renderHook(() => useWakeWord({ active: true, onDetected: vi.fn() }))
-    // pipeline 解析后进入 loading，等待 getUserMedia
+    // pipeline 挂起 → wakeStatus 应为 loading
     await waitFor(() => expect(result.current.wakeStatus).toBe('loading'))
 
     // unmount 触发 cancelled = true
     unmount()
 
-    // 解析 getUserMedia → 进入 if (cancelled) 分支，停止轨道
+    // 解析 pipeline + getUserMedia → 进入 if (cancelled) 分支，停止轨道
     await act(async () => {
+      resolvePipeline(mockTranscriber)
+      await new Promise(r => setTimeout(r, 10))
       resolveGetUserMedia({ getTracks: () => [{ stop: stopFn }] })
       await new Promise(r => setTimeout(r, 10))
     })
@@ -354,7 +364,7 @@ describe('useWakeWord 模块级错误路径', () => {
       expect(['listening', 'error']).toContain(result.current.wakeStatus)
     })
     expect(capturedOpts).toBeTruthy()
-    expect(debugSpy).toHaveBeenCalledWith('[WakeWord] 模型加载 whisper.onnx 75%')
+    expect(debugSpy).toHaveBeenCalledWith('[WakeWord] whisper.onnx 75%')
     unmount()
     debugSpy.mockRestore()
     infoSpy.mockRestore()

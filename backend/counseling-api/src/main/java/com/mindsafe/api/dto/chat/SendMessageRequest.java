@@ -20,7 +20,13 @@ public record SendMessageRequest(
         Double voiceEmotionConfidence,
 
         /** 消息来源：text / voice（可选，默认 text） */
-        String inputMode
+        String inputMode,
+
+        /** TTS 朗读是否被用户静音（可选，前端设置面板控制） */
+        Boolean ttsMuted,
+
+        /** 语音唤醒是否开启（可选，前端设置面板控制） */
+        Boolean wakeEnabled
 ) {
     /** 是否为语音输入 */
     public boolean isVoiceInput() {

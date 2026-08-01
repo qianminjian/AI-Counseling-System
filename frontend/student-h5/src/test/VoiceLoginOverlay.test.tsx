@@ -21,6 +21,7 @@ vi.mock('../hooks/useVoiceprint', () => ({
     extractEmbedding: mockExtractEmbedding,
     verify: mockVerify,
     loading: false,
+    modelErrorRef: { current: null },
   }),
 }))
 vi.mock('../utils/audioUnlock', () => ({
@@ -40,6 +41,8 @@ vi.mock('../api', () => ({
   setToken: (...args: any[]) => mockSetToken(...args),
   setRefreshToken: (...args: any[]) => mockSetRefreshToken(...args),
   setUser: (...args: any[]) => mockSetUser(...args),
+  getVoiceprintConfig: vi.fn().mockResolvedValue({ mode: 'local', enabled: true }),
+  remoteVoiceprintVerify: vi.fn().mockResolvedValue({ matched: false, score: 0 }),
 }))
 
 import VoiceLoginOverlay from '../components/VoiceLoginOverlay'
@@ -106,7 +109,7 @@ describe('VoiceLoginOverlay', () => {
   it('初始化后显示第一段引导语（verify 模式）', async () => {
     render(<VoiceLoginOverlay mode="verify" onComplete={vi.fn()} onCancel={vi.fn()} />)
     await act(async () => { await vi.advanceTimersByTimeAsync(0) })
-    expect(screen.getByText('嗨！是谁来找我玩啦？告诉我你的名字吧~')).toBeTruthy()
+    expect(screen.getByText('嗨！我是波波，跟我打个招呼吧！')).toBeTruthy()
   })
 
   it('麦克风不可用时显示失败提示', async () => {
@@ -223,10 +226,10 @@ describe('VoiceLoginOverlay', () => {
     // 初始化（initMic 异步完成）
     await act(async () => { await vi.advanceTimersByTimeAsync(0) })
     // 确认进入 speaking 阶段
-    expect(screen.getByText('嗨！是谁来找我玩啦？告诉我你的名字吧~')).toBeTruthy()
+    expect(screen.getByText('嗨！我是波波，跟我打个招呼吧！')).toBeTruthy()
     // speak onend 10ms → phase='listening'
     await act(async () => { await vi.advanceTimersByTimeAsync(100) })
-    expect(screen.getByText('正在听你说...')).toBeTruthy()
+    expect(screen.getByText('对波波说“你好”就行')).toBeTruthy()
     // 音量动画条（12 个 bg-blue-400 元素）
     const bars = document.querySelectorAll('.bg-blue-400')
     expect(bars.length).toBe(12)

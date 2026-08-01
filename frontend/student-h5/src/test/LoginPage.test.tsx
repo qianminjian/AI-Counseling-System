@@ -12,6 +12,8 @@ vi.mock('../api', () => ({
   trialRegister: vi.fn(),
   setPin: vi.fn(),
   markConsentDone: vi.fn(),
+  getVoiceprintConfig: vi.fn().mockResolvedValue({ mode: 'local', enabled: true }),
+  remoteVoiceprintEnroll: vi.fn().mockResolvedValue({ success: true }),
 }))
 vi.mock('../utils/voiceprintStore', () => ({
   hasAnyVoiceprint: vi.fn().mockResolvedValue(false),

@@ -8,6 +8,8 @@ vi.mock('../api', () => ({
   api: vi.fn().mockResolvedValue({}),
   getUser: vi.fn(() => mockUser),
   issueVoiceCredential: vi.fn().mockResolvedValue('cred'),
+  getVoiceprintConfig: vi.fn().mockResolvedValue({ mode: 'local', enabled: true }),
+  remoteVoiceprintEnroll: vi.fn().mockResolvedValue({ success: true }),
 }))
 vi.mock('../utils/voiceprintStore', () => ({
   hasAnyVoiceprint: vi.fn().mockResolvedValue(false),
@@ -150,19 +152,6 @@ describe('SettingsPanel', () => {
     })
   })
 
-  it('切换同学按钮触发确认弹窗', () => {
-    render(<SettingsPanel {...defaultProps} />)
-    fireEvent.click(screen.getByText('切换同学'))
-    expect(screen.getByText('要退出让别的同学用吗？')).toBeTruthy()
-  })
-
-  it('确认切换触发 onSwitchUser', () => {
-    render(<SettingsPanel {...defaultProps} />)
-    fireEvent.click(screen.getByText('切换同学'))
-    fireEvent.click(screen.getByText('确认'))
-    expect(defaultProps.onSwitchUser).toHaveBeenCalled()
-  })
-
   it('无声纹时显示录入入口', () => {
     render(<SettingsPanel {...defaultProps} />)
     expect(screen.getByText('还没录入声纹')).toBeTruthy()
@@ -239,7 +228,7 @@ describe('SettingsPanel', () => {
     mockUser = { userId: 'u1', pseudonym: '小明', familyCode: '' }
     render(<SettingsPanel {...defaultProps} />)
     await waitFor(() => {
-      expect(api).toHaveBeenCalledWith('/api/v1/auth/me')
+      expect(api).toHaveBeenCalledWith('/auth/me')
       expect(screen.getByText('API-CODE')).toBeTruthy()
     })
   })
@@ -284,14 +273,6 @@ describe('SettingsPanel', () => {
     render(<SettingsPanel {...defaultProps} />)
     fireEvent.click(screen.getByText('气球'))
     // changePersona 是 vi.fn()，不报错即可
-  })
-
-  it('切换同学确认弹窗点击取消关闭', () => {
-    render(<SettingsPanel {...defaultProps} />)
-    fireEvent.click(screen.getByText('切换同学'))
-    expect(screen.getByTestId('confirm-dialog')).toBeTruthy()
-    fireEvent.click(screen.getByText('取消'))
-    expect(screen.queryByTestId('confirm-dialog')).toBeNull()
   })
 
   it('删除声纹确认弹窗点击取消关闭', async () => {

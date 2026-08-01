@@ -5,6 +5,10 @@ import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 const mockTts = {
   speak: vi.fn().mockResolvedValue(undefined),
   speakSentence: vi.fn().mockResolvedValue(undefined),
+  feedToken: vi.fn(),
+  startStreaming: vi.fn(),
+  stopStreaming: vi.fn(),
+  endStreaming: vi.fn(),
   stop: vi.fn(),
   unlock: vi.fn(),
   toggleMute: vi.fn(),
@@ -24,6 +28,11 @@ vi.mock('../hooks/useVoiceCallMode', () => ({
 }))
 vi.mock('../hooks/useSilenceNudge', () => ({
   useSilenceNudge: () => ({ recordInteraction: vi.fn(), resetSilenceBase: vi.fn() }),
+}))
+vi.mock('../hooks/useWakeWord', () => ({
+  preloadWakeModel: vi.fn(),
+  useWakeWord: () => ({ supported: false, wakeStatus: 'idle' }),
+  __resetWakeWordForTest: vi.fn(),
 }))
 
 const mockRecorder = {

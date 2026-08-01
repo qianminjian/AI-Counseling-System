@@ -34,8 +34,9 @@
 
 body {
   margin: 0;
-  /* 圆体优先 → 设备自带圆体（幼圆/YouYuan）→ 系统无衬线（无自定义字体时保证可读） */
-  font-family: 'GenSenRounded', 'Yuanti SC', '幼圆', 'YouYuan',
+  /* 圆体优先：设备自带圆体（幼圆/YouYuan/Yuanti SC）→ 系统无衬线
+     注：GenSenRounded 已从 font-family 移除（无 @font-face 时引用会触发无效请求） */
+  font-family: 'Yuanti SC', '幼圆', 'YouYuan',
     -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
     'Microsoft YaHei', 'Noto Sans CJK SC', Roboto, sans-serif;
   background: var(--bg-start);

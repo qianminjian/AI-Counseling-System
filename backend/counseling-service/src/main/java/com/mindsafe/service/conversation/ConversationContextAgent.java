@@ -79,21 +79,30 @@ public class ConversationContextAgent {
         StringBuilder sb = new StringBuilder();
         sb.append("# 你正在和谁说话\n\n");
 
-        // 昵称（核心：让 AI 知道孩子叫什么）
-        String name = session.getPseudonym();
-        if (name != null && !name.isBlank()) {
-            sb.append("- 昵称：").append(name).append("（请自然地称呼").append(name).append("）\n");
-        } else {
-            sb.append("- 昵称：未知（这是新同学，可以温和地询问怎么称呼）\n");
-        }
-
         // 会话级个人信息（对话中收集，每轮注入，确保 AI 不遗忘）
         Map<String, String> personalInfo = session.getPersonalInfo();
+        String realName = (personalInfo != null) ? personalInfo.get("realName") : null;
+
+        // 昵称（来自 User 表，可能是占位符）
+        String pseudonym = session.getPseudonym();
+        boolean isPlaceholder = isPlaceholderName(pseudonym);
+
+        if (realName != null && !realName.isBlank()) {
+            // 孩子在对话中告诉过真实名字 → 最高优先级
+            sb.append("- 孩子的名字：").append(realName).append("（孩子亲口告诉你的，必须用这个名字称呼，不可遗忘）\n");
+        } else if (!isPlaceholder && pseudonym != null && !pseudonym.isBlank()) {
+            // 注册时填了有意义的昵称
+            sb.append("- 昵称：").append(pseudonym).append("（请自然地称呼").append(pseudonym).append("）\n");
+        } else {
+            // 占位符或空 → 指示 AI 主动询问
+            sb.append("- 名字：还不知道（孩子还没有告诉你名字。请在合适时机温和地问一次“你叫什么名字呀？”，得到回答后记住并在后续对话中使用）\n");
+        }
+
+        // 其余个人信息
         if (personalInfo != null && !personalInfo.isEmpty()) {
             sb.append("- 孩子告诉你的个人信息（必须记住，不可遗忘）：\n");
-            String realName = personalInfo.get("realName");
             if (realName != null) {
-                sb.append("  - 真实名字：").append(realName).append("（优先用这个名字称呼）\n");
+                sb.append("  - 真实名字：").append(realName).append("\n");
             }
             String age = personalInfo.get("age");
             if (age != null) {
@@ -132,6 +141,25 @@ public class ConversationContextAgent {
         String emotionTag = session.getEmotionTag();
         if (emotionTag != null && !emotionTag.isBlank()) {
             sb.append("- 进入心情：").append(toChinese(emotionTag)).append("\n");
+        }
+
+        // 当前交互能力（让 AI 知道自己的能力边界，避免回答与实际行为矛盾）
+        sb.append("- 当前交互能力：\n");
+        Boolean ttsMuted = session.getTtsMuted();
+        if (ttsMuted != null) {
+            if (ttsMuted) {
+                sb.append("  - 语音朗读：已关闭（你的回复只会显示文字，不会播放声音。如果孩子问“你能说话吗”，请如实告知“现在声音关着哦，但我可以用文字陪你聊”）\n");
+            } else {
+                sb.append("  - 语音朗读：已开启（你的回复会同时用声音播放。如果孩子问“你能说话吗”，请确认“可以的，我能用声音和你聊天”）\n");
+            }
+        }
+        Boolean wakeEnabled = session.getWakeEnabled();
+        if (wakeEnabled != null) {
+            if (wakeEnabled) {
+                sb.append("  - 语音唤醒：已开启（孩子可以说“哈喽波波”唤醒你，你正在听）\n");
+            } else {
+                sb.append("  - 语音唤醒：已关闭（孩子需要按住按钮或打字和你说话）\n");
+            }
         }
 
         sb.append("\n");
@@ -298,5 +326,18 @@ public class ConversationContextAgent {
         for (String l : relevant) reordered.append(l).append("\n");
         for (String l : others) reordered.append(l).append("\n");
         return reordered.toString().trim();
+    }
+
+    /**
+     * 判断昵称是否为占位符（注册时未填真实昵称的默认值）。
+     * 占位符不应被 AI 当作真实名字使用。
+     */
+    private static final java.util.Set<String> PLACEHOLDER_NAMES = java.util.Set.of(
+            "某人", "同学", "小朋友", "学生", "user", "test", "测试", "匿名", "unknown"
+    );
+
+    private boolean isPlaceholderName(String name) {
+        if (name == null || name.isBlank()) return true;
+        return PLACEHOLDER_NAMES.contains(name.trim().toLowerCase());
     }
 }

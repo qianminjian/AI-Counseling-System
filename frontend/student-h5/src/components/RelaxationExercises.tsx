@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { api } from '../api'
+import { useTheme } from '../theme/ThemeProvider'
+import SceneDecor from './SceneDecor'
 
 const CATEGORY_EMOJI = {
   breathing: '🌬️',
@@ -8,7 +10,87 @@ const CATEGORY_EMOJI = {
   somatic: '🦋',
 }
 
+/* 各练习类别的柔色芯片（半透明，深浅场景通用） */
+const CATEGORY_ACCENT = {
+  breathing: 'rgba(56,189,248,0.22)',
+  mindfulness: 'rgba(167,139,250,0.22)',
+  visualization: 'rgba(251,191,36,0.24)',
+  somatic: 'rgba(52,211,153,0.22)',
+}
+
 const VOICE_PREF_KEY = 'mindsafe_relax_voice_on'
+
+/**
+ * 主题适配样式映射
+ * 与登录页 / 情绪选择页同款沉浸式场景：
+ * - ocean / rainbow 为深色场景 → 浅色文字 + 玻璃拟态卡片
+ * - garden 为浅色场景 → 深色文字 + 白底卡片
+ */
+const THEME_STYLES = {
+  ocean: {
+    dark: true,
+    title: '#ffffff',
+    titleShadow: '0 2px 12px rgba(0,0,0,0.25)',
+    sub: 'rgba(224,242,254,0.78)',
+    text: 'rgba(240,249,255,0.94)',
+    muted: 'rgba(186,230,253,0.62)',
+    back: '#7dd3fc',
+    cardBg: 'rgba(255,255,255,0.10)',
+    cardBorder: '1px solid rgba(255,255,255,0.18)',
+    cardShadow: '0 8px 32px rgba(2,132,199,0.25)',
+    cardBlur: 'blur(12px)',
+    pillBg: 'rgba(125,211,252,0.16)',
+    pillBorder: '1px solid rgba(125,211,252,0.32)',
+    pillText: '#bae6fd',
+    progressTrack: 'rgba(255,255,255,0.16)',
+    circleFrom: '#38bdf8',
+    circleTo: '#0284c7',
+    glow: 'rgba(56,189,248,0.55)',
+    btnBg: 'linear-gradient(135deg, #0ea5e9, #06b6d4)',
+  },
+  garden: {
+    dark: false,
+    title: '#9d174d',
+    titleShadow: 'none',
+    sub: 'rgba(157,23,77,0.62)',
+    text: '#831843',
+    muted: 'rgba(190,24,93,0.55)',
+    back: '#db2777',
+    cardBg: 'rgba(255,255,255,0.82)',
+    cardBorder: '1px solid rgba(244,114,182,0.28)',
+    cardShadow: '0 8px 28px rgba(236,72,153,0.14)',
+    cardBlur: 'blur(6px)',
+    pillBg: 'rgba(244,114,182,0.12)',
+    pillBorder: '1px solid rgba(244,114,182,0.32)',
+    pillText: '#be185d',
+    progressTrack: 'rgba(236,72,153,0.12)',
+    circleFrom: '#f9a8d4',
+    circleTo: '#ec4899',
+    glow: 'rgba(236,72,153,0.4)',
+    btnBg: 'linear-gradient(135deg, #ec4899, #a855f7)',
+  },
+  rainbow: {
+    dark: true,
+    title: '#e0e7ff',
+    titleShadow: '0 0 18px rgba(139,92,246,0.4)',
+    sub: 'rgba(165,180,252,0.82)',
+    text: 'rgba(224,231,255,0.94)',
+    muted: 'rgba(129,140,248,0.72)',
+    back: '#a5b4fc',
+    cardBg: 'rgba(139,92,246,0.12)',
+    cardBorder: '1px solid rgba(139,92,246,0.30)',
+    cardShadow: '0 8px 32px rgba(76,29,149,0.35)',
+    cardBlur: 'blur(12px)',
+    pillBg: 'rgba(139,92,246,0.18)',
+    pillBorder: '1px solid rgba(167,139,250,0.38)',
+    pillText: '#c4b5fd',
+    progressTrack: 'rgba(139,92,246,0.20)',
+    circleFrom: '#a78bfa',
+    circleTo: '#7c3aed',
+    glow: 'rgba(139,92,246,0.55)',
+    btnBg: 'linear-gradient(135deg, #8b5cf6, #6d28d9)',
+  },
+} as const
 
 /** 放松练习语音引导朗读（轻柔语速，冥想/呼吸场景） */
 function speakGuide(text) {
@@ -31,39 +113,41 @@ function stopGuide() {
   }
 }
 
-/** 呼吸引导动画圆圈（CSS keyframe 平滑动画） */
-function BreathingCircle({ phase, seconds }) {
+/** 呼吸引导动画圆圈（主题色驱动 + 光晕脉冲） */
+function BreathingCircle({ phase, seconds, ts }) {
   const phaseConfig = {
-    inhale: { label: '吸气', color: '#a8d8ea', anim: 'breathe-in' },
-    hold: { label: '屏住', color: '#b8e6c8', anim: 'breathe-hold' },
-    exhale: { label: '呼气', color: '#c8b8e6', anim: 'breathe-out' },
+    inhale: { label: '吸气', anim: 'breathe-in' },
+    hold: { label: '屏住', anim: 'breathe-hold' },
+    exhale: { label: '呼气', anim: 'breathe-out' },
   }
   const cfg = phaseConfig[phase] || phaseConfig.inhale
 
   return (
-    <div className="flex flex-col items-center gap-3">
+    <div className="flex flex-col items-center gap-4">
       <style>{`
         @keyframes breathe-in { from { transform: scale(0.8); } to { transform: scale(1.3); } }
         @keyframes breathe-hold { from { transform: scale(1.3); } to { transform: scale(1.3); } }
         @keyframes breathe-out { from { transform: scale(1.3); } to { transform: scale(0.8); } }
-        @keyframes pulse-ring { 0% { box-shadow: 0 0 0 0 rgba(168,216,234,0.4); } 100% { box-shadow: 0 0 0 20px rgba(168,216,234,0); } }
+        @keyframes pulse-ring { 0% { box-shadow: 0 0 0 0 var(--glow); } 100% { box-shadow: 0 0 0 30px transparent; } }
       `}</style>
       <div
-        className="w-36 h-36 rounded-full flex items-center justify-center"
+        className="w-44 h-44 rounded-full flex items-center justify-center"
         style={{
-          animation: `${cfg.anim} ${seconds}s ease-in-out forwards, pulse-ring 2s infinite`,
-          background: `linear-gradient(135deg, ${cfg.color}, var(--primary))`,
+          ['--glow' as any]: ts.glow,
+          animation: `${cfg.anim} ${seconds}s ease-in-out forwards, pulse-ring 2.5s infinite`,
+          background: `radial-gradient(circle at 32% 28%, ${ts.circleFrom}, ${ts.circleTo})`,
+          boxShadow: `0 12px 40px ${ts.glow}, inset 0 3px 12px rgba(255,255,255,0.35)`,
         }}
       >
-        <span className="text-white text-lg font-medium">{cfg.label}</span>
+        <span className="text-white text-xl font-semibold drop-shadow-md">{cfg.label}</span>
       </div>
-      <span className="text-3xl font-light text-gray-500">{seconds}</span>
+      <span className="text-4xl font-light tabular-nums" style={{ color: ts.title, textShadow: ts.titleShadow }}>{seconds}</span>
     </div>
   )
 }
 
 /** 单个练习执行器 */
-function ExerciseRunner({ exercise, onComplete, onBack }) {
+function ExerciseRunner({ exercise, onComplete, onBack, ts }) {
   const [phase, setPhase] = useState('inhale')
   const [seconds, setSeconds] = useState(0)
   const [elapsed, setElapsed] = useState(0)
@@ -134,15 +218,25 @@ function ExerciseRunner({ exercise, onComplete, onBack }) {
     }
   }, [elapsed, exercise, done])
 
+  // ===== 完成界面 =====
   if (done) {
     return (
-      <div className="flex flex-col items-center gap-4 py-8">
-        <span className="text-5xl">🎉</span>
-        <p className="text-lg text-gray-700">做得好！感觉放松一些了吗？</p>
+      <div className="relative z-10 flex flex-col items-center gap-6 py-12 w-full max-w-sm">
+        <style>{`@keyframes pop-in{0%{transform:scale(0.4);opacity:0}60%{transform:scale(1.15)}100%{transform:scale(1);opacity:1}}
+          @keyframes spark{0%,100%{transform:translateY(0) scale(1);opacity:.9}50%{transform:translateY(-10px) scale(1.25);opacity:.5}}`}</style>
+        <div className="relative flex items-center justify-center">
+          <span className="text-7xl" style={{ animation: 'pop-in 0.5s ease-out' }}>🎉</span>
+          <span className="absolute -top-3 -left-6 text-2xl" style={{ animation: 'spark 1.8s ease-in-out infinite' }}>✨</span>
+          <span className="absolute -top-1 -right-7 text-xl" style={{ animation: 'spark 1.8s ease-in-out infinite 0.5s' }}>🌟</span>
+        </div>
+        <div className="text-center px-2">
+          <p className="text-xl font-bold mb-1.5" style={{ color: ts.title, textShadow: ts.titleShadow }}>做得好！感觉放松一些了吗？</p>
+          <p className="text-sm" style={{ color: ts.sub }}>坚持练习，心情会越来越平静哦</p>
+        </div>
         <button
           onClick={onComplete}
-          className="px-8 py-3 rounded-full text-white text-sm"
-          style={{ background: 'var(--primary)' }}
+          className="px-12 py-3.5 rounded-full text-white text-sm font-semibold shadow-lg active:scale-95 transition-all"
+          style={{ background: ts.btnBg, boxShadow: `0 10px 30px ${ts.glow}` }}
         >
           完成
         </button>
@@ -150,9 +244,13 @@ function ExerciseRunner({ exercise, onComplete, onBack }) {
     )
   }
 
+  // ===== 执行界面 =====
   return (
-    <div className="flex flex-col items-center gap-6 py-6">
-      <h3 className="text-lg font-medium text-gray-700">{exercise.name}</h3>
+    <div className="relative z-10 flex flex-col items-center gap-6 py-4 w-full max-w-sm">
+      <div className="flex items-center gap-2.5">
+        <span className="text-2xl">{CATEGORY_EMOJI[exercise.category]}</span>
+        <h3 className="text-xl font-bold" style={{ color: ts.title, textShadow: ts.titleShadow }}>{exercise.name}</h3>
+      </div>
 
       {/* 语音引导开关 */}
       <button
@@ -162,38 +260,45 @@ function ExerciseRunner({ exercise, onComplete, onBack }) {
           localStorage.setItem(VOICE_PREF_KEY, next ? '1' : '0')
           if (!next) stopGuide()
         }}
-        className="text-xs text-gray-400 px-3 py-1 rounded-full bg-white/70 shadow-sm"
+        className="text-xs px-4 py-1.5 rounded-full transition-all active:scale-95 backdrop-blur-sm"
+        style={{ background: ts.pillBg, border: ts.pillBorder, color: ts.pillText }}
       >
         {voiceOn ? '🔊 语音引导：开' : '🔇 语音引导：关'}
       </button>
 
       {isBreathing ? (
-        <BreathingCircle phase={phase} seconds={seconds} />
+        <BreathingCircle phase={phase} seconds={seconds} ts={ts} />
       ) : (
-        <div className="text-center px-6">
-          <span className="text-5xl block mb-4">{CATEGORY_EMOJI[exercise.category]}</span>
-          <p className="text-gray-600 leading-relaxed">{exercise.description}</p>
+        <div className="text-center px-7 py-10 rounded-3xl w-full backdrop-blur-md"
+          style={{ background: ts.cardBg, border: ts.cardBorder, boxShadow: ts.cardShadow }}>
+          <style>{`@keyframes gentle-bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}`}</style>
+          <span className="text-6xl block mb-5" style={{ animation: 'gentle-bob 3.5s ease-in-out infinite' }}>
+            {CATEGORY_EMOJI[exercise.category]}
+          </span>
+          <p className="leading-relaxed text-base" style={{ color: ts.text }}>{exercise.description}</p>
         </div>
       )}
 
       {/* 进度条 */}
-      <div className="w-full max-w-xs">
-        <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+      <div className="w-full px-2">
+        <div className="h-2.5 rounded-full overflow-hidden" style={{ background: ts.progressTrack }}>
           <div
             className="h-full rounded-full transition-all duration-1000"
             style={{
               width: `${Math.min((elapsed / exercise.durationSeconds) * 100, 100)}%`,
-              background: 'var(--primary)',
+              background: `linear-gradient(90deg, ${ts.circleFrom}, ${ts.circleTo})`,
             }}
           />
         </div>
-        <div className="flex justify-between mt-1 text-xs text-gray-400">
+        <div className="flex justify-between mt-1.5 text-xs tabular-nums" style={{ color: ts.muted }}>
           <span>{elapsed}s</span>
           <span>{exercise.durationSeconds}s</span>
         </div>
       </div>
 
-      <button onClick={() => { stopGuide(); onBack() }} className="text-sm text-gray-400 underline">
+      <button onClick={() => { stopGuide(); onBack() }}
+        className="text-sm underline underline-offset-4 opacity-70 hover:opacity-100 transition-opacity"
+        style={{ color: ts.muted }}>
         提前结束
       </button>
     </div>
@@ -201,14 +306,15 @@ function ExerciseRunner({ exercise, onComplete, onBack }) {
 }
 
 /** 今日练习计数 */
-function TodayCounter() {
+function TodayCounter({ ts }) {
   const [count, setCount] = useState(0)
   useEffect(() => {
     api('/relaxation/sessions/today').then(d => setCount(d.count || 0)).catch(() => {})
   }, [])
   if (count === 0) return null
   return (
-    <div className="mb-6 px-4 py-2 bg-white/70 rounded-full text-sm text-gray-500 shadow-sm">
+    <div className="mb-6 px-5 py-2.5 rounded-full text-sm font-medium backdrop-blur-sm"
+      style={{ background: ts.pillBg, border: ts.pillBorder, color: ts.pillText, boxShadow: `0 4px 16px ${ts.glow}` }}>
       ✨ 今天已完成 {count} 次练习，继续加油！
     </div>
   )
@@ -216,11 +322,15 @@ function TodayCounter() {
 
 /**
  * 放松练习面板（从 EmotionSelect 页面进入）
+ * 全面主题适配：复用登录页 / 情绪选择页同款沉浸式场景（ocean 海底 / garden 糖果 / rainbow 星空），
+ * 列表 / 呼吸执行 / 正念执行 / 完成四个页面状态均随主题联动。
  */
 export default function RelaxationExercises({ onBack }) {
   const [exercises, setExercises] = useState([])
   const [active, setActive] = useState(null)
   const [loading, setLoading] = useState(true)
+  const { theme, themeId } = useTheme()
+  const ts = THEME_STYLES[themeId] || THEME_STYLES.ocean
 
   useEffect(() => {
     api('/relaxation/exercises')
@@ -229,46 +339,62 @@ export default function RelaxationExercises({ onBack }) {
       .finally(() => setLoading(false))
   }, [])
 
+  // ===== 练习执行 / 完成页 =====
   if (active) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center p-6"
-        style={{ background: 'linear-gradient(to bottom, var(--bg-start), var(--bg-end))' }}>
-        <ExerciseRunner
-          exercise={active}
-          onComplete={() => setActive(null)}
-          onBack={() => setActive(null)}
-        />
+      <div className={`emotion-scene emotion-scene--${themeId} flex flex-col items-center justify-center px-6 py-10`}>
+        <SceneDecor themeId={themeId} />
+        <button onClick={() => setActive(null)}
+          className="absolute top-6 left-6 z-20 flex items-center gap-1 text-sm font-medium transition-opacity hover:opacity-100 opacity-75"
+          style={{ color: ts.back }}>
+          ← 返回
+        </button>
+        <ExerciseRunner exercise={active} onComplete={() => setActive(null)} onBack={() => setActive(null)} ts={ts} />
       </div>
     )
   }
 
+  // ===== 练习列表页 =====
   return (
-    <div className="min-h-screen flex flex-col items-center p-6 pt-12"
-      style={{ background: 'linear-gradient(to bottom, var(--bg-start), var(--bg-end))' }}>
-      <button onClick={onBack} className="self-start text-sm text-gray-400 mb-6">← 返回</button>
+    <div className={`emotion-scene emotion-scene--${themeId} flex flex-col items-center px-6 pt-12 pb-16`}>
+      <SceneDecor themeId={themeId} />
 
-      <h2 className="text-xl font-medium text-gray-800 mb-2">放松一下 🌿</h2>
-      <p className="text-sm text-gray-400 mb-4">选一个练习，让身体和心情都放松下来</p>
+      <button onClick={onBack}
+        className="self-start relative z-10 flex items-center gap-1 text-sm font-medium mb-6 transition-opacity hover:opacity-100 opacity-75"
+        style={{ color: ts.back }}>
+        ← 返回
+      </button>
 
-      {/* 今日练习计数 */}
-      <TodayCounter />
+      <div className="relative z-10 flex flex-col items-center w-full max-w-sm">
+        {/* 头部：伙伴 + 标题 */}
+        <div className="text-5xl mb-3 float-companion">{theme.companion}</div>
+        <h2 className="kid-title text-2xl font-bold mb-2" style={{ color: ts.title, textShadow: ts.titleShadow }}>放松一下 🌿</h2>
+        <p className="text-sm mb-6 text-center" style={{ color: ts.sub }}>选一个练习，让身体和心情都放松下来</p>
 
-      <div className="w-full max-w-sm space-y-3">
-        {exercises.map((ex) => (
-          <button
-            key={ex.id}
-            onClick={() => setActive(ex)}
-            className="w-full flex items-center gap-4 p-4 bg-white rounded-2xl shadow-sm
-              hover:shadow-md active:scale-[0.98] transition-all text-left"
-          >
-            <span className="text-3xl">{CATEGORY_EMOJI[ex.category]}</span>
-            <div className="flex-1">
-              <div className="font-medium text-gray-700">{ex.name}</div>
-              <div className="text-xs text-gray-400 mt-0.5">{ex.description.slice(0, 30)}...</div>
-            </div>
-            <span className="text-xs text-gray-300">{ex.durationSeconds}s</span>
-          </button>
-        ))}
+        {/* 今日练习计数 */}
+        <TodayCounter ts={ts} />
+
+        <div className="w-full space-y-3">
+          {exercises.map((ex) => (
+            <button
+              key={ex.id}
+              onClick={() => setActive(ex)}
+              className="w-full flex items-center gap-4 p-4 rounded-2xl transition-all active:scale-[0.98] text-left hover:scale-[1.01] backdrop-blur-md"
+              style={{ background: ts.cardBg, border: ts.cardBorder, boxShadow: ts.cardShadow }}
+            >
+              <span className="w-12 h-12 flex items-center justify-center rounded-2xl text-2xl flex-shrink-0"
+                style={{ background: CATEGORY_ACCENT[ex.category] || ts.pillBg }}>
+                {CATEGORY_EMOJI[ex.category]}
+              </span>
+              <div className="flex-1 min-w-0">
+                <div className="font-semibold text-base" style={{ color: ts.title }}>{ex.name}</div>
+                <div className="text-xs mt-0.5 truncate" style={{ color: ts.muted }}>{ex.description.slice(0, 30)}...</div>
+              </div>
+              <span className="text-xs font-medium px-2.5 py-1 rounded-full flex-shrink-0"
+                style={{ background: ts.pillBg, color: ts.pillText, border: ts.pillBorder }}>{ex.durationSeconds}s</span>
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   )

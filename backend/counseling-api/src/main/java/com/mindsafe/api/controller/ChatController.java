@@ -63,6 +63,11 @@ public class ChatController {
         TenantContext ctx = extractContext(authentication);
         requireGuardianConsent(ctx);
 
+        // 同步前端设置状态（TTS静音/唤醒开关），让 AI 知道自己的能力边界
+        if (request.ttsMuted() != null || request.wakeEnabled() != null) {
+            conversationService.updateClientSettings(sessionId, request.ttsMuted(), request.wakeEnabled());
+        }
+
         if (request.hasVoiceEmotion()) {
             return conversationService.sendMessageStream(
                     ctx.tenantId(), sessionId, request.content(),

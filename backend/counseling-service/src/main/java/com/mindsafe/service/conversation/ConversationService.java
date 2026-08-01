@@ -31,6 +31,11 @@ public interface ConversationService {
                                                String voiceEmotion, Double voiceEmotionConfidence);
 
     /**
+     * 更新前端客户端设置状态（TTS静音/唤醒开关），让 AI 知道自己的能力边界
+     */
+    void updateClientSettings(UUID sessionId, Boolean ttsMuted, Boolean wakeEnabled);
+
+    /**
      * 结束会话
      */
     void endSession(UUID tenantId, UUID sessionId);

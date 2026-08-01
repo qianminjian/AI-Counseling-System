@@ -20,8 +20,8 @@ describe('config/voiceprint', () => {
   })
 
   describe('阈值参数', () => {
-    it('验证阈值 0.75（儿童偏严格）', () => {
-      expect(VP_VERIFY_THRESHOLD).toBe(0.75)
+    it('验证阈值 0.70（儿童场景平衡准确率与召回率）', () => {
+      expect(VP_VERIFY_THRESHOLD).toBe(0.70)
     })
 
     it('验证段数 2，注册段数 3', () => {

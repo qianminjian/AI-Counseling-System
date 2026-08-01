@@ -78,11 +78,12 @@ export const WAKE_KEEP_SECONDS = 1.5
 
 /**
  * 静音 RMS 阈值（Float32 采样）：低于此值的窗口直接跳过转写
- * 作用：① 省 CPU  ② 抑制 Whisper 对静音的幻觉输出（如"谢谢观看"类文本）
+ * 作用：① 省 CPU  ② 抑制 Whisper 对静音的幻觉输出（如“谢谢观看”类文本）
  * 注意：不能太高，否则用户轻声说唤醒词会被跳过
- * 实测：底噪约 0.005-0.012，正常说话约 0.05-0.3，取 0.02 可有效过滤底噪
+ * 实测：底噪约 0.005-0.012，正常说话约 0.05-0.3，环境噪声/远场人声 0.02-0.04
+ * 取 0.03 可有效过滤底噪+环境噪声，同时不拦截正常说话
  */
-export const SILENCE_RMS_THRESHOLD = 0.02
+export const SILENCE_RMS_THRESHOLD = 0.03
 
 /** 归一化转写文本：小写 + 去标点/空白，便于容错匹配 */
 export function normalizeWakeText(text) {
@@ -109,11 +110,15 @@ export function matchesWakeWord(text) {
 
 /**
  * 检测 Whisper 幻觉输出：
+ * - 文本过短（≤2 字符）：单字“好”“我”等几乎不可能是唤醒词，直接丢弃
  * - 单个字符重复占比 > 60%（如“好好好好...”）
- * - 文本长度 > 20 且去重后字符数 < 3（如“谢谢观看谢谢观看...”）
+ * - 文本长度 > 10 且去重后字符数 < 4（如“下次見下次見...”循环幻觉）
+ * - 包含已知幻觉短语（Whisper 对静音/电视背景音的高频幻觉输出）
  */
 export function isHallucination(text: string): boolean {
-  if (!text || text.length < 4) return false
+  if (!text) return true
+  // 规则 0：过短文本（1-2 字符）不可能是唤醒词，直接丢弃（省匹配开销）
+  if (text.length <= 2) return true
   // 规则 1：单字符重复占比 > 60%
   const charCounts = new Map<string, number>()
   for (const ch of text) {
@@ -121,7 +126,9 @@ export function isHallucination(text: string): boolean {
   }
   const maxCount = Math.max(...charCounts.values())
   if (maxCount / text.length > 0.6) return true
-  // 规则 2：长文本但去重后字符极少（循环幻觉）
-  if (text.length > 20 && charCounts.size < 3) return true
+  // 规则 2：中等长度但去重后字符极少（循环幻觉，如“下次見下次見...”）
+  if (text.length > 10 && charCounts.size < 4) return true
+  // 规则 3：已知幻觉短语（Whisper 对静音/背景音的高频输出）
+  if (/下次見|謝謝大家|歡迎來到|感谢观看|谢谢观看|訂閱|訂閱頻道/.test(text)) return true
   return false
 }

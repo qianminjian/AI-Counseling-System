@@ -569,6 +569,15 @@ public class ConversationServiceImpl implements ConversationService {
     }
 
     @Override
+    public void updateClientSettings(UUID sessionId, Boolean ttsMuted, Boolean wakeEnabled) {
+        SessionState session = sessionStateStore.get(sessionId);
+        if (session == null) return;
+        if (ttsMuted != null) session.setTtsMuted(ttsMuted);
+        if (wakeEnabled != null) session.setWakeEnabled(wakeEnabled);
+        sessionStateStore.save(sessionId, session);
+    }
+
+    @Override
     public void endSession(UUID tenantId, UUID sessionId) {
         SessionState session = sessionStateStore.get(sessionId);
         if (session != null) {

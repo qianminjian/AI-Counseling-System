@@ -81,7 +81,11 @@ public final class ConversationUtils {
      * 始终生效（不依赖语音唤醒模式）；昵称缺失时回退通用问候。
      */
     public static String buildGreeting(String emotionTag, String pseudonym) {
-        String hello = (pseudonym != null && !pseudonym.isBlank())
+        // 占位符昵称不当真名用（如“某人”/“同学”/“小朋友”）
+        boolean validName = pseudonym != null && !pseudonym.isBlank()
+                && !java.util.Set.of("某人", "同学", "小朋友", "学生", "user", "test", "测试", "匿名", "unknown")
+                        .contains(pseudonym.trim().toLowerCase());
+        String hello = validName
                 ? "哈喽，" + pseudonym + "！"
                 : "哈喽！";
         String emotionGreeting = switch (emotionTag) {

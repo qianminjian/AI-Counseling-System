@@ -149,7 +149,8 @@ describe('useVoiceCallMode', () => {
     // 不崩溃即可
   })
 
-  it('active 模式下 onresult 触发 onFinalTranscript', () => {
+  it('active 模式下 onresult 触发 onFinalTranscript', async () => {
+    vi.useFakeTimers()
     const onFinalTranscript = vi.fn()
     let capturedRec: any = null
     ;(window as any).SpeechRecognition = class {
@@ -166,10 +167,13 @@ describe('useVoiceCallMode', () => {
     // 模拟语音识别结果
     if (capturedRec?.onresult) {
       act(() => {
-        capturedRec.onresult({ results: [[{ transcript: '你好波波' }]], length: 1 })
+        capturedRec.onresult({ results: [[{ transcript: '今天天气真好' }]], length: 1 })
       })
-      expect(onFinalTranscript).toHaveBeenCalledWith('你好波波')
+      // 等待防抖 1800ms
+      await act(async () => { await vi.advanceTimersByTimeAsync(1900) })
+      expect(onFinalTranscript).toHaveBeenCalledWith('今天天气真好')
     }
+    vi.useRealTimers()
   })
 
   it('active 模式下 onend 自动重启聊听', async () => {

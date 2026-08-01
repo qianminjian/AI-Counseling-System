@@ -397,6 +397,9 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: Se
       body.voiceEmotionConfidence = emotion.confidence
       body.inputMode = 'voice'
     }
+    // 同步前端设置状态，让 AI 知道自己的能力边界（TTS是否开启/唤醒是否开启）
+    body.ttsMuted = tts.muted
+    body.wakeEnabled = wakeEnabled
 
     const msgEmotion = emotion
     setInput('')

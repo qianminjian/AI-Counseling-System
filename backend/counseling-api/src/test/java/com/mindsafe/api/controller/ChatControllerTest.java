@@ -78,7 +78,7 @@ class ChatControllerTest {
         @DisplayName("sendMessage 被门禁拦截")
         void sendMessageBlocked() {
             assertThatThrownBy(() -> controller.sendMessage(sessionId,
-                    new SendMessageRequest("你好", null, null, "text"), authentication))
+                    new SendMessageRequest("你好", null, null, "text", null, null), authentication))
                     .isInstanceOf(BizException.class)
                     .extracting("code").isEqualTo(ErrorCode.CONSENT_REQUIRED.code());
             verifyNoInteractions(conversationService);
@@ -119,7 +119,7 @@ class ChatControllerTest {
                     .thenReturn(Flux.empty());
 
             controller.sendMessage(sessionId,
-                    new SendMessageRequest("你好", null, null, "text"), authentication);
+                    new SendMessageRequest("你好", null, null, "text", null, null), authentication);
 
             verify(conversationService).sendMessageStream(tenantId, sessionId, "你好");
         }

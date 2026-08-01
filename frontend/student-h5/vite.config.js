@@ -116,9 +116,11 @@ export default defineConfig({
         scope: '/mindsafe/',
         start_url: '/mindsafe/',
         icons: [
-          { src: '/mindsafe/pwa-192.png', sizes: '192x192', type: 'image/png' },
-          { src: '/mindsafe/pwa-512.png', sizes: '512x512', type: 'image/png' },
-          { src: '/mindsafe/pwa-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+          // 使用相对路径：vite-plugin-pwa 会剥离绝对路径的 base 前缀，
+          // 相对路径保留原样，浏览器基于 manifest URL（/mindsafe/manifest.webmanifest）解析 → /mindsafe/pwa-192.png
+          { src: 'pwa-192.png', sizes: '192x192', type: 'image/png' },
+          { src: 'pwa-512.png', sizes: '512x512', type: 'image/png' },
+          { src: 'pwa-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
         ],
       },
       workbox: {

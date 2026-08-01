@@ -108,6 +108,15 @@ export function useWakeModelStatus(): { status: ModelStatus; progress: number; e
 /** 非 React 环境读取当前状态（如 console 调试） */
 export function getWakeModelStatus(): ModelStatus { return _modelStatus }
 
+/** @internal 测试专用：重置模块级单例状态，避免跨测试污染 */
+export function __resetWakeWordForTest() {
+  transcriberPromise = null
+  _modelStatus = 'idle'
+  _modelProgress = 0
+  _modelError = ''
+  _modelSnapshot = { status: 'idle', progress: 0, error: '' }
+}
+
 /**
  * 模块级模型单例：加载一次，跨会话复用。
  * 失败时重置为 null，允许下次重试（如网络恢复）。
@@ -274,8 +283,11 @@ export function useWakeWord({ active, paused, onDetected }) {
     const handleTranscribeResult = (text: string) => {
       if (cancelled) return
       if (text) {
-        console.info('[WakeWord] 转写结果:', JSON.stringify(text), '幻觉:', isHallucination(text), '匹配:', matchesWakeWord(text))
-        if (matchesWakeWord(text)) {
+        const hallucinated = isHallucination(text)
+        const matched = matchesWakeWord(text)
+        // 降级为 debug：正常运行时不刷屏，需要诊断时开 DevTools verbose 级别即可
+        console.debug('[WakeWord] 转写结果:', JSON.stringify(text), '幻觉:', hallucinated, '匹配:', matched)
+        if (matched) {
           console.info('[WakeWord] 🎉 检测到唤醒词:', text)
           setWakeStatus('detected')
           setTimeout(() => onDetectedRef.current?.({ label: 'halou-bobo', text }), 300)
@@ -303,7 +315,8 @@ export function useWakeWord({ active, paused, onDetected }) {
     /** 识别一个音频窗（Worker 优先，降级主线程） */
     const analyzeWindow = (audio: Float32Array) => {
       analyzing = true
-      console.info(`[WakeWord] 📨 提交音频窗分析 (useMainThread=${useMainThread}, 长度=${audio.length}, rms=${rms(audio).toFixed(5)})`)
+      // 降级为 debug：正常不刷屏
+      console.debug(`[WakeWord] 📨 提交音频窗分析 (useMainThread=${useMainThread}, 长度=${audio.length}, rms=${rms(audio).toFixed(5)})`)
       if (useMainThread) {
         analyzeOnMainThread(audio)
         return
@@ -340,6 +353,7 @@ export function useWakeWord({ active, paused, onDetected }) {
       worker = null
       // 触发主线程模型加载（如果尚未加载）
       setModelStatus('loading')
+      setWakeStatus('loading')
       getTranscriber().then((t) => {
         if (t && !cancelled) {
           setModelStatus('ready')
