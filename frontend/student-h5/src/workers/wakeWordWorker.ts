@@ -39,6 +39,8 @@ async function ensureModel(config) {
     env.backends.onnx.wasm.wasmPaths = config.wasmPaths
 
     const t = await pipeline('automatic-speech-recognition', config.modelId, {
+      // 禁用高级图优化：ORT 1.26.0 TransposeDQWeightsForMatMulNBits bug
+      session_options: { graphOptimizationLevel: 'basic' },
       progress_callback: (p) => {
         if (p.status === 'progress' && p.file && typeof p.progress === 'number') {
           self.postMessage({ type: 'progress', file: p.file, progress: p.progress })

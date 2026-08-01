@@ -160,6 +160,9 @@ function getTranscriber() {
         wasm: `${base}ort/${variant}.wasm`,
       }
       const t = await pipeline('automatic-speech-recognition', WAKE_MODEL_ID, {
+        // 禁用高级图优化：ORT 1.26.0 的 TransposeDQWeightsForMatMulNBits
+        // 优化对 int8 QDQ 模型有 bug（缺少 scale 张量导致 session 创建失败）
+        session_options: { graphOptimizationLevel: 'basic' },
         progress_callback: (p) => {
           if (p.status === 'progress_total' && typeof p.progress === 'number') {
             // 聚合进度（跨所有文件的总百分比）

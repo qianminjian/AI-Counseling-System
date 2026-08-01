@@ -133,8 +133,9 @@ function getModelBundle() {
         }
       }
       // 并行加载模型和特征提取器
+      const sessionOpts = { session_options: { graphOptimizationLevel: 'basic' }, progress_callback }
       const [model, featureExtractor] = await Promise.all([
-        AutoModel.from_pretrained(VP_MODEL_ID, { progress_callback }),
+        AutoModel.from_pretrained(VP_MODEL_ID, sessionOpts),
         AutoFeatureExtractor.from_pretrained(VP_MODEL_ID, { progress_callback }),
       ])
       setVpModelStatus('ready', 100)
