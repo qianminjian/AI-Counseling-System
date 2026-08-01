@@ -252,6 +252,24 @@ public class StudentProfileService {
     }
 
     /**
+     * CTX-Agent：获取学生历史会话总次数（身份简报用，“第 N 次对话”）。
+     * 无画像/首次对话返回 0。
+     */
+    public int getSessionCount(UUID tenantId, UUID userId) {
+        try {
+            StudentProfile profile = profileMapper.selectOne(
+                    new LambdaQueryWrapper<StudentProfile>()
+                            .eq(StudentProfile::getTenantId, tenantId)
+                            .eq(StudentProfile::getUserId, userId)
+            );
+            return profile != null ? profile.getTotalSessions() : 0;
+        } catch (Exception e) {
+            log.debug("获取会话次数失败（不影响对话）: {}", e.getMessage());
+            return 0;
+        }
+    }
+
+    /**
      * PROF-022：读取画像结构化信号供编排引擎微调（design/46 §5.1）
      * <p>
      * 置信度取自维度 JSONB 内 {@code _meta}（LLM 提炼合并时写入）；元数据缺失时置信计 0，

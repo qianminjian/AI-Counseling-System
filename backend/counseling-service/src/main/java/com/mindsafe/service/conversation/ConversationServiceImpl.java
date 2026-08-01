@@ -75,6 +75,8 @@ public class ConversationServiceImpl implements ConversationService {
     private final PromptVariantRouter promptVariantRouter;
     private final OfflineMessageReplayService offlineMessageReplayService;
     private final RedisSessionStateStore sessionStateStore;
+    private final ConversationContextAgent contextAgent;
+    private final SessionSummaryUpdater sessionSummaryUpdater;
 
     /** 冷场决策模型（无状态纯计算，design/28 §三） */
     private final NudgeDecisionModel nudgeDecisionModel = new NudgeDecisionModel();
@@ -101,7 +103,9 @@ public class ConversationServiceImpl implements ConversationService {
                                    SessionEndAnalyticsService sessionEndAnalyticsService,
                                    PromptVariantRouter promptVariantRouter,
                                    OfflineMessageReplayService offlineMessageReplayService,
-                                   RedisSessionStateStore sessionStateStore) {
+                                   RedisSessionStateStore sessionStateStore,
+                                   ConversationContextAgent contextAgent,
+                                   SessionSummaryUpdater sessionSummaryUpdater) {
         this.aiChatService = aiChatService;
         this.promptTemplateService = promptTemplateService;
         this.riskProcessor = riskProcessor;
@@ -125,6 +129,8 @@ public class ConversationServiceImpl implements ConversationService {
         this.promptVariantRouter = promptVariantRouter;
         this.offlineMessageReplayService = offlineMessageReplayService;
         this.sessionStateStore = sessionStateStore;
+        this.contextAgent = contextAgent;
+        this.sessionSummaryUpdater = sessionSummaryUpdater;
     }
 
     @Transactional
@@ -176,6 +182,7 @@ public class ConversationServiceImpl implements ConversationService {
 
         SessionState newState = new SessionState(
                 sessionId, tenantId, studentUserId, emotionTag, channel, gender, expressionDepth, grade);
+        newState.setPseudonym(pseudonym);  // CTX-Agent：身份简报用
         sessionStateStore.save(sessionId, newState);
         log.info("会话创建: sessionId={}, student={}, emotion={}, grade={}, expressionDepth={}",
                 sessionId, studentUserId, emotionTag, grade, expressionDepth);
@@ -308,6 +315,10 @@ public class ConversationServiceImpl implements ConversationService {
         if (fusedLevel != null) {
             session.updateMaxRiskSeverity(fusedLevel.severity());
         }
+
+        // 4.1b CTX-Agent Phase 5：主题线索提取（轻量规则，零 LLM）
+        extractTopicHint(session, content, riskResult, turn);
+
         // 持久化本轮状态变更（覆盖 RED 短路 / 时长超限等提前返回路径）
         sessionStateStore.save(sessionId, session);
 
@@ -342,18 +353,19 @@ public class ConversationServiceImpl implements ConversationService {
             ));
         }
 
-        // 5. 调用 AI 服务获取流式回复（注入学生画像 + 长期记忆 + 年级适配，PROF-010/011/012/015 + AI-008 + AI-005）
+        // 5. 调用 AI 服务获取流式回复（CTX-Agent 结构化上下文 + 年级适配，PROF-010/011/012/015 + AI-008 + AI-005）
         boolean riskBlocked = fusedLevel != null && fusedLevel.severity() >= RiskLevel.ORANGE.severity();
         int effectiveGrade = ConversationUtils.computeEffectiveGrade(session.getGrade(), session.getExpressionDepth(), riskBlocked);
         String profilePrompt = profileService.buildProfilePrompt(session.getTenantId(), session.getStudentUserId(), session.getGrade(), session.getGender());
-        // AI-008：追加长期记忆（跨会话关键事件回注）
+        // AI-008：长期记忆（跨会话关键事件回注）
         String memoryPrompt = longTermMemoryService.buildMemoryPrompt(session.getTenantId(), session.getStudentUserId());
-        if (memoryPrompt != null) {
-            profilePrompt = (profilePrompt != null ? profilePrompt + "\n\n" : "") + memoryPrompt;
-        }
 
         // ALLY-201/203：治疗联盟增强——连续性开场 + 中断回归照护（design/52 §五）
         String alliancePrompt = buildAlliancePrompt(session, memoryPrompt);
+
+        // CTX-Agent：结构化上下文简报（身份+情绪旅程+会话进展+记忆+画像）
+        int totalSessions = profileService.getSessionCount(session.getTenantId(), session.getStudentUserId());
+        String contextBrief = contextAgent.buildContextBrief(session, profilePrompt, memoryPrompt, alliancePrompt, totalSessions);
 
         // AI-005：Prompt 版本 A/B 路由（DB 优先，classpath 降级）
         String gradeLevel = effectiveGrade <= 2 ? "1-2" : effectiveGrade <= 4 ? "3-4" : "5-6";
@@ -394,10 +406,7 @@ public class ConversationServiceImpl implements ConversationService {
         CbtStageRouter.AgeStrategy ageStrategy = cbtStageRouter.resolveAgeStrategy(effectiveGrade);
         log.debug("CBT 年龄分层: sessionId={}, grade={}, strategy={}", sessionId, effectiveGrade, ageStrategy);
 
-        // ALLY 连续性开场 / 回归照护注入 System Prompt
-        if (alliancePrompt != null) {
-            systemPromptContent = systemPromptContent + "\n\n" + alliancePrompt;
-        }
+        // ALLY 连续性开场 / 回归照护已纳入 CTX-Agent contextBrief，不再单独注入
 
         // KB-101b：RAG 参考知识注入（design/49 §六）——场景触发才检索，寒暄闲聊不检索；
         // RED 危机场景已在 4.2 硬短路，不会走到此处；检索异常返回空串不影响主线。
@@ -415,8 +424,11 @@ public class ConversationServiceImpl implements ConversationService {
         versionUpdate.setUpdatedAt(Instant.now());
         sessionMapper.updateById(versionUpdate);
 
+        // Fix 3: ContextBrief 追加到 systemPromptContent 尾部（利用 recency bias，AI 最后读到 = 注意力最高）
+        String finalSystemPrompt = systemPromptContent + "\n\n" + contextBrief;
+
         StringBuilder aiResponseCollector = new StringBuilder();
-        Flux<StreamMessageEvent> aiStream = aiChatService.chatWithPrompt(sessionId, session.getEmotionTag(), safeContent, session.getGender(), profilePrompt, effectiveGrade, systemPromptContent)
+        Flux<StreamMessageEvent> aiStream = aiChatService.chatWithPrompt(sessionId, session.getEmotionTag(), safeContent, session.getGender(), null, effectiveGrade, finalSystemPrompt)
                 .doOnNext(event -> {
                     if (event.type() != null && event.type().equals("token") && event.content() != null) {
                         aiResponseCollector.append(event.content());
@@ -429,6 +441,13 @@ public class ConversationServiceImpl implements ConversationService {
                     // 冷场决策模型信号：AI 是否刚问了思考型问题
                     session.recordAiReply(fullReply);
                     sessionStateStore.save(sessionId, session);
+
+                    // CTX-Agent Phase 3：每 4 轮异步更新滚动摘要（不阻塞当前轮响应）
+                    if (sessionSummaryUpdater.shouldUpdate(session)) {
+                        sessionSummaryUpdater.updateSummaryAsync(
+                                session.getTenantId(), sessionId, session.getStudentUserId(), turn);
+                    }
+
                     return Flux.just(StreamMessageEvent.done(""));
                 }))
                 .onErrorResume(e -> {
@@ -474,6 +493,17 @@ public class ConversationServiceImpl implements ConversationService {
                 session.getExpressionDepth()
         ));
 
+        // Enhancement 2: 情绪旅程约束——ACTIVATED/CRISIS 时强制轻陪伴，不引导破冰
+        if (session.getEmotionState() != com.mindsafe.ai.orchestrator.StrategyProfile.EmotionState.STABLE
+                && decision.warmthLevel() > 1) {
+            decision = new NudgeDecisionModel.NudgeDecision(1, decision.direction());
+            log.debug("nudge: 情绪状态机非 STABLE，warmthLevel 降级为 1: sessionId={}", sessionId);
+        }
+        // 连续积极回应 >= 3 时，暖场方向偏向积极肯定
+        if (session.getReliefCount() >= 3 && decision.warmthLevel() > 0) {
+            decision = new NudgeDecisionModel.NudgeDecision(decision.warmthLevel(), "积极肯定");
+        }
+
         if (decision.warmthLevel() == 0) {
             // 留白：把安静还给孩子（他可能在思考），前端不做任何事
             log.debug("nudge: 决策=留白，返回空流: sessionId={}, silenceSeconds={}", sessionId, silenceSeconds);
@@ -486,12 +516,12 @@ public class ConversationServiceImpl implements ConversationService {
                 "warmth_level", String.valueOf(decision.warmthLevel()),
                 "direction", decision.direction()
         ));
+        // Fix 1: 暖场接入 CTX-Agent（统一上下文简报，让暖场也知道昵称/情绪/进展）
         String profilePrompt = profileService.buildProfilePrompt(session.getTenantId(), session.getStudentUserId(), session.getGrade(), session.getGender());
-        // AI-008：暖场也回注长期记忆（让暖场更个性化，如“上次你说喜欢画画”）
         String nudgeMemoryPrompt = longTermMemoryService.buildMemoryPrompt(session.getTenantId(), session.getStudentUserId());
-        if (nudgeMemoryPrompt != null) {
-            profilePrompt = (profilePrompt != null ? profilePrompt + "\n\n" : "") + nudgeMemoryPrompt;
-        }
+        String nudgeAlliancePrompt = buildAlliancePrompt(session, nudgeMemoryPrompt);
+        int nudgeTotalSessions = profileService.getSessionCount(session.getTenantId(), session.getStudentUserId());
+        String nudgeContextBrief = contextAgent.buildContextBrief(session, profilePrompt, nudgeMemoryPrompt, nudgeAlliancePrompt, nudgeTotalSessions);
         // PROF-015：暖场场景无风险（橙/红已拦截），仅根据表达深度降级
         int effectiveGrade = ConversationUtils.computeEffectiveGrade(session.getGrade(), session.getExpressionDepth(), false);
         int turn = session.getTurnCount();
@@ -502,7 +532,7 @@ public class ConversationServiceImpl implements ConversationService {
         log.info("nudge: 决策=暖场: sessionId={}, warmthLevel={}, direction={}, silenceSeconds={}",
                 sessionId, decision.warmthLevel(), decision.direction(), silenceSeconds);
 
-        return aiChatService.chatProactive(sessionId, session.getEmotionTag(), session.getGender(), profilePrompt, nudgeInstruction, effectiveGrade)
+        return aiChatService.chatProactive(sessionId, session.getEmotionTag(), session.getGender(), nudgeContextBrief, nudgeInstruction, effectiveGrade)
                 .doOnNext(event -> {
                     if (event.type() != null && event.type().equals("token") && event.content() != null) {
                         aiResponseCollector.append(event.content());
@@ -608,6 +638,44 @@ public class ConversationServiceImpl implements ConversationService {
         } catch (Exception e) {
             log.debug("ALLY 联盟增强构建失败（不影响对话）: {}", e.getMessage());
             return null;
+        }
+    }
+
+    /**
+     * CTX-Agent Phase 5：主题线索提取（轻量规则，零 LLM）。
+     * <p>
+     * 从学生消息中提取主题关键词存入 SessionState.topicHints：
+     * - 风险类别（已有分类，如 self_harm/bullying/family_conflict）
+     * - 简单关键词匹配（同学/老师/妈妈/考试/朋友等高频主题）
+     */
+    private void extractTopicHint(SessionState session, String content, RiskDetectionResult riskResult, int turn) {
+        try {
+            // 1. 风险类别作为主题（已有分类，高价值）
+            if (riskResult != null && riskResult.isRisky() && riskResult.category() != null) {
+                session.addTopicHint(riskResult.category(), turn);
+            }
+
+            // 2. 简单关键词提取（小学生高频话题）
+            if (content == null || content.length() < 4) return;
+            String[][] topicPatterns = {
+                    {"同学", "同学关系"}, {"朋友", "友谊"}, {"妈妈", "和妈妈的关系"},
+                    {"爸爸", "和爸爸的关系"}, {"老师", "和老师的关系"},
+                    {"考试", "考试压力"}, {"成绩", "学习压力"}, {"作业", "学习压力"},
+                    {"欺负", "被欺负"}, {"打我", "被欺负"}, {"骂我", "被欺负"},
+                    {"不想活", "自伤倾向"}, {"死", "自伤倾向"},
+                    {"孤独", "孤独感"}, {"没人", "孤独感"},
+                    {"害怕", "恐惧"}, {"担心", "焦虑"},
+                    {"生气", "愤怒"}, {"讨厌", "厌恶"},
+                    {"弟弟", "兄弟姐妹关系"}, {"妹妹", "兄弟姐妹关系"},
+            };
+            for (String[] pattern : topicPatterns) {
+                if (content.contains(pattern[0])) {
+                    session.addTopicHint(pattern[1], turn);
+                    break; // 每轮最多提取 1 个关键词主题（避免噪音）
+                }
+            }
+        } catch (Exception e) {
+            log.debug("CTX-Agent 主题提取失败（不影响对话）: {}", e.getMessage());
         }
     }
 }
