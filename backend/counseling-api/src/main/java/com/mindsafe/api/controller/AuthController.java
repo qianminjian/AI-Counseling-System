@@ -257,16 +257,21 @@ public class AuthController {
             throw new BizException(ErrorCode.UNAUTHORIZED, "设备凭证已失效，请重新录入声纹");
         }
 
-        User user = userMapper.selectById(jwtTokenProvider.getUserId(vc));
+        // 声纹登录是 permitAll 端点，无 Authorization header → JwtAuthenticationFilter 不设置租户上下文
+        // 需显式声明系统作用域，否则多租户拦截器拒绝 SQL（M1-003）
+        User user = TenantContextHolder.callAsSystem(() ->
+                userMapper.selectById(jwtTokenProvider.getUserId(vc)));
         if (user == null || !"active".equals(user.getStatus())) {
             throw new BizException(ErrorCode.UNAUTHORIZED, "账号不可用，请联系老师");
         }
 
         // 更新最后登录时间
-        User update = new User();
-        update.setUserId(user.getUserId());
-        update.setLastLoginAt(Instant.now());
-        userMapper.updateById(update);
+        TenantContextHolder.runAsSystem(() -> {
+            User update = new User();
+            update.setUserId(user.getUserId());
+            update.setLastLoginAt(Instant.now());
+            userMapper.updateById(update);
+        });
 
         String token = jwtTokenProvider.generateToken(
                 user.getUserId(), user.getUserType(), user.getTenantId());
