@@ -24,7 +24,7 @@ import { getAllVoiceprints } from '../utils/voiceprintStore'
 
 // ===== 全局模型加载状态（跨组件共享，LoginPage / VoiceLoginOverlay 均可订阅） =====
 
-type VpModelStatus = 'idle' | 'loading' | 'ready' | 'error'
+type VpModelStatus = 'idle' | 'loading' | 'ready' | 'error' | 'unsupported'
 let _vpStatus: VpModelStatus = 'idle'
 let _vpProgress = 0 // 0-100 下载进度
 let _vpError = '' // 详细错误信息（诊断用）
@@ -84,14 +84,12 @@ function getModelBundle() {
       } catch { /* ignore */ }
       console.info('[Voiceprint] 环境诊断:', { hasSAB, isIsolated, hasSimd, ua: navigator.userAgent.slice(0, 100) })
       if (!hasSAB) {
-        const msg = `SharedArrayBuffer不可用(isolated=${isIsolated})，请清除网站数据后重试`
-        console.error('[Voiceprint]', msg)
-        throw new Error(msg)
+        console.warn('[Voiceprint] SharedArrayBuffer不可用(isolated=%s)，声纹功能降级', isIsolated)
+        throw Object.assign(new Error('ENV_UNSUPPORTED'), { _unsupported: true })
       }
       if (!hasSimd) {
-        const msg = '浏览器不支持WebAssembly SIMD，无法运行语音模型(需Chrome 91+/Safari 16.4+)'
-        console.error('[Voiceprint]', msg)
-        throw new Error(msg)
+        console.warn('[Voiceprint] 浏览器不支持WebAssembly SIMD，声纹功能降级（需Chrome 91+/Safari 16.4+）')
+        throw Object.assign(new Error('ENV_UNSUPPORTED'), { _unsupported: true })
       }
 
       const { AutoModel, AutoFeatureExtractor, env } = await import('@huggingface/transformers')
@@ -143,6 +141,11 @@ function getModelBundle() {
       return { model, featureExtractor }
     })().catch((err) => {
       modelBundlePromise = null
+      // 环境不支持（SIMD/SAB缺失）→ 静默降级，不报错、不清SW
+      if (err?._unsupported) {
+        setVpModelStatus('unsupported')
+        return null as any
+      }
       const errMsg = err?.message || String(err)
       const errStack = err?.stack?.split('\n').slice(0, 3).join(' | ') || ''
       const fullMsg = `${errMsg}${errStack ? ' @ ' + errStack : ''}`

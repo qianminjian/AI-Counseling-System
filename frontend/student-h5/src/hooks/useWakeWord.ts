@@ -78,7 +78,7 @@ function rms(f32) {
 }
 
 /* ===== 全局模型加载状态（跨组件共享，EmotionSelect / ChatRoom / 设置面板均可订阅） ===== */
-type ModelStatus = 'idle' | 'loading' | 'ready' | 'error'
+type ModelStatus = 'idle' | 'loading' | 'ready' | 'error' | 'unsupported'
 let _modelStatus: ModelStatus = 'idle'
 let _modelProgress = 0 // 0-100 下载进度
 const _modelSubscribers = new Set<() => void>()
@@ -118,11 +118,18 @@ function getTranscriber() {
   if (!transcriberPromise) {
     setModelStatus('loading')
     transcriberPromise = (async () => {
-      // ━━ 环境前置检查：SharedArrayBuffer 是 ORT WASM 的硬性依赖 ━━
+      // ━━ 环境前置检查：SharedArrayBuffer + SIMD 是 ORT WASM 的硬性依赖 ━━
       if (typeof SharedArrayBuffer === 'undefined') {
-        const msg = '浏览器不支持 SharedArrayBuffer（需要 COOP/COEP 响应头）'
-        console.error('[WakeWord]', msg)
-        throw new Error(msg)
+        console.warn('[WakeWord] SharedArrayBuffer不可用，语音功能降级')
+        throw Object.assign(new Error('ENV_UNSUPPORTED'), { _unsupported: true })
+      }
+      let hasSimd = false
+      try {
+        hasSimd = WebAssembly.validate(new Uint8Array([0,97,115,109,1,0,0,0,1,5,1,96,0,1,123,3,2,1,0,10,10,1,8,0,65,0,253,15,26,11]))
+      } catch { /* ignore */ }
+      if (!hasSimd) {
+        console.warn('[WakeWord] 浏览器不支持WebAssembly SIMD，语音功能降级')
+        throw Object.assign(new Error('ENV_UNSUPPORTED'), { _unsupported: true })
       }
 
       // 动态导入：Transformers.js 独立分包，未启用唤醒时主路径零开销
@@ -165,6 +172,10 @@ function getTranscriber() {
       return t
     })().catch((err) => {
       transcriberPromise = null
+      if (err?._unsupported) {
+        setModelStatus('unsupported')
+        return null as any
+      }
       setModelStatus('error')
       throw err
     })

@@ -34,11 +34,14 @@ export default function LoginPage({ onLogin, onRegister, onNeedConsent, initialT
     preloadWakeModel()
   }, [])
 
-  // 浏览器是否支持麦克风（决定是否显示声音进入按钮）
+  // 浏览器是否支持麦克风 + WASM SIMD（决定是否显示声音进入按钮）
+  const vpStatus = useVoiceprintModelStatus()
   const micSupported = useMemo(
     () => typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getUserMedia,
     []
   )
+  // 环境不支持 SIMD/SAB 时隐藏声音入口（静默降级）
+  const voiceSupported = micSupported && vpStatus.status !== 'unsupported'
 
   const switchToRegister = () => {
     onNeedConsent?.()
@@ -116,7 +119,7 @@ export default function LoginPage({ onLogin, onRegister, onNeedConsent, initialT
         )}
 
         {/* 声音进入（显式按钮触发，与 PIN 并列；无被动监听） */}
-        {tab === 'login' && micSupported && (
+        {tab === 'login' && voiceSupported && (
           <div className={`voice-entry voice-entry--${themeId}`}>
             <div className="divider"><span>或</span></div>
             <p className="sub" style={{ marginTop: 0, marginBottom: 8 }}>对波波说句话，直接进入</p>
@@ -601,7 +604,7 @@ function ModelDownloadProgress() {
     return (
       <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 px-4 py-1.5 rounded-full border text-xs font-medium bg-red-50 text-red-500 border-red-200 max-w-[90vw]">
         ⚠️ {failedNames}加载失败，不影响登录
-        {detail && <span className="block text-[10px] text-red-400 mt-0.5 truncate">{detail}</span>}
+        {detail && <span className="block text-[10px] text-red-400 mt-0.5 break-all">{detail}</span>}
       </div>
     )
   }
