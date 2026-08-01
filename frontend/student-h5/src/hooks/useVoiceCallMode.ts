@@ -27,6 +27,8 @@ const COOLDOWN_CLOSE_TEXT = '我先安静陪着你，想说话随时叫我哦'
 const COOLDOWN_SECONDS = 25
 /** 聆听回合重启间隔（毫秒） */
 const RESTART_DELAY_MS = 300
+/** 语音结束防抖（毫秒）：用户停止说话后等待此时长才发送最终结果，避免中间停顿截断 */
+const SPEECH_END_DEBOUNCE_MS = 1800
 
 /**
  * @param {object} opts
@@ -49,6 +51,10 @@ export function useVoiceCallMode({ enabled, tts, busy, onFinalTranscript }) {
   const recRef = useRef(null)
   const restartTimerRef = useRef(null)
   const startListeningRoundRef = useRef(null)
+  /** 防抖计时器：用户停止说话后延迟发送，避免中间停顿截断句子 */
+  const speechEndTimerRef = useRef(null)
+  /** 累积的转写文本（continuous 模式下多个 result 事件拼接） */
+  const accumulatedTextRef = useRef('')
   // 防 re-entry：Whisper 多窗串行检测可能在 React 状态传播前多次触发 onDetected
   const detectingRef = useRef(false)
   // 首轮过滤：active 后第一轮 SpeechRecognition 结果需过滤唤醒词残留
@@ -66,6 +72,10 @@ export function useVoiceCallMode({ enabled, tts, busy, onFinalTranscript }) {
       clearTimeout(restartTimerRef.current)
       restartTimerRef.current = null
     }
+    if (speechEndTimerRef.current) {
+      clearTimeout(speechEndTimerRef.current)
+      speechEndTimerRef.current = null
+    }
     if (recRef.current) {
       const rec = recRef.current
       recRef.current = null
@@ -74,40 +84,72 @@ export function useVoiceCallMode({ enabled, tts, busy, onFinalTranscript }) {
     }
   }, [])
 
-  /** 开启一轮语音捕捉（每轮独立实例：说完即止、说完重启，iOS Safari 更稳） */
+  /** 开启一轮语音捕捉（continuous + interimResults，防抖判断说完） */
   const startListeningRound = useCallback(() => {
     stopListening()
+    accumulatedTextRef.current = ''
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
     if (!SpeechRecognition) return
     try {
       const rec = new SpeechRecognition()
       rec.lang = 'zh-CN'
-      rec.continuous = false
-      rec.interimResults = false
+      // continuous=true：不因停顿自动停止，避免截断长句/思考停顿
+      rec.continuous = true
+      // interimResults=true：实时获取中间结果，用于防抖判断
+      rec.interimResults = true
       rec.onresult = (e) => {
-        let text = e.results?.[0]?.[0]?.transcript?.trim()
-        if (!text) return
-        // 首轮过滤：用户因延迟重复说唤醒词，SpeechRecognition 可能捕获整段重复
-        if (firstRoundRef.current) {
-          firstRoundRef.current = false
-          // 如果整段都是唤醒词重复（如"Hello波波。Hello波波。Hello波波。"），丢弃
-          const segments = text.split(/[。.！!？?，,、\s]+/).filter(Boolean)
-          const wakeRatio = segments.filter(s => matchesWakeWord(s)).length / Math.max(segments.length, 1)
-          if (wakeRatio > 0.5) {
-            console.info('[VoiceCall] 首轮结果过滤（唤醒词残留）:', text)
-            return // 不发送，等下一轮真正说话
-          }
+        // 拼接所有 result（含 interim + final）
+        let fullText = ''
+        for (let i = 0; i < e.results.length; i++) {
+          fullText += e.results[i][0].transcript
         }
-        onFinalTranscriptRef.current?.(text)
+        fullText = fullText.trim()
+        if (!fullText) return
+        accumulatedTextRef.current = fullText
+  
+        // 防抖：每次收到新结果重置计时器，用户停止说话 1.8s 后才发送
+        if (speechEndTimerRef.current) clearTimeout(speechEndTimerRef.current)
+        speechEndTimerRef.current = setTimeout(() => {
+          speechEndTimerRef.current = null
+          const text = accumulatedTextRef.current
+          accumulatedTextRef.current = ''
+          if (!text) return
+          // 首轮过滤：用户因延迟重复说唤醒词，SpeechRecognition 可能捕获整段重复
+          if (firstRoundRef.current) {
+            firstRoundRef.current = false
+            const segments = text.split(/[。.！!？?，,、\s]+/).filter(Boolean)
+            const wakeRatio = segments.filter(s => matchesWakeWord(s)).length / Math.max(segments.length, 1)
+            if (wakeRatio > 0.5) {
+              console.info('[VoiceCall] 首轮结果过滤（唤醒词残留）:', text)
+              return
+            }
+          }
+          console.info('[VoiceCall] 语音识别结果:', text)
+          // 发送后停止当前识别实例，等 busy 状态变化后自动重启新一轮
+          const rec = recRef.current
+          if (rec) {
+            recRef.current = null
+            rec.onend = null
+            try { rec.stop() } catch { /* ignore */ }
+          }
+          onFinalTranscriptRef.current?.(text)
+        }, SPEECH_END_DEBOUNCE_MS)
       }
       rec.onend = () => {
         recRef.current = null
+        // 如果防抖计时器还在跑（用户刚说完，Chrome 因超时停了），等它自然触发
+        if (speechEndTimerRef.current) return
         // 仍在会话窗内且 AI 不忙 → 开启下一轮聆听
         if (modeRef.current === 'active' && enabledRef.current && !busyRef.current) {
           restartTimerRef.current = setTimeout(() => startListeningRoundRef.current?.(), RESTART_DELAY_MS)
         }
       }
-      rec.onerror = () => { /* 之后会触发 onend，统一在那里处理 */ }
+      rec.onerror = (e) => {
+        // no-speech 错误忽略（用户没说话），其他错误记录
+        if (e.error !== 'no-speech') {
+          console.warn('[VoiceCall] 识别错误:', e.error)
+        }
+      }
       recRef.current = rec
       rec.start()
     } catch (err) {
