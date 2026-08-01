@@ -19,7 +19,18 @@
  */
 import { VP_DB_NAME, VP_DB_VERSION, VP_STORE_NAME, VP_MAX_TEMPLATES } from '../config/voiceprint'
 
-let dbPromise = null
+/** 声纹记录数据结构 */
+export interface VoiceprintRecord {
+  userId: string
+  pseudonym: string
+  embeddings: number[][]
+  sampleCount: number
+  voiceCredential?: string
+  createdAt: number
+  updatedAt: number
+}
+
+let dbPromise: Promise<IDBDatabase> | null = null
 
 /** 获取/创建 IndexedDB 实例（单例） */
 function getDB() {
@@ -51,10 +62,10 @@ function getDB() {
  * 查询所有已注册声纹（登录时遍历比对）
  * @returns {Promise<Array>} 声纹记录列表
  */
-export async function getAllVoiceprints() {
+export async function getAllVoiceprints(): Promise<VoiceprintRecord[]> {
   try {
     const db = await getDB()
-    return new Promise((resolve, reject) => {
+    return new Promise<VoiceprintRecord[]>((resolve, reject) => {
       const tx = db.transaction(VP_STORE_NAME, 'readonly')
       const store = tx.objectStore(VP_STORE_NAME)
       const request = store.getAll()
@@ -71,10 +82,10 @@ export async function getAllVoiceprints() {
  * @param {string} userId
  * @returns {Promise<object|null>}
  */
-export async function getVoiceprint(userId) {
+export async function getVoiceprint(userId: string): Promise<VoiceprintRecord | null> {
   try {
     const db = await getDB()
-    return new Promise((resolve, reject) => {
+    return new Promise<VoiceprintRecord | null>((resolve, reject) => {
       const tx = db.transaction(VP_STORE_NAME, 'readonly')
       const store = tx.objectStore(VP_STORE_NAME)
       const request = store.get(userId)
@@ -92,9 +103,9 @@ export async function getVoiceprint(userId) {
  * @param {string} pseudonym
  * @param {number[][]} embeddings - 多段 embedding 向量
  */
-export async function enrollVoiceprint(userId, pseudonym, embeddings) {
+export async function enrollVoiceprint(userId: string, pseudonym: string, embeddings: number[][]) {
   const db = await getDB()
-  const existing = await getVoiceprint(userId) as any
+  const existing = await getVoiceprint(userId)
   const now = Date.now()
   const record = {
     userId,
@@ -120,9 +131,9 @@ export async function enrollVoiceprint(userId, pseudonym, embeddings) {
  * @param {string} userId
  * @param {string} credential - 后端 /auth/voice-credential 签发的凭证 JWT
  */
-export async function saveVoiceCredential(userId, credential) {
+export async function saveVoiceCredential(userId: string, credential: string) {
   try {
-    const existing = await getVoiceprint(userId) as any
+    const existing = await getVoiceprint(userId)
     if (!existing) return
     const db = await getDB()
     const updated = { ...existing, voiceCredential: credential, updatedAt: Date.now() }
@@ -144,12 +155,12 @@ export async function saveVoiceCredential(userId, credential) {
  * @param {string} userId
  * @param {number[]} embedding - 单段 embedding
  */
-export async function appendEmbedding(userId, embedding) {
+export async function appendEmbedding(userId: string, embedding: number[]) {
   try {
-    const existing = await getVoiceprint(userId) as any
+    const existing = await getVoiceprint(userId)
     if (!existing) return
     const db = await getDB()
-    const embeddings = [...(existing.embeddings as any[]), embedding]
+    const embeddings = [...existing.embeddings, embedding]
     // 滑动窗口：保留最近 N 个
     const trimmed = embeddings.slice(-VP_MAX_TEMPLATES)
     const updated = {
@@ -174,7 +185,7 @@ export async function appendEmbedding(userId, embedding) {
  * 删除指定用户声纹
  * @param {string} userId
  */
-export async function deleteVoiceprint(userId) {
+export async function deleteVoiceprint(userId: string) {
   try {
     const db = await getDB()
     return new Promise<void>((resolve, reject) => {
@@ -193,8 +204,8 @@ export async function deleteVoiceprint(userId) {
  * 检查设备是否有任何已注册声纹（决定是否显示声纹入口）
  * @returns {Promise<boolean>}
  */
-export async function hasAnyVoiceprint() {
-  const all = await getAllVoiceprints() as any[]
+export async function hasAnyVoiceprint(): Promise<boolean> {
+  const all = await getAllVoiceprints()
   return all.length > 0
 }
 

@@ -156,7 +156,7 @@ export function useVoiceprint() {
 
       // Transformers.js 输出格式：{ data: Float32Array } 或 { embedding: [...] }
       const embedding = result?.data || result?.embedding || result
-      if (embedding && (embedding as any).length > 0) {
+      if (embedding && Array.isArray(embedding) && embedding.length > 0) {
         // 归一化
         const arr = Array.from(embedding as Iterable<number>) as number[]
         const norm = Math.sqrt(arr.reduce((s, v) => s + v * v, 0))
@@ -177,7 +177,7 @@ export function useVoiceprint() {
    * @returns {Promise<{matched: boolean, userId?: string, pseudonym?: string, score: number}>}
    */
   const verify = useCallback(async (inputEmbeddings: number[][]) => {
-    const allPrints = await getAllVoiceprints() as any[]
+    const allPrints = await getAllVoiceprints()
     if (allPrints.length === 0) {
       return { matched: false, score: 0 }
     }

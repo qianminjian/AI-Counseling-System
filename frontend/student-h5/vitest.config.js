@@ -11,5 +11,15 @@ export default defineConfig({
     globals: true,
     setupFiles: ['./src/test/setup.ts'],
     include: ['src/**/*.{test,spec}.{ts,tsx}'],
+    coverage: {
+      exclude: [
+        'src/main.tsx',
+        'src/global.d.ts',
+        'src/vite-env.d.ts',
+        'dist/**',
+        'vitest.config.js',
+        'vite.config.js',
+      ],
+    },
   },
 });

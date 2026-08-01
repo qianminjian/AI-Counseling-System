@@ -84,7 +84,7 @@ export default function VoiceLoginOverlay({ mode = 'verify', onComplete, onCance
         audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
       })
       streamRef.current = stream
-      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)()
+      const ctx = new (window.AudioContext || window.webkitAudioContext)()
       if (ctx.state === 'suspended') await ctx.resume().catch(() => {})
       audioCtxRef.current = ctx
 
@@ -187,7 +187,7 @@ export default function VoiceLoginOverlay({ mode = 'verify', onComplete, onCance
       const result = await verify(collectedEmbeddings.current)
       if (result.matched) {
         // Phase 2：本地声纹匹配通过后，用设备凭证换取后端正式 token
-        const vp = await getVoiceprint(result.userId) as any
+        const vp = await getVoiceprint(result.userId!)
         const cred = vp?.voiceCredential
         if (!cred) {
           setFailKind('credential')

@@ -201,7 +201,7 @@ export function useWakeWord({ active, onDetected }) {
           return
         }
 
-        audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)()
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)()
         if (audioCtx.state === 'suspended') {
           await audioCtx.resume().catch(() => {})
           // iOS Safari：AudioContext 须在用户手势内 resume，异步创建可能被挂起 → 等待任意点击恢复
