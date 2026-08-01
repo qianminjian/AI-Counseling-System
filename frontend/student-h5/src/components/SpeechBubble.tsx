@@ -34,7 +34,7 @@ export default function SpeechBubble({ mode, text, cancelArmed = false, align = 
 
   return (
     <div
-      className={`absolute bottom-full mb-3 z-20 pointer-events-none select-none ${wrapAlign}`}
+      className={`absolute bottom-full mb-6 z-20 pointer-events-none select-none ${wrapAlign}`}
       style={{ width: 'max-content', maxWidth: '260px' }}
     >
       {/* 水泡主体：key 换句即重新"吹出" */}

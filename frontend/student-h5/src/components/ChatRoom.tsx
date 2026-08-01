@@ -390,6 +390,9 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: an
     let fullResponse = ''
     let timeoutChecker: ReturnType<typeof setInterval> | null = null
 
+    // 流式 TTS：首句完成即开始合成播放，不等全文接收完
+    if (!tts.muted) tts.startStreaming()
+
     try {
       const res = await authFetch(`/api/v1/chat/sessions/${session.sessionId}/messages`, {
         method: 'POST',
@@ -428,6 +431,8 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: an
             const event = JSON.parse(jsonStr)
             if (event.type === 'token') {
               fullResponse += event.content
+              // 流式 TTS：每个 token 喂入，首句完成即开始合成播放
+              if (!tts.muted) tts.feedToken(event.content)
               setMessages((prev) => {
                 const updated = [...prev]
                 const last = updated[updated.length - 1]
@@ -460,9 +465,13 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: an
       }
     } finally {
       if (timeoutChecker) clearInterval(timeoutChecker)
-      // AI 回复完成 → 自动 TTS 播放（无论流是否正常结束，只要收到内容就播放）
-      if (fullResponse && !tts.muted) {
-        tts.speak(fullResponse)
+      // 流式 TTS 结束：冲刷剩余缓冲 + 等待播放完毕；无内容时重置状态
+      if (!tts.muted) {
+        if (fullResponse) {
+          tts.endStreaming()
+        } else {
+          tts.stop()
+        }
       }
       setStreaming(false)
     }

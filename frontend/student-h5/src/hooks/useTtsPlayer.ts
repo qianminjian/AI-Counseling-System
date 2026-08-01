@@ -300,7 +300,108 @@ export function useTtsPlayer({ persona = 'xiaoxing', emotion = 'neutral', speed 
     setPlaying(false)
     setCurrentSentenceIdx(-1)
     setSentences([])
+    // 重置流式 TTS 状态
+    streamBufferRef.current = ''
+    streamQueueRef.current = []
+    streamIdxRef.current = 0
   }, [])
+
+  /* ===== 流式 TTS：AI 回复流式到达时，首句完成即开始合成播放，消除等待全文的滞后 ===== */
+  const streamBufferRef = useRef('')       // 未切句的 token 缓冲
+  const streamQueueRef = useRef<string[]>([])  // 已切分待播放的句子队列
+  const streamIdxRef = useRef(0)           // 当前播放到第几句
+  const streamPlayChainRef = useRef<Promise<void>>(Promise.resolve()) // 串行播放链
+
+  /** 开始流式 TTS 会话（在流式回复开始时调用） */
+  const startStreaming = useCallback(() => {
+    if (muted) return
+    stop()
+    abortRef.current = false
+    streamBufferRef.current = ''
+    streamQueueRef.current = []
+    streamIdxRef.current = 0
+    streamPlayChainRef.current = Promise.resolve()
+    setPlaying(true)
+    setSentences([])
+    setCurrentSentenceIdx(-1)
+  }, [muted, stop])
+
+  /** 流式喂入 token：累积到句末即切分并加入播放队列（后台合成 + 顺序播放） */
+  const feedToken = useCallback((token: string) => {
+    if (muted || abortRef.current) return
+    streamBufferRef.current += token
+    // 检测句末标点（。！？\n）
+    const buf = streamBufferRef.current
+    const lastEnd = Math.max(buf.lastIndexOf('。'), buf.lastIndexOf('！'), buf.lastIndexOf('？'), buf.lastIndexOf('\n'))
+    if (lastEnd < 0) return // 尚未累积完一句
+    // 切出完整句子
+    const completePart = buf.slice(0, lastEnd + 1)
+    streamBufferRef.current = buf.slice(lastEnd + 1)
+    const newSentences = mergeShortSentences(splitSentences(completePart))
+    if (newSentences.length === 0) return
+    // 加入队列 + 更新 UI
+    streamQueueRef.current.push(...newSentences)
+    setSentences([...streamQueueRef.current])
+    // 为每个新句子启动合成+播放（串行链保证顺序）
+    for (const s of newSentences) {
+      const idx = streamIdxRef.current++
+      streamPlayChainRef.current = streamPlayChainRef.current.then(async () => {
+        if (abortRef.current) return
+        setCurrentSentenceIdx(idx)
+        const blob = await synthesizeSentence(s)
+        if (abortRef.current) return
+        if (blob) {
+          await playBlob(blob)
+        } else {
+          setEngine('browser')
+          await new Promise<void>((resolve) => {
+            const ok = browserSpeak(s, { rate: speed, persona, onEnd: resolve })
+            if (!ok) { setEngine('none'); resolve() }
+          })
+        }
+      })
+    }
+  }, [muted, synthesizeSentence, playBlob, speed, persona])
+
+  /** 结束流式 TTS：冲刷剩余缓冲，等待播放完毕 */
+  const endStreaming = useCallback(async () => {
+    if (muted) return
+    // 冲刷剩余文本（无句末标点的尾巴）
+    const remaining = streamBufferRef.current.trim()
+    streamBufferRef.current = ''
+    if (remaining && !abortRef.current) {
+      const tailSentences = mergeShortSentences(splitSentences(remaining))
+      if (tailSentences.length > 0) {
+        streamQueueRef.current.push(...tailSentences)
+        setSentences([...streamQueueRef.current])
+        for (const s of tailSentences) {
+          const idx = streamIdxRef.current++
+          streamPlayChainRef.current = streamPlayChainRef.current.then(async () => {
+            if (abortRef.current) return
+            setCurrentSentenceIdx(idx)
+            const blob = await synthesizeSentence(s)
+            if (abortRef.current) return
+            if (blob) {
+              await playBlob(blob)
+            } else {
+              setEngine('browser')
+              await new Promise<void>((resolve) => {
+                const ok = browserSpeak(s, { rate: speed, persona, onEnd: resolve })
+                if (!ok) { setEngine('none'); resolve() }
+              })
+            }
+          })
+        }
+      }
+    }
+    // 等待播放链完成
+    await streamPlayChainRef.current.catch(() => {})
+    if (!abortRef.current) {
+      setPlaying(false)
+      setCurrentSentenceIdx(-1)
+      setSentences([])
+    }
+  }, [muted, synthesizeSentence, playBlob, speed, persona])
 
   /** 切换静音 */
   const toggleMute = useCallback(() => {
@@ -324,6 +425,9 @@ export function useTtsPlayer({ persona = 'xiaoxing', emotion = 'neutral', speed 
     currentSentenceText,
     speak,
     speakSentence,
+    startStreaming,
+    feedToken,
+    endStreaming,
     stop,
     toggleMute,
     setMuted,

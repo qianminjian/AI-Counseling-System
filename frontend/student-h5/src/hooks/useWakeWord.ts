@@ -283,14 +283,17 @@ export function useWakeWord({ active, paused, onDetected }) {
       )
     }
 
-    /** 尝试提交一个滑窗（累积满 + 未在识别中 才提交；paused 时跳过检测但继续累积音频） */
+    /** 尝试提交一个滑窗（累积满 + 未在识别中 才提交；paused 时完全跳过，保留缓冲区供恢复后立即分析） */
     const maybeAnalyze = () => {
-      if (cancelled || analyzing || totalSamples < WINDOW_SAMPLES) return
+      if (cancelled || analyzing) return
+      // paused 时不做任何缓冲管理：让音频自然累积到 MAX_BUFFER_SAMPLES 上限，
+      // 恢复后下一帧立即满足 >= WINDOW_SAMPLES 条件并提交检测（修复 PC 端唤醒延迟）
+      if (pausedRef.current) return
+      if (totalSamples < WINDOW_SAMPLES) return
       const merged = concatChunks(chunks, totalSamples)
       const keep = merged.slice(-KEEP_SAMPLES)
       chunks = [keep]
       totalSamples = keep.length
-      if (pausedRef.current) return
       if (rms(merged) < SILENCE_RMS_THRESHOLD) return
       analyzeWindow(merged)
     }
