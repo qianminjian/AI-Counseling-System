@@ -25,7 +25,7 @@ export default function ConfirmDialog({
   danger?: boolean
   onConfirm: () => void
   onCancel: () => void
-  children?: any
+  children?: React.ReactNode
 }) {
   if (!open) return null
 

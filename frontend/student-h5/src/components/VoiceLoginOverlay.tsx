@@ -126,7 +126,7 @@ export default function VoiceLoginOverlay({ mode = 'verify', onComplete, onCance
         audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
       })
       streamRef.current = stream
-      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)()
+      const ctx = new (window.AudioContext || window.webkitAudioContext)()
       if (ctx.state === 'suspended') await ctx.resume().catch(() => {})
       audioCtxRef.current = ctx
 

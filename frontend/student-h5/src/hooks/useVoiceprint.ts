@@ -340,7 +340,7 @@ export function useVoiceprint() {
    * @returns {Promise<{matched: boolean, userId?: string, pseudonym?: string, score: number}>}
    */
   const verify = useCallback(async (inputEmbeddings: number[][]) => {
-    const allPrints = await getAllVoiceprints() as any[]
+    const allPrints = await getAllVoiceprints()
     if (allPrints.length === 0) {
       return { matched: false, score: 0 }
     }

@@ -420,7 +420,7 @@ export function useWakeWord({ active, paused, onDetected }) {
           return
         }
 
-        audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)()
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)()
         if (audioCtx.state === 'suspended') {
           await audioCtx.resume().catch(() => {})
           if (audioCtx.state === 'suspended') {

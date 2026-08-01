@@ -11,6 +11,7 @@ import com.mindsafe.domain.mapper.StudentProfileMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -56,6 +57,7 @@ public class StudentProfileService {
      *
      * @param voiceEmotions 本次会话语音情绪标签（已归一到规范集），空列表 = 无新语音数据，保留既有 voice 节点
      */
+    @Transactional
     public void updateProfile(UUID tenantId, UUID userId, List<String> voiceEmotions) {
         try {
             // 1. 聚合情绪分布（近 20 次会话）

@@ -12,7 +12,7 @@ const FACES = [
  * 结束会话满意度评价弹窗（儿童友好）
  * 可选评价后关闭，也可跳过；点「再聊一会儿」返回聊天（结束前的反悔出口）
  */
-export default function SatisfactionDialog({ onSubmit, onSkip, onResume }: { onSubmit: any; onSkip: any; onResume?: () => void }) {
+export default function SatisfactionDialog({ onSubmit, onSkip, onResume }: { onSubmit: (rating: number | null, comment?: string) => void; onSkip: () => void; onResume?: () => void }) {
   const [selected, setSelected] = useState(null)
   const [comment, setComment] = useState('')
 

@@ -64,13 +64,6 @@ function mergeShortSentences(sentences, minLen = 10) {
   return merged
 }
 
-/** 检测浏览器 speechSynthesis 是否可用（安卓无 Google TTS 时 getVoices 为空） */
-function checkBrowserTts() {
-  if (!('speechSynthesis' in window)) return false
-  const voices = window.speechSynthesis.getVoices()
-  // 部分浏览器异步加载 voices，首次可能为空但引擎存在
-  return voices.length > 0 || true // 引擎存在即认为可用，voices 异步加载
-}
 
 /** 浏览器降级时的人设音色参数（speechSynthesis 无法选音色，用 pitch/rate 区分人设） */
 const PERSONA_VOICE_PROFILES = {

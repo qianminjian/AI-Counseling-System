@@ -4,24 +4,48 @@
 
 ## 当前状态
 
-设计文档阶段完成，代码未启动。项目状态与待决问题见 [design/BEACON.md](design/BEACON.md)。
+**MVP 开发阶段**：学生端 H5 核心功能已实现（AI 对话、声纹登录、语音唤醒、情绪日记），后端 API 服务已部署 SIT 环境。
+
+项目设计决策与状态见 [design/BEACON.md](design/BEACON.md)。
+
+## 技术栈
+
+| 层 | 技术 |
+|------|------|
+| 后端 | Java 21 + Spring Boot 3 + MyBatis-Plus + PostgreSQL 16 (pgvector) + Redis 7 |
+| 前端 | React 18 + Vite + Tailwind CSS |
+| AI | Spring AI + Transformers.js（端侧声纹/唤醒词） |
+| 部署 | Docker Compose + Nginx |
 
 ## 目录导航
 
 | 目录 | 内容 |
 |------|------|
-| [design/](design/) | 正式设计文档（01~15）+ BEACON 项目明灯 |
-| [doc/](doc/) | 归档层（原始 docx + 早期需求/探索产物） |
+| [backend/](backend/) | 后端源代码（Maven 多模块：common/domain/ai/service/api/app） |
+| [frontend/](frontend/) | 前端应用组（student-h5 / teacher-web / parent-h5） |
+| [design/](design/) | 设计文档（01~32）+ BEACON 项目明灯 |
+| [deploy/](deploy/) | 部署配置（Docker Compose、Nginx、监控） |
+| [doc/](doc/) | 归档层（原始 docx + 早期探索产物） |
 | [scripts/](scripts/) | 工具脚本 |
-| [src/](src/) | 源代码（待启动） |
-| [tests/](tests/) | 测试（unit / integration / e2e） |
-| [tmp/](tmp/) | 临时产物（不追踪） |
+| [tests/](tests/) | 跨模块测试（e2e / integration / performance） |
+
+## 快速开始
+
+```bash
+# 基础设施（PG + Redis）
+cd deploy && docker compose up -d
+
+# 后端
+cd backend && mvn spring-boot:run -pl counseling-app
+
+# 学生端前端
+cd frontend/student-h5 && npm install && npm run dev
+```
+
+启动任何服务前遵守端口检查红线（AGENTS.md §6）。
 
 ## 约定
 
 - 目录结构与使用规则：[STRUCTURE.md](STRUCTURE.md)
-- Agent 工作规则：`AGENTS.md` + `.qoder/rules/`（中央库同步，勿改）
-
-## 开发
-
-技术栈待选型（见 BEACON.md 待解决问题）。启动任何服务前遵守端口检查红线（AGENTS.md §6）。
+- Agent 工作规则：`AGENTS.md` + `.qoder/rules/`
+- 设计文档与代码一致（底线规则）：改代码必同步文档、改文档必核对代码

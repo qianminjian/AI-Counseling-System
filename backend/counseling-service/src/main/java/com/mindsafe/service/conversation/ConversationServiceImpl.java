@@ -35,6 +35,7 @@ import com.mindsafe.service.usage.UsageTimeLimitService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import reactor.core.publisher.Flux;
 
 import java.time.Instant;
@@ -126,6 +127,7 @@ public class ConversationServiceImpl implements ConversationService {
         this.sessionStateStore = sessionStateStore;
     }
 
+    @Transactional
     @Override
     public SessionInfo createSession(UUID tenantId, UUID studentUserId, String emotionTag, String channel) {
         // 1. 持久化会话到 DB

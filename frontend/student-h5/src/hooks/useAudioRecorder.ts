@@ -29,7 +29,7 @@ export function useAudioRecorder(onComplete: (blob: Blob | null) => Promise<unkn
 
   useEffect(() => {
     const hasMic = !!navigator.mediaDevices?.getUserMedia
-    const hasSpeechRec = !!((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition)
+    const hasSpeechRec = !!(window.SpeechRecognition || window.webkitSpeechRecognition)
     // 麦克风和浏览器识别都不可用才隐藏语音按钮
     if (!hasMic && !hasSpeechRec) {
       setSupported(false)
@@ -49,8 +49,8 @@ export function useAudioRecorder(onComplete: (blob: Blob | null) => Promise<unkn
     warmingRef.current = true
     try {
       streamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true })
-    } catch (err: any) {
-      console.warn('麦克风预热失败（将在录音时重试）', err.name)
+    } catch (err: unknown) {
+      console.warn('麦克风预热失败（将在录音时重试）', (err as Error).name)
     } finally {
       warmingRef.current = false
     }
@@ -86,9 +86,9 @@ export function useAudioRecorder(onComplete: (blob: Blob | null) => Promise<unkn
       }
       recorder.start()
       mediaRecorderRef.current = recorder
-    } catch (err: any) {
+    } catch (err: unknown) {
       // 麦克风不可用（权限拒绝/非安全上下文）→ 降级为纯浏览器识别
-      console.warn('麦克风不可用，将仅用浏览器识别', err.name)
+      console.warn('麦克风不可用，将仅用浏览器识别', (err as Error).name)
       mediaRecorderRef.current = null
     }
   }, [onComplete])

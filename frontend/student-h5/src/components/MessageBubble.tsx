@@ -1,5 +1,13 @@
 import { getEmotionTypo } from '../theme/emotionTypography'
 
+/** 消息数据结构 */
+export interface ChatMessage {
+  role: 'user' | 'assistant' | 'system'
+  content: string
+  emotion?: string
+  level?: number
+}
+
 /** 情绪标签 → emoji 映射 */
 export const EMOTION_EMOJI: Record<string, string> = {
   happy: '😊', sad: '😢', angry: '😠', fearful: '😨',
@@ -8,7 +16,7 @@ export const EMOTION_EMOJI: Record<string, string> = {
 
 /** 消息气泡组件（含 TTS 播放按钮） */
 export default function MessageBubble({ msg, isLast, streaming, onReplay, isSpeaking }: {
-  msg: any
+  msg: ChatMessage
   isLast: boolean
   streaming: boolean
   onReplay: (text: string) => void

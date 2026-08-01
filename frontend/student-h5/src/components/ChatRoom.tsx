@@ -6,7 +6,7 @@ import SettingsPanel from './SettingsPanel'
 import ConfirmDialog from './ConfirmDialog'
 import BoBoPet from './BoBoPet'
 import DraggableVoiceButton from './DraggableVoiceButton'
-import MessageBubble, { EMOTION_EMOJI } from './MessageBubble'
+import MessageBubble, { EMOTION_EMOJI, type ChatMessage } from './MessageBubble'
 import { useTheme } from '../theme/ThemeProvider'
 import { useVoicePersona } from '../hooks/useVoicePersona'
 import { useTtsPlayer } from '../hooks/useTtsPlayer'
@@ -19,7 +19,14 @@ import { authFetch, api, getUser } from '../api'
 /** 语音唤醒开关持久化 key（design/28 §1.1） */
 const WAKE_PREF_KEY = 'mindsafe_wake_enabled'
 
-export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: any; onEnd: any; onSwitchUser?: () => void }) {
+/** 会话信息（由 EmotionSelect 传入） */
+export interface SessionInfo {
+  sessionId: string
+  greeting: string
+  emotionTag: string
+}
+
+export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: SessionInfo; onEnd: () => void; onSwitchUser?: () => void }) {
   const [messages, setMessages] = useState([
     { role: 'assistant', content: session.greeting, emotion: session.emotionTag },
   ])
@@ -355,7 +362,7 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: an
     return t
   }
 
-  const sendMessage = async (autoText?: string, autoEmotion?: any) => {
+  const sendMessage = async (autoText?: string, autoEmotion?: string | null) => {
     const text = deduplicateText((autoText ?? input).trim())
     if (!text || streaming) return false
 
@@ -370,7 +377,7 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: an
     // 语音自动发送时用传入的 emotion（修复此前服务端情绪从未存入 state 的问题）；手动打字时用当前 state
     const emotion = autoEmotion !== undefined ? autoEmotion : voiceEmotion
 
-    const body: any = { content: text }
+    const body: Record<string, unknown> = { content: text }
     if (emotion) {
       body.voiceEmotion = emotion.labelEn
       body.voiceEmotionConfidence = emotion.confidence
@@ -624,14 +631,6 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: an
               : voiceCall.mode === 'active' ? '不用按，直接说就行'
               : '按住波波，跟它说说话'}
           </p>
-
-          {/* 语音情绪预览 */}
-          {voiceEmotion && (
-            <div className="mt-6 flex items-center gap-2 px-4 py-2 bg-white rounded-full shadow-sm text-sm text-gray-600">
-              <span>{EMOTION_EMOJI[voiceEmotion.labelEn] || '🎵'}</span>
-              <span>我感觉到你有点{voiceEmotion.label}</span>
-            </div>
-          )}
         </aside>
 
         {/* 右栏（手机为全宽）：对话区 */}
@@ -714,13 +713,7 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: an
               </div>
             )}
 
-            {/* 手机语音情绪预览 */}
-            {voiceEmotion && (
-              <div className="flex lg:hidden items-center justify-center gap-1 mb-2 text-xs text-gray-500">
-                <span>{EMOTION_EMOJI[voiceEmotion.labelEn] || '🎵'}</span>
-                <span>语音情绪：{voiceEmotion.label}（{Math.round(voiceEmotion.confidence * 100)}%）</span>
-              </div>
-            )}
+            {/* 手机语音情绪预览（voiceEmotion 当前流程中始终为 null，保留状态供后续扩展） */}
 
             <div className="relative flex gap-3 max-w-lg lg:max-w-2xl mx-auto items-center">
               <input
