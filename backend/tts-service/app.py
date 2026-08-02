@@ -50,7 +50,7 @@ app.add_middleware(
 # ===== Level 1：阿里云百炼 CosyVoice（DashScope SDK WebSocket 流式） =====
 
 DASHSCOPE_API_KEY = os.environ.get("DASHSCOPE_API_KEY", "")
-DASHSCOPE_TTS_MODEL = os.environ.get("DASHSCOPE_TTS_MODEL", "cosyvoice-v3-flash")
+DASHSCOPE_TTS_MODEL = os.environ.get("DASHSCOPE_TTS_MODEL", "cosyvoice-v3.5-flash")
 CLOUD_TTS_AVAILABLE = False
 
 if DASHSCOPE_API_KEY:
@@ -78,7 +78,7 @@ except ImportError:
 
 
 # ===== 音色人设配置（7 音色差异化矩阵，见 design/56） =====
-# dashscope_voice: 阿里云 CosyVoice 音色名（cosyvoice-v3-flash 音色列表）
+# dashscope_voice: 阿里云 CosyVoice 音色名（cosyvoice-v3.5-flash 音色列表）
 # edge_voice: edge-tts 备用音色
 # dialect_capable: 支持方言 Instruct（仅 longanhuan_v3）
 # emotion_capable: 支持情感 Instruct（仅 longanyang）
