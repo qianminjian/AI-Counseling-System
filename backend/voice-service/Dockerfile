@@ -1,10 +1,13 @@
 # syntax=docker/dockerfile:1
 FROM python:3.11-slim
 
-# 构建参数：决定是否安装 FunASR 重型依赖（torch ~180MB + 模型 ~3GB）
-# dashscope 模式仅需轻量 SDK（镜像 ~200MB，运行内存 <512MB）
-# funasr 模式需完整依赖（镜像 ~2GB，运行内存 ~6GB）
-# ⚡ 模型不再打入镜像 — 通过 volume 从宿主机挂载（见 docker-compose 和 prepare-funasr.sh）
+# 构建参数保留但不再控制依赖安装——始终安装全量依赖
+# 运行时通过 ASR_ENGINE 环境变量控制 ASR 引擎，SER_ENABLED 控制情感分析
+# 镜像体积 ~2GB（含 torch+funasr），运行内存：
+#   - ASR=dashscope + SER=on: ~1.5GB（仅 emotion2vec）
+#   - ASR=funasr + SER=on: ~4GB（SenseVoice + emotion2vec）
+#   - SER=off: ~200MB（仅 dashscope SDK 运行时）
+# ⚡ 模型不打入镜像 — 通过 volume 从宿主机挂载
 ARG ASR_ENGINE=dashscope
 
 WORKDIR /app
@@ -15,20 +18,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
-# Python 依赖 — 按引擎模式分层安装
-# 使用 BuildKit cache mount 加速 pip（宿主机缓存 wheel，重复构建秒级完成）
+# Python 依赖 — 始终安装全量（torch + funasr + dashscope）
+# 这样无论运行时 ASR_ENGINE 设什么，emotion2vec SER 都可用
 COPY requirements.txt requirements-dashscope.txt ./
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/ \
-    && if [ "$ASR_ENGINE" = "funasr" ]; then \
-        echo "📦 FunASR 模式：安装 torch + funasr 全量依赖..." \
-        && pip install torch==2.6.0+cpu torchaudio==2.6.0+cpu \
-            -f https://mirrors.aliyun.com/pytorch-wheels/cpu/ \
-        && pip install -r requirements.txt; \
-    else \
-        echo "📦 DashScope 模式：仅安装轻量 SDK..." \
-        && pip install -r requirements-dashscope.txt; \
-    fi
+    && echo "📦 安装 torch + funasr + dashscope 全量依赖..." \
+    && pip install torch==2.6.0+cpu torchaudio==2.6.0+cpu \
+        -f https://mirrors.aliyun.com/pytorch-wheels/cpu/ \
+    && pip install -r requirements.txt
 
 # ⚡ 模型不再在构建时下载 — 改为运行时从宿主机挂载
 # 好处：

@@ -30,7 +30,7 @@ services:
     environment:
       DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:-}
 
-  # ===== 语音识别与情绪分析微服务（FunASR / DashScope 双引擎） =====
+  # ===== 语音识别与情绪分析微服务（ASR + SER 解耦） =====
   voice-service:
     build:
       context: ../backend/voice-service
@@ -38,11 +38,13 @@ services:
       args:
         ASR_ENGINE: ${ASR_ENGINE:-dashscope}
     environment:
-      # ASR 引擎选择：funasr=本地自部署（需 6GB 内存）/ dashscope=阿里云云端（<512MB）
+      # ASR 引擎：funasr=本地 / dashscope=云端
       ASR_ENGINE: ${ASR_ENGINE:-dashscope}
+      # SER 情感分析：true=加载本地 emotion2vec+ / false=禁用（降级中性）
+      SER_ENABLED: ${SER_ENABLED:-true}
       DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:-}
     volumes:
-      # FunASR 模型缓存：宿主机持久化，避免每次重建容器重新下载 3GB+ 模型
+      # 模型缓存：宿主机持久化（emotion2vec ~300MB + SenseVoice ~1GB）
       # 使用前需运行: bash deploy/scripts/prepare-funasr.sh
       - ${MODEL_CACHE_DIR:-./cache/modelscope}:/root/.cache/modelscope
     restart: unless-stopped

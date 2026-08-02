@@ -27,6 +27,7 @@ logger = logging.getLogger("voice-service")
 
 # ===== 引擎选择（环境变量驱动） =====
 ASR_ENGINE = os.environ.get("ASR_ENGINE", "funasr").lower()
+SER_ENABLED = os.environ.get("SER_ENABLED", "true").lower() == "true"
 DASHSCOPE_API_KEY = os.environ.get("DASHSCOPE_API_KEY", "")
 
 if ASR_ENGINE not in ("funasr", "dashscope"):
@@ -44,7 +45,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ===== 模型初始化（按引擎选择性加载） =====
+# ===== 模型初始化（ASR 与 SER 解耦） =====
 
 asr_model = None
 emotion_model = None
@@ -61,19 +62,30 @@ if ASR_ENGINE == "funasr":
     )
     logger.info("ASR 模型加载完成")
 
-    logger.info("正在加载 SER 模型 (emotion2vec+)...")
-    emotion_model = AutoModel(model="iic/emotion2vec_plus_large", device="cpu")
-    logger.info("SER 模型加载完成")
-
-    logger.info("✅ 语音分析服务就绪 [引擎: FunASR + emotion2vec]，端口 10095")
-
 elif ASR_ENGINE == "dashscope":
     import dashscope
     from dashscope.audio.asr import Recognition, RecognitionCallback, RecognitionResult
 
     dashscope.api_key = DASHSCOPE_API_KEY
-    logger.info(f"✅ 语音分析服务就绪 [引擎: DashScope Paraformer-V2]，端口 10095")
+    logger.info("DashScope Paraformer-V2 ASR 就绪")
     logger.info("  DashScope API Key: ...%s", DASHSCOPE_API_KEY[-6:] if len(DASHSCOPE_API_KEY) > 6 else "***")
+
+# SER（emotion2vec+）独立于 ASR 引擎加载：无论 ASR 走云端还是本地，
+# 只要 SER_ENABLED=true 且资源允许就加载本地情感模型
+if SER_ENABLED:
+    try:
+        if ASR_ENGINE != "funasr":
+            from funasr import AutoModel  # dashscope 模式也需要 funasr 包来加载 emotion2vec
+        logger.info("正在加载 SER 模型 (emotion2vec+)...")
+        emotion_model = AutoModel(model="iic/emotion2vec_plus_large", device="cpu")
+        logger.info("SER 模型加载完成")
+    except Exception as e:
+        logger.warning(f"⚠️ SER 模型加载失败（降级为中性情绪）: {e}")
+        emotion_model = None
+else:
+    logger.info("SER 已通过 SER_ENABLED=false 显式禁用")
+
+logger.info(f"✅ 语音分析服务就绪 [ASR={ASR_ENGINE}, SER={'emotion2vec+' if emotion_model else 'disabled'}]，端口 10095")
 
 
 # ===== 数据模型 =====
@@ -125,8 +137,9 @@ def parse_emotion_result(raw: dict) -> EmotionResult:
 
 @app.get("/health")
 def health():
-    models = ["SenseVoiceSmall", "emotion2vec_plus_large"] if ASR_ENGINE == "funasr" else ["DashScope-Paraformer-V2"]
-    return {"status": "UP", "engine": ASR_ENGINE, "models": models}
+    asr_model_name = "SenseVoiceSmall" if ASR_ENGINE == "funasr" else "DashScope-Paraformer-V2"
+    ser_model_name = "emotion2vec_plus_large" if emotion_model is not None else "disabled"
+    return {"status": "UP", "asr_engine": ASR_ENGINE, "asr_model": asr_model_name, "ser_model": ser_model_name}
 
 
 # ===== DashScope ASR 实现 =====
@@ -215,21 +228,22 @@ async def analyze_voice(file: UploadFile = File(...)):
         audio_data, sample_rate = sf.read(wav_path)
         duration = len(audio_data) / sample_rate if sample_rate > 0 else 0.0
 
-        # ===== 按引擎分发 ASR =====
-        if ASR_ENGINE == "dashscope":
-            # DashScope 云端 ASR（无 SER，情绪返回 neutral）
-            text = _dashscope_asr(wav_path)
-            emotion = EmotionResult(label="中性", label_en="neutral", confidence=1.0, scores=[0.0] * 9)
-            logger.info(f"分析完成 [DashScope]: text_len={len(text)}, duration={duration:.1f}s")
+        # ===== ASR + SER 并行执行 =====
+        asr_fn = _dashscope_asr if ASR_ENGINE == "dashscope" else _funasr_asr
 
-        else:
-            # FunASR 本地 ASR + emotion2vec SER（并行执行）
+        if emotion_model is not None:
+            # ASR 和 SER 并行（ASR 可能是网络IO或CPU，SER 是CPU，并行提升响应速度）
             with ThreadPoolExecutor(max_workers=2) as executor:
-                asr_future = executor.submit(_funasr_asr, wav_path)
+                asr_future = executor.submit(asr_fn, wav_path)
                 ser_future = executor.submit(_funasr_ser, wav_path)
                 text = asr_future.result()
                 emotion = ser_future.result()
-            logger.info(f"分析完成 [FunASR]: text_len={len(text)}, emotion={emotion.label_en}({emotion.confidence:.2f}), duration={duration:.1f}s")
+        else:
+            text = asr_fn(wav_path)
+            emotion = EmotionResult(label="中性", label_en="neutral", confidence=0.0, scores=[0.0] * 9)
+
+        logger.info(f"分析完成 [ASR={ASR_ENGINE}, SER={'on' if emotion_model else 'off'}]: "
+                    f"text_len={len(text)}, emotion={emotion.label_en}({emotion.confidence:.2f}), duration={duration:.1f}s")
 
         return VoiceAnalysisResponse(
             text=text,
