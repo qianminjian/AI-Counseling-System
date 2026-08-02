@@ -151,7 +151,7 @@ export function useTtsPlayer({ persona = 'xiaoxing', emotion = 'neutral', speed 
       return null // 返回 null 触发 speak() 中的浏览器降级路径
     }
     try {
-      const res = await authFetch('/api/v1/tts/synthesize-stream', {
+      const res = await authFetch('/api/v1/tts/synthesize', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
