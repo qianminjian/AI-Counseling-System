@@ -19,6 +19,9 @@
  */
 import { VP_DB_NAME, VP_DB_VERSION, VP_STORE_NAME, VP_MAX_TEMPLATES } from '../config/voiceprint'
 
+/** remote 模式声纹已录入标记（localStorage key） */
+const REMOTE_VP_ENROLLED_KEY = 'mindsafe_remote_vp_enrolled'
+
 /** 声纹记录数据结构 */
 export interface VoiceprintRecord {
   userId: string
@@ -202,11 +205,29 @@ export async function deleteVoiceprint(userId: string) {
 
 /**
  * 检查设备是否有任何已注册声纹（决定是否显示声纹入口）
+ * 同时检查 IndexedDB（local 模式）和 localStorage 标记（remote 模式）
  * @returns {Promise<boolean>}
  */
 export async function hasAnyVoiceprint(): Promise<boolean> {
   const all = await getAllVoiceprints()
-  return all.length > 0
+  if (all.length > 0) return true
+  // remote 模式录入不写 IndexedDB，通过 localStorage 标记判断
+  return hasRemoteVoiceprintMark()
+}
+
+/** remote 模式录入成功后标记 */
+export function markRemoteVoiceprintEnrolled() {
+  try { localStorage.setItem(REMOTE_VP_ENROLLED_KEY, '1') } catch { /* ignore */ }
+}
+
+/** 清除 remote 模式标记（删除声纹时调用） */
+export function clearRemoteVoiceprintMark() {
+  try { localStorage.removeItem(REMOTE_VP_ENROLLED_KEY) } catch { /* ignore */ }
+}
+
+/** 检查 remote 模式标记是否存在 */
+export function hasRemoteVoiceprintMark(): boolean {
+  try { return localStorage.getItem(REMOTE_VP_ENROLLED_KEY) === '1' } catch { return false }
 }
 
 /**

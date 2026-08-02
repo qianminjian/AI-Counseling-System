@@ -12,7 +12,7 @@ import { useState, useEffect } from 'react'
 import { useTheme, THEMES } from '../theme/ThemeProvider'
 import { useVoicePersona, VOICE_PERSONAS, NATIVE_DIALECT_IDS } from '../hooks/useVoicePersona'
 import { api, getUser, issueVoiceCredential, getVoiceprintConfig, remoteVoiceprintEnroll } from '../api'
-import { hasAnyVoiceprint, deleteVoiceprint, enrollVoiceprint, saveVoiceCredential } from '../utils/voiceprintStore'
+import { hasAnyVoiceprint, deleteVoiceprint, enrollVoiceprint, saveVoiceCredential, markRemoteVoiceprintEnrolled, clearRemoteVoiceprintMark } from '../utils/voiceprintStore'
 import VoiceLoginOverlay from './VoiceLoginOverlay'
 import ConfirmDialog from './ConfirmDialog'
 
@@ -88,6 +88,7 @@ export default function SettingsPanel({ open, onClose, muted, onToggleMute, wake
               if (vpMode === 'remote') {
                 // remote 模式：embedding 传服务端存储
                 await remoteVoiceprintEnroll(result.embeddings)
+                markRemoteVoiceprintEnrolled()
               } else {
                 // local 模式：存 IndexedDB + 签发设备凭证
                 await enrollVoiceprint(user.userId as string, (user.pseudonym || '') as string, result.embeddings)
@@ -368,6 +369,7 @@ export default function SettingsPanel({ open, onClose, muted, onToggleMute, wake
           const user = getUser()
           if (user?.userId) {
             await deleteVoiceprint(user.userId as string)
+            clearRemoteVoiceprintMark()
             setHasVoiceprint(false)
           }
         }}

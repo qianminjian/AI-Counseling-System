@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { pinLogin, setToken, setRefreshToken, setUser, issueVoiceCredential, getVoiceprintConfig, remoteVoiceprintEnroll } from '../api'
 import { CONSENT_VERSION } from './ConsentGate'
-import { hasAnyVoiceprint, enrollVoiceprint, saveVoiceCredential } from '../utils/voiceprintStore'
+import { hasAnyVoiceprint, enrollVoiceprint, saveVoiceCredential, markRemoteVoiceprintEnrolled } from '../utils/voiceprintStore'
 import { useTheme, THEMES } from '../theme/ThemeProvider'
 import { preloadVoiceprintModel, useVoiceprintModelStatus } from '../hooks/useVoiceprint'
 import { preloadWakeModel, useWakeModelStatus } from '../hooks/useWakeWord'
@@ -411,6 +411,7 @@ function RegisterForm({ themeId, onRegister }) {
               if (vpMode === 'remote') {
                 // remote 模式：embedding 传服务端存储
                 await remoteVoiceprintEnroll(result.embeddings)
+                markRemoteVoiceprintEnrolled()
               } else {
                 // local 模式：存 IndexedDB + 签发设备凭证
                 await enrollVoiceprint(regUserId, form.pseudonym.trim(), result.embeddings)

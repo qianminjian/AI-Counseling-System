@@ -16,6 +16,8 @@ vi.mock('../utils/voiceprintStore', () => ({
   deleteVoiceprint: vi.fn().mockResolvedValue(undefined),
   enrollVoiceprint: vi.fn().mockResolvedValue({}),
   saveVoiceCredential: vi.fn().mockResolvedValue({}),
+  markRemoteVoiceprintEnrolled: vi.fn(),
+  clearRemoteVoiceprintMark: vi.fn(),
 }))
 vi.mock('../theme/ThemeProvider', () => ({
   useTheme: () => ({ themeId: 'ocean', changeTheme: vi.fn() }),
