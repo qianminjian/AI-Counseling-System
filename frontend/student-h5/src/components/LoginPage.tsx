@@ -591,6 +591,7 @@ function RegisterForm({ themeId, onRegister }) {
 function ModelDownloadProgress() {
   const wake = useWakeModelStatus()
   const vp = useVoiceprintModelStatus()
+  const [showReady, setShowReady] = useState(false)
 
   // 汇总两个模型的状态
   const items: { label: string; status: string; progress: number; error?: string }[] = []
@@ -601,7 +602,26 @@ function ModelDownloadProgress() {
     items.push({ label: '语音引擎', status: wake.status, progress: wake.progress, error: wake.error })
   }
 
-  if (items.length === 0) return null
+  // 两个模型都 ready 时，短暂显示绿色就绪提示（3s 后自动隐藏）
+  const bothReady = vp.status === 'ready' && wake.status === 'ready'
+  useEffect(() => {
+    if (bothReady) {
+      setShowReady(true)
+      const t = setTimeout(() => setShowReady(false), 3000)
+      return () => clearTimeout(t)
+    }
+  }, [bothReady])
+
+  if (items.length === 0 && !showReady) return null
+
+  // 就绪状态：绿色胶囊
+  if (items.length === 0 && showReady) {
+    return (
+      <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 px-4 py-1.5 rounded-full border text-xs font-medium bg-green-50 text-green-600 border-green-200 transition-opacity duration-500">
+        🎧 语音引擎已就绪
+      </div>
+    )
+  }
 
   const hasError = items.some((i) => i.status === 'error')
   const allLoading = items.filter((i) => i.status === 'loading')
