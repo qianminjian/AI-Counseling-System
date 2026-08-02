@@ -106,12 +106,12 @@ export function useVoicePersona() {
   const [dialectEnabled, setDialectEnabled] = useState(() => {
     return localStorage.getItem(DIALECT_ENABLED_KEY) === 'true'
   })
-  const [selectedDialect, setSelectedDialect] = useState(() => {
+  const [selectedDialect, setSelectedDialect] = useState<string | null>(() => {
     const saved = localStorage.getItem(DIALECT_KEY)
     if (saved && SUPPORTED_DIALECTS[saved]) return saved
     // 默认取学生配置的 dialect
     const user = getUser()
-    return user?.dialect || null
+    return (user?.dialect as string) || null
   })
 
   const persona = VOICE_PERSONAS[personaId] || VOICE_PERSONAS.xiaoxing
