@@ -190,6 +190,40 @@ describe('hooks/useTtsPlayer', () => {
         })
       )
     })
+
+    it('传入 dialect 时请求体包含 dialect 字段', async () => {
+      const mockBlob = new Blob(['audio'], { type: 'audio/mp3' })
+      mockAuthFetch.mockResolvedValue({
+        ok: true,
+        status: 200,
+        blob: () => Promise.resolve(mockBlob),
+      })
+
+      const { result } = renderHook(() => useTtsPlayer({ persona: 'qiqiu', dialect: 'sichuan' }))
+      await act(async () => {
+        await result.current.speakSentence('你好')
+        await new Promise(r => setTimeout(r, 50))
+      })
+      const callBody = JSON.parse(mockAuthFetch.mock.calls[0][1].body)
+      expect(callBody.dialect).toBe('sichuan')
+    })
+
+    it('dialect 为 null 时请求体不包含 dialect 字段', async () => {
+      const mockBlob = new Blob(['audio'], { type: 'audio/mp3' })
+      mockAuthFetch.mockResolvedValue({
+        ok: true,
+        status: 200,
+        blob: () => Promise.resolve(mockBlob),
+      })
+
+      const { result } = renderHook(() => useTtsPlayer({ persona: 'xiaoxing' }))
+      await act(async () => {
+        await result.current.speakSentence('你好')
+        await new Promise(r => setTimeout(r, 50))
+      })
+      const callBody = JSON.parse(mockAuthFetch.mock.calls[0][1].body)
+      expect(callBody).not.toHaveProperty('dialect')
+    })
   })
 
   describe('stop 中断播放', () => {
