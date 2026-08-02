@@ -22,6 +22,9 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.time.Instant;
 import java.util.*;
 
@@ -38,6 +41,8 @@ import java.util.*;
 @RequestMapping("/api/v1/voiceprint")
 public class VoiceprintController {
 
+    private static final Logger log = LoggerFactory.getLogger(VoiceprintController.class);
+
     private final VoiceprintEmbeddingMapper embeddingMapper;
     private final UserMapper userMapper;
     private final JwtTokenProvider jwtTokenProvider;
@@ -47,7 +52,7 @@ public class VoiceprintController {
     @Value("${mindsafe.voiceprint.mode:local}")
     private String voiceprintMode;
 
-    @Value("${mindsafe.voiceprint.verify-threshold:0.70}")
+    @Value("${mindsafe.voiceprint.verify-threshold:0.55}")
     private double verifyThreshold;
 
     @Value("${mindsafe.voiceprint.max-templates:8}")
@@ -146,6 +151,9 @@ public class VoiceprintController {
             byUser.computeIfAbsent(rec.getUserId(), k -> new ArrayList<>()).add(rec);
         }
 
+        log.info("[声纹验证] 输入 {} 段 embedding, 库中 {} 条记录, {} 个用户, 阈值={}",
+                inputEmbeddings.size(), allRecords.size(), byUser.size(), verifyThreshold);
+
         double bestScore = 0;
         UUID bestUserId = null;
 
@@ -162,6 +170,9 @@ public class VoiceprintController {
                 }
             }
         }
+
+        log.info("[声纹验证] bestScore={}, bestUserId={}, matched={}",
+                String.format("%.4f", bestScore), bestUserId, bestScore >= verifyThreshold);
 
         boolean matched = bestScore >= verifyThreshold;
         if (!matched) {
