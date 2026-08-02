@@ -47,6 +47,7 @@ export default function SettingsPanel({ open, onClose, muted, onToggleMute, wake
   const [copied, setCopied] = useState(false)
   const [hasVoiceprint, setHasVoiceprint] = useState(false)
   const [showEnroll, setShowEnroll] = useState(false)
+  const [enrollError, setEnrollError] = useState('')
   const [confirmAction, setConfirmAction] = useState<'deleteVp' | null>(null)
   const [vpMode, setVpMode] = useState<'local' | 'remote'>('local')
   const [vpPrivacyNote, setVpPrivacyNote] = useState('声音信息只保存在这台设备上，不会上传到任何服务器')
@@ -100,8 +101,10 @@ export default function SettingsPanel({ open, onClose, muted, onToggleMute, wake
                 }
               }
               setHasVoiceprint(true)
+              setEnrollError('')
             } catch (e) {
-              console.warn('[声纹重录] 存储失败:', e)
+              console.error('[声纹重录] 存储失败:', e)
+              setEnrollError('声纹保存失败，请检查网络后重试')
             }
           }
           setShowEnroll(false)
@@ -288,6 +291,12 @@ export default function SettingsPanel({ open, onClose, muted, onToggleMute, wake
         {/* 声纹登录管理 */}
         <section className="mb-4">
           <h3 className="mb-3 text-sm font-semibold text-gray-500">🎤 声纹登录</h3>
+          {enrollError && (
+            <div className="mb-3 rounded-2xl border-2 border-red-100 bg-red-50 p-3 text-center">
+              <p className="text-sm font-medium text-red-600">⚠️ {enrollError}</p>
+              <button onClick={() => { setEnrollError(''); setShowEnroll(true) }} className="mt-2 rounded-xl bg-red-500 px-4 py-1.5 text-xs font-bold text-white active:scale-95 transition-all">重新录入</button>
+            </div>
+          )}
           {hasVoiceprint ? (
             <div className="flex w-full items-center justify-between rounded-2xl border-2 border-green-100 bg-green-50 p-4">
               <div className="flex items-center gap-3">

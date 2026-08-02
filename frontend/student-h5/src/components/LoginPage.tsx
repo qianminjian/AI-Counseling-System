@@ -274,6 +274,8 @@ function RegisterForm({ themeId, onRegister }) {
   const [familyCode, setFamilyCode] = useState('') // 注册成功后展示
   const [showConfirm, setShowConfirm] = useState(false) // 注册信息二次确认
   const [vpMode, setVpMode] = useState<'local' | 'remote'>('local')
+  const [voiceEnrollError, setVoiceEnrollError] = useState('')
+  const [showVoiceEnroll, setShowVoiceEnroll] = useState(false)
 
   // 获取声纹模式配置
   useEffect(() => {
@@ -385,7 +387,7 @@ function RegisterForm({ themeId, onRegister }) {
         </p>
         <button
           className={`btn-enter btn-enter--${themeId}`}
-          onClick={() => setStep('voice-enroll')}
+          onClick={() => { setShowVoiceEnroll(true); setStep('voice-enroll') }}
         >
           好呀，现在录入！🎤
         </button>
@@ -402,6 +404,31 @@ function RegisterForm({ themeId, onRegister }) {
 
   // === 声纹采集（引导对话） ===
   if (step === 'voice-enroll') {
+    // 录入失败：显示错误面板（重试 / 跳过）
+    if (voiceEnrollError && !showVoiceEnroll) {
+      return (
+        <div className={`done-panel done-panel--${themeId}`}>
+          <span className="emoji">😢</span>
+          <h2>声纹保存失败</h2>
+          <p style={{ color: '#ef4444', fontSize: 13, margin: '8px 0' }}>{voiceEnrollError}</p>
+          <p style={{ fontSize: 12, opacity: 0.6 }}>可以重新录入，或先跳过以后在设置里再录</p>
+          <button
+            className={`btn-enter btn-enter--${themeId}`}
+            style={{ marginTop: 14 }}
+            onClick={() => { setVoiceEnrollError(''); setShowVoiceEnroll(true) }}
+          >
+            🎤 重新录入
+          </button>
+          <button
+            style={{ marginTop: 10, background: 'none', border: 'none', fontSize: 13, color: '#9ca3af', textDecoration: 'underline', cursor: 'pointer' }}
+            onClick={() => setStep('done')}
+          >
+            先跳过，以后再说
+          </button>
+        </div>
+      )
+    }
+
     return (
       <VoiceLoginOverlay
         mode="enroll"
@@ -423,11 +450,15 @@ function RegisterForm({ themeId, onRegister }) {
                 }
               }
               setHasVoiceprint(true)
+              setStep('done')
             } catch (e) {
-              console.warn('[声纹注册] 存储失败:', e)
+              console.error('[声纹注册] 存储失败:', e)
+              setVoiceEnrollError('声音数据保存失败，请检查网络后重试')
+              setShowVoiceEnroll(false)
             }
+          } else {
+            setStep('done')
           }
-          setStep('done')
         }}
         onCancel={() => setStep('done')}
       />
