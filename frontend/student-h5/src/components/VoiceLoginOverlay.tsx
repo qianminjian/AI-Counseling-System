@@ -43,6 +43,7 @@ export default function VoiceLoginOverlay({ mode = 'verify', onComplete, onCance
   const [failCount, setFailCount] = useState(0)
   const [failKind, setFailKind] = useState('') // mic | mismatch | credential
   const [vpMode, setVpMode] = useState<'local' | 'remote'>('local')
+  const vpModeRef = useRef<'local' | 'remote'>('local') // 同步 ref，避免 runFlow 闭包过期
   const [privacyNote, setPrivacyNote] = useState('声音信息只保存在这台设备上，不会上传到任何服务器')
 
   const { extractEmbedding, verify, loading, modelErrorRef } = useVoiceprint()
@@ -241,7 +242,7 @@ export default function VoiceLoginOverlay({ mode = 'verify', onComplete, onCance
     setStatusText('正在确认身份...')
 
     if (mode === 'verify') {
-      if (vpMode === 'remote') {
+      if (vpModeRef.current === 'remote') {
         // remote 模式：embedding 传服务端比对，服务端直接签发 token
         try {
           const data = await remoteVoiceprintVerify(collectedEmbeddings.current)
@@ -259,7 +260,8 @@ export default function VoiceLoginOverlay({ mode = 'verify', onComplete, onCance
             setPhase('fail')
             setStatusText(newCount < 2 ? '嗯？听起来不太像你，要不再试一次？' : '还是没认出来，用秘密数字登录吧')
           }
-        } catch {
+        } catch (err) {
+          console.error('[VoiceLogin] remote verify 失败:', err)
           setFailKind('credential')
           setPhase('fail')
           setStatusText('网络不太好，先用秘密数字登录吧')
@@ -305,9 +307,10 @@ export default function VoiceLoginOverlay({ mode = 'verify', onComplete, onCance
     }
   }, [scripts, mode, initMic, speakPrompt, captureSegment, extractEmbedding, verify, failCount, onComplete])
 
-  // 启动时获取声纹模式配置
+  // 启动时获取声纹模式配置（runFlow 通过 vpModeRef 读取，无竞态）
   useEffect(() => {
     getVoiceprintConfig().then((cfg) => {
+      vpModeRef.current = cfg.mode
       setVpMode(cfg.mode)
       setPrivacyNote(cfg.privacyNote)
     }).catch(() => { /* 默认 local */ })
