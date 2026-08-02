@@ -3,6 +3,7 @@
 # 用法：
 #   ./deploy.sh              自动检测变更组件，只部署受影响的服务
 #   ./deploy.sh --all        强制全量部署
+#   ./deploy.sh --force      强制重新部署（跳过变更检测，等同于 --all）
 #   ./deploy.sh --backend    强制部署后端
 #   ./deploy.sh --student    强制部署学生端
 #   ./deploy.sh --teacher    强制部署教师端
@@ -31,7 +32,7 @@ ROLLBACK_TARGET=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --all)      FORCE_ALL=true; shift ;;
+    --all|--force) FORCE_ALL=true; shift ;;
     --backend)  FORCE_BACKEND=true; shift ;;
     --student)  FORCE_STUDENT=true; shift ;;
     --teacher)  FORCE_TEACHER=true; shift ;;
@@ -86,6 +87,18 @@ if [ "$LOCAL" != "$REMOTE" ]; then
   exit 1
 fi
 echo "✅ Git 状态正常"
+
+# ===== Flyway 迁移脚本版本号唯一性校验 =====
+MIGRATION_DIR="$PROJECT_ROOT/backend/counseling-app/src/main/resources/db/migration"
+if [ -d "$MIGRATION_DIR" ]; then
+  DUP_VERSIONS=$(ls "$MIGRATION_DIR"/V*.sql 2>/dev/null | sed 's/.*\/V\([0-9]*\)__.*/\1/' | sort -n | uniq -d)
+  if [ -n "$DUP_VERSIONS" ]; then
+    echo "❌ Flyway 迁移脚本版本号重复: $DUP_VERSIONS"
+    echo "   请检查 $MIGRATION_DIR 下的 V*.sql 文件"
+    exit 1
+  fi
+  echo "✅ Flyway 迁移脚本版本号无冲突"
+fi
 
 # ===== 变更检测 =====
 DEPLOY_BACKEND=$FORCE_BACKEND
@@ -163,7 +176,7 @@ echo ""
 if $DEPLOY_BACKEND; then
   echo "📦 构建后端..."
   cd "$PROJECT_ROOT/backend"
-  mvn package -DskipTests -pl counseling-app -am -q
+  mvn clean package -DskipTests -pl counseling-app -am -q
   if [ ! -f "$JAR" ]; then
     echo "❌ JAR 构建失败"; exit 1
   fi
@@ -191,6 +204,22 @@ if $DEPLOY_PARENT; then
   echo "✅ 家长端构建完成"
 fi
 
+# ===== rsync 重试封装 =====
+rsync_retry() {
+  local max_attempts=3
+  local attempt=1
+  while [ $attempt -le $max_attempts ]; do
+    if rsync "$@"; then
+      return 0
+    fi
+    echo "⚠️  rsync 第 $attempt 次失败，${attempt}s 后重试..."
+    sleep $attempt
+    attempt=$((attempt + 1))
+  done
+  echo "❌ rsync 重试 $max_attempts 次后仍失败"
+  return 1
+}
+
 # ===== 选择性上传 =====
 echo ""
 echo "🚀 部署到服务器..."
@@ -198,20 +227,20 @@ echo "🚀 部署到服务器..."
 if $DEPLOY_BACKEND; then
   # 保留上一版本用于回滚
   ssh "$SERVER" "[ -f $REMOTE_DIR/app.jar ] && cp $REMOTE_DIR/app.jar $REMOTE_DIR/app.jar.prev || true"
-  rsync -avz "$PROJECT_ROOT/backend/$JAR" "$SERVER:$REMOTE_DIR/app.jar"
+  rsync_retry -avz "$PROJECT_ROOT/backend/$JAR" "$SERVER:$REMOTE_DIR/app.jar"
 fi
 
-$DEPLOY_STUDENT && rsync -avz --delete --exclude 'models/' "$PROJECT_ROOT/frontend/student-h5/dist/" "$SERVER:$REMOTE_DIR/frontend/student/"
-$DEPLOY_TEACHER && rsync -avz --delete "$PROJECT_ROOT/frontend/teacher-web/dist/" "$SERVER:$REMOTE_DIR/frontend/teacher/"
-$DEPLOY_PARENT && rsync -avz --delete "$PROJECT_ROOT/frontend/parent-h5/dist/" "$SERVER:$REMOTE_DIR/frontend/parent/"
+$DEPLOY_STUDENT && rsync_retry -avz --delete --exclude 'models/' "$PROJECT_ROOT/frontend/student-h5/dist/" "$SERVER:$REMOTE_DIR/frontend/student/"
+$DEPLOY_TEACHER && rsync_retry -avz --delete "$PROJECT_ROOT/frontend/teacher-web/dist/" "$SERVER:$REMOTE_DIR/frontend/teacher/"
+$DEPLOY_PARENT && rsync_retry -avz --delete "$PROJECT_ROOT/frontend/parent-h5/dist/" "$SERVER:$REMOTE_DIR/frontend/parent/"
 
 
 if $DEPLOY_TTS; then
-  rsync -avz --delete "$PROJECT_ROOT/backend/tts-service/" "$SERVER:$REMOTE_DIR/tts-service/"
+  rsync_retry -avz --delete "$PROJECT_ROOT/backend/tts-service/" "$SERVER:$REMOTE_DIR/tts-service/"
 fi
 
 if $DEPLOY_VOICE; then
-  rsync -avz --delete "$PROJECT_ROOT/backend/voice-service/" "$SERVER:$REMOTE_DIR/voice-service/"
+  rsync_retry -avz --delete "$PROJECT_ROOT/backend/voice-service/" "$SERVER:$REMOTE_DIR/voice-service/"
 fi
 
 # ===== 选择性重启（仅 backend/tts 需要） =====
@@ -224,22 +253,34 @@ if [ -n "$RESTART_SERVICES" ]; then
   echo "🔄 重启容器:$RESTART_SERVICES"
   ssh "$SERVER" "cd $REMOTE_DIR && docker compose up -d --build $RESTART_SERVICES"
 
-  # 健康检查（仅重启时）
+  # 健康检查（仅重启时，轮询最多 60s）
   echo "⏳ 等待服务启动..."
-  sleep 12
   if $DEPLOY_BACKEND; then
-    HTTP_OK=$(ssh "$SERVER" "curl -sf http://127.0.0.1:18081/actuator/health > /dev/null && echo yes || echo no")
-    if [ "$HTTP_OK" = "yes" ]; then
+    HEALTH_OK=false
+    for i in $(seq 1 12); do
+      sleep 5
+      HTTP_OK=$(ssh "$SERVER" "curl -sf http://127.0.0.1:18081/actuator/health > /dev/null && echo yes || echo no" 2>/dev/null)
+      if [ "$HTTP_OK" = "yes" ]; then
+        HEALTH_OK=true
+        break
+      fi
+      echo "   等待中... (${i}/12)"
+    done
+    if $HEALTH_OK; then
       echo "✅ 后端健康检查通过"
     else
-      echo "⚠️  后端可能未完全启动，请检查：ssh $SERVER 'docker logs mindsafe-backend-1 --tail 20'"
+      echo "❌ 后端健康检查失败（60s 超时），请检查：ssh $SERVER 'docker logs mindsafe-backend-1 --tail 30'"
+      echo "   部署状态未更新，下次 deploy.sh 将重新部署"
+      exit 1
     fi
+  else
+    sleep 10
   fi
 else
   echo "✅ 前端静态文件已更新（无需重启容器）"
 fi
 
-# ===== 更新部署状态 =====
+# ===== 更新部署状态（仅在部署成功后） =====
 echo "LAST_DEPLOYED_COMMIT=$LOCAL" > "$STATE_FILE"
 echo "DEPLOYED_AT=$(date -Iseconds)" >> "$STATE_FILE"
 
