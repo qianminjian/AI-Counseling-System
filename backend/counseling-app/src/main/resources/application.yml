@@ -138,7 +138,7 @@ mindsafe:
   # 声纹识别模式（local=浏览器端比对，remote=embedding传服务端比对）
   voiceprint:
     mode: ${MINDSAFE_VOICEPRINT_MODE:remote}  # local | remote
-    verify-threshold: 0.70                    # remote 模式余弦相似度阈值
+    verify-threshold: 0.55                    # remote 模式余弦相似度阈值（低于 local 0.70，因网络传输损耗实测 0.70 过不了）
     max-templates: 8                          # 每用户最大模板数
   # 语音分析微服务（FunASR + emotion2vec+）
   voice-service:

@@ -790,15 +790,20 @@
 
 ## 二十五、配置统一纳管（design/56）
 
-> 背景：配置分散于环境变量、application.yml、Python 硬编码、前端 TypeScript 四处，存在前后端阈值不同步、TTS 音色矩阵改参数需改代码发版、引导脚本运营不可调等痛点。本专题统一纳管，实现"改配置不改代码"。
-> 设计文档：`design/56_配置统一纳管设计.md`（2026-08-01）
+> 背景：配置分散于环境变量、application.yml、Python 硬编码、前端 TypeScript 四处，存在前后端阈值不同步、TTS 音色矩阵改参数需改代码发版、引导脚本运营不可调等痛点。本专题统一纳管，实现“改配置不改代码”。
+> 设计文档：`design/56_配置统一纳管设计.md`（2026-08-01 创建，2026-07-28 v2 更新）
+> v2 更新要点：对齐 TTS v4 方言重构（native/instruct 双模式）、ASR-SER 解耦、声纹 remote 模式、TTS 模型 v3-flash、Dockerfile 影响分析
 
 | 任务ID | 任务描述 | 优先级 | 状态 | 备注 |
 |--------|----------|--------|------|------|
-| CFG-001 | 后端 API + 前端注入：application.yml 新增 system-config 节点 + SystemConfigController（GET /api/v1/system/config）+ 前端 remote.ts 启动加载 + 声纹阈值去重 | P0 | ⏳ 待实施 | design/56 M1 |
-| CFG-002 | TTS 配置外置：新建 tts-service/config.yaml（音色矩阵+方言+情感 Instruct）+ app.py 加载改造 + 环境变量覆盖 | P1 | ⏳ 待实施 | design/56 M2 |
-| CFG-003 | Voice 配置外置：新建 voice-service/config.yaml + app.py 加载改造 | P2 | ⏳ 待实施 | design/56 M3 |
-| CFG-004 | 文档同步：.env.example 补注释 + DEPLOY-GUIDE 更新配置变更流程 + design/33 补配置测试点 | P2 | ⏳ 待实施 | design/56 M4 |
+| CFG-001 | **M1 后端 API**：application.yml 新增 `mindsafe.system-config` 节点（voiceprint/wakeWord/tts/guideScripts）+ 新增 SystemConfigController（GET /api/v1/system/config，permitAll，Cache-Control 5min） | P0 | ⏳ 待实施 | design/56 M1①② |
+| CFG-002 | **M1 前端注入**：新建 `config/remote.ts`（loadRemoteConfig + getRemoteConfig）+ main.jsx 启动加载（3s 超时静默降级）+ Security 白名单 | P0 | ⏳ 待实施 | design/56 M1③ |
+| CFG-003 | **M1 声纹阈值统一管控**：useVoiceprint.ts 改从 getRemoteConfig() 读取 local 阈值（0.70），保留 voiceprint.ts 为 fallback；引导脚本改从远程读取 | P0 | ⏳ 待实施 | design/56 M1④；影响 VoiceLoginOverlay + SettingsPanel；注：local 0.70 / remote 0.55 有意不同 |
+| CFG-004 | **M2 TTS 配置外置**：新建 `tts-service/config.yaml`（7 音色 + 8 方言 native/instruct + 10 情感 + native_dialect_voices）+ app.py 加载改造（保留硬编码 fallback） | P1 | ⏳ 待实施 | design/56 M2①② |
+| CFG-005 | **M2 部署链路**：Dockerfile 增加 `COPY config.yaml` + docker-compose 透传 DASHSCOPE_TTS_MODEL + .env.example 补变量 | P1 | ⏳ 待实施 | design/56 M2③④ |
+| CFG-006 | **M2 验证**：22 个 Python TTS 测试全绿 + 7 音色 + 方言双模式 + 情感 Instruct 全链路回归 | P1 | ⏳ 待实施 | design/56 M2⑤ |
+| CFG-007 | **M3 Voice 配置外置**：新建 `voice-service/config.yaml`（ASR 双引擎 + SER 独立开关 + 情绪标签）+ app.py 加载改造 + Dockerfile COPY | P2 | ⏳ 待实施 | design/56 M3 |
+| CFG-008 | **M4 文档同步**：.env.example 补 DASHSCOPE_TTS_MODEL + DEPLOY-GUIDE 配置变更流程 + design/24、28、37、48 引用指向更新 | P2 | ⏳ 待实施 | design/56 M4 |
 
 ---
 
