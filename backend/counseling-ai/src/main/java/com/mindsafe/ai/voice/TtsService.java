@@ -107,15 +107,18 @@ public class TtsService {
      * @return 音频字节流（Flux，每个元素是一个网络 chunk）
      */
     public Flux<byte[]> synthesizeStream(String text, String persona, String emotion, double speed,
-                                         double pitch, int pauseStyle) {
-        Map<String, Object> body = Map.of(
-                "text", text,
-                "persona", persona != null ? persona : "xiaoxing",
-                "emotion", emotion != null ? emotion : "neutral",
-                "speed", speed,
-                "pitch", pitch,
-                "pause_style", pauseStyle
-        );
+                                         double pitch, int pauseStyle, String dialect) {
+        var bodyBuilder = new java.util.HashMap<String, Object>();
+        bodyBuilder.put("text", text);
+        bodyBuilder.put("persona", persona != null ? persona : "xiaoxing");
+        bodyBuilder.put("emotion", emotion != null ? emotion : "neutral");
+        bodyBuilder.put("speed", speed);
+        bodyBuilder.put("pitch", pitch);
+        bodyBuilder.put("pause_style", pauseStyle);
+        if (dialect != null && !dialect.isBlank()) {
+            bodyBuilder.put("dialect", dialect);
+        }
+        Map<String, Object> body = bodyBuilder;
 
         long startTime = System.currentTimeMillis();
         return webClient.post()
