@@ -3,9 +3,10 @@ MindSafe 语音分析微服务
 - ASR（语音转文字）：双引擎
   - funasr 模式：SenseVoiceSmall（自部署，适合私有化/信创环境）
   - dashscope 模式：Paraformer-V2（阿里云 DashScope API，低资源占用）
-- SER（语音情感识别）：emotion2vec_plus_large（仅 funasr 模式加载）
+- SER（语音情感识别）：emotion2vec_plus_large（独立于 ASR，SER_ENABLED 控制）
+- ASR 与 SER 并行执行（ThreadPoolExecutor）
 - 部署：Docker 容器，端口 10095
-- 切换方式：环境变量 ASR_ENGINE=funasr|dashscope
+- 切换方式：环境变量 ASR_ENGINE=funasr|dashscope，SER_ENABLED=true|false
 """
 
 import io
