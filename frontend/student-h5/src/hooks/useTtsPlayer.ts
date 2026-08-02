@@ -113,6 +113,13 @@ export function useTtsPlayer({ persona = 'xiaoxing', emotion = 'neutral', speed 
   const audioCtxRef = useRef(null)
   const abortRef = useRef(false)
   const backendFailCount = useRef(0)
+  const lastFailTimeRef = useRef(0) // 上次失败时间戳（用于时间恢复）
+
+  // persona/dialect 变化时重置失败计数（故障可能是特定组合导致的）
+  useEffect(() => {
+    backendFailCount.current = 0
+    setEngine('backend')
+  }, [persona, dialect])
 
   // 初始化时检测浏览器 TTS 可用性（voiceschanged 事件确保异步加载完成）
   useEffect(() => {
@@ -144,11 +151,16 @@ export function useTtsPlayer({ persona = 'xiaoxing', emotion = 'neutral', speed 
     }
   }, [])
 
-  /** 合成单句音频（后端 TTS，连续失败 2 次后降级为浏览器 TTS） */
+  /** 合成单句音频（后端 TTS，连续失败 2 次后降级为浏览器 TTS，30s 后自动恢复重试） */
   const synthesizeSentence = useCallback(async (text) => {
-    // 后端已连续失败多次，直接用浏览器 TTS
+    // 后端已连续失败多次：检查是否已过 30s 恢复窗口
     if (backendFailCount.current >= 2) {
-      return null // 返回 null 触发 speak() 中的浏览器降级路径
+      const elapsed = Date.now() - lastFailTimeRef.current
+      if (elapsed < 30000) {
+        return null // 30s 内不重试，用浏览器降级
+      }
+      // 30s 后允许一次重试
+      backendFailCount.current = 0
     }
     try {
       const res = await authFetch('/api/v1/tts/synthesize', {
@@ -161,6 +173,7 @@ export function useTtsPlayer({ persona = 'xiaoxing', emotion = 'neutral', speed 
       })
       if (!res.ok || res.status === 204) {
         backendFailCount.current++
+        lastFailTimeRef.current = Date.now()
         return null
       }
       backendFailCount.current = 0 // 成功则重置
@@ -168,6 +181,7 @@ export function useTtsPlayer({ persona = 'xiaoxing', emotion = 'neutral', speed 
       return await res.blob()
     } catch {
       backendFailCount.current++
+      lastFailTimeRef.current = Date.now()
       return null
     }
   }, [persona, emotion, speed, dialect])

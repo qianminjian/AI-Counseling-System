@@ -231,7 +231,15 @@ async def synthesize(req: TtsRequest):
         try:
             return await _synthesize_dashscope(req.text, persona_cfg["dashscope_voice"], final_speed, dialect_instruct)
         except Exception as e:
-            logger.warning(f"阿里云 CosyVoice 失败，降级 edge-tts: {e}")
+            if dialect_instruct:
+                # 方言 Instruct 不被该音色支持（428）→ 用同音色普通话重试（保留音色品质）
+                logger.warning(f"CosyVoice 方言指令失败，同音色普通话重试: voice={persona_cfg['dashscope_voice']}, dialect={req.dialect}")
+                try:
+                    return await _synthesize_dashscope(req.text, persona_cfg["dashscope_voice"], final_speed, None)
+                except Exception as e2:
+                    logger.warning(f"CosyVoice 普通话重试也失败，降级 edge-tts: {e2}")
+            else:
+                logger.warning(f"阿里云 CosyVoice 失败，降级 edge-tts: {e}")
 
     # Level 2：edge-tts（方言降级：仅东北/陕西有对应音色，其他回退普通话）
     if EDGE_TTS_AVAILABLE:
@@ -254,9 +262,8 @@ async def synthesize(req: TtsRequest):
 async def _synthesize_dashscope(text: str, voice: str, speed: float, instruction: Optional[str] = None):
     """
     Level 1：阿里云 CosyVoice（DashScope SDK WebSocket 流式合成）
-    相比旧版 HTTP 两步调用（POST→URL→download），延迟降低 50%+：
-    - 单 WebSocket 连接，音频边合成边返回
-    - 无第二次 HTTP 下载往返
+    内部缓冲全部音频后返回，确保 SDK 错误能被上层 try/except 捕获并降级到 edge-tts。
+    （单句 TTS 音频通常 20-50KB，缓冲无性能问题）
     """
     loop = asyncio.get_event_loop()
     queue: asyncio.Queue = asyncio.Queue()
@@ -267,18 +274,16 @@ async def _synthesize_dashscope(text: str, voice: str, speed: float, instruction
             pass
 
         def on_data(self, data: bytes):
-            # 从 SDK 线程桥接到 asyncio 事件循环
             loop.call_soon_threadsafe(queue.put_nowait, data)
 
         def on_complete(self):
-            loop.call_soon_threadsafe(queue.put_nowait, None)  # 哨兵：合成完成
+            loop.call_soon_threadsafe(queue.put_nowait, None)
 
         def on_error(self, message):
             error_holder[0] = str(message)
             loop.call_soon_threadsafe(queue.put_nowait, None)
 
         def on_close(self):
-            # 确保即使异常关闭也能结束
             loop.call_soon_threadsafe(queue.put_nowait, None)
 
     def _run_synthesis():
@@ -291,7 +296,7 @@ async def _synthesize_dashscope(text: str, voice: str, speed: float, instruction
                 speech_rate=max(0.5, min(2.0, speed)),
                 callback=_Callback(),
             )
-            # 方言/情感 Instruct 指令（仅支持的音色生效）
+            # 方言/情感 Instruct 指令（仅部分音色支持，不支持时 SDK 返回 428）
             if instruction:
                 kwargs["instruction"] = instruction
             synthesizer = SpeechSynthesizer(**kwargs)
@@ -304,24 +309,26 @@ async def _synthesize_dashscope(text: str, voice: str, speed: float, instruction
     t = threading.Thread(target=_run_synthesis, daemon=True)
     t.start()
 
-    # 异步生成器：从 queue 中取音频块，流式返回给客户端
-    async def audio_stream():
-        total = 0
-        while True:
-            chunk = await queue.get()
-            if chunk is None:
-                break
-            total += len(chunk)
-            yield chunk
-        if error_holder[0]:
-            logger.error(f"CosyVoice SDK 错误: {error_holder[0]}")
-            if total == 0:
-                raise RuntimeError(error_holder[0])
-        else:
-            logger.info(f"CosyVoice 流式合成完成: voice={voice}, total_bytes={total}")
+    # 缓冲全部音频（等待合成完成或出错）
+    chunks = []
+    while True:
+        chunk = await queue.get()
+        if chunk is None:
+            break
+        chunks.append(chunk)
 
+    # 错误检查：在返回前抛出异常，使上层 try/except 能捕获并降级到 edge-tts
+    if error_holder[0]:
+        logger.warning(f"CosyVoice SDK 错误 (voice={voice}, instruction={instruction}): {error_holder[0]}")
+        raise RuntimeError(error_holder[0])
+
+    audio_bytes = b"".join(chunks)
+    if not audio_bytes:
+        raise RuntimeError(f"CosyVoice 返回空音频 (voice={voice})")
+
+    logger.info(f"CosyVoice 合成完成: voice={voice}, instruction={instruction}, bytes={len(audio_bytes)}")
     return StreamingResponse(
-        audio_stream(),
+        io.BytesIO(audio_bytes),
         media_type="audio/mpeg",
         headers={"X-TTS-Engine": "cosyvoice-cloud", "X-TTS-Voice": voice},
     )
