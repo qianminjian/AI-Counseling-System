@@ -54,10 +54,23 @@ class TestVoicePersonas:
         assert mock_dashscope.VOICE_PERSONAS["dashu"]["dashscope_voice"] == "longanyun_v3"
         assert mock_dashscope.VOICE_PERSONAS["doudou"]["dashscope_voice"] == "longjielidou_v3"
 
-    def test_no_dialect_capable_field(self, mock_dashscope):
-        """方言为独立维度，无 dialect_capable 字段"""
+    def test_dialect_capable_only_qiqiu(self, mock_dashscope):
+        """仅 qiqiu 拥有 dialect_capable=True，其他均为 False"""
         for key, cfg in mock_dashscope.VOICE_PERSONAS.items():
-            assert "dialect_capable" not in cfg, f"{key} 不应有 dialect_capable"
+            assert "dialect_capable" in cfg, f"{key} 缺 dialect_capable"
+            if key == "qiqiu":
+                assert cfg["dialect_capable"] is True
+            else:
+                assert cfg["dialect_capable"] is False
+
+    def test_emotion_capable_only_xiaotaiyang(self, mock_dashscope):
+        """仅 xiaotaiyang 拥有 emotion_capable=True"""
+        for key, cfg in mock_dashscope.VOICE_PERSONAS.items():
+            assert "emotion_capable" in cfg, f"{key} 缺 emotion_capable"
+            if key == "xiaotaiyang":
+                assert cfg["emotion_capable"] is True
+            else:
+                assert cfg["emotion_capable"] is False
 
     def test_speed_values_reasonable(self, mock_dashscope):
         """语速在合理范围 [0.8, 1.2]"""
@@ -149,28 +162,53 @@ class TestSynthesizeEndpoint:
 
 # ===== Instruct 构建逻辑测试 =====
 
-class TestDialectInstruct:
-    """方言 Instruct 指令构建"""
+class TestBuildInstruction:
+    """指令构建（方言 + 情感 + 原生方言音色）"""
 
-    def test_build_instruct_for_valid_dialect(self, mock_dashscope):
-        """有效方言 → 返回 Instruct 字符串"""
-        result = mock_dashscope.build_dialect_instruct("qiqiu", "sichuan")
-        assert result == "请用四川话表达。"
+    def test_dialect_instruct_for_qiqiu(self, mock_dashscope):
+        """方言音色 qiqiu + 方言 → 返回 Instruct"""
+        cfg = mock_dashscope.VOICE_PERSONAS["qiqiu"]
+        instruction, voice = mock_dashscope.build_instruction(cfg, "sichuan", "neutral")
+        assert instruction == "请用四川话表达。"
+        assert voice is None
 
-    def test_build_instruct_for_any_persona(self, mock_dashscope):
-        """方言为独立维度，任意音色均可获取 Instruct"""
-        result = mock_dashscope.build_dialect_instruct("xiaoxing", "sichuan")
-        assert result == "请用四川话表达。"
+    def test_dialect_ignored_for_non_capable(self, mock_dashscope):
+        """非方言音色 + 方言 → 无 Instruct"""
+        cfg = mock_dashscope.VOICE_PERSONAS["xiaoxing"]
+        instruction, voice = mock_dashscope.build_instruction(cfg, "sichuan", "neutral")
+        assert instruction is None
+        assert voice is None
 
-    def test_build_instruct_for_invalid_dialect(self, mock_dashscope):
-        """无效方言代码 → 返回 None"""
-        result = mock_dashscope.build_dialect_instruct("qiqiu", "klingon")
-        assert result is None
+    def test_emotion_instruct_for_xiaotaiyang(self, mock_dashscope):
+        """小太阳 + 情感 → 情感 Instruct"""
+        cfg = mock_dashscope.VOICE_PERSONAS["xiaotaiyang"]
+        instruction, voice = mock_dashscope.build_instruction(cfg, None, "happy")
+        assert instruction == "你正在进行闲聊互动，你说话的情感是happy。"
+        assert voice is None
 
-    def test_build_instruct_for_none_dialect(self, mock_dashscope):
-        """dialect 为 None → 返回 None"""
-        result = mock_dashscope.build_dialect_instruct("qiqiu", None)
-        assert result is None
+    def test_native_dialect_voice_override(self, mock_dashscope):
+        """原生方言音色 + language_mode=dialect → 覆盖 voice"""
+        cfg = mock_dashscope.VOICE_PERSONAS["qiqiu"]
+        instruction, voice = mock_dashscope.build_instruction(
+            cfg, "cantonese", "neutral", language_mode="dialect", persona_gender="female"
+        )
+        assert instruction is None  # 原生音色无需 instruction
+        assert voice == "longjiayi_v3"  # 粤语女声
+
+    def test_native_dialect_voice_male(self, mock_dashscope):
+        """原生方言音色男声匹配"""
+        cfg = mock_dashscope.VOICE_PERSONAS["qiqiu"]
+        instruction, voice = mock_dashscope.build_instruction(
+            cfg, "northeastern", "neutral", language_mode="dialect", persona_gender="male"
+        )
+        assert voice == "longlaotie_v3"
+
+    def test_no_dialect_no_emotion(self, mock_dashscope):
+        """无方言无情感 → 无指令"""
+        cfg = mock_dashscope.VOICE_PERSONAS["xiaoxing"]
+        instruction, voice = mock_dashscope.build_instruction(cfg, None, "neutral")
+        assert instruction is None
+        assert voice is None
 
 
 # ===== Health 端点 =====

@@ -20,7 +20,7 @@ import { voiceLogin, remoteVoiceprintVerify, getVoiceprintConfig, setToken, setR
 /** 主题 → 音色映射（登录页未登录，读 localStorage 主题） */
 const THEME_PERSONA_MAP: Record<string, string> = {
   ocean: 'xiaoxing',    // 海洋蓝 → 小星（温暖大姐姐）
-  garden: 'qiqiu',      // 花园粉 → 气球（活泼小伙伴）
+  garden: 'qiqiu',      // 花园粉 → 方言（活泼小伙伴）
   rainbow: 'yueliang',  // 彩虹紫 → 月亮（温柔讲故事）
 }
 function getLoginPersona(): string {

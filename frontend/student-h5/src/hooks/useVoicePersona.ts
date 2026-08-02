@@ -1,9 +1,10 @@
 /**
- * 音色人设选择 Hook（design/56 7 音色矩阵 + 方言独立维度）
+ * 音色人设选择 Hook（design/56 7 音色矩阵 + 方言条件启用）
  * - localStorage 持久化
- * - 7 种音色：小星/波波老师/月亮/小太阳/大树/豆豆/气球
+ * - 7 种音色：小星/波波老师/月亮/小太阳/大树/豆豆/方言
  * - 默认音色根据用户性别自动选择（男→小太阳，女→小星）
- * - 方言：独立维度，所有音色均可叠加，默认关闭，开启时默认取 student.dialect
+ * - 方言：仅“方言”音色（qiqiu）选中时可用，无需单独开关
+ * - 原生方言音色：粤语/东北话/陕西话有原生音色，可切换普通话/方言模式
  */
 import { useState, useCallback } from 'react'
 import { getUser } from '../api'
@@ -16,6 +17,7 @@ export const VOICE_PERSONAS = {
     desc: '温暖的邻家姐姐',
     detail: '亲切自然，像邻家姐姐一样陪你聊天',
     gender: 'female',
+    dialectCapable: false,
   },
   bobo: {
     id: 'bobo',
@@ -24,6 +26,7 @@ export const VOICE_PERSONAS = {
     desc: '温柔的女老师',
     detail: '温和共情，像班主任一样耐心听你说话',
     gender: 'female',
+    dialectCapable: false,
   },
   yueliang: {
     id: 'yueliang',
@@ -32,6 +35,7 @@ export const VOICE_PERSONAS = {
     desc: '轻声讲故事',
     detail: '轻声细语，像睡前故事一样让你安心',
     gender: 'female',
+    dialectCapable: false,
   },
   xiaotaiyang: {
     id: 'xiaotaiyang',
@@ -40,6 +44,7 @@ export const VOICE_PERSONAS = {
     desc: '阳光大哥哥',
     detail: '开朗有活力，像运动场上的大哥哥一样给你加油',
     gender: 'male',
+    dialectCapable: false,
   },
   dashu: {
     id: 'dashu',
@@ -48,6 +53,7 @@ export const VOICE_PERSONAS = {
     desc: '暖心大叔',
     detail: '稳重可靠，像大树一样给你安全感',
     gender: 'male',
+    dialectCapable: false,
   },
   doudou: {
     id: 'doudou',
@@ -56,14 +62,16 @@ export const VOICE_PERSONAS = {
     desc: '顽皮同龄男孩',
     detail: '阳光顽皮，像同班同学一样和你一起玩',
     gender: 'male',
+    dialectCapable: false,
   },
   qiqiu: {
     id: 'qiqiu',
-    name: '气球',
-    emoji: '🎈',
-    desc: '欢脱元气伙伴',
-    detail: '俘皮可爱，像好朋友一样和你分享快乐',
+    name: '方言',
+    emoji: '🗣️',
+    desc: '用家乡话聊天',
+    detail: '支持多种方言，像家乡的小伙伴一样亲切',
     gender: 'female',
+    dialectCapable: true,
   },
 }
 
@@ -79,9 +87,12 @@ export const SUPPORTED_DIALECTS = {
   anhui: { id: 'anhui', label: '安徽话' },
 }
 
+/** 拥有原生方言音色的方言（不需要 instruction，天生说方言，可切换普通话/方言模式） */
+export const NATIVE_DIALECT_IDS = ['cantonese', 'northeastern', 'shaanxi']
+
 const PERSONA_KEY = 'mindsafe_voice_persona_v1'
-const DIALECT_ENABLED_KEY = 'mindsafe_dialect_enabled_v1'
 const DIALECT_KEY = 'mindsafe_dialect_v1'
+const LANGUAGE_MODE_KEY = 'mindsafe_language_mode_v1'
 
 /** 根据用户性别获取默认音色 */
 function getDefaultPersona() {
@@ -95,10 +106,6 @@ function getDefaultPersona() {
 
 export function useVoicePersona() {
   const [personaId, setPersonaId] = useState(getDefaultPersona)
-  // 方言状态：会话级（新会话重置为关闭，默认值取 student.dialect）
-  const [dialectEnabled, setDialectEnabled] = useState(() => {
-    return localStorage.getItem(DIALECT_ENABLED_KEY) === 'true'
-  })
   const [selectedDialect, setSelectedDialect] = useState<string | null>(() => {
     const saved = localStorage.getItem(DIALECT_KEY)
     if (saved && SUPPORTED_DIALECTS[saved]) return saved
@@ -106,8 +113,15 @@ export function useVoicePersona() {
     const user = getUser()
     return (user?.dialect as string) || null
   })
+  // 语言模式：mandarin=普通话, dialect=原生方言音色（仅原生方言可用时生效）
+  const [languageMode, setLanguageMode] = useState<'mandarin' | 'dialect'>(() => {
+    return (localStorage.getItem(LANGUAGE_MODE_KEY) as 'mandarin' | 'dialect') || 'mandarin'
+  })
 
   const persona = VOICE_PERSONAS[personaId] || VOICE_PERSONAS.xiaoxing
+
+  // 方言是否启用：仅当选中“方言”音色（qiqiu）时自动启用
+  const dialectEnabled = personaId === 'qiqiu'
 
   const changePersona = useCallback((id) => {
     if (VOICE_PERSONAS[id]) {
@@ -116,22 +130,30 @@ export function useVoicePersona() {
     }
   }, [])
 
-  /** 切换方言开关 */
-  const toggleDialect = useCallback((enabled) => {
-    setDialectEnabled(enabled)
-    localStorage.setItem(DIALECT_ENABLED_KEY, String(enabled))
-  }, [])
-
   /** 切换方言类型 */
   const changeDialect = useCallback((dialectId) => {
     if (SUPPORTED_DIALECTS[dialectId]) {
       setSelectedDialect(dialectId)
       localStorage.setItem(DIALECT_KEY, dialectId)
+      // 非原生方言 → 重置语言模式为 mandarin
+      if (!NATIVE_DIALECT_IDS.includes(dialectId)) {
+        setLanguageMode('mandarin')
+        localStorage.setItem(LANGUAGE_MODE_KEY, 'mandarin')
+      }
     }
   }, [])
 
-  /** 当前生效的 dialect（方言开启时返回，否则 null） */
+  /** 切换语言模式（普通话/原生方言） */
+  const changeLanguageMode = useCallback((mode: 'mandarin' | 'dialect') => {
+    setLanguageMode(mode)
+    localStorage.setItem(LANGUAGE_MODE_KEY, mode)
+  }, [])
+
+  /** 当前生效的 dialect（仅方言音色选中时返回，否则 null） */
   const activeDialect = dialectEnabled ? selectedDialect : null
+
+  /** 当前选中的方言是否有原生音色 */
+  const hasNativeVoice = selectedDialect ? NATIVE_DIALECT_IDS.includes(selectedDialect) : false
 
   return {
     persona,
@@ -140,10 +162,13 @@ export function useVoicePersona() {
     personas: VOICE_PERSONAS,
     // 方言相关
     dialectEnabled,
-    toggleDialect,
     selectedDialect,
     changeDialect,
     activeDialect,
     supportedDialects: SUPPORTED_DIALECTS,
+    // 语言模式
+    languageMode,
+    changeLanguageMode,
+    hasNativeVoice,
   }
 }

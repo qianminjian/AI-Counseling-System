@@ -69,7 +69,7 @@ function mergeShortSentences(sentences, minLen = 8) {
 const PERSONA_VOICE_PROFILES = {
   xiaoxing: { pitch: 1.1, rateScale: 1.0 },   // 小星：温暖大姐姐
   bobo: { pitch: 1.05, rateScale: 0.95 },     // 波波老师：温柔女老师
-  qiqiu: { pitch: 1.4, rateScale: 1.1 },      // 气球：活泼俘皮，音调高、语速快
+  qiqiu: { pitch: 1.4, rateScale: 1.1 },      // 方言：活泼俘皮，音调高、语速快
   yueliang: { pitch: 1.0, rateScale: 0.9 },   // 月亮：温柔轻语，语速慢
   xiaotaiyang: { pitch: 0.7, rateScale: 1.0 },// 小太阳：阳光大哥哥，低音调模拟男声
   dashu: { pitch: 0.6, rateScale: 0.95 },     // 大树：暖心大叔，低沉稳重
@@ -100,7 +100,7 @@ function browserSpeak(text: string, { rate = 1.0, persona = 'xiaoxing', onEnd }:
   }
 }
 
-export function useTtsPlayer({ persona = 'xiaoxing', emotion = 'neutral', speed = 1.0, dialect = null }: { persona?: string; emotion?: string; speed?: number; dialect?: string | null } = {}) {
+export function useTtsPlayer({ persona = 'xiaoxing', emotion = 'neutral', speed = 1.0, dialect = null, languageMode = 'mandarin' }: { persona?: string; emotion?: string; speed?: number; dialect?: string | null; languageMode?: 'mandarin' | 'dialect' } = {}) {
   const [playing, setPlaying] = useState(false)
   const [currentSentenceIdx, setCurrentSentenceIdx] = useState(-1)
   // 当前正在播放的句子数组（供波波话语气泡逐句展示，见 design/27 §4.4）
@@ -169,6 +169,7 @@ export function useTtsPlayer({ persona = 'xiaoxing', emotion = 'neutral', speed 
         body: JSON.stringify({
           text, persona, emotion, speed,
           ...(dialect ? { dialect } : {}),
+          ...(dialect && languageMode !== 'mandarin' ? { language_mode: languageMode } : {}),
         }),
       })
       if (!res.ok || res.status === 204) {
@@ -184,7 +185,7 @@ export function useTtsPlayer({ persona = 'xiaoxing', emotion = 'neutral', speed 
       lastFailTimeRef.current = Date.now()
       return null
     }
-  }, [persona, emotion, speed, dialect])
+  }, [persona, emotion, speed, dialect, languageMode])
 
   /** 用持久 Audio 元素播放一个 blob */
   const playBlob = useCallback((blob) => {

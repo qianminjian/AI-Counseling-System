@@ -29,9 +29,10 @@ vi.mock('../hooks/useVoicePersona', () => ({
   useVoicePersona: () => ({ personaId: 'star', changePersona: vi.fn() }),
   VOICE_PERSONAS: {
     star: { id: 'star', name: '小星', emoji: '⭐', desc: '温柔' },
-    balloon: { id: 'balloon', name: '气球', emoji: '🎈', desc: '活泼' },
+    balloon: { id: 'balloon', name: '方言', emoji: '🗣️', desc: '活泼' },
     moon: { id: 'moon', name: '月亮', emoji: '🌙', desc: '安静' },
   },
+  NATIVE_DIALECT_IDS: ['cantonese', 'northeastern', 'shaanxi'],
 }))
 vi.mock('../components/VoiceLoginOverlay', () => ({
   default: ({ mode, onComplete, onCancel }: any) => (
@@ -101,7 +102,7 @@ describe('SettingsPanel', () => {
   it('渲染 3 个音色选项', () => {
     render(<SettingsPanel {...defaultProps} />)
     expect(screen.getByText('小星')).toBeTruthy()
-    expect(screen.getByText('气球')).toBeTruthy()
+    expect(screen.getByText('方言')).toBeTruthy()
     expect(screen.getByText('月亮')).toBeTruthy()
   })
 
@@ -271,7 +272,7 @@ describe('SettingsPanel', () => {
 
   it('点击音色按钮触发 changePersona', () => {
     render(<SettingsPanel {...defaultProps} />)
-    fireEvent.click(screen.getByText('气球'))
+    fireEvent.click(screen.getByText('方言'))
     // changePersona 是 vi.fn()，不报错即可
   })
 

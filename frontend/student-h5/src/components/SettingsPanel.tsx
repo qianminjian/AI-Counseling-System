@@ -1,7 +1,7 @@
 /**
  * 设置面板（底部弹出）
  * - 主题切换（海洋/花园/彩虹）
- * - 音色选择（小星/气球/月亮）
+ * - 音色选择（小星/波波老师/月亮/小太阳/大树/豆豆/方言）
  * - 语音开关
  * - 语音唤醒开关（design/28 §1.1；不支持/未配置时隐藏）
  * - 我的家庭码（家长绑定用）
@@ -10,13 +10,13 @@
  */
 import { useState, useEffect } from 'react'
 import { useTheme, THEMES } from '../theme/ThemeProvider'
-import { useVoicePersona, VOICE_PERSONAS } from '../hooks/useVoicePersona'
+import { useVoicePersona, VOICE_PERSONAS, NATIVE_DIALECT_IDS } from '../hooks/useVoicePersona'
 import { api, getUser, issueVoiceCredential, getVoiceprintConfig, remoteVoiceprintEnroll } from '../api'
 import { hasAnyVoiceprint, deleteVoiceprint, enrollVoiceprint, saveVoiceCredential } from '../utils/voiceprintStore'
 import VoiceLoginOverlay from './VoiceLoginOverlay'
 import ConfirmDialog from './ConfirmDialog'
 
-export default function SettingsPanel({ open, onClose, muted, onToggleMute, wakeSupported = false, wakeOn = false, onToggleWake, personaId: externalPersonaId, onPersonaChange, dialectEnabled = false, onToggleDialect, selectedDialect, onDialectChange, supportedDialects }: {
+export default function SettingsPanel({ open, onClose, muted, onToggleMute, wakeSupported = false, wakeOn = false, onToggleWake, personaId: externalPersonaId, onPersonaChange, selectedDialect, onDialectChange, supportedDialects, languageMode, onLanguageModeChange, hasNativeVoice }: {
   open: boolean
   onClose: () => void
   muted: boolean
@@ -26,23 +26,27 @@ export default function SettingsPanel({ open, onClose, muted, onToggleMute, wake
   onToggleWake?: () => void
   personaId?: string
   onPersonaChange?: (id: string) => void
-  dialectEnabled?: boolean
-  onToggleDialect?: (enabled: boolean) => void
   selectedDialect?: string | null
   onDialectChange?: (id: string) => void
   supportedDialects?: Record<string, { id: string; label: string }>
+  languageMode?: 'mandarin' | 'dialect'
+  onLanguageModeChange?: (mode: 'mandarin' | 'dialect') => void
+  hasNativeVoice?: boolean
 }) {
   const { themeId, changeTheme } = useTheme()
   const internalPersona = useVoicePersona()
   // 优先使用外部传入的 persona 状态（与 ChatRoom TTS 共享同一份 state）
   const personaId = externalPersonaId ?? internalPersona.personaId
   const changePersona = onPersonaChange ?? internalPersona.changePersona
-  // 方言：优先外部 props（ChatRoom 传入），否则用内部 hook（EmotionSelect 等场景）
-  const effDialectEnabled = onToggleDialect ? dialectEnabled : internalPersona.dialectEnabled
-  const effToggleDialect = onToggleDialect ?? internalPersona.toggleDialect
-  const effSelectedDialect = onToggleDialect ? selectedDialect : internalPersona.selectedDialect
+  // 方言：优先外部 props（ChatRoom 传入），否则用内部 hook
+  const effSelectedDialect = onDialectChange ? selectedDialect : internalPersona.selectedDialect
   const effDialectChange = onDialectChange ?? internalPersona.changeDialect
   const effSupportedDialects = supportedDialects ?? internalPersona.supportedDialects
+  const effLanguageMode = onLanguageModeChange ? (languageMode || 'mandarin') : internalPersona.languageMode
+  const effLanguageModeChange = onLanguageModeChange ?? internalPersona.changeLanguageMode
+  const effHasNativeVoice = onLanguageModeChange ? (hasNativeVoice ?? false) : internalPersona.hasNativeVoice
+  // 方言是否启用：仅当选中“方言”音色（qiqiu）时
+  const dialectActive = personaId === 'qiqiu'
   const [familyCode, setFamilyCode] = useState<string>((getUser()?.familyCode as string) || '')
   const [copied, setCopied] = useState(false)
   const [hasVoiceprint, setHasVoiceprint] = useState(false)
@@ -146,78 +150,97 @@ export default function SettingsPanel({ open, onClose, muted, onToggleMute, wake
           </div>
         </section>
 
-        {/* 音色选择（design/56：4+3 布局） */}
+        {/* 音色选择（design/56：4+3 布局，“方言”特殊样式） */}
         <section className="mb-6">
           <h3 className="mb-3 text-sm font-semibold text-gray-500">🎵 选择声音</h3>
           <div className="grid grid-cols-4 gap-2.5">
-            {Object.values(VOICE_PERSONAS).map((p) => (
-              <button
-                key={p.id}
-                onClick={() => changePersona(p.id)}
-                className={`flex flex-col items-center gap-1 rounded-2xl border-2 p-2.5 transition-all active:scale-95 ${
-                  personaId === p.id
-                    ? 'border-[var(--primary)] bg-[var(--primary-light)] shadow-md'
-                    : 'border-gray-100 bg-gray-50'
-                }`}
-              >
-                <span className="text-2xl">{p.emoji}</span>
-                <span className="text-[11px] font-medium text-gray-700">{p.name}</span>
-                <span className="text-[9px] text-gray-400 leading-tight">{p.desc}</span>
-              </button>
-            ))}
+            {Object.values(VOICE_PERSONAS).map((p) => {
+              const isDialectPersona = p.id === 'qiqiu'
+              const isSelected = personaId === p.id
+              return (
+                <button
+                  key={p.id}
+                  onClick={() => changePersona(p.id)}
+                  className={`flex flex-col items-center gap-1 rounded-2xl border-2 p-2.5 transition-all active:scale-95 ${
+                    isSelected
+                      ? isDialectPersona
+                        ? 'border-amber-400 bg-amber-50 shadow-md ring-2 ring-amber-200'
+                        : 'border-[var(--primary)] bg-[var(--primary-light)] shadow-md'
+                      : isDialectPersona
+                        ? 'border-amber-200 bg-gradient-to-b from-amber-50 to-orange-50'
+                        : 'border-gray-100 bg-gray-50'
+                  }`}
+                >
+                  <span className="text-2xl">{p.emoji}</span>
+                  <span className={`text-[11px] font-bold ${
+                    isDialectPersona
+                      ? 'bg-gradient-to-r from-amber-600 to-orange-500 bg-clip-text text-transparent'
+                      : 'font-medium text-gray-700'
+                  }`}>{p.name}</span>
+                  <span className={`text-[9px] leading-tight ${
+                    isDialectPersona ? 'text-amber-500' : 'text-gray-400'
+                  }`}>{p.desc}</span>
+                </button>
+              )
+            })}
           </div>
         </section>
 
-        {/* 方言选择（design/56 §三：独立维度，所有音色均可叠加） */}
-        <section className="mb-6">
-            <h3 className="mb-3 text-sm font-semibold text-gray-500">🏠 用家乡话聊天</h3>
-            {/* 方言开关 */}
-            <button
-              onClick={() => effToggleDialect(!effDialectEnabled)}
-              className={`flex w-full items-center justify-between rounded-2xl border-2 p-4 transition-all active:scale-[0.98] ${
-                effDialectEnabled
-                  ? 'border-[var(--primary)] bg-[var(--primary-light)]'
-                  : 'border-gray-100 bg-gray-50'
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                <span className="text-2xl">{effDialectEnabled ? '🗣️' : '💬'}</span>
-                <div className="text-left">
-                  <p className="text-sm font-medium text-gray-700">
-                    {effDialectEnabled ? '方言已开启' : '方言已关闭'}
-                  </p>
-                  <p className="text-xs text-gray-400">
-                    {effDialectEnabled ? '波波会用家乡话和你说话' : '开启后可以用方言聊天'}
-                  </p>
-                </div>
-              </div>
-              <div className={`h-7 w-12 rounded-full p-1 transition-colors ${
-                effDialectEnabled ? 'bg-[var(--primary)]' : 'bg-gray-300'
-              }`}>
-                <div className={`h-5 w-5 rounded-full bg-white shadow transition-transform ${
-                  effDialectEnabled ? 'translate-x-5' : 'translate-x-0'
-                }`} />
-              </div>
-            </button>
-            {/* 方言类型选择（开启后展开） */}
-            {effDialectEnabled && effSupportedDialects && (
-              <div className="mt-3 grid grid-cols-4 gap-2">
-                {Object.values(effSupportedDialects).map((d) => (
+        {/* 方言选择（仅“方言”音色选中时显示） */}
+        {dialectActive && (
+          <section className="mb-6">
+            <h3 className="mb-3 text-sm font-semibold text-amber-600">🏠 选择方言</h3>
+            {/* 方言类型选择（直接展示，无需开关） */}
+            <div className="grid grid-cols-4 gap-2">
+              {Object.values(effSupportedDialects).map((d) => {
+                const isNative = NATIVE_DIALECT_IDS.includes(d.id)
+                return (
                   <button
                     key={d.id}
                     onClick={() => effDialectChange(d.id)}
                     className={`rounded-xl border-2 px-2 py-2 text-xs font-medium transition-all active:scale-95 ${
                       effSelectedDialect === d.id
-                        ? 'border-[var(--primary)] bg-[var(--primary-light)] text-[var(--primary)]'
+                        ? 'border-amber-400 bg-amber-50 text-amber-700'
                         : 'border-gray-100 bg-gray-50 text-gray-600'
                     }`}
                   >
                     {d.label}
+                    {isNative && <span className="ml-0.5 text-[8px] text-amber-400">★</span>}
                   </button>
-                ))}
+                )
+              })}
+            </div>
+            {/* 原生方言音色模式切换（仅粤语/东北话/陕西话） */}
+            {effHasNativeVoice && (
+              <div className="mt-3 flex items-center gap-2 rounded-2xl border-2 border-amber-100 bg-amber-50/50 p-3">
+                <span className="text-sm text-gray-500">说话方式：</span>
+                <button
+                  onClick={() => effLanguageModeChange('mandarin')}
+                  className={`rounded-lg px-3 py-1.5 text-xs font-bold transition-all ${
+                    effLanguageMode === 'mandarin'
+                      ? 'bg-[var(--primary)] text-white shadow-sm'
+                      : 'bg-white text-gray-500 border border-gray-200'
+                  }`}
+                >
+                  普通话
+                </button>
+                <button
+                  onClick={() => effLanguageModeChange('dialect')}
+                  className={`rounded-lg px-3 py-1.5 text-xs font-bold transition-all ${
+                    effLanguageMode === 'dialect'
+                      ? 'bg-amber-500 text-white shadow-sm'
+                      : 'bg-white text-gray-500 border border-gray-200'
+                  }`}
+                >
+                  方言音色
+                </button>
+                <span className="ml-auto text-[9px] text-gray-400">
+                  {effLanguageMode === 'dialect' ? '用当地人的声音说' : '用方言腔调说普通话'}
+                </span>
               </div>
             )}
           </section>
+        )}
 
         {/* 语音开关 */}
         <section className="mb-4">

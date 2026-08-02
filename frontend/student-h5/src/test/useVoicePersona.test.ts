@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
-import { useVoicePersona, VOICE_PERSONAS, SUPPORTED_DIALECTS } from '../hooks/useVoicePersona'
+import { useVoicePersona, VOICE_PERSONAS, SUPPORTED_DIALECTS, NATIVE_DIALECT_IDS } from '../hooks/useVoicePersona'
 
 // mock api.getUser
 vi.mock('../api', () => ({
@@ -24,7 +24,7 @@ describe('hooks/useVoicePersona', () => {
       )
     })
 
-    it('每个音色包含 id/name/emoji/desc/detail/gender', () => {
+    it('每个音色包含 id/name/emoji/desc/detail/gender/dialectCapable', () => {
       for (const p of Object.values(VOICE_PERSONAS)) {
         expect(p).toHaveProperty('id')
         expect(p).toHaveProperty('name')
@@ -32,6 +32,7 @@ describe('hooks/useVoicePersona', () => {
         expect(p).toHaveProperty('desc')
         expect(p).toHaveProperty('detail')
         expect(p).toHaveProperty('gender')
+        expect(p).toHaveProperty('dialectCapable')
       }
     })
 
@@ -42,10 +43,18 @@ describe('hooks/useVoicePersona', () => {
       expect(males).toHaveLength(3) // xiaotaiyang, dashu, doudou
     })
 
-    it('方言为独立维度，无 dialectCapable 字段', () => {
+    it('仅 qiqiu 拥有 dialectCapable=true', () => {
       for (const p of Object.values(VOICE_PERSONAS)) {
-        expect(p).not.toHaveProperty('dialectCapable')
+        if (p.id === 'qiqiu') {
+          expect(p.dialectCapable).toBe(true)
+        } else {
+          expect(p.dialectCapable).toBe(false)
+        }
       }
+    })
+
+    it('qiqiu 名称为“方言”', () => {
+      expect(VOICE_PERSONAS.qiqiu.name).toBe('方言')
     })
   })
 
@@ -94,7 +103,7 @@ describe('hooks/useVoicePersona', () => {
       const { result } = renderHook(() => useVoicePersona())
       act(() => { result.current.changePersona('qiqiu') })
       expect(result.current.personaId).toBe('qiqiu')
-      expect(result.current.persona.name).toBe('气球')
+      expect(result.current.persona.name).toBe('方言')
       expect(localStorage.getItem('mindsafe_voice_persona_v1')).toBe('qiqiu')
     })
 
@@ -104,19 +113,24 @@ describe('hooks/useVoicePersona', () => {
       expect(result.current.personaId).toBe('xiaoxing')
     })
 
-    it('切换音色不影响方言开关状态', () => {
+    it('切换到 qiqiu → 方言自动启用', () => {
+      const { result } = renderHook(() => useVoicePersona())
+      expect(result.current.dialectEnabled).toBe(false)
+      act(() => { result.current.changePersona('qiqiu') })
+      expect(result.current.dialectEnabled).toBe(true)
+    })
+
+    it('切换离开 qiqiu → 方言自动禁用', () => {
       localStorage.setItem('mindsafe_voice_persona_v1', 'qiqiu')
-      localStorage.setItem('mindsafe_dialect_enabled_v1', 'true')
       const { result } = renderHook(() => useVoicePersona())
       expect(result.current.dialectEnabled).toBe(true)
       act(() => { result.current.changePersona('xiaoxing') })
-      // 方言为独立维度，切换音色不自动关闭
-      expect(result.current.dialectEnabled).toBe(true)
+      expect(result.current.dialectEnabled).toBe(false)
     })
   })
 
-  describe('方言状态管理（design/56 §三）', () => {
-    it('默认方言关闭', () => {
+  describe('方言状态管理（design/56 §三：条件启用）', () => {
+    it('默认非 qiqiu 音色，方言禁用', () => {
       const { result } = renderHook(() => useVoicePersona())
       expect(result.current.dialectEnabled).toBe(false)
       expect(result.current.activeDialect).toBeNull()
@@ -128,24 +142,23 @@ describe('hooks/useVoicePersona', () => {
       expect(result.current.selectedDialect).toBe('sichuan')
     })
 
-    it('开启方言 + 任意音色 → activeDialect 生效', () => {
+    it('qiqiu 音色 + 有 dialect → activeDialect 生效', () => {
       mockGetUser.mockReturnValue({ userId: '1', gender: 'female', dialect: 'cantonese' } as any)
+      localStorage.setItem('mindsafe_voice_persona_v1', 'qiqiu')
       const { result } = renderHook(() => useVoicePersona())
-      act(() => { result.current.toggleDialect(true) })
-      // 默认音色 xiaoxing，方言独立维度，应生效
       expect(result.current.activeDialect).toBe('cantonese')
     })
 
-    it('关闭方言 → activeDialect 为 null', () => {
+    it('非 qiqiu 音色 → activeDialect 为 null（即使有 selectedDialect）', () => {
       mockGetUser.mockReturnValue({ userId: '1', gender: 'female', dialect: 'sichuan' } as any)
       const { result } = renderHook(() => useVoicePersona())
-      // 方言默认关闭
+      expect(result.current.selectedDialect).toBe('sichuan')
       expect(result.current.activeDialect).toBeNull()
     })
 
     it('切换方言类型', () => {
+      localStorage.setItem('mindsafe_voice_persona_v1', 'qiqiu')
       const { result } = renderHook(() => useVoicePersona())
-      act(() => { result.current.toggleDialect(true) })
       act(() => { result.current.changeDialect('henan') })
       expect(result.current.selectedDialect).toBe('henan')
       expect(result.current.activeDialect).toBe('henan')
@@ -155,6 +168,49 @@ describe('hooks/useVoicePersona', () => {
       const { result } = renderHook(() => useVoicePersona())
       act(() => { result.current.changeDialect('invalid') })
       expect(result.current.selectedDialect).toBeNull()
+    })
+  })
+
+  describe('原生方言音色 + 语言模式', () => {
+    it('NATIVE_DIALECT_IDS 包含粤语/东北话/陕西话', () => {
+      expect(NATIVE_DIALECT_IDS).toEqual(['cantonese', 'northeastern', 'shaanxi'])
+    })
+
+    it('默认语言模式为 mandarin', () => {
+      const { result } = renderHook(() => useVoicePersona())
+      expect(result.current.languageMode).toBe('mandarin')
+    })
+
+    it('原生方言 → hasNativeVoice=true', () => {
+      localStorage.setItem('mindsafe_voice_persona_v1', 'qiqiu')
+      localStorage.setItem('mindsafe_dialect_v1', 'cantonese')
+      const { result } = renderHook(() => useVoicePersona())
+      expect(result.current.hasNativeVoice).toBe(true)
+    })
+
+    it('非原生方言 → hasNativeVoice=false', () => {
+      localStorage.setItem('mindsafe_voice_persona_v1', 'qiqiu')
+      localStorage.setItem('mindsafe_dialect_v1', 'sichuan')
+      const { result } = renderHook(() => useVoicePersona())
+      expect(result.current.hasNativeVoice).toBe(false)
+    })
+
+    it('切换语言模式并持久化', () => {
+      localStorage.setItem('mindsafe_voice_persona_v1', 'qiqiu')
+      localStorage.setItem('mindsafe_dialect_v1', 'cantonese')
+      const { result } = renderHook(() => useVoicePersona())
+      act(() => { result.current.changeLanguageMode('dialect') })
+      expect(result.current.languageMode).toBe('dialect')
+      expect(localStorage.getItem('mindsafe_language_mode_v1')).toBe('dialect')
+    })
+
+    it('切换到非原生方言 → 语言模式自动重置为 mandarin', () => {
+      localStorage.setItem('mindsafe_voice_persona_v1', 'qiqiu')
+      localStorage.setItem('mindsafe_dialect_v1', 'cantonese')
+      localStorage.setItem('mindsafe_language_mode_v1', 'dialect')
+      const { result } = renderHook(() => useVoicePersona())
+      act(() => { result.current.changeDialect('sichuan') })
+      expect(result.current.languageMode).toBe('mandarin')
     })
   })
 

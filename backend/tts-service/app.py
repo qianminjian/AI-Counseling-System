@@ -80,7 +80,8 @@ except ImportError:
 # ===== 音色人设配置（7 音色差异化矩阵，见 design/56） =====
 # dashscope_voice: 阿里云 CosyVoice 音色名（cosyvoice-v3-flash 音色列表）
 # edge_voice: edge-tts 备用音色
-# 方言为独立维度，所有音色均可叠加方言 Instruct（非 _v3 音色不支持时静默忽略）
+# dialect_capable: 支持方言 Instruct（仅 longanhuan_v3）
+# emotion_capable: 支持情感 Instruct（仅 longanyang）
 
 VOICE_PERSONAS = {
     "xiaoxing": {
@@ -89,6 +90,8 @@ VOICE_PERSONAS = {
         "speed": 1.0,
         "dashscope_voice": "longxing_v3",
         "edge_voice": "zh-CN-XiaoxiaoNeural",
+        "dialect_capable": False,
+        "emotion_capable": False,
     },
     "bobo": {
         "name": "波波老师",
@@ -96,6 +99,8 @@ VOICE_PERSONAS = {
         "speed": 0.95,
         "dashscope_voice": "longyingling_v3",
         "edge_voice": "zh-CN-XiaoxiaoNeural",
+        "dialect_capable": False,
+        "emotion_capable": False,
     },
     "yueliang": {
         "name": "月亮",
@@ -103,6 +108,8 @@ VOICE_PERSONAS = {
         "speed": 0.92,
         "dashscope_voice": "longwan_v3",
         "edge_voice": "zh-CN-XiaohanNeural",
+        "dialect_capable": False,
+        "emotion_capable": False,
     },
     "xiaotaiyang": {
         "name": "小太阳",
@@ -110,6 +117,8 @@ VOICE_PERSONAS = {
         "speed": 1.05,
         "dashscope_voice": "longanyang",
         "edge_voice": "zh-CN-YunxiNeural",
+        "dialect_capable": False,
+        "emotion_capable": True,
     },
     "dashu": {
         "name": "大树",
@@ -117,6 +126,8 @@ VOICE_PERSONAS = {
         "speed": 0.95,
         "dashscope_voice": "longanyun_v3",
         "edge_voice": "zh-CN-YunyangNeural",
+        "dialect_capable": False,
+        "emotion_capable": False,
     },
     "doudou": {
         "name": "豆豆",
@@ -124,13 +135,17 @@ VOICE_PERSONAS = {
         "speed": 1.05,
         "dashscope_voice": "longjielidou_v3",
         "edge_voice": "zh-CN-YunxiaNeural",
+        "dialect_capable": False,
+        "emotion_capable": False,
     },
     "qiqiu": {
-        "name": "气球",
-        "desc": "元气伙伴",
+        "name": "方言",
+        "desc": "方言伙伴",
         "speed": 1.05,
         "dashscope_voice": "longanhuan_v3",
         "edge_voice": "zh-CN-XiaoyiNeural",
+        "dialect_capable": True,
+        "emotion_capable": False,
     },
 }
 
@@ -147,18 +162,68 @@ SUPPORTED_DIALECTS = {
     "anhui":        {"label": "安徽话", "instruct": "请用安徽话表达。", "edge_voice": None},
 }
 
+# ===== 原生方言音色（不需要 instruction，天生说方言） =====
+# 性别匹配：female 优先女声，male 优先男声
 
-def build_dialect_instruct(persona: str, dialect: Optional[str]) -> Optional[str]:
+NATIVE_DIALECT_VOICES = {
+    "cantonese": {"female": "longjiayi_v3", "male": "longanyue_v3"},
+    "northeastern": {"male": "longlaotie_v3"},
+    "shaanxi": {"male": "longshange_v3"},
+}
+
+# ===== 情感 Instruct 映射（仅 longanyang / 小太阳支持） =====
+# 格式严格遵循官方文档："你正在进行闲聊互动，你说话的情感是<情感值>。"
+
+EMOTION_INSTRUCT_MAP = {
+    "neutral": "你正在进行闲聊互动，你说话的情感是neutral。",
+    "happy": "你正在进行闲聊互动，你说话的情感是happy。",
+    "sad": "你正在进行闲聊互动，你说话的情感是sad。",
+    "angry": "你正在进行闲聊互动，你说话的情感是angry。",
+    "fearful": "你正在进行闲聊互动，你说话的情感是fearful。",
+    "surprised": "你正在进行闲聊互动，你说话的情感是surprised。",
+    "disgusted": "你正在进行闲聊互动，你说话的情感是disgusted。",
+    # 非标准情感值回退到 neutral
+    "calm": "你正在进行闲聊互动，你说话的情感是neutral。",
+    "anxious": "你正在进行闲聊互动，你说话的情感是fearful。",
+    "excited": "你正在进行闲聊互动，你说话的情感是happy。",
+}
+
+
+def build_instruction(persona_cfg: dict, dialect: Optional[str], emotion: str,
+                      language_mode: str = "mandarin", persona_gender: str = "female") -> tuple[Optional[str], Optional[str]]:
     """
-    构建方言 Instruct 指令。
-    方言为独立维度，所有音色均可叠加；非 _v3 音色不支持时 CosyVoice 静默忽略。
+    构建 Instruct 指令 + 实际使用的 voice。
+    返回 (instruction, override_voice)：
+    - instruction: 传给 CosyVoice 的指令（None = 不传）
+    - override_voice: 覆盖 persona 默认音色（原生方言音色，None = 用默认）
+
+    规则：
+    1. 方言 Instruct：仅 dialect_capable 音色（qiqiu/longanhuan_v3）
+    2. 情感 Instruct：仅 emotion_capable 音色（xiaotaiyang/longanyang）
+    3. 原生方言音色：language_mode=="dialect" 且有对应原生音色时，直接替换 voice
     """
-    if not dialect:
-        return None
-    dialect_info = SUPPORTED_DIALECTS.get(dialect)
-    if not dialect_info:
-        return None
-    return dialect_info["instruct"]
+    instruction = None
+    override_voice = None
+
+    # 原生方言音色优先（language_mode == "dialect" 时直接使用原生音色，无需 instruction）
+    if language_mode == "dialect" and dialect:
+        native_voices = NATIVE_DIALECT_VOICES.get(dialect)
+        if native_voices:
+            # 性别匹配
+            override_voice = native_voices.get(persona_gender) or next(iter(native_voices.values()))
+            return None, override_voice
+
+    # 方言 Instruct（仅 dialect_capable 音色）
+    if dialect and persona_cfg.get("dialect_capable"):
+        dialect_info = SUPPORTED_DIALECTS.get(dialect)
+        if dialect_info:
+            instruction = dialect_info["instruct"]
+
+    # 情感 Instruct（仅 emotion_capable 音色，方言和情感互斥——方言优先）
+    if not instruction and persona_cfg.get("emotion_capable") and emotion:
+        instruction = EMOTION_INSTRUCT_MAP.get(emotion, EMOTION_INSTRUCT_MAP["neutral"])
+
+    return instruction, None
 
 
 # ===== 数据模型 =====
@@ -170,7 +235,8 @@ class TtsRequest(BaseModel):
     speed: float = 1.0                  # 语速倍率（年龄适配）
     pitch: float = 1.0                  # 音高基调（TMATCH-001 prosody，<1 更低沉安抚）
     pause_style: int = 1                # 停顿风格（0=轻快 1=自然 2=多停顿安抚）
-    dialect: Optional[str] = None       # 方言代码（可选，所有音色均可叠加）
+    dialect: Optional[str] = None       # 方言代码（可选，仅方言音色 qiqiu 生效）
+    language_mode: str = "mandarin"     # 语言模式：mandarin=普通话, dialect=原生方言音色
 
 
 class TtsInfoResponse(BaseModel):
@@ -220,24 +286,30 @@ async def synthesize(req: TtsRequest):
     persona_cfg = VOICE_PERSONAS.get(req.persona, VOICE_PERSONAS["xiaoxing"])
     final_speed = persona_cfg["speed"] * req.speed
 
-    # 方言 Instruct 构建（独立维度，所有音色均可叠加）
-    dialect_instruct = build_dialect_instruct(req.persona, req.dialect)
+    # 构建 Instruct 指令 + 原生方言音色覆盖
+    instruction, override_voice = build_instruction(
+        persona_cfg, req.dialect, req.emotion,
+        language_mode=req.language_mode,
+        persona_gender="female",  # qiqiu（方言载体）为女声
+    )
+    actual_voice = override_voice or persona_cfg["dashscope_voice"]
 
     logger.info(f"TTS 合成: text_len={len(req.text)}, persona={req.persona}, "
-                f"emotion={req.emotion}, speed={final_speed:.2f}, dialect={req.dialect}")
+                f"emotion={req.emotion}, speed={final_speed:.2f}, dialect={req.dialect}, "
+                f"language_mode={req.language_mode}, voice={actual_voice}, instruction={instruction}")
 
     # Level 1：阿里云 CosyVoice
     if CLOUD_TTS_AVAILABLE:
         try:
-            return await _synthesize_dashscope(req.text, persona_cfg["dashscope_voice"], final_speed, dialect_instruct)
+            return await _synthesize_dashscope(req.text, actual_voice, final_speed, instruction)
         except Exception as e:
-            if dialect_instruct:
-                # 方言 Instruct 不被该音色支持（428）→ 用同音色普通话重试（保留音色品质）
-                logger.warning(f"CosyVoice 方言指令失败，同音色普通话重试: voice={persona_cfg['dashscope_voice']}, dialect={req.dialect}")
+            if instruction:
+                # Instruct 失败 → 无指令重试（保留音色品质）
+                logger.warning(f"CosyVoice Instruct 失败，无指令重试: voice={actual_voice}, instruction={instruction}")
                 try:
-                    return await _synthesize_dashscope(req.text, persona_cfg["dashscope_voice"], final_speed, None)
+                    return await _synthesize_dashscope(req.text, actual_voice, final_speed, None)
                 except Exception as e2:
-                    logger.warning(f"CosyVoice 普通话重试也失败，降级 edge-tts: {e2}")
+                    logger.warning(f"CosyVoice 无指令重试也失败，降级 edge-tts: {e2}")
             else:
                 logger.warning(f"阿里云 CosyVoice 失败，降级 edge-tts: {e}")
 
@@ -246,7 +318,7 @@ async def synthesize(req: TtsRequest):
         try:
             edge_voice = persona_cfg["edge_voice"]
             # 方言降级：检查是否有对应 edge-tts 方言音色
-            if dialect_instruct and req.dialect:
+            if req.dialect:
                 dialect_info = SUPPORTED_DIALECTS.get(req.dialect)
                 if dialect_info and dialect_info.get("edge_voice"):
                     edge_voice = dialect_info["edge_voice"]

@@ -40,17 +40,18 @@ public class TtsService {
     /**
      * 合成语音（返回音频二进制）
      *
-     * @param text       要合成的文本
-     * @param persona    音色人设（xiaoxing/bobo/yueliang/xiaotaiyang/dashu/doudou/qiqiu）
-     * @param emotion    孩子当前情绪
-     * @param speed      语速倍率
-     * @param pitch      音高基调（TMATCH-001 prosody，1.0=自然）
-     * @param pauseStyle 停顿风格（0=轻快 1=自然 2=多停顿安抚）
-     * @param dialect    方言代码（可为 null，仅 dialect_capable 音色生效，design/56）
+     * @param text         要合成的文本
+     * @param persona      音色人设（xiaoxing/bobo/yueliang/xiaotaiyang/dashu/doudou/qiqiu）
+     * @param emotion      孩子当前情绪
+     * @param speed        语速倍率
+     * @param pitch        音高基调（TMATCH-001 prosody，1.0=自然）
+     * @param pauseStyle   停顿风格（0=轻快 1=自然 2=多停顿安抚）
+     * @param dialect      方言代码（可为 null，仅方言音色 qiqiu 生效，design/56）
+     * @param languageMode 语言模式（mandarin=普通话, dialect=原生方言音色）
      * @return 音频字节数组（wav/mp3）
      */
     public byte[] synthesize(String text, String persona, String emotion, double speed,
-                             double pitch, int pauseStyle, String dialect) {
+                             double pitch, int pauseStyle, String dialect, String languageMode) {
         try {
             var bodyBuilder = new java.util.HashMap<String, Object>();
             bodyBuilder.put("text", text);
@@ -61,6 +62,9 @@ public class TtsService {
             bodyBuilder.put("pause_style", pauseStyle);
             if (dialect != null && !dialect.isBlank()) {
                 bodyBuilder.put("dialect", dialect);
+            }
+            if (languageMode != null && !languageMode.isBlank() && !"mandarin".equals(languageMode)) {
+                bodyBuilder.put("language_mode", languageMode);
             }
             Map<String, Object> body = bodyBuilder;
 
