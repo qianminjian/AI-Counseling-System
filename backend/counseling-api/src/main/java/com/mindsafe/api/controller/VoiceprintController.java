@@ -13,6 +13,7 @@ import com.mindsafe.domain.entity.User;
 import com.mindsafe.domain.entity.VoiceprintEmbedding;
 import com.mindsafe.domain.mapper.UserMapper;
 import com.mindsafe.domain.mapper.VoiceprintEmbeddingMapper;
+import com.mindsafe.common.tenant.TenantContextHolder;
 import com.mindsafe.service.audit.AuditLogService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotEmpty;
@@ -125,6 +126,12 @@ public class VoiceprintController {
             throw new BizException(ErrorCode.PARAM_INVALID, "embedding 不能为空");
         }
 
+        // 声纹验证是公开端点（permitAll），无 JWT → 无租户上下文
+        // 跨用户 1:N 比对需系统作用域（M1-003）
+        return TenantContextHolder.callAsSystem(() -> doVerify(inputEmbeddings));
+    }
+
+    private ApiResponse<Map<String, Object>> doVerify(List<List<Double>> inputEmbeddings) {
         // 查询所有已注册声纹（跨用户 1:N 比对）
         List<VoiceprintEmbedding> allRecords = embeddingMapper.selectList(
                 new LambdaQueryWrapper<VoiceprintEmbedding>());
