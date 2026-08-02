@@ -129,6 +129,7 @@ public class TtsController {
         String emotion = (String) request.getOrDefault("emotion", "neutral");
         String scene = (String) request.getOrDefault("scene", "chat");
         String riskLevel = (String) request.get("riskLevel");
+        String dialect = (String) request.get("dialect");
         double speed = request.containsKey("speed")
                 ? ((Number) request.get("speed")).doubleValue() : 1.0;
 
@@ -152,7 +153,7 @@ public class TtsController {
 
         UUID userId = auth != null && auth.getPrincipal() instanceof UUID id ? id : null;
         UUID tenantId = auth != null && auth.getDetails() instanceof TenantContext ctx ? ctx.tenantId() : null;
-        VoiceRenderProfile profile = personaResolver.resolve(tenantId, userId, persona, emotion, scene);
+        VoiceRenderProfile profile = personaResolver.resolve(tenantId, userId, persona, emotion, scene, dialect);
 
         Flux<byte[]> audioStream = ttsService.synthesizeStream(
                 text, profile.persona(), profile.emotionInstruct(),
