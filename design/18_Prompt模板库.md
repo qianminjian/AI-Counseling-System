@@ -902,8 +902,8 @@ public final class CrisisResources {
 | SAF-002 | 🟩 | OutputReviewService 异步审查已生效（占位符以实际文件为准，见 §3 警示） |
 | LANG-001/002/003 | 🟫 | 年级分层规则已入模板常量，但按年级动态选择注入的链路未逐一验证 |
 | SKL-001/002/003 | ⬜ | SkillRouter 未实现，CBT/SEL/PFA 技能路由不在主链路（归 ORCH-003/CBT-201） |
-| TSK-001 教师摘要 | 🟫 | 模板存在，但会话级异步评估（evaluateSessionAsync）零调用，摘要生成未接通（归 WIRE 系列） |
-| TSK-002 RAG 改写 | ⬜ | RAG 未接主链路（知识库零调用，见 15 §12），改写无调用方（归 AI-006） |
+| TSK-001 教师摘要 | 🟩 | 模板存在；~~evaluateSessionAsync 零调用~~ → **PEVAL-001 已接线**（MessageSummaryService L83 触发 evaluateSessionAsync → 摘要生成已接通） |
+| TSK-002 RAG 改写 | 🟩 | ~~RAG 未接主链路~~ → **KB-101 已落地**：RagAdvisorService.buildRagContext 接入 chat 主线（ConversationServiceImpl L418），年级过滤+场景触发已生效 |
 | TSK-003 会话收束 | 🟫 | 收束逻辑存在，是否使用本模板生成未逐一核对 |
 | TSK-004 主动暖场 | 🟩 | NudgeDecisionModel + sendNudgeStream 已生效（design/28） |
 | §13 安全回复模板/危机常量 | 🟩 | 硬编码固化，不经 LLM（与 04/14 铁律一致） |

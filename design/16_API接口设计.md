@@ -1038,7 +1038,7 @@ public record RecommendedActions(
 | 租户/用户管理 | §5.1-5.2 | 🟫 | platform/* 平台管理端点已实现（新增形态），与本文 admin/* 命名不一致，以实现为准 |
 | 知识库审核工作流 | §5.3 | ⬜ | KnowledgeController 仅 documents/search；submit-review/approve/reject 无状态字段支撑，归 49/KB 系列（呼应 15 §12.1 审核铁律） |
 | 审计日志/系统配置 | §5.4-5.5 | ⬜ | 未核对到实现 |
-| 内部 AI 服务 API | §6 | ⬜ | 编排实际在 ConversationServiceImpl 进程内完成，未拆独立内部 API；§6 保留为世界B目标态，归 ORCH 系列 |
+| 内部 AI 服务 API | §6 | ⬜ | 编排实际在 ConversationServiceImpl 进程内完成，未拆独立内部 API；~~§6 保留为世界B目标态~~ → 世界B 已删除（DEC-CBT 2026-07-29），§6 作为远期微服务拆分参考保留，归 ORCH 系列 |
 | WebSocket 推送 | §7 | 🟫 | alert.new 已生效（useAlertWebSocket + 15s 轮询兜底）；sla_warning/escalated/appointment.reminder/session.risk_change ⬜ |
 
 ### 12.2 契约基线修正（以实现为准，前后端对齐依据）
@@ -1056,7 +1056,7 @@ public record RecommendedActions(
 | 工具箱 | 工具清单/使用记录/情绪前后对比（与 §3.4 放松练习契约合并，避免两套记录模型） | TOOL-001/002 |
 | 画像元数据 | 教师侧画像字段附 provenance/confidence 元数据（呼应 23/46） | PROF-020/021 |
 | 记忆管理 | 学生长期记忆查看/删除（撤回同意联动清除） | 归 46 画像闭环，暂缓独立端点（YAGNI） |
-| 编排内部 API | §6 三端点保留为世界B目标态；MVP 不拆分进程 | ORCH-001/002 前置决策 |
+| 编排内部 API | §6 三端点作为远期微服务拆分参考保留（~~世界B 目标态~~ → 世界B 已删除）；MVP 不拆分进程 | ORCH-001/002 前置决策 |
 
 ### 12.4 WebSocket 广播深化
 
@@ -1072,5 +1072,5 @@ public record RecommendedActions(
 | 测评端点契约细化 | SCALE-001/002 | P1（开发）/门禁待决策 |
 | 个案/预约/转派升级端点 | WB-003 | P2 |
 | 知识库审核工作流端点 | 49/KB 系列 | P1 |
-| 内部编排 API 拆分 | ORCH 系列（世界B） | 远期 |
+| 内部编排 API 拆分 | ORCH 系列（远期微服务参考，~~世界B~~ 已删除） | 远期 |
 | WS 跨实例广播 | STATE 系列 | 远期 |
