@@ -75,22 +75,21 @@
 - 用"心里堵堵的""像小石头压着""脑袋里的小声音"这样的比喻。
 - 避免"认知偏差""灾难化思维""自我效能"等专业词。
 
+# 当前对话情绪标签
+
+孩子选择的情绪是：{{emotion_tag}}
+请根据这个情绪调整你的语气和引导方向。
+
 # 学校流程
 
 {{school_policy}}
 
-# 授权状态
-
-{{consent_state}}
-
 # 会话模式
 
 {{session_mode}}
-
-# 近期风险趋势
-
-{{risk_history}}
 ```
+
+> ⚠️ **变量实现对齐（2026-07-28 反向审计修正）**：上方正文已与 classpath 实际文件（`counseling-app/src/main/resources/prompts/system/system_student_companion_zh-CN_v1.0.0.md`）逐字对齐。design/02 §3.2 定义的 `{{consent_state}}`（授权状态）与 `{{risk_history}}`（近 30 天风险趋势）为**设计预留变量，当前模板未包含、无数据源填充**；实际文件新增 `{{emotion_tag}}`（会话开场情绪标签，由 `ConversationServiceImpl` 注入）。
 
 ---
 
@@ -900,10 +899,11 @@ public final class CrisisResources {
 | SYS-001 | 🟩 | 基础 prompt 已生效（M1 内联于 AiChatServiceImpl，见 §14 实现状态注）；`{{school_policy}}/{{session_mode}}` 等变量注入完整度未逐一核对 |
 | SAF-001 | 🟩 | RiskDetectorServiceImpl 输入风险识别已生效（硬规则+LLM 双层，见 04 §十八） |
 | SAF-002 | 🟩 | OutputReviewService 异步审查已生效（占位符以实际文件为准，见 §3 警示） |
-| LANG-001/002/003 | 🟫 | 年级分层规则已入模板常量，但按年级动态选择注入的链路未逐一验证 |
+| LANG-001/002/003 | 🟩 | ~~按年级动态选择注入的链路未逐一验证~~ → **已核实生效**：`ConversationServiceImpl` L384 按 `effectiveGrade` 路由 LANG_001/002/003，经 `PromptVersionService.resolveRaw()`（DB 优先/A/B）加载并拼入 System Prompt |
 | SKL-001/002/003 | ⬜ | SkillRouter 未实现，CBT/SEL/PFA 技能路由不在主链路（归 ORCH-003/CBT-201） |
-| TSK-001 教师摘要 | 🟩 | 模板存在；~~evaluateSessionAsync 零调用~~ → **PEVAL-001 已接线**（MessageSummaryService L83 触发 evaluateSessionAsync → 摘要生成已接通） |
-| TSK-002 RAG 改写 | 🟩 | ~~RAG 未接主链路~~ → **KB-101 已落地**：RagAdvisorService.buildRagContext 接入 chat 主线（ConversationServiceImpl L418），年级过滤+场景触发已生效 |
+| TSK-001 教师摘要 | 🟩 | 模板存在且已接线：**PEVAL-001 已接线**（MessageSummaryService L83 触发 evaluateSessionAsync → 摘要生成已接通） |
+| TSK-002 RAG 接线（KB-101） | 🟩 | ~~RAG 未接主链路~~ → **KB-101 已落地**：RagAdvisorService.buildRagContext 接入 chat 主线（ConversationServiceImpl L418），场景触发+年级过滤+危机隔离已生效 |
+| TSK-002 查询改写模板 | 🟧 | 模板文件与常量映射存在，但**零调用**：`RagAdvisorService` 直接以学生原文检索，未经 LLM 查询改写（改写能力待接线，归 AI-006 后续） |
 | TSK-003 会话收束 | 🟫 | 收束逻辑存在，是否使用本模板生成未逐一核对 |
 | TSK-004 主动暖场 | 🟩 | NudgeDecisionModel + sendNudgeStream 已生效（design/28） |
 | §13 安全回复模板/危机常量 | 🟩 | 硬编码固化，不经 LLM（与 04/14 铁律一致） |
@@ -924,7 +924,7 @@ public final class CrisisResources {
 | 缺口 | 归口 | 优先级 |
 |------|------|:---:|
 | EMO-001 登记 + 模板矩阵对齐 | 45 承接（TTSFX-001 情绪链路衔接） | P1 |
-| 教师摘要接通（TSK-001） | WIRE 系列（evaluateSessionAsync 接线） | P1 |
-| RAG 改写接通（TSK-002） | AI-006（随 RAG 接主链路） | P1 |
+| ~~教师摘要接通（TSK-001）~~ | ✅ 已接通（PEVAL-001，本次审计确认） | — |
+| RAG 查询改写接通（TSK-002 模板本体） | AI-006 后续（接线已生效，改写能力未接） | P2 |
 | SKL 技能路由 | ORCH-003 / CBT-201 | P1 |
 | 红队用例自动化回归 | 45 红队护栏 | P1 |

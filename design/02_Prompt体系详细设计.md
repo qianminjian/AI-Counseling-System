@@ -109,6 +109,9 @@ L1 最高优先级行为契约，短、硬、稳定，通过版本管理发布�
 | `{{consent_state}}` | 监护/学校授权状态 | 未授权时限制长期记忆与报告生成 |
 | `{{session_mode}}` | 匿名/实名/测评/放松训练模式 | 匿名不等于绝对保密 |
 | `{{risk_history}}` | 近 30 天风险趋势摘要 | 仅输入摘要，不输入完整高敏原文 |
+| `{{emotion_tag}}` | 会话开场情绪标签（实现新增） | 由 `ConversationServiceImpl` 注入，影响语气与引导方向 |
+
+> ⚠️ **实现状态（2026-07-28 反向审计修正）**：上表为目标设计。实际模板（`system_student_companion_zh-CN_v1.0.0.md`）当前已注入 `{{grade_level}}/{{school_policy}}/{{session_mode}}/{{emotion_tag}}`；`{{consent_state}}` 与 `{{risk_history}}` 为**设计预留变量，模板未包含且无数据源填充**，待画像授权与风险趋势能力落地后接入（归 design/23/29 后续）。
 
 ### 3.3 禁止输出清单
 
