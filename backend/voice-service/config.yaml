@@ -1,0 +1,27 @@
+# MindSafe Voice Service 配置（CFG-007 配置外置）
+# 优先级：环境变量 > config.yaml > app.py 内置默认值
+# 注意：ASR_ENGINE / SER_ENABLED / DASHSCOPE_API_KEY 仍由环境变量控制（12-Factor）
+
+asr:
+  # FunASR 本地引擎模型（ASR_ENGINE=funasr 时使用）
+  funasr_model: "iic/SenseVoiceSmall"
+  # VAD 模型（语音活动检测）
+  vad_model: "fsmn-vad"
+  # DashScope 云端引擎模型（ASR_ENGINE=dashscope 时使用）
+  dashscope_model: "paraformer-realtime-v2"
+
+ser:
+  # 语音情感识别模型（SER_ENABLED=true 时加载）
+  model: "iic/emotion2vec_plus_large"
+
+# 9 类情绪标签映射 [英文, 中文]
+emotion_labels:
+  - ["angry", "愤怒"]
+  - ["disgusted", "厌恶"]
+  - ["fearful", "恐惧"]
+  - ["happy", "开心"]
+  - ["neutral", "中性"]
+  - ["other", "其他"]
+  - ["sad", "悲伤"]
+  - ["surprised", "惊讶"]
+  - ["unknown", "未知"]

@@ -35,8 +35,8 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 #   3. 通过 prepare-funasr.sh 脚本管理版本和更新
 # 挂载点：/root/.cache/modelscope（由 docker-compose volumes 配置）
 
-# 应用代码 + 启动脚本
-COPY app.py entrypoint.sh ./
+# 应用代码 + 配置 + 启动脚本
+COPY app.py config.py config.yaml entrypoint.sh ./
 RUN chmod +x entrypoint.sh
 
 EXPOSE 10095

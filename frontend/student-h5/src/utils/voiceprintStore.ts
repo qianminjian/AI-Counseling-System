@@ -18,6 +18,7 @@
  * - 用户可随时通过设置面板删除
  */
 import { VP_DB_NAME, VP_DB_VERSION, VP_STORE_NAME, VP_MAX_TEMPLATES } from '../config/voiceprint'
+import { getConfigValue } from '../config/remote'
 
 /** remote 模式声纹已录入标记（localStorage key） */
 const REMOTE_VP_ENROLLED_KEY = 'mindsafe_remote_vp_enrolled'
@@ -113,7 +114,7 @@ export async function enrollVoiceprint(userId: string, pseudonym: string, embedd
   const record = {
     userId,
     pseudonym,
-    embeddings: embeddings.slice(0, VP_MAX_TEMPLATES),
+    embeddings: embeddings.slice(0, getConfigValue('voiceprint.maxTemplates', VP_MAX_TEMPLATES)),
     sampleCount: embeddings.length,
     // 重录时保留旧凭证（仍有效），随后签发成功会覆盖
     ...(existing?.voiceCredential ? { voiceCredential: existing.voiceCredential } : {}),
@@ -165,7 +166,7 @@ export async function appendEmbedding(userId: string, embedding: number[]) {
     const db = await getDB()
     const embeddings = [...existing.embeddings, embedding]
     // 滑动窗口：保留最近 N 个
-    const trimmed = embeddings.slice(-VP_MAX_TEMPLATES)
+    const trimmed = embeddings.slice(-getConfigValue('voiceprint.maxTemplates', VP_MAX_TEMPLATES))
     const updated = {
       ...existing,
       embeddings: trimmed,

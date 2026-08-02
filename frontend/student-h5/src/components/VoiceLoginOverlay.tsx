@@ -11,6 +11,7 @@
  */
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { VP_GUIDE_SCRIPTS, VP_SAMPLE_RATE, VP_SEGMENT_DURATION, VP_SILENCE_THRESHOLD } from '../config/voiceprint'
+import { getConfigValue } from '../config/remote'
 import { useVoiceprint } from '../hooks/useVoiceprint'
 import { unlockAudio, getGlobalAudioElement } from '../utils/audioUnlock'
 import { createPcmCapture, type PcmCaptureHandle } from '../utils/createPcmCapture'
@@ -35,7 +36,7 @@ function getLoginPersona(): string {
  * @param {() => void} props.onCancel - 取消/返回
  */
 export default function VoiceLoginOverlay({ mode = 'verify', onComplete, onCancel }) {
-  const scripts = VP_GUIDE_SCRIPTS[mode] || VP_GUIDE_SCRIPTS.verify
+  const scripts = getConfigValue(`guideScripts.${mode}`, VP_GUIDE_SCRIPTS[mode] || VP_GUIDE_SCRIPTS.verify)
   const [phase, setPhase] = useState('intro') // intro | speaking | listening | processing | success | fail
   const [stepIndex, setStepIndex] = useState(0)
   const [volume, setVolume] = useState(0)

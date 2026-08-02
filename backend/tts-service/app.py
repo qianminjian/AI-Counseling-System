@@ -15,6 +15,7 @@ import threading
 from typing import Optional
 
 import httpx
+import yaml
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
@@ -47,10 +48,93 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ===== 配置加载（CFG-004：从 config.yaml 外置，回退内置默认值） =====
+
+# 内置默认配置（config.yaml 不存在时的 fallback）
+_DEFAULT_CONFIG = {
+    "model": {
+        "dashscope": "cosyvoice-v3-flash",
+        "edge_fallback": True,
+    },
+    "voice_personas": {
+        "xiaoxing": {"name": "小星", "desc": "温暖的邻家姐姐", "speed": 1.0, "dashscope_voice": "longxing_v3", "edge_voice": "zh-CN-XiaoxiaoNeural", "dialect_capable": False, "emotion_capable": False},
+        "bobo": {"name": "波波老师", "desc": "温柔的女老师", "speed": 0.95, "dashscope_voice": "longyingling_v3", "edge_voice": "zh-CN-XiaohanNeural", "dialect_capable": False, "emotion_capable": False},
+        "yueliang": {"name": "月亮", "desc": "轻声讲故事", "speed": 0.92, "dashscope_voice": "longwan_v3", "edge_voice": "zh-CN-XiaohanNeural", "dialect_capable": False, "emotion_capable": False},
+        "xiaotaiyang": {"name": "小太阳", "desc": "阳光大哥哥", "speed": 1.05, "dashscope_voice": "longanyang", "edge_voice": "zh-CN-YunxiNeural", "dialect_capable": False, "emotion_capable": True},
+        "dashu": {"name": "大树", "desc": "暖心大叔", "speed": 0.95, "dashscope_voice": "longanyun_v3", "edge_voice": "zh-CN-YunyangNeural", "dialect_capable": False, "emotion_capable": False},
+        "doudou": {"name": "豆豆", "desc": "同龄小伙伴", "speed": 1.05, "dashscope_voice": "longjielidou_v3", "edge_voice": "zh-CN-YunxiaNeural", "dialect_capable": False, "emotion_capable": False},
+        "qiqiu": {"name": "方言", "desc": "方言伙伴", "speed": 1.05, "dashscope_voice": "longanhuan_v3", "edge_voice": "zh-CN-XiaoyiNeural", "dialect_capable": True, "emotion_capable": False},
+    },
+    "dialects": {
+        "cantonese": {"label": "粤语", "mode": "native", "edge_voice": None},
+        "minnan": {"label": "闽南话", "mode": "native", "edge_voice": None},
+        "northeastern": {"label": "东北话", "mode": "instruct", "instruct": "请用东北话表达。", "edge_voice": "zh-CN-liaoning-XiaobeiNeural"},
+        "sichuan": {"label": "四川话", "mode": "instruct", "instruct": "请用四川话表达。", "edge_voice": None},
+        "henan": {"label": "河南话", "mode": "instruct", "instruct": "请用河南话表达。", "edge_voice": None},
+        "shandong": {"label": "山东话", "mode": "instruct", "instruct": "请用山东话表达。", "edge_voice": None},
+        "hunan": {"label": "湖南话", "mode": "instruct", "instruct": "请用湖南话表达。", "edge_voice": None},
+        "shaanxi": {"label": "陕西话", "mode": "instruct", "instruct": "请用陕西话表达。", "edge_voice": "zh-CN-shaanxi-XiaoniNeural"},
+    },
+    "native_dialect_voices": {
+        "cantonese": {"female": "longjiayi_v3", "male": "longanyue_v3"},
+        "minnan": {"male": "longanmin_v3"},
+    },
+    "emotion_instruct_map": {
+        "neutral": "你正在进行闲聊互动，你说话的情感是neutral。",
+        "happy": "你正在进行闲聊互动，你说话的情感是happy。",
+        "sad": "你正在进行闲聊互动，你说话的情感是sad。",
+        "angry": "你正在进行闲聊互动，你说话的情感是angry。",
+        "fearful": "你正在进行闲聊互动，你说话的情感是fearful。",
+        "surprised": "你正在进行闲聊互动，你说话的情感是surprised。",
+        "disgusted": "你正在进行闲聊互动，你说话的情感是disgusted。",
+        "calm": "你正在进行闲聊互动，你说话的情感是neutral。",
+        "anxious": "你正在进行闲聊互动，你说话的情感是fearful。",
+        "excited": "你正在进行闲聊互动，你说话的情感是happy。",
+    },
+}
+
+
+def load_config(config_path: str = None) -> dict:
+    """
+    加载 TTS 配置（CFG-004）
+    优先级：环境变量 > config.yaml > 内置默认值
+    """
+    import copy
+    config = copy.deepcopy(_DEFAULT_CONFIG)
+
+    # 尝试从 config.yaml 加载
+    if config_path is None:
+        config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.yaml")
+
+    if os.path.isfile(config_path):
+        try:
+            with open(config_path, "r", encoding="utf-8") as f:
+                file_cfg = yaml.safe_load(f) or {}
+            # 深度合并（文件值覆盖默认值）
+            for key, value in file_cfg.items():
+                if isinstance(value, dict) and key in config and isinstance(config[key], dict):
+                    config[key].update(value)
+                else:
+                    config[key] = value
+            logger.info("✅ 配置已从 %s 加载", config_path)
+        except Exception as e:
+            logger.warning("配置加载失败，使用内置默认值: %s", e)
+
+    # 环境变量覆盖（12-Factor：敏感/部署相关参数由环境变量注入）
+    env_model = os.environ.get("DASHSCOPE_TTS_MODEL")
+    if env_model:
+        config.setdefault("model", {})["dashscope"] = env_model
+
+    return config
+
+
+# 加载配置（模块级，启动时执行一次）
+_CONFIG = load_config()
+
 # ===== Level 1：阿里云百炼 CosyVoice（DashScope SDK WebSocket 流式） =====
 
 DASHSCOPE_API_KEY = os.environ.get("DASHSCOPE_API_KEY", "")
-DASHSCOPE_TTS_MODEL = os.environ.get("DASHSCOPE_TTS_MODEL", "cosyvoice-v3-flash")
+DASHSCOPE_TTS_MODEL = _CONFIG["model"]["dashscope"]
 CLOUD_TTS_AVAILABLE = False
 
 if DASHSCOPE_API_KEY:
@@ -77,121 +161,21 @@ except ImportError:
     logger.warning("edge-tts 未安装，备用方案不可用")
 
 
-# ===== 音色人设配置（7 音色差异化矩阵，见 design/56） =====
-# dashscope_voice: 阿里云 CosyVoice 音色名（cosyvoice-v3.5-flash 音色列表）
-# edge_voice: edge-tts 备用音色
-# dialect_capable: 支持方言 Instruct（仅 longanhuan_v3）
-# emotion_capable: 支持情感 Instruct（仅 longanyang）
+# ===== 音色人设配置（从 config.yaml 加载，见 design/56） =====
 
-VOICE_PERSONAS = {
-    "xiaoxing": {
-        "name": "小星",
-        "desc": "温暖的邻家姐姐",
-        "speed": 1.0,
-        "dashscope_voice": "longxing_v3",
-        "edge_voice": "zh-CN-XiaoxiaoNeural",
-        "dialect_capable": False,
-        "emotion_capable": False,
-    },
-    "bobo": {
-        "name": "波波老师",
-        "desc": "温柔的女老师",
-        "speed": 0.95,
-        "dashscope_voice": "longyingling_v3",
-        "edge_voice": "zh-CN-XiaohanNeural",
-        "dialect_capable": False,
-        "emotion_capable": False,
-    },
-    "yueliang": {
-        "name": "月亮",
-        "desc": "轻声讲故事",
-        "speed": 0.92,
-        "dashscope_voice": "longwan_v3",
-        "edge_voice": "zh-CN-XiaohanNeural",
-        "dialect_capable": False,
-        "emotion_capable": False,
-    },
-    "xiaotaiyang": {
-        "name": "小太阳",
-        "desc": "阳光大哥哥",
-        "speed": 1.05,
-        "dashscope_voice": "longanyang",
-        "edge_voice": "zh-CN-YunxiNeural",
-        "dialect_capable": False,
-        "emotion_capable": True,
-    },
-    "dashu": {
-        "name": "大树",
-        "desc": "暖心大叔",
-        "speed": 0.95,
-        "dashscope_voice": "longanyun_v3",
-        "edge_voice": "zh-CN-YunyangNeural",
-        "dialect_capable": False,
-        "emotion_capable": False,
-    },
-    "doudou": {
-        "name": "豆豆",
-        "desc": "同龄小伙伴",
-        "speed": 1.05,
-        "dashscope_voice": "longjielidou_v3",
-        "edge_voice": "zh-CN-YunxiaNeural",
-        "dialect_capable": False,
-        "emotion_capable": False,
-    },
-    "qiqiu": {
-        "name": "方言",
-        "desc": "方言伙伴",
-        "speed": 1.05,
-        "dashscope_voice": "longanhuan_v3",
-        "edge_voice": "zh-CN-XiaoyiNeural",
-        "dialect_capable": True,
-        "emotion_capable": False,
-    },
-}
+VOICE_PERSONAS = _CONFIG["voice_personas"]
 
 # ===== 方言配置 =====
-# 两类实现方式：
-#   native：原生方言音色（不需要 instruction，天生说方言，直接替换 voice）
-#   instruct：通过 longanhuan_v3 Instruct 指令实现（"请用XX话表达。"）
 
-SUPPORTED_DIALECTS = {
-    # 原生方言音色（无需 Instruct，直接使用专属音色）
-    "cantonese":    {"label": "粤语", "mode": "native", "edge_voice": None},
-    "minnan":       {"label": "闽南话", "mode": "native", "edge_voice": None},
-    # Instruct 方言（通过 longanhuan_v3 指令实现）
-    "northeastern": {"label": "东北话", "mode": "instruct", "instruct": "请用东北话表达。", "edge_voice": "zh-CN-liaoning-XiaobeiNeural"},
-    "sichuan":      {"label": "四川话", "mode": "instruct", "instruct": "请用四川话表达。", "edge_voice": None},
-    "henan":        {"label": "河南话", "mode": "instruct", "instruct": "请用河南话表达。", "edge_voice": None},
-    "shandong":     {"label": "山东话", "mode": "instruct", "instruct": "请用山东话表达。", "edge_voice": None},
-    "hunan":        {"label": "湖南话", "mode": "instruct", "instruct": "请用湖南话表达。", "edge_voice": None},
-    "shaanxi":      {"label": "陕西话", "mode": "instruct", "instruct": "请用陕西话表达。", "edge_voice": "zh-CN-shaanxi-XiaoniNeural"},
-}
+SUPPORTED_DIALECTS = _CONFIG["dialects"]
 
-# ===== 原生方言音色（不需要 instruction，天生说方言） =====
-# 仅 cantonese / minnan 走此路径，选中即自动使用对应音色，无需用户切换模式
-# 性别匹配：female 优先女声，male 优先男声
+# ===== 原生方言音色 =====
 
-NATIVE_DIALECT_VOICES = {
-    "cantonese": {"female": "longjiayi_v3", "male": "longanyue_v3"},
-    "minnan": {"male": "longanmin_v3"},
-}
+NATIVE_DIALECT_VOICES = _CONFIG["native_dialect_voices"]
 
-# ===== 情感 Instruct 映射（仅 longanyang / 小太阳支持） =====
-# 格式严格遵循官方文档："你正在进行闲聊互动，你说话的情感是<情感值>。"
+# ===== 情感 Instruct 映射 =====
 
-EMOTION_INSTRUCT_MAP = {
-    "neutral": "你正在进行闲聊互动，你说话的情感是neutral。",
-    "happy": "你正在进行闲聊互动，你说话的情感是happy。",
-    "sad": "你正在进行闲聊互动，你说话的情感是sad。",
-    "angry": "你正在进行闲聊互动，你说话的情感是angry。",
-    "fearful": "你正在进行闲聊互动，你说话的情感是fearful。",
-    "surprised": "你正在进行闲聊互动，你说话的情感是surprised。",
-    "disgusted": "你正在进行闲聊互动，你说话的情感是disgusted。",
-    # 非标准情感值回退到 neutral
-    "calm": "你正在进行闲聊互动，你说话的情感是neutral。",
-    "anxious": "你正在进行闲聊互动，你说话的情感是fearful。",
-    "excited": "你正在进行闲聊互动，你说话的情感是happy。",
-}
+EMOTION_INSTRUCT_MAP = _CONFIG["emotion_instruct_map"]
 
 
 def build_instruction(persona_cfg: dict, dialect: Optional[str], emotion: str,

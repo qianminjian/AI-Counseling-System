@@ -4,6 +4,7 @@ pydantic>=2.0.0
 torch>=2.0.0
 torchaudio>=2.0.0
 numpy>=1.24.0
+pyyaml>=6.0
 # CosyVoice2 依赖（本地部署时安装）
 # cosyvoice  # 需从源码安装: pip install -e CosyVoice2/
 # 降级方案

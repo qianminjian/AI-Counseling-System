@@ -140,6 +140,29 @@ mindsafe:
     mode: ${MINDSAFE_VOICEPRINT_MODE:remote}  # local | remote
     verify-threshold: 0.55                    # remote 模式余弦相似度阈值（低于 local 0.70，因网络传输损耗实测 0.70 过不了）
     max-templates: 8                          # 每用户最大模板数
+  # 前端运行时配置（通过 GET /api/v1/system/config 下发，CFG-001）
+  # 设计原则：此处仅放“前端需要知道”的业务参数，密钥/服务 URL 不下发
+  system-config:
+    voiceprint:
+      verify-threshold: 0.70        # 前端 local 模式余弦相似度阈值（本地 embedding 质量稳定，可用较严阈值）
+      max-templates: 8
+      enroll-segments: 3
+      verify-segments: 2
+    wake-word:
+      model-id: "onnx-community/whisper-tiny"
+      window-seconds: 2.0
+      silence-rms-threshold: 0.03
+    tts:
+      default-persona: "xiaoxing"
+      personas: xiaoxing,bobo,yueliang,xiaotaiyang,dashu,doudou,qiqiu
+    guide-scripts:
+      verify:
+        - { prompt: "嗨！我是波波，跟我打个招呼吧！", hint: "对波波说\"你好\"就行", duration: 4 }
+        - { prompt: "真棒！再跟我说一句：今天心情真好呀！", hint: "跟我说：今天心情真好呀！", duration: 4 }
+      enroll:
+        - { prompt: "嗨！我是波波，很高兴认识你！跟我打个招呼吧！", hint: "对波波说\"你好\"就行", duration: 4 }
+        - { prompt: "真好听！再跟我说一句：我喜欢唱歌和画画！", hint: "跟我说：我喜欢唱歌和画画！", duration: 5 }
+        - { prompt: "最后一句啦！跟我说：今天天气真好，我想出去玩！", hint: "跟我说：今天天气真好，我想出去玩！", duration: 5 }
   # 语音分析微服务（FunASR + emotion2vec+）
   voice-service:
     url: ${VOICE_SERVICE_URL:http://localhost:10095}

@@ -68,6 +68,11 @@ services:
       # 监护人同意（AUTH-040）：生产必须 false（走 SMS 真实闭环）
       MINDSAFE_CONSENT_TRIAL_AUTO_GRANT: ${CONSENT_TRIAL_AUTO_GRANT:-false}
       MINDSAFE_CORS_ORIGINS: ${CORS_ORIGINS:-https://yun.gxjugu.com}
+      # 企业微信 OAuth（可选，空 = 企微登录返回 501）
+      WECOM_CORP_ID: ${WECOM_CORP_ID:-}
+      WECOM_AGENT_ID: ${WECOM_AGENT_ID:-}
+      WECOM_SECRET: ${WECOM_SECRET:-}
+      WECOM_REDIRECT_URI: ${WECOM_REDIRECT_URI:-}
       VOICE_SERVICE_URL: http://voice-service:10095
       TTS_SERVICE_URL: http://tts-service:10096
       LOGGING_LEVEL_COM_MINDSAFE: INFO

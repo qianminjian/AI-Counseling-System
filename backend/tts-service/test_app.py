@@ -88,12 +88,15 @@ class TestDialectConfig:
         assert len(mock_dashscope.SUPPORTED_DIALECTS) == 8
 
     def test_dialect_instruct_format(self, mock_dashscope):
-        """每种方言的 Instruct 指令格式正确"""
+        """instruct 模式方言的 Instruct 指令格式正确"""
         for code, info in mock_dashscope.SUPPORTED_DIALECTS.items():
             assert "label" in info, f"{code} 缺 label"
-            assert "instruct" in info, f"{code} 缺 instruct"
-            assert info["instruct"].startswith("请用"), f"{code} instruct 格式错误"
-            assert info["instruct"].endswith("表达。"), f"{code} instruct 格式错误"
+            assert "mode" in info, f"{code} 缺 mode"
+            # 仅 instruct 模式方言需要有 instruct 字段
+            if info["mode"] == "instruct":
+                assert "instruct" in info, f"{code} 缺 instruct"
+                assert info["instruct"].startswith("请用"), f"{code} instruct 格式错误"
+                assert info["instruct"].endswith("表达。"), f"{code} instruct 格式错误"
 
     def test_dialect_edge_fallback(self, mock_dashscope):
         """东北/陕西有 edge-tts 降级音色，其他为 None"""
@@ -196,12 +199,13 @@ class TestBuildInstruction:
         assert voice == "longjiayi_v3"  # 粤语女声
 
     def test_native_dialect_voice_male(self, mock_dashscope):
-        """原生方言音色男声匹配"""
+        """原生方言音色男声匹配（粤语男声）"""
         cfg = mock_dashscope.VOICE_PERSONAS["qiqiu"]
         instruction, voice = mock_dashscope.build_instruction(
-            cfg, "northeastern", "neutral", language_mode="dialect", persona_gender="male"
+            cfg, "cantonese", "neutral", persona_gender="male"
         )
-        assert voice == "longlaotie_v3"
+        assert instruction is None  # 原生音色无需 instruction
+        assert voice == "longanyue_v3"  # 粤语男声
 
     def test_no_dialect_no_emotion(self, mock_dashscope):
         """无方言无情感 → 无指令"""

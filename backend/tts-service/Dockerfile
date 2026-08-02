@@ -13,8 +13,8 @@ COPY requirements-lite.txt .
 RUN pip install --no-cache-dir --no-index --find-links=/tmp/wheels -r requirements-lite.txt \
     && rm -rf /tmp/wheels
 
-# 应用代码
-COPY app.py .
+# 应用代码 + 配置文件（CFG-004：config.yaml 外置，修改无需重建镜像）
+COPY app.py config.yaml ./
 
 EXPOSE 10096
 

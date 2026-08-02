@@ -306,7 +306,23 @@ sudo systemctl restart docker
 6. **安全组**：SSH 端口建议限制来源 IP，避免暴力破解
 7. **续费**：经济型 e 实例首购 99元/年，续费同价（阿里云活动期）；关注续费提醒
 
-## 九、监控与告警
+## 九、配置变更流程
+
+> 本系统采用分层配置架构（design/56），改配置不改代码。
+
+| 配置类型 | 文件位置 | 变更方式 |
+|---------|---------|--------|
+| 密钥/凭证 | `deploy/.env` | 改 .env + `docker compose up -d` 重启 |
+| 声纹阈值/引导脚本/唤醒参数 | `backend/counseling-app/src/main/resources/application.yml` 的 `mindsafe.system-config` | 改 yml + 重新构建后端镜像 + 重启 |
+| TTS 音色/方言/情感 | `backend/tts-service/config.yaml` | 改 yaml + 重新构建 tts-service 镜像 + 重启 |
+| TTS 模型名 | `.env` 的 `DASHSCOPE_TTS_MODEL` | 改 .env + `docker compose up -d tts-service` |
+| ASR/SER 模型名/情绪标签 | `backend/voice-service/config.yaml` | 改 yaml + 重新构建 voice-service 镜像 + 重启 |
+| ASR 引擎切换 | `.env` 的 `ASR_ENGINE` | 改 .env + `docker compose up -d voice-service` |
+| 前端运行时配置 | 自动从 `GET /api/v1/system/config` 拉取 | 后端配置变更后前端自动生效（5min 缓存） |
+
+---
+
+## 十、监控与告警
 
 生产环境建议启用 Prometheus + Grafana 监控栈：
 

@@ -21,7 +21,7 @@ services:
       retries: 5
     restart: unless-stopped
 
-  # ===== TTS 语音合成微服务（edge-tts） =====
+  # ===== TTS 语音合成微服务（CosyVoice + edge-tts 降级） =====
   tts-service:
     build:
       context: ../backend/tts-service
@@ -29,6 +29,8 @@ services:
     restart: unless-stopped
     environment:
       DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:-}
+      # TTS 模型名（CFG-004：运行时切换模型无需改代码，默认 cosyvoice-v3-flash）
+      DASHSCOPE_TTS_MODEL: ${DASHSCOPE_TTS_MODEL:-cosyvoice-v3-flash}
 
   # ===== 语音识别与情绪分析微服务（ASR + SER 解耦） =====
   voice-service:
@@ -65,6 +67,11 @@ services:
       # 写成 MINDSAFE_TTS_SERVICE_URL 时 Spring 松散绑定匹配不上，会回落 localhost
       TTS_SERVICE_URL: http://tts-service:10096
       VOICE_SERVICE_URL: http://voice-service:10095
+      # 企业微信 OAuth（可选，空 = 企微登录返回 501）
+      WECOM_CORP_ID: ${WECOM_CORP_ID:-}
+      WECOM_AGENT_ID: ${WECOM_AGENT_ID:-}
+      WECOM_SECRET: ${WECOM_SECRET:-}
+      WECOM_REDIRECT_URI: ${WECOM_REDIRECT_URI:-}
       JAVA_OPTS: "-XX:MaxRAMPercentage=75.0"
     depends_on:
       postgres:

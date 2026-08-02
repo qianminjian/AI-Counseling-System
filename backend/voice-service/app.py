@@ -23,8 +23,14 @@ from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+from config import load_config
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("voice-service")
+
+# ===== 配置加载（CFG-007：从 config.yaml 外置，回退内置默认值） =====
+
+_CONFIG = load_config()
 
 # ===== 引擎选择（环境变量驱动） =====
 ASR_ENGINE = os.environ.get("ASR_ENGINE", "funasr").lower()
@@ -54,10 +60,10 @@ emotion_model = None
 if ASR_ENGINE == "funasr":
     from funasr import AutoModel
 
-    logger.info("正在加载 ASR 模型 (SenseVoiceSmall)...")
+    logger.info("正在加载 ASR 模型 (%s)...", _CONFIG["asr"]["funasr_model"])
     asr_model = AutoModel(
-        model="iic/SenseVoiceSmall",
-        vad_model="fsmn-vad",
+        model=_CONFIG["asr"]["funasr_model"],
+        vad_model=_CONFIG["asr"]["vad_model"],
         vad_kwargs={"max_single_segment_time": 30000},
         device="cpu",
     )
@@ -77,8 +83,8 @@ if SER_ENABLED:
     try:
         if ASR_ENGINE != "funasr":
             from funasr import AutoModel  # dashscope 模式也需要 funasr 包来加载 emotion2vec
-        logger.info("正在加载 SER 模型 (emotion2vec+)...")
-        emotion_model = AutoModel(model="iic/emotion2vec_plus_large", device="cpu")
+        logger.info("正在加载 SER 模型 (%s)...", _CONFIG["ser"]["model"])
+        emotion_model = AutoModel(model=_CONFIG["ser"]["model"], device="cpu")
         logger.info("SER 模型加载完成")
     except Exception as e:
         logger.warning(f"⚠️ SER 模型加载失败（降级为中性情绪）: {e}")
@@ -104,19 +110,9 @@ class VoiceAnalysisResponse(BaseModel):
     duration_seconds: float     # 音频时长（秒）
 
 
-# ===== 情绪映射 =====
+# ===== 情绪映射（从 config.yaml 加载） =====
 
-EMOTION_LABELS = [
-    ("angry", "愤怒"),
-    ("disgusted", "厌恶"),
-    ("fearful", "恐惧"),
-    ("happy", "开心"),
-    ("neutral", "中性"),
-    ("other", "其他"),
-    ("sad", "悲伤"),
-    ("surprised", "惊讶"),
-    ("unknown", "未知"),
-]
+EMOTION_LABELS = [tuple(item) for item in _CONFIG["emotion_labels"]]
 
 
 def parse_emotion_result(raw: dict) -> EmotionResult:
@@ -149,7 +145,7 @@ def health():
 def _dashscope_asr(wav_path: str) -> str:
     """通过 DashScope Recognition SDK 进行语音转写（Paraformer-V2，WebSocket 协议，同步模式）"""
     recognition = Recognition(
-        model="paraformer-realtime-v2",
+        model=_CONFIG["asr"]["dashscope_model"],
         format="wav",
         sample_rate=16000,
         callback=RecognitionCallback(),  # no-op callback, call() 模式同步返回
