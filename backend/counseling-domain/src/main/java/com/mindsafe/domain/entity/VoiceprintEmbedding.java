@@ -1,6 +1,7 @@
 package com.mindsafe.domain.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
+import com.mindsafe.domain.handler.JsonbTypeHandler;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -9,7 +10,7 @@ import java.util.UUID;
  * 声纹 embedding 向量（remote 模式：前端提取后传服务端存储/比对）
  * 隐私：仅存 256-dim 特征向量，不存原始音频
  */
-@TableName(value = "voiceprint_embeddings", schema = "tenant_template")
+@TableName(value = "voiceprint_embeddings", schema = "tenant_template", autoResultMap = true)
 public class VoiceprintEmbedding {
 
     @TableId(value = "id", type = IdType.AUTO)
@@ -19,6 +20,7 @@ public class VoiceprintEmbedding {
     private UUID tenantId;
 
     /** 256-dim float 数组 JSON（JSONB 存储） */
+    @TableField(typeHandler = JsonbTypeHandler.class)
     private String embedding;
 
     private Integer sampleIndex;
