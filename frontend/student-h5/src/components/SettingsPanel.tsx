@@ -37,6 +37,12 @@ export default function SettingsPanel({ open, onClose, muted, onToggleMute, wake
   // 优先使用外部传入的 persona 状态（与 ChatRoom TTS 共享同一份 state）
   const personaId = externalPersonaId ?? internalPersona.personaId
   const changePersona = onPersonaChange ?? internalPersona.changePersona
+  // 方言：优先外部 props（ChatRoom 传入），否则用内部 hook（EmotionSelect 等场景）
+  const effDialectEnabled = onToggleDialect ? dialectEnabled : internalPersona.dialectEnabled
+  const effToggleDialect = onToggleDialect ?? internalPersona.toggleDialect
+  const effSelectedDialect = onToggleDialect ? selectedDialect : internalPersona.selectedDialect
+  const effDialectChange = onDialectChange ?? internalPersona.changeDialect
+  const effSupportedDialects = supportedDialects ?? internalPersona.supportedDialects
   const [familyCode, setFamilyCode] = useState<string>((getUser()?.familyCode as string) || '')
   const [copied, setCopied] = useState(false)
   const [hasVoiceprint, setHasVoiceprint] = useState(false)
@@ -167,41 +173,41 @@ export default function SettingsPanel({ open, onClose, muted, onToggleMute, wake
             <h3 className="mb-3 text-sm font-semibold text-gray-500">🏠 用家乡话聊天</h3>
             {/* 方言开关 */}
             <button
-              onClick={() => onToggleDialect?.(!dialectEnabled)}
+              onClick={() => effToggleDialect(!effDialectEnabled)}
               className={`flex w-full items-center justify-between rounded-2xl border-2 p-4 transition-all active:scale-[0.98] ${
-                dialectEnabled
+                effDialectEnabled
                   ? 'border-[var(--primary)] bg-[var(--primary-light)]'
                   : 'border-gray-100 bg-gray-50'
               }`}
             >
               <div className="flex items-center gap-3">
-                <span className="text-2xl">{dialectEnabled ? '🗣️' : '💬'}</span>
+                <span className="text-2xl">{effDialectEnabled ? '🗣️' : '💬'}</span>
                 <div className="text-left">
                   <p className="text-sm font-medium text-gray-700">
-                    {dialectEnabled ? '方言已开启' : '方言已关闭'}
+                    {effDialectEnabled ? '方言已开启' : '方言已关闭'}
                   </p>
                   <p className="text-xs text-gray-400">
-                    {dialectEnabled ? '波波会用家乡话和你说话' : '开启后可以用方言聊天'}
+                    {effDialectEnabled ? '波波会用家乡话和你说话' : '开启后可以用方言聊天'}
                   </p>
                 </div>
               </div>
               <div className={`h-7 w-12 rounded-full p-1 transition-colors ${
-                dialectEnabled ? 'bg-[var(--primary)]' : 'bg-gray-300'
+                effDialectEnabled ? 'bg-[var(--primary)]' : 'bg-gray-300'
               }`}>
                 <div className={`h-5 w-5 rounded-full bg-white shadow transition-transform ${
-                  dialectEnabled ? 'translate-x-5' : 'translate-x-0'
+                  effDialectEnabled ? 'translate-x-5' : 'translate-x-0'
                 }`} />
               </div>
             </button>
             {/* 方言类型选择（开启后展开） */}
-            {dialectEnabled && supportedDialects && (
+            {effDialectEnabled && effSupportedDialects && (
               <div className="mt-3 grid grid-cols-4 gap-2">
-                {Object.values(supportedDialects).map((d) => (
+                {Object.values(effSupportedDialects).map((d) => (
                   <button
                     key={d.id}
-                    onClick={() => onDialectChange?.(d.id)}
+                    onClick={() => effDialectChange(d.id)}
                     className={`rounded-xl border-2 px-2 py-2 text-xs font-medium transition-all active:scale-95 ${
-                      selectedDialect === d.id
+                      effSelectedDialect === d.id
                         ? 'border-[var(--primary)] bg-[var(--primary-light)] text-[var(--primary)]'
                         : 'border-gray-100 bg-gray-50 text-gray-600'
                     }`}

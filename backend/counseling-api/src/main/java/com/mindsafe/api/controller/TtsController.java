@@ -157,7 +157,7 @@ public class TtsController {
 
         Flux<byte[]> audioStream = ttsService.synthesizeStream(
                 text, profile.persona(), profile.emotionInstruct(),
-                speed * profile.speed(), profile.pitchScale(), profile.pauseStyle());
+                speed * profile.speed(), profile.pitchScale(), profile.pauseStyle(), profile.dialect());
 
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_TYPE, "audio/mpeg")
