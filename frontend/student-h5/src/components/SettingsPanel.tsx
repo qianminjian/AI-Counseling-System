@@ -16,7 +16,7 @@ import { hasAnyVoiceprint, deleteVoiceprint, enrollVoiceprint, saveVoiceCredenti
 import VoiceLoginOverlay from './VoiceLoginOverlay'
 import ConfirmDialog from './ConfirmDialog'
 
-export default function SettingsPanel({ open, onClose, muted, onToggleMute, wakeSupported = false, wakeOn = false, onToggleWake, personaId: externalPersonaId, onPersonaChange, selectedDialect, onDialectChange, supportedDialects, languageMode, onLanguageModeChange, hasNativeVoice }: {
+export default function SettingsPanel({ open, onClose, muted, onToggleMute, wakeSupported = false, wakeOn = false, onToggleWake, personaId: externalPersonaId, onPersonaChange, selectedDialect, onDialectChange, supportedDialects, hasNativeVoice }: {
   open: boolean
   onClose: () => void
   muted: boolean
@@ -29,8 +29,6 @@ export default function SettingsPanel({ open, onClose, muted, onToggleMute, wake
   selectedDialect?: string | null
   onDialectChange?: (id: string) => void
   supportedDialects?: Record<string, { id: string; label: string }>
-  languageMode?: 'mandarin' | 'dialect'
-  onLanguageModeChange?: (mode: 'mandarin' | 'dialect') => void
   hasNativeVoice?: boolean
 }) {
   const { themeId, changeTheme } = useTheme()
@@ -42,9 +40,7 @@ export default function SettingsPanel({ open, onClose, muted, onToggleMute, wake
   const effSelectedDialect = onDialectChange ? selectedDialect : internalPersona.selectedDialect
   const effDialectChange = onDialectChange ?? internalPersona.changeDialect
   const effSupportedDialects = supportedDialects ?? internalPersona.supportedDialects
-  const effLanguageMode = onLanguageModeChange ? (languageMode || 'mandarin') : internalPersona.languageMode
-  const effLanguageModeChange = onLanguageModeChange ?? internalPersona.changeLanguageMode
-  const effHasNativeVoice = onLanguageModeChange ? (hasNativeVoice ?? false) : internalPersona.hasNativeVoice
+  const effHasNativeVoice = hasNativeVoice ?? internalPersona.hasNativeVoice
   // 方言是否启用：仅当选中“方言”音色（qiqiu）时
   const dialectActive = personaId === 'qiqiu'
   const [familyCode, setFamilyCode] = useState<string>((getUser()?.familyCode as string) || '')
@@ -210,33 +206,11 @@ export default function SettingsPanel({ open, onClose, muted, onToggleMute, wake
                 )
               })}
             </div>
-            {/* 原生方言音色模式切换（仅粤语/东北话/陕西话） */}
+            {/* 原生方言提示（粤语/闽南话选中时显示） */}
             {effHasNativeVoice && (
               <div className="mt-3 flex items-center gap-2 rounded-2xl border-2 border-amber-100 bg-amber-50/50 p-3">
-                <span className="text-sm text-gray-500">说话方式：</span>
-                <button
-                  onClick={() => effLanguageModeChange('mandarin')}
-                  className={`rounded-lg px-3 py-1.5 text-xs font-bold transition-all ${
-                    effLanguageMode === 'mandarin'
-                      ? 'bg-[var(--primary)] text-white shadow-sm'
-                      : 'bg-white text-gray-500 border border-gray-200'
-                  }`}
-                >
-                  普通话
-                </button>
-                <button
-                  onClick={() => effLanguageModeChange('dialect')}
-                  className={`rounded-lg px-3 py-1.5 text-xs font-bold transition-all ${
-                    effLanguageMode === 'dialect'
-                      ? 'bg-amber-500 text-white shadow-sm'
-                      : 'bg-white text-gray-500 border border-gray-200'
-                  }`}
-                >
-                  方言音色
-                </button>
-                <span className="ml-auto text-[9px] text-gray-400">
-                  {effLanguageMode === 'dialect' ? '用当地人的声音说' : '用方言腔调说普通话'}
-                </span>
+                <span className="text-sm">🎙️</span>
+                <span className="text-xs text-amber-600">使用原生方言音色，无需额外设置</span>
               </div>
             )}
           </section>

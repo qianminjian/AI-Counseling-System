@@ -149,26 +149,31 @@ VOICE_PERSONAS = {
     },
 }
 
-# ===== 方言配置（与 CosyVoice longanhuan_v3 Instruct 严格对应） =====
+# ===== 方言配置 =====
+# 两类实现方式：
+#   native：原生方言音色（不需要 instruction，天生说方言，直接替换 voice）
+#   instruct：通过 longanhuan_v3 Instruct 指令实现（"请用XX话表达。"）
 
 SUPPORTED_DIALECTS = {
-    "cantonese":    {"label": "广东话", "instruct": "请用广东话表达。", "edge_voice": None},
-    "northeastern": {"label": "东北话", "instruct": "请用东北话表达。", "edge_voice": "zh-CN-liaoning-XiaobeiNeural"},
-    "sichuan":      {"label": "四川话", "instruct": "请用四川话表达。", "edge_voice": None},
-    "henan":        {"label": "河南话", "instruct": "请用河南话表达。", "edge_voice": None},
-    "shandong":     {"label": "山东话", "instruct": "请用山东话表达。", "edge_voice": None},
-    "hunan":        {"label": "湖南话", "instruct": "请用湖南话表达。", "edge_voice": None},
-    "shaanxi":      {"label": "陕西话", "instruct": "请用陕西话表达。", "edge_voice": "zh-CN-shaanxi-XiaoniNeural"},
-    "anhui":        {"label": "安徽话", "instruct": "请用安徽话表达。", "edge_voice": None},
+    # 原生方言音色（无需 Instruct，直接使用专属音色）
+    "cantonese":    {"label": "粤语", "mode": "native", "edge_voice": None},
+    "minnan":       {"label": "闽南话", "mode": "native", "edge_voice": None},
+    # Instruct 方言（通过 longanhuan_v3 指令实现）
+    "northeastern": {"label": "东北话", "mode": "instruct", "instruct": "请用东北话表达。", "edge_voice": "zh-CN-liaoning-XiaobeiNeural"},
+    "sichuan":      {"label": "四川话", "mode": "instruct", "instruct": "请用四川话表达。", "edge_voice": None},
+    "henan":        {"label": "河南话", "mode": "instruct", "instruct": "请用河南话表达。", "edge_voice": None},
+    "shandong":     {"label": "山东话", "mode": "instruct", "instruct": "请用山东话表达。", "edge_voice": None},
+    "hunan":        {"label": "湖南话", "mode": "instruct", "instruct": "请用湖南话表达。", "edge_voice": None},
+    "shaanxi":      {"label": "陕西话", "mode": "instruct", "instruct": "请用陕西话表达。", "edge_voice": "zh-CN-shaanxi-XiaoniNeural"},
 }
 
 # ===== 原生方言音色（不需要 instruction，天生说方言） =====
+# 仅 cantonese / minnan 走此路径，选中即自动使用对应音色，无需用户切换模式
 # 性别匹配：female 优先女声，male 优先男声
 
 NATIVE_DIALECT_VOICES = {
     "cantonese": {"female": "longjiayi_v3", "male": "longanyue_v3"},
-    "northeastern": {"male": "longlaotie_v3"},
-    "shaanxi": {"male": "longshange_v3"},
+    "minnan": {"male": "longanmin_v3"},
 }
 
 # ===== 情感 Instruct 映射（仅 longanyang / 小太阳支持） =====
@@ -190,33 +195,31 @@ EMOTION_INSTRUCT_MAP = {
 
 
 def build_instruction(persona_cfg: dict, dialect: Optional[str], emotion: str,
-                      language_mode: str = "mandarin", persona_gender: str = "female") -> tuple[Optional[str], Optional[str]]:
+                      persona_gender: str = "female", **kwargs) -> tuple[Optional[str], Optional[str]]:
     """
     构建 Instruct 指令 + 实际使用的 voice。
     返回 (instruction, override_voice)：
     - instruction: 传给 CosyVoice 的指令（None = 不传）
     - override_voice: 覆盖 persona 默认音色（原生方言音色，None = 用默认）
 
-    规则：
-    1. 方言 Instruct：仅 dialect_capable 音色（qiqiu/longanhuan_v3）
-    2. 情感 Instruct：仅 emotion_capable 音色（xiaotaiyang/longanyang）
-    3. 原生方言音色：language_mode=="dialect" 且有对应原生音色时，直接替换 voice
+    规则（v4：取消 language_mode，原生方言自动生效）：
+    1. 原生方言音色（cantonese/minnan）：dialect 命中 NATIVE_DIALECT_VOICES 时直接替换 voice，无需 instruction
+    2. Instruct 方言：仅 dialect_capable 音色（qiqiu/longanhuan_v3）+ instruct 模式方言
+    3. 情感 Instruct：仅 emotion_capable 音色（xiaotaiyang/longanyang），方言和情感互斥——方言优先
     """
     instruction = None
     override_voice = None
 
-    # 原生方言音色优先（language_mode == "dialect" 时直接使用原生音色，无需 instruction）
-    if language_mode == "dialect" and dialect:
-        native_voices = NATIVE_DIALECT_VOICES.get(dialect)
-        if native_voices:
-            # 性别匹配
-            override_voice = native_voices.get(persona_gender) or next(iter(native_voices.values()))
-            return None, override_voice
+    # 原生方言音色自动生效（粤语/闽南话，无需用户切换模式）
+    if dialect and dialect in NATIVE_DIALECT_VOICES:
+        native_voices = NATIVE_DIALECT_VOICES[dialect]
+        override_voice = native_voices.get(persona_gender) or next(iter(native_voices.values()))
+        return None, override_voice
 
-    # 方言 Instruct（仅 dialect_capable 音色）
+    # Instruct 方言（仅 dialect_capable 音色 + instruct 模式方言）
     if dialect and persona_cfg.get("dialect_capable"):
         dialect_info = SUPPORTED_DIALECTS.get(dialect)
-        if dialect_info:
+        if dialect_info and dialect_info.get("mode") == "instruct":
             instruction = dialect_info["instruct"]
 
     # 情感 Instruct（仅 emotion_capable 音色，方言和情感互斥——方言优先）
@@ -236,7 +239,7 @@ class TtsRequest(BaseModel):
     pitch: float = 1.0                  # 音高基调（TMATCH-001 prosody，<1 更低沉安抚）
     pause_style: int = 1                # 停顿风格（0=轻快 1=自然 2=多停顿安抚）
     dialect: Optional[str] = None       # 方言代码（可选，仅方言音色 qiqiu 生效）
-    language_mode: str = "mandarin"     # 语言模式：mandarin=普通话, dialect=原生方言音色
+    language_mode: str = "mandarin"     # [已废弃 v4] 保留向后兼容，不再生效
 
 
 class TtsInfoResponse(BaseModel):
@@ -286,17 +289,16 @@ async def synthesize(req: TtsRequest):
     persona_cfg = VOICE_PERSONAS.get(req.persona, VOICE_PERSONAS["xiaoxing"])
     final_speed = persona_cfg["speed"] * req.speed
 
-    # 构建 Instruct 指令 + 原生方言音色覆盖
+    # 构建 Instruct 指令 + 原生方言音色覆盖（v4：自动识别原生方言，无需 language_mode）
     instruction, override_voice = build_instruction(
         persona_cfg, req.dialect, req.emotion,
-        language_mode=req.language_mode,
         persona_gender="female",  # qiqiu（方言载体）为女声
     )
     actual_voice = override_voice or persona_cfg["dashscope_voice"]
 
     logger.info(f"TTS 合成: text_len={len(req.text)}, persona={req.persona}, "
                 f"emotion={req.emotion}, speed={final_speed:.2f}, dialect={req.dialect}, "
-                f"language_mode={req.language_mode}, voice={actual_voice}, instruction={instruction}")
+                f"voice={actual_voice}, instruction={instruction}")
 
     # Level 1：阿里云 CosyVoice
     if CLOUD_TTS_AVAILABLE:

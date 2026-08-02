@@ -32,7 +32,7 @@ vi.mock('../hooks/useVoicePersona', () => ({
     balloon: { id: 'balloon', name: '方言', emoji: '🗣️', desc: '活泼' },
     moon: { id: 'moon', name: '月亮', emoji: '🌙', desc: '安静' },
   },
-  NATIVE_DIALECT_IDS: ['cantonese', 'northeastern', 'shaanxi'],
+  NATIVE_DIALECT_IDS: ['cantonese', 'minnan'],
 }))
 vi.mock('../components/VoiceLoginOverlay', () => ({
   default: ({ mode, onComplete, onCancel }: any) => (

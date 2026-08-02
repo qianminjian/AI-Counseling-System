@@ -1,6 +1,6 @@
 # AI 小学生心理辅导系统 - 任务跟踪表
 
-> 创建：2026-07-23 | 更新：2026-07-29（**独立审计校正**：撤回失实 ✅，引入 🟧「已编码未接线」态；DEC-CBT 改为删除世界B）
+> 创建：2026-07-23 | 更新：2026-08-01（新增 §二十五 配置统一纳管；历史：2026-07-29 独立审计校正）
 > 
 > 本表用于跟踪项目各阶段任务的进度和责任人。
 
@@ -787,6 +787,18 @@
 > 1. 本表为 triage 单一视图，`⬜ 待深化` = 本轮需编辑正文，`🟢 维护` = 近期已深化仅随批次微调；深化产生的新开发任务并入 §二十三 对应 ID，不在此重复登记。
 > 2. **虚假设计未落地重点**（承 51-53）：世界B Agent 编排 / ConversationStateManager / evaluateSessionAsync / buildRagContext / 语言模板路由均「已建零调用」——深化时须在对应文档（13/03/04/40/49/29）显式标注「已实现未接线」，避免误读为已生效。
 > 3. 本次仅深化设计与定级，**未进行任何开发、未做 git 提交**。
+
+## 二十五、配置统一纳管（design/56）
+
+> 背景：配置分散于环境变量、application.yml、Python 硬编码、前端 TypeScript 四处，存在前后端阈值不同步、TTS 音色矩阵改参数需改代码发版、引导脚本运营不可调等痛点。本专题统一纳管，实现"改配置不改代码"。
+> 设计文档：`design/56_配置统一纳管设计.md`（2026-08-01）
+
+| 任务ID | 任务描述 | 优先级 | 状态 | 备注 |
+|--------|----------|--------|------|------|
+| CFG-001 | 后端 API + 前端注入：application.yml 新增 system-config 节点 + SystemConfigController（GET /api/v1/system/config）+ 前端 remote.ts 启动加载 + 声纹阈值去重 | P0 | ⏳ 待实施 | design/56 M1 |
+| CFG-002 | TTS 配置外置：新建 tts-service/config.yaml（音色矩阵+方言+情感 Instruct）+ app.py 加载改造 + 环境变量覆盖 | P1 | ⏳ 待实施 | design/56 M2 |
+| CFG-003 | Voice 配置外置：新建 voice-service/config.yaml + app.py 加载改造 | P2 | ⏳ 待实施 | design/56 M3 |
+| CFG-004 | 文档同步：.env.example 补注释 + DEPLOY-GUIDE 更新配置变更流程 + design/33 补配置测试点 | P2 | ⏳ 待实施 | design/56 M4 |
 
 ---
 

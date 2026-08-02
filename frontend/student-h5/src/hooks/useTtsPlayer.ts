@@ -100,7 +100,7 @@ function browserSpeak(text: string, { rate = 1.0, persona = 'xiaoxing', onEnd }:
   }
 }
 
-export function useTtsPlayer({ persona = 'xiaoxing', emotion = 'neutral', speed = 1.0, dialect = null, languageMode = 'mandarin' }: { persona?: string; emotion?: string; speed?: number; dialect?: string | null; languageMode?: 'mandarin' | 'dialect' } = {}) {
+export function useTtsPlayer({ persona = 'xiaoxing', emotion = 'neutral', speed = 1.0, dialect = null }: { persona?: string; emotion?: string; speed?: number; dialect?: string | null } = {}) {
   const [playing, setPlaying] = useState(false)
   const [currentSentenceIdx, setCurrentSentenceIdx] = useState(-1)
   // 当前正在播放的句子数组（供波波话语气泡逐句展示，见 design/27 §4.4）
@@ -169,7 +169,6 @@ export function useTtsPlayer({ persona = 'xiaoxing', emotion = 'neutral', speed 
         body: JSON.stringify({
           text, persona, emotion, speed,
           ...(dialect ? { dialect } : {}),
-          ...(dialect && languageMode !== 'mandarin' ? { language_mode: languageMode } : {}),
         }),
       })
       if (!res.ok || res.status === 204) {
@@ -185,7 +184,7 @@ export function useTtsPlayer({ persona = 'xiaoxing', emotion = 'neutral', speed 
       lastFailTimeRef.current = Date.now()
       return null
     }
-  }, [persona, emotion, speed, dialect, languageMode])
+  }, [persona, emotion, speed, dialect])
 
   /** 用持久 Audio 元素播放一个 blob */
   const playBlob = useCallback((blob) => {

@@ -4,7 +4,7 @@
  * - 7 种音色：小星/波波老师/月亮/小太阳/大树/豆豆/方言
  * - 默认音色根据用户性别自动选择（男→小太阳，女→小星）
  * - 方言：仅“方言”音色（qiqiu）选中时可用，无需单独开关
- * - 原生方言音色：粤语/东北话/陕西话有原生音色，可切换普通话/方言模式
+ * - 原生方言（粤语/闽南话）：选中即自动使用原生音色，无需切换模式
  */
 import { useState, useCallback } from 'react'
 import { getUser } from '../api'
@@ -75,24 +75,23 @@ export const VOICE_PERSONAS = {
   },
 }
 
-/** 支持的方言列表（design/56 §三，与 CosyVoice Instruct 严格对应） */
+/** 支持的方言列表（v4：粤语/闽南话为原生音色，其余为 Instruct 实现） */
 export const SUPPORTED_DIALECTS = {
-  cantonese: { id: 'cantonese', label: '广东话' },
+  cantonese: { id: 'cantonese', label: '粤语' },
+  minnan: { id: 'minnan', label: '闽南话' },
   northeastern: { id: 'northeastern', label: '东北话' },
   sichuan: { id: 'sichuan', label: '四川话' },
   henan: { id: 'henan', label: '河南话' },
   shandong: { id: 'shandong', label: '山东话' },
   hunan: { id: 'hunan', label: '湖南话' },
   shaanxi: { id: 'shaanxi', label: '陕西话' },
-  anhui: { id: 'anhui', label: '安徽话' },
 }
 
-/** 拥有原生方言音色的方言（不需要 instruction，天生说方言，可切换普通话/方言模式） */
-export const NATIVE_DIALECT_IDS = ['cantonese', 'northeastern', 'shaanxi']
+/** 拥有原生方言音色的方言（不需要 instruction，天生说方言，选中即自动生效） */
+export const NATIVE_DIALECT_IDS = ['cantonese', 'minnan']
 
 const PERSONA_KEY = 'mindsafe_voice_persona_v1'
 const DIALECT_KEY = 'mindsafe_dialect_v1'
-const LANGUAGE_MODE_KEY = 'mindsafe_language_mode_v1'
 
 /** 根据用户性别获取默认音色 */
 function getDefaultPersona() {
@@ -113,10 +112,6 @@ export function useVoicePersona() {
     const user = getUser()
     return (user?.dialect as string) || null
   })
-  // 语言模式：mandarin=普通话, dialect=原生方言音色（仅原生方言可用时生效）
-  const [languageMode, setLanguageMode] = useState<'mandarin' | 'dialect'>(() => {
-    return (localStorage.getItem(LANGUAGE_MODE_KEY) as 'mandarin' | 'dialect') || 'mandarin'
-  })
 
   const persona = VOICE_PERSONAS[personaId] || VOICE_PERSONAS.xiaoxing
 
@@ -135,24 +130,13 @@ export function useVoicePersona() {
     if (SUPPORTED_DIALECTS[dialectId]) {
       setSelectedDialect(dialectId)
       localStorage.setItem(DIALECT_KEY, dialectId)
-      // 非原生方言 → 重置语言模式为 mandarin
-      if (!NATIVE_DIALECT_IDS.includes(dialectId)) {
-        setLanguageMode('mandarin')
-        localStorage.setItem(LANGUAGE_MODE_KEY, 'mandarin')
-      }
     }
-  }, [])
-
-  /** 切换语言模式（普通话/原生方言） */
-  const changeLanguageMode = useCallback((mode: 'mandarin' | 'dialect') => {
-    setLanguageMode(mode)
-    localStorage.setItem(LANGUAGE_MODE_KEY, mode)
   }, [])
 
   /** 当前生效的 dialect（仅方言音色选中时返回，否则 null） */
   const activeDialect = dialectEnabled ? selectedDialect : null
 
-  /** 当前选中的方言是否有原生音色 */
+  /** 当前选中的方言是否有原生音色（粤语/闽南话） */
   const hasNativeVoice = selectedDialect ? NATIVE_DIALECT_IDS.includes(selectedDialect) : false
 
   return {
@@ -166,9 +150,6 @@ export function useVoicePersona() {
     changeDialect,
     activeDialect,
     supportedDialects: SUPPORTED_DIALECTS,
-    // 语言模式
-    languageMode,
-    changeLanguageMode,
     hasNativeVoice,
   }
 }
