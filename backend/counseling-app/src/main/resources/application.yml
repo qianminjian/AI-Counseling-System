@@ -137,7 +137,7 @@ mindsafe:
       re-alert-cooldown-minutes: 30     # 同一事件重复告警冷却期（分钟，防告警风暴）
   # 声纹识别模式（local=浏览器端比对，remote=embedding传服务端比对）
   voiceprint:
-    mode: ${MINDSAFE_VOICEPRINT_MODE:local}  # local | remote
+    mode: ${MINDSAFE_VOICEPRINT_MODE:remote}  # local | remote
     verify-threshold: 0.70                    # remote 模式余弦相似度阈值
     max-templates: 8                          # 每用户最大模板数
   # 语音分析微服务（FunASR + emotion2vec+）
