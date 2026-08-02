@@ -50,7 +50,7 @@ app.add_middleware(
 # ===== Level 1：阿里云百炼 CosyVoice（DashScope SDK WebSocket 流式） =====
 
 DASHSCOPE_API_KEY = os.environ.get("DASHSCOPE_API_KEY", "")
-DASHSCOPE_TTS_MODEL = os.environ.get("DASHSCOPE_TTS_MODEL", "cosyvoice-v3.5-flash")
+DASHSCOPE_TTS_MODEL = os.environ.get("DASHSCOPE_TTS_MODEL", "cosyvoice-v3-flash")
 CLOUD_TTS_AVAILABLE = False
 
 if DASHSCOPE_API_KEY:
@@ -98,7 +98,7 @@ VOICE_PERSONAS = {
         "desc": "温柔的女老师",
         "speed": 0.95,
         "dashscope_voice": "longyingling_v3",
-        "edge_voice": "zh-CN-XiaoxiaoNeural",
+        "edge_voice": "zh-CN-XiaohanNeural",
         "dialect_capable": False,
         "emotion_capable": False,
     },
