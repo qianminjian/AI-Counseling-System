@@ -16,8 +16,10 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 import reactor.core.publisher.Flux;
 
+import java.io.OutputStream;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -123,7 +125,7 @@ public class TtsController {
      * 就开始接收数据，而非等待 Java 收完整段音频再转发。
      */
     @PostMapping(value = "/synthesize-stream", produces = MediaType.APPLICATION_OCTET_STREAM_VALUE)
-    public ResponseEntity<Flux<byte[]>> synthesizeStream(@RequestBody Map<String, Object> request, Authentication auth) {
+    public ResponseEntity<StreamingResponseBody> synthesizeStream(@RequestBody Map<String, Object> request, Authentication auth) {
         String text = (String) request.get("text");
         String persona = (String) request.get("persona");
         String emotion = (String) request.getOrDefault("emotion", "neutral");
@@ -159,13 +161,26 @@ public class TtsController {
                 text, profile.persona(), profile.emotionInstruct(),
                 speed * profile.speed(), profile.pitchScale(), profile.pauseStyle(), profile.dialect());
 
+        // 使用 StreamingResponseBody 桥接 reactive Flux → Servlet OutputStream
+        StreamingResponseBody body = (OutputStream out) -> {
+            audioStream.toStream().forEach(chunk -> {
+                try {
+                    out.write(chunk);
+                    out.flush();
+                } catch (Exception e) {
+                    log.warn("TTS 流式写入中断: {}", e.getMessage());
+                    throw new RuntimeException(e);
+                }
+            });
+        };
+
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_TYPE, "audio/mpeg")
                 .header(HttpHeaders.CACHE_CONTROL, "no-cache")
                 .header(HttpHeaders.TRANSFER_ENCODING, "chunked")
                 .header("X-Voice-Persona", profile.persona())
                 .header("X-Voice-Source", profile.source())
-                .body(audioStream);
+                .body(body);
     }
 
     /**
