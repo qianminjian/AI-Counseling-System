@@ -3,7 +3,7 @@
 > 版本：v1.0 | 创建日期：2026-07-28
 > 定位：TTS 音色从 4 种扩展为 7 种差异化矩阵 + 方言条件启用（会话级可选可切换）
 > 关联文档：`design/28_语音唤醒与冷场引导设计.md`（§4 音色人设，本篇为其升级替代）、`design/19_界面详细设计.md`（§8.3 TTS 语音层）、`design/55_学生端全感官交互设计方案.md`
-> 状态：**设计完成，待实施**
+> 状态：**已实现**（2026-08-01 核对）
 
 ---
 
@@ -63,7 +63,9 @@ Row 2: [大树🌳] [豆豆⚽]    [气球🎈]
 
 ---
 
-## 三、方言条件启用设计
+## 三、方言独立维度设计
+
+> ✅ **实现状态（2026-08-01 核对）**：方言为独立维度，与音色正交组合。所有音色均可叠加方言 Instruct，无 `dialectCapable` 限制。非 _v3 音色（小太阳 longanyang）不支持时 CosyVoice 静默忽略方言指令。
 
 ### 3.1 数据模型
 
@@ -74,7 +76,7 @@ ALTER TABLE tenant_template.users ADD COLUMN dialect VARCHAR(20) DEFAULT NULL;
 COMMENT ON COLUMN tenant_template.users.dialect IS '学生方言偏好（管理端配置，可为空）';
 ```
 
-**dialect 枚举值定义**（与 CosyVoice longanhuan_v3 Instruct 严格对应）：
+**dialect 枚举值定义**（与 CosyVoice v3 系列 Instruct 对应）：
 
 | dialect 值 | 中文标签 | CosyVoice Instruct 指令 | edge-tts 降级音色 |
 |-----------|---------|------------------------|-----------------|
@@ -93,7 +95,7 @@ COMMENT ON COLUMN tenant_template.users.dialect IS '学生方言偏好（管理�
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│ 前置条件：选中"气球"音色 AND student.dialect != null          │
+│ 方言为独立维度，所有音色均可叠加，无前置音色限制          │
 │                                                             │
 │ [toggle] 用家乡话聊天                                        │
 │                                                             │
@@ -112,18 +114,18 @@ COMMENT ON COLUMN tenant_template.users.dialect IS '学生方言偏好（管理�
 1. 方言 toggle 默认 **OFF**（标准普通话），需学生主动开启
 2. 方言开关 **不持久化**（localStorage 不存方言状态），每次新会话重置
 3. `student.dialect` 仅决定**默认选中项**，不限制可选范围（可选全部 8 种）
-4. 仅"气球"音色支持方言（`dialect_capable=True`），切换其他音色时方言自动失效
+4. 方言为独立维度，所有音色均可叠加；切换音色不影响方言开关状态
 5. 前端存储：`localStorage` 只存 `personaId`；方言状态存 React state（会话级）
 
 ### 3.3 三级降级策略
 
 ```
-Level 1: CosyVoice longanhuan_v3 + Instruct("请用{dialect}表达。")
+Level 1: CosyVoice {persona_voice} + Instruct("请用{dialect}表达。")
     ↓ 失败
 Level 2: edge-tts 方言音色（仅东北/陕西有对应）
     ↓ 失败或无对应
-Level 3: 普通话兜底（CosyVoice longanhuan_v3 无 Instruct / edge-tts zh-CN-XiaoyiNeural）
-    + 前端 toast："当前网络环境暂不支持方言朗读，已切换为普通话"
+Level 3: 普通话兜底（CosyVoice 无 Instruct / edge-tts 默认音色）
+    + 前端 toast：“当前网络环境暂不支持方言朗读，已切换为普通话”
 ```
 
 ### 3.4 TTS 接口扩展
@@ -133,17 +135,16 @@ Level 3: 普通话兜底（CosyVoice longanhuan_v3 无 Instruct / edge-tts zh-CN
 ```json
 {
   "text": "你好呀",
-  "persona": "qiqiu",
+  "persona": "xiaoxing",
   "emotion": "happy",
   "speed": 1.0,
-  "dialect": "sichuan"    // 新增，可选，仅 dialect_capable 音色生效
+  "dialect": "sichuan"    // 新增，可选，所有音色均可叠加
 }
 ```
 
 **后端处理逻辑**：
 - `dialect` 为空 → 正常合成（普通话）
-- `dialect` 非空 + 音色 `dialect_capable=True` → 附加 Instruct 指令
-- `dialect` 非空 + 音色不支持 → 忽略 dialect，正常合成
+- `dialect` 非空 → 附加 Instruct 指令（所有音色统一处理，非 _v3 音色不支持时静默忽略）
 
 ---
 
@@ -156,7 +157,7 @@ Level 3: 普通话兜底（CosyVoice longanhuan_v3 无 Instruct / edge-tts zh-CN
 | TTS 微服务 | `backend/tts-service/app.py` | VOICE_PERSONAS 扩展 7 音色 + dialect 参数 + Instruct 逻辑 |
 | Java 后端 | `TtsService.java` | synthesize 方法透传 dialect |
 | Java 后端 | `TtsController.java` | 请求体接收 dialect |
-| 前端 Hook | `useVoicePersona.ts` | 7 音色配置 + dialectCapable 标记 |
+| 前端 Hook | `useVoicePersona.ts` | 7 音色配置 + 方言独立维度（无 dialectCapable） |
 | 前端 Hook | `useTtsPlayer.ts` | 请求体携带 dialect |
 | 前端 UI | `SettingsPanel.tsx` | grid-cols-4 布局 + 方言 toggle + radio group |
 | 管理后台 | 学生编辑/CSV 导入 | dialect 字段配置入口 |
@@ -177,7 +178,7 @@ Level 3: 普通话兜底（CosyVoice longanhuan_v3 无 Instruct / edge-tts zh-CN
 
 1. 设置面板显示 7 个音色卡片（4+3 布局），切换后 TTS 即时生效
 2. 男生默认小太阳、女生默认小星（不变）
-3. 气球音色 + student.dialect 有值时 → 显示方言 toggle
+3. 方言设置对所有音色可见，默认 OFF，开启时默认选中 student.dialect
 4. 方言开启后默认选中 student.dialect，可切换其他方言
 5. 方言选择即时生效，新会话重置为 OFF
 6. CosyVoice 不可用时降级 edge-tts，方言不可用时降级普通话 + toast

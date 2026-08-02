@@ -24,7 +24,7 @@ describe('hooks/useVoicePersona', () => {
       )
     })
 
-    it('每个音色包含 id/name/emoji/desc/detail/gender/dialectCapable', () => {
+    it('每个音色包含 id/name/emoji/desc/detail/gender', () => {
       for (const p of Object.values(VOICE_PERSONAS)) {
         expect(p).toHaveProperty('id')
         expect(p).toHaveProperty('name')
@@ -32,7 +32,6 @@ describe('hooks/useVoicePersona', () => {
         expect(p).toHaveProperty('desc')
         expect(p).toHaveProperty('detail')
         expect(p).toHaveProperty('gender')
-        expect(p).toHaveProperty('dialectCapable')
       }
     })
 
@@ -43,11 +42,9 @@ describe('hooks/useVoicePersona', () => {
       expect(males).toHaveLength(3) // xiaotaiyang, dashu, doudou
     })
 
-    it('仅气球支持方言', () => {
-      expect(VOICE_PERSONAS.qiqiu.dialectCapable).toBe(true)
-      const others = Object.values(VOICE_PERSONAS).filter(p => p.id !== 'qiqiu')
-      for (const p of others) {
-        expect(p.dialectCapable).toBe(false)
+    it('方言为独立维度，无 dialectCapable 字段', () => {
+      for (const p of Object.values(VOICE_PERSONAS)) {
+        expect(p).not.toHaveProperty('dialectCapable')
       }
     })
   })
@@ -107,13 +104,14 @@ describe('hooks/useVoicePersona', () => {
       expect(result.current.personaId).toBe('xiaoxing')
     })
 
-    it('切换到非方言音色时自动关闭方言', () => {
+    it('切换音色不影响方言开关状态', () => {
       localStorage.setItem('mindsafe_voice_persona_v1', 'qiqiu')
       localStorage.setItem('mindsafe_dialect_enabled_v1', 'true')
       const { result } = renderHook(() => useVoicePersona())
       expect(result.current.dialectEnabled).toBe(true)
       act(() => { result.current.changePersona('xiaoxing') })
-      expect(result.current.dialectEnabled).toBe(false)
+      // 方言为独立维度，切换音色不自动关闭
+      expect(result.current.dialectEnabled).toBe(true)
     })
   })
 
@@ -130,24 +128,22 @@ describe('hooks/useVoicePersona', () => {
       expect(result.current.selectedDialect).toBe('sichuan')
     })
 
-    it('开启方言 + 气球音色 → activeDialect 生效', () => {
-      localStorage.setItem('mindsafe_voice_persona_v1', 'qiqiu')
+    it('开启方言 + 任意音色 → activeDialect 生效', () => {
       mockGetUser.mockReturnValue({ userId: '1', gender: 'female', dialect: 'cantonese' } as any)
       const { result } = renderHook(() => useVoicePersona())
       act(() => { result.current.toggleDialect(true) })
+      // 默认音色 xiaoxing，方言独立维度，应生效
       expect(result.current.activeDialect).toBe('cantonese')
     })
 
-    it('开启方言 + 非方言音色 → activeDialect 为 null', () => {
+    it('关闭方言 → activeDialect 为 null', () => {
       mockGetUser.mockReturnValue({ userId: '1', gender: 'female', dialect: 'sichuan' } as any)
       const { result } = renderHook(() => useVoicePersona())
-      act(() => { result.current.toggleDialect(true) })
-      // 当前音色是 xiaoxing（非 dialectCapable）
+      // 方言默认关闭
       expect(result.current.activeDialect).toBeNull()
     })
 
     it('切换方言类型', () => {
-      localStorage.setItem('mindsafe_voice_persona_v1', 'qiqiu')
       const { result } = renderHook(() => useVoicePersona())
       act(() => { result.current.toggleDialect(true) })
       act(() => { result.current.changeDialect('henan') })

@@ -811,7 +811,6 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: Se
         selectedDialect={selectedDialect}
         onDialectChange={changeDialect}
         supportedDialects={supportedDialects}
-        currentPersonaDialectCapable={persona?.dialectCapable ?? false}
       />
       {/* 切换同学二次确认 */}
       <ConfirmDialog

@@ -54,15 +54,10 @@ class TestVoicePersonas:
         assert mock_dashscope.VOICE_PERSONAS["dashu"]["dashscope_voice"] == "longanyun_v3"
         assert mock_dashscope.VOICE_PERSONAS["doudou"]["dashscope_voice"] == "longjielidou_v3"
 
-    def test_qiqiu_dialect_capable(self, mock_dashscope):
-        """气球音色标记为 dialect_capable"""
-        assert mock_dashscope.VOICE_PERSONAS["qiqiu"].get("dialect_capable") is True
-
-    def test_non_qiqiu_not_dialect_capable(self, mock_dashscope):
-        """其他音色不标记 dialect_capable"""
+    def test_no_dialect_capable_field(self, mock_dashscope):
+        """方言为独立维度，无 dialect_capable 字段"""
         for key, cfg in mock_dashscope.VOICE_PERSONAS.items():
-            if key != "qiqiu":
-                assert cfg.get("dialect_capable") is not True, f"{key} 不应有 dialect_capable"
+            assert "dialect_capable" not in cfg, f"{key} 不应有 dialect_capable"
 
     def test_speed_values_reasonable(self, mock_dashscope):
         """语速在合理范围 [0.8, 1.2]"""
@@ -114,11 +109,11 @@ class TestPersonasEndpoint:
             assert "name" in p
             assert "desc" in p
 
-    def test_qiqiu_has_dialect_capable_flag(self, client):
-        """personas 接口应返回 dialect_capable 标记"""
+    def test_no_dialect_capable_in_response(self, client):
+        """personas 接口不返回 dialect_capable 字段"""
         resp = client.get("/api/v1/tts/personas")
-        qiqiu = next(p for p in resp.json()["data"] if p["id"] == "qiqiu")
-        assert qiqiu.get("dialect_capable") is True
+        for p in resp.json()["data"]:
+            assert "dialect_capable" not in p, f"{p['id']} 不应返回 dialect_capable"
 
 
 class TestSynthesizeEndpoint:
@@ -162,10 +157,10 @@ class TestDialectInstruct:
         result = mock_dashscope.build_dialect_instruct("qiqiu", "sichuan")
         assert result == "请用四川话表达。"
 
-    def test_build_instruct_for_non_capable_persona(self, mock_dashscope):
-        """非方言音色 → 返回 None"""
+    def test_build_instruct_for_any_persona(self, mock_dashscope):
+        """方言为独立维度，任意音色均可获取 Instruct"""
         result = mock_dashscope.build_dialect_instruct("xiaoxing", "sichuan")
-        assert result is None
+        assert result == "请用四川话表达。"
 
     def test_build_instruct_for_invalid_dialect(self, mock_dashscope):
         """无效方言代码 → 返回 None"""

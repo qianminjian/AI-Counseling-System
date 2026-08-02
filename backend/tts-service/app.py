@@ -80,7 +80,7 @@ except ImportError:
 # ===== 音色人设配置（7 音色差异化矩阵，见 design/56） =====
 # dashscope_voice: 阿里云 CosyVoice 音色名（cosyvoice-v3-flash 音色列表）
 # edge_voice: edge-tts 备用音色
-# dialect_capable: 是否支持方言 Instruct（仅气球 longanhuan_v3 支持）
+# 方言为独立维度，所有音色均可叠加方言 Instruct（非 _v3 音色不支持时静默忽略）
 
 VOICE_PERSONAS = {
     "xiaoxing": {
@@ -131,7 +131,6 @@ VOICE_PERSONAS = {
         "speed": 1.05,
         "dashscope_voice": "longanhuan_v3",
         "edge_voice": "zh-CN-XiaoyiNeural",
-        "dialect_capable": True,
     },
 }
 
@@ -152,12 +151,9 @@ SUPPORTED_DIALECTS = {
 def build_dialect_instruct(persona: str, dialect: Optional[str]) -> Optional[str]:
     """
     构建方言 Instruct 指令。
-    仅当音色支持方言（dialect_capable）且 dialect 有效时返回指令字符串，否则返回 None。
+    方言为独立维度，所有音色均可叠加；非 _v3 音色不支持时 CosyVoice 静默忽略。
     """
     if not dialect:
-        return None
-    persona_cfg = VOICE_PERSONAS.get(persona)
-    if not persona_cfg or not persona_cfg.get("dialect_capable"):
         return None
     dialect_info = SUPPORTED_DIALECTS.get(dialect)
     if not dialect_info:
@@ -174,7 +170,7 @@ class TtsRequest(BaseModel):
     speed: float = 1.0                  # 语速倍率（年龄适配）
     pitch: float = 1.0                  # 音高基调（TMATCH-001 prosody，<1 更低沉安抚）
     pause_style: int = 1                # 停顿风格（0=轻快 1=自然 2=多停顿安抚）
-    dialect: Optional[str] = None       # 方言代码（可选，仅 dialect_capable 音色生效）
+    dialect: Optional[str] = None       # 方言代码（可选，所有音色均可叠加）
 
 
 class TtsInfoResponse(BaseModel):
@@ -201,14 +197,11 @@ def list_personas():
     """返回可用音色人设列表"""
     personas = []
     for key, cfg in VOICE_PERSONAS.items():
-        item = {
+        personas.append({
             "id": key,
             "name": cfg["name"],
             "desc": cfg["desc"],
-        }
-        if cfg.get("dialect_capable"):
-            item["dialect_capable"] = True
-        personas.append(item)
+        })
     return {"success": True, "data": personas}
 
 
@@ -227,7 +220,7 @@ async def synthesize(req: TtsRequest):
     persona_cfg = VOICE_PERSONAS.get(req.persona, VOICE_PERSONAS["xiaoxing"])
     final_speed = persona_cfg["speed"] * req.speed
 
-    # 方言 Instruct 构建（仅 dialect_capable 音色 + 有效 dialect 时生效）
+    # 方言 Instruct 构建（独立维度，所有音色均可叠加）
     dialect_instruct = build_dialect_instruct(req.persona, req.dialect)
 
     logger.info(f"TTS 合成: text_len={len(req.text)}, persona={req.persona}, "

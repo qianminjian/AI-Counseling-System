@@ -16,7 +16,7 @@ import { hasAnyVoiceprint, deleteVoiceprint, enrollVoiceprint, saveVoiceCredenti
 import VoiceLoginOverlay from './VoiceLoginOverlay'
 import ConfirmDialog from './ConfirmDialog'
 
-export default function SettingsPanel({ open, onClose, muted, onToggleMute, wakeSupported = false, wakeOn = false, onToggleWake, personaId: externalPersonaId, onPersonaChange, dialectEnabled = false, onToggleDialect, selectedDialect, onDialectChange, supportedDialects, currentPersonaDialectCapable = false }: {
+export default function SettingsPanel({ open, onClose, muted, onToggleMute, wakeSupported = false, wakeOn = false, onToggleWake, personaId: externalPersonaId, onPersonaChange, dialectEnabled = false, onToggleDialect, selectedDialect, onDialectChange, supportedDialects }: {
   open: boolean
   onClose: () => void
   muted: boolean
@@ -31,7 +31,6 @@ export default function SettingsPanel({ open, onClose, muted, onToggleMute, wake
   selectedDialect?: string | null
   onDialectChange?: (id: string) => void
   supportedDialects?: Record<string, { id: string; label: string }>
-  currentPersonaDialectCapable?: boolean
 }) {
   const { themeId, changeTheme } = useTheme()
   const internalPersona = useVoicePersona()
@@ -163,9 +162,8 @@ export default function SettingsPanel({ open, onClose, muted, onToggleMute, wake
           </div>
         </section>
 
-        {/* 方言选择（design/56 §三：仅 dialectCapable 音色显示） */}
-        {currentPersonaDialectCapable && (
-          <section className="mb-6">
+        {/* 方言选择（design/56 §三：独立维度，所有音色均可叠加） */}
+        <section className="mb-6">
             <h3 className="mb-3 text-sm font-semibold text-gray-500">🏠 用家乡话聊天</h3>
             {/* 方言开关 */}
             <button
@@ -214,7 +212,6 @@ export default function SettingsPanel({ open, onClose, muted, onToggleMute, wake
               </div>
             )}
           </section>
-        )}
 
         {/* 语音开关 */}
         <section className="mb-4">
