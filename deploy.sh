@@ -243,39 +243,24 @@ if $DEPLOY_VOICE; then
   rsync_retry -avz --delete "$PROJECT_ROOT/backend/voice-service/" "$SERVER:$REMOTE_DIR/voice-service/"
 fi
 
-# ===== 选择性重启（仅 backend/tts 需要） =====
-RESTART_SERVICES=""
-$DEPLOY_BACKEND && RESTART_SERVICES="$RESTART_SERVICES backend"
-$DEPLOY_TTS && RESTART_SERVICES="$RESTART_SERVICES tts-service"
-$DEPLOY_VOICE && RESTART_SERVICES="$RESTART_SERVICES voice-service"
+# ===== 上传 service-manager.sh（确保服务器有最新版本） =====
+rsync_retry -avz "$PROJECT_ROOT/service-manager.sh" "$SERVER:$REMOTE_DIR/service-manager.sh"
+ssh "$SERVER" "chmod +x $REMOTE_DIR/service-manager.sh"
 
-if [ -n "$RESTART_SERVICES" ]; then
-  echo "🔄 重启容器:$RESTART_SERVICES"
-  ssh "$SERVER" "cd $REMOTE_DIR && docker compose up -d --build $RESTART_SERVICES"
+# ===== 选择性重启（通过 service-manager.sh 统一管理） =====
+RESTART_TARGETS=""
+$DEPLOY_BACKEND && RESTART_TARGETS="$RESTART_TARGETS backend"
+$DEPLOY_TTS && RESTART_TARGETS="$RESTART_TARGETS tts"
+$DEPLOY_VOICE && RESTART_TARGETS="$RESTART_TARGETS voice"
 
-  # 健康检查（仅重启时，轮询最多 60s）
-  echo "⏳ 等待服务启动..."
-  if $DEPLOY_BACKEND; then
-    HEALTH_OK=false
-    for i in $(seq 1 12); do
-      sleep 5
-      HTTP_OK=$(ssh "$SERVER" "curl -sf http://127.0.0.1:18081/actuator/health > /dev/null && echo yes || echo no" 2>/dev/null)
-      if [ "$HTTP_OK" = "yes" ]; then
-        HEALTH_OK=true
-        break
-      fi
-      echo "   等待中... (${i}/12)"
-    done
-    if $HEALTH_OK; then
-      echo "✅ 后端健康检查通过"
-    else
-      echo "❌ 后端健康检查失败（60s 超时），请检查：ssh $SERVER 'docker logs mindsafe-backend-1 --tail 30'"
-      echo "   部署状态未更新，下次 deploy.sh 将重新部署"
-      exit 1
-    fi
-  else
-    sleep 10
+if [ -n "$RESTART_TARGETS" ]; then
+  echo "🔄 重启服务:$RESTART_TARGETS"
+  if ! ssh "$SERVER" "cd $REMOTE_DIR && bash service-manager.sh restart $RESTART_TARGETS"; then
+    echo "❌ 服务重启失败，请检查：ssh $SERVER 'cd $REMOTE_DIR && bash service-manager.sh status'"
+    echo "   部署状态未更新，下次 deploy.sh 将重新部署"
+    exit 1
   fi
+  echo "✅ 服务重启 + 健康检查通过"
 else
   echo "✅ 前端静态文件已更新（无需重启容器）"
 fi
