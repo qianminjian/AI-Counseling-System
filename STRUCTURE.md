@@ -16,7 +16,7 @@ AI-Counseling-System/
 ├── STRUCTURE.md            # 本文件：目录结构约定
 ├── README.md               # 项目入口导航
 │
-├── design/                 # 设计层：BEACON.md + 总览/跟踪表 + 01~20 md 设计文档（单一事实源）
+├── design/                 # 设计层：BEACON.md + 总览/跟踪表 + 01~57 md 设计文档（单一事实源）+ frozen/（34-50 冻结区）
 ├── doc/                    # 归档层（只读留档，冲突以 design/*.md 为准）
 │   ├── 01~15_*.docx        #   设计文档原始 docx
 │   └── his/                #   早期需求/探索产物（原 prd/ + prompts/，已无活跃用途）
@@ -53,13 +53,14 @@ AI-Counseling-System/
 
 - **存什么**：
   - `BEACON.md` — 项目明灯文件（设计决策、范围、当前状态），**唯一强制**
-  - `DESIGN-OVERVIEW.md` — 15 份设计文档总览入口（目录导航 + 关键摘要）
+  - `DESIGN-OVERVIEW.md` — 57 份设计文档总览入口（目录导航 + 关键摘要）
   - `TASK-TRACKER.md` — 任务跟踪表（文档整合任务 + MVP 开发任务 + 决策/风险/里程碑）
-  - `01_*.md` ~ `20_*.md` — **当前设计文档（md 格式，单一事实源）**，由 `doc/*.docx` 整合而来，直接平铺在 design/ 根下；16-20 为新增（API 接口 + 前端架构 + Prompt 模板库 + 界面详设 + 端到端流程）
+  - `01_*.md` ~ `57_*.md` — **当前设计文档（md 格式，单一事实源）**，由 `doc/*.docx` 整合而来，直接平铺在 design/ 根下；16-33 为详细设计/功能/合规/测试；51-55 为分析专题；56-57 为实施专题
+  - `frozen/34_*.md` ~ `frozen/50_*.md` — **冻结区**（远期任务，首校签约前不实施）
   - `*-PLAN.md` — Plan Mode 产出的执行计划（按 design-persistence.md §6 硬性要求）
   - `demo/` — 交互原型（独立 HTML Demo，供设计选型/现场预览，不参与前端构建，与 design/19 界面详设配套）
   - `discussion/`（可选）多轮设计讨论摘要；`decisions/`（可选）ADR；`reference/`（可选）外部参考
-- **命名约定**：新增正式设计文档在 `design/` 根下沿用 `NN_主题.md` 编号制，接着 20 往后排
+- **命名约定**：新增正式设计文档在 `design/` 根下沿用 `NN_主题.md` 编号制，接着 57 往后排
 - **文档权威性**：以 `design/*.md` 为准；原始 docx 存于项目根 `doc/`，仅作溯源，二者冲突时以 md 为准（md 已按 Java 技术栈决策改写）
 - **读取时机**：任何新任务启动前，先读 `BEACON.md`；查设计细节先读 `DESIGN-OVERVIEW.md` 导航
 

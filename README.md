@@ -23,7 +23,7 @@
 |------|------|
 | [backend/](backend/) | 后端源代码（Maven 多模块：common/domain/ai/service/api/app） |
 | [frontend/](frontend/) | 前端应用组（student-h5 / teacher-web / parent-h5） |
-| [design/](design/) | 设计文档（01~32）+ BEACON 项目明灯 |
+| [design/](design/) | 设计文档（01~57）+ BEACON 项目明灯 + frozen/（34-50 冻结区） |
 | [deploy/](deploy/) | 部署配置（Docker Compose、Nginx、监控） |
 | [doc/](doc/) | 归档层（原始 docx + 早期探索产物） |
 | [scripts/](scripts/) | 工具脚本 |
