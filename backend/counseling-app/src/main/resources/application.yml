@@ -97,6 +97,12 @@ springdoc:
 
 # MindSafe 业务配置
 mindsafe:
+  # LLM 性能增强配置（PERF-001 + PERF-002）
+  llm:
+    first-token-timeout-ms: 15000
+    overall-timeout-ms: 60000
+    retry-max: 1
+    retry-backoff-ms: 2000
   # AI 多模型降级配置（AI-004）
   ai:
     fallback:

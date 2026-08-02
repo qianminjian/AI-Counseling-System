@@ -322,6 +322,12 @@ record ConversationState(
 首次失败等 1s 重试 → 第二次等 3s 重试并用缓存 → 第三次触发降级用规则引擎 → 持续失败记日志并通知运维。
 > Java 实现：Spring Retry（`@Retryable` 指数退避）+ Resilience4j 熔断/降级；LLM 主备切换对应 BEACON 决策 #7（LLM 供应商无关 + 主备降级）。
 
+> ✅ **实现状态（2026-08-01 核对）**：M1 实际采用 **Reactor 原生重试**（非 Spring Retry / Resilience4j）：
+> - `LlmStreamEnhancer`：`Flux.defer()` + `retryWhen(Retry.backoff(1, 2s))`，瞬时失败（网络抖动/限流/连接重置）自动重试 1 次；超时不重试（模型本身慢，重试无意义）。
+> - `ResilientChatModel`：主模型（DeepSeek）抛异常时立即切换备用模型（qwen-plus），无等待。
+> - 重试耗尽 + 备用也失败 → 降级安全话术（“波波现在有点忙不过来...”）。
+> - 全流程 Micrometer 指标埋点（`mindsafe.llm.retry/timeout/fallback/model_fallback`），Grafana 可视化。
+
 ### 6.3 超时处理
 
 Safety 检查 30s / Emotion 识别 10s / CBT 干预 60s / 整体对话 120s，超时各触发对应降级。

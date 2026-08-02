@@ -1,11 +1,17 @@
 package com.mindsafe.ai.voice;
 
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.buffer.DataBuffer;
+import org.springframework.core.io.buffer.DataBufferUtils;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.time.Duration;
@@ -24,12 +30,22 @@ public class TtsService {
     private static final Logger log = LoggerFactory.getLogger(TtsService.class);
 
     private final WebClient webClient;
+    private final Timer ttsStreamTimer;
+    private final Counter ttsErrorCounter;
 
-    public TtsService(@Value("${mindsafe.tts-service.url:http://localhost:10096}") String baseUrl) {
+    public TtsService(@Value("${mindsafe.tts-service.url:http://localhost:10096}") String baseUrl,
+                      MeterRegistry meterRegistry) {
         this.webClient = WebClient.builder()
                 .baseUrl(baseUrl)
                 .codecs(config -> config.defaultCodecs().maxInMemorySize(8 * 1024 * 1024))
                 .build();
+        this.ttsStreamTimer = Timer.builder("mindsafe.tts.stream_duration")
+                .description("TTS 流式合成总耗时")
+                .publishPercentiles(0.5, 0.9, 0.99)
+                .register(meterRegistry);
+        this.ttsErrorCounter = Counter.builder("mindsafe.tts.error")
+                .description("TTS 合成失败次数")
+                .register(meterRegistry);
     }
 
     /** TTS 合成超时（秒）：超过此时间未返回则静默降级，避免前端无限等待 */
@@ -76,6 +92,50 @@ public class TtsService {
             log.error("TTS 合成失败（静默降级）: {}", e.getMessage());
             return null;
         }
+    }
+
+    /**
+     * 流式合成语音（PERF-003：边合成边返回，不等待全部音频完成）
+     * <p>
+     * 相比 {@link #synthesize}，本方法将 Python tts-service 的 StreamingResponse
+     * 直接透传给调用方，消除 Java 层“收完再发”的缓冲延迟。
+     *
+     * @return 音频字节流（Flux，每个元素是一个网络 chunk）
+     */
+    public Flux<byte[]> synthesizeStream(String text, String persona, String emotion, double speed,
+                                         double pitch, int pauseStyle) {
+        Map<String, Object> body = Map.of(
+                "text", text,
+                "persona", persona != null ? persona : "xiaoxing",
+                "emotion", emotion != null ? emotion : "neutral",
+                "speed", speed,
+                "pitch", pitch,
+                "pause_style", pauseStyle
+        );
+
+        long startTime = System.currentTimeMillis();
+        return webClient.post()
+                .uri("/api/v1/tts/synthesize")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(body)
+                .retrieve()
+                .bodyToFlux(DataBuffer.class)
+                .map(dataBuffer -> {
+                    byte[] bytes = new byte[dataBuffer.readableByteCount()];
+                    dataBuffer.read(bytes);
+                    DataBufferUtils.release(dataBuffer);
+                    return bytes;
+                })
+                .timeout(SYNTH_TIMEOUT)
+                .doOnComplete(() -> {
+                    ttsStreamTimer.record(Duration.ofMillis(System.currentTimeMillis() - startTime));
+                    log.debug("TTS 流式合成完成: text_len={}", text.length());
+                })
+                .onErrorResume(e -> {
+                    ttsErrorCounter.increment();
+                    log.error("TTS 流式合成失败（静默降级）: {}", e.getMessage());
+                    return Flux.empty();
+                });
     }
 
     /**

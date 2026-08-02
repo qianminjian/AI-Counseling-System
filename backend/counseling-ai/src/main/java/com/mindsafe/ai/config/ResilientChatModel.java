@@ -1,5 +1,7 @@
 package com.mindsafe.ai.config;
 
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.model.ChatModel;
@@ -24,13 +26,20 @@ public class ResilientChatModel implements ChatModel {
     private final ChatModel fallback;
     private final String primaryName;
     private final String fallbackName;
+    private final Counter modelFallbackCounter;
 
     public ResilientChatModel(ChatModel primary, ChatModel fallback,
-                              String primaryName, String fallbackName) {
+                              String primaryName, String fallbackName,
+                              MeterRegistry meterRegistry) {
         this.primary = primary;
         this.fallback = fallback;
         this.primaryName = primaryName;
         this.fallbackName = fallbackName;
+        this.modelFallbackCounter = Counter.builder("mindsafe.llm.model_fallback")
+                .description("LLM 主模型降级到备用模型次数")
+                .tag("from", primaryName)
+                .tag("to", fallbackName)
+                .register(meterRegistry);
     }
 
     @Override
@@ -38,6 +47,7 @@ public class ResilientChatModel implements ChatModel {
         try {
             return primary.call(prompt);
         } catch (Exception e) {
+            modelFallbackCounter.increment();
             log.warn("LLM 主模型 [{}] 调用失败，降级到备用模型 [{}]: {}",
                     primaryName, fallbackName, e.getMessage());
             try {
@@ -53,6 +63,7 @@ public class ResilientChatModel implements ChatModel {
     public Flux<ChatResponse> stream(Prompt prompt) {
         return primary.stream(prompt)
                 .onErrorResume(e -> {
+                    modelFallbackCounter.increment();
                     log.warn("LLM 主模型 [{}] 流式调用失败，降级到备用模型 [{}]: {}",
                             primaryName, fallbackName, e.getMessage());
                     return fallback.stream(prompt)

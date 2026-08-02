@@ -184,7 +184,7 @@ describe('hooks/useTtsPlayer', () => {
         await new Promise(r => setTimeout(r, 50))
       })
       expect(mockAuthFetch).toHaveBeenCalledWith(
-        '/api/v1/tts/synthesize',
+        '/api/v1/tts/synthesize-stream',
         expect.objectContaining({
           body: JSON.stringify({ text: '你好', persona: 'qiqiu', emotion: 'happy', speed: 1.2 }),
         })

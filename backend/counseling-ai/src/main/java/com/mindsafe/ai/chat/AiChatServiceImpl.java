@@ -86,19 +86,17 @@ public class AiChatServiceImpl implements AiChatService {
         if (profilePrompt != null && !profilePrompt.isBlank()) {
             fullSystem = fullSystem + "\n\n" + profilePrompt;
         }
-
-        // 4. 流式调用 LLM（带历史上下文）
-        StringBuilder responseCollector = new StringBuilder();
-
-        Flux<String> rawTokens = chatClient.prompt()
-                .system(fullSystem)
-                .messages(history)
-                .stream()
-                .content();
+        final String sysPrompt = fullSystem;
 
         // 5. Layer1 实时过滤：命中 block 级敏感词时中断流并替换为安全话术
         // PERF-001: 超时保护 + 首 token 监控 + 降级
-        return llmStreamEnhancer.enhance(outputContentFilter.apply(rawTokens, sessionId), sessionId)
+        // PERF-002: Supplier 模式支持瞬时失败自动重试
+        StringBuilder responseCollector = new StringBuilder();
+        return llmStreamEnhancer.enhance(
+                () -> outputContentFilter.apply(
+                        chatClient.prompt().system(sysPrompt).messages(history).stream().content(),
+                        sessionId),
+                sessionId)
                 .doOnNext(evt -> {
                     if ("token".equals(evt.type()) && evt.content() != null) {
                         responseCollector.append(evt.content());
@@ -134,18 +132,18 @@ public class AiChatServiceImpl implements AiChatService {
         if (profilePrompt != null && !profilePrompt.isBlank()) {
             fullSystem = fullSystem + "\n\n" + profilePrompt;
         }
+        final String sysPrompt = fullSystem;
 
         // 4. 流式调用 LLM
         long streamStart = System.currentTimeMillis();
         StringBuilder responseCollector = new StringBuilder();
-        Flux<String> rawTokens = chatClient.prompt()
-                .system(fullSystem)
-                .messages(history)
-                .stream()
-                .content();
 
-        // 5. Layer1 实时过滤 + Layer2 异步审查 + PERF-001 超时保护
-        return llmStreamEnhancer.enhance(outputContentFilter.apply(rawTokens, sessionId), sessionId)
+        // 5. Layer1 实时过滤 + Layer2 异步审查 + PERF-001 超时保护 + PERF-002 重试
+        return llmStreamEnhancer.enhance(
+                () -> outputContentFilter.apply(
+                        chatClient.prompt().system(sysPrompt).messages(history).stream().content(),
+                        sessionId),
+                sessionId)
                 .doOnNext(evt -> {
                     if ("token".equals(evt.type()) && evt.content() != null) {
                         responseCollector.append(evt.content());
@@ -189,17 +187,17 @@ public class AiChatServiceImpl implements AiChatService {
             fullSystem = fullSystem + "\n\n" + profilePrompt;
         }
         fullSystem = fullSystem + "\n\n" + nudgeInstruction;
+        final String sysPrompt = fullSystem;
 
         // 3. 流式调用 LLM（带历史上下文，无新增 UserMessage）
         StringBuilder responseCollector = new StringBuilder();
-        Flux<String> rawTokens = chatClient.prompt()
-                .system(fullSystem)
-                .messages(history)
-                .stream()
-                .content();
 
-        // 4. 复用双层安全管线 + PERF-001 超时保护
-        return llmStreamEnhancer.enhance(outputContentFilter.apply(rawTokens, sessionId), sessionId)
+        // 4. 复用双层安全管线 + PERF-001 超时保护 + PERF-002 重试
+        return llmStreamEnhancer.enhance(
+                () -> outputContentFilter.apply(
+                        chatClient.prompt().system(sysPrompt).messages(history).stream().content(),
+                        sessionId),
+                sessionId)
                 .doOnNext(evt -> {
                     if ("token".equals(evt.type()) && evt.content() != null) {
                         responseCollector.append(evt.content());

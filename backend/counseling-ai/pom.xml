@@ -38,6 +38,11 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-webflux</artifactId>
         </dependency>
+        <!-- 业务指标采集（Prometheus / Micrometer） -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-core</artifactId>
+        </dependency>
         <!-- Reactor 测试（StepVerifier：Layer1 流式过滤器单测） -->
         <dependency>
             <groupId>io.projectreactor</groupId>

@@ -52,6 +52,14 @@ mindsafe:
   llm:
     first-token-timeout-ms: 12000
     overall-timeout-ms: 45000
+    retry-max: 1
+    retry-backoff-ms: 2000
+  ai:
+    fallback:
+      enabled: true
+      base-url: https://dashscope.aliyuncs.com/compatible-mode/v1
+      api-key: ${DASHSCOPE_API_KEY}
+      model: qwen-plus
   alert:
     wecom:
       webhook-url: ${MINDSAFE_ALERT_WECOM_WEBHOOK_URL:}

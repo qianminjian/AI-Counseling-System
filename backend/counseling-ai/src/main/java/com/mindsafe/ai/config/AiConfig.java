@@ -2,6 +2,7 @@ package com.mindsafe.ai.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mindsafe.ai.memory.RedisChatMemoryRepository;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.memory.ChatMemory;
@@ -66,7 +67,7 @@ public class AiConfig {
      */
     @Bean
     @Primary
-    public ChatModel resilientChatModel(ChatModel autoConfiguredChatModel) {
+    public ChatModel resilientChatModel(ChatModel autoConfiguredChatModel, MeterRegistry meterRegistry) {
         if (!fallbackEnabled || fallbackApiKey.isBlank()) {
             log.info("LLM 备用模型未启用（fallback.enabled={}），使用单模型模式", fallbackEnabled);
             return autoConfiguredChatModel;
@@ -92,7 +93,7 @@ public class AiConfig {
 
         return new ResilientChatModel(
                 autoConfiguredChatModel, fallbackChatModel,
-                primaryModel, fallbackModel);
+                primaryModel, fallbackModel, meterRegistry);
     }
 
     @Bean

@@ -1,0 +1,166 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "title": "LLM 首 Token 延迟 (P50 / P90 / P99)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 1 },
+              { "color": "red", "value": 3 }
+            ]
+          }
+        }
+      },
+      "targets": [
+        { "expr": "mindsafe_llm_first_token_latency_seconds{quantile=\"0.5\"}", "legendFormat": "P50" },
+        { "expr": "mindsafe_llm_first_token_latency_seconds{quantile=\"0.9\"}", "legendFormat": "P90" },
+        { "expr": "mindsafe_llm_first_token_latency_seconds{quantile=\"0.99\"}", "legendFormat": "P99" }
+      ]
+    },
+    {
+      "title": "LLM 重试 / 超时 / 降级 速率 (次/分钟)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": { "defaults": { "unit": "cpm" } },
+      "targets": [
+        { "expr": "rate(mindsafe_llm_retry_total[5m]) * 60", "legendFormat": "重试" },
+        { "expr": "rate(mindsafe_llm_timeout_total[5m]) * 60", "legendFormat": "超时降级" },
+        { "expr": "rate(mindsafe_llm_fallback_total[5m]) * 60", "legendFormat": "兜底话术" }
+      ]
+    },
+    {
+      "title": "模型降级次数 (主→备)",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "targets": [
+        { "expr": "sum(mindsafe_llm_model_fallback_total)", "legendFormat": "累计降级" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 5 },
+              { "color": "red", "value": 20 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "LLM 降级话术触发 (累计)",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "targets": [
+        { "expr": "sum(mindsafe_llm_fallback_total)", "legendFormat": "兜底话术" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 10 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "TTS 流式合成耗时 (P50 / P90 / P99)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 2 },
+              { "color": "red", "value": 5 }
+            ]
+          }
+        }
+      },
+      "targets": [
+        { "expr": "mindsafe_tts_stream_duration_seconds{quantile=\"0.5\"}", "legendFormat": "P50" },
+        { "expr": "mindsafe_tts_stream_duration_seconds{quantile=\"0.9\"}", "legendFormat": "P90" },
+        { "expr": "mindsafe_tts_stream_duration_seconds{quantile=\"0.99\"}", "legendFormat": "P99" }
+      ]
+    },
+    {
+      "title": "TTS 合成失败速率 (次/分钟)",
+      "type": "timeseries",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 12 },
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": { "defaults": { "unit": "cpm" } },
+      "targets": [
+        { "expr": "rate(mindsafe_tts_error_total[5m]) * 60", "legendFormat": "失败/分钟" }
+      ]
+    },
+    {
+      "title": "首 Token 延迟分布 (Histogram)",
+      "type": "histogram",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "targets": [
+        { "expr": "sum(rate(mindsafe_llm_first_token_latency_seconds_bucket[5m])) by (le)", "legendFormat": "{{le}}", "format": "heatmap" }
+      ]
+    },
+    {
+      "title": "LLM 重试成功率",
+      "type": "gauge",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 0.5 },
+              { "color": "green", "value": 0.9 }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "1 - (sum(rate(mindsafe_llm_fallback_total[1h])) / (sum(rate(mindsafe_llm_first_token_latency_seconds_count[1h])) + 0.001))",
+          "legendFormat": "成功率"
+        }
+      ]
+    }
+  ],
+  "schemaVersion": 39,
+  "tags": ["mindsafe", "llm", "tts"],
+  "templating": { "list": [] },
+  "time": { "from": "now-24h", "to": "now" },
+  "timepicker": {},
+  "timezone": "Asia/Shanghai",
+  "title": "MindSafe LLM & TTS 性能监控",
+  "uid": "mindsafe-llm-perf",
+  "version": 1
+}

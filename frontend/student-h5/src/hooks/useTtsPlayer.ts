@@ -26,17 +26,17 @@ function stripEmoji(text) {
     .trim()
 }
 
-/** 将文本按标点切分为句子 */
+/** 将文本按标点切分为句子（PERF-004：降低阈值，首句更快出声） */
 function splitSentences(text) {
   if (!text) return []
   const cleaned = stripEmoji(text)
   if (!cleaned) return []
   // 按句号、问号、感叹号、换行切分
   const parts = cleaned.split(/(?<=[。！？\n])/).filter(s => s.trim())
-  // 超长句二次切分（>40字在逗号处断开）
+  // 超长句二次切分（>15字在逗号/顿号/分号处断开，加速首句出声）
   const result = []
   for (const part of parts) {
-    if (part.length > 40) {
+    if (part.length > 15) {
       const subParts = part.split(/(?<=[，、；])/).filter(s => s.trim())
       result.push(...subParts)
     } else {
@@ -46,8 +46,8 @@ function splitSentences(text) {
   return result
 }
 
-/** 合并过短的句子，避免"短句瞬间播完、下一句还没合成好"造成的句间间隔 */
-function mergeShortSentences(sentences, minLen = 10) {
+/** 合并过短的句子，避免“短句瞬间播完、下一句还没合成好”造成的句间间隔 */
+function mergeShortSentences(sentences, minLen = 8) {
   const merged = []
   let buffer = ''
   for (const s of sentences) {
@@ -148,7 +148,7 @@ export function useTtsPlayer({ persona = 'xiaoxing', emotion = 'neutral', speed 
       return null // 返回 null 触发 speak() 中的浏览器降级路径
     }
     try {
-      const res = await authFetch('/api/v1/tts/synthesize', {
+      const res = await authFetch('/api/v1/tts/synthesize-stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text, persona, emotion, speed }),
@@ -319,17 +319,20 @@ export function useTtsPlayer({ persona = 'xiaoxing', emotion = 'neutral', speed 
     setCurrentSentenceIdx(-1)
   }, [muted, stop])
 
-  /** 流式喂入 token：累积到句末即切分并加入播放队列（后台合成 + 顺序播放） */
+  /** 流式嗂入 token：累积到句末即切分并加入播放队列（后台合成 + 顺序播放） */
   const feedToken = useCallback((token: string) => {
     if (muted || abortRef.current) return
     streamBufferRef.current += token
-    // 检测句末标点（。！？\n）
+    // 检测句末标点（。！？\n）或较长缓冲中的逗号（PERF-004：加速首句出声）
     const buf = streamBufferRef.current
     const lastEnd = Math.max(buf.lastIndexOf('。'), buf.lastIndexOf('！'), buf.lastIndexOf('？'), buf.lastIndexOf('\n'))
-    if (lastEnd < 0) return // 尚未累积完一句
+    // 逗号切分：缓冲超过 10 字时在最后一个逗号处切（避免短句碎片）
+    const lastComma = buf.lastIndexOf('，')
+    const cutPos = lastEnd >= 0 ? lastEnd : (lastComma >= 10 ? lastComma : -1)
+    if (cutPos < 0) return // 尚未累积完一句
     // 切出完整句子
-    const completePart = buf.slice(0, lastEnd + 1)
-    streamBufferRef.current = buf.slice(lastEnd + 1)
+    const completePart = buf.slice(0, cutPos + 1)
+    streamBufferRef.current = buf.slice(cutPos + 1)
     const newSentences = mergeShortSentences(splitSentences(completePart))
     if (newSentences.length === 0) return
     // 加入队列 + 更新 UI

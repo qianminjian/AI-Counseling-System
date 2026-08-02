@@ -6,6 +6,7 @@ import com.mindsafe.ai.safety.OutputReviewService;
 import com.mindsafe.ai.safety.OutputSafetyReporter;
 import com.mindsafe.ai.safety.SafetyKeywordLibrary;
 import com.mindsafe.common.dto.chat.StreamMessageEvent;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -78,7 +79,7 @@ class AiChatServiceImplTest {
 
         service = new AiChatServiceImpl(builder, chatMemory, outputContentFilter,
                 outputReviewService, promptTemplateService,
-                new LlmStreamEnhancer(3000, 60000),
+                new LlmStreamEnhancer(3000, 60000, 1, 2000, new SimpleMeterRegistry()),
                 mock(com.mindsafe.domain.mapper.ModelCallLogMapper.class));
     }
 
