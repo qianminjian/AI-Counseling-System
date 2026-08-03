@@ -115,24 +115,24 @@ class ChatControllerTest {
         @Test
         @DisplayName("sendMessage 放行（纯文本走无语音重载）")
         void sendMessageAllowed() {
-            when(conversationService.sendMessageStream(eq(tenantId), eq(sessionId), anyString()))
+            when(conversationService.sendMessageStream(eq(tenantId), eq(studentId), eq(sessionId), anyString()))
                     .thenReturn(Flux.empty());
 
             controller.sendMessage(sessionId,
                     new SendMessageRequest("你好", null, null, "text", null, null), authentication);
 
-            verify(conversationService).sendMessageStream(tenantId, sessionId, "你好");
+            verify(conversationService).sendMessageStream(tenantId, studentId, sessionId, "你好");
         }
 
         @Test
         @DisplayName("sendNudge 放行")
         void sendNudgeAllowed() {
-            when(conversationService.sendNudgeStream(eq(tenantId), eq(sessionId), anyInt()))
+            when(conversationService.sendNudgeStream(eq(tenantId), eq(studentId), eq(sessionId), anyInt()))
                     .thenReturn(Flux.empty());
 
             controller.sendNudge(sessionId, new NudgeRequest(30), authentication);
 
-            verify(conversationService).sendNudgeStream(tenantId, sessionId, 30);
+            verify(conversationService).sendNudgeStream(tenantId, studentId, sessionId, 30);
         }
     }
 
@@ -141,7 +141,7 @@ class ChatControllerTest {
     void endSessionNotGated() {
         controller.endSession(sessionId, authentication);
 
-        verify(conversationService).endSession(tenantId, sessionId);
+        verify(conversationService).endSession(tenantId, studentId, sessionId);
         verify(guardianConsentService, never()).hasGuardianConsent(any(), any());
     }
 }

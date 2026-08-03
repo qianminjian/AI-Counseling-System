@@ -41,6 +41,7 @@ public class TrialAuthService {
     private final ConsentRecordMapper consentRecordMapper;
     private final PasswordEncoder passwordEncoder;
     private final PasswordPolicyService passwordPolicyService;
+    private final TenantAccessGuard tenantAccessGuard;
 
     /**
      * 试运行开关：age<14 注册时自动写入监护人同意（跳过 SMS 闭环）。
@@ -53,12 +54,14 @@ public class TrialAuthService {
                             UserMapper userMapper,
                             ConsentRecordMapper consentRecordMapper,
                             PasswordEncoder passwordEncoder,
-                            PasswordPolicyService passwordPolicyService) {
+                            PasswordPolicyService passwordPolicyService,
+                            TenantAccessGuard tenantAccessGuard) {
         this.inviteCodeMapper = inviteCodeMapper;
         this.userMapper = userMapper;
         this.consentRecordMapper = consentRecordMapper;
         this.passwordEncoder = passwordEncoder;
         this.passwordPolicyService = passwordPolicyService;
+        this.tenantAccessGuard = tenantAccessGuard;
     }
 
     /**
@@ -203,17 +206,25 @@ public class TrialAuthService {
     }
 
     private User doLoginWithPin(String pseudonym, String pin) {
-        User user = userMapper.selectOne(
+        // SEC-003：昵称无全局唯一约束，重名时拒绝登录（防 LIMIT 1 随机命中他人账号）
+        java.util.List<User> candidates = userMapper.selectList(
                 new LambdaQueryWrapper<User>()
                         .eq(User::getPseudonym, pseudonym)
                         .eq(User::getStatus, "active")
-                        .last("LIMIT 1")
         );
+        if (candidates.size() > 1) {
+            throw new BizException(ErrorCode.UNAUTHORIZED, "昵称或 PIN 码错误");
+        }
+        User user = candidates.isEmpty() ? null : candidates.get(0);
         if (user == null || user.getPinHash() == null) {
             throw new BizException(ErrorCode.UNAUTHORIZED, "昵称或 PIN 码错误");
         }
         if (!passwordEncoder.matches(pin, user.getPinHash())) {
             throw new BizException(ErrorCode.UNAUTHORIZED, "昵称或 PIN 码错误");
+        }
+        // SEC-004：租户状态门禁——suspended/archived 租户禁止登录
+        if (!tenantAccessGuard.isLoginAllowed(user.getTenantId())) {
+            throw new BizException(ErrorCode.FORBIDDEN, "学校账号暂时不可用，请联系管理员");
         }
         // 更新最后登录时间
         User update = new User();

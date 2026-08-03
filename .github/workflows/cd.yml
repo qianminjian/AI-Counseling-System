@@ -75,6 +75,48 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      # 语音识别/情绪分析微服务镜像（与 compose 服务同名，发布链路对齐）
+      - name: Extract voice-service metadata
+        id: meta-voice
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/voice-service
+          tags: |
+            type=sha,prefix=
+            type=ref,event=tag
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build & Push voice-service
+        uses: docker/build-push-action@v5
+        with:
+          context: backend/voice-service
+          push: true
+          tags: ${{ steps.meta-voice.outputs.tags }}
+          labels: ${{ steps.meta-voice.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # TTS 语音合成微服务镜像
+      - name: Extract tts-service metadata
+        id: meta-tts
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/tts-service
+          tags: |
+            type=sha,prefix=
+            type=ref,event=tag
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build & Push tts-service
+        uses: docker/build-push-action@v5
+        with:
+          context: backend/tts-service
+          push: true
+          tags: ${{ steps.meta-tts.outputs.tags }}
+          labels: ${{ steps.meta-tts.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
   notify:
     name: Deploy Notification
     runs-on: ubuntu-latest
@@ -87,5 +129,7 @@ jobs:
           echo "✅ Images pushed to GHCR"
           echo "Backend: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/backend:${GITHUB_SHA::7}"
           echo "Frontend: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/frontend:${GITHUB_SHA::7}"
+          echo "voice-service: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/voice-service:${GITHUB_SHA::7}"
+          echo "tts-service: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/tts-service:${GITHUB_SHA::7}"
           echo ""
-          echo "To deploy: ssh to server → docker compose pull → docker compose up -d"
+          echo "To deploy: ssh to server → 在 .env 配置 *_IMAGE 指向以上 tag → docker compose -f docker-compose.prod.yml pull && up -d"

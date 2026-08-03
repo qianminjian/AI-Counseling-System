@@ -130,10 +130,14 @@ public class ConversationRiskProcessor {
 
     /**
      * 持久化风险事件 + 结构化评分（RISK-203）+ 教师通知。
+     * <p>
+     * fail-fast：DB 写入失败必须上抛（安全关键记录不允许静默丢失，
+     * 由调用方决定降级策略）；教师通知为尽力而为，失败仅告警不阻断。
      */
     public void persistRiskEvent(SessionState session, RiskDetectionResult riskResult) {
+        RiskEvent event;
         try {
-            RiskEvent event = RiskEvent.fromDetection(
+            event = RiskEvent.fromDetection(
                     session.getTenantId(),
                     session.getStudentUserId(),
                     session.getSessionId(),
@@ -163,11 +167,17 @@ public class ConversationRiskProcessor {
             riskEventMapper.insert(event);
             log.info("风险事件已持久化: riskEventId={}, level={}, score={}",
                     event.getRiskEventId(), riskResult.level(), scoreResult.score());
+        } catch (Exception e) {
+            log.error("风险事件持久化失败(fail-fast 上抛): sessionId={}, level={}",
+                    session.getSessionId(), riskResult.level(), e);
+            throw new IllegalStateException("风险事件持久化失败", e);
+        }
 
-            // 触发教师通知
+        // 教师通知尽力而为：事件已落库，通知失败不影响风险链路
+        try {
             notificationService.notifyRiskEvent(event);
         } catch (Exception e) {
-            log.error("风险事件持久化失败（不影响对话流）: sessionId={}", session.getSessionId(), e);
+            log.error("风险教师通知失败(事件已持久化): riskEventId={}", event.getRiskEventId(), e);
         }
     }
 

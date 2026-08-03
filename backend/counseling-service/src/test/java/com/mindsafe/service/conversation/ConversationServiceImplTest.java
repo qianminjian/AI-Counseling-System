@@ -11,10 +11,6 @@ import com.mindsafe.ai.safety.ConfidentialityNotice;
 import com.mindsafe.ai.safety.CrisisResourceProvider;
 import com.mindsafe.ai.safety.CrisisResources;
 import com.mindsafe.ai.safety.PiiDesensitizer;
-import com.mindsafe.ai.orchestrator.PromptVariantRouter;
-import com.mindsafe.service.experiment.ExperimentBucketAssigner;
-import com.mindsafe.service.experiment.ExperimentMetricsCollector;
-import com.mindsafe.service.offline.OfflineMessageReplayService;
 import com.mindsafe.common.dto.chat.SessionInfo;
 import com.mindsafe.common.dto.chat.StreamMessageEvent;
 import com.mindsafe.common.dto.risk.RiskDetectionResult;
@@ -82,11 +78,7 @@ class ConversationServiceImplTest {
     private CrisisResourceProvider crisisResourceProvider;
     private AllianceEnhancer allianceEnhancer;
     private CbtStageRouter cbtStageRouter;
-    private ExperimentBucketAssigner experimentBucketAssigner;
-    private ExperimentMetricsCollector experimentMetricsCollector;
     private SessionEndAnalyticsService sessionEndAnalyticsService;
-    private PromptVariantRouter promptVariantRouter;
-    private OfflineMessageReplayService offlineMessageReplayService;
     private RedisSessionStateStore sessionStateStore;
     private ConversationContextAgent contextAgent;
     private SessionSummaryUpdater sessionSummaryUpdater;
@@ -119,11 +111,7 @@ class ConversationServiceImplTest {
         crisisResourceProvider = new CrisisResourceProvider();
         allianceEnhancer = mock(AllianceEnhancer.class);
         cbtStageRouter = mock(CbtStageRouter.class);
-        experimentBucketAssigner = mock(ExperimentBucketAssigner.class);
-        experimentMetricsCollector = mock(ExperimentMetricsCollector.class);
         sessionEndAnalyticsService = mock(SessionEndAnalyticsService.class);
-        promptVariantRouter = mock(PromptVariantRouter.class);
-        offlineMessageReplayService = mock(OfflineMessageReplayService.class);
         sessionStateStore = mock(RedisSessionStateStore.class);
         contextAgent = mock(ConversationContextAgent.class);
         sessionSummaryUpdater = mock(SessionSummaryUpdater.class);
@@ -141,10 +129,6 @@ class ConversationServiceImplTest {
             return null;
         }).when(sessionStateStore).remove(any(UUID.class));
 
-        // AB-001: 默认分桶结果
-        when(experimentBucketAssigner.assignClass(anyString(), anyString(), any()))
-                .thenReturn(new ExperimentBucketAssigner.Assignment(
-                        ExperimentBucketAssigner.Variant.CONTROL, 10, false, true));
         // CBT-201: 默认年龄策略
         when(cbtStageRouter.resolveAgeStrategy(anyInt()))
                 .thenReturn(CbtStageRouter.AgeStrategy.BALANCED);
@@ -185,8 +169,7 @@ class ConversationServiceImplTest {
                 messageSummaryService,
                 crisisResourceProvider,
                 allianceEnhancer, cbtStageRouter,
-                experimentBucketAssigner, experimentMetricsCollector,
-                sessionEndAnalyticsService, promptVariantRouter, offlineMessageReplayService, sessionStateStore,
+                sessionEndAnalyticsService, sessionStateStore,
                 contextAgent, sessionSummaryUpdater);
     }
 
@@ -373,8 +356,7 @@ class ConversationServiceImplTest {
                             aiChatService, keyedEnc, conversationQualityService, profileExtractorService, longTermMemoryService),
                     crisisResourceProvider,
                     allianceEnhancer, cbtStageRouter,
-                    experimentBucketAssigner, experimentMetricsCollector,
-                    sessionEndAnalyticsService, promptVariantRouter, offlineMessageReplayService, sessionStateStore,
+                    sessionEndAnalyticsService, sessionStateStore,
                     contextAgent, sessionSummaryUpdater);
 
             User user = new User();
@@ -392,7 +374,7 @@ class ConversationServiceImplTest {
             when(aiChatService.chatProactive(eq(sessionId), eq("happy"), eq("male"), any(), eq("【暖场指令】强度=2"), any(Integer.class)))
                     .thenReturn(Flux.just(StreamMessageEvent.token("波波在呢"), StreamMessageEvent.token("～")));
 
-            keyedService.sendNudgeStream(tenantId, sessionId, 30).collectList().block();
+            keyedService.sendNudgeStream(tenantId, studentId, sessionId, 30).collectList().block();
 
             ArgumentCaptor<MessageSummary> captor = ArgumentCaptor.forClass(MessageSummary.class);
             verify(messageSummaryMapper).insert(captor.capture());
@@ -412,7 +394,7 @@ class ConversationServiceImplTest {
         @DisplayName("会话不存在 → 空流")
         void noSession_empty() {
             List<StreamMessageEvent> events = service
-                    .sendNudgeStream(tenantId, UUID.randomUUID(), 30)
+                    .sendNudgeStream(tenantId, studentId, UUID.randomUUID(), 30)
                     .collectList().block();
             assertThat(events).isEmpty();
             verify(aiChatService, never()).chatProactive(any(), any(), any(), any(), any(), anyInt());
@@ -428,7 +410,7 @@ class ConversationServiceImplTest {
             when(sessionMapper.selectById(sessionId)).thenReturn(entity);
 
             List<StreamMessageEvent> events = service
-                    .sendNudgeStream(tenantId, sessionId, 60)
+                    .sendNudgeStream(tenantId, studentId, sessionId, 60)
                     .collectList().block();
 
             assertThat(events).isEmpty();
@@ -443,7 +425,7 @@ class ConversationServiceImplTest {
 
             // angry(-1) + 20s(B=0) + 前期(D+1) = 0 → 留白
             List<StreamMessageEvent> events = service
-                    .sendNudgeStream(tenantId, sessionId, 20)
+                    .sendNudgeStream(tenantId, studentId, sessionId, 20)
                     .collectList().block();
 
             assertThat(events).isEmpty();
@@ -464,7 +446,7 @@ class ConversationServiceImplTest {
 
             // happy(+1) + 30s(B+1) + 前期(D+1) = 3 → 引导破冰
             List<StreamMessageEvent> events = service
-                    .sendNudgeStream(tenantId, sessionId, 30)
+                    .sendNudgeStream(tenantId, studentId, sessionId, 30)
                     .collectList().block();
 
             assertThat(events).hasSize(3);
@@ -491,10 +473,10 @@ class ConversationServiceImplTest {
                     .thenReturn(Flux.just(StreamMessageEvent.token("在呢")));
 
             // 第一次暖场成功
-            service.sendNudgeStream(tenantId, sessionId, 30).collectList().block();
+            service.sendNudgeStream(tenantId, studentId, sessionId, 30).collectList().block();
             // 立即第二次 → 间隔不足被拦截
             List<StreamMessageEvent> second = service
-                    .sendNudgeStream(tenantId, sessionId, 55)
+                    .sendNudgeStream(tenantId, studentId, sessionId, 55)
                     .collectList().block();
 
             assertThat(second).isEmpty();
@@ -509,7 +491,7 @@ class ConversationServiceImplTest {
             forceNudgeState(sessionId, 2, Instant.now().minusSeconds(60));
 
             List<StreamMessageEvent> events = service
-                    .sendNudgeStream(tenantId, sessionId, 50)
+                    .sendNudgeStream(tenantId, studentId, sessionId, 50)
                     .collectList().block();
 
             assertThat(events).isEmpty();
@@ -524,7 +506,7 @@ class ConversationServiceImplTest {
             forceNudgeState(sessionId, 2, Instant.now().minusSeconds(60));
 
             // 暖场被次数护栏拦截
-            assertThat(service.sendNudgeStream(tenantId, sessionId, 50).collectList().block()).isEmpty();
+            assertThat(service.sendNudgeStream(tenantId, studentId, sessionId, 50).collectList().block()).isEmpty();
 
             // 孩子说话（走 sendMessage 全流程）
             when(piiDesensitizer.desensitize(anyString())).thenAnswer(inv -> inv.getArgument(0));
@@ -535,7 +517,7 @@ class ConversationServiceImplTest {
                     .thenReturn(Flux.just(StreamMessageEvent.token("你好呀")));
 
             List<StreamMessageEvent> chatEvents = service
-                    .sendMessageStream(tenantId, sessionId, "波波我想和你聊天")
+                    .sendMessageStream(tenantId, studentId, sessionId, "波波我想和你聊天")
                     .collectList().block();
             assertThat(chatEvents).isNotEmpty();
 
@@ -544,7 +526,7 @@ class ConversationServiceImplTest {
             when(aiChatService.chatProactive(any(), any(), any(), any(), any(), any(Integer.class)))
                     .thenReturn(Flux.just(StreamMessageEvent.token("在呢")));
             List<StreamMessageEvent> nudgeEvents = service
-                    .sendNudgeStream(tenantId, sessionId, 40)
+                    .sendNudgeStream(tenantId, studentId, sessionId, 40)
                     .collectList().block();
 
             assertThat(nudgeEvents).isNotEmpty();
@@ -563,7 +545,7 @@ class ConversationServiceImplTest {
                     .thenReturn(Flux.error(new RuntimeException("LLM 超时")));
 
             List<StreamMessageEvent> events = service
-                    .sendNudgeStream(tenantId, sessionId, 30)
+                    .sendNudgeStream(tenantId, studentId, sessionId, 30)
                     .collectList().block();
 
             assertThat(events).isEmpty();
@@ -596,7 +578,7 @@ class ConversationServiceImplTest {
             mockPipeline();
 
             List<StreamMessageEvent> events = service
-                    .sendMessageStream(tenantId, sessionId, "我不想活了")
+                    .sendMessageStream(tenantId, studentId, sessionId, "我不想活了")
                     .collectList().block();
 
             // 事件序列：risk → 安全文案 token → done（无 LLM 自由生成）
@@ -616,7 +598,7 @@ class ConversationServiceImplTest {
             UUID sessionId = createSession("sad");
             mockPipeline();
 
-            service.sendMessageStream(tenantId, sessionId, "我不想活了").collectList().block();
+            service.sendMessageStream(tenantId, studentId, sessionId, "我不想活了").collectList().block();
 
             // 风险事件持久化 + 教师通知（委托 riskProcessor）
             verify(riskProcessor).persistRiskEvent(any(SessionState.class), any(RiskDetectionResult.class));
@@ -641,7 +623,7 @@ class ConversationServiceImplTest {
             mockPipeline();
 
             List<StreamMessageEvent> events = service
-                    .sendMessageStream(tenantId, sessionId, "我不想活了")
+                    .sendMessageStream(tenantId, studentId, sessionId, "我不想活了")
                     .collectList().block();
 
             assertThat(events.get(1).content()).isEqualTo(CrisisResources.RED_SAFETY_REPLY_LOWER_GRADE);
@@ -652,13 +634,13 @@ class ConversationServiceImplTest {
         void safetyMode_subsequentTurns_noLlm() {
             UUID sessionId = createSession("sad");
             mockPipeline();
-            service.sendMessageStream(tenantId, sessionId, "我不想活了").collectList().block();
+            service.sendMessageStream(tenantId, studentId, sessionId, "我不想活了").collectList().block();
 
             // 后续普通消息（无风险，setUp 默认 detectKeywordRisk 返回 safe）
             when(riskProcessor.fuseRiskSignals(any(RiskDetectionResult.class), any(), any(), anyInt()))
                     .thenReturn(null);
             List<StreamMessageEvent> events = service
-                    .sendMessageStream(tenantId, sessionId, "嗯")
+                    .sendMessageStream(tenantId, studentId, sessionId, "嗯")
                     .collectList().block();
 
             assertThat(events).hasSize(2);
@@ -685,7 +667,7 @@ class ConversationServiceImplTest {
                     .thenReturn(Flux.just(StreamMessageEvent.token("我在听")));
 
             List<StreamMessageEvent> events = service
-                    .sendMessageStream(tenantId, sessionId, "我在学校被打了")
+                    .sendMessageStream(tenantId, studentId, sessionId, "我在学校被打了")
                     .collectList().block();
 
             verify(aiChatService).chatWithPrompt(any(), any(), any(), any(), any(), anyInt(), anyString());
@@ -734,7 +716,7 @@ class ConversationServiceImplTest {
                     .thenReturn(RiskLevel.RED);
 
             List<StreamMessageEvent> events = service
-                    .sendMessageStream(tenantId, sessionId, "如果我消失就好了")
+                    .sendMessageStream(tenantId, studentId, sessionId, "如果我消失就好了")
                     .collectList().block();
 
             // 语义升级后走 RISK-201 同一条硬短路链路：risk → 安全文案 → done
@@ -755,7 +737,7 @@ class ConversationServiceImplTest {
             // setUp 默认 applySemanticRisk 透传输入（safe），fuseRiskSignals 返回 null
 
             List<StreamMessageEvent> events = service
-                    .sendMessageStream(tenantId, sessionId, "今天有点累")
+                    .sendMessageStream(tenantId, studentId, sessionId, "今天有点累")
                     .collectList().block();
 
             verify(riskProcessor).applySemanticRisk(any(RiskDetectionResult.class), anyString(), anyInt());
@@ -775,7 +757,7 @@ class ConversationServiceImplTest {
             when(piiDesensitizer.desensitize(anyString())).thenAnswer(inv -> inv.getArgument(0));
             when(usageTimeLimitService.isExceeded(any(), any())).thenReturn(false);
 
-            service.sendMessageStream(tenantId, sessionId, "我不想活了").collectList().block();
+            service.sendMessageStream(tenantId, studentId, sessionId, "我不想活了").collectList().block();
 
             verify(riskProcessor).applySemanticRisk(eq(redResult), anyString(), anyInt());
         }
@@ -794,7 +776,7 @@ class ConversationServiceImplTest {
                     .thenReturn(RiskLevel.YELLOW);
 
             List<StreamMessageEvent> events = service
-                    .sendMessageStream(tenantId, sessionId, "想睡一辈子不醒")
+                    .sendMessageStream(tenantId, studentId, sessionId, "想睡一辈子不醒")
                     .collectList().block();
 
             assertThat(events).anyMatch(e -> "risk".equals(e.type()));
@@ -810,7 +792,7 @@ class ConversationServiceImplTest {
             when(usageTimeLimitService.isExceeded(any(), any())).thenReturn(false);
             mockLlmReply();
 
-            service.sendMessageStream(tenantId, sessionId, "我住在幸福路1号，很难过").collectList().block();
+            service.sendMessageStream(tenantId, studentId, sessionId, "我住在幸福路1号，很难过").collectList().block();
 
             verify(riskProcessor).applySemanticRisk(any(RiskDetectionResult.class), eq("我住在[地址]，很难过"), anyInt());
         }
@@ -838,7 +820,7 @@ class ConversationServiceImplTest {
             when(ragAdvisorService.buildRagContext(eq(tenantId), anyString(), anyInt()))
                     .thenReturn(ragContext);
 
-            service.sendMessageStream(tenantId, sessionId, "我考试考砸了很难过").collectList().block();
+            service.sendMessageStream(tenantId, studentId, sessionId, "我考试考砸了很难过").collectList().block();
 
             ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
             verify(aiChatService).chatWithPrompt(any(), any(), any(), any(), any(), anyInt(), promptCaptor.capture());
@@ -855,7 +837,7 @@ class ConversationServiceImplTest {
             mockChatPipeline();
             // 默认 stub 已返回空串（未触发）
 
-            service.sendMessageStream(tenantId, sessionId, "波波你在吗").collectList().block();
+            service.sendMessageStream(tenantId, studentId, sessionId, "波波你在吗").collectList().block();
 
             ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
             verify(aiChatService).chatWithPrompt(any(), any(), any(), any(), any(), anyInt(), promptCaptor.capture());
@@ -875,7 +857,7 @@ class ConversationServiceImplTest {
                     .thenReturn(RiskLevel.RED);
             when(piiDesensitizer.desensitize(anyString())).thenAnswer(inv -> inv.getArgument(0));
 
-            service.sendMessageStream(tenantId, sessionId, "我不想活了").collectList().block();
+            service.sendMessageStream(tenantId, studentId, sessionId, "我不想活了").collectList().block();
 
             verify(ragAdvisorService, never()).buildRagContext(any(), anyString(), anyInt());
         }
@@ -966,7 +948,7 @@ class ConversationServiceImplTest {
             UUID sessionId = createSession("happy");
             mockChatPipeline();
 
-            service.sendMessageStream(tenantId, sessionId, "嗯", "sad", 0.9).collectList().block();
+            service.sendMessageStream(tenantId, studentId, sessionId, "嗯", "sad", 0.9).collectList().block();
 
             assertThat(captureEmoVariables().get("entry_mood")).isEqualTo("sad");
         }
@@ -977,7 +959,7 @@ class ConversationServiceImplTest {
             UUID sessionId = createSession("happy");
             mockChatPipeline();
 
-            service.sendMessageStream(tenantId, sessionId, "嗯", "sad", 0.5).collectList().block();
+            service.sendMessageStream(tenantId, studentId, sessionId, "嗯", "sad", 0.5).collectList().block();
 
             assertThat(captureEmoVariables().get("entry_mood")).isEqualTo("happy");
         }
@@ -988,7 +970,7 @@ class ConversationServiceImplTest {
             UUID sessionId = createSession("sad");
             mockChatPipeline();
 
-            service.sendMessageStream(tenantId, sessionId, "嗯", "unknown", 0.9).collectList().block();
+            service.sendMessageStream(tenantId, studentId, sessionId, "嗯", "unknown", 0.9).collectList().block();
 
             assertThat(captureEmoVariables().get("entry_mood")).isEqualTo("sad");
         }
@@ -998,11 +980,11 @@ class ConversationServiceImplTest {
         void endSession_backfillsMappedVoiceEmotions() {
             UUID sessionId = createSession("happy");
             mockChatPipeline();
-            service.sendMessageStream(tenantId, sessionId, "嗯", "sad", 0.9).collectList().block();
-            service.sendMessageStream(tenantId, sessionId, "嗯", "neutral", 0.8).collectList().block();
-            service.sendMessageStream(tenantId, sessionId, "嗯", "unknown", 0.9).collectList().block();
+            service.sendMessageStream(tenantId, studentId, sessionId, "嗯", "sad", 0.9).collectList().block();
+            service.sendMessageStream(tenantId, studentId, sessionId, "嗯", "neutral", 0.8).collectList().block();
+            service.sendMessageStream(tenantId, studentId, sessionId, "嗯", "unknown", 0.9).collectList().block();
 
-            service.endSession(tenantId, sessionId);
+            service.endSession(tenantId, studentId, sessionId);
 
             @SuppressWarnings("unchecked")
             ArgumentCaptor<List<String>> captor = ArgumentCaptor.forClass(List.class);
@@ -1016,7 +998,7 @@ class ConversationServiceImplTest {
         void textOnlySession_backfillsEmptyList() {
             UUID sessionId = createSession("happy");
 
-            service.endSession(tenantId, sessionId);
+            service.endSession(tenantId, studentId, sessionId);
 
             verify(profileService).updateProfile(eq(tenantId), eq(studentId), eq(List.of()));
         }

@@ -3,7 +3,7 @@
 > 来源：`doc/07_SaaS多学校隔离架构.docx`（原文 260 行）
 > 状态：已转换 | 关联：06 数据库结构、05 老师后台、12 技术架构、决策 #6（Schema 级多租户）
 > 核心：**学校为租户粒度，Schema 级隔离 `tenant_{tenant_id}`**，跨租户查询在代码层面严格禁止。
-> ⚠️ **实现现状（2026-07-28 核对 / M1-003 fail-fast 已收紧）**：当前代码为**共享表 + 行级 tenant_id 过滤**（所有实体带 `tenantId`）。fix-06 落地路线 A 纵深防线——`counseling-tenant` 模块启用 MyBatis-Plus `TenantLineInnerInterceptor`（已认证请求经 `TenantContextHolder` 自动注入 `tenant_id` 条件），M1-003 已进一步收紧为 **fail-fast**：无租户上下文且未声明系统作用域（`runAsSystem`/`callAsSystem`）的业务表 DAO 调用直接抛 `IllegalStateException`。`ParentAuthService` 已去单租户硬编码。Schema 级物理隔离仍**未落地**（仍为单 schema 共享表），与决策 #6 存在架构级偏差，详见 §11。
+> ⚠️ **实现现状（2026-07-28 核对 / M1-003 fail-fast 已收紧）**：当前代码为**共享表 + 行级 tenant_id 过滤**（所有实体带 `tenantId`）。fix-06 落地路线 A 纵深防线——`counseling-domain` 模块 `com.mindsafe.tenant` 包启用 MyBatis-Plus `TenantLineInnerInterceptor`（已认证请求经 `TenantContextHolder` 自动注入 `tenant_id` 条件；独立 `counseling-tenant` 模块未建，不预建空壳），M1-003 已进一步收紧为 **fail-fast**：无租户上下文且未声明系统作用域（`runAsSystem`/`callAsSystem`）的业务表 DAO 调用直接抛 `IllegalStateException`。`ParentAuthService` 已去单租户硬编码。Schema 级物理隔离仍**未落地**（仍为单 schema 共享表），与决策 #6 存在架构级偏差，详见 §11。
 
 ---
 
@@ -165,7 +165,7 @@ Schema 命名规范：`tenant_{tenant_id}`，如 `tenant_school_001`。每个租
 | 隔离要求 | Java 实现方案 |
 |------|------|
 | Schema 级隔离切换 | `AbstractRoutingDataSource` + `ThreadLocal<TenantContext>`，请求进入时由 Filter 解析 `X-Tenant-Id` 绑定，MyBatis 拦截器切换 `search_path` 到 `tenant_{id}` |
-| 租户上下文注入 | `counseling-tenant` 模块提供 `TenantContextFilter`（网关后第一道 Filter），从 JWT `tid` 提取并绑定，请求结束 `finally` 清理 ThreadLocal（虚拟线程下同样适用） |
+| 租户上下文注入 | `TenantContextFilter`（网关后第一道 Filter），从 JWT `tid` 提取并绑定，请求结束 `finally` 清理 ThreadLocal（虚拟线程下同样适用）。**实态：未建独立模块，由 `JwtAuthenticationFilter` + `TenantContextHolder`（common）实现，见 §11** |
 | 跨租户查询防护 | MyBatis-Plus `TenantLineInnerInterceptor` 或自定义拦截器强制校验；未绑定 TenantContext 的 DAO 调用抛异常；`@CrossTenant` 注解走独立审批 AOP |
 | 配额/限流 | Spring Cloud Gateway（或网关层）+ Redis 令牌桶，按 TenantId 维度限流，超额返回 429 |
 | SSO 集成 | Spring Security OAuth2 Client，钉钉/企微各实现 `OAuth2UserService`，登录成功后签发绑定 `tid` 的 JWT |
@@ -185,7 +185,7 @@ Schema 命名规范：`tenant_{tenant_id}`，如 `tenant_school_001`。每个租
 | 设计项 | 章节 | 状态 | 核对结论（2026-07-28） |
 |------|------|:---:|------|
 | Schema 级隔离 `tenant_{id}` | §2.1/§10 | ⬜ | **未落地**。无 `AbstractRoutingDataSource`、无 `search_path` 切换、无 RLS `SET app.tenant_id`。实际为**单 schema 共享表 + 行级 tenant_id 列** |
-| `counseling-tenant` 模块 | §10 | 🟩 | fix-06 落地：`MindSafeTenantLineHandler` + `MybatisPlusConfig`（注册 `TenantLineInnerInterceptor`），依赖 `mybatis-plus-jsqlparser`；由 app 层 `@ComponentScan("com.mindsafe")` 装配。`TenantContextFilter` 未建，改用 `TenantContextHolder`（common，ThreadLocal）+ JwtAuthenticationFilter set/clear |
+| 租户拦截器（`com.mindsafe.tenant`@counseling-domain） | §10 | 🟩 | fix-06 落地：`MindSafeTenantLineHandler` + `MybatisPlusConfig`（注册 `TenantLineInnerInterceptor`），依赖 `mybatis-plus-jsqlparser`；由 app 层 `@ComponentScan("com.mindsafe")` 装配。**独立 `counseling-tenant` 模块未建（不预建空壳）**。`TenantContextFilter` 未建，改用 `TenantContextHolder`（common，ThreadLocal）+ JwtAuthenticationFilter set/clear |
 | 租户上下文 | §10 | 🟩 | 双通道：`JwtAuthenticationFilter.TenantContext`（record，Controller 显式取用）+ fix-06 新增 `TenantContextHolder`（common 层 ThreadLocal，filter 请求内 set、finally clear，供拦截器读取）。虚拟线程下如迁移须改 `ScopedValue` |
 | 行级 tenant_id 过滤 | §2.3 | 🟩 | 实体统一带 `tenantId` 字段；fix-06 启用 `TenantLineInnerInterceptor` 自动注入 `AND tenant_id=?` 纵深防线，M1-003 已收紧「无租户条件查询 fail-fast」铁律：无上下文且非系统作用域直接抛 `IllegalStateException`，`tenants` 公共标识表恒忽略；合法跨租户链路（定时任务/预认证查询）经 `runAsSystem`/`callAsSystem` 显式声明（见 §11.4） |
 | SSO（钉钉/企微） | §3.1 | ⬜ | 未实现，当前为家庭码/PIN 自有认证（见 24 篇） |

@@ -42,7 +42,7 @@ vi.mock('../api', () => ({
   setRefreshToken: (...args: any[]) => mockSetRefreshToken(...args),
   setUser: (...args: any[]) => mockSetUser(...args),
   getVoiceprintConfig: vi.fn().mockResolvedValue({ mode: 'local', enabled: true }),
-  remoteVoiceprintVerify: vi.fn().mockResolvedValue({ matched: false, score: 0 }),
+  remoteVoiceprintVerify: vi.fn().mockResolvedValue({ matched: false }),
 }))
 
 import VoiceLoginOverlay from '../components/VoiceLoginOverlay'

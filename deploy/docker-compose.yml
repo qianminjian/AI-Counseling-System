@@ -3,19 +3,34 @@
 # 访问：http://localhost（学生端）/ http://localhost/teacher（教师端）/ http://localhost/bigscreen（大屏）
 
 services:
-  # ===== PostgreSQL =====
+  # ===== PostgreSQL（pgvector 镜像：Flyway V24 需要 vector 扩展；与 prod 对齐） =====
   postgres:
-    image: postgres:16-alpine
+    image: pgvector/pgvector:pg16
     environment:
       POSTGRES_DB: mindsafe
       POSTGRES_USER: mindsafe
       POSTGRES_PASSWORD: ${DB_PASSWORD:-mindsafe2026}
     volumes:
       - pgdata:/var/lib/postgresql/data
+      # 首次初始化：pgvector/uuid-ossp/pgcrypto 扩展（与 prod 一致）
+      - ./init/pg-init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
     ports:
       - "5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U mindsafe"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  # ===== Redis（会话状态/限流/token黑名单/验证码均依赖，与 prod 对齐） =====
+  redis:
+    image: redis:7-alpine
+    command: redis-server --maxmemory 128mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 3s
       retries: 5
@@ -60,6 +75,7 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/mindsafe
       SPRING_DATASOURCE_USERNAME: mindsafe
       SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:-mindsafe2026}
+      SPRING_DATA_REDIS_HOST: redis
       SPRING_AI_DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-sk-placeholder}
       SPRING_AI_DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
       JWT_SECRET: ${JWT_SECRET:-mindsafe-jwt-secret-change-in-production}
@@ -75,6 +91,8 @@ services:
       JAVA_OPTS: "-XX:MaxRAMPercentage=75.0"
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
       tts-service:
         condition: service_started
@@ -105,4 +123,5 @@ services:
 
 volumes:
   pgdata:
+  redisdata:
   frontend_assets:

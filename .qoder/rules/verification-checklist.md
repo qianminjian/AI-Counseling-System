@@ -39,7 +39,7 @@ description: 交付前自检清单——完成功能模块、准备 commit/PR �
 |--------|---------|
 | 无 TODO 残留 | `grep -rn "TODO\|FIXME" src/` 仅包含已记录的 |
 | 无硬编码密钥 | `grep -rn "password\|token\|api_key" src/` 无明文 |
-| 单元测试覆盖核心 | 覆盖率 ≥ 75% |
+| 单元测试覆盖核心 | 覆盖率达标（本项目 CI 门禁：核心 service 层 ≥60%、整体 ≥45%；其余项目 ≥75%） |
 | 集成测试覆盖交互 | 关键 API 端到端跑通 |
 | 边界值测试 | 空/null/超长/并发都有覆盖 |
 | 无调试代码残留 | 无 `console.log` / `print` / 注释掉的代码 |
@@ -68,7 +68,7 @@ git diff --stat HEAD~1                  # 单次改动范围合理
 |--------|---------|
 | Pipeline 绿灯 | CI 通过 |
 | 无 lint 错误 | `npm run lint` / `pylint` 通过 |
-| 覆盖率达标 | ≥ 75% |
+| 覆盖率达标 | 与 CI 门禁一致（本项目：核心 service 层 ≥60%、整体 ≥45%） |
 | 无新增警告 | `tsc` / `mypy` 无新增 warning |
 
 ### 3.4 文档层

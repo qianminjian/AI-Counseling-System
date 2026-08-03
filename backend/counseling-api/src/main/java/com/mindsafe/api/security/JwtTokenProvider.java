@@ -27,12 +27,14 @@ public class JwtTokenProvider {
     private final long accessExpirationMs;
     private final long refreshExpirationMs;
     private final long voiceCredentialExpirationMs;
+    private final long parentReportExpirationMs;
 
     public JwtTokenProvider(
             @Value("${mindsafe.jwt.secret:}") String secret,
             @Value("${mindsafe.jwt.access-expiration-ms:7200000}") long accessExpirationMs,
             @Value("${mindsafe.jwt.refresh-expiration-ms:604800000}") long refreshExpirationMs,
             @Value("${mindsafe.jwt.voice-credential-expiration-ms:7776000000}") long voiceCredentialExpirationMs,
+            @Value("${mindsafe.jwt.parent-report-expiration-ms:604800000}") long parentReportExpirationMs,
             @Value("${spring.profiles.active:dev}") String activeProfile) {
 
         // 生产环境强制配置密钥
@@ -53,6 +55,7 @@ public class JwtTokenProvider {
         this.accessExpirationMs = accessExpirationMs;
         this.refreshExpirationMs = refreshExpirationMs;
         this.voiceCredentialExpirationMs = voiceCredentialExpirationMs;
+        this.parentReportExpirationMs = parentReportExpirationMs;
     }
 
     /** 生成 Access Token（2h） */
@@ -68,6 +71,11 @@ public class JwtTokenProvider {
     /** 生成声纹设备凭证（90d）：声纹录入时签发，存学生设备本地，声纹登录时凭其换取正式双 token */
     public String generateVoiceCredential(UUID userId, String userType, UUID tenantId) {
         return buildToken(userId, userType, tenantId, "voice_credential", voiceCredentialExpirationMs);
+    }
+
+    /** 生成家长报告链接 token（默认 7d，SEC-006）：独立 tokenType，与学生 access token 区分，防学生自持 token 调家长接口 */
+    public String generateParentReportToken(UUID studentUserId, UUID tenantId) {
+        return buildToken(studentUserId, "parent", tenantId, "parent_report", parentReportExpirationMs);
     }
 
     private String buildToken(UUID userId, String userType, UUID tenantId, String tokenType, long ttl) {
@@ -125,6 +133,16 @@ public class JwtTokenProvider {
         try {
             Claims claims = parseToken(token);
             return "voice_credential".equals(claims.get("tokenType", String.class));
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /** 验证是否为家长报告链接 token（SEC-006） */
+    public boolean isParentReportToken(String token) {
+        try {
+            Claims claims = parseToken(token);
+            return "parent_report".equals(claims.get("tokenType", String.class));
         } catch (Exception e) {
             return false;
         }

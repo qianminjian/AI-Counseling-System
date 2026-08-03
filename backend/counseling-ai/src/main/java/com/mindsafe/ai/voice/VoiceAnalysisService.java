@@ -1,14 +1,18 @@
 package com.mindsafe.ai.voice;
 
+import io.netty.channel.ChannelOption;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.MultipartBodyBuilder;
+import org.springframework.http.client.reactive.ReactorClientHttpConnector;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
+import reactor.netty.http.client.HttpClient;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 
@@ -24,11 +28,19 @@ public class VoiceAnalysisService {
     private static final Logger log = LoggerFactory.getLogger(VoiceAnalysisService.class);
 
     private final WebClient webClient;
+    /** block() 兑底超时（略大于连接/响应超时，避免无限阻塞调用线程） */
+    private final Duration blockTimeout;
 
     public VoiceAnalysisService(
-            @Value("${mindsafe.voice-service.url:http://localhost:10095}") String baseUrl) {
+            @Value("${mindsafe.voice-service.url:http://localhost:10095}") String baseUrl,
+            @Value("${mindsafe.voice-service.timeout-seconds:15}") long timeoutSeconds) {
+        HttpClient httpClient = HttpClient.create()
+                .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, (int) (timeoutSeconds * 1000))
+                .responseTimeout(Duration.ofSeconds(timeoutSeconds));
+        this.blockTimeout = Duration.ofSeconds(timeoutSeconds + 5);
         this.webClient = WebClient.builder()
                 .baseUrl(baseUrl)
+                .clientConnector(new ReactorClientHttpConnector(httpClient))
                 .codecs(config -> config.defaultCodecs().maxInMemorySize(16 * 1024 * 1024))
                 .build();
     }
@@ -58,7 +70,7 @@ public class VoiceAnalysisService {
                     .bodyValue(bodyBuilder.build())
                     .retrieve()
                     .bodyToMono(Map.class)
-                    .block();
+                    .block(blockTimeout);
 
             if (response == null) {
                 log.error("语音分析服务返回空");
@@ -92,7 +104,7 @@ public class VoiceAnalysisService {
                     .uri("/health")
                     .retrieve()
                     .bodyToMono(Map.class)
-                    .block();
+                    .block(Duration.ofSeconds(5));
             return true;
         } catch (Exception e) {
             return false;

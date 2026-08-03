@@ -283,7 +283,7 @@ export async function getVoiceprintConfig(): Promise<VoiceprintConfig> {
  * 声纹远程验证登录（remote 模式，公开端点）
  * 前端提取 embedding 后传服务端比对，通过则直接签发双 token
  */
-export async function remoteVoiceprintVerify(embeddings: number[][]): Promise<AuthResult & { matched: boolean; score: number }> {
+export async function remoteVoiceprintVerify(embeddings: number[][]): Promise<AuthResult & { matched: boolean }> {
   const res = await fetch('/api/v1/voiceprint/verify', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

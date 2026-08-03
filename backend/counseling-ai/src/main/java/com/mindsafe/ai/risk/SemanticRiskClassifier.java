@@ -10,7 +10,11 @@ import org.springframework.stereotype.Component;
 
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * M2 语义风险分类器（RISK-202，design/04 §18.3）
@@ -36,12 +40,26 @@ public class SemanticRiskClassifier {
     private final PromptTemplateService promptTemplateService;
     private final long timeoutMs;
 
+    /**
+     * 专用有界线程池（守护线程）：避免慢 LLM 调用占满 ForkJoinPool.commonPool
+     * 拖累全应用的并行流/其他 supplyAsync 任务。
+     */
+    private final ExecutorService semanticExecutor;
+
     public SemanticRiskClassifier(ChatClient.Builder chatClientBuilder,
                                   PromptTemplateService promptTemplateService,
                                   @Value("${mindsafe.risk.semantic-timeout-ms:800}") long timeoutMs) {
         this.chatClient = chatClientBuilder.build();
         this.promptTemplateService = promptTemplateService;
         this.timeoutMs = timeoutMs;
+        AtomicInteger seq = new AtomicInteger();
+        this.semanticExecutor = Executors.newFixedThreadPool(
+                Math.max(2, Runtime.getRuntime().availableProcessors()),
+                r -> {
+                    Thread t = new Thread(r, "semantic-risk-" + seq.incrementAndGet());
+                    t.setDaemon(true);
+                    return t;
+                });
     }
 
     /**
@@ -54,17 +72,24 @@ public class SemanticRiskClassifier {
      * @return 语义档位（YELLOW/ORANGE/RED）；无风险（L0）或分类失败/超时返回 null
      */
     public RiskLevel classify(String message, String recentContext, String riskHistorySummary, int gradeLevel) {
+        CompletableFuture<RiskLevel> future = CompletableFuture
+                .supplyAsync(() -> doClassify(message, recentContext, riskHistorySummary, gradeLevel),
+                        semanticExecutor);
         try {
-            return CompletableFuture
-                    .supplyAsync(() -> doClassify(message, recentContext, riskHistorySummary, gradeLevel))
-                    .get(timeoutMs, TimeUnit.MILLISECONDS);
+            return future.get(timeoutMs, TimeUnit.MILLISECONDS);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+            future.cancel(true);
             log.warn("语义风险分类被中断，降级纯硬规则");
             return null;
+        } catch (TimeoutException e) {
+            // 超时即取消：不让慢 LLM 调用继续占用池内线程
+            future.cancel(true);
+            log.warn("语义风险分类超时（门禁 {}ms），已取消并降级纯硬规则", timeoutMs);
+            return null;
         } catch (Exception e) {
-            // 失败安全：超时/LLM 异常均降级为纯硬规则结果，不阻断对话
-            log.warn("语义风险分类失败/超时（门禁 {}ms），降级纯硬规则: {}", timeoutMs, e.getMessage());
+            // 失败安全：LLM 异常降级为纯硬规则结果，不阻断对话
+            log.warn("语义风险分类失败，降级纯硬规则: {}", e.getMessage());
             return null;
         }
     }

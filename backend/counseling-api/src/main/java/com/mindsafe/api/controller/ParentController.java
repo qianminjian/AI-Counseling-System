@@ -57,20 +57,7 @@ public class ParentController {
      */
     @GetMapping("/report")
     public ApiResponse<Map<String, Object>> getWeeklyReport(@RequestHeader("Authorization") String authHeader) {
-        String token = authHeader.replace("Bearer ", "");
-
-        // 验证 token（复用 JWT 验证逻辑）
-        UUID studentUserId;
-        try {
-            if (!jwtTokenProvider.validateToken(token)) {
-                throw new BizException(ErrorCode.UNAUTHORIZED, "链接已过期或无效");
-            }
-            studentUserId = jwtTokenProvider.getUserId(token);
-        } catch (BizException e) {
-            throw e;
-        } catch (Exception e) {
-            throw new BizException(ErrorCode.UNAUTHORIZED, "链接已过期或无效");
-        }
+        UUID studentUserId = resolveStudentUserId(authHeader);
 
         User student = userMapper.selectById(studentUserId);
         if (student == null) {
@@ -152,11 +139,19 @@ public class ParentController {
         return ApiResponse.ok(result);
     }
 
-    /** 校验家长 token 并解析出学生用户 ID */
+    /**
+     * 校验家长 token 并解析出学生用户 ID（SEC-005）
+     * <p>
+     * 三重校验：签名有效 + 非 refresh/声纹凭证 + userType 必须为 parent。
+     * 学生自持的 access token（userType=student）无法调用家长接口（如撤回监护人同意）。
+     */
     private UUID resolveStudentUserId(String authHeader) {
         String token = authHeader.replace("Bearer ", "");
         try {
-            if (!jwtTokenProvider.validateToken(token)) {
+            if (!jwtTokenProvider.validateToken(token)
+                    || jwtTokenProvider.isRefreshToken(token)
+                    || jwtTokenProvider.isVoiceCredential(token)
+                    || !"parent".equals(jwtTokenProvider.getUserType(token))) {
                 throw new BizException(ErrorCode.UNAUTHORIZED, "链接已过期或无效");
             }
             return jwtTokenProvider.getUserId(token);
@@ -208,13 +203,13 @@ public class ParentController {
             throw new BizException(ErrorCode.UNAUTHORIZED, "验证码错误或已过期");
         }
 
-        // 验证通过，签发正式 7 天 token（复用现有 JWT 生成）
+        // 验证通过，签发正式 7 天 token（SEC-006：独立 parent_report tokenType + 7d TTL，兑现有效期承诺）
         User student = userMapper.selectById(studentUserId);
         if (student == null) {
             throw new BizException(ErrorCode.RESOURCE_NOT_FOUND, "学生不存在");
         }
 
-        String formalToken = jwtTokenProvider.generateToken(studentUserId, "parent", student.getTenantId());
+        String formalToken = jwtTokenProvider.generateParentReportToken(studentUserId, student.getTenantId());
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("token", formalToken);

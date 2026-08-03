@@ -242,8 +242,8 @@ class ConversationRiskProcessorTest {
         }
 
         @Test
-        @DisplayName("持久化异常不影响对话流（静默降级）")
-        void exceptionSwallowed_noRethrow() {
+        @DisplayName("持久化异常 fail-fast 上抛（安全关键记录不允许静默丢失）")
+        void insertFailure_rethrows() {
             SessionState session = new SessionState(
                     UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(),
                     "sad", "web", "male", null, 4);
@@ -251,8 +251,25 @@ class ConversationRiskProcessorTest {
                     RiskLevel.RED, "self_harm", List.of(), 90, true, "");
             when(riskEventMapper.insert(any(RiskEvent.class))).thenThrow(new RuntimeException("DB 连接失败"));
 
+            org.junit.jupiter.api.Assertions.assertThrows(IllegalStateException.class,
+                    () -> processor.persistRiskEvent(session, risk));
+            verify(notificationService, org.mockito.Mockito.never()).notifyRiskEvent(any(RiskEvent.class));
+        }
+
+        @Test
+        @DisplayName("教师通知失败不影响持久化结果（尽力而为）")
+        void notifyFailure_doesNotThrow() {
+            SessionState session = new SessionState(
+                    UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(),
+                    "sad", "web", "male", null, 4);
+            RiskDetectionResult risk = new RiskDetectionResult(
+                    RiskLevel.ORANGE, "bullying", List.of("被打"), 60, false, "建议关注");
+            org.mockito.Mockito.doThrow(new RuntimeException("企业微信不可用"))
+                    .when(notificationService).notifyRiskEvent(any(RiskEvent.class));
+
             // 不应抛出异常
             processor.persistRiskEvent(session, risk);
+            verify(riskEventMapper).insert(any(RiskEvent.class));
         }
     }
 

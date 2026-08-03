@@ -222,8 +222,8 @@ public class TeacherController {
         if (student == null) {
             return ApiResponse.ok(Map.of("error", "学生不存在"));
         }
-        // 生成 parent 类型 JWT（userId=studentId，userType=parent）
-        String parentToken = jwtTokenProvider.generateToken(studentId, "parent", ctx.tenantId());
+        // SEC-006：生成 parent_report 类型 JWT（userId=studentId，userType=parent，7 天 TTL，与 expiresIn 声明一致）
+        String parentToken = jwtTokenProvider.generateParentReportToken(studentId, ctx.tenantId());
         String link = "/parent?token=" + parentToken;
         return ApiResponse.ok(Map.of("link", link, "expiresIn", "7天"));
     }

@@ -92,13 +92,10 @@ export const getSatisfaction = () => api('/teacher/satisfaction')
 // ===== 平台管理 =====
 export const getPlatformOverview = () => api('/platform/overview')
 export const getPlatformTenants = () => api('/platform/tenants')
-export const getPlatformTenantDetail = (id) => api(`/platform/tenants/${id}`)
-export const getPlatformSchools = () => api('/platform/schools')
 
 // ===== 质量监控 =====
 export const getQualityStats = () => api('/teacher/quality/stats')
 export const getFlaggedSessions = () => api('/teacher/quality/flagged')
-export const getTemplates = () => api('/teacher/templates')
 export const exportSessionPdf = (sessionId: string) => {
   const token = getToken()
   return fetch(`/api/v1/teacher/sessions/${sessionId}/export`, {
@@ -137,8 +134,6 @@ export const addStudentNote = (id, content, noteType = 'general') =>
     method: 'POST',
     body: JSON.stringify({ content, noteType }),
   })
-export const generateParentLink = (studentId) =>
-  api(`/teacher/students/${studentId}/parent-link`, { method: 'POST' })
 
 // ===== 通知 =====
 export const getNotifications = (limit = 50) => api(`/teacher/notifications?limit=${limit}`)
@@ -240,6 +235,3 @@ export const getAuditLogs = (action?: string) => {
   const qs = action ? `?action=${action}` : ''
   return api(`/admin/invite-codes/audit-logs${qs}`)
 }
-
-// ===== 风险事件（M1 兼容） =====
-export const getRiskEvents = (limit = 50) => api(`/teacher/risk-events?limit=${limit}`)

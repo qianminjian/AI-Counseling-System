@@ -19,8 +19,8 @@
 set -eo pipefail
 
 # ===== 配置 =====
-COMPOSE_DIR="/guju/mindsafe"
-NGINX_CONF="/etc/nginx/conf.d/mindsafe.conf"
+# compose 文件位于仓库 deploy/ 目录，服务器上镜像仓库结构（见 deploy.sh）
+COMPOSE_DIR="/guju/mindsafe/deploy"
 HEALTH_MAX_RETRIES=3
 HEALTH_POLL_INTERVAL=5
 HEALTH_MAX_POLLS=12  # 每个服务最多等 60s
@@ -41,22 +41,24 @@ START_ORDER=(postgres redis tts voice backend nginx)
 # 停止顺序（逆序）
 STOP_ORDER=(nginx backend voice tts redis postgres)
 
-# Docker compose 服务名映射
+# Docker compose 服务名映射（与 deploy/docker-compose.prod.yml 服务键一致）
 declare -A COMPOSE_NAME=(
   [postgres]="postgres"
   [redis]="redis"
   [tts]="tts-service"
   [voice]="voice-service"
   [backend]="backend"
+  [nginx]="nginx"
 )
 
-# 容器名映射（用于 status/残留检查）
+# 容器名映射（与 compose container_name 一致，用于 status/残留检查）
 declare -A CONTAINER_NAME=(
-  [postgres]="mindsafe-postgres-1"
-  [redis]="mindsafe-redis-1"
-  [tts]="mindsafe-tts-service-1"
-  [voice]="mindsafe-voice-service-1"
-  [backend]="mindsafe-backend-1"
+  [postgres]="mindsafe-pg"
+  [redis]="mindsafe-redis"
+  [tts]="mindsafe-tts"
+  [voice]="mindsafe-voice"
+  [backend]="mindsafe-backend"
+  [nginx]="mindsafe-nginx"
 )
 
 # ===== 健康检查函数 =====
@@ -76,10 +78,11 @@ check_health() {
       docker exec "${CONTAINER_NAME[voice]}" python -c "import urllib.request; urllib.request.urlopen('http://localhost:10095/health')" >/dev/null 2>&1
       ;;
     backend)
-      curl -sf http://127.0.0.1:18081/actuator/health >/dev/null 2>&1
+      # backend 无宿主机端口映射，进容器内检查
+      docker exec "${CONTAINER_NAME[backend]}" wget -qO- http://localhost:8080/actuator/health >/dev/null 2>&1
       ;;
     nginx)
-      curl -sfL -o /dev/null -H "Host: yun.gxjugu.com" http://127.0.0.1/mindsafe/ 2>/dev/null
+      curl -sf -o /dev/null http://127.0.0.1/ 2>/dev/null
       ;;
     *)
       return 1
@@ -107,36 +110,19 @@ start_service() {
   local svc="$1"
 
   # 已运行则跳过
-  if [ "$svc" != "nginx" ]; then
-    local container="${CONTAINER_NAME[$svc]}"
-    local state
-    state=$(docker inspect -f '{{.State.Status}}' "$container" 2>/dev/null || echo "not_found")
-    if [ "$state" = "running" ]; then
-      log_info "$svc 已在运行，跳过启动"
-      return 0
-    fi
-  else
-    # nginx: 检查宿主机进程
-    if pgrep -x nginx >/dev/null 2>&1; then
-      log_info "nginx 已在运行，跳过启动"
-      return 0
-    fi
+  local container="${CONTAINER_NAME[$svc]}"
+  local state
+  state=$(docker inspect -f '{{.State.Status}}' "$container" 2>/dev/null || echo "not_found")
+  if [ "$state" = "running" ]; then
+    log_info "$svc 已在运行，跳过启动"
+    return 0
   fi
 
   log_info "启动 $svc ..."
 
-  if [ "$svc" = "nginx" ]; then
-    # 宿主机 nginx
-    if [ ! -f "$NGINX_CONF" ]; then
-      log_error "nginx 配置不存在: $NGINX_CONF"
-      return 1
-    fi
-    sudo nginx -t 2>/dev/null && sudo nginx
-  else
-    local compose_svc="${COMPOSE_NAME[$svc]}"
-    cd "$COMPOSE_DIR"
-    docker compose up -d --build "$compose_svc" 2>&1 | tail -3
-  fi
+  local compose_svc="${COMPOSE_NAME[$svc]}"
+  cd "$COMPOSE_DIR"
+  docker compose -f docker-compose.prod.yml up -d "$compose_svc" 2>&1 | tail -3
 
   # 健康检查 + 自动补偿
   local attempt=1
@@ -147,13 +133,8 @@ start_service() {
     fi
     log_warn "$svc 健康检查失败（第 $attempt/$HEALTH_MAX_RETRIES 次），尝试重启..."
     # 补偿：重启容器
-    if [ "$svc" = "nginx" ]; then
-      sudo nginx -s reload 2>/dev/null || sudo nginx
-    else
-      local compose_svc="${COMPOSE_NAME[$svc]}"
-      cd "$COMPOSE_DIR"
-      docker compose restart "$compose_svc" 2>/dev/null
-    fi
+    cd "$COMPOSE_DIR"
+    docker compose -f docker-compose.prod.yml restart "$compose_svc" 2>/dev/null
     attempt=$((attempt + 1))
   done
 
@@ -164,28 +145,6 @@ start_service() {
 # ===== 停止单个服务 =====
 stop_service() {
   local svc="$1"
-
-  if [ "$svc" = "nginx" ]; then
-    if ! pgrep -x nginx >/dev/null 2>&1; then
-      log_info "nginx 未运行，跳过"
-      return 0
-    fi
-    log_info "停止 nginx ..."
-    sudo nginx -s quit 2>/dev/null || true
-    sleep 2
-    # 残留检查
-    if pgrep -x nginx >/dev/null 2>&1; then
-      log_warn "nginx 进程残留，强制终止..."
-      sudo pkill -9 -x nginx || true
-      sleep 1
-    fi
-    if pgrep -x nginx >/dev/null 2>&1; then
-      log_error "nginx 无法停止"
-      return 1
-    fi
-    log_info "nginx 已停止 ✓"
-    return 0
-  fi
 
   local container="${CONTAINER_NAME[$svc]}"
   local state
@@ -199,7 +158,7 @@ stop_service() {
   log_info "停止 $svc ..."
   local compose_svc="${COMPOSE_NAME[$svc]}"
   cd "$COMPOSE_DIR"
-  docker compose stop "$compose_svc" 2>/dev/null
+  docker compose -f docker-compose.prod.yml stop "$compose_svc" 2>/dev/null
 
   # 残留检查：容器仍在运行
   sleep 2
@@ -306,24 +265,14 @@ cmd_status() {
   printf "%-12s %-28s %-12s %-8s\n" "-------" "---------" "-----" "------"
 
   for svc in "${START_ORDER[@]}"; do
-    if [ "$svc" = "nginx" ]; then
-      local state="stopped"
-      local health="✗"
-      if pgrep -x nginx >/dev/null 2>&1; then
-        state="running"
-        if check_health nginx; then health="✓"; fi
-      fi
-      printf "%-12s %-28s %-12s %-8s\n" "$svc" "(host process)" "$state" "$health"
-    else
-      local container="${CONTAINER_NAME[$svc]}"
-      local state
-      state=$(docker inspect -f '{{.State.Status}}' "$container" 2>/dev/null || echo "not_found")
-      local health="✗"
-      if [ "$state" = "running" ] && check_health "$svc"; then
-        health="✓"
-      fi
-      printf "%-12s %-28s %-12s %-8s\n" "$svc" "$container" "$state" "$health"
+    local container="${CONTAINER_NAME[$svc]}"
+    local state
+    state=$(docker inspect -f '{{.State.Status}}' "$container" 2>/dev/null || echo "not_found")
+    local health="✗"
+    if [ "$state" = "running" ] && check_health "$svc"; then
+      health="✓"
     fi
+    printf "%-12s %-28s %-12s %-8s\n" "$svc" "$container" "$state" "$health"
   done
   echo ""
 }

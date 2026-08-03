@@ -1,12 +1,14 @@
-funasr>=1.0.0
-modelscope>=1.11.1
-torch>=2.0.0
-torchaudio>=2.0.0
-numpy>=1.24.0
-soundfile>=0.12.0
-fastapi>=0.104.0
-uvicorn>=0.24.0
-python-multipart>=0.0.6
-pydantic>=2.0.0
-dashscope>=1.20.0
-pyyaml>=6.0
+# 依赖版本锁定（有界区间）：避免无上限版本漂移导致构建不可复现；
+# torch/torchaudio 精确版本与 Dockerfile 安装的 2.6.0+cpu 对齐
+funasr>=1.0.0,<2.0
+modelscope>=1.11.1,<2.0
+torch==2.6.0
+torchaudio==2.6.0
+numpy>=1.24.0,<3.0
+soundfile>=0.12.0,<0.14
+fastapi>=0.104.0,<1.0
+uvicorn>=0.24.0,<1.0
+python-multipart>=0.0.6,<0.1
+pydantic>=2.0.0,<3.0
+dashscope>=1.20.0,<2.0
+pyyaml>=6.0,<7.0

@@ -2,10 +2,6 @@ package com.mindsafe.service.conversation;
 
 import com.mindsafe.ai.ally.AllianceEnhancer;
 import com.mindsafe.ai.cbt.CbtStageRouter;
-import com.mindsafe.ai.orchestrator.PromptVariantRouter;
-import com.mindsafe.service.experiment.ExperimentBucketAssigner;
-import com.mindsafe.service.experiment.ExperimentMetricsCollector;
-import com.mindsafe.service.offline.OfflineMessageReplayService;
 import com.mindsafe.ai.chat.AiChatService;
 import com.mindsafe.ai.orchestrator.OrchestrationContext;
 import com.mindsafe.ai.orchestrator.ProfileSignals;
@@ -17,10 +13,12 @@ import com.mindsafe.ai.safety.CrisisResourceProvider;
 import com.mindsafe.ai.safety.CrisisResources;
 import com.mindsafe.ai.safety.HighSensitivityCategories;
 import com.mindsafe.ai.safety.PiiDesensitizer;
+import com.mindsafe.common.dto.ErrorCode;
 import com.mindsafe.common.dto.chat.SessionInfo;
 import com.mindsafe.common.dto.chat.StreamMessageEvent;
 import com.mindsafe.common.dto.risk.RiskDetectionResult;
 import com.mindsafe.common.enums.RiskLevel;
+import com.mindsafe.common.exception.BizException;
 import com.mindsafe.domain.entity.CounselingSession;
 import com.mindsafe.domain.entity.MessageSummary;
 import com.mindsafe.domain.entity.User;
@@ -71,11 +69,7 @@ public class ConversationServiceImpl implements ConversationService {
     private final CrisisResourceProvider crisisResourceProvider;
     private final AllianceEnhancer allianceEnhancer;
     private final CbtStageRouter cbtStageRouter;
-    private final ExperimentBucketAssigner experimentBucketAssigner;
-    private final ExperimentMetricsCollector experimentMetricsCollector;
     private final SessionEndAnalyticsService sessionEndAnalyticsService;
-    private final PromptVariantRouter promptVariantRouter;
-    private final OfflineMessageReplayService offlineMessageReplayService;
     private final RedisSessionStateStore sessionStateStore;
     private final ConversationContextAgent contextAgent;
     private final SessionSummaryUpdater sessionSummaryUpdater;
@@ -100,11 +94,7 @@ public class ConversationServiceImpl implements ConversationService {
                                    CrisisResourceProvider crisisResourceProvider,
                                    AllianceEnhancer allianceEnhancer,
                                    CbtStageRouter cbtStageRouter,
-                                   ExperimentBucketAssigner experimentBucketAssigner,
-                                   ExperimentMetricsCollector experimentMetricsCollector,
                                    SessionEndAnalyticsService sessionEndAnalyticsService,
-                                   PromptVariantRouter promptVariantRouter,
-                                   OfflineMessageReplayService offlineMessageReplayService,
                                    RedisSessionStateStore sessionStateStore,
                                    ConversationContextAgent contextAgent,
                                    SessionSummaryUpdater sessionSummaryUpdater) {
@@ -125,11 +115,7 @@ public class ConversationServiceImpl implements ConversationService {
         this.crisisResourceProvider = crisisResourceProvider;
         this.allianceEnhancer = allianceEnhancer;
         this.cbtStageRouter = cbtStageRouter;
-        this.experimentBucketAssigner = experimentBucketAssigner;
-        this.experimentMetricsCollector = experimentMetricsCollector;
         this.sessionEndAnalyticsService = sessionEndAnalyticsService;
-        this.promptVariantRouter = promptVariantRouter;
-        this.offlineMessageReplayService = offlineMessageReplayService;
         this.sessionStateStore = sessionStateStore;
         this.contextAgent = contextAgent;
         this.sessionSummaryUpdater = sessionSummaryUpdater;
@@ -152,16 +138,6 @@ public class ConversationServiceImpl implements ConversationService {
         
         // 3. 问候语个性化："哈喽，[昵称]！" + 情绪问候（唤醒词 onboarding，design/28 §2.2）
         String greeting = ConversationUtils.buildGreeting(emotionTag, pseudonym);
-        
-        // ORCH-007：EMO-001 A/B 开场策略路由（确定性分桶，CRISIS 强制走 A）
-        try {
-            PromptVariantRouter.RouteResult variantRoute = promptVariantRouter.route(
-                    studentUserId.toString(), "emo001", null);
-            log.debug("开场策略路由: student={}, variant={}, bucket={}",
-                    studentUserId, variantRoute.variant(), variantRoute.bucket());
-        } catch (Exception e) {
-            log.debug("开场策略路由降级: {}", e.getMessage());
-        }
 
         // 3.5 SAFE-201：首次会话注入保密边界告知（design/14 §12.3，预审核模板）。
         // 告知完成标记复用 message_summary：senderType='ai' + turnCount=0（正常 AI 摘要 turn>=1，具唯一区分性），
@@ -175,12 +151,6 @@ public class ConversationServiceImpl implements ConversationService {
 
         // 4. 加载学生画像沟通偏好（冷场决策模型信号 F，首次对话为 null 不阻塞）
         Double expressionDepth = profileService.getExpressionDepth(tenantId, studentUserId);
-        
-        // AB-001：实验分桶（确定性哈希，同班同组；当前以 studentUserId 为分配键，待班级字段补全后切换 classId）
-        ExperimentBucketAssigner.Assignment experimentAssignment =
-                experimentBucketAssigner.assignClass("default_exp", studentUserId.toString(), null);
-        log.debug("AB 分桶: sessionId={}, variant={}, bucket={}", sessionId,
-                experimentAssignment.variant(), experimentAssignment.bucket());
 
         SessionState newState = new SessionState(
                 sessionId, tenantId, studentUserId, emotionTag, channel, gender, expressionDepth, grade);
@@ -204,32 +174,26 @@ public class ConversationServiceImpl implements ConversationService {
     }
 
     @Override
-    public Flux<StreamMessageEvent> sendMessageStream(UUID tenantId, UUID sessionId, String content) {
-        return sendMessageStream(tenantId, sessionId, content, null, null);
+    public Flux<StreamMessageEvent> sendMessageStream(UUID tenantId, UUID studentUserId, UUID sessionId, String content) {
+        return sendMessageStream(tenantId, studentUserId, sessionId, content, null, null);
     }
 
     @Override
-    public Flux<StreamMessageEvent> sendMessageStream(UUID tenantId, UUID sessionId, String content,
+    public Flux<StreamMessageEvent> sendMessageStream(UUID tenantId, UUID studentUserId, UUID sessionId, String content,
                                                       String voiceEmotion, Double voiceEmotionConfidence) {
         SessionState session = sessionStateStore.get(sessionId);
         if (session == null) {
+            return Flux.just(StreamMessageEvent.error("会话不存在"));
+        }
+        // SEC-001：会话归属校验——拦截跨租户/跨学生的会话劫持（同校学生拿到他人 sessionId 不可注入消息）
+        if (!isSessionOwner(session, tenantId, studentUserId)) {
+            log.warn("会话归属校验失败，拒绝消息: sessionId={}, tenantId={}, userId={}", sessionId, tenantId, studentUserId);
             return Flux.just(StreamMessageEvent.error("会话不存在"));
         }
 
         int turn = session.incrementTurnCount();
         log.debug("收到消息: sessionId={}, turn={}, length={}, voiceEmotion={}",
                 sessionId, turn, content.length(), voiceEmotion);
-
-        // TOOL-003：离线消息幂等去重（clientMsgId 由前端传入，缺省时跳过）
-        // 当前版本：仅记录能力接入点，待前端支持 clientMsgId 后启用完整去重
-        if (content != null && content.startsWith("[offline_replay]")) {
-            var dedup = offlineMessageReplayService.deduplicate(
-                    sessionId + "_" + turn, java.util.Set.of());
-            if (!dedup.accepted()) {
-                log.info("离线消息重复，跳过: sessionId={}, turn={}", sessionId, turn);
-                return Flux.empty();
-            }
-        }
 
         // AUTH-030：累计每日使用时长（按距上次消息的间隔，上限 5 分钟）
         long elapsedSec = session.markActiveAndElapsed();
@@ -465,10 +429,15 @@ public class ConversationServiceImpl implements ConversationService {
     }
 
     @Override
-    public Flux<StreamMessageEvent> sendNudgeStream(UUID tenantId, UUID sessionId, int silenceSeconds) {
+    public Flux<StreamMessageEvent> sendNudgeStream(UUID tenantId, UUID studentUserId, UUID sessionId, int silenceSeconds) {
         SessionState session = sessionStateStore.get(sessionId);
         if (session == null) {
             log.debug("nudge: 会话不存在，返回空流: sessionId={}", sessionId);
+            return Flux.empty();
+        }
+        // SEC-001：会话归属校验
+        if (!isSessionOwner(session, tenantId, studentUserId)) {
+            log.warn("nudge: 会话归属校验失败，返回空流: sessionId={}, tenantId={}, userId={}", sessionId, tenantId, studentUserId);
             return Flux.empty();
         }
 
@@ -569,18 +538,37 @@ public class ConversationServiceImpl implements ConversationService {
     }
 
     @Override
-    public void updateClientSettings(UUID sessionId, Boolean ttsMuted, Boolean wakeEnabled) {
+    public void updateClientSettings(UUID tenantId, UUID studentUserId, UUID sessionId, Boolean ttsMuted, Boolean wakeEnabled) {
         SessionState session = sessionStateStore.get(sessionId);
         if (session == null) return;
+        // SEC-001：会话归属校验（非持有人静默忽略，不泄漏会话存在性）
+        if (!isSessionOwner(session, tenantId, studentUserId)) {
+            log.warn("updateClientSettings: 会话归属校验失败，忽略: sessionId={}, tenantId={}, userId={}", sessionId, tenantId, studentUserId);
+            return;
+        }
         if (ttsMuted != null) session.setTtsMuted(ttsMuted);
         if (wakeEnabled != null) session.setWakeEnabled(wakeEnabled);
         sessionStateStore.save(sessionId, session);
     }
 
+    /**
+     * SEC-001：会话归属校验——调用方租户与学生身份必须与会话状态完全匹配。
+     * Redis 面不受租户拦截器保护，此校验是防跨会话劫持的唯一防线。
+     */
+    private boolean isSessionOwner(SessionState session, UUID tenantId, UUID studentUserId) {
+        return java.util.Objects.equals(session.getTenantId(), tenantId)
+                && java.util.Objects.equals(session.getStudentUserId(), studentUserId);
+    }
+
     @Override
-    public void endSession(UUID tenantId, UUID sessionId) {
+    public void endSession(UUID tenantId, UUID studentUserId, UUID sessionId) {
         SessionState session = sessionStateStore.get(sessionId);
         if (session != null) {
+            // SEC-001：非持有人拒绝结束他人会话
+            if (!isSessionOwner(session, tenantId, studentUserId)) {
+                log.warn("endSession: 会话归属校验失败，拒绝: sessionId={}, tenantId={}, userId={}", sessionId, tenantId, studentUserId);
+                throw new BizException(ErrorCode.FORBIDDEN);
+            }
             sessionStateStore.remove(sessionId);
 
             // 更新 DB 会话状态 + 轮次数
@@ -595,17 +583,6 @@ public class ConversationServiceImpl implements ConversationService {
             // 清除 AI 对话记忆
             aiChatService.clearMemory(sessionId);
             log.info("会话结束: sessionId={}, turns={}", sessionId, session.getTurnCount());
-
-            // AB-002：采集会话深度指标（异步聚合，不阻塞主流程）
-            try {
-                ExperimentMetricsCollector.MetricEvent depthEvent = new ExperimentMetricsCollector.MetricEvent(
-                        "default_exp", "CONTROL", session.getStudentUserId().toString(),
-                        ExperimentMetricsCollector.MetricType.SESSION_DEPTH,
-                        session.getTurnCount(), java.time.LocalDate.now());
-                log.debug("AB 指标采集: sessionId={}, metric=SESSION_DEPTH, value={}", sessionId, depthEvent.value());
-            } catch (Exception e) {
-                log.debug("AB 指标采集失败（不影响业务）: {}", e.getMessage());
-            }
 
             // 异步生成 AI 会话摘要（摘要完成后触发 PROF-003 画像 LLM 提炼）
             messageSummaryService.generateSummaryAsync(tenantId, sessionId, session.getStudentUserId());

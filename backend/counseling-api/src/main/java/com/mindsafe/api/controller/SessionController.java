@@ -65,8 +65,8 @@ public class SessionController {
             Authentication auth) {
         TenantContext ctx = extractContext(auth);
 
-        // 结束会话
-        conversationService.endSession(ctx.tenantId(), id);
+        // 结束会话（SEC-001：传当前用户 ID 做会话归属校验）
+        conversationService.endSession(ctx.tenantId(), ctx.userId(), id);
 
         // 保存满意度评价（如果有）
         if (body != null && body.containsKey("rating")) {

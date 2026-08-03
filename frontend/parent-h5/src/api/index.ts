@@ -103,11 +103,6 @@ export function parentLogin(data: LoginData) {
   return request<AuthResult>('/parent/auth/login', { method: 'POST', data })
 }
 
-/** 查询绑定的学生列表 */
-export function getChildren() {
-  return request('/parent/auth/children')
-}
-
 // ========== 家长数据 API ==========
 
 export interface ReportData {

@@ -37,6 +37,9 @@ services:
       - internal
 
   backend:
+    # 镜像名与 cd.yml 发布链路对齐：默认本地构建；
+    # 用 GHCR 镜像时在 .env 设 BACKEND_IMAGE=ghcr.io/<owner>/<repo>/backend:<sha> 后 docker compose pull
+    image: ${BACKEND_IMAGE:-mindsafe/backend:local}
     build:
       context: ../backend
       dockerfile: Dockerfile
@@ -95,6 +98,7 @@ services:
       - internal
 
   voice-service:
+    image: ${VOICE_SERVICE_IMAGE:-mindsafe/voice-service:local}
     build:
       context: ../backend/voice-service
       dockerfile: Dockerfile
@@ -118,10 +122,16 @@ services:
       timeout: 10s
       retries: 3
       start_period: 120s
+    # 内存限额（镜像 Dockerfile 注释：dashscope+SER ~1.5GB / funasr+SER ~4GB，默认 6G 留余量）
+    deploy:
+      resources:
+        limits:
+          memory: ${VOICE_MEMORY_LIMIT:-6G}
     networks:
       - internal
 
   tts-service:
+    image: ${TTS_SERVICE_IMAGE:-mindsafe/tts-service:local}
     build:
       context: ../backend/tts-service
       dockerfile: Dockerfile
