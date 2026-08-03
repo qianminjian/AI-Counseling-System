@@ -52,6 +52,13 @@ spring:
           model: ${LLM_MODEL:deepseek-v4-flash}
           temperature: 0.7
           max-tokens: 2048
+      # Embedding 配置（RAG 向量检索 KB-101）：主对话供应商未必提供 embeddings 端点，base-url/api-key 独立配置
+      # 模型维度必须与 knowledge_chunks.embedding vector(1536)（V24）一致；换模型需重新摄入全部知识库
+      embedding:
+        base-url: ${EMBEDDING_BASE_URL:${LLM_BASE_URL:https://api.deepseek.com}}
+        api-key: ${EMBEDDING_API_KEY:${LLM_API_KEY:sk-placeholder}}
+        options:
+          model: ${EMBEDDING_MODEL:text-embedding-ada-002}
 
 # MyBatis-Plus 配置
 mybatis-plus:

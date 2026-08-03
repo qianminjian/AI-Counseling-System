@@ -97,17 +97,25 @@ public class VoiceAnalysisService {
     /**
      * 检查语音服务是否可用
      */
-    @SuppressWarnings("unchecked")
     public boolean isAvailable() {
+        return fetchHealth() != null;
+    }
+
+    /**
+     * 获取语音服务健康详情（透传 Python /health，含实际加载的模型名）
+     *
+     * @return 健康信息（status/asr_engine/asr_model/ser_model），服务不可用时返回 null
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> fetchHealth() {
         try {
-            webClient.get()
+            return (Map<String, Object>) webClient.get()
                     .uri("/health")
                     .retrieve()
                     .bodyToMono(Map.class)
                     .block(Duration.ofSeconds(5));
-            return true;
         } catch (Exception e) {
-            return false;
+            return null;
         }
     }
 

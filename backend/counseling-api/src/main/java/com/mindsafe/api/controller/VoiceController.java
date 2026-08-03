@@ -69,14 +69,25 @@ public class VoiceController {
 
     /**
      * 检查语音服务可用性
+     * <p>
+     * 模型名透传自 voice-service /health，不硬编码（模型可配置切换）
      */
     @GetMapping("/status")
     public ApiResponse<Map<String, Object>> status() {
-        boolean available = voiceAnalysisService.isAvailable();
+        Map<String, Object> health = voiceAnalysisService.fetchHealth();
+        if (health == null) {
+            return ApiResponse.ok(Map.of(
+                    "available", false,
+                    "service", "voice-analysis",
+                    "models", "unavailable"
+            ));
+        }
+        String asrModel = String.valueOf(health.getOrDefault("asr_model", "unknown"));
+        String serModel = String.valueOf(health.getOrDefault("ser_model", "unknown"));
         return ApiResponse.ok(Map.of(
-                "available", available,
+                "available", true,
                 "service", "voice-analysis",
-                "models", available ? "SenseVoiceSmall + emotion2vec+" : "unavailable"
+                "models", asrModel + " + " + serModel
         ));
     }
 }

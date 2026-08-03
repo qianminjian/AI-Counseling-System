@@ -54,15 +54,22 @@ public class TemplateMatrixRegistry {
     ) {
     }
 
-    /** 模板矩阵（当前登记） */
+    /** 模板矩阵（与 design/18 §0 总览表 + prompts/ 真实文件对齐，2026-07-28 审计修正） */
     private static final List<TemplateEntry> MATRIX = List.of(
-            new TemplateEntry("SYS-001", "zh-CN_v1.2.0", "all", TemplateStatus.ACTIVE, "基础人设+安全底线"),
+            new TemplateEntry("SYS-001", "zh-CN_v1.0.0", "all", TemplateStatus.ACTIVE, "系统身份与行为契约（L0/L1）"),
+            new TemplateEntry("SAF-001", "zh-CN_v1.0.0", "all", TemplateStatus.ACTIVE, "输入风险识别 JSON（L2）"),
+            new TemplateEntry("SAF-002", "zh-CN_v1.0.0", "all", TemplateStatus.ACTIVE, "输出审查（L6，Layer2 异步）"),
+            new TemplateEntry("LANG-001", "zh-CN_v1.0.0", "grade_1_2", TemplateStatus.ACTIVE, "1-2 年级儿童语言（L3）"),
+            new TemplateEntry("LANG-002", "zh-CN_v1.0.0", "grade_3_4", TemplateStatus.ACTIVE, "3-4 年级儿童语言（L3）"),
+            new TemplateEntry("LANG-003", "zh-CN_v1.0.0", "grade_5_6", TemplateStatus.ACTIVE, "5-6 年级儿童语言（L3）"),
             new TemplateEntry("EMO-001", "zh-CN_v1.0.0", "all", TemplateStatus.ACTIVE, "情绪策略层（ORCH-001）"),
-            new TemplateEntry("TSK-001", "zh-CN_v1.1.0", "all", TemplateStatus.ACTIVE, "CBT 引导"),
-            new TemplateEntry("TSK-002", "zh-CN_v1.0.0", "grade_1_2", TemplateStatus.ACTIVE, "低年级 SEL"),
-            new TemplateEntry("TSK-003", "zh-CN_v1.0.0", "grade_5_6", TemplateStatus.ACTIVE, "高年级认知三角"),
-            new TemplateEntry("TSK-004", "zh-CN_v1.0.0", "all", TemplateStatus.ACTIVE, "冷场暖场（WAKE-004）"),
-            new TemplateEntry("SAF-001", "zh-CN_v1.0.0", "all", TemplateStatus.ACTIVE, "安全审查（输出层）")
+            new TemplateEntry("SKL-001", "zh-CN_v1.0.0", "all", TemplateStatus.ACTIVE, "CBT 微技能（L4）"),
+            new TemplateEntry("SKL-002", "zh-CN_v1.0.0", "all", TemplateStatus.ACTIVE, "SEL 社会情感学习（L4）"),
+            new TemplateEntry("SKL-003", "zh-CN_v1.0.0", "all", TemplateStatus.ACTIVE, "PFA 心理急救（L4）"),
+            new TemplateEntry("TSK-001", "zh-CN_v1.0.0", "all", TemplateStatus.ACTIVE, "教师摘要生成（PEVAL-001）"),
+            new TemplateEntry("TSK-002", "zh-CN_v1.0.0", "all", TemplateStatus.ACTIVE, "RAG 查询改写（KB-101）"),
+            new TemplateEntry("TSK-003", "zh-CN_v1.0.0", "all", TemplateStatus.ACTIVE, "会话收束"),
+            new TemplateEntry("TSK-004", "zh-CN_v1.0.0", "all", TemplateStatus.ACTIVE, "主动暖场（冷场引导，design/28）")
     );
 
     /** 红队护栏用例集（核心 10 条，改版必过） */

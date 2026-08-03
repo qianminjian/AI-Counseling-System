@@ -418,13 +418,13 @@ Prompt 体系的核心价值，是把校园心理 AI 从「会聊天」升级为
 | L0/L1 | Policy + System 不可覆盖 | SYS-001 classpath md + `PromptVersionService`（DB→classpath 降级、灰度 arm） | 🟩 | 已达目标；补：L0 合规块与 L1 身份块当前同文件，建议拆分以支持独立版本节奏 |
 | L2 | Safety Prompt + 风险 JSON | `RiskDetectorServiceImpl`（硬规则+LLM 分类）；~~仅留痕不短路~~ → **RISK-201 已落地**：RED 硬短路跳过 LLM + safetyMode 后续轮次陪伴话术（ConversationServiceImpl L295-342） | 🟩 | 已达目标 |
 | L3 | 儿童语言分年级 | LANG-001/002/003 按 gradeCode 路由（ConversationServiceImpl L255） | 🟩 | 升级为认知适配全维度（design/29：比喻库/互动模式/CBT 深度） |
-| L4 | CBT/SEL/PFA 技能路由 | SKL-001/002/003 模板已入 `PromptVersionService` 映射；原 SkillRouter 随世界B 删除（DEC-CBT 2026-07-29），路由职责待并入世界A 分诊段 | 🟫 | 路由职责并入分诊段 route 输出（WIRE-002），不单独建 SkillRouter |
+| L4 | CBT/SEL/PFA 技能路由 | SKL-001/002/003 模板已入 `PromptVersionService` 映射；原 SkillRouter 随世界B 删除（DEC-CBT 2026-07-29）；**2026-07-28 审计后阶段指令注入已接线**（`CbtStageRouter.stageDirective` 按阶段×年龄×allowCbt 渲染，design/03 §11.2） | 🟩部分 | SKL 模板独立路由仍待分诊段 route 输出（WIRE-002 剩余项） |
 | L5 | 任务 Prompt | TSK-004 冷场暖场已接线；风险 JSON/教师摘要已接线；~~RAG 零调用~~ → **KB-101 已接主线**（RagAdvisorService.buildRagContext → ConversationServiceImpl L418 注入） | 🟩 | 已达目标 |
-| L6 | Output Guard 四决策 | Layer1 `OutputContentFilter` 同步硬过滤（🟩）+ Layer2 `OutputReviewService` 异步复审但**仅留痕不召回** | 🟩部分 | Layer2 补召回改写（design/14 §十一深化，SAFE-201） |
+| L6 | Output Guard 四决策 | Layer1 `OutputContentFilter` 同步硬过滤（🟩）+ Layer2 `OutputReviewService` 异步复审；~~仅留痕不召回~~ → **SAFE-202 四决策召回已落地**（2026-07-28：pass/rewrite/block/escalate，记忆替换召回+risk_events 审计+分级通知，见 design/14 §12.2） | 🟩 | 高敏同步化待 RISK-202 |
 | E1 | 规则引擎 | 关键词/正则库已生效 | 🟩 | 补隐性表达语义层（design/04 M2，RISK-202） |
 | E2 | 版本治理+评测闭环 | 版本解析/灰度 arm 已实现；~~evaluateConversationQuality 零调用~~ → **PEVAL-001 已接线**（MessageSummaryService L83 触发 evaluateSessionAsync）；test_gate/红队集资产化未落地 | 🟩部分 | 门禁资产化归 PEVAL-003 |
 
-> 结论（2026-07-28 更新）：世界A 并非「裸单 prompt」——L0/L1/L3 分层、版本治理、L2 RED 硬短路（RISK-201）、L5 RAG 接主线（KB-101）、E2 评测接线（PEVAL-001）均已生效。剩余缺口收敛为 **L4 技能路由（WIRE-002）、L6 召回（SAFE-201）、E2 门禁资产化（PEVAL-003）** 三处。
+> 结论（2026-07-28 审计后更新）：世界A 并非「裸单 prompt」——L0/L1/L3 分层、版本治理、L2 RED 硬短路（RISK-201）、L5 RAG 接主线（KB-101）、E2 评测接线（PEVAL-001）、**L6 四决策召回（SAFE-202）**均已生效。剩余缺口收敛为 **L4 SKL 模板独立路由（WIRE-002 剩余项）、E2 门禁资产化（PEVAL-003）** 两处。
 
 ### 19.2 组装链升级：静态拼接 → 先算策略再拼（与 design/44 对齐）
 
@@ -446,7 +446,7 @@ Prompt 体系的核心价值，是把校园心理 AI 从「会聊天」升级为
 |------|------|------|:---:|------|
 | EMO-001 情绪镜映模板无正文 | 模板 key 已预留 | PEVAL-002 | P0 | Agent（开发待钱敏健指令） |
 | §11.2 test_gate 未落地（红队通过率/L4L5 召回门禁不在 CI） | 仅文档约定 | PEVAL-003 | P1 | 同上 |
-| L4 技能路由未接 | SKL 模板闲置（原 SkillRouter 随世界B 删除） | WIRE-002（design/13） | P1 | 同上 |
+| L4 SKL 模板独立路由未接 | 阶段指令注入已接（CbtStageRouter），SKL 模板仍闲置 | WIRE-002 剩余项（design/13） | P1 | 同上 |
 | ~~L2 RED 不短路~~ | ✅ RISK-201 已落地（2026-07-28） | — | — | 已关闭 |
-| L6 Layer2 不召回 | 仅留痕 | SAFE-201（design/14） | P0 | 同上 |
+| ~~L6 Layer2 不召回~~ | ✅ SAFE-202 四决策召回已落地（2026-07-28，见 design/14 §12.2） | — | — | 已关闭 |
 | ~~评测闭环未接线~~ | ✅ PEVAL-001 已落地（MessageSummaryService 触发） | — | — | 已关闭 |

@@ -3,7 +3,7 @@
 > 来源：`doc/03_CBT对话流程树.docx`（原文 787 行）
 > 状态：已转换 | 关联：13 Agent 工作流（CBT Agent 状态机）、04 风险识别规则库、**DEC-CBT 删除世界B（钱敏健 2026-07-29，推翻原「路径1激活」）**
 > 核心：把 CBT 做成「安全前置、有限状态、场景路由、微干预、强转介」的流程引擎。AI 只承担情绪陪伴、心理教育、轻度 CBT 引导和求助动员；**不做医学诊断、不做创伤深挖、不替代心理老师、不承诺绝对保密**。
-> ⚠️ **实现现状（2026-07-29 更新）**：§三通用状态机 S0-S9 原已完整编码（`CbtState`/`CbtStateMachine`），但属世界B 孤儿代码，已于 2026-07-29 随世界B **整体删除**（DEC-CBT 决策，commit c9af478）；§七九个场景子树（E/P/L/A/D/SOM/F/B/SL 节点）未编码。线上对话无 CBT 结构化推进，仅靠单 prompt 自由生成。四态判定与深化设计见 **§十一**。
+> ⚠️ **实现现状（2026-07-29 更新，2026-07-28 审计后补充）**：§三通用状态机 S0-S9 原已完整编码（`CbtState`/`CbtStateMachine`），但属世界B 孤儿代码，已于 2026-07-29 随世界B **整体删除**（DEC-CBT 决策，commit c9af478）；§七九个场景子树（E/P/L/A/D/SOM/F/B/SL 节点）未编码。**2026-07-28 审计修复后已落地启发式 CBT 接线**：容纳之窗情绪门控 + 年龄分层标记 + 阶段指令注入 system prompt + state_path JSONB 按轮落库（`CbtStageRouter`，见 §11.2/11.3/11.4 落地记录）；LLM 回名版阶段标记与场景子树本体编码仍属未来项。四态判定与深化设计见 **§十一**。
 
 ---
 
@@ -326,12 +326,12 @@ START → 身份/边界提示 → 风险前置判断 → 情绪识别 → 场景
 | §三 通用状态机 S0-S9 | `CbtState`（11 态，含 END）+ `CbtStateMachine`（迁移表/事件推进）原已完整编码，与本文逐一对应；**已随世界B 整体删除**（DEC-CBT 2026-07-29，commit c9af478） | 已删除 | —（WIRE-003 已取消） |
 | §四 风险前置 R0-R4（每轮执行） | 输入侧风险检测每轮已执行（🟩，design/04 §十七），但检测结果不驱动状态迁移（无 S1→S9 硬跨转），RED 也不短路 | 🟩部分 | RISK-201（短路）+ WIRE-003（迁移） |
 | §五 儿童语言控制 | 经 LANG_001/002/003 按年级路由已接线（design/02 §19.1 L3） | 🟩 | — |
-| §六 通用记录字段（state_path/emotion_before…） | 会话与消息落库已有，但 CBT 结构化字段（auto_thought/balanced_thought/micro_action 等）无产出无落库 | ⬜ | CBT-201 |
-| §七 九场景子树（E/P/L/A/D/SOM/F/B/SL） | 未编码；SKL_001-003 技能模板已入映射但无路由者 | ⬜ | WIRE-002（路由）+ CBT-202（分层） |
+| §六 通用记录字段（state_path/emotion_before…） | **state_path 已按轮落库**（CBT-201 已实现，见 §11.4 落地记录）：JSONB 数组每轮追加 `{turn,stage,age_strategy,allowed_techniques,allow_cbt}`；auto_thought/balanced_thought 等回复段回名字段仍无（LLM 回名版 M2+） | 🟩部分 | 回名版归口 WIRE-003 |
+| §七 九场景子树（E/P/L/A/D/SOM/F/B/SL） | **阶段指令已注入 system prompt**（WIRE-002 已实现，见 §11.2 落地记录）：`CbtStageRouter.stageDirective` 按阶段×年龄×allowCbt 渲染约束指令；九场景子树本体仍未编码，SKL_001-003 无独立路由 | 🟩部分 | 场景子树编码归口 WIRE-003 |
 | §八 高风险转人工 H1-H5 | 教师告警通知已接线（🟩）；会话锁定/人工接管态未实现 | 🟩部分 | RISK-201 §18.2 会话态推进 |
-| §一 单次 5~12 轮自动收束 | 无轮次控制，无限陪聊风险未防护（仅冷场 TSK_004 暖场已接） | ⬜ | 并入 WIRE-003 验收项 |
+| §一 单次 5~12 轮自动收束 | `inferStage` 已含轮次代理（turn≥9→CLOSURE 收尾指令，见 §11.2）；硬轮次上限/强制收束未实现 | 🟩部分 | 硬轮次控制并入 WIRE-003 验收项 |
 
-**结论**：本文是「虚假设计未落地」最典型的一篇——状态机骨架曾高保真编码但从未通电，且已随世界B 整体删除（DEC-CBT 2026-07-29）。线上 CBT 专业性完全托付给世界A 单 prompt（SYS-001 内的流程描述）与底座模型自觉。本文保留为 CBT 行为规格参考文档，不代表任何计划实现的代码。
+**结论**（2026-07-28 更新）：本文曾为「虚假设计未落地」最典型的一篇——状态机骨架已随世界B 整体删除（DEC-CBT 2026-07-29，不恢复）。但 2026-07-28 审计修复后，**三项核心接线已落地（启发式版本）**：①容纳之窗情绪门控（ORCH-002）②年龄分层标记（CBT-202）③state_path 结构化落库（CBT-201）+ 阶段指令注入（WIRE-002）。本文现定位：CBT 行为规格参考文档 + 已落地接线的验收依据；LLM 回名版阶段标记与场景子树编码仍属未来项。
 
 ### 11.2 容纳之窗情绪门控（接 design/44 ORCH-002，心理专业深化）
 
@@ -340,6 +340,8 @@ START → 身份/边界提示 → 风险前置判断 → 情绪识别 → 场景
 1. **门控点**：S2_EMOTION_LABEL 产出情绪强度后、S3 路由前增加全局判断：强度 ≥7 或情绪态=CRISIS/ACTIVATED 时 `allowCbt=false`，路由降级为稳定化分支（呼吸/着陆/陪伴），不进 S5/S6 认知节点。
 2. **裁决位置**：门控在 StrategyProfile 内完成（design/44），不靠 prompt 描述——优先级裁决必须发生在提示词之外（与 design/02 §19.2 同源原则）。
 3. **解除条件**：同会话内强度回落到 ≤5 且非 CRISIS，下一轮恢复 allowCbt；连续 3 轮不回落→建议收束并提示找可信成人（对齐 §五有限回合）。
+
+**落地记录（2026-07-28，启发式版已实现）**：`CbtStageRouter.inferStage(turn, emotionState)` 已实现容纳之窗门控——`CRISIS/ACTIVATED` 情绪态直接路由 `SKILL_PRACTICE`（稳定化技能容纳），`allowCbt` 仅在 `EmotionState.STABLE` 时为 true（`ConversationServiceImpl` 接线点）；`stageDirective` 对 !allowCbt 渲染稳定化指令（呼吸/着陆/陪伴，不进认知节点）。**启发式降级**：情绪强度阈值（≥7/≤5）与连续 3 轮不回落判断未实现（依赖情绪强度结构化产出），当前为情绪态枚举级门控；精确强度版归口 ORCH-002 深化（PROF-021 依赖）。
 
 ### 11.3 年龄分层 CBT 技能路由（CBT-202，接 design/29）
 
@@ -353,6 +355,8 @@ START → 身份/边界提示 → 风险前置判断 → 情绪识别 → 场景
 
 路由依据 `User.gradeCode`（design/29 已接通），在 S3 场景路由同时完成年龄节点裁剪；前置 CBT-201（无阶段标记则无从裁剪）。
 
+**落地记录（2026-07-28，CBT-202 已实现）**：`CbtStageRouter.mark(stage, effectiveGrade, allowCbt)` 按年级产出 `AgeStrategy` 三态——≤2 年级 `BEHAVIORAL_FIRST`（stageDirective 注入「低年级不做认知重构，行为激活/情绪命名优先」）、3-4 年级 `BALANCED`（注入具象化工具：想法天平/侦探找线索）、5-6 年级 `COGNITIVE_FIRST`；`allowedTechniques` 按阶段×策略裁剪（`resolveTechniques`）。接线点在 `ConversationServiceImpl`（inferStage→mark→stageDirective 注入 system）。测试：`CbtStageRouterTest`（BALANCED 矩阵等 12 例）。
+
 ### 11.4 阶段标记结构化落库（CBT-201，接 design/45 评估闭环）
 
 现状：即使 WIRE-003 接线状态机，若 CBT 产出（auto_thought/balanced_thought/micro_action）不结构化落库，则 §六记录字段、§九验收指标（情绪强度下降/微行动选择率）和 design/45 质量评估均无数据可算。设计要点：
@@ -361,13 +365,15 @@ START → 身份/边界提示 → 风险前置判断 → 情绪识别 → 场景
 - **落库最小化**：复用现有会话表 JSONB 扩展字段，不新建表（schema 变更属红线 §5.3，若确需新列需钱敏健确认）；敏感原文不入标记，只存摘要（§六隐私策略既定）。
 - **消费方**：design/45 质量评估（PEVAL-001）、教师摘要、§九验收指标看板三方共用同一份结构化数据（DRY）。
 
+**落地记录（2026-07-28，CBT-201 已实现）**：`ConversationServiceImpl.appendStatePath` 每轮将 `{turn, stage, age_strategy, allowed_techniques, allow_cbt}` 追加到会话表 `state_path` JSONB 列（复用现有列，无 schema 变更）；序列化失败降级为本轮单条记录不阻断主流程；敏感原文不入标记。**启发式降级**：阶段来源为 `inferStage` 轮次代理（turn≤2→RAPPORT、turn≥9→CLOSURE、中间→PROBLEM_IDENTIFY），非 LLM 回复段回名；auto_thought/balanced_thought/micro_action 等产出字段仍未落库，回名版归口 WIRE-003。
+
 ### 11.5 任务归口与优先级（均已登记，不重复造 ID）
 
-| 差距 | 任务 ID | 优先级 | 责任人 | 依赖 |
+| 差距 | 任务 ID | 优先级 | 责任人 | 状态 |
 |------|------|:---:|------|------|
-| 状态机接线上线（含轮次控制） | WIRE-003（design/13 §13.5） | P1 | Agent（开发待钱敏健指令） | WIRE-002 |
-| 容纳之窗情绪门控（§11.2） | ORCH-002（design/44） | 近期/P0 | Agent | PROF-021 |
-| 阶段标记结构化落库（§11.4） | CBT-201 | P1 | Agent | DEC-CBT（已决） |
-| 年龄分层技能路由（§11.3） | CBT-202 | P1 | Agent | CBT-201 |
-| 场景子树路由（§七，SKL 模板接线） | WIRE-002（design/13） | P0 | Agent | DEC-CBT（已决） |
+| 状态机接线上线（含硬轮次控制） | WIRE-003（design/13 §13.5） | P1 | Agent（开发待钱敏健指令） | ⬜ 待办（状态机已删除，仅轮次代理版落地） |
+| 容纳之窗情绪门控（§11.2） | ORCH-002（design/44） | 近期/P0 | Agent | 🟩 **已实现**（2026-07-28，情绪态枚举级门控，强度阈值版待深化） |
+| 阶段标记结构化落库（§11.4） | CBT-201 | P1 | Agent | 🟩 **已实现**（2026-07-28，state_path JSONB 启发式版；LLM 回名版待 WIRE-003） |
+| 年龄分层技能路由（§11.3） | CBT-202 | P1 | Agent | 🟩 **已实现**（2026-07-28，AgeStrategy 三态 + stageDirective 注入） |
+| 场景子树路由（§七，SKL 模板接线） | WIRE-002（design/13） | P0 | Agent | 🟩 **部分实现**（2026-07-28，阶段指令注入已接线；九场景子树本体编码未做） |
 

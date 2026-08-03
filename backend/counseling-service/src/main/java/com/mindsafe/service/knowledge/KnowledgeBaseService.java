@@ -56,10 +56,10 @@ public class KnowledgeBaseService {
                                String content, String source) {
         UUID docId = UUID.randomUUID();
 
-        // 1. 存储文档元数据
+        // 1. 存储文档元数据（KB-102 铁律：新摄入默认 draft，须过审核发布后才可被 RAG 检索）
         jdbcTemplate.update(
                 "INSERT INTO tenant_template.knowledge_documents (doc_id, tenant_id, title, category, content, source, status, created_at, updated_at) VALUES (?,?,?,?,?,?,?,now(),now())",
-                docId, tenantId, title, category, content, source, "active");
+                docId, tenantId, title, category, content, source, "draft");
 
         // 2. 分块
         List<String> chunks = splitIntoChunks(content);
@@ -95,13 +95,14 @@ public class KnowledgeBaseService {
         String vectorStr = toVectorString(queryEmbedding);
 
         // pgvector cosine similarity: 1 - (embedding <=> query) = similarity
+        // KB-102 铁律：仅 published 内容可被检索（V30 后 active 已迁移为 published）
         String sql = """
                 SELECT c.chunk_id, c.doc_id, c.content, c.chunk_index,
                        d.title, d.category,
                        1 - (c.embedding <=> ?::vector) AS similarity
                 FROM tenant_template.knowledge_chunks c
                 JOIN tenant_template.knowledge_documents d ON c.doc_id = d.doc_id
-                WHERE d.status = 'active'
+                WHERE d.status = 'published'
                   AND (c.tenant_id IS NULL OR c.tenant_id = ?)
                   AND 1 - (c.embedding <=> ?::vector) > ?
                 ORDER BY c.embedding <=> ?::vector
@@ -147,10 +148,10 @@ public class KnowledgeBaseService {
     }
 
     /**
-     * 按分类列出文档
+     * 按分类列出文档（含全部审核状态，供教师后台审核工作流使用）
      */
     public List<Map<String, Object>> listDocuments(UUID tenantId, String category) {
-        String sql = "SELECT doc_id, title, category, source, status, created_at FROM tenant_template.knowledge_documents WHERE (tenant_id IS NULL OR tenant_id = ?) AND status = 'active'";
+        String sql = "SELECT doc_id, title, category, source, status, grade_band, evidence_level, reviewer, created_at FROM tenant_template.knowledge_documents WHERE (tenant_id IS NULL OR tenant_id = ?) AND status <> 'deprecated'";
         List<Object> params = new ArrayList<>(List.of(tenantId));
         if (category != null && !category.isBlank()) {
             sql += " AND category = ?";
@@ -158,6 +159,48 @@ public class KnowledgeBaseService {
         }
         sql += " ORDER BY created_at DESC";
         return jdbcTemplate.queryForList(sql, params.toArray());
+    }
+
+    /**
+     * 查询文档当前审核状态（DB 真实值，不信请求体）。
+     *
+     * @return status 字符串，文档不存在时返回 null
+     */
+    public String findDocumentStatus(UUID docId) {
+        List<String> rows = jdbcTemplate.queryForList(
+                "SELECT status FROM tenant_template.knowledge_documents WHERE doc_id = ?",
+                String.class, docId);
+        return rows.isEmpty() ? null : rows.get(0);
+    }
+
+    /**
+     * 审核状态转移落库（KB-102，V30 审核字段）。
+     * <p>
+     * 门禁校验由调用方（KnowledgeBaseController + ReviewGateValidator）完成后调用；
+     * 审核字段 COALESCE 保留旧值（允许分步补齐）。
+     *
+     * @return 更新行数（0=文档不存在）
+     */
+    @Transactional
+    public int transitionReviewStatus(UUID docId, String targetStatus,
+                                      String gradeBand, String sourceType,
+                                      String evidenceLevel, String reviewer) {
+        int rows = jdbcTemplate.update(
+                """
+                UPDATE tenant_template.knowledge_documents
+                SET status = ?,
+                    grade_band = COALESCE(?, grade_band),
+                    source_type = COALESCE(?, source_type),
+                    evidence_level = COALESCE(?, evidence_level),
+                    reviewer = COALESCE(?, reviewer),
+                    reviewed_at = now(),
+                    updated_at = now()
+                WHERE doc_id = ?
+                """,
+                targetStatus, gradeBand, sourceType, evidenceLevel, reviewer, docId);
+        log.info("知识审核状态落库: docId={}, targetStatus={}, reviewer={}, rows={}",
+                docId, targetStatus, reviewer, rows);
+        return rows;
     }
 
     // ===== 内部方法 =====
@@ -179,8 +222,9 @@ public class KnowledgeBaseService {
                 }
             }
             chunks.add(text.substring(start, end).trim());
+            // 末窗口已覆盖到文本末尾 → 终止（否则 start=end-OVERLAP 永不推进，死循环 OOM）
+            if (end >= text.length()) break;
             start = end - CHUNK_OVERLAP;
-            if (start >= text.length()) break;
         }
         return chunks.stream().filter(c -> !c.isBlank()).toList();
     }

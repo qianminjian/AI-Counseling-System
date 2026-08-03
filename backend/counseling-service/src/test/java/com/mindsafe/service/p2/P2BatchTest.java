@@ -278,12 +278,15 @@ class P2BatchTest {
         private final TemplateMatrixRegistry registry = new TemplateMatrixRegistry();
 
         @Test
-        @DisplayName("模板矩阵包含 7 个生效模板")
+        @DisplayName("模板矩阵包含 14 个生效模板（与 design/18 §0 + prompts/ 文件对齐）")
         void matrix() {
-            assertThat(registry.getMatrix()).hasSize(7);
+            assertThat(registry.getMatrix()).hasSize(14);
             assertThat(registry.findActive("EMO-001")).isNotNull();
             assertThat(registry.findActive("EMO-001").status())
                     .isEqualTo(TemplateMatrixRegistry.TemplateStatus.ACTIVE);
+            assertThat(registry.findActive("SAF-002")).isNotNull();
+            assertThat(registry.findActive("LANG-001").audience()).isEqualTo("grade_1_2");
+            assertThat(registry.findActive("SKL-001")).isNotNull();
         }
 
         @Test

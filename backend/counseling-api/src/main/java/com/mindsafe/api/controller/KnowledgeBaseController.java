@@ -133,12 +133,17 @@ public class KnowledgeBaseController {
         TenantContext ctx = (TenantContext) auth.getDetails();
 
         String targetStatus = body.get("targetStatus");
-        String currentStatus = body.getOrDefault("currentStatus", "draft");
         if (targetStatus == null || targetStatus.isBlank()) {
             return ApiResponse.error(400, "缺少 targetStatus 参数");
         }
 
-        ReviewStatus from = ReviewWorkflowStateMachine.fromDbStatus(currentStatus);
+        // 当前状态以 DB 真实值为准（不信请求体，防绕过状态机）
+        String dbStatus = knowledgeBaseService.findDocumentStatus(docId);
+        if (dbStatus == null) {
+            return ApiResponse.error(404, "知识文档不存在: " + docId);
+        }
+
+        ReviewStatus from = ReviewWorkflowStateMachine.fromDbStatus(dbStatus);
         ReviewStatus to = ReviewWorkflowStateMachine.fromDbStatus(targetStatus);
 
         // 构建元数据（从请求体提取门禁所需字段）
@@ -161,6 +166,12 @@ public class KnowledgeBaseController {
         if (!gateResult.passed()) {
             return ApiResponse.error(400, "门禁校验失败: " + String.join("; ", gateResult.violations()));
         }
+
+        // 门禁通过 → 状态与审核字段落库（KB-102，V30）
+        knowledgeBaseService.transitionReviewStatus(docId,
+                ReviewWorkflowStateMachine.toDbStatus(to),
+                body.get("gradeBand"), body.get("sourceType"),
+                body.get("evidenceLevel"), body.get("reviewer"));
 
         auditLogService.log(ctx.tenantId(), ctx.userId(), "KNOWLEDGE_REVIEW_TRANSITION",
                 "knowledge_document", docId,

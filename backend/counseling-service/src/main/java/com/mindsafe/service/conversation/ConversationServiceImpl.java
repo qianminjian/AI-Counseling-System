@@ -1,5 +1,8 @@
 package com.mindsafe.service.conversation;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.mindsafe.ai.ally.AllianceEnhancer;
 import com.mindsafe.ai.cbt.CbtStageRouter;
 import com.mindsafe.ai.chat.AiChatService;
@@ -76,6 +79,9 @@ public class ConversationServiceImpl implements ConversationService {
 
     /** 冷场决策模型（无状态纯计算，design/28 §三） */
     private final NudgeDecisionModel nudgeDecisionModel = new NudgeDecisionModel();
+
+    /** CBT state_path JSON 序列化工具（CBT-201） */
+    private static final ObjectMapper STATE_PATH_MAPPER = new ObjectMapper();
 
     public ConversationServiceImpl(AiChatService aiChatService,
                                    PromptTemplateService promptTemplateService,
@@ -371,9 +377,15 @@ public class ConversationServiceImpl implements ConversationService {
                 promptOrchestrationService.toTemplateVariables(strategy));
         systemPromptContent = systemPromptContent + "\n\n" + emoResolved.content();
 
-        // CBT-201/202：CBT 阶段标记 + 年龄分层路由（design/52 §一，design/03 §11.3/11.4）
-        CbtStageRouter.AgeStrategy ageStrategy = cbtStageRouter.resolveAgeStrategy(effectiveGrade);
-        log.debug("CBT 年龄分层: sessionId={}, grade={}, strategy={}", sessionId, effectiveGrade, ageStrategy);
+        // CBT-201/202 + WIRE-002：阶段推断 + 年龄分层标记 → 指令注入 + state_path 落库（design/03 §11.3/11.4）
+        CbtStageRouter.CbtStage cbtStage = cbtStageRouter.inferStage(turn, session.getEmotionState());
+        boolean allowCbt = session.getEmotionState() == StrategyProfile.EmotionState.STABLE;
+        CbtStageRouter.StageMark stageMark = cbtStageRouter.mark(cbtStage, effectiveGrade, allowCbt);
+        systemPromptContent = systemPromptContent + "\n\n" + cbtStageRouter.stageDirective(stageMark);
+        CounselingSession dbSession = sessionMapper.selectById(sessionId);
+        String statePath = appendStatePath(dbSession != null ? dbSession.getStatePath() : null, turn, stageMark);
+        log.debug("CBT 阶段标记: sessionId={}, turn={}, stage={}, strategy={}, allowCbt={}",
+                sessionId, turn, cbtStage, stageMark.ageStrategy(), allowCbt);
 
         // ALLY 连续性开场 / 回归照护已纳入 CTX-Agent contextBrief，不再单独注入
 
@@ -385,11 +397,12 @@ public class ConversationServiceImpl implements ConversationService {
             log.info("RAG 参考知识已注入: sessionId={}, contextLen={}", sessionId, ragContext.length());
         }
 
-        // 记录 Prompt 版本到会话（用于 A/B 效果对比）
+        // 记录 Prompt 版本与 CBT state_path 到会话（A/B 对比 + design/45 评估闭环数据源）
         String versionTag = sysResolved.versionTag();
         CounselingSession versionUpdate = new CounselingSession();
         versionUpdate.setSessionId(sessionId);
         versionUpdate.setPromptVersion(versionTag);
+        versionUpdate.setStatePath(statePath);
         versionUpdate.setUpdatedAt(Instant.now());
         sessionMapper.updateById(versionUpdate);
 
@@ -725,6 +738,40 @@ public class ConversationServiceImpl implements ConversationService {
             }
         } catch (Exception e) {
             log.debug("个人信息提取失败（不影响对话）: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * 追加 CBT state_path 阶段标记（CBT-201，design/03 §11.4）。
+     * <p>
+     * state_path 为 jsonb 数组，每轮追加一条 {turn,stage,age_strategy,allowed_techniques,allow_cbt}。
+     * 复用现有会话表 JSONB 列，无 schema 变更；敏感原文不入标记（§六隐私策略）。
+     * 解析/序列化失败时降级为本轮单条记录，不阻断主流程。
+     */
+    private String appendStatePath(String existingJson, int turn, CbtStageRouter.StageMark mark) {
+        try {
+            ObjectNode record = STATE_PATH_MAPPER.createObjectNode();
+            record.put("turn", turn);
+            record.put("stage", mark.stage().name());
+            record.put("age_strategy", mark.ageStrategy().name());
+            ArrayNode techniques = record.putArray("allowed_techniques");
+            mark.allowedTechniques().forEach(techniques::add);
+            record.put("allow_cbt", mark.allowCbt());
+
+            ArrayNode arr;
+            if (existingJson == null || existingJson.isBlank()) {
+                arr = STATE_PATH_MAPPER.createArrayNode();
+            } else {
+                var parsed = STATE_PATH_MAPPER.readTree(existingJson);
+                arr = parsed.isArray() ? (ArrayNode) parsed : STATE_PATH_MAPPER.createArrayNode();
+            }
+            arr.add(record);
+            return STATE_PATH_MAPPER.writeValueAsString(arr);
+        } catch (Exception e) {
+            log.warn("state_path 序列化失败，降级为本轮单条记录: {}", e.getMessage());
+            return String.format(
+                    "[{\"turn\":%d,\"stage\":\"%s\",\"age_strategy\":\"%s\",\"allow_cbt\":%b}]",
+                    turn, mark.stage().name(), mark.ageStrategy().name(), mark.allowCbt());
         }
     }
 }

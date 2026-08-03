@@ -110,7 +110,8 @@ class ConversationServiceImplTest {
         conversationQualityService = mock(ConversationQualityService.class);
         crisisResourceProvider = new CrisisResourceProvider();
         allianceEnhancer = mock(AllianceEnhancer.class);
-        cbtStageRouter = mock(CbtStageRouter.class);
+        // CBT-201/202 + WIRE-002：纯规则无依赖，直接用真实实例（验证真实接线路径）
+        cbtStageRouter = new CbtStageRouter();
         sessionEndAnalyticsService = mock(SessionEndAnalyticsService.class);
         sessionStateStore = mock(RedisSessionStateStore.class);
         contextAgent = mock(ConversationContextAgent.class);
@@ -129,9 +130,6 @@ class ConversationServiceImplTest {
             return null;
         }).when(sessionStateStore).remove(any(UUID.class));
 
-        // CBT-201: 默认年龄策略
-        when(cbtStageRouter.resolveAgeStrategy(anyInt()))
-                .thenReturn(CbtStageRouter.AgeStrategy.BALANCED);
         // P0-2: ConversationRiskProcessor 默认行为（无风险正常流程）
         when(riskProcessor.detectKeywordRisk(anyString())).thenReturn(RiskDetectionResult.safe());
         when(riskProcessor.applySemanticRisk(any(RiskDetectionResult.class), anyString(), anyInt()))
