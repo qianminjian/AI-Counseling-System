@@ -9,6 +9,7 @@ import com.mindsafe.ai.chat.AiChatService;
 import com.mindsafe.ai.orchestrator.OrchestrationContext;
 import com.mindsafe.ai.orchestrator.ProfileSignals;
 import com.mindsafe.ai.orchestrator.PromptOrchestrationService;
+import com.mindsafe.ai.orchestrator.ReplyEmotionResolver;
 import com.mindsafe.ai.orchestrator.StrategyProfile;
 import com.mindsafe.ai.prompt.PromptTemplateService;
 import com.mindsafe.ai.safety.ConfidentialityNotice;
@@ -79,6 +80,9 @@ public class ConversationServiceImpl implements ConversationService {
 
     /** 冷场决策模型（无状态纯计算，design/28 §三） */
     private final NudgeDecisionModel nudgeDecisionModel = new NudgeDecisionModel();
+
+    /** 回复情绪推导器（TTSFX-004，design/37 §三.1）：纯规则零依赖，同 NudgeDecisionModel 内联实例化 */
+    private final ReplyEmotionResolver replyEmotionResolver = new ReplyEmotionResolver();
 
     /** CBT state_path JSON 序列化工具（CBT-201） */
     private static final ObjectMapper STATE_PATH_MAPPER = new ObjectMapper();
@@ -437,8 +441,11 @@ public class ConversationServiceImpl implements ConversationService {
                     return Flux.just(StreamMessageEvent.error("小助手暂时走神了，请再说一次好吗？"));
                 });
 
-        // 6. 组合：风险事件 + AI 回复
-        return riskEvents.concatWith(aiStream);
+        // 6. 组合：风险事件 + 回复情绪事件（TTSFX-004：波波表情状态机需在语音开播前收到信号，design/37 M1） + AI 回复
+        ReplyEmotionResolver.Result replyEmotion = replyEmotionResolver.resolve(strategy);
+        Flux<StreamMessageEvent> emotionEvent = Flux.just(
+                StreamMessageEvent.emotion(replyEmotion.emotion(), replyEmotion.intensity()));
+        return riskEvents.concatWith(emotionEvent).concatWith(aiStream);
     }
 
     @Override

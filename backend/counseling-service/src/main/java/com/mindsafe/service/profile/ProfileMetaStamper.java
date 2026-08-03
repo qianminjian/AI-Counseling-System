@@ -7,7 +7,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.time.Instant;
 
 /**
- * 画像维度 JSONB 元数据工具（PROF-022 / MEM-101 共用）
+ * 画像维度 JSONB 元数据工具（PROF-025 / MEM-101 共用）
  * <p>
  * 在维度 JSONB 的 {@code _meta.<field>} 下盖字段级元数据戳
  * （provenance / confidence / evidence_count / updated_at / last_seen_at），不改表结构。

@@ -4,8 +4,8 @@ import { emotionLabel } from '../utils/emotionLabels'
 
 const REFRESH_INTERVAL = 30000
 
-/** 数据大屏（学校展厅 / 领导汇报用） */
-export default function BigScreen() {
+/** 数据大屏（学校展厅 / 领导汇报用）；onExit 存在时显示“返回工作台”（F-3：管理者默认落地大屏，design/35 §3.1） */
+export default function BigScreen({ onExit }: { onExit?: () => void }) {
   const [stats, setStats] = useState(null)
   const [dashboard, setDashboard] = useState(null)
   const [satisfaction, setSatisfaction] = useState(null)
@@ -39,6 +39,11 @@ export default function BigScreen() {
           <span style={styles.title}>MindSafe 学生心理守护平台</span>
         </div>
         <div style={styles.headerRight}>
+          {onExit && (
+            <button onClick={onExit} style={styles.exitButton} aria-label="返回工作台">
+              ← 返回工作台
+            </button>
+          )}
           {time.toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' })}
           <span style={styles.clock}>{time.toLocaleTimeString('zh-CN')}</span>
         </div>
@@ -187,6 +192,10 @@ const styles: Record<string, React.CSSProperties> = {
   headerLeft: { display: 'flex', alignItems: 'center', gap: 12 },
   title: { fontSize: 22, fontWeight: 700, color: '#fff', letterSpacing: 2 },
   headerRight: { fontSize: 13, color: '#888', display: 'flex', gap: 16 },
+  exitButton: {
+    background: 'rgba(79,195,247,0.12)', color: '#4fc3f7', border: '1px solid rgba(79,195,247,0.4)',
+    borderRadius: 6, padding: '4px 12px', fontSize: 12, cursor: 'pointer',
+  },
   clock: { fontSize: 18, color: '#4fc3f7', fontWeight: 600 },
   metricsRow: { display: 'flex', gap: 16 },
   metricCard: {

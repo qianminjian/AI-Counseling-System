@@ -28,7 +28,7 @@ public class VoiceAnalysisService {
     private static final Logger log = LoggerFactory.getLogger(VoiceAnalysisService.class);
 
     private final WebClient webClient;
-    /** block() 兑底超时（略大于连接/响应超时，避免无限阻塞调用线程） */
+    /** block() 兜底超时（略大于连接/响应超时，避免无限阻塞调用线程） */
     private final Duration blockTimeout;
 
     public VoiceAnalysisService(

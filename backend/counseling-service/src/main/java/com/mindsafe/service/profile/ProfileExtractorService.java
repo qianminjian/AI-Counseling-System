@@ -26,7 +26,7 @@ import java.util.UUID;
  *   <li>resilience：coping_skills 累加使用次数，self_efficacy 取最新值</li>
  *   <li>social_graph：key_persons 按 role 增量更新情感倾向，help_seeking 取最新值</li>
  * </ul>
- * PROF-022：每次合并同时在维度 JSONB 内的 {@code _meta} 节点记录字段级元数据
+ * PROF-025：每次合并同时在维度 JSONB 内的 {@code _meta} 节点记录字段级元数据
  * （provenance=llm_extract / confidence / evidence_count / updated_at / last_seen_at），
  * 供画像→编排接线做置信门控；不改表结构。
  * 失败静默降级，不影响主流程。
@@ -36,7 +36,7 @@ public class ProfileExtractorService {
 
     private static final Logger log = LoggerFactory.getLogger(ProfileExtractorService.class);
 
-    /** PROF-022：LLM 提炼来源标识 */
+    /** PROF-025：LLM 提炼来源标识 */
     private static final String PROVENANCE_LLM = "llm_extract";
 
     private final AiChatService aiChatService;
@@ -155,7 +155,7 @@ public class ProfileExtractorService {
         stampMeta(existing, field);
     }
 
-    /** 从 _meta.<field>.confidence 读取字段级置信度（PROF-022），缺失默认 0.5 */
+    /** 从 _meta.<field>.confidence 读取字段级置信度（PROF-025），缺失默认 0.5 */
     private double readMetaConfidence(ObjectNode dimension, String field) {
         JsonNode meta = dimension.path("_meta").path(field).path("confidence");
         return meta.isNumber() ? meta.asDouble() : 0.5;
@@ -291,7 +291,7 @@ public class ProfileExtractorService {
     // ===== 工具方法 =====
 
     /**
-     * PROF-022：在维度 JSONB 的 {@code _meta.<field>} 下盖元数据戳（provenance=llm_extract）。
+     * PROF-025：在维度 JSONB 的 {@code _meta.<field>} 下盖元数据戳（provenance=llm_extract）。
      */
     private void stampMeta(ObjectNode dimension, String field) {
         ProfileMetaStamper.stamp(dimension, field, PROVENANCE_LLM);

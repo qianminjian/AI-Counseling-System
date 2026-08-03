@@ -32,6 +32,13 @@ public class TeacherService {
     private final MessageSummaryMapper messageSummaryMapper;
     private final FieldEncryptionService fieldEncryptionService;
 
+    // 预警待办静音规则（design/35 §4.2 降噪第 3 条，纯规则内联实例化）
+    private final AlertTodoMutePolicy alertTodoMutePolicy = new AlertTodoMutePolicy();
+
+    /** 个案跟踪标志的备注类型与生效值（复用 teacher_notes 免 schema 变更） */
+    private static final String CASE_TRACKING_NOTE_TYPE = "case_tracking";
+    private static final String CASE_TRACKING_ACTIVE = "active";
+
     public TeacherService(RiskEventMapper riskEventMapper,
                           CounselingSessionMapper sessionMapper,
                           UserMapper userMapper,
@@ -141,17 +148,101 @@ public class TeacherService {
                 .last("LIMIT " + Math.min(limit, 100));
 
         List<RiskEvent> events = riskEventMapper.selectList(wrapper);
+        Set<UUID> caseTrackedStudents = getCaseTrackedStudentIds(tenantId);
 
         return events.stream().map(e -> {
             // 查询学生信息
             User student = userMapper.selectById(e.getStudentUserId());
             String studentName = student != null ? student.getPseudonym() : "未知学生";
+            boolean mutedFromTodo = alertTodoMutePolicy.isMutedFromTodo(
+                    e.getRiskLevel(), caseTrackedStudents.contains(e.getStudentUserId()));
             return new AlertVO(
                     e.getRiskEventId(), e.getStudentUserId(), studentName,
                     e.getRiskType(), e.getRiskLevel(), e.getStatus(),
-                    e.getDetectedAt(), e.getAssignedUserId()
+                    e.getDetectedAt(), e.getAssignedUserId(), mutedFromTodo
             );
         }).toList();
+    }
+
+    /**
+     * 转派预警（design/35 §4.1）。
+     * 规则：转派后重置为 open（目标教师的“新预警”）；重置认领但不重置 SLA（detectedAt 不变）。
+     */
+    public void transferAlert(UUID tenantId, UUID riskEventId, UUID fromTeacherId,
+                              UUID targetTeacherId, String note) {
+        RiskEvent event = getEventWithTenantCheck(tenantId, riskEventId);
+
+        // 目标教师必须存在且同租户（防止跨租户转派泄露学生数据）
+        User target = userMapper.selectById(targetTeacherId);
+        if (target == null || !tenantId.equals(target.getTenantId())) {
+            throw new IllegalArgumentException("目标教师不存在: " + targetTeacherId);
+        }
+
+        event.setStatus("open");
+        event.setAssignedUserId(targetTeacherId);
+        event.setUpdatedAt(Instant.now());
+        riskEventMapper.updateById(event);
+
+        if (note != null && !note.isBlank()) {
+            TeacherNote transferNote = TeacherNote.create(
+                    tenantId, event.getStudentUserId(), fromTeacherId,
+                    "【预警转派】" + note, "transfer"
+            );
+            teacherNoteMapper.insert(transferNote);
+        }
+        log.info("预警已转派: riskEventId={}, from={}, target={}", riskEventId, fromTeacherId, targetTeacherId);
+    }
+
+    /**
+     * 设置学生“已在个案跟踪中”标志（design/35 §4.2 降噪第 3 条）。
+     * 落地为 teacher_notes（type=case_tracking）最新一条，避免 schema 变更。
+     */
+    public void setCaseTracking(UUID tenantId, UUID studentUserId, UUID teacherUserId, boolean enabled) {
+        User student = userMapper.selectById(studentUserId);
+        if (student == null || !tenantId.equals(student.getTenantId())) {
+            throw new IllegalArgumentException("学生不存在: " + studentUserId);
+        }
+        TeacherNote note = TeacherNote.create(
+                tenantId, studentUserId, teacherUserId,
+                enabled ? CASE_TRACKING_ACTIVE : "inactive", CASE_TRACKING_NOTE_TYPE
+        );
+        teacherNoteMapper.insert(note);
+        log.info("个案跟踪标志更新: student={}, enabled={}", studentUserId, enabled);
+    }
+
+    /** 学生是否在个案跟踪中（最新一条 case_tracking 备注为 active） */
+    public boolean isCaseTracking(UUID tenantId, UUID studentUserId) {
+        List<TeacherNote> notes = teacherNoteMapper.selectList(
+                new LambdaQueryWrapper<TeacherNote>()
+                        .eq(TeacherNote::getTenantId, tenantId)
+                        .eq(TeacherNote::getStudentUserId, studentUserId)
+                        .eq(TeacherNote::getNoteType, CASE_TRACKING_NOTE_TYPE)
+                        .orderByDesc(TeacherNote::getCreatedAt)
+                        .last("LIMIT 1")
+        );
+        return !notes.isEmpty() && CASE_TRACKING_ACTIVE.equals(notes.get(0).getContent());
+    }
+
+    /** 租户内全部个案跟踪中的学生 ID 集合（批量查询避免 N+1） */
+    private Set<UUID> getCaseTrackedStudentIds(UUID tenantId) {
+        List<TeacherNote> notes = teacherNoteMapper.selectList(
+                new LambdaQueryWrapper<TeacherNote>()
+                        .eq(TeacherNote::getTenantId, tenantId)
+                        .eq(TeacherNote::getNoteType, CASE_TRACKING_NOTE_TYPE)
+        );
+        // 按学生取最新一条，仅保留 active
+        Map<UUID, TeacherNote> latestByStudent = new HashMap<>();
+        for (TeacherNote note : notes) {
+            TeacherNote current = latestByStudent.get(note.getStudentUserId());
+            if (current == null || (note.getCreatedAt() != null && current.getCreatedAt() != null
+                    && note.getCreatedAt().isAfter(current.getCreatedAt()))) {
+                latestByStudent.put(note.getStudentUserId(), note);
+            }
+        }
+        return latestByStudent.values().stream()
+                .filter(n -> CASE_TRACKING_ACTIVE.equals(n.getContent()))
+                .map(TeacherNote::getStudentUserId)
+                .collect(Collectors.toSet());
     }
 
     /** 认领预警 */
@@ -320,7 +411,8 @@ public class TeacherService {
                 riskHistory.stream().map(e -> new AlertVO(
                         e.getRiskEventId(), e.getStudentUserId(), student.getPseudonym(),
                         e.getRiskType(), e.getRiskLevel(), e.getStatus(),
-                        e.getDetectedAt(), e.getAssignedUserId()
+                        e.getDetectedAt(), e.getAssignedUserId(),
+                        alertTodoMutePolicy.isMutedFromTodo(e.getRiskLevel(), isCaseTracking(tenantId, studentUserId))
                 )).toList(),
                 notes.stream().map(n -> new NoteVO(
                         n.getNoteId(), n.getTeacherUserId(), n.getContent(),
@@ -519,7 +611,8 @@ public class TeacherService {
     public record AlertVO(
             UUID alertId, UUID studentUserId, String studentName,
             String riskType, int riskLevel, String status,
-            Instant detectedAt, UUID assignedUserId
+            Instant detectedAt, UUID assignedUserId,
+            boolean mutedFromTodo
     ) {}
 
     @JsonInclude(JsonInclude.Include.NON_NULL)

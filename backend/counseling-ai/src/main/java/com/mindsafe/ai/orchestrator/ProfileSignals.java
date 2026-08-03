@@ -3,7 +3,7 @@ package com.mindsafe.ai.orchestrator;
 import java.util.List;
 
 /**
- * 画像→编排的结构化信号（PROF-022 + ORCH-006，design/46 §5.1）
+ * 画像→编排的结构化信号（PROF-025 + ORCH-006，design/46 §5.1）
  * <p>
  * 由调用方（counseling-service）从学生画像 JSONB 的维度值 + {@code _meta} 元数据
  * （provenance/confidence/evidence_count）提取，供编排引擎做低优先级微调。

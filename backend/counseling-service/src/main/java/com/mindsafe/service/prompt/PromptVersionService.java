@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.mindsafe.ai.prompt.PromptTemplateService;
 import com.mindsafe.domain.entity.PromptVersion;
 import com.mindsafe.domain.mapper.PromptVersionMapper;
+import com.mindsafe.service.audit.AuditLogService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -48,15 +49,24 @@ public class PromptVersionService {
 
     private final PromptVersionMapper promptVersionMapper;
     private final PromptTemplateService promptTemplateService;
+    private final RedTeamRegressionRunner redTeamRegressionRunner;
+    private final TemplateMatrixRegistry templateMatrixRegistry;
+    private final AuditLogService auditLogService;
 
     /** 本地缓存：避免每次对话都查 DB（key = tenantId:templateKey:abGroup） */
     private final Map<String, CachedPrompt> cache = new ConcurrentHashMap<>();
     private static final long CACHE_TTL_MS = 5 * 60 * 1000; // 5 分钟
 
     public PromptVersionService(PromptVersionMapper promptVersionMapper,
-                                PromptTemplateService promptTemplateService) {
+                                PromptTemplateService promptTemplateService,
+                                RedTeamRegressionRunner redTeamRegressionRunner,
+                                TemplateMatrixRegistry templateMatrixRegistry,
+                                AuditLogService auditLogService) {
         this.promptVersionMapper = promptVersionMapper;
         this.promptTemplateService = promptTemplateService;
+        this.redTeamRegressionRunner = redTeamRegressionRunner;
+        this.templateMatrixRegistry = templateMatrixRegistry;
+        this.auditLogService = auditLogService;
     }
 
     /**
@@ -202,12 +212,73 @@ public class PromptVersionService {
         return pv;
     }
 
-    /** 激活版本（同 templateKey+abGroup 下只能有一个 active） */
+    /** 激活版本（同 templateKey+abGroup 下只能有一个 active）——内部调用，不走发布门禁 */
     public void activateVersion(UUID versionId) {
         PromptVersion target = promptVersionMapper.selectById(versionId);
         if (target == null) {
             throw new IllegalArgumentException("版本不存在: " + versionId);
         }
+        doActivate(target);
+    }
+
+    /**
+     * 发布门禁激活（G-1，design/45 §6.1 三门禁 + §7.3 红队回归门禁）
+     * <ul>
+     *   <li>门禁一：安全关键模板必过红队静态回归（{@link RedTeamRegressionRunner}）</li>
+     *   <li>门禁二：审校人签字（reviewer 非空）</li>
+     *   <li>门禁三：eval 分数不回退（newScore ≥ baselineScore）</li>
+     * </ul>
+     * 全部通过才写库，并经 audit_logs 留痕（免 schema 变更）。
+     *
+     * @param versionId     目标版本 ID
+     * @param reviewer      审校人（签字留痕）
+     * @param newScore      新版本 eval 分数
+     * @param baselineScore 基线 eval 分数
+     */
+    public void activateVersion(UUID versionId, String reviewer, double newScore, double baselineScore) {
+        PromptVersion target = promptVersionMapper.selectById(versionId);
+        if (target == null) {
+            throw new IllegalArgumentException("版本不存在: " + versionId);
+        }
+
+        // 门禁一：安全关键模板红队静态回归
+        boolean redTeamPassed = true;
+        List<String> redTeamViolations = List.of();
+        if (redTeamRegressionRunner.isSafetyCritical(target.getTemplateKey())) {
+            RedTeamRegressionRunner.RegressionResult result =
+                    redTeamRegressionRunner.run(target.getTemplateKey(), target.getContent());
+            redTeamPassed = result.passed();
+            redTeamViolations = result.violations();
+        }
+
+        // 门禁二 + 三：审校签字 + eval 不回退（复用矩阵注册表的统一门禁判定）
+        TemplateMatrixRegistry.GateResult gate =
+                templateMatrixRegistry.checkReleaseGate(redTeamPassed, reviewer, newScore, baselineScore);
+        if (!gate.passed()) {
+            // 红队违规明细逐条展开（审计可读）
+            List<String> failures = new java.util.ArrayList<>(gate.failures());
+            failures.remove("红队护栏用例未全部通过");
+            for (String v : redTeamViolations) {
+                failures.add("红队回归违规: " + v);
+            }
+            String detail = String.join("; ", failures);
+            log.warn("发布门禁拒绝激活: key={}, version={}, 失败项: {}",
+                    target.getTemplateKey(), target.getVersion(), detail);
+            throw new IllegalStateException("发布门禁未通过: " + detail);
+        }
+
+        doActivate(target);
+
+        // 审批留痕（audit_logs，免 schema 变更）
+        auditLogService.log(target.getTenantId(), target.getCreatedBy(),
+                "PROMPT_VERSION_ACTIVATE", "prompt_version", versionId,
+                String.format("key=%s, version=%d, reviewer=%s, redteam_pass=%s, eval=%.2f/%.2f",
+                        target.getTemplateKey(), target.getVersion(), reviewer,
+                        redTeamPassed, newScore, baselineScore));
+    }
+
+    /** 停用同组旧版本 + 激活目标 + 缓存失效（互斥铁律） */
+    private void doActivate(PromptVersion target) {
         // 停用同组其他版本
         List<PromptVersion> actives = promptVersionMapper.selectList(
                 new LambdaQueryWrapper<PromptVersion>()

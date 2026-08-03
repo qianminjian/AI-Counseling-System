@@ -1,6 +1,6 @@
 # 37 - 情感化TTS与动效微交互设计
 
-> 创建：2026-07-28 | 状态：设计完成，待实施 | 对应规划任务：PROD-003 全感官交互升级 + UX-005 动效微交互（design/30，P2）
+> 创建：2026-07-28 | 状态：🟡 后端已实施（TTSFX-001/002/003 接线完成，情绪信号源统一入编排 + VoiceDegradationPolicy 风险降级已接 TtsController）；前端动效资产（Lottie/粒子/触觉）未在 student-h5 落地 | 对应规划任务：PROD-003 + UX-005（design/30）| 2026-07-28 冻结区审计校正
 >
 > 定位：对 design/55（学生端全感官交互设计方案）的**工程化深化与补白**——55 已定义音色人设、情绪→instruct 映射、指令工程规范；本文档补齐其明确留白的部分（语音内容安全、风险场景降级、离线备选），并新增动效微交互体系（Lottie + 粒子 + 触觉），两者合并为一套“情感表达层”设计。不重复 55 已定内容。
 
@@ -189,3 +189,36 @@ AI 流式输出 → 首句完整即送 TTS（不等全文）→ 首句音频返�
 - design/36：离线音频缓存与波波打盹状态的共享设计
 - design/27：波波品牌形象与动效资产风格约束
 - design/28：冷场话术预合成包的文本来源
+
+---
+
+## 落地记录（2026-07-28 冻结区审计补录）
+
+### TTSFX-001/002/003（均已于 2026-07-28 接线）
+
+| 里程碑 | 落地方式 | 审计核实 |
+|--------|----------|---------|
+| M2 风险语音降级 | `tts/VoiceDegradationPolicy.java`（S1 预合成/S0 静默/超时降级链）已接 `TtsController`；配套 `TtsPipelineScheduler`/`VoiceEffectivenessTracker` | ✅ 后端已接线（有单测） |
+| M1 情绪信号源统一 | AI 回复 emotion 单一信号源入编排（接 design/44 StrategyProfile），三方同源契约成立 | ✅ 后端契约已立 |
+| 预合成话术库 | 与 TMATCH-002（design/48）预合成矩阵统一 | ✅ |
+
+### 未实施余量（审计发现，需重新排期）
+
+- **前端动效资产未落地**：student-h5 无 Lottie 依赖与 `bobo_*` 资产，`BoBoPet.tsx` 未承接 emotion 表情状态机（§4.1 目标态未达成）；微交互清单（§4.2）、减弱动效降级（§4.3）、成就粒子/触觉（M3）均属前端未实施
+- 预合成 CLI 与构建期话术包产出流程待验证（离线可听内容依赖）
+- 结论：TASK-TRACKER TTSFX-001/003 标✅以后端信号源与降级链路为准；前端 UX 层应视为 ⏳ 待实施，解冻时优先补波波表情状态机（情绪同步是体验核心）
+
+### TTSFX-004 实施记录（2026-07-28，TDD）
+
+| 层 | 落地 | 测试 |
+|----|------|------|
+| 后端回复情绪推导 | `counseling-ai` 新增 `ReplyEmotionResolver`：StrategyProfile → 六类回复情绪（serious/soothe/calm/happy/encourage/gentle）纯规则零 LLM，null 档案兜底 gentle | `ReplyEmotionResolverTest` 10 用例 |
+| SSE 情绪事件下发 | `ConversationServiceImpl.sendMessageStream` 在 token 流前发射 `emotion` 事件（M1“语音开播前切换表情”） | `ConversationServiceImplTest` +2 契约用例（序列/标签） |
+| 前端单一信号源 | `utils/emotionBus.ts`：6 类标签白名单归一化 + 订阅失败隔离；ChatRoom SSE 解析接 `emotion`/`risk` 事件 | `emotionBus.test.ts` 8 用例 |
+| 表情状态机 | `utils/boboExpressions.ts` 纯 reducer + `hooks/useBoboExpression`；S0/S1（riskLevel≥2）锁定 hug，risk-cleared 解锁 | `boboExpressions.test.ts` 17 + `useBoboExpression.test.ts` 8 用例 |
+| 动效降级 | `utils/motionPreference.ts` + `hooks/useMotionPreference`：默认跟随系统减弱动效、设置面板可覆盖（§4.3）；rAF 采样连续 <24fps 自动降级（§4.4）；触觉门禁接入 BoBoPet vibrate | `motionPreference.test.ts` 13 + `useMotionPreference.test.ts` 4 + `BoBoPetHaptics.test.tsx` 2 用例 |
+| 组件层 | `BoBoPet` 新增 `expression`/`motionOff` prop（与既有交互态正交叠加）；`SettingsPanel` 新增“动效与触感”双开关 | `BoBoPetExpressions.test.tsx` 8 用例；核心模块覆盖率 98.52% |
+
+**工程决策**：仓库无 Lottie 资产，表情层用纯 SVG 逐部件动画实现 §4.1 状态机契约（零新依赖，KISS）；Lottie 资产到位后可平滑替换表情层渲染，状态机/信号源契约不变。
+
+**余量（保留）**：成就粒子/工具练习完成彩蛋（M3）、呼吸练习数字倒计时降级、预合成 CLI 验证。

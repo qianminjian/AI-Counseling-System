@@ -974,6 +974,47 @@ class ConversationServiceImplTest {
         }
 
         @Test
+        @DisplayName("TTSFX-004：SSE 事件序列 emotion 先于 token（波波表情需在语音开播前切换，design/37 M1）")
+        void emotionEvent_emittedBeforeTokens() {
+            UUID sessionId = createSession("happy");
+            mockChatPipeline();
+
+            java.util.List<StreamMessageEvent> events = service
+                    .sendMessageStream(tenantId, studentId, sessionId, "你好呀")
+                    .collectList().block();
+
+            assertThat(events).isNotNull();
+            int emotionIdx = -1;
+            int tokenIdx = -1;
+            for (int i = 0; i < events.size(); i++) {
+                if ("emotion".equals(events.get(i).type()) && emotionIdx < 0) emotionIdx = i;
+                if ("token".equals(events.get(i).type()) && tokenIdx < 0) tokenIdx = i;
+            }
+            assertThat(emotionIdx).isGreaterThanOrEqualTo(0);
+            assertThat(tokenIdx).isGreaterThan(emotionIdx);
+            // happy 入场 + STABLE + 正常推进 → happy（一起放大积极体验）
+            assertThat(events.get(emotionIdx).content()).isEqualTo("happy");
+        }
+
+        @Test
+        @DisplayName("TTSFX-004：情绪激活会话 → 回复情绪 soothe（安抚基调）")
+        void activatedSession_emitsSoothe() {
+            UUID sessionId = createSession("sad");
+            mockChatPipeline();
+
+            java.util.List<StreamMessageEvent> events = service
+                    .sendMessageStream(tenantId, studentId, sessionId, "我不想说话")
+                    .collectList().block();
+
+            assertThat(events).isNotNull();
+            StreamMessageEvent emotionEvent = events.stream()
+                    .filter(e -> "emotion".equals(e.type()))
+                    .findFirst()
+                    .orElseThrow();
+            assertThat(emotionEvent.content()).isEqualTo("soothe");
+        }
+
+        @Test
         @DisplayName("会话结束 → 语音情绪映射规范集后聚合回注画像（不可映射标签过滤）")
         void endSession_backfillsMappedVoiceEmotions() {
             UUID sessionId = createSession("happy");

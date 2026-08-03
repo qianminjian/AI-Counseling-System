@@ -26,7 +26,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 /**
- * ProfileExtractorService 单测（PROF-003/PROF-022/PROF-023）。
+ * ProfileExtractorService 单测（PROF-003/PROF-025/PROF-023）。
  * <p>
  * 覆盖：LLM patch 解析（含 code fence）/ 三维度增量合并 / 置信门控接线 / 成长轨迹里程碑 / 失败静默降级。
  */

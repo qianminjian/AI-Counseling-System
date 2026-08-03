@@ -96,12 +96,26 @@ public class AdminPromptController {
         return ApiResponse.ok(toVersionMap(pv));
     }
 
-    /** 激活版本（同组下唯一生效） */
+    /**
+     * 激活版本（同组下唯一生效）——走发布门禁（G-1，design/45 §6.1/§7.3）
+     * <p>
+     * 请求体（均可选）：reviewer（审校人，缺省取当前登录名）/ newScore（新版本 eval 分，缺省 1.0）/
+     * baselineScore（基线 eval 分，缺省 1.0）。安全关键模板必过红队静态回归，全部门禁通过才写库。
+     */
     @PostMapping("/versions/{versionId}/activate")
-    public ApiResponse<Void> activateVersion(@PathVariable UUID versionId, Authentication auth) {
+    public ApiResponse<Void> activateVersion(@PathVariable UUID versionId,
+                                             @RequestBody(required = false) Map<String, Object> body,
+                                             Authentication auth) {
         TenantContext ctx = (TenantContext) auth.getDetails();
-        promptVersionService.activateVersion(versionId);
-        auditLogService.log(ctx.tenantId(), ctx.userId(), "PROMPT_ACTIVATE", "prompt_version", versionId, null);
+        Map<String, Object> b = body != null ? body : Map.of();
+        String reviewer = b.get("reviewer") != null ? String.valueOf(b.get("reviewer")) : auth.getName();
+        double newScore = b.get("newScore") instanceof Number n ? n.doubleValue() : 1.0;
+        double baselineScore = b.get("baselineScore") instanceof Number n ? n.doubleValue() : 1.0;
+
+        promptVersionService.activateVersion(versionId, reviewer, newScore, baselineScore);
+        // 操作者留痕（门禁明细留痕由服务层 PROMPT_VERSION_ACTIVATE 承担）
+        auditLogService.log(ctx.tenantId(), ctx.userId(), "PROMPT_ACTIVATE", "prompt_version", versionId,
+                "reviewer=" + reviewer);
         return ApiResponse.ok(null);
     }
 

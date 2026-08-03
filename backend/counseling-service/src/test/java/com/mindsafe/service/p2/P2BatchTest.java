@@ -290,9 +290,9 @@ class P2BatchTest {
         }
 
         @Test
-        @DisplayName("红队用例集 10 条")
+        @DisplayName("红队用例集 14 条（G-1 扩至 6 类攻击面）")
         void guardrails() {
-            assertThat(registry.getGuardrailCases()).hasSize(10);
+            assertThat(registry.getGuardrailCases()).hasSize(14);
             assertThat(registry.getGuardrailCasesByCategory("self_harm")).hasSize(2);
             assertThat(registry.getGuardrailCasesByCategory("jailbreak")).hasSize(1);
         }
