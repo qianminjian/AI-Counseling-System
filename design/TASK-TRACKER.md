@@ -1,6 +1,6 @@
 # AI 小学生心理辅导系统 - 任务跟踪表
 
-> 创建：2026-07-23 | 更新：2026-08-01（新增 §二十五 配置统一纳管；历史：2026-07-29 独立审计校正）
+> 创建：2026-07-23 | 更新：2026-07-28（新增 §二十六 审计缺口登记（13/20 篇）；历史：2026-08-01 §二十五 配置统一纳管、2026-07-29 独立审计校正）
 > 
 > 本表用于跟踪项目各阶段任务的进度和责任人。
 
@@ -804,6 +804,24 @@
 | CFG-006 | **M2 验证**：35 个 Python TTS 测试全绿（test_app 24 + test_config 11） | P1 | ✅ 已完成 | design/57 M2⑤ |
 | CFG-007 | **M3 Voice 配置外置**：新建 `voice-service/config.yaml` + `config.py`（独立模块，解耦重量级依赖）+ app.py 加载改造 + Dockerfile COPY | P2 | ✅ 已完成 | design/57 M3；8 个配置测试全绿 |
 | CFG-008 | **M4 文档同步**：.env.example 补 DASHSCOPE_TTS_MODEL + DEPLOY-GUIDE 配置变更流程 + design/57 状态更新 | P2 | ✅ 已完成 | design/57 M4 |
+
+---
+
+## 二十六、审计缺口登记（design/13 + design/20 篇审计，2026-07-28）
+
+> 背景：13/20 两篇深度审计（设计完善度/代码达标度/测试覆盖三维度）修复完成后，遗留 3 项功能/测试缺口 + 2 项历史对标审计残留项，按优先级登记如下。优先级判据同 §二十三：**安全/合规 > 对话产品力 > 教师效率 > 学生体验 > 商业化 > 规模化架构**。
+
+| 任务ID | 任务描述 | 优先级 | 来源 | 状态 | 备注 |
+|--------|----------|--------|------|------|------|
+| ESC-001 | **/escalate 转人工端点 + 学生端 safety_mode 交互**：学生主动求助（"我想找老师"）触发升级端点（写 risk_event + 通知教师 + 会话置 escalated）+ 前端安全模式界面（热线/找老师入口）。当前仅系统侧 RED 自动升级（RISK-201），学生**主动**求助通道缺失 | **P0 安全**（危机兜底通道） | design/20 §10.1 F-03 / §10.2 升级时序（文档标 ⬜ 属实） | ⏳ 待实施 | 与 M2-006（红色风险教师接管，✅ 已完成）互补：M2-006 为系统自动升级，本项为主动求助入口 |
+| TEST-007 | TeacherService 测试覆盖 33.2% → ≥80%（属教师管理域） | P2 | design/05 责任范围 | ⏳ 待实施 | 13/20 审计按范围纪律未扩入；design/05 篇审计时激活 |
+| TEST-008 | 量表发放/答题/结果流程（Service+Controller）补齐——评分引擎（AssessmentScoringEngine/PHQ-A·GAD-7/RecurrenceCalculator）已完备 | —（不单独排期） | design/20 §10.1 F-06 | 🔒 挂起 | **与 SCALE-001/002 施测接线暂缓决策同一门禁**（未成年人测评合规，待钱敏健再决策），不重复立项 |
+| DOC-051 | QuickStart 快速启动指南（新人 5 分钟跑通：docker compose up + 前端 dev） | P3 远期 | 全代码库对标审计 P2-6 | ⏳ 待实施 | 残留项核实：CONTRIBUTING/QUICKSTART 均不存在 |
+| UX-006 | ChatRoom.tsx 拆分（827 行 → useSseStream / useChatSession hooks 抽离） | P2 | 全代码库对标审计 P2-3 | ⏳ 待实施 | 残留项核实：869→827 行小幅改善，SSE/TTS/情绪/满意度仍混杂单组件 |
+
+> 说明：
+> 1. 上一轮全代码库对标审计（"明天上线 1 所试点校"标准）其余 P1/P2 项已核实**均已修复**：ErrorBoundary 三端 ✅ / db-backup 定时容器 ✅ / api.ts 类型化（0 处 any）✅ / DEPLOY-GUIDE §十监控启动说明 ✅ / application.yml DEBUG→INFO ✅ / nginx client_max_body_size ✅ / parent-h5 vitest ✅ / ConversationServiceImpl 813→777 行（改善中，随迭代继续拆分）。
+> 2. 本次仅登记任务与排序，**未进行任何开发、未做 git 提交**。
 
 ---
 

@@ -661,7 +661,7 @@ SafetyOutputAdvisor ──▶ pass/rewrite/block/escalate
 |------|------|
 | Safety Agent | `RiskDetectorService`（硬规则+语义）→ 安全管线 Service 显式调用 |
 | Emotion Agent | `EmotionStateMachine` / `EntryMoodStrategyResolver` + `PromptOrchestrationService` 情绪门控 |
-| CBT Agent + 状态机 | 由 `PromptOrchestrationService` 的 CBT 策略变体承担（单 prompt 内引导，不再独立状态机） |
+| CBT Agent + 状态机 | 由 `PromptOrchestrationService` 的 CBT 策略变体 + `CbtStageRouter` 启发式接线承担（阶段指令注入 system prompt + 年龄分层三态 + 容纳之窗门控 + state_path JSONB 按轮落库；不再有独立状态机，LLM 回名版阶段识别归 WIRE-003，见 design/03 §11） |
 | Conversation Agent | `ConversationServiceImpl` |
 | Escalation Agent | `RiskDetectorService` → `AlertService` 告警链 |
 | Report Agent | service 层教师摘要生成 |
