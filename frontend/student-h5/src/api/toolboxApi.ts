@@ -48,7 +48,8 @@ export function recordMoodCheck(toolId: string, preMood: number, postMood: numbe
 
 /**
  * SOS 打开事件上报（fire-and-forget）。
- * 端点可能尚未部署（后端余量），任何失败静默吞掉——SOS 界面可用性优先于埋点。
+ * 后端 SosController 落 S2 风险事件进教师预警队列（5 分钟去重窗口）。
+ * 任何失败静默吞掉——SOS 界面可用性优先于埋点。
  */
 export async function reportSosEvent(): Promise<void> {
   try {

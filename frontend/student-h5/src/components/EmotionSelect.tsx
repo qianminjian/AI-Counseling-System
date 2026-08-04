@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react'
 import { useTheme } from '../theme/ThemeProvider'
-import { api } from '../api'
+import { api, isConsentRequired } from '../api'
 import { unlockAudio } from '../utils/audioUnlock'
 import { preloadWakeModel, useWakeModelStatus } from '../hooks/useWakeWord'
 import SceneDecor from './SceneDecor'
@@ -20,7 +20,7 @@ const EMOTIONS = [
 
 const WAKE_PREF_KEY = 'mindsafe_wake_enabled'
 
-export default function EmotionSelect({ onStart, userName, onLogout }) {
+export default function EmotionSelect({ onStart, userName, onLogout, onConsentRequired }) {
   const [selected, setSelected] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -60,6 +60,11 @@ export default function EmotionSelect({ onStart, userName, onLogout }) {
         emotionTag: selected,
       })
     } catch (e) {
+      // 监护人同意门禁拦截（CONSENT_REQUIRED 20003）→ 切换至验证码闭环页（AUTH-040）
+      if (isConsentRequired(e)) {
+        onConsentRequired?.()
+        return
+      }
       console.error('创建会话失败', e)
       setError(e.message || '创建会话失败，请稍后再试')
     } finally {

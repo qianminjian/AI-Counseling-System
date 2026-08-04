@@ -33,6 +33,9 @@ public class KnowledgeBaseService {
     private static final int DEFAULT_TOP_K = 3;
     private static final double SIMILARITY_THRESHOLD = 0.7;
 
+    /** 关键词路最大词元数（防止超长查询生成巨量 LIKE 条件） */
+    private static final int MAX_KEYWORD_TOKENS = 8;
+
     private final JdbcTemplate jdbcTemplate;
     private final EmbeddingModel embeddingModel;
 
@@ -121,21 +124,89 @@ public class KnowledgeBaseService {
     }
 
     /**
-     * 便捷方法：检索并格式化为 Prompt 上下文
+     * 关键词检索（KB-103 混合检索关键词路：ILIKE 命中数排序，不依赖 embedding）
+     * <p>
+     * 与 {@link #search} 同纪律：仅 published 可被检索；全局 + 租户级同查。
+     * 评分 = 各词在正文/标题的命中数之和（BM25 的简化替代，满足小语料库场景）。
+     *
+     * @param tenantId 租户 ID
+     * @param query    查询文本（提取 ≥2 字符的连续词元，最多 5 个）
+     * @param topK     返回条数
+     * @return 检索结果（similarity 字段存命中数，仅供排序；RRF 只用名次）
      */
-    public String buildRagContext(UUID tenantId, String query) {
-        List<KnowledgeChunk> results = search(tenantId, query, DEFAULT_TOP_K);
-        if (results.isEmpty()) return "";
+    public List<KnowledgeChunk> searchKeyword(UUID tenantId, String query, int topK) {
+        List<String> tokens = extractKeywordTokens(query);
+        if (tokens.isEmpty()) return List.of();
+        if (topK <= 0) topK = DEFAULT_TOP_K;
 
-        StringBuilder sb = new StringBuilder();
-        sb.append("# 参考知识（来自心理辅导知识库，仅供辅助参考）\n");
-        for (int i = 0; i < results.size(); i++) {
-            KnowledgeChunk chunk = results.get(i);
-            sb.append(String.format("[%d] (%s) %s\n%s\n\n",
-                    i + 1, chunk.category(), chunk.title(), chunk.content()));
+        StringBuilder scoreExpr = new StringBuilder("0");
+        StringBuilder matchExpr = new StringBuilder("FALSE");
+        List<Object> selectParams = new ArrayList<>();
+        List<Object> whereParams = new ArrayList<>();
+        for (String t : tokens) {
+            String like = "%" + t + "%";
+            scoreExpr.append(" + CASE WHEN c.content ILIKE ? THEN 1 ELSE 0 END")
+                     .append(" + CASE WHEN d.title ILIKE ? THEN 1 ELSE 0 END");
+            selectParams.add(like);
+            selectParams.add(like);
+            matchExpr.append(" OR c.content ILIKE ? OR d.title ILIKE ?");
+            whereParams.add(like);
+            whereParams.add(like);
         }
-        sb.append("注意：以上知识仅供参考，请结合学生实际情况灵活运用，不要照搬。\n");
-        return sb.toString();
+
+        String sql = """
+                SELECT c.chunk_id, c.doc_id, c.content, c.chunk_index,
+                       d.title, d.category,
+                       (%s)::float8 AS relevance
+                FROM tenant_template.knowledge_chunks c
+                JOIN tenant_template.knowledge_documents d ON c.doc_id = d.doc_id
+                WHERE d.status = 'published'
+                  AND (c.tenant_id IS NULL OR c.tenant_id = ?)
+                  AND (%s)
+                ORDER BY relevance DESC
+                LIMIT ?
+                """.formatted(scoreExpr, matchExpr);
+
+        List<Object> params = new ArrayList<>(selectParams);
+        params.addAll(whereParams);
+        params.add(tenantId);
+        params.add(topK);
+
+        return jdbcTemplate.query(sql, (rs, rowNum) -> new KnowledgeChunk(
+                UUID.fromString(rs.getString("chunk_id")),
+                UUID.fromString(rs.getString("doc_id")),
+                rs.getString("content"),
+                rs.getInt("chunk_index"),
+                rs.getString("title"),
+                rs.getString("category"),
+                rs.getDouble("relevance")
+        ), params.toArray());
+    }
+
+    /** 关键词元提取：短串直接成词；长中文段无分词可用，按 2-gram 滑窗保底命中具体词汇 */
+    static List<String> extractKeywordTokens(String query) {
+        if (query == null || query.isBlank()) return List.of();
+        List<String> tokens = new ArrayList<>();
+        java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("[\\u4e00-\\u9fa5A-Za-z0-9]{2,}").matcher(query);
+        while (m.find() && tokens.size() < MAX_KEYWORD_TOKENS) {
+            String run = m.group();
+            boolean cjk = run.charAt(0) >= '\u4e00' && run.charAt(0) <= '\u9fa5';
+            if (!cjk || run.length() <= 4) {
+                addToken(tokens, run);
+            } else {
+                for (int i = 0; i + 2 <= run.length() && tokens.size() < MAX_KEYWORD_TOKENS; i++) {
+                    addToken(tokens, run.substring(i, i + 2));
+                }
+            }
+        }
+        return tokens;
+    }
+
+    private static void addToken(List<String> tokens, String token) {
+        if (tokens.size() < MAX_KEYWORD_TOKENS && !tokens.contains(token)) {
+            tokens.add(token);
+        }
     }
 
     /**

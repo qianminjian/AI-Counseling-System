@@ -7,7 +7,15 @@ vi.mock('../theme/ThemeProvider', () => ({
   useTheme: () => ({ theme: { companion: '🐻', primary: '#FF6B6B' }, themeId: mockThemeId }),
 }));
 const mockApi = vi.fn();
-vi.mock('../api', () => ({ api: (...args: any[]) => mockApi(...args), getUser: vi.fn(() => null) }));
+class FakeApiError extends Error {
+  code: number
+  constructor(code: number, message: string) { super(message); this.code = code }
+}
+vi.mock('../api', () => ({
+  api: (...args: any[]) => mockApi(...args),
+  getUser: vi.fn(() => null),
+  isConsentRequired: (e: any) => e instanceof FakeApiError && e.code === 20003,
+}));
 vi.mock('../utils/audioUnlock', () => ({ unlockAudio: vi.fn() }));
 vi.mock('../components/SceneDecor', () => ({ default: () => <div data-testid="scene-decor" /> }));
 vi.mock('../components/SettingsPanel', () => ({ default: ({ open, onClose }: any) => open ? <div data-testid="settings"><button onClick={onClose}>关闭设置</button></div> : null }));
@@ -23,6 +31,7 @@ describe('EmotionSelect', () => {
     onStart: vi.fn(),
     userName: '小明',
     onLogout: vi.fn(),
+    onConsentRequired: vi.fn(),
   };
 
   beforeEach(() => {
@@ -101,6 +110,18 @@ describe('EmotionSelect', () => {
     await waitFor(() => {
       expect(screen.getByText('网络异常')).toBeInTheDocument();
     });
+  });
+
+  it('CONSENT_REQUIRED 拦截时回调 onConsentRequired 且不显示普通错误（AUTH-040）', async () => {
+    const onConsentRequired = vi.fn();
+    mockApi.mockRejectedValue(new FakeApiError(20003, '需要先完成监护人同意才能开始对话'));
+    render(<EmotionSelect {...defaultProps} onConsentRequired={onConsentRequired} />);
+    fireEvent.click(screen.getByText('难过'));
+    fireEvent.click(screen.getByText('开始聊天 💬'));
+    await waitFor(() => {
+      expect(onConsentRequired).toHaveBeenCalledTimes(1);
+    });
+    expect(screen.queryByText(/监护人同意/)).toBeNull();
   });
 
   it('未选择情绪时 handleStart 不触发 API', () => {

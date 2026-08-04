@@ -233,6 +233,18 @@ echo '0 3 * * 1 certbot renew --webroot -w /var/www/certbot --deploy-hook "docke
 
 > 域名变更时同步修改 `deploy/nginx/default-ssl.conf` 中的 `server_name` 与证书路径，以及 `.env` 的 `CORS_ORIGINS`。
 
+### 端侧 ONNX 模型投放（语音唤醒/声纹，发布前端前必做）
+
+学生端语音唤醒（whisper-tiny）与声纹登录（wespeaker）均为浏览器内推理，前端配置为 `SAME_ORIGIN` 同源加载（`/mindsafe/models/`）。**模型文件不入仓**，发布 student-h5 前必须先投放：
+
+```bash
+# 下载 whisper-tiny + wespeaker 量化模型到 frontend/student-h5/public/models/（约 60MB）
+bash deploy/scripts/prepare-models.sh
+# 脚本自带投放自检：关键文件缺失时非零退出并告警，禁止带缺失发布
+```
+
+投放后 Vite 构建会把 `public/models/` 拷入 dist，随 CI 镜像发布；未执行脚本直接发布会导致模型 404，唤醒/声纹功能加载失败（对话主路径不受影响）。
+
 ---
 
 ## 五、日常开发流程
@@ -264,6 +276,7 @@ git push origin feature/xxx
 | `deploy/nginx/default.conf` | Nginx 双域名反向代理 |
 | `deploy/setup-server.sh` | 服务器一键初始化（含 Docker 镜像加速） |
 | `deploy/.env.example` | 环境变量模板 |
+| `deploy/scripts/prepare-models.sh` | 端侧 ONNX 模型投放（语音唤醒/声纹） |
 | `frontend/Dockerfile` | 前端打包镜像（CI 用） |
 | `backend/Dockerfile` | 后端多阶段构建镜像 |
 
@@ -305,6 +318,7 @@ sudo systemctl restart docker
 5. **HTTPS**：测试阶段（docker-compose.test.yml）用 HTTP 即可；生产（docker-compose.prod.yml）已强制 TLS，首次部署先按「HTTPS 证书」节签发证书
 6. **安全组**：SSH 端口建议限制来源 IP，避免暴力破解
 7. **续费**：经济型 e 实例首购 99元/年，续费同价（阿里云活动期）；关注续费提醒
+8. **端侧模型**：发布 student-h5 前必须先跑 `deploy/scripts/prepare-models.sh`（见「四、端侧 ONNX 模型投放」），否则语音唤醒/声纹不可用
 
 ## 九、配置变更流程
 

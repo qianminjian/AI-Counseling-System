@@ -78,11 +78,16 @@ services:
       - "${HTTP_PORT:-80}:80"
     volumes:
       - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
-      - student-dist:/usr/share/nginx/html/student:ro
-      - teacher-dist:/usr/share/nginx/html/teacher:ro
+      # 挂载路径必须与 default.conf 的 alias 一致（/app/student、/app/teacher、/app/parent）；
+      # 挂到 /usr/share/nginx/html/* 会导致全部前端 404
+      - student-dist:/app/student:ro
+      - teacher-dist:/app/teacher:ro
+      - parent-dist:/app/parent:ro
     depends_on:
       backend:
         condition: service_healthy
+      frontend-init:
+        condition: service_completed_successfully
     networks:
       - internal
 
@@ -93,8 +98,9 @@ services:
     volumes:
       - student-dist:/export/student
       - teacher-dist:/export/teacher
+      - parent-dist:/export/parent
     entrypoint: /bin/sh
-    command: ["-c", "cp -r /app/student/* /export/student/ && cp -r /app/teacher/* /export/teacher/ && echo 'Frontend assets copied'"]
+    command: ["-c", "cp -r /app/student/* /export/student/ && cp -r /app/teacher/* /export/teacher/ && cp -r /app/parent/* /export/parent/ && echo 'Frontend assets copied'"]
     restart: "no"
 
 volumes:
@@ -102,6 +108,7 @@ volumes:
   redisdata:
   student-dist:
   teacher-dist:
+  parent-dist:
 
 networks:
   internal:

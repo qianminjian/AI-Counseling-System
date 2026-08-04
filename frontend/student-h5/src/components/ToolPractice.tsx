@@ -1,11 +1,15 @@
 import { useEffect, useState } from 'react'
 import { recordMoodCheck } from '../api/toolboxApi'
 import type { ToolboxTool } from '../api/toolboxApi'
+import { getToolSteps } from '../data/toolSteps'
 
 /**
  * 工具练习界面（F-2，design/36 §3.2 统一工具框架）
  *
- * 流程：练习前心情打分（可选）→ 练习（倒计时）→ 练习后心情打分（可选）→ 完成反馈
+ * 流程：练习前心情打分（可选）→ 练习（分步引导 + 倒计时）→ 练习后心情打分（可选）→ 完成反馈
+ * - 步骤内容包来自 data/toolSteps.ts（静态打包，离线可用）；
+ *   未配置内容包的工具降级为纯倒计时（开闭原则，新工具零框架改动）
+ * - 步骤按建议时长自动推进，也可点"下一步"手动跳过
  * - 心情打分 1-5 表情脸谱（儿童 CBT 情绪外化）
  * - 心情恶化（needsAttention）→ 温和引导话术，不指责
  * - recordMoodCheck 失败不阻塞完成界面（可用性优先于埋点）
@@ -48,20 +52,41 @@ function MoodPicker({ onPick, selected }: { onPick: (score: number) => void; sel
 }
 
 export default function ToolPractice({ tool, onClose }: { tool: ToolboxTool; onClose: () => void }) {
+  const steps = getToolSteps(tool.toolId)
   const [phase, setPhase] = useState<Phase>(tool.preMoodCheck ? 'pre-mood' : 'practice')
   const [preMood, setPreMood] = useState<number | null>(null)
   const [postMood, setPostMood] = useState<number | null>(null)
   const [secondsLeft, setSecondsLeft] = useState(tool.durationSec)
+  const [stepIndex, setStepIndex] = useState(0)
+  const [stepSecondsLeft, setStepSecondsLeft] = useState(steps?.[0]?.durationSec ?? 0)
   const [needsAttention, setNeedsAttention] = useState(false)
 
-  // 练习倒计时（可提前完成）
+  // 练习倒计时（可提前完成）；有内容包时同步推进步骤
   useEffect(() => {
     if (phase !== 'practice') return
     const timer = setInterval(() => {
       setSecondsLeft((s) => (s > 0 ? s - 1 : 0))
+      if (steps) {
+        setStepSecondsLeft((s) => (s > 0 ? s - 1 : 0))
+      }
     }, 1000)
     return () => clearInterval(timer)
-  }, [phase])
+  }, [phase, steps])
+
+  // 当前步骤时间到 → 自动推进到下一步；最后一步停留在完成前
+  useEffect(() => {
+    if (!steps || phase !== 'practice') return
+    if (stepSecondsLeft === 0 && stepIndex < steps.length - 1) {
+      setStepIndex((i) => i + 1)
+      setStepSecondsLeft(steps[stepIndex + 1].durationSec)
+    }
+  }, [stepSecondsLeft, stepIndex, steps, phase])
+
+  const nextStep = () => {
+    if (!steps || stepIndex >= steps.length - 1) return
+    setStepIndex(stepIndex + 1)
+    setStepSecondsLeft(steps[stepIndex + 1].durationSec)
+  }
 
   const finishPractice = async () => {
     if (tool.postMoodCheck && postMood !== null && preMood !== null) {
@@ -118,17 +143,37 @@ export default function ToolPractice({ tool, onClose }: { tool: ToolboxTool; onC
         <div className="text-center max-w-sm">
           <div className="text-7xl mb-4 animate-pulse">{tool.emoji}</div>
           <h2 className="text-2xl font-bold text-slate-700 mb-2">{tool.title}</h2>
-          <p className="text-4xl font-mono text-teal-600 mb-8" aria-label="倒计时">
+          <p className="text-4xl font-mono text-teal-600 mb-6" aria-label="倒计时">
             {formatTime(secondsLeft)}
           </p>
-          <p className="text-slate-500 mb-6">跟着波波慢慢来，感觉舒服了随时可以停下～</p>
-          <button
-            type="button"
-            onClick={handleComplete}
-            className="px-8 py-3 rounded-full bg-teal-500 text-white font-bold"
-          >
-            我完成啦 ✅
-          </button>
+          {steps ? (
+            <>
+              <p className="text-xs text-slate-400 mb-2">第 {stepIndex + 1} / {steps.length} 步</p>
+              <p className="text-lg text-slate-700 leading-relaxed mb-6" aria-live="polite">
+                {steps[stepIndex].text}
+              </p>
+            </>
+          ) : (
+            <p className="text-slate-500 mb-6">跟着波波慢慢来，感觉舒服了随时可以停下～</p>
+          )}
+          <div className="flex gap-3 justify-center">
+            {steps && stepIndex < steps.length - 1 && (
+              <button
+                type="button"
+                onClick={nextStep}
+                className="px-6 py-3 rounded-full bg-white text-teal-600 font-bold border-2 border-teal-300"
+              >
+                下一步 ➡️
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={handleComplete}
+              className="px-8 py-3 rounded-full bg-teal-500 text-white font-bold"
+            >
+              我完成啦 ✅
+            </button>
+          </div>
         </div>
       )}
 

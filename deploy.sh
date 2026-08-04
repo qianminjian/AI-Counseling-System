@@ -14,7 +14,13 @@
 # 前置条件：已 commit + push，CI 通过
 set -eo pipefail
 
-SERVER="mindsafe@116.8.109.229"
+# 部署目标通过环境变量指定（不在仓库内硬编码生产 IP）
+# 建议写入 ~/.zshrc：export MINDSAFE_SERVER=user@<服务器IP>
+SERVER="${MINDSAFE_SERVER:-}"
+if [ -z "${SERVER}" ]; then
+  echo "ERROR: 必须设置 MINDSAFE_SERVER（如 export MINDSAFE_SERVER=mindsafe@<服务器IP>）"
+  exit 1
+fi
 REMOTE_DIR="/guju/mindsafe"
 PROJECT_ROOT="$(cd "$(dirname "$0")" && pwd)"
 STATE_FILE="$PROJECT_ROOT/.deploy-state"

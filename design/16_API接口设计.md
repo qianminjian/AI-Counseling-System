@@ -560,6 +560,7 @@ POST   /api/v1/admin/knowledge/documents/{docId}/submit-review   # 提交审核
 POST   /api/v1/admin/knowledge/documents/{docId}/approve         # 审核通过
 POST   /api/v1/admin/knowledge/documents/{docId}/reject          # 审核驳回
 GET    /api/v1/admin/knowledge/chunks?documentId=xxx              # 知识切片
+GET    /api/v1/knowledge/editorial/report?missedQueries=q1,q2    # 运营报表：内容缺口 + 分类覆盖（design/49 §五；实际路径无 /admin 前缀，ADMIN 角色）
 ```
 
 ### 5.4 审计日志

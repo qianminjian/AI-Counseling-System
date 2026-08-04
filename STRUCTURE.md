@@ -150,8 +150,8 @@ frontend/
 | `mvn test` | 单元测试（surefire，匹配 `*Test`） | `target/surefire-reports/` |
 | `mvn verify` | 单元 + 集成（failsafe，匹配 `*IT`） | `target/failsafe-reports/` |
 | `mvn test -Dtest=XxxTest` | 单个测试类 | 同上 |
-| `pnpm test` | 前端单元/组件（Vitest） | `frontend/*/coverage/` |
-| `pnpm test:e2e` | E2E（Playwright，需先启动服务） | `tests/e2e/playwright-report/` |
+| `npm test`（各 frontend/* 目录） | 前端单元/组件（Vitest） | `frontend/*/coverage/` |
+| `tests/e2e/smoke-test.sh` | E2E 冒烟（curl 脚本，需先启动服务） | 终端输出 |
 
 - 覆盖率：JaCoCo，报告 `target/site/jacoco/index.html`
 - 报告均为 gitignore 产物，CI 通过 artifacts 保留，本地直查 target 目录
@@ -189,22 +189,28 @@ frontend/
 |------|------|-----------|
 | Maven 构建 | `backend/**/target/` | ✅ |
 | Vite 构建 | `frontend/*/dist/` | ✅ |
-| pnpm 依赖 | `**/node_modules/` | ✅ |
-| Playwright 产物 | `tests/e2e/playwright-report/`、`test-results/` | ✅ |
+| npm 依赖 | `**/node_modules/` | ✅ |
 
-- 构建产物永不入库，一律可通过 `mvn package` / `pnpm build` 再生
-- 依赖版本：后端由 parent pom `<dependencyManagement>` 统一管控，子模块不得自行指定版本；前端由 workspace 根 `package.json` + `pnpm-workspace.yaml` 管控
+- 构建产物永不入库，一律可通过 `mvn package` / `npm run build` 再生
+- 依赖版本：后端由 parent pom `<dependencyManagement>` 统一管控，子模块不得自行指定版本；前端三个应用各自独立 npm 管理（无 workspace，各含 package-lock.json）
 - 新增依赖：须更新 design/12 技术栈文档并说明理由；YAGNI 清单（§4.6）内技术禁止引入
 
 ### 2.9 Docker / 基础设施配置（`deploy/`）
 
 ```
 deploy/
-├── docker-compose.yml          # 本地开发环境：PG 16 + pgvector、Redis 7
-├── docker-compose.prod.yml     # 生产 All-in-One（私有化交付用）
+├── docker-compose.yml          # 本地开发环境：PG 16 + pgvector、Redis 7、tts/voice、nginx
+├── docker-compose.prod.yml     # 生产 All-in-One（私有化交付用，TLS + 自动备份）
+├── docker-compose.test.yml     # 轻量测试/演示环境（不含 voice/tts）
+├── docker-compose.monitoring.yml # Prometheus + Grafana 监控栈
+├── nginx/                      # default.conf（HTTP）/ default-ssl.conf（TLS）
+├── scripts/                    # prepare-funasr.sh / prepare-models.sh（模型投放）
+├── backup.sh / restore.sh      # 宿主机备份/恢复（dbbackups volume）
+├── setup-server.sh             # 服务器一键初始化
+├── init-school.sh              # 学校租户初始化
+├── .env.example                # 环境变量模板
 └── init/                       # 基础设施初始化
-    ├── pg-init.sql             # 创建扩展（vector）、公共 schema
-    └── redis.conf              # Redis 最小配置（maxmemory/持久化策略）
+    └── pg-init.sql             # 创建扩展（vector）、公共 schema
 ```
 
 - 应用 Dockerfile 随模块：`backend/Dockerfile`、`frontend/Dockerfile`
@@ -220,7 +226,7 @@ deploy/
   - `V2__init_tenant_template.sql` — 租户 Schema 模板（design/06 全部 DDL）
   - `V3__seed_data.sql` — 种子数据（角色、风险规则、情绪标签）
 - 后续变更：版本递增，由 Flyway 在应用启动时自动执行
-- 多租户迁移：`counseling-tenant` 模块的迁移执行器遍历所有租户 Schema 应用未执行版本
+- 多租户隔离：`tenant_template` 为共享 schema，靠 tenant_id 列隔离（无每租户 schema 迁移执行器，counseling-tenant 模块从未存在）
 - **红线**：DDL 变更必须走版本化脚本，禁止手工改库；脚本须向后兼容（支持灰度发布）
 
 ### 2.11 日志与报告输出
@@ -309,3 +315,4 @@ prompts/
 | 2026-07-28 | 目录结构纠偏补漏：`design/docs/` 残留 2 份 md（16_语音情感分析/17_全感官交互）迁入 `design/` 并重编号为 54/55，删除空 `design/docs/` 目录 | 完成 2026-07-23 “拍平”决策的遗漏收尾 |
 | 2026-07-29 | 新增 §2.14 `data/` 内容资产目录（`data/knowledge-base/` 知识库语料，待审/已审约定） | KB-101 首批语料落档需正式位置（非 tmp 非 design），约束先行 |
 | 2026-07-28 | 重大修订：`apps/`→`frontend/`、`student/`→`student-h5/`、`teacher/`→`teacher-web/`、新增 `parent-h5/`；移除 counseling-tenant 描述（未进入构建）；pnpm→npm；YAGNI 清单移除“语音/生物识别”（已实现） | 审计发现文档与实际严重不符，纠正失实描述 |
+| 2026-07-29 | 幽灵项清偿收尾：上条修订声称完成但正文残留未改——pnpm 命令/workspace 表述改 npm（三应用各自独立管理）、redis.conf 幽灵条目删除、counseling-tenant 多租户迁移执行器表述改为 tenant_template 共享 schema 事实、§2.9 deploy/ 树补齐实际文件 | 审计复核发现变更记录虚标（声称已改实际未改），如实补完 |

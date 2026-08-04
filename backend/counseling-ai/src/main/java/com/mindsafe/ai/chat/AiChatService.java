@@ -11,19 +11,6 @@ import java.util.UUID;
 public interface AiChatService {
 
     /**
-     * 流式对话（返回逐 token 的 SSE 事件流）
-     *
-     * @param sessionId     会话 ID
-     * @param emotionTag    当前情绪标签
-     * @param message       学生消息
-     * @param gender        学生性别（male/female，可为 null）
-     * @param profilePrompt 学生画像 Prompt 片段（可为 null）
-     * @param grade         学生年级（1-6，解析失败默认 4）
-     * @return 流式事件
-     */
-    Flux<StreamMessageEvent> chat(UUID sessionId, String emotionTag, String message, String gender, String profilePrompt, int grade);
-
-    /**
      * 流式对话（AI-005：接受预解析的 System Prompt，支持 A/B 版本路由）
      *
      * @param sessionId           会话 ID
@@ -42,7 +29,7 @@ public interface AiChatService {
     /**
      * 主动暖场对话（冷场引导，design/28 §三 3.4）
      * <p>
-     * 关键差异（与 {@link #chat} 相比）：
+     * 关键差异（与 {@link #chatWithPrompt} 相比）：
      * <ul>
      *   <li><b>不向 ChatMemory 写入伪造的学生消息</b>（不污染对话记忆）；</li>
      *   <li>nudge 指令（TSK-004 渲染后，含 warmthLevel/direction）追加到 system 层；</li>

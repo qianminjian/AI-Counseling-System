@@ -45,11 +45,15 @@ if ASR_ENGINE == "dashscope" and not DASHSCOPE_API_KEY:
 
 app = FastAPI(title="MindSafe Voice Analysis", version="2.0.0")
 
+# CORS 白名单（安全收敛）：默认拒绝跨域（本服务仅由同网络后端调用）；
+# 确需前端直连时用 VOICE_CORS_ORIGINS="https://a.com,https://b.com" 显式声明，禁止 *
+_cors_env = os.getenv("VOICE_CORS_ORIGINS", "").strip()
+_allowed_origins = [o.strip() for o in _cors_env.split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=_allowed_origins,
+    allow_methods=["POST", "GET"],
+    allow_headers=["Content-Type"],
 )
 
 # ===== 模型初始化（ASR 与 SER 解耦） =====

@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 /**
  * 心理知识库管理 API（AI-006：RAG 知识库）
@@ -236,5 +237,39 @@ public class KnowledgeBaseController {
                 "to", result.toStatus(),
                 "searchable", result.searchable()
         ));
+    }
+
+    /**
+     * 运营报表（design/49 §五 运营闭环）：暴露 operationalReport 主链路。
+     * <p>
+     * 覆盖统计从库内 knowledge_documents 实时聚合（分类 × 审核状态）；
+     * missedQueries 为可选参数（运营从检索日志采样的未命中查询，逗号分隔，
+     * 用于产出内容缺口清单；无持久化 miss 表，免 schema 变更）。
+     */
+    @GetMapping("/editorial/report")
+    public ApiResponse<EditorialWorkflowService.OperationalReport> operationalReport(
+            @RequestParam(value = "missedQueries", required = false) String missedQueriesParam,
+            Authentication auth) {
+        TenantContext ctx = (TenantContext) auth.getDetails();
+
+        // 分类 × 状态覆盖输入：文档列表（含全部审核状态）
+        Map<String, List<String>> docsByCategory =
+                knowledgeBaseService.listDocuments(ctx.tenantId(), null).stream()
+                        .collect(Collectors.groupingBy(
+                                row -> String.valueOf(row.get("category")),
+                                Collectors.mapping(row -> String.valueOf(row.get("status")),
+                                        Collectors.toList())));
+
+        List<String> missedQueries = missedQueriesParam == null || missedQueriesParam.isBlank()
+                ? List.of()
+                : List.of(missedQueriesParam.split("[,|]"));
+
+        EditorialWorkflowService.OperationalReport report =
+                editorialWorkflowService.operationalReport(ctx.tenantId(), missedQueries, docsByCategory);
+
+        auditLogService.log(ctx.tenantId(), ctx.userId(), "KNOWLEDGE_OPERATIONAL_REPORT",
+                "knowledge_document");
+
+        return ApiResponse.ok(report);
     }
 }

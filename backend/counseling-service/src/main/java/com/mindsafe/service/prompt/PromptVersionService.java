@@ -8,6 +8,7 @@ import com.mindsafe.service.audit.AuditLogService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.List;
@@ -52,6 +53,7 @@ public class PromptVersionService {
     private final RedTeamRegressionRunner redTeamRegressionRunner;
     private final TemplateMatrixRegistry templateMatrixRegistry;
     private final AuditLogService auditLogService;
+    private final PromptEvalScoreReader evalScoreReader;
 
     /** 本地缓存：避免每次对话都查 DB（key = tenantId:templateKey:abGroup） */
     private final Map<String, CachedPrompt> cache = new ConcurrentHashMap<>();
@@ -61,12 +63,14 @@ public class PromptVersionService {
                                 PromptTemplateService promptTemplateService,
                                 RedTeamRegressionRunner redTeamRegressionRunner,
                                 TemplateMatrixRegistry templateMatrixRegistry,
-                                AuditLogService auditLogService) {
+                                AuditLogService auditLogService,
+                                PromptEvalScoreReader evalScoreReader) {
         this.promptVersionMapper = promptVersionMapper;
         this.promptTemplateService = promptTemplateService;
         this.redTeamRegressionRunner = redTeamRegressionRunner;
         this.templateMatrixRegistry = templateMatrixRegistry;
         this.auditLogService = auditLogService;
+        this.evalScoreReader = evalScoreReader;
     }
 
     /**
@@ -112,7 +116,8 @@ public class PromptVersionService {
      */
     public String assignAbGroup(UUID studentUserId) {
         if (studentUserId == null) return "control";
-        int hash = Math.abs(studentUserId.hashCode());
+        // 位掩码取非负（Math.abs(Integer.MIN_VALUE) 仍为负数，会导致取模结果偏移）
+        int hash = studentUserId.hashCode() & Integer.MAX_VALUE;
         return (hash % 10) < 2 ? "treatment_a" : "control";
     }
 
@@ -212,30 +217,22 @@ public class PromptVersionService {
         return pv;
     }
 
-    /** 激活版本（同 templateKey+abGroup 下只能有一个 active）——内部调用，不走发布门禁 */
-    public void activateVersion(UUID versionId) {
-        PromptVersion target = promptVersionMapper.selectById(versionId);
-        if (target == null) {
-            throw new IllegalArgumentException("版本不存在: " + versionId);
-        }
-        doActivate(target);
-    }
-
     /**
-     * 发布门禁激活（G-1，design/45 §6.1 三门禁 + §7.3 红队回归门禁）
+     * 发布门禁激活（G-1 硬化，design/45 §6.1 三门禁 + §7.3 红队回归门禁）
      * <ul>
      *   <li>门禁一：安全关键模板必过红队静态回归（{@link RedTeamRegressionRunner}）</li>
      *   <li>门禁二：审校人签字（reviewer 非空）</li>
-     *   <li>门禁三：eval 分数不回退（newScore ≥ baselineScore）</li>
+     *   <li>门禁三：eval 分数不回退 —— <b>服务端从库读数</b>（{@link PromptEvalScoreReader}），
+     *       不接受调用方自报；基线样本充足时目标样本不足同样拒绝</li>
      * </ul>
      * 全部通过才写库，并经 audit_logs 留痕（免 schema 变更）。
+     * 无单参绕过口：这是唯一的激活入口。
      *
-     * @param versionId     目标版本 ID
-     * @param reviewer      审校人（签字留痕）
-     * @param newScore      新版本 eval 分数
-     * @param baselineScore 基线 eval 分数
+     * @param versionId 目标版本 ID
+     * @param reviewer  审校人（签字留痕，空白拒绝）
      */
-    public void activateVersion(UUID versionId, String reviewer, double newScore, double baselineScore) {
+    @Transactional
+    public void activateVersion(UUID versionId, String reviewer) {
         PromptVersion target = promptVersionMapper.selectById(versionId);
         if (target == null) {
             throw new IllegalArgumentException("版本不存在: " + versionId);
@@ -251,13 +248,39 @@ public class PromptVersionService {
             redTeamViolations = result.violations();
         }
 
+        // 门禁三硬化：eval 分数服务端从库读数（counseling_sessions.prompt_version + quality_scores）
+        PromptEvalScoreReader.EvalStat newStat = evalScoreReader.read(target.versionTag());
+        PromptVersion baseline = findBaseline(target);
+        List<String> evalFailures = new java.util.ArrayList<>();
+        double newScore = newStat.overallScore();
+        double baselineScore = newScore; // 无有效基线时视为不回退
+        String evalNote = "首次激活或基线无有效样本，跳过 eval 对比";
+        if (baseline != null) {
+            PromptEvalScoreReader.EvalStat baseStat = evalScoreReader.read(baseline.versionTag());
+            if (baseStat.scoredCount() >= PromptEvalScoreReader.MIN_EVAL_SAMPLES) {
+                baselineScore = baseStat.overallScore();
+                evalNote = String.format("eval=%.3f/%.3f（样本 %d/%d）",
+                        newStat.overallScore(), baseStat.overallScore(),
+                        newStat.scoredCount(), baseStat.scoredCount());
+                if (newStat.scoredCount() < PromptEvalScoreReader.MIN_EVAL_SAMPLES) {
+                    evalFailures.add(String.format("eval 数据不足: 目标版本仅 %d 条评分样本（至少 %d 条）",
+                            newStat.scoredCount(), PromptEvalScoreReader.MIN_EVAL_SAMPLES));
+                } else if (newStat.overallScore() < baseStat.overallScore()) {
+                    evalFailures.add(String.format("eval 分数回退：%.3f < 基线 %.3f",
+                            newStat.overallScore(), baseStat.overallScore()));
+                }
+            }
+        }
+
         // 门禁二 + 三：审校签字 + eval 不回退（复用矩阵注册表的统一门禁判定）
         TemplateMatrixRegistry.GateResult gate =
                 templateMatrixRegistry.checkReleaseGate(redTeamPassed, reviewer, newScore, baselineScore);
-        if (!gate.passed()) {
-            // 红队违规明细逐条展开（审计可读）
+        if (!gate.passed() || !evalFailures.isEmpty()) {
+            // 失败明细逐条展开（审计可读）：红队违规明细替换通用文案，eval 明细用从库读数的精确值
             List<String> failures = new java.util.ArrayList<>(gate.failures());
             failures.remove("红队护栏用例未全部通过");
+            failures.removeIf(f -> f.startsWith("eval 分数回退"));
+            failures.addAll(evalFailures);
             for (String v : redTeamViolations) {
                 failures.add("红队回归违规: " + v);
             }
@@ -272,9 +295,25 @@ public class PromptVersionService {
         // 审批留痕（audit_logs，免 schema 变更）
         auditLogService.log(target.getTenantId(), target.getCreatedBy(),
                 "PROMPT_VERSION_ACTIVATE", "prompt_version", versionId,
-                String.format("key=%s, version=%d, reviewer=%s, redteam_pass=%s, eval=%.2f/%.2f",
+                String.format("key=%s, version=%d, reviewer=%s, redteam_pass=%s, %s",
                         target.getTemplateKey(), target.getVersion(), reviewer,
-                        redTeamPassed, newScore, baselineScore));
+                        redTeamPassed, evalNote));
+    }
+
+    /** 查同组当前生效版本（基线），排除目标自身 */
+    private PromptVersion findBaseline(PromptVersion target) {
+        List<PromptVersion> actives = promptVersionMapper.selectList(
+                new LambdaQueryWrapper<PromptVersion>()
+                        .eq(PromptVersion::getTemplateKey, target.getTemplateKey())
+                        .eq(PromptVersion::getAbGroup, target.getAbGroup())
+                        .eq(PromptVersion::getIsActive, true)
+                        .eq(target.getTenantId() != null, PromptVersion::getTenantId, target.getTenantId())
+                        .isNull(target.getTenantId() == null, PromptVersion::getTenantId)
+        );
+        return actives.stream()
+                .filter(v -> !v.getVersionId().equals(target.getVersionId()))
+                .findFirst()
+                .orElse(null);
     }
 
     /** 停用同组旧版本 + 激活目标 + 缓存失效（互斥铁律） */

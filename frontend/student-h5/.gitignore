@@ -12,6 +12,9 @@ dist
 dist-ssr
 *.local
 
+# 端侧 ONNX 模型（deploy/scripts/prepare-models.sh 下载产物，不入仓）
+public/models/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

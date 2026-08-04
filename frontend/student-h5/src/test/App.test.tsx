@@ -40,9 +40,6 @@ vi.mock('../components/ChatRoom', () => ({
     </div>
   ),
 }))
-vi.mock('../components/ParentReport', () => ({
-  default: () => <div data-testid="parent-report" />,
-}))
 vi.mock('../components/IdleWarning', () => ({
   default: ({ secondsLeft, onStay }: any) => (
     <div data-testid="idle-warning">
@@ -141,16 +138,6 @@ describe('App', () => {
     fireEvent.click(screen.getByText('同意'))
     expect(mockMarkConsentDone).toHaveBeenCalled()
     expect(screen.getByTestId('login-page')).toBeTruthy()
-  })
-
-  it('/parent 路径显示家长周报', () => {
-    Object.defineProperty(window, 'location', {
-      value: { pathname: '/parent' },
-      writable: true,
-      configurable: true,
-    })
-    render(<App />)
-    expect(screen.getByTestId('parent-report')).toBeTruthy()
   })
 
   it('已认证（有 token）直接显示情绪选择', () => {

@@ -55,66 +55,6 @@ public class AiChatServiceImpl implements AiChatService {
     }
 
     @Override
-    public Flux<StreamMessageEvent> chat(UUID sessionId, String emotionTag, String message, String gender, String profilePrompt, int grade) {
-        String conversationId = sessionId.toString();
-        log.debug("AI 对话请求: sessionId={}, emotion={}, gender={}, grade={}, msgLength={}", sessionId, emotionTag, gender, grade, message.length());
-
-        // 1. 保存用户消息到记忆
-        chatMemory.add(conversationId, List.of(new UserMessage(message)));
-
-        // 2. 获取历史消息构建上下文（窗口大小由 MessageWindowChatMemory 配置控制）
-        List<Message> history = chatMemory.get(conversationId);
-
-        // 3. 从模板文件加载 System Prompt（SYS-001），注入运行时变量（PROF-010：真实年级替代硬编码）
-        String gradeLevel = grade <= 2 ? "1-2" : grade <= 4 ? "3-4" : "5-6";
-        String systemPrompt = promptTemplateService.render(PromptTemplateService.SYS_001, Map.of(
-                "grade_level", gradeLevel,
-                "emotion_tag", emotionTag,
-                "school_policy", "默认：发现高风险立即通知心理老师。",
-                "session_mode", "normal_counseling"
-        ));
-
-        // 3.3 PROF-011：加载年级语言模板（认知水平+比喻库+互动模式）
-        String langTemplatePath = PromptTemplateService.languageTemplateForGrade(grade);
-        String langRules = promptTemplateService.getTemplate(langTemplatePath);
-
-        // 3.5 PROF-014：性别×年龄交叉策略
-        String genderStyle = buildGenderStyle(gender, grade);
-        String fullSystem = systemPrompt + "\n\n" + langRules + "\n\n" + genderStyle;
-
-        // 3.6 学生画像注入（个性化辅导）
-        if (profilePrompt != null && !profilePrompt.isBlank()) {
-            fullSystem = fullSystem + "\n\n" + profilePrompt;
-        }
-        final String sysPrompt = fullSystem;
-
-        // 5. Layer1 实时过滤：命中 block 级敏感词时中断流并替换为安全话术
-        // PERF-001: 超时保护 + 首 token 监控 + 降级
-        // PERF-002: Supplier 模式支持瞬时失败自动重试
-        StringBuilder responseCollector = new StringBuilder();
-        return llmStreamEnhancer.enhance(
-                () -> outputContentFilter.apply(
-                        chatClient.prompt().system(sysPrompt).messages(history).stream().content(),
-                        sessionId),
-                sessionId)
-                .doOnNext(evt -> {
-                    if ("token".equals(evt.type()) && evt.content() != null) {
-                        responseCollector.append(evt.content());
-                    }
-                })
-                .doOnComplete(() -> {
-                    // 6. 流结束后保存 AI 回复到记忆（含被拦截时的安全话术，即孩子实际看到的内容）
-                    String fullReply = responseCollector.toString();
-                    chatMemory.add(conversationId, List.of(new AssistantMessage(fullReply)));
-                    log.debug("AI 回复完成: sessionId={}, responseLength={}", sessionId, fullReply.length());
-
-                    // 7. Layer2 异步 SAF-002 语义审查（fire-and-forget，不阻塞主流）
-                    outputReviewService.reviewAsync(sessionId, fullReply, emotionTag);
-                })
-                .doOnError(e -> log.error("AI 流式调用失败: sessionId={}", sessionId, e));
-    }
-
-    @Override
     public Flux<StreamMessageEvent> chatWithPrompt(UUID sessionId, String emotionTag, String message,
                                                    String gender, String profilePrompt, int grade,
                                                    String systemPromptContent) {

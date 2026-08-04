@@ -14,7 +14,13 @@ set -euo pipefail
 CONTAINER_NAME="mindsafe-pg"
 DB_NAME="mindsafe"
 DB_USER="mindsafe"
-BACKUP_VOLUME="dbbackups"
+# compose 命名卷实际带项目名前缀（如 deploy_dbbackups），硬编码 dbbackups 会挂到另一个空卷。
+# 优先用环境变量 BACKUP_VOLUME 覆盖，否则自动探测。
+BACKUP_VOLUME="${BACKUP_VOLUME:-$(docker volume ls --format '{{.Name}}' | grep -E '(^|_)dbbackups$' | head -1)}"
+if [ -z "${BACKUP_VOLUME}" ]; then
+    echo "ERROR: 未找到 dbbackups 卷（请先启动 docker-compose.prod.yml，或设 BACKUP_VOLUME=<卷名>）"
+    exit 1
+fi
 PG_IMAGE="pgvector/pgvector:pg16"
 
 log() {
@@ -66,12 +72,12 @@ if [ "${FORCE}" != "--force" ]; then
     fi
 fi
 
-# 恢复前安全快照（写入 volume，供回滚）
+# 恢复前安全快照（写入 volume daily/ 目录，与备份约定一致，供回滚）
 SNAPSHOT_NAME="mindsafe_pre_restore_$(date +%Y%m%d_%H%M%S).dump"
-log "创建恢复前快照: volume ${BACKUP_VOLUME}:/${SNAPSHOT_NAME}"
+log "创建恢复前快照: volume ${BACKUP_VOLUME}:/daily/${SNAPSHOT_NAME}"
 docker exec "${CONTAINER_NAME}" pg_dump -U "${DB_USER}" -d "${DB_NAME}" --format=custom --compress=9 \
     | docker run --rm -i -v "${BACKUP_VOLUME}:/backups" -w /backups "${PG_IMAGE}" \
-        sh -c 'cat > '"${SNAPSHOT_NAME}"
+        sh -c 'mkdir -p daily && cat > daily/'"${SNAPSHOT_NAME}"
 
 # 执行恢复（--exit-on-error 防止半途而废留下不一致库）
 log "开始恢复: ${BACKUP_PATH} → ${DB_NAME}"
@@ -108,4 +114,4 @@ docker exec "${CONTAINER_NAME}" psql -U "${DB_USER}" -d "${DB_NAME}" -c "SELECT 
     log "验证通过" || log "WARNING: 验证查询失败，请手动检查"
 
 log "===== 恢复任务结束 ====="
-log "如需回滚，使用恢复前快照: ${SNAPSHOT_NAME}（dbbackups volume 内）"
+log "如需回滚，使用恢复前快照: daily/${SNAPSHOT_NAME}（dbbackups volume 内）"

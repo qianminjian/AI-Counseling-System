@@ -18,7 +18,13 @@ set -euo pipefail
 
 # ===== 配置 =====
 CONTAINER_NAME="mindsafe-pg"
-BACKUP_VOLUME="dbbackups"
+# compose 命名卷实际带项目名前缀（如 deploy_dbbackups），硬编码 dbbackups 会挂到另一个空卷。
+# 优先用环境变量 BACKUP_VOLUME 覆盖，否则自动探测宿主机上匹配 *_dbbackups 的卷。
+BACKUP_VOLUME="${BACKUP_VOLUME:-$(docker volume ls --format '{{.Name}}' | grep -E '(^|_)dbbackups$' | head -1)}"
+if [ -z "${BACKUP_VOLUME}" ]; then
+    echo "ERROR: 未找到 dbbackups 卷（请先 docker compose -f docker-compose.prod.yml up -d，或设 BACKUP_VOLUME=<卷名>）"
+    exit 1
+fi
 DB_NAME="mindsafe"
 DB_USER="mindsafe"
 RETAIN_DAILY=7

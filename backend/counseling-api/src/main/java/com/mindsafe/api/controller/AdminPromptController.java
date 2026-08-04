@@ -3,6 +3,7 @@ package com.mindsafe.api.controller;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.mindsafe.api.security.JwtAuthenticationFilter.TenantContext;
 import com.mindsafe.common.dto.ApiResponse;
+import com.mindsafe.common.dto.ErrorCode;
 import com.mindsafe.domain.entity.CounselingSession;
 import com.mindsafe.domain.entity.PromptVersion;
 import com.mindsafe.domain.entity.QualityScore;
@@ -97,10 +98,11 @@ public class AdminPromptController {
     }
 
     /**
-     * 激活版本（同组下唯一生效）——走发布门禁（G-1，design/45 §6.1/§7.3）
+     * 激活版本（同组下唯一生效）——走发布门禁（G-1 硬化，design/45 §6.1/§7.3）
      * <p>
-     * 请求体（均可选）：reviewer（审校人，缺省取当前登录名）/ newScore（新版本 eval 分，缺省 1.0）/
-     * baselineScore（基线 eval 分，缺省 1.0）。安全关键模板必过红队静态回归，全部门禁通过才写库。
+     * 请求体：reviewer（审校人，<b>必填</b>，不再缺省取登录名）。eval 分数由服务端从库读数
+     * （counseling_sessions.prompt_version + quality_scores），不接受自报。
+     * 安全关键模板必过红队静态回归，全部门禁通过才写库。
      */
     @PostMapping("/versions/{versionId}/activate")
     public ApiResponse<Void> activateVersion(@PathVariable UUID versionId,
@@ -108,11 +110,19 @@ public class AdminPromptController {
                                              Authentication auth) {
         TenantContext ctx = (TenantContext) auth.getDetails();
         Map<String, Object> b = body != null ? body : Map.of();
-        String reviewer = b.get("reviewer") != null ? String.valueOf(b.get("reviewer")) : auth.getName();
-        double newScore = b.get("newScore") instanceof Number n ? n.doubleValue() : 1.0;
-        double baselineScore = b.get("baselineScore") instanceof Number n ? n.doubleValue() : 1.0;
+        String reviewer = b.get("reviewer") != null ? String.valueOf(b.get("reviewer")).trim() : "";
+        if (reviewer.isBlank()) {
+            return ApiResponse.error(ErrorCode.PARAM_INVALID.code(), "reviewer 为必填项（审校人签字）");
+        }
 
-        promptVersionService.activateVersion(versionId, reviewer, newScore, baselineScore);
+        try {
+            promptVersionService.activateVersion(versionId, reviewer);
+        } catch (IllegalArgumentException e) {
+            return ApiResponse.error(ErrorCode.RESOURCE_NOT_FOUND.code(), e.getMessage());
+        } catch (IllegalStateException e) {
+            // 门禁拒绝：保留明细返回（HTTP 200 + success=false，前端统一约定）
+            return ApiResponse.error(ErrorCode.PARAM_INVALID.code(), e.getMessage());
+        }
         // 操作者留痕（门禁明细留痕由服务层 PROMPT_VERSION_ACTIVATE 承担）
         auditLogService.log(ctx.tenantId(), ctx.userId(), "PROMPT_ACTIVATE", "prompt_version", versionId,
                 "reviewer=" + reviewer);

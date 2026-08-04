@@ -389,8 +389,8 @@
 |--------|----------|------|--------|
 | TEST-001 | 后端单测覆盖率 → 80%（JaCoCo 门禁） | 🟡 门禁已修真，基线 46%（目标 80%） | A — fix-10 已完成（2026-07-29）：counseling-app report-aggregate verify 阶段生成聚合报告；CI 门禁报告缺失即失败+行覆盖≥40%（当前 46%）；目标随迭代逐步升至 80% |
 | TEST-002 | 前端组件测试（Vitest + Testing Library） | ✅ 已完成 | C |
-| TEST-003 | E2E 扩展（12 → 30+ 用例） | ✅ 已完成 | C |
-| TEST-004 | 性能压测基线（k6，100 并发 SSE） | ✅ 完成 | E |
+| TEST-003 | E2E 扩展（12 → 30+ 用例） | ✅ 已完成（实际 tests/e2e/smoke-test.sh 28 个断言，未达 30+ 目标，如实校准） | C |
+| TEST-004 | 性能压测基线（k6，100 并发 SSE） | ✅ 完成（脚本 tests/performance/chat-load.js，需手动 k6 执行） | E |
 | TEST-005 | CI 增强（覆盖率门禁 + 依赖扫描 + 缓存） | ✅ 完成（fix-10，2026-07-29） | A — fix-10 已修真：mvn verify（surefire+failsafe）替代 mvn test；Trivy exit-code=1 阻断 CRITICAL/HIGH；AuthFlowIT 正常执行（CI Docker）/本地 disabledWithoutDocker 优雅跳过；CI 触发分支加入 develop |
 | TEST-006 | 前后端契约测试（OpenAPI + mock 校验） | ⏳ 待开始 | 远期 |
 
@@ -591,7 +591,7 @@
 | ORCH-005 | 优先级裁决合并 + 冷场(28)/降级(29) 统一入编排 | 近期 | design/44 P1 | PROF-021 | ✅ 已完成（2026-07-28） |
 | WB-001 | 教师工作台首屏（待办+时间线+概况条）+ 预警工作流（认领/处理/关闭 + SLA 逾期提醒） | 近期 | design/35 M1 | UX-002 | ✅ 已完成（2026-07-28：后端 AlertSlaPolicy + 前端 TodayTodoPanel/SLA倒计时列/预警时间线） |
 | WB-002 | 学生详情页统一落地页 + 五角色字段裁剪 + 降噪（合并/聚合/静音） | 近期 | design/35 M2 | UX-002 | ✅ 已完成（2026-07-28：前端详情页 + 服务端角色裁剪；**F-3 补齐降噪静音规则 AlertTodoMutePolicy + 个案跟踪标志（免 schema 变更）TDD 全绿**） |
-| TOOL-001 | 心理工具箱框架 + 情绪温度计 + 接地 + 正念（呼吸并入）+ 前后心情记录，内容包可离线打开 | 近期 | design/36 M1 | PROD-006 | ✅ 已完成（2026-07-28，后端 ToolboxRegistry+MoodCheckRecorder；前端 ToolboxPanel/ToolPractice/ChatRoom 入口 TDD 全绿，内容包余量见 design/36） |
+| TOOL-001 | 心理工具箱框架 + 情绪温度计 + 接地 + 正念（呼吸并入）+ 前后心情记录，内容包可离线打开 | 近期 | design/36 M1 | PROD-006 | ✅ 已完成（2026-07-28，后端 ToolboxRegistry+MoodCheckRecorder；前端 ToolboxPanel/ToolPractice/ChatRoom 入口 TDD 全绿；2026-07-29 补落地步骤内容包 src/data/toolSteps.ts 分步引导，音频/Lottie 余量见 design/36） |
 | TOOL-002 | SOS 模式 + 安全小岛（断网可打开、热线可拨号，恢复网络 1min 内产 S2 事件） | 近期 | design/36 M2 | PROD-006/007 | ✅ 已完成（2026-07-28，后端 SOS 工具列表；前端 SosPanel 纯静态三段式+12355 拨号 TDD 全绿；S2 事件端点/安全小岛创建流程余量见 design/36） |
 | TTSFX-001 | 情绪信号源统一 + 波波表情状态机 + 基础微交互（气泡/输入/思考中）+ 减弱动效降级 | 近期 | design/37 M1 | UX-005 | ✅ 已完成（2026-07-28，情绪信号源统一入编排；**✅ 以后端信号源为准，前端动效余量归 TTSFX-004**） |
 | TTSFX-002 | 风险语音降级 + 预合成话术库 + 缓存（S1 用预合成、CosyVoice2 超时 2s 内切 edge-tts/纯文字） | 近期 | design/37 M2 | PROD-003 | ✅ 已完成（2026-07-28，VoiceDegradationPolicy） |
@@ -648,7 +648,7 @@
 
 | 任务ID | 阶段任务 | 优先级 | 来源设计 | 关联主任务 | 状态 |
 |--------|----------|--------|----------|-----------|------|
-| PEVAL-001 | 接线未调用的 evaluateConversationQuality 到会话结束异步流程 + 落库 prompt_eval_result（四维分+版本+人群维度） | P0 近期 | design/45 P0 | AI-002/PROF-021 | ✅ 已完成（2026-07-28） |
+| PEVAL-001 | 接线未调用的 evaluateConversationQuality 到会话结束异步流程 + 落库 quality_scores（四维分+版本；实际表名 quality_scores（V19），非早期规划的 prompt_eval_result） | P0 近期 | design/45 P0 | AI-002/PROF-021 | ✅ 已完成（2026-07-28） |
 | PEVAL-002 | 补全 EMO-001 模板正文并纳入 PromptVersionService（配合 ORCH-001） | P0 近期 | design/45 P0 | PROF-021 | ✅ 已完成（2026-07-28） |
 | PEVAL-003 | 模板矩阵登记+版本命名规范 + 红队护栏用例集资产化 + 改版三门禁（红队/审校/eval 不回退） | P1 近期 | design/45 P1 | AI-005 | ✅ 已完成（2026-07-28；G-1 补齐门禁接线：RedTeamRegressionRunner 静态回归+activateVersion 三门禁+audit_logs 审批留痕，护栏 14 条/6 类，测试 55 用例全绿） |
 | PEVAL-004 | 评估人群下钻看板 + 提示词 metrics + 灰度分阶段放量/自动回滚 + LLM-as-Judge κ 校准 | P2 近期偏后 | design/45 P2 | AI-003 | ✅ 已完成（2026-07-28） |
@@ -663,7 +663,7 @@
 | TMATCH-003 | 音色效果回收（完成率/切换/参与度）+ 会话内稳定性 + 匹配规则 A/B 进化 | P2/远期 | design/48 P2/P3 | PROF-020 | ✅ 已完成（2026-07-28） |
 | KB-101 | 知识内容首批生产（CBT/SEL/PFA/危机/工具箱，结构化 02/03/36）+ RAG Advisor 接入对话主线（场景触发+年龄过滤+不覆盖安全） | P0 近期 | design/49 P0 | AI-006 | ✅ 已完成（2026-07-28）：62 条语料解析+幂等入库机制（`POST /api/v1/knowledge/corpus`，危机类 10 条缓入待 KB-102）+ `RagAdvisorService` 接主线（场景触发/grade_band 近似过滤/危机双保险/失败安全），解 AI-006 门禁，见 design/49 §6.5 |
 | KB-102 | 审核工作流状态机+门禁 + 知识条目元数据增强 + 危机内容与 04/14 单一事实源打通 | P1 近期 | design/49 P1 | AI-006 | ✅ 已完成（2026-07-28，ReviewWorkflowStateMachine+ReviewGateValidator+KnowledgeMetadata） |
-| KB-103 | 混合检索 RRF（向量0.6+关键词0.4，落地 15 未实现项）+ groundedness 回收+未命中查询补全 + 语义分块优化 | P2/远期 | design/49 P2/P3 | AI-006 | ✅ 已完成（2026-07-28） |
+| KB-103 | 混合检索（向量+关键词双路 RRF 融合，实际为 RRF 排序而非加权求和）+ groundedness 回收+未命中查询补全 + 语义分块优化 | P2/远期 | design/49 P2/P3 | AI-006 | ✅ 已完成（2026-07-28；审计发现 fuseRRF 仅测试调用未接主线，已于后续审计修复接入 RagAdvisorService.buildRagContext：向量路+关键词路各 top5 → RRF 融合 → 危机隔离/年级段过滤 → top3，关键词路异常降级纯向量，17 用例绿） |
 | MEM-101 | **更正 AI-008 状态**（已在十七完成）+ 记忆→画像回注（growthTrack/socialGraph，provenance=memory） | P0 近期 | design/50 P0 | AI-008 | ✅ 已完成（2026-07-28） |
 | MEM-102 | recurring_theme 主题演化（聚类+反思）+ 相关性召回升级（向量+重要性+时效+recurring）+ MEM-CTX+continuity 接 45 | P1 近期 | design/50 P1 | AI-008 | ✅ 已完成（2026-07-28，MemoryRelevanceScorer+ThemeEvolutionEngine） |
 | MEM-103 | 记忆与风险纵向关联（负面主题→关注信号，非实时报警）+ 遗忘策略升级（时效/敏感/被遗忘权）+ 双向互哺权重调优 | P2/远期 | design/50 P2/P3 | AI-008 | ✅ 已完成（2026-07-28） |

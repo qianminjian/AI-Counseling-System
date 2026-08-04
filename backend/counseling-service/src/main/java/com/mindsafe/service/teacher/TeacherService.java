@@ -1,6 +1,7 @@
 package com.mindsafe.service.teacher;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.mindsafe.domain.entity.*;
 import com.mindsafe.domain.mapper.*;
@@ -100,18 +101,24 @@ public class TeacherService {
                         .ge(CounselingSession::getStartedAt, todayStart)
         );
 
-        // 周趋势（最近 7 天每天的风险事件数）
+        // 周趋势（最近 7 天每天的风险事件数）：单次查询 + 内存分桶，替代 7 次循环 count
+        Instant weekStart = now.minus(6, ChronoUnit.DAYS).truncatedTo(ChronoUnit.DAYS);
+        Instant tomorrowStart = now.truncatedTo(ChronoUnit.DAYS).plus(1, ChronoUnit.DAYS);
+        List<RiskEvent> weekEvents = riskEventMapper.selectList(
+                new LambdaQueryWrapper<RiskEvent>()
+                        .eq(RiskEvent::getTenantId, tenantId)
+                        .ge(RiskEvent::getDetectedAt, weekStart)
+                        .lt(RiskEvent::getDetectedAt, tomorrowStart)
+        );
+        Map<Instant, Long> eventsByDay = weekEvents.stream()
+                .map(RiskEvent::getDetectedAt)
+                .filter(Objects::nonNull)
+                .collect(Collectors.groupingBy(t -> t.truncatedTo(ChronoUnit.DAYS), Collectors.counting()));
         List<DailyCount> weeklyTrend = new ArrayList<>();
         for (int i = 6; i >= 0; i--) {
             Instant dayStart = now.minus(i, ChronoUnit.DAYS).truncatedTo(ChronoUnit.DAYS);
-            Instant dayEnd = dayStart.plus(1, ChronoUnit.DAYS);
-            long count = riskEventMapper.selectCount(
-                    new LambdaQueryWrapper<RiskEvent>()
-                            .eq(RiskEvent::getTenantId, tenantId)
-                            .ge(RiskEvent::getDetectedAt, dayStart)
-                            .lt(RiskEvent::getDetectedAt, dayEnd)
-            );
-            weeklyTrend.add(new DailyCount(dayStart.toString().substring(0, 10), count));
+            weeklyTrend.add(new DailyCount(dayStart.toString().substring(0, 10),
+                    eventsByDay.getOrDefault(dayStart, 0L)));
         }
 
         // 满意度统计（近 30 天有评价的会话）
@@ -561,33 +568,42 @@ public class TeacherService {
                 .limit(10)
                 .toList();
 
-        // 3. 近 30 天会话趋势
+        // 3. 近 30 天会话趋势：单次查询 + 内存分桶（替代 30 次循环 selectCount）
+        Instant trendStart = now.minus(29, ChronoUnit.DAYS).truncatedTo(ChronoUnit.DAYS);
+        Instant tomorrowStart = now.truncatedTo(ChronoUnit.DAYS).plus(1, ChronoUnit.DAYS);
+        List<CounselingSession> trendSessions = sessionMapper.selectList(
+                new LambdaQueryWrapper<CounselingSession>()
+                        .eq(CounselingSession::getTenantId, tenantId)
+                        .ge(CounselingSession::getStartedAt, trendStart)
+                        .lt(CounselingSession::getStartedAt, tomorrowStart)
+        );
+        Map<Instant, Long> sessionsByDay = trendSessions.stream()
+                .map(CounselingSession::getStartedAt)
+                .filter(Objects::nonNull)
+                .collect(Collectors.groupingBy(t -> t.truncatedTo(ChronoUnit.DAYS), Collectors.counting()));
         List<DailyCount> sessionTrend = new ArrayList<>();
         for (int i = 29; i >= 0; i--) {
             Instant dayStart = now.minus(i, ChronoUnit.DAYS).truncatedTo(ChronoUnit.DAYS);
-            Instant dayEnd = dayStart.plus(1, ChronoUnit.DAYS);
-            long count = sessionMapper.selectCount(
-                    new LambdaQueryWrapper<CounselingSession>()
-                            .eq(CounselingSession::getTenantId, tenantId)
-                            .ge(CounselingSession::getStartedAt, dayStart)
-                            .lt(CounselingSession::getStartedAt, dayEnd)
-            );
-            sessionTrend.add(new DailyCount(dayStart.toString().substring(0, 10), count));
+            sessionTrend.add(new DailyCount(dayStart.toString().substring(0, 10),
+                    sessionsByDay.getOrDefault(dayStart, 0L)));
         }
 
-        // 4. 情绪分布（近 30 天 message_summaries 中 student 消息的 emotion_label）
+        // 4. 情绪分布（近 30 天 student 消息的 emotion_label）：DB GROUP BY 聚合，
+        //    不再将全租户 30 天 message_summaries 加载进内存
         Instant monthAgo = now.minus(30, ChronoUnit.DAYS);
-        List<MessageSummary> emotions = messageSummaryMapper.selectList(
-                new LambdaQueryWrapper<MessageSummary>()
-                        .eq(MessageSummary::getTenantId, tenantId)
-                        .eq(MessageSummary::getSenderType, "student")
-                        .ge(MessageSummary::getCreatedAt, monthAgo)
-                        .isNotNull(MessageSummary::getEmotionLabel)
+        List<Map<String, Object>> emotionRows = messageSummaryMapper.selectMaps(
+                new QueryWrapper<MessageSummary>()
+                        .select("emotion_label, COUNT(*) AS cnt")
+                        .eq("tenant_id", tenantId)
+                        .eq("sender_type", "student")
+                        .ge("created_at", monthAgo)
+                        .isNotNull("emotion_label")
+                        .groupBy("emotion_label")
         );
-        Map<String, Long> emotionMap = emotions.stream()
-                .collect(Collectors.groupingBy(MessageSummary::getEmotionLabel, Collectors.counting()));
-        List<EmotionItem> emotionDistribution = emotionMap.entrySet().stream()
-                .map(e -> new EmotionItem(e.getKey(), e.getValue()))
+        List<EmotionItem> emotionDistribution = emotionRows.stream()
+                .filter(r -> r.get("emotion_label") != null && r.get("cnt") instanceof Number)
+                .map(r -> new EmotionItem((String) r.get("emotion_label"),
+                        ((Number) r.get("cnt")).longValue()))
                 .sorted(Comparator.comparingLong(EmotionItem::count).reversed())
                 .limit(8)
                 .toList();
@@ -662,31 +678,48 @@ public class TeacherService {
     // ===== 满意度统计 =====
 
     public SatisfactionStatsVO getSatisfactionStats(UUID tenantId) {
-        List<CounselingSession> rated = sessionMapper.selectList(
-                new LambdaQueryWrapper<CounselingSession>()
-                        .eq(CounselingSession::getTenantId, tenantId)
-                        .isNotNull(CounselingSession::getSatisfactionRating)
-        );
+        // DB 端聚合：全量 + 近 7 天各一次 GROUP BY，
+        // 不再将全量历史已评会话加载进内存（审计 fix-perf）
+        Instant weekAgo = Instant.now().minus(7, ChronoUnit.DAYS);
+        Map<Integer, Long> dist = ratingDistribution(tenantId, null);
+        Map<Integer, Long> recentDist = ratingDistribution(tenantId, weekAgo);
 
-        long total = rated.size();
-        double avg = rated.stream().mapToInt(CounselingSession::getSatisfactionRating).average().orElse(0);
+        long total = dist.values().stream().mapToLong(Long::longValue).sum();
+        long weightedSum = dist.entrySet().stream()
+                .mapToLong(e -> (long) e.getKey() * e.getValue()).sum();
+        double avg = total == 0 ? 0.0 : weightedSum / (double) total;
 
-        Map<Integer, Long> dist = rated.stream()
-                .collect(java.util.stream.Collectors.groupingBy(CounselingSession::getSatisfactionRating,
-                        java.util.stream.Collectors.counting()));
-        List<RatingDistItem> distribution = new java.util.ArrayList<>();
+        List<RatingDistItem> distribution = new ArrayList<>();
         for (int i = 1; i <= 5; i++) {
             distribution.add(new RatingDistItem(i, dist.getOrDefault(i, 0L)));
         }
 
-        java.time.Instant weekAgo = java.time.Instant.now().minus(7, java.time.temporal.ChronoUnit.DAYS);
-        List<CounselingSession> recent = rated.stream()
-                .filter(s -> s.getStartedAt() != null && s.getStartedAt().isAfter(weekAgo))
-                .toList();
-        double recentAvg = recent.stream().mapToInt(CounselingSession::getSatisfactionRating).average().orElse(0);
+        long recentCount = recentDist.values().stream().mapToLong(Long::longValue).sum();
+        long recentSum = recentDist.entrySet().stream()
+                .mapToLong(e -> (long) e.getKey() * e.getValue()).sum();
+        double recentAvg = recentCount == 0 ? 0.0 : recentSum / (double) recentCount;
 
         return new SatisfactionStatsVO(total, Math.round(avg * 10) / 10.0, distribution,
-                recent.size(), Math.round(recentAvg * 10) / 10.0);
+                recentCount, Math.round(recentAvg * 10) / 10.0);
+    }
+
+    /** 评分分布聚合（rating → count）；since 非空时仅统计该时点之后的会话 */
+    private Map<Integer, Long> ratingDistribution(UUID tenantId, Instant since) {
+        QueryWrapper<CounselingSession> wrapper = new QueryWrapper<CounselingSession>()
+                .select("satisfaction_rating AS rating, COUNT(*) AS cnt")
+                .eq("tenant_id", tenantId)
+                .isNotNull("satisfaction_rating")
+                .groupBy("satisfaction_rating");
+        if (since != null) {
+            wrapper.ge("started_at", since);
+        }
+        Map<Integer, Long> result = new HashMap<>();
+        for (Map<String, Object> row : sessionMapper.selectMaps(wrapper)) {
+            if (row.get("rating") instanceof Number rating && row.get("cnt") instanceof Number cnt) {
+                result.put(rating.intValue(), cnt.longValue());
+            }
+        }
+        return result;
     }
 
     public record SatisfactionStatsVO(long totalRated, double avgRating, List<RatingDistItem> distribution,

@@ -76,9 +76,13 @@ services:
       SPRING_DATASOURCE_USERNAME: mindsafe
       SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:-mindsafe2026}
       SPRING_DATA_REDIS_HOST: redis
-      SPRING_AI_DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-sk-placeholder}
-      SPRING_AI_DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
-      JWT_SECRET: ${JWT_SECRET:-mindsafe-jwt-secret-change-in-production}
+      # 变量名必须与 application.yml 占位符 ${LLM_API_KEY}/${LLM_BASE_URL} 一致；
+      # 写成 SPRING_AI_DEEPSEEK_* 时 Spring 不会绑定，LLM 调用将用 sk-placeholder 失败
+      LLM_API_KEY: ${LLM_API_KEY:-sk-placeholder}
+      LLM_BASE_URL: ${LLM_BASE_URL:-https://api.deepseek.com}
+      LLM_MODEL: ${LLM_MODEL:-deepseek-v4-flash}
+      # application.yml 读取 ${MINDSAFE_JWT_SECRET}，裸 JWT_SECRET 不会被使用
+      MINDSAFE_JWT_SECRET: ${JWT_SECRET:-mindsafe-jwt-secret-change-in-production}
       # 变量名必须与 application.yml 占位符 ${TTS_SERVICE_URL} 一致；
       # 写成 MINDSAFE_TTS_SERVICE_URL 时 Spring 松散绑定匹配不上，会回落 localhost
       TTS_SERVICE_URL: http://tts-service:10096

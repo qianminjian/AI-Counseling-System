@@ -580,6 +580,7 @@ public class ConversationServiceImpl implements ConversationService {
                 && java.util.Objects.equals(session.getStudentUserId(), studentUserId);
     }
 
+    @Transactional
     @Override
     public void endSession(UUID tenantId, UUID studentUserId, UUID sessionId) {
         SessionState session = sessionStateStore.get(sessionId);
@@ -589,9 +590,8 @@ public class ConversationServiceImpl implements ConversationService {
                 log.warn("endSession: 会话归属校验失败，拒绝: sessionId={}, tenantId={}, userId={}", sessionId, tenantId, studentUserId);
                 throw new BizException(ErrorCode.FORBIDDEN);
             }
-            sessionStateStore.remove(sessionId);
 
-            // 更新 DB 会话状态 + 轮次数
+            // 先落库再删缓存：DB 写失败时 Redis 会话状态不丢失（fix-tx）
             CounselingSession update = new CounselingSession();
             update.setSessionId(sessionId);
             update.setEndedAt(Instant.now());
@@ -599,6 +599,8 @@ public class ConversationServiceImpl implements ConversationService {
             update.setTurnCount(session.getTurnCount());
             update.setUpdatedAt(Instant.now());
             sessionMapper.updateById(update);
+
+            sessionStateStore.remove(sessionId);
 
             // 清除 AI 对话记忆
             aiChatService.clearMemory(sessionId);

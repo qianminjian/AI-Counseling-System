@@ -23,6 +23,9 @@ import static org.mockito.Mockito.when;
  * <p>
  * 覆盖四条纪律：场景触发（闲聊不检索）、年级过滤（grade_band 标注）、
  * 危机隔离（crisis_intervention 双保险剔除）、不覆盖安全（尾注声明）+ 失败安全（异常返空串）。
+ * <p>
+ * KB-103：混合检索接主线——向量+关键词双路宽召回 → fuseRRF 精排（真实实例，纯函数组件），
+ * 关键词路异常降级纯向量路。
  */
 class RagAdvisorServiceTest {
 
@@ -35,12 +38,17 @@ class RagAdvisorServiceTest {
     @BeforeEach
     void setUp() {
         knowledgeBaseService = mock(KnowledgeBaseService.class);
-        hybridRetrievalService = mock(HybridRetrievalService.class);
+        // KB-103：fuseRRF 为纯函数，用真实实例参与融合排序（mock 默认返空会架空整条融合链）
+        hybridRetrievalService = new HybridRetrievalService();
         service = new RagAdvisorService(knowledgeBaseService, hybridRetrievalService);
     }
 
     private KnowledgeChunk chunk(String title, String category, String content) {
         return new KnowledgeChunk(UUID.randomUUID(), UUID.randomUUID(), content, 0, title, category, 0.85);
+    }
+
+    private KnowledgeChunk chunkWithId(UUID chunkId, String title, String category, String content, double score) {
+        return new KnowledgeChunk(chunkId, UUID.randomUUID(), content, 0, title, category, score);
     }
 
     @Nested
@@ -103,7 +111,7 @@ class RagAdvisorServiceTest {
         @Test
         @DisplayName("检索结果按学生年级段过滤（低年级学生剔除 mid,high 语料）")
         void buildRagContext_filtersByGrade() {
-            when(knowledgeBaseService.search(tenantId, "我很难过怎么办", 3)).thenReturn(List.of(
+            when(knowledgeBaseService.search(tenantId, "我很难过怎么办", 5)).thenReturn(List.of(
                     chunk("KB-001 情绪认知", "emotion_management", "【适用年级段 grade_band: all】\n情绪没有好坏"),
                     chunk("KB-030 考试焦虑", "cbt_technique", "【适用年级段 grade_band: mid,high】\n考试焦虑调节")));
 
@@ -120,7 +128,7 @@ class RagAdvisorServiceTest {
         @Test
         @DisplayName("crisis_intervention 类结果双保险剔除")
         void crisisChunksExcluded() {
-            when(knowledgeBaseService.search(tenantId, "我很难过怎么办", 3)).thenReturn(List.of(
+            when(knowledgeBaseService.search(tenantId, "我很难过怎么办", 5)).thenReturn(List.of(
                     chunk("KB-053 危机干预", "crisis_intervention", "【适用年级段 grade_band: all】\n危机流程"),
                     chunk("KB-001 情绪认知", "emotion_management", "【适用年级段 grade_band: all】\n情绪没有好坏")));
 
@@ -132,7 +140,7 @@ class RagAdvisorServiceTest {
         @Test
         @DisplayName("格式化输出：含安全尾注，grade_band 标注被剥除")
         void formatContainsSafetyFooterAndStripsAnnotation() {
-            when(knowledgeBaseService.search(tenantId, "我很难过怎么办", 3)).thenReturn(List.of(
+            when(knowledgeBaseService.search(tenantId, "我很难过怎么办", 5)).thenReturn(List.of(
                     chunk("KB-001 情绪认知", "emotion_management", "【适用年级段 grade_band: all】\n情绪没有好坏")));
 
             String result = service.buildRagContext(tenantId, "我很难过怎么办", 3);
@@ -147,7 +155,7 @@ class RagAdvisorServiceTest {
         @Test
         @DisplayName("全部命中被过滤 → 空串")
         void allFiltered_returnsEmpty() {
-            when(knowledgeBaseService.search(tenantId, "我很难过怎么办", 3)).thenReturn(List.of(
+            when(knowledgeBaseService.search(tenantId, "我很难过怎么办", 5)).thenReturn(List.of(
                     chunk("KB-053 危机干预", "crisis_intervention", "危机流程")));
 
             assertThat(service.buildRagContext(tenantId, "我很难过怎么办", 3)).isEmpty();
@@ -160,6 +168,61 @@ class RagAdvisorServiceTest {
                     .thenThrow(new RuntimeException("pgvector unavailable"));
 
             assertThat(service.buildRagContext(tenantId, "我很难过怎么办", 3)).isEmpty();
+        }
+    }
+
+    @Nested
+    @DisplayName("KB-103 混合检索（向量 + 关键词双路 RRF 融合）")
+    class HybridRetrieval {
+
+        @Test
+        @DisplayName("纯关键词路命中 → 可注入（向量路空）")
+        void keywordOnly_chunksInjected() {
+            when(knowledgeBaseService.search(tenantId, "考试紧张怎么办", 5)).thenReturn(List.of());
+            when(knowledgeBaseService.searchKeyword(tenantId, "考试紧张怎么办", 5)).thenReturn(List.of(
+                    chunk("KB-012 考试焦虑应对", "cbt_technique", "【适用年级段 grade_band: all】\n深呼吸放松法")));
+
+            String result = service.buildRagContext(tenantId, "考试紧张怎么办", 4);
+
+            assertThat(result).contains("KB-012").contains("深呼吸放松法");
+        }
+
+        @Test
+        @DisplayName("双路同时命中同一块 → 去重且 RRF 排第一；仅单路命中的排其后")
+        void dualHit_dedupAndRankedFirst() {
+            UUID sharedId = UUID.randomUUID();
+            KnowledgeChunk dualChunkV = chunkWithId(sharedId, "KB-001 情绪认知", "emotion_management",
+                    "【适用年级段 grade_band: all】\n情绪没有好坏", 0.9);
+            KnowledgeChunk dualChunkK = chunkWithId(sharedId, "KB-001 情绪认知", "emotion_management",
+                    "【适用年级段 grade_band: all】\n情绪没有好坏", 3.0);
+            KnowledgeChunk vectorOnly = chunk("KB-002 睡眠", "emotion_management",
+                    "【适用年级段 grade_band: all】\n睡前放松");
+
+            when(knowledgeBaseService.search(tenantId, "我很难过怎么办", 5))
+                    .thenReturn(List.of(dualChunkV, vectorOnly));
+            when(knowledgeBaseService.searchKeyword(tenantId, "我很难过怎么办", 5))
+                    .thenReturn(List.of(dualChunkK));
+
+            String result = service.buildRagContext(tenantId, "我很难过怎么办", 3);
+
+            assertThat(result)
+                    .contains("[1] (emotion_management) KB-001 情绪认知")
+                    .contains("KB-002");
+            // 双路命中块只出现一次（去重）
+            assertThat(result.indexOf("KB-001")).isEqualTo(result.lastIndexOf("KB-001"));
+        }
+
+        @Test
+        @DisplayName("关键词路异常 → 降级纯向量路，仍有输出")
+        void keywordFailure_degradesToVectorOnly() {
+            when(knowledgeBaseService.search(tenantId, "我很难过怎么办", 5)).thenReturn(List.of(
+                    chunk("KB-001 情绪认知", "emotion_management", "【适用年级段 grade_band: all】\n情绪没有好坏")));
+            when(knowledgeBaseService.searchKeyword(any(), anyString(), anyInt()))
+                    .thenThrow(new RuntimeException("keyword search failed"));
+
+            String result = service.buildRagContext(tenantId, "我很难过怎么办", 3);
+
+            assertThat(result).contains("KB-001");
         }
     }
 }

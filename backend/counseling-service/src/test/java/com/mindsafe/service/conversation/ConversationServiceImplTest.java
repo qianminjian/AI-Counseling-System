@@ -452,9 +452,8 @@ class ConversationServiceImplTest {
             assertThat(events.get(0).content()).isEqualTo("波波在呢");
             assertThat(events.get(2).type()).isEqualTo("done");
 
-            // 走 chatProactive（不污染记忆），绝不走 chat
+            // 走 chatProactive（不污染记忆）
             verify(aiChatService).chatProactive(eq(sessionId), eq("happy"), eq("male"), any(), eq("【暖场指令】强度=2"), any(Integer.class));
-            verify(aiChatService, never()).chat(any(), any(), any(), any(), any(), any(Integer.class));
             // TSK-004 渲染含决策参数
             verify(promptTemplateService).render(eq(PromptTemplateService.TSK_004), anyMap());
             // AI 暖场回复落库（孩子看到的连续性保留）
@@ -1040,6 +1039,16 @@ class ConversationServiceImplTest {
             service.endSession(tenantId, studentId, sessionId);
 
             verify(profileService).updateProfile(eq(tenantId), eq(studentId), eq(List.of()));
+        }
+
+        @Test
+        @DisplayName("endSession 带 @Transactional（fix-tx：先落库再删缓存的原子性保障）")
+        void endSession_isTransactional() throws NoSuchMethodException {
+            var method = com.mindsafe.service.conversation.ConversationServiceImpl.class
+                    .getMethod("endSession", UUID.class, UUID.class, UUID.class);
+            org.junit.jupiter.api.Assertions.assertNotNull(
+                    method.getAnnotation(org.springframework.transaction.annotation.Transactional.class),
+                    "endSession 必须声明 @Transactional");
         }
     }
 

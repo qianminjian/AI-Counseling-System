@@ -21,6 +21,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeast;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -163,40 +164,6 @@ class KnowledgeBaseServiceTest {
     }
 
     @Nested
-    @DisplayName("buildRagContext 上下文格式化")
-    class RagContext {
-
-        @Test
-        @DisplayName("无检索结果 → 空串")
-        void emptyResults_emptyString() {
-            when(embeddingModel.embed(anyString())).thenReturn(new float[]{0.1f});
-            when(jdbcTemplate.query(anyString(), any(RowMapper.class),
-                    any(), any(), any(), any(), any(), any())).thenReturn(List.of());
-
-            assertThat(service.buildRagContext(tenantId, "查询")).isEmpty();
-        }
-
-        @Test
-        @DisplayName("有结果 → 编号列表 + 安全尾注")
-        void formattedWithSafetyFooter() {
-            UUID chunkId = UUID.randomUUID();
-            UUID docId = UUID.randomUUID();
-            when(embeddingModel.embed(anyString())).thenReturn(new float[]{0.1f});
-            when(jdbcTemplate.query(anyString(), any(RowMapper.class),
-                    any(), any(), any(), any(), any(), any()))
-                    .thenReturn(List.of(new KnowledgeBaseService.KnowledgeChunk(
-                            chunkId, docId, "内容正文", 0, "KB-001", "emotion_management", 0.9)));
-
-            String context = service.buildRagContext(tenantId, "查询");
-
-            assertThat(context)
-                    .contains("参考知识")
-                    .contains("[1] (emotion_management) KB-001")
-                    .contains("不要照搬");
-        }
-    }
-
-    @Nested
     @DisplayName("审核工作流（KB-102，V30）")
     class ReviewWorkflow {
 
@@ -269,6 +236,41 @@ class KnowledgeBaseServiceTest {
             verify(jdbcTemplate).update(
                     argThat((String sql) -> sql.contains("DELETE FROM tenant_template.knowledge_documents")),
                     eq(docId));
+        }
+    }
+
+    @Nested
+    @DisplayName("关键词检索（KB-103 混合检索关键词路）")
+    class KeywordSearch {
+
+        @Test
+        @DisplayName("词元提取：短串整段成词；长中文段 2-gram 滑窗")
+        void extractTokens_shortAndBigram() {
+            assertThat(KnowledgeBaseService.extractKeywordTokens(null)).isEmpty();
+            assertThat(KnowledgeBaseService.extractKeywordTokens("   ")).isEmpty();
+            assertThat(KnowledgeBaseService.extractKeywordTokens("难过")).containsExactly("难过");
+            assertThat(KnowledgeBaseService.extractKeywordTokens("CBT")).containsExactly("CBT");
+            // 7 字长段 → 6 个 2-gram
+            assertThat(KnowledgeBaseService.extractKeywordTokens("考试紧张怎么办"))
+                    .containsExactly("考试", "试紧", "紧张", "张怎", "怎么", "么办");
+        }
+
+        @Test
+        @DisplayName("词元提取：去重且上限 8 个")
+        void extractTokens_dedupAndCap() {
+            List<String> tokens = KnowledgeBaseService.extractKeywordTokens(
+                    "考试考试考试考试考试考试考试考试考试考试");
+            assertThat(tokens).hasSizeLessThanOrEqualTo(8);
+            assertThat(tokens).doesNotHaveDuplicates();
+        }
+
+        @Test
+        @DisplayName("无可提取词元 → 直接返空，不查库")
+        void noTokens_noQuery() {
+            List<KnowledgeBaseService.KnowledgeChunk> result = service.searchKeyword(tenantId, "，。！", 5);
+
+            assertThat(result).isEmpty();
+            verify(jdbcTemplate, never()).query(anyString(), any(RowMapper.class), any(Object[].class));
         }
     }
 }

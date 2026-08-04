@@ -31,13 +31,20 @@ export interface SessionInfo {
   emotionTag: string
 }
 
+/** 语音情绪对象（/api/v1/voice/analyze 返回，Java 端 VoiceController 组装） */
+export interface VoiceEmotion {
+  label: string
+  labelEn: string
+  confidence: number
+  scores: number[]
+}
+
 export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: SessionInfo; onEnd: () => void; onSwitchUser?: () => void }) {
   const [messages, setMessages] = useState<import('./MessageBubble').ChatMessage[]>([
     { role: 'assistant', content: session.greeting, emotion: session.emotionTag },
   ])
   const [input, setInput] = useState('')
   const [streaming, setStreaming] = useState(false)
-  const [voiceEmotion, setVoiceEmotion] = useState(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [toolboxOpen, setToolboxOpen] = useState(false) // 百宝箱（F-2，design/36）
   const [sosOpen, setSosOpen] = useState(false) // SOS 面板（design/36 §3.4 全局常驻）
@@ -75,7 +82,7 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: Se
   const userGender = getUser()?.gender
   const tts = useTtsPlayer({
     persona: personaId,
-    emotion: voiceEmotion?.labelEn || 'neutral',
+    emotion: 'neutral',
     speed: userGender === 'male' ? 1.05 : userGender === 'female' ? 0.95 : 1.0,
     dialect: activeDialect,
   })
@@ -389,7 +396,7 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: Se
     return t
   }
 
-  const sendMessage = async (autoText?: string, autoEmotion?: string | null) => {
+  const sendMessage = async (autoText?: string, autoEmotion?: VoiceEmotion | null) => {
     const text = deduplicateText((autoText ?? input).trim())
     if (!text || streaming) return false
 
@@ -401,8 +408,8 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: Se
     // 在发送时（AI 生成前）就释放，给系统留足切回扬声器的时间，确保整段回复走扩音
     releaseStream()
 
-    // 语音自动发送时用传入的 emotion（修复此前服务端情绪从未存入 state 的问题）；手动打字时用当前 state
-    const emotion = autoEmotion !== undefined ? autoEmotion : voiceEmotion
+    // 语音自动发送时用传入的 emotion（服务端情绪存入 state）；手动打字时无情绪标注
+    const emotion = autoEmotion
 
     const body: Record<string, unknown> = { content: text }
     if (emotion) {
@@ -414,9 +421,8 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: Se
     body.ttsMuted = tts.muted
     body.wakeEnabled = wakeEnabled
 
-    const msgEmotion = emotion
+    const msgEmotion = emotion?.labelEn
     setInput('')
-    setVoiceEmotion(null)
     // 冷场引导：孩子一说话即重置沉默计时 + 清零连续暖场计数
     recordInteraction()
     setMessages((prev) => [...prev, { role: 'user', content: text, emotion: msgEmotion }])
@@ -775,8 +781,6 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: Se
                 正在识别，马上发送...
               </div>
             )}
-
-            {/* 手机语音情绪预览（voiceEmotion 当前流程中始终为 null，保留状态供后续扩展） */}
 
             <div className="relative flex gap-3 max-w-lg lg:max-w-2xl mx-auto items-center">
               <input

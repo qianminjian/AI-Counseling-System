@@ -175,6 +175,7 @@ services:
       - internal
 
   # P1-2: 每日凌晨 2 点自动 pg_dump 备份（保留 7 天）
+  # 写入 daily/ 子目录：与 backup.sh/restore.sh 的 volume 目录约定一致（restore.sh 只列 daily/weekly/monthly）
   db-backup:
     image: pgvector/pgvector:pg16
     container_name: mindsafe-db-backup
@@ -187,9 +188,9 @@ services:
     volumes:
       - dbbackups:/backups
     entrypoint: >
-      sh -c 'while true; do
-        pg_dump -Fc -f /backups/mindsafe_$(date +%Y%m%d_%H%M%S).dump;
-        find /backups -name "*.dump" -mtime +7 -delete;
+      sh -c 'mkdir -p /backups/daily && while true; do
+        pg_dump -Fc -f /backups/daily/mindsafe_$(date +%Y%m%d_%H%M%S).dump;
+        find /backups/daily -name "*.dump" -mtime +7 -delete;
         sleep 86400;
       done'
     depends_on:

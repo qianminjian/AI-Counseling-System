@@ -7,6 +7,8 @@
  * - needsAttention=true（心情恶化）→ 显示温和引导话术，不指责
  * - recordMoodCheck 失败不阻塞完成界面（可用性优先）
  * - 无心情记录标记的工具 → 直接练习，完成后直接展示完成态
+ * - 内容包（design/36 §3.2）：练习阶段分步展示引导文案，按建议时长自动推进，可手动下一步；
+ *   无内容包的工具降级为纯倒计时
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
@@ -118,5 +120,56 @@ describe('ToolPractice', () => {
     render(<ToolPractice tool={baseTool} onClose={onClose} />)
     fireEvent.click(screen.getByText('✕'))
     expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  // ===== 结构化内容包（design/36 §3.2） =====
+
+  function enterPractice(tool = baseTool) {
+    render(<ToolPractice tool={tool} onClose={vi.fn()} />)
+    fireEvent.click(screen.getByText('😊'))
+    fireEvent.click(screen.getByText(/开始/))
+  }
+
+  it('练习阶段展示内容包第一步引导文案与进度', () => {
+    enterPractice()
+    expect(screen.getByText(/第 1 \/ 6 步/)).toBeTruthy()
+    expect(screen.getByText(/把小手轻轻放在肚子上/)).toBeTruthy()
+    expect(screen.getByText(/下一步/)).toBeTruthy()
+  })
+
+  it('步骤建议时长到达后自动推进到下一步', () => {
+    vi.useFakeTimers()
+    enterPractice()
+    expect(screen.getByText(/第 1 \/ 6 步/)).toBeTruthy()
+    // breathing_box 第一步建议 20s
+    act(() => { vi.advanceTimersByTime(20_000) })
+    expect(screen.getByText(/第 2 \/ 6 步/)).toBeTruthy()
+    expect(screen.getByText(/用鼻子慢慢吸气/)).toBeTruthy()
+  })
+
+  it('点击下一步手动推进', () => {
+    enterPractice()
+    fireEvent.click(screen.getByText(/下一步/))
+    expect(screen.getByText(/第 2 \/ 6 步/)).toBeTruthy()
+    expect(screen.getByText(/用鼻子慢慢吸气/)).toBeTruthy()
+  })
+
+  it('最后一步不显示下一步按钮', () => {
+    vi.useFakeTimers()
+    enterPractice()
+    for (let i = 0; i < 5; i++) {
+      fireEvent.click(screen.getByText(/下一步/))
+    }
+    expect(screen.getByText(/第 6 \/ 6 步/)).toBeTruthy()
+    expect(screen.queryByText(/下一步/)).toBeNull()
+    expect(screen.getByText(/我完成啦/)).toBeTruthy()
+  })
+
+  it('无内容包的工具降级为纯倒计时', () => {
+    const tool = { ...baseTool, toolId: 'unknown_tool' }
+    enterPractice(tool)
+    expect(screen.queryByText(/第 1 \/ 6 步/)).toBeNull()
+    expect(screen.getByText(/跟着波波慢慢来/)).toBeTruthy()
+    expect(screen.queryByText(/下一步/)).toBeNull()
   })
 })
