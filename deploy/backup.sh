@@ -31,8 +31,9 @@ RETAIN_DAILY=7
 RETAIN_WEEKLY=4
 RETAIN_MONTHLY=3
 # 本地暂存（校验 + 异地同步用，volume 内为唯一事实源）
-STAGING_DIR="/guju/mindsafe/backups"
-LOG_DIR="/guju/mindsafe/logs"
+# fix-deploy：路径从硬编码改为可配置（默认保持兼容），便于多机器部署
+STAGING_DIR="${BACKUP_STAGING_DIR:-/guju/mindsafe/backups}"
+LOG_DIR="${BACKUP_LOG_DIR:-/guju/mindsafe/logs}"
 
 # 异地备份（可选，留空则跳过）
 REMOTE_BACKUP_HOST="${REMOTE_BACKUP_HOST:-}"

@@ -12,6 +12,7 @@ import json
 import logging
 import os
 import threading
+import time
 from typing import Optional
 
 import httpx
@@ -284,20 +285,27 @@ async def synthesize(req: TtsRequest):
     )
     actual_voice = override_voice or persona_cfg["dashscope_voice"]
 
-    logger.info(f"TTS 合成: text_len={len(req.text)}, persona={req.persona}, "
+    t_start = time.time()
+    logger.debug(f"TTS 请求: text_len={len(req.text)}, persona={req.persona}, "
                 f"emotion={req.emotion}, speed={final_speed:.2f}, dialect={req.dialect}, "
                 f"voice={actual_voice}, instruction={instruction}")
 
     # Level 1：阿里云 CosyVoice
     if CLOUD_TTS_AVAILABLE:
         try:
-            return await _synthesize_dashscope(req.text, actual_voice, final_speed, instruction)
+            resp = await _synthesize_dashscope(req.text, actual_voice, final_speed, instruction)
+            logger.info(f"TTS 合成完成 [cosyvoice]: text_len={len(req.text)}, voice={actual_voice}, "
+                        f"elapsed={time.time() - t_start:.3f}s")
+            return resp
         except Exception as e:
             if instruction:
                 # Instruct 失败 → 无指令重试（保留音色品质）
                 logger.warning(f"CosyVoice Instruct 失败，无指令重试: voice={actual_voice}, instruction={instruction}")
                 try:
-                    return await _synthesize_dashscope(req.text, actual_voice, final_speed, None)
+                    resp = await _synthesize_dashscope(req.text, actual_voice, final_speed, None)
+                    logger.info(f"TTS 合成完成 [cosyvoice-no-instruct]: text_len={len(req.text)}, voice={actual_voice}, "
+                                f"elapsed={time.time() - t_start:.3f}s")
+                    return resp
                 except Exception as e2:
                     logger.warning(f"CosyVoice 无指令重试也失败，降级 edge-tts: {e2}")
             else:
@@ -313,9 +321,12 @@ async def synthesize(req: TtsRequest):
                 if dialect_info and dialect_info.get("edge_voice"):
                     edge_voice = dialect_info["edge_voice"]
                 # 无对应 edge 方言音色 → 用默认普通话 edge_voice
-            return await _synthesize_edge_tts(req.text, edge_voice, final_speed, req.pitch)
+            resp = await _synthesize_edge_tts(req.text, edge_voice, final_speed, req.pitch)
+            logger.info(f"TTS 合成完成 [edge-tts]: text_len={len(req.text)}, voice={edge_voice}, "
+                        f"elapsed={time.time() - t_start:.3f}s")
+            return resp
         except Exception as e:
-            logger.error(f"edge-tts 也失败: {e}")
+            logger.error(f"edge-tts 也失败 (elapsed={time.time() - t_start:.3f}s): {e}")
 
     # Level 3：返回 503，前端自动降级到浏览器 speechSynthesis
     raise HTTPException(status_code=503, detail="TTS 服务不可用")
@@ -388,7 +399,7 @@ async def _synthesize_dashscope(text: str, voice: str, speed: float, instruction
     if not audio_bytes:
         raise RuntimeError(f"CosyVoice 返回空音频 (voice={voice})")
 
-    logger.info(f"CosyVoice 合成完成: voice={voice}, instruction={instruction}, bytes={len(audio_bytes)}")
+    logger.debug(f"CosyVoice 合成完成: voice={voice}, instruction={instruction}, bytes={len(audio_bytes)}")
     return StreamingResponse(
         io.BytesIO(audio_bytes),
         media_type="audio/mpeg",
@@ -415,7 +426,7 @@ async def _synthesize_edge_tts(text: str, voice: str, speed: float, pitch: float
         raise RuntimeError("edge-tts 返回音频为空")
 
     buffer.seek(0)
-    logger.info(f"edge-tts 合成成功: voice={voice}, bytes={buffer.tell()}")
+    logger.debug(f"edge-tts 合成成功: voice={voice}, bytes={buffer.tell()}")
     return StreamingResponse(
         buffer,
         media_type="audio/mpeg",

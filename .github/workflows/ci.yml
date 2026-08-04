@@ -187,4 +187,5 @@ jobs:
         run: npm run lint --if-present
 
       - name: Test
-        run: npm test --if-present
+        # fix-frontend：移除 --if-present，确保测试必须执行且失败时阻止构建
+        run: npm test

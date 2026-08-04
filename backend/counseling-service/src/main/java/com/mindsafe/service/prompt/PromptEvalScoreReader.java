@@ -8,6 +8,7 @@ import com.mindsafe.domain.mapper.QualityScoreMapper;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -67,12 +68,44 @@ public class PromptEvalScoreReader {
             return new EvalStat(sessions.size(), 0, 0.0);
         }
 
-        double avgEmpathy = dimensionMean(scores, q -> q.getEmpathyScore());
-        double avgCbt = dimensionMean(scores, q -> q.getCbtCompletion());
-        double avgSafety = dimensionMean(scores, q -> q.getSafetyCompliance());
-        double avgEngagement = dimensionMean(scores, q -> q.getEngagementScore());
+        double avgEmpathy = dimensionMean(scores, QualityScore::getEmpathyScore);
+        double avgCbt = dimensionMean(scores, QualityScore::getCbtCompletion);
+        double avgSafety = dimensionMean(scores, QualityScore::getSafetyCompliance);
+        double avgEngagement = dimensionMean(scores, QualityScore::getEngagementScore);
         double overall = (avgEmpathy + avgCbt + avgSafety + avgEngagement) / 4.0;
         return new EvalStat(sessions.size(), scores.size(), overall);
+    }
+
+    /**
+     * 按 versionTag 读取安全合规均值（fix-gate：rollout-eval 从库读数，拒绝自报）。
+     *
+     * @param versionTag 版本标识
+     * @return safety_compliance 均值（无数据时为 1.0，即假定合规）
+     */
+    public double readSafetyMean(String versionTag) {
+        List<CounselingSession> sessions = sessionMapper.selectList(
+                new LambdaQueryWrapper<CounselingSession>()
+                        .eq(CounselingSession::getPromptVersion, versionTag)
+                        .orderByDesc(CounselingSession::getStartedAt)
+                        .last("LIMIT " + MAX_SESSION_SCAN));
+        if (sessions.isEmpty()) {
+            return 1.0; // 无数据时假定合规（不阻断放量）
+        }
+
+        List<UUID> sessionIds = sessions.stream().map(CounselingSession::getSessionId).toList();
+        List<QualityScore> scores = qualityScoreMapper.selectList(
+                new LambdaQueryWrapper<QualityScore>()
+                        .in(QualityScore::getSessionId, sessionIds));
+        if (scores.isEmpty()) {
+            return 1.0;
+        }
+
+        return scores.stream()
+                .map(QualityScore::getSafetyCompliance)
+                .filter(Objects::nonNull)
+                .mapToDouble(java.math.BigDecimal::doubleValue)
+                .average()
+                .orElse(1.0);
     }
 
     private double dimensionMean(List<QualityScore> scores,

@@ -70,14 +70,14 @@ class EditorialWorkflowServiceTest {
         @Test
         @DisplayName("提交审核：draft → in_review（门禁过）落库+审计")
         void submitForReview_success() {
-            when(knowledgeBaseService.findDocumentStatus(docId)).thenReturn("draft");
+            when(knowledgeBaseService.findDocumentStatus(tenantId, docId)).thenReturn("draft");
 
             EditorialWorkflowService.TransitionResult result = service.submitForReview(
                     tenantId, operatorId, docId, validRequest());
 
             assertTrue(result.success());
             assertEquals("in_review", result.toStatus());
-            verify(knowledgeBaseService).transitionReviewStatus(docId, "in_review",
+            verify(knowledgeBaseService).transitionReviewStatus(tenantId, docId, "in_review",
                     "mid", "clinical_authored", "高", null);
             verify(auditLogService).log(eq(tenantId), eq(operatorId),
                     eq("EDITORIAL_SUBMIT_REVIEW"), eq("knowledge_document"), eq(docId), anyString());
@@ -86,7 +86,7 @@ class EditorialWorkflowServiceTest {
         @Test
         @DisplayName("提交审核缺年级段 → 门禁拒绝，不落库不审计")
         void submitForReview_missingGradeBand_rejected() {
-            when(knowledgeBaseService.findDocumentStatus(docId)).thenReturn("draft");
+            when(knowledgeBaseService.findDocumentStatus(tenantId, docId)).thenReturn("draft");
 
             EditorialWorkflowService.TransitionResult result = service.submitForReview(
                     tenantId, operatorId, docId,
@@ -96,14 +96,14 @@ class EditorialWorkflowServiceTest {
             assertFalse(result.success());
             assertTrue(String.join(";", result.violations()).contains("grade_band"));
             verify(knowledgeBaseService, never()).transitionReviewStatus(
-                    any(), anyString(), any(), any(), any(), any());
+                    any(), any(), anyString(), any(), any(), any(), any());
             verify(auditLogService, never()).log(any(), any(), anyString(), anyString(), any(), any());
         }
 
         @Test
         @DisplayName("发布：in_review → published（四门禁全过）")
         void publish_success() {
-            when(knowledgeBaseService.findDocumentStatus(docId)).thenReturn("in_review");
+            when(knowledgeBaseService.findDocumentStatus(tenantId, docId)).thenReturn("in_review");
 
             EditorialWorkflowService.TransitionResult result = service.publish(
                     tenantId, operatorId, docId, validRequest());
@@ -111,7 +111,7 @@ class EditorialWorkflowServiceTest {
             assertTrue(result.success());
             assertEquals("published", result.toStatus());
             assertTrue(result.searchable());
-            verify(knowledgeBaseService).transitionReviewStatus(docId, "published",
+            verify(knowledgeBaseService).transitionReviewStatus(tenantId, docId, "published",
                     "mid", "clinical_authored", "高", "临床组-王老师");
             verify(auditLogService).log(eq(tenantId), eq(operatorId),
                     eq("EDITORIAL_PUBLISH"), eq("knowledge_document"), eq(docId), anyString());
@@ -120,7 +120,7 @@ class EditorialWorkflowServiceTest {
         @Test
         @DisplayName("发布缺审核人 → 版本留痕门禁拒绝")
         void publish_missingReviewer_rejected() {
-            when(knowledgeBaseService.findDocumentStatus(docId)).thenReturn("in_review");
+            when(knowledgeBaseService.findDocumentStatus(tenantId, docId)).thenReturn("in_review");
 
             EditorialWorkflowService.TransitionResult result = service.publish(
                     tenantId, operatorId, docId,
@@ -134,7 +134,7 @@ class EditorialWorkflowServiceTest {
         @Test
         @DisplayName("危机类发布：缺 safety_sensitive 判定 → 红队门禁拒绝")
         void publish_crisisWithoutSafetyFlag_rejected() {
-            when(knowledgeBaseService.findDocumentStatus(docId)).thenReturn("in_review");
+            when(knowledgeBaseService.findDocumentStatus(tenantId, docId)).thenReturn("in_review");
 
             // crisis_intervention 类由编排层强制 safety_sensitive=true；
             // 缺循证等级 + 缺审核人 → 多重违规全透出
@@ -150,7 +150,7 @@ class EditorialWorkflowServiceTest {
         @Test
         @DisplayName("非法转移：draft 直接发布 → 状态机拒绝")
         void publish_fromDraft_rejected() {
-            when(knowledgeBaseService.findDocumentStatus(docId)).thenReturn("draft");
+            when(knowledgeBaseService.findDocumentStatus(tenantId, docId)).thenReturn("draft");
 
             EditorialWorkflowService.TransitionResult result = service.publish(
                     tenantId, operatorId, docId, validRequest());
@@ -162,7 +162,7 @@ class EditorialWorkflowServiceTest {
         @Test
         @DisplayName("deprecated 不可恢复发布（铁律）")
         void publish_fromDeprecated_rejected() {
-            when(knowledgeBaseService.findDocumentStatus(docId)).thenReturn("deprecated");
+            when(knowledgeBaseService.findDocumentStatus(tenantId, docId)).thenReturn("deprecated");
 
             EditorialWorkflowService.TransitionResult result = service.publish(
                     tenantId, operatorId, docId, validRequest());
@@ -173,7 +173,7 @@ class EditorialWorkflowServiceTest {
         @Test
         @DisplayName("驳回：in_review → draft 允许（无额外门禁）")
         void reject_backToDraft() {
-            when(knowledgeBaseService.findDocumentStatus(docId)).thenReturn("in_review");
+            when(knowledgeBaseService.findDocumentStatus(tenantId, docId)).thenReturn("in_review");
 
             EditorialWorkflowService.TransitionResult result = service.reject(
                     tenantId, operatorId, docId, "循证依据不足");
@@ -188,7 +188,7 @@ class EditorialWorkflowServiceTest {
         @Test
         @DisplayName("下线：published → deprecated 允许")
         void deprecate_fromPublished() {
-            when(knowledgeBaseService.findDocumentStatus(docId)).thenReturn("published");
+            when(knowledgeBaseService.findDocumentStatus(tenantId, docId)).thenReturn("published");
 
             EditorialWorkflowService.TransitionResult result = service.deprecate(
                     tenantId, operatorId, docId, "内容过时");
@@ -201,7 +201,7 @@ class EditorialWorkflowServiceTest {
         @Test
         @DisplayName("文档不存在 → 失败且不触达状态机")
         void missingDocument_rejected() {
-            when(knowledgeBaseService.findDocumentStatus(docId)).thenReturn(null);
+            when(knowledgeBaseService.findDocumentStatus(tenantId, docId)).thenReturn(null);
 
             EditorialWorkflowService.TransitionResult result = service.publish(
                     tenantId, operatorId, docId, validRequest());

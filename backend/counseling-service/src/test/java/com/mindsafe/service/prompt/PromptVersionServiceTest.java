@@ -355,8 +355,8 @@ class PromptVersionServiceTest {
         }
 
         @Test
-        @DisplayName("基线有数据但目标评分样本不足 → 门禁拒绝（防止无数据版本替换已验证版本）")
-        void insufficientEvalData_rejected() {
+        @DisplayName("基线有数据但目标评分样本不足 → 冷启动宽限允许激活（fix-gate：避免 deadlock）")
+        void insufficientEvalData_coldStartAllowed() {
             UUID versionId = UUID.randomUUID();
             PromptVersion target = PromptVersion.create(tenantId, "SYS_001", 2, safeContent, null, "control", null);
             PromptVersion oldActive = PromptVersion.create(tenantId, "SYS_001", 1, safeContent, null, "control", null);
@@ -368,9 +368,9 @@ class PromptVersionServiceTest {
             when(evalScoreReader.read("SYS_001:v1:control"))
                     .thenReturn(new PromptEvalScoreReader.EvalStat(10, 8, 0.90));
 
-            IllegalStateException ex = assertThrows(IllegalStateException.class,
-                    () -> service.activateVersion(versionId, "钱老师"));
-            assertTrue(ex.getMessage().contains("eval 数据不足"), ex.getMessage());
+            // fix-gate：冷启动宽限期，评分样本不足不拒绝激活
+            assertDoesNotThrow(() -> service.activateVersion(versionId, "钱老师"));
+            assertTrue(target.getIsActive());
         }
 
         @Test

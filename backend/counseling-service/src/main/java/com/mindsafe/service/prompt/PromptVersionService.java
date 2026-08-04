@@ -263,8 +263,11 @@ public class PromptVersionService {
                         newStat.overallScore(), baseStat.overallScore(),
                         newStat.scoredCount(), baseStat.scoredCount());
                 if (newStat.scoredCount() < PromptEvalScoreReader.MIN_EVAL_SAMPLES) {
-                    evalFailures.add(String.format("eval 数据不足: 目标版本仅 %d 条评分样本（至少 %d 条）",
-                            newStat.scoredCount(), PromptEvalScoreReader.MIN_EVAL_SAMPLES));
+                    // 冷启动宽限期：目标版本评分样本不足，允许激活但记录警告（fix-gate: 避免死锁）
+                    log.warn("eval 冷启动：目标版本 {} 仅 {} 条评分样本（至少 {} 条），允许激活但需后续 rollout-eval 监控",
+                            target.versionTag(), newStat.scoredCount(), PromptEvalScoreReader.MIN_EVAL_SAMPLES);
+                    evalNote = String.format("eval 冷启动：目标版本评分样本不足（%d/%d），已允许激活",
+                            newStat.scoredCount(), PromptEvalScoreReader.MIN_EVAL_SAMPLES);
                 } else if (newStat.overallScore() < baseStat.overallScore()) {
                     evalFailures.add(String.format("eval 分数回退：%.3f < 基线 %.3f",
                             newStat.overallScore(), baseStat.overallScore()));

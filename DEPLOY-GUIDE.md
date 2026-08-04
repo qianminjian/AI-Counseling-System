@@ -270,7 +270,7 @@ git push origin feature/xxx
 | 文件 | 用途 |
 |------|------|
 | `.github/workflows/ci.yml` | PR 检查（后端编译 + 前端构建） |
-| `.github/workflows/deploy.yml` | 自动部署（Build → GHCR → SSH） |
+| `.github/workflows/cd.yml` | 自动部署（Build → GHCR → SSH） |
 | `deploy/docker-compose.test.yml` | 轻量测试环境（不含 voice/tts） |
 | `deploy/docker-compose.prod.yml` | 完整生产环境（含 voice/tts） |
 | `deploy/nginx/default.conf` | Nginx 双域名反向代理 |

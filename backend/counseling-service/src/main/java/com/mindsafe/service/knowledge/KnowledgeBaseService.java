@@ -210,12 +210,12 @@ public class KnowledgeBaseService {
     }
 
     /**
-     * 删除文档（级联删除分块）
+     * 删除文档（级联删除分块）。B3 修复：加 tenant_id 过滤防跨租户越权。
      */
     @Transactional
-    public void deleteDocument(UUID docId) {
-        jdbcTemplate.update("DELETE FROM tenant_template.knowledge_documents WHERE doc_id = ?", docId);
-        log.info("知识文档已删除: docId={}", docId);
+    public void deleteDocument(UUID tenantId, UUID docId) {
+        jdbcTemplate.update("DELETE FROM tenant_template.knowledge_documents WHERE tenant_id = ? AND doc_id = ?", tenantId, docId);
+        log.info("知识文档已删除: tenantId={}, docId={}", tenantId, docId);
     }
 
     /**
@@ -233,27 +233,27 @@ public class KnowledgeBaseService {
     }
 
     /**
-     * 查询文档当前审核状态（DB 真实值，不信请求体）。
+     * 查询文档当前审核状态（DB 真实值，不信请求体）。B3 修复：加 tenant_id 过滤。
      *
      * @return status 字符串，文档不存在时返回 null
      */
-    public String findDocumentStatus(UUID docId) {
+    public String findDocumentStatus(UUID tenantId, UUID docId) {
         List<String> rows = jdbcTemplate.queryForList(
-                "SELECT status FROM tenant_template.knowledge_documents WHERE doc_id = ?",
-                String.class, docId);
+                "SELECT status FROM tenant_template.knowledge_documents WHERE tenant_id = ? AND doc_id = ?",
+                String.class, tenantId, docId);
         return rows.isEmpty() ? null : rows.get(0);
     }
 
     /**
-     * 审核状态转移落库（KB-102，V30 审核字段）。
+     * 审核状态转移落库（KB-102，V30 审核字段）。B3 修复：加 tenant_id 过滤。
      * <p>
      * 门禁校验由调用方（KnowledgeBaseController + ReviewGateValidator）完成后调用；
      * 审核字段 COALESCE 保留旧值（允许分步补齐）。
      *
-     * @return 更新行数（0=文档不存在）
+     * @return 更新行数（0=文档不存在或不属该租户）
      */
     @Transactional
-    public int transitionReviewStatus(UUID docId, String targetStatus,
+    public int transitionReviewStatus(UUID tenantId, UUID docId, String targetStatus,
                                       String gradeBand, String sourceType,
                                       String evidenceLevel, String reviewer) {
         int rows = jdbcTemplate.update(
@@ -266,11 +266,11 @@ public class KnowledgeBaseService {
                     reviewer = COALESCE(?, reviewer),
                     reviewed_at = now(),
                     updated_at = now()
-                WHERE doc_id = ?
+                WHERE tenant_id = ? AND doc_id = ?
                 """,
-                targetStatus, gradeBand, sourceType, evidenceLevel, reviewer, docId);
-        log.info("知识审核状态落库: docId={}, targetStatus={}, reviewer={}, rows={}",
-                docId, targetStatus, reviewer, rows);
+                targetStatus, gradeBand, sourceType, evidenceLevel, reviewer, tenantId, docId);
+        log.info("知识审核状态落库: tenantId={}, docId={}, targetStatus={}, reviewer={}, rows={}",
+                tenantId, docId, targetStatus, reviewer, rows);
         return rows;
     }
 

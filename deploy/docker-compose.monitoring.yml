@@ -9,14 +9,20 @@ services:
     restart: unless-stopped
     ports:
       - "9090:9090"
+    environment:
+      # 本地开发：在 .env 中设 PROM_TARGETS=host.docker.internal:8080
+      - PROM_TARGETS=${PROM_TARGETS:-backend:8080}
+      - PROM_ENV=${PROM_ENV:-prod}
     volumes:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - promdata:/prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.retention.time=30d'
+      - '--web.enable-admin-api'
     networks:
       - monitoring
+      - internal
 
   grafana:
     image: grafana/grafana:latest
@@ -43,3 +49,6 @@ volumes:
 networks:
   monitoring:
     driver: bridge
+  internal:
+    name: mindsafe-internal
+    external: true

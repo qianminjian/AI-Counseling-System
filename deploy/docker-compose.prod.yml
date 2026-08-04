@@ -57,12 +57,15 @@ services:
       LLM_API_KEY: ${LLM_API_KEY}
       LLM_BASE_URL: ${LLM_BASE_URL:-https://api.deepseek.com}
       LLM_MODEL: ${LLM_MODEL:-deepseek-v4-flash}
+      DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:-}
       MINDSAFE_JWT_SECRET: ${JWT_SECRET}
       MINDSAFE_ENCRYPTION_KEY: ${ENCRYPTION_KEY}
       MINDSAFE_ENCRYPTION_KEY_VERSION: ${ENCRYPTION_KEY_VERSION:-1}
       MINDSAFE_ENCRYPTION_PREVIOUS_KEYS: ${ENCRYPTION_PREVIOUS_KEYS:-}
       MINDSAFE_ALERT_WECOM_WEBHOOK_URL: ${ALERT_WECOM_WEBHOOK_URL:-}
       MINDSAFE_ALERT_WECOM_MENTIONED: ${ALERT_WECOM_MENTIONED:-}
+      # SMS provider（fix-smsprov：prod profile 禁止 logging，必须显式设为 aliyun 并配齐四项 aliyun 凭证，
+      # 否则应用启动 fail-fast，创建 SmsService bean 失败）
       MINDSAFE_SMS_PROVIDER: ${SMS_PROVIDER:-logging}
       MINDSAFE_SMS_ALIYUN_ACCESS_KEY_ID: ${SMS_ALIYUN_ACCESS_KEY_ID:-}
       MINDSAFE_SMS_ALIYUN_ACCESS_KEY_SECRET: ${SMS_ALIYUN_ACCESS_KEY_SECRET:-}
@@ -206,4 +209,5 @@ volumes:
 
 networks:
   internal:
+    name: mindsafe-internal
     driver: bridge

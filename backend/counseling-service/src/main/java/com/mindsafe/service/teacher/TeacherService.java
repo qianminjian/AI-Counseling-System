@@ -9,6 +9,7 @@ import com.mindsafe.service.security.FieldEncryptionService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -157,9 +158,14 @@ public class TeacherService {
         List<RiskEvent> events = riskEventMapper.selectList(wrapper);
         Set<UUID> caseTrackedStudents = getCaseTrackedStudentIds(tenantId);
 
+        // 批量查询学生信息（避免 N+1）
+        Set<UUID> studentIds = events.stream().map(RiskEvent::getStudentUserId).collect(Collectors.toSet());
+        Map<UUID, User> studentMap = studentIds.isEmpty() ? Map.of()
+                : userMapper.selectBatchIds(studentIds).stream()
+                        .collect(Collectors.toMap(User::getUserId, u -> u));
+
         return events.stream().map(e -> {
-            // 查询学生信息
-            User student = userMapper.selectById(e.getStudentUserId());
+            User student = studentMap.get(e.getStudentUserId());
             String studentName = student != null ? student.getPseudonym() : "未知学生";
             boolean mutedFromTodo = alertTodoMutePolicy.isMutedFromTodo(
                     e.getRiskLevel(), caseTrackedStudents.contains(e.getStudentUserId()));
@@ -173,8 +179,9 @@ public class TeacherService {
 
     /**
      * 转派预警（design/35 §4.1）。
-     * 规则：转派后重置为 open（目标教师的“新预警”）；重置认领但不重置 SLA（detectedAt 不变）。
+     * 规则：转派后重置为 open（目标教师的"新预警"）；重置认领但不重置 SLA（detectedAt 不变）。
      */
+    @Transactional
     public void transferAlert(UUID tenantId, UUID riskEventId, UUID fromTeacherId,
                               UUID targetTeacherId, String note) {
         RiskEvent event = getEventWithTenantCheck(tenantId, riskEventId);
@@ -193,7 +200,7 @@ public class TeacherService {
         if (note != null && !note.isBlank()) {
             TeacherNote transferNote = TeacherNote.create(
                     tenantId, event.getStudentUserId(), fromTeacherId,
-                    "【预警转派】" + note, "transfer"
+                    fieldEncryptionService.encrypt("【预警转派】" + note), "transfer"
             );
             teacherNoteMapper.insert(transferNote);
         }
@@ -211,7 +218,7 @@ public class TeacherService {
         }
         TeacherNote note = TeacherNote.create(
                 tenantId, studentUserId, teacherUserId,
-                enabled ? CASE_TRACKING_ACTIVE : "inactive", CASE_TRACKING_NOTE_TYPE
+                fieldEncryptionService.encrypt(enabled ? CASE_TRACKING_ACTIVE : "inactive"), CASE_TRACKING_NOTE_TYPE
         );
         teacherNoteMapper.insert(note);
         log.info("个案跟踪标志更新: student={}, enabled={}", studentUserId, enabled);
@@ -227,7 +234,7 @@ public class TeacherService {
                         .orderByDesc(TeacherNote::getCreatedAt)
                         .last("LIMIT 1")
         );
-        return !notes.isEmpty() && CASE_TRACKING_ACTIVE.equals(notes.get(0).getContent());
+        return !notes.isEmpty() && CASE_TRACKING_ACTIVE.equals(fieldEncryptionService.decrypt(notes.get(0).getContent()));
     }
 
     /** 租户内全部个案跟踪中的学生 ID 集合（批量查询避免 N+1） */
@@ -247,7 +254,7 @@ public class TeacherService {
             }
         }
         return latestByStudent.values().stream()
-                .filter(n -> CASE_TRACKING_ACTIVE.equals(n.getContent()))
+                .filter(n -> CASE_TRACKING_ACTIVE.equals(fieldEncryptionService.decrypt(n.getContent())))
                 .map(TeacherNote::getStudentUserId)
                 .collect(Collectors.toSet());
     }
@@ -274,6 +281,7 @@ public class TeacherService {
     }
 
     /** 处理完成（线下干预后标记 resolved） */
+    @Transactional
     public void resolveAlert(UUID tenantId, UUID riskEventId, UUID teacherUserId, String resolutionNote) {
         RiskEvent event = getEventWithTenantCheck(tenantId, riskEventId);
         event.setStatus("resolved");
@@ -309,6 +317,7 @@ public class TeacherService {
     }
 
     /** DATA-004：完成回访（填写回访记录 + 最终评估） */
+    @Transactional
     public void completeFollowUp(UUID tenantId, UUID riskEventId, UUID teacherUserId,
                                  String followUpNote, String outcome) {
         RiskEvent event = getEventWithTenantCheck(tenantId, riskEventId);
@@ -378,7 +387,7 @@ public class TeacherService {
                     null, 0,
                     null, null,
                     notes.stream().map(n -> new NoteVO(
-                            n.getNoteId(), n.getTeacherUserId(), n.getContent(),
+                            n.getNoteId(), n.getTeacherUserId(), fieldEncryptionService.decrypt(n.getContent()),
                             n.getNoteType(), n.getCreatedAt()
                     )).toList()
             );
@@ -407,6 +416,9 @@ public class TeacherService {
                 .mapToInt(RiskEvent::getRiskLevel)
                 .max().orElse(0);
 
+        // 个案跟踪状态（提前计算避免 stream 内重复查询）
+        boolean caseTracking = isCaseTracking(tenantId, studentUserId);
+
         return new StudentProfileVO(
                 student.getUserId(), student.getPseudonym(),
                 student.getGradeCode(), student.getClassCode(),
@@ -419,10 +431,10 @@ public class TeacherService {
                         e.getRiskEventId(), e.getStudentUserId(), student.getPseudonym(),
                         e.getRiskType(), e.getRiskLevel(), e.getStatus(),
                         e.getDetectedAt(), e.getAssignedUserId(),
-                        alertTodoMutePolicy.isMutedFromTodo(e.getRiskLevel(), isCaseTracking(tenantId, studentUserId))
+                        alertTodoMutePolicy.isMutedFromTodo(e.getRiskLevel(), caseTracking)
                 )).toList(),
                 notes.stream().map(n -> new NoteVO(
-                        n.getNoteId(), n.getTeacherUserId(), n.getContent(),
+                        n.getNoteId(), n.getTeacherUserId(), fieldEncryptionService.decrypt(n.getContent()),
                         n.getNoteType(), n.getCreatedAt()
                 )).toList()
         );
@@ -456,6 +468,11 @@ public class TeacherService {
         Map<UUID, List<RiskEvent>> byStudent = openEvents.stream()
                 .collect(Collectors.groupingBy(RiskEvent::getStudentUserId));
 
+        // 批量查询学生信息（避免 N+1）
+        Map<UUID, User> studentMap = byStudent.keySet().isEmpty() ? Map.of()
+                : userMapper.selectBatchIds(byStudent.keySet()).stream()
+                        .collect(Collectors.toMap(User::getUserId, u -> u));
+
         return byStudent.entrySet().stream().map(entry -> {
             UUID studentId = entry.getKey();
             List<RiskEvent> events = entry.getValue();
@@ -464,7 +481,7 @@ public class TeacherService {
                     .map(RiskEvent::getDetectedAt)
                     .max(Instant::compareTo).orElse(Instant.now());
 
-            User student = userMapper.selectById(studentId);
+            User student = studentMap.get(studentId);
             String name = student != null ? student.getPseudonym() : "未知";
             String grade = student != null ? student.getGradeCode() : "";
 
@@ -479,8 +496,10 @@ public class TeacherService {
 
     public TeacherNote addNote(UUID tenantId, UUID studentUserId, UUID teacherUserId,
                                String content, String noteType) {
-        TeacherNote note = TeacherNote.create(tenantId, studentUserId, teacherUserId, content, noteType);
+        TeacherNote note = TeacherNote.create(tenantId, studentUserId, teacherUserId,
+                fieldEncryptionService.encrypt(content), noteType);
         teacherNoteMapper.insert(note);
+        note.setContent(content); // API 响应返回明文
         log.info("教师备注已添加: noteId={}, student={}", note.getNoteId(), studentUserId);
         return note;
     }

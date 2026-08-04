@@ -105,7 +105,7 @@ public class EditorialWorkflowService {
                                           EditorialRequest request, ReviewStatus to,
                                           String auditAction, String reason) {
         // 当前状态以 DB 真实值为准（防绕过状态机）
-        String dbStatus = knowledgeBaseService.findDocumentStatus(docId);
+        String dbStatus = knowledgeBaseService.findDocumentStatus(tenantId, docId);
         if (dbStatus == null) {
             return TransitionResult.fail(null, List.of("知识文档不存在: " + docId));
         }
@@ -131,7 +131,7 @@ public class EditorialWorkflowService {
 
         // 落库（提交审核阶段 reviewer 不落，发布阶段才签字留痕）
         String toDb = ReviewWorkflowStateMachine.toDbStatus(to);
-        knowledgeBaseService.transitionReviewStatus(docId, toDb,
+        knowledgeBaseService.transitionReviewStatus(tenantId, docId, toDb,
                 req.gradeBand(), req.sourceType(), req.evidenceLevel(),
                 to == ReviewStatus.PUBLISHED ? req.reviewer() : null);
 

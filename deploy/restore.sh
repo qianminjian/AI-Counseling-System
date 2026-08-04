@@ -110,7 +110,8 @@ log "恢复完成"
 
 # 验证
 log "验证数据库连接..."
-docker exec "${CONTAINER_NAME}" psql -U "${DB_USER}" -d "${DB_NAME}" -c "SELECT count(*) AS user_count FROM users;" 2>/dev/null && \
+# fix-deploy：users 表在 tenant_template schema 中，需限定 schema
+docker exec "${CONTAINER_NAME}" psql -U "${DB_USER}" -d "${DB_NAME}" -c "SELECT count(*) AS user_count FROM tenant_template.users;" 2>/dev/null && \
     log "验证通过" || log "WARNING: 验证查询失败，请手动检查"
 
 log "===== 恢复任务结束 ====="

@@ -29,6 +29,7 @@ class TeacherAlertTransferTest {
     private RiskEventMapper riskEventMapper;
     private UserMapper userMapper;
     private TeacherNoteMapper teacherNoteMapper;
+    private FieldEncryptionService fieldEncryptionService;
     private TeacherService teacherService;
 
     private final UUID tenantId = UUID.randomUUID();
@@ -41,6 +42,8 @@ class TeacherAlertTransferTest {
         riskEventMapper = mock(RiskEventMapper.class);
         userMapper = mock(UserMapper.class);
         teacherNoteMapper = mock(TeacherNoteMapper.class);
+        fieldEncryptionService = mock(FieldEncryptionService.class);
+        when(fieldEncryptionService.encrypt(any())).thenAnswer(inv -> inv.getArgument(0));
         teacherService = new TeacherService(
                 riskEventMapper,
                 mock(CounselingSessionMapper.class),
@@ -48,7 +51,7 @@ class TeacherAlertTransferTest {
                 teacherNoteMapper,
                 mock(NotificationMapper.class),
                 mock(MessageSummaryMapper.class),
-                mock(FieldEncryptionService.class));
+                fieldEncryptionService);
     }
 
     private RiskEvent givenOpenEvent() {

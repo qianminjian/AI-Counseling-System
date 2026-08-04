@@ -38,19 +38,30 @@ services:
       - internal
 
   backend:
-    image: ghcr.io/${GITHUB_OWNER:-mindsafe}/mindsafe-backend:latest
+    image: ghcr.io/${GITHUB_OWNER:-mindsafe}/${GITHUB_REPOSITORY:-AI-Counseling-System-dev}/backend:latest
     container_name: mindsafe-backend
     restart: unless-stopped
     environment:
+      # 测试环境使用 dev profile：允许 JWT/加密密钥开发默认值（非 fail-fast）
+      SPRING_PROFILES_ACTIVE: dev
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/mindsafe
       SPRING_DATASOURCE_USERNAME: mindsafe
       DB_PASSWORD: ${DB_PASSWORD}
       SPRING_DATA_REDIS_HOST: redis
       SPRING_DATA_REDIS_PORT: 6379
       REDIS_PASSWORD: ${REDIS_PASSWORD}
+      # JWT 认证（.env 可配；不配则用 dev 默认密钥）
+      MINDSAFE_JWT_SECRET: ${JWT_SECRET:-}
+      # 字段加密（flx-deploy：与 prod.yml 对齐；空=dev 降级明文）
+      MINDSAFE_ENCRYPTION_KEY: ${ENCRYPTION_KEY:-}
+      MINDSAFE_ENCRYPTION_KEY_VERSION: ${ENCRYPTION_KEY_VERSION:-1}
+      MINDSAFE_ENCRYPTION_PREVIOUS_KEYS: ${ENCRYPTION_PREVIOUS_KEYS:-}
       LLM_API_KEY: ${LLM_API_KEY}
       LLM_BASE_URL: ${LLM_BASE_URL:-https://api.deepseek.com}
       LLM_MODEL: ${LLM_MODEL:-deepseek-chat}
+      # 短信（测试用 logging，不消费短信额度）
+      MINDSAFE_SMS_PROVIDER: ${SMS_PROVIDER:-logging}
+      MINDSAFE_CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost}
       LOGGING_LEVEL_COM_MINDSAFE: DEBUG
     depends_on:
       postgres:
@@ -93,7 +104,7 @@ services:
 
   # 前端静态文件容器（CI 构建后 copy 到 volume）
   frontend-init:
-    image: ghcr.io/${GITHUB_OWNER:-mindsafe}/mindsafe-frontend:latest
+    image: ghcr.io/${GITHUB_OWNER:-mindsafe}/${GITHUB_REPOSITORY:-AI-Counseling-System-dev}/frontend:latest
     container_name: mindsafe-frontend-init
     volumes:
       - student-dist:/export/student
@@ -112,4 +123,5 @@ volumes:
 
 networks:
   internal:
+    name: mindsafe-internal
     driver: bridge

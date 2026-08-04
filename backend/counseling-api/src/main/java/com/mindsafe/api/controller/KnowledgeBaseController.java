@@ -118,7 +118,7 @@ public class KnowledgeBaseController {
     @DeleteMapping("/documents/{docId}")
     public ApiResponse<Void> delete(@PathVariable UUID docId, Authentication auth) {
         TenantContext ctx = (TenantContext) auth.getDetails();
-        knowledgeBaseService.deleteDocument(docId);
+        knowledgeBaseService.deleteDocument(ctx.tenantId(), docId);
         auditLogService.log(ctx.tenantId(), ctx.userId(), "KNOWLEDGE_DELETE",
                 "knowledge_document", docId, null);
         return ApiResponse.ok(null);
@@ -143,7 +143,7 @@ public class KnowledgeBaseController {
         }
 
         // 当前状态以 DB 真实值为准（不信请求体，防绕过状态机）
-        String dbStatus = knowledgeBaseService.findDocumentStatus(docId);
+        String dbStatus = knowledgeBaseService.findDocumentStatus(ctx.tenantId(), docId);
         if (dbStatus == null) {
             return ApiResponse.error(404, "知识文档不存在: " + docId);
         }
@@ -173,7 +173,7 @@ public class KnowledgeBaseController {
         }
 
         // 门禁通过 → 状态与审核字段落库（KB-102，V30）
-        knowledgeBaseService.transitionReviewStatus(docId,
+        knowledgeBaseService.transitionReviewStatus(ctx.tenantId(), docId,
                 ReviewWorkflowStateMachine.toDbStatus(to),
                 body.get("gradeBand"), body.get("sourceType"),
                 body.get("evidenceLevel"), body.get("reviewer"));

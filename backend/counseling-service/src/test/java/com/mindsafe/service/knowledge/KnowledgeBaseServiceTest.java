@@ -170,34 +170,36 @@ class KnowledgeBaseServiceTest {
         @Test
         @DisplayName("findDocumentStatus：返回 DB 真实状态")
         void findDocumentStatus() {
-            when(jdbcTemplate.queryForList(anyString(), eq(String.class), (Object) any()))
+            when(jdbcTemplate.queryForList(anyString(), eq(String.class), any(), any()))
                     .thenReturn(List.of("in_review"));
 
-            assertThat(service.findDocumentStatus(UUID.randomUUID())).isEqualTo("in_review");
+            assertThat(service.findDocumentStatus(tenantId, UUID.randomUUID())).isEqualTo("in_review");
         }
 
         @Test
         @DisplayName("findDocumentStatus：无记录 → null")
         void findDocumentStatus_missing() {
-            when(jdbcTemplate.queryForList(anyString(), eq(String.class), (Object) any()))
+            when(jdbcTemplate.queryForList(anyString(), eq(String.class), any(), any()))
                     .thenReturn(List.of());
 
-            assertThat(service.findDocumentStatus(UUID.randomUUID())).isNull();
+            assertThat(service.findDocumentStatus(tenantId, UUID.randomUUID())).isNull();
         }
 
         @Test
         @DisplayName("transitionReviewStatus：UPDATE 落库返回行数（SQL 含 COALESCE 保留旧值 + reviewed_at）")
         void transitionReturnsRowCount() {
             // 6 个 varargs：targetStatus, gradeBand, sourceType, evidenceLevel, reviewer, docId
-            when(jdbcTemplate.update(anyString(), any(), any(), any(), any(), any(), any())).thenReturn(1);
+            // 现 7 个占位符：targetStatus, gradeBand, sourceType, evidenceLevel, reviewer, tenantId, docId
+            when(jdbcTemplate.update(anyString(), any(), any(), any(), any(), any(), any(), any())).thenReturn(1);
 
-            int rows = service.transitionReviewStatus(UUID.randomUUID(), "published",
+            UUID docId = UUID.randomUUID();
+            int rows = service.transitionReviewStatus(tenantId, docId, "published",
                     "low", "textbook", "A", "张老师");
 
             assertThat(rows).isEqualTo(1);
             verify(jdbcTemplate).update(
                     argThat((String sql) -> sql.contains("COALESCE") && sql.contains("reviewed_at")),
-                    eq("published"), eq("low"), eq("textbook"), eq("A"), eq("张老师"), any());
+                    eq("published"), eq("low"), eq("textbook"), eq("A"), eq("张老师"), eq(tenantId), eq(docId));
         }
 
         @Test
@@ -227,15 +229,15 @@ class KnowledgeBaseServiceTest {
         }
 
         @Test
-        @DisplayName("deleteDocument：删除文档（分块级联由外键保证）")
+        @DisplayName("deleteDocument：按 tenant_id + doc_id 删除（B3 防跨租户越权）")
         void deleteDocument() {
             UUID docId = UUID.randomUUID();
 
-            service.deleteDocument(docId);
+            service.deleteDocument(tenantId, docId);
 
             verify(jdbcTemplate).update(
                     argThat((String sql) -> sql.contains("DELETE FROM tenant_template.knowledge_documents")),
-                    eq(docId));
+                    eq(tenantId), eq(docId));
         }
     }
 

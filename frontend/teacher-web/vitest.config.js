@@ -19,6 +19,13 @@ export default defineConfig({
         'vitest.config.js',
         'vite.config.js',
       ],
+      // fix-frontend：覆盖率门禁（CI 构建强制）
+      thresholds: {
+        lines: 30,
+        branches: 20,
+        functions: 25,
+        statements: 30,
+      },
     },
   },
 });
