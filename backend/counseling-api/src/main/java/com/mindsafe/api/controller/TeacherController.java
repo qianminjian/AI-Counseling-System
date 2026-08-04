@@ -4,6 +4,8 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.mindsafe.api.security.JwtAuthenticationFilter.TenantContext;
 import com.mindsafe.api.security.JwtTokenProvider;
 import com.mindsafe.common.dto.ApiResponse;
+import com.mindsafe.common.dto.ErrorCode;
+import com.mindsafe.common.exception.BizException;
 import com.mindsafe.domain.entity.CounselingSession;
 import com.mindsafe.domain.entity.MessageSummary;
 import com.mindsafe.domain.entity.Notification;
@@ -50,7 +52,6 @@ public class TeacherController {
     private final MessageSummaryMapper messageSummaryMapper;
     private final AuditLogService auditLogService;
     private final JwtTokenProvider jwtTokenProvider;
-    private final CaseLifecycleService caseLifecycleService;
 
     public TeacherController(NotificationService notificationService,
                              TeacherService teacherService,
@@ -60,8 +61,7 @@ public class TeacherController {
                              CounselingSessionMapper sessionMapper,
                              MessageSummaryMapper messageSummaryMapper,
                              AuditLogService auditLogService,
-                             JwtTokenProvider jwtTokenProvider,
-                             CaseLifecycleService caseLifecycleService) {
+                             JwtTokenProvider jwtTokenProvider) {
         this.notificationService = notificationService;
         this.teacherService = teacherService;
         this.profileRadarService = profileRadarService;
@@ -71,7 +71,6 @@ public class TeacherController {
         this.messageSummaryMapper = messageSummaryMapper;
         this.auditLogService = auditLogService;
         this.jwtTokenProvider = jwtTokenProvider;
-        this.caseLifecycleService = caseLifecycleService;
     }
 
     // ===== 工作台 =====
@@ -267,10 +266,11 @@ public class TeacherController {
         return ApiResponse.ok(notificationService.countUnread(userId));
     }
 
-    /** 标记通知为已读 */
+    /** 标记通知为已读（P1 审计修复：携带收件人 ID，防 IDOR） */
     @PutMapping("/teacher/notifications/{id}/read")
-    public ApiResponse<Void> markAsRead(@PathVariable UUID id) {
-        notificationService.markAsRead(id);
+    public ApiResponse<Void> markAsRead(@PathVariable UUID id, Authentication auth) {
+        UUID userId = (UUID) auth.getPrincipal();
+        notificationService.markAsRead(id, userId);
         return ApiResponse.ok(null);
     }
 
@@ -300,7 +300,9 @@ public class TeacherController {
         TenantContext ctx = (TenantContext) auth.getDetails();
         UUID userId = (UUID) auth.getPrincipal();
         auditLogService.log(ctx.tenantId(), userId, "EXPORT_ALERTS", "export");
-        List<TeacherService.AlertVO> alerts = teacherService.getAlerts(ctx.tenantId(), null, null, 500);
+        // P1 审计修复：导出跟随数据范围（班主任仅导出本班，不再全校可见）
+        String classScope = teacherService.resolveClassScope(ctx.tenantId(), ctx.userId(), ctx.userType());
+        List<TeacherService.AlertVO> alerts = teacherService.getAlerts(ctx.tenantId(), classScope, null, null, 500);
 
         response.setContentType("text/csv; charset=UTF-8");
         response.setHeader("Content-Disposition", "attachment; filename=alerts_export.csv");
@@ -359,7 +361,7 @@ public class TeacherController {
 
     // ===== 个案管理（WB-003，design/35 M3） =====
 
-    /** 个案阶段推进（建案→评估→干预跟踪→结案） */
+    /** 个案阶段推进（建案→评估→干预跟踪→结案，P1 审计修复：读取真实当前阶段并持久化） */
     @PostMapping("/teacher/cases/{studentId}/transition")
     public ApiResponse<Map<String, Object>> transitionCase(
             @PathVariable UUID studentId,
@@ -368,12 +370,17 @@ public class TeacherController {
         TenantContext ctx = (TenantContext) auth.getDetails();
         UUID userId = (UUID) auth.getPrincipal();
         String targetStage = body.getOrDefault("targetStage", "ASSESSMENT");
-        String source = body.getOrDefault("source", "MANUAL");
 
-        CaseLifecycleService.StageTransition result = caseLifecycleService.transition(
-                CaseLifecycleService.CaseStage.INTAKE,
-                CaseLifecycleService.CaseStage.valueOf(targetStage),
-                false);
+        // P1 审计修复：非法阶段值 → 400 参数错误（不再 500）
+        CaseLifecycleService.CaseStage target;
+        try {
+            target = CaseLifecycleService.CaseStage.valueOf(targetStage);
+        } catch (IllegalArgumentException e) {
+            throw new BizException(ErrorCode.PARAM_INVALID, "非法个案阶段: " + targetStage);
+        }
+
+        CaseLifecycleService.StageTransition result =
+                teacherService.transitionCaseStage(ctx.tenantId(), studentId, userId, target);
 
         auditLogService.log(ctx.tenantId(), userId, "CASE_TRANSITION", "student", studentId, targetStage);
         return ApiResponse.ok(Map.of(

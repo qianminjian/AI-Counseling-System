@@ -168,7 +168,8 @@ public class ParentController {
      * 解析 parent_report token，返回 studentUserId + tenantId（B1 修复：从 token 提取 tenantId
      * 供端点绑定 TenantContextHolder，避免 MyBatis-Plus 租户行隔离 fail-fast）。
      * <p>
-     * 三重校验：签名有效 + 非 refresh/声纹凭证 + userType 必须为 parent。
+     * 四重校验：签名有效 + 非 refresh/声纹凭证 + userType 必须为 parent +
+     * 学生账号未被撤回同意（P1 审计修复：status=withdrawn 后旧 token 立即失效）。
      * 学生自持的 access token（userType=student）无法调用家长接口（如撤回监护人同意）。
      */
     private ParentTokenInfo resolveParentToken(String authHeader) {
@@ -180,9 +181,22 @@ public class ParentController {
                     || !"parent".equals(jwtTokenProvider.getUserType(token))) {
                 throw new BizException(ErrorCode.UNAUTHORIZED, "链接已过期或无效");
             }
-            return new ParentTokenInfo(
+            ParentTokenInfo info = new ParentTokenInfo(
                     jwtTokenProvider.getUserId(token),
                     jwtTokenProvider.getTenantId(token));
+
+            // P1 审计修复：撤回同意后旧 token 失效。selectById 受租户行隔离拦截，必须先绑定租户上下文
+            TenantContextHolder.set(info.tenantId());
+            try {
+                User student = userMapper.selectById(info.studentUserId());
+                if (student == null
+                        || ConsentWithdrawalService.STATUS_WITHDRAWN.equals(student.getStatus())) {
+                    throw new BizException(ErrorCode.UNAUTHORIZED, "监护人同意已撤回，链接已失效");
+                }
+            } finally {
+                TenantContextHolder.clear();
+            }
+            return info;
         } catch (BizException e) {
             throw e;
         } catch (Exception e) {

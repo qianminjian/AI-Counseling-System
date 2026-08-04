@@ -64,9 +64,8 @@ services:
       MINDSAFE_ENCRYPTION_PREVIOUS_KEYS: ${ENCRYPTION_PREVIOUS_KEYS:-}
       MINDSAFE_ALERT_WECOM_WEBHOOK_URL: ${ALERT_WECOM_WEBHOOK_URL:-}
       MINDSAFE_ALERT_WECOM_MENTIONED: ${ALERT_WECOM_MENTIONED:-}
-      # SMS provider（fix-smsprov：prod profile 禁止 logging，必须显式设为 aliyun 并配齐四项 aliyun 凭证，
-      # 否则应用启动 fail-fast，创建 SmsService bean 失败）
-      MINDSAFE_SMS_PROVIDER: ${SMS_PROVIDER:-logging}
+      # SMS provider（P1 审计修复：prod profile 禁止默认 logging，未显式配置时 fail-closed 启动失败）
+      MINDSAFE_SMS_PROVIDER: ${SMS_PROVIDER:-aliyun}
       MINDSAFE_SMS_ALIYUN_ACCESS_KEY_ID: ${SMS_ALIYUN_ACCESS_KEY_ID:-}
       MINDSAFE_SMS_ALIYUN_ACCESS_KEY_SECRET: ${SMS_ALIYUN_ACCESS_KEY_SECRET:-}
       MINDSAFE_SMS_ALIYUN_SIGN_NAME: ${SMS_ALIYUN_SIGN_NAME:-}

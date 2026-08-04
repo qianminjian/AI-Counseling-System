@@ -186,6 +186,68 @@ class ParentControllerTest {
                 .isEqualTo(ErrorCode.UNAUTHORIZED.code());
     }
 
+    // ===== P1 审计修复：监护人同意撤回后旧 token 失效 =====
+
+    @Nested
+    @DisplayName("撤回同意（status=withdrawn）拒绝")
+    class WithdrawnStudentRejected {
+
+        private void mockWithdrawnStudent() {
+            User student = studentUser();
+            student.setStatus("withdrawn");
+            when(userMapper.selectById(studentUserId)).thenReturn(student);
+        }
+
+        @Test
+        @DisplayName("getWeeklyReport 撤回后 → UNAUTHORIZED（不查询会话数据）")
+        void reportRejected() {
+            mockWithdrawnStudent();
+
+            assertThatThrownBy(() -> controller.getWeeklyReport("Bearer " + VALID_PARENT_TOKEN))
+                    .isExactlyInstanceOf(BizException.class)
+                    .extracting("code")
+                    .isEqualTo(ErrorCode.UNAUTHORIZED.code());
+            verify(sessionMapper, org.mockito.Mockito.never()).selectList(any());
+            assertNull(TenantContextHolder.get(), "拒绝路径也不得泄漏租户上下文");
+        }
+
+        @Test
+        @DisplayName("withdrawConsent 撤回后重复请求 → UNAUTHORIZED")
+        void withdrawRejected() {
+            mockWithdrawnStudent();
+
+            assertThatThrownBy(() -> controller.withdrawConsent("Bearer " + VALID_PARENT_TOKEN))
+                    .isExactlyInstanceOf(BizException.class)
+                    .extracting("code")
+                    .isEqualTo(ErrorCode.UNAUTHORIZED.code());
+            verify(consentWithdrawalService, org.mockito.Mockito.never()).withdrawConsent(any(), any());
+        }
+
+        @Test
+        @DisplayName("verifyPhone 撤回后 → UNAUTHORIZED（不签发新 token）")
+        void verifyPhoneRejected() {
+            mockWithdrawnStudent();
+
+            assertThatThrownBy(() -> controller.verifyPhone(
+                    "Bearer " + VALID_PARENT_TOKEN,
+                    Map.of("phone", "13800000001", "code", "123456")))
+                    .isExactlyInstanceOf(BizException.class)
+                    .extracting("code")
+                    .isEqualTo(ErrorCode.UNAUTHORIZED.code());
+        }
+
+        @Test
+        @DisplayName("学生查无此人 → UNAUTHORIZED")
+        void missingStudentRejected() {
+            when(userMapper.selectById(studentUserId)).thenReturn(null);
+
+            assertThatThrownBy(() -> controller.getWeeklyReport("Bearer " + VALID_PARENT_TOKEN))
+                    .isExactlyInstanceOf(BizException.class)
+                    .extracting("code")
+                    .isEqualTo(ErrorCode.UNAUTHORIZED.code());
+        }
+    }
+
     // ===== verifyPhone 签发正式 token =====
 
     @Test

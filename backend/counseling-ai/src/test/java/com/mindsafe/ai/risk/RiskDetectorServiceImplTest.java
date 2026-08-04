@@ -140,13 +140,23 @@ class RiskDetectorServiceImplTest {
     @DisplayName("否定/误报控制")
     class FalsePositiveControl {
 
-        @Test
-        @DisplayName("否定语境：'不想死' 不触发红色")
-        void should_not_trigger_red_when_negation() {
-            RiskDetectionResult result = riskDetector.detect("我不想死，我只是很难过");
+        @ParameterizedTest
+        @ValueSource(strings = {
+                "我不想死，我只是很难过",
+                "我没有想死",
+                "我不会自杀的",
+                "我不想自杀，别担心",
+                "我不会去跳楼的",
+                "我不想割腕"
+        })
+        @DisplayName("自杀否定表达 → 仍触发红色（design/04 §九铁律：RED 不可被否定降级）")
+        void should_trigger_red_even_with_negation(String message) {
+            // 否定降噪仅适用于橙/黄档；自伤否定表达本身就是高风险信号（"我不想死"→自杀念头已在意识中）
+            RiskDetectionResult result = riskDetector.detect(message);
 
-            // 「不想死」含否定前缀，不应触发红色硬规则
-            assertThat(result.level()).isNotEqualTo(RiskLevel.RED);
+            assertThat(result.level()).isEqualTo(RiskLevel.RED);
+            assertThat(result.hardUpgrade()).isTrue();
+            assertThat(result.shouldNotifyTeacher()).isTrue();
         }
 
         @Test

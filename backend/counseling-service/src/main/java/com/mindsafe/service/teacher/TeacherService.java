@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.mindsafe.domain.entity.*;
 import com.mindsafe.domain.mapper.*;
+import com.mindsafe.service.casemanage.CaseLifecycleService;
 import com.mindsafe.service.security.FieldEncryptionService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -41,6 +42,12 @@ public class TeacherService {
     private static final String CASE_TRACKING_NOTE_TYPE = "case_tracking";
     private static final String CASE_TRACKING_ACTIVE = "active";
 
+    /** 个案阶段推进的备注类型（复用 teacher_notes 免 schema 变更，content=阶段名） */
+    private static final String CASE_STAGE_NOTE_TYPE = "case_stage";
+
+    // 个案生命周期纯函数（无状态，同 AlertTodoMutePolicy 内联实例化先例）
+    private final CaseLifecycleService caseLifecycleService = new CaseLifecycleService();
+
     public TeacherService(RiskEventMapper riskEventMapper,
                           CounselingSessionMapper sessionMapper,
                           UserMapper userMapper,
@@ -61,7 +68,8 @@ public class TeacherService {
 
     /**
      * 解析当前用户的数据可见范围。
-     * 返回 null 表示全校可见，返回 classCode 表示仅该班级可见。
+     * 返回 null 表示全校可见，返回 classCode 表示仅该班级可见，
+     * 返回空串 "" 表示班主任未绑定班级（无可见范围，查询自然为空结果）。
      */
     public String resolveClassScope(UUID tenantId, UUID userId, String userType) {
         if ("class_teacher".equals(userType)) {
@@ -69,7 +77,8 @@ public class TeacherService {
             if (teacher != null && teacher.getClassCode() != null && !teacher.getClassCode().isBlank()) {
                 return teacher.getClassCode();
             }
-            // 班主任未绑定班级 → 默认全校可见（避免空数据）
+            // P1 审计修复：班主任未绑定班级 → 返回空范围，不再全校可见兜底（防数据越权）
+            return "";
         }
         return null; // admin / psych_teacher / teacher → 全校
     }
@@ -142,6 +151,30 @@ public class TeacherService {
     // ===== 预警队列 =====
 
     public List<AlertVO> getAlerts(UUID tenantId, String status, Integer minLevel, int limit) {
+        return getAlerts(tenantId, null, status, minLevel, limit);
+    }
+
+    /**
+     * 预警队列（支持班级范围过滤，P1 审计修复：班主任导出/列表不再全校可见）。
+     *
+     * @param classScope 班级范围（null=全校；空串=无可见范围，返回空列表）
+     */
+    public List<AlertVO> getAlerts(UUID tenantId, String classScope, String status, Integer minLevel, int limit) {
+        // 班级范围解析：先确认该班存在学生，空班/未绑定班级直接返回空列表
+        Set<UUID> classStudentIds = null;
+        if (classScope != null) {
+            List<User> classStudents = userMapper.selectList(
+                    new LambdaQueryWrapper<User>()
+                            .eq(User::getTenantId, tenantId)
+                            .eq(User::getUserType, "student")
+                            .eq(User::getClassCode, classScope)
+            );
+            if (classStudents.isEmpty()) {
+                return List.of();
+            }
+            classStudentIds = classStudents.stream().map(User::getUserId).collect(Collectors.toSet());
+        }
+
         LambdaQueryWrapper<RiskEvent> wrapper = new LambdaQueryWrapper<RiskEvent>()
                 .eq(RiskEvent::getTenantId, tenantId);
 
@@ -156,6 +189,13 @@ public class TeacherService {
                 .last("LIMIT " + Math.min(limit, 100));
 
         List<RiskEvent> events = riskEventMapper.selectList(wrapper);
+        // 班级过滤（内存过滤，与 getHighRiskStudents 同模式，避免 inSql 注入面）
+        if (classStudentIds != null) {
+            Set<UUID> finalIds = classStudentIds;
+            events = events.stream()
+                    .filter(e -> finalIds.contains(e.getStudentUserId()))
+                    .toList();
+        }
         Set<UUID> caseTrackedStudents = getCaseTrackedStudentIds(tenantId);
 
         // 批量查询学生信息（避免 N+1）
@@ -358,6 +398,70 @@ public class TeacherService {
             throw new IllegalArgumentException("预警不存在: " + riskEventId);
         }
         return event;
+    }
+
+    // ===== 个案阶段推进（P1 审计修复：transitionCase 伪 API 无持久化 → 落地 teacher_notes） =====
+
+    /**
+     * 读取学生当前个案阶段：teacher_notes（note_type=case_stage）最新一条，无记录 → INTAKE。
+     */
+    public CaseLifecycleService.CaseStage getCurrentCaseStage(UUID tenantId, UUID studentUserId) {
+        List<TeacherNote> notes = teacherNoteMapper.selectList(
+                new LambdaQueryWrapper<TeacherNote>()
+                        .eq(TeacherNote::getTenantId, tenantId)
+                        .eq(TeacherNote::getStudentUserId, studentUserId)
+                        .eq(TeacherNote::getNoteType, CASE_STAGE_NOTE_TYPE)
+                        .orderByDesc(TeacherNote::getCreatedAt)
+        );
+        if (notes.isEmpty()) {
+            return CaseLifecycleService.CaseStage.INTAKE;
+        }
+        // 内存取 createdAt 最新一条（不依赖 DB 排序语义，与 getCaseTrackedStudentIds 同模式）
+        TeacherNote latest = notes.get(0);
+        for (TeacherNote n : notes) {
+            if (n.getCreatedAt() != null && (latest.getCreatedAt() == null
+                    || n.getCreatedAt().isAfter(latest.getCreatedAt()))) {
+                latest = n;
+            }
+        }
+        try {
+            return CaseLifecycleService.CaseStage.valueOf(fieldEncryptionService.decrypt(latest.getContent()));
+        } catch (IllegalArgumentException e) {
+            // 存量脏数据兜底：无法解析的阶段名按建案处理
+            log.warn("个案阶段备注内容非法，按 INTAKE 处理: student={}, content={}",
+                    studentUserId, latest.getContent());
+            return CaseLifecycleService.CaseStage.INTAKE;
+        }
+    }
+
+    /**
+     * 推进个案阶段（学生须存在且同租户）。
+     * <p>
+     * 起点从存储读取（无历史=INTAKE），不可跳级；允许推进时落 case_stage 备注（content=目标阶段名，加密）。
+     *
+     * @return 推进结果（allowed=false 时未做任何持久化）
+     */
+    public CaseLifecycleService.StageTransition transitionCaseStage(
+            UUID tenantId, UUID studentUserId, UUID teacherUserId,
+            CaseLifecycleService.CaseStage targetStage) {
+        User student = userMapper.selectById(studentUserId);
+        if (student == null || !tenantId.equals(student.getTenantId())) {
+            throw new IllegalArgumentException("学生不存在: " + studentUserId);
+        }
+
+        CaseLifecycleService.CaseStage current = getCurrentCaseStage(tenantId, studentUserId);
+        CaseLifecycleService.StageTransition result =
+                caseLifecycleService.transition(current, targetStage, false);
+
+        if (result.allowed()) {
+            TeacherNote note = TeacherNote.create(
+                    tenantId, studentUserId, teacherUserId,
+                    fieldEncryptionService.encrypt(targetStage.name()), CASE_STAGE_NOTE_TYPE
+            );
+            teacherNoteMapper.insert(note);
+            log.info("个案阶段推进: student={}, {} -> {}", studentUserId, current, targetStage);
+        }
+        return result;
     }
 
     // ===== 学生档案 =====

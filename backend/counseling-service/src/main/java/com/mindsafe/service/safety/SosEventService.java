@@ -5,6 +5,7 @@ import com.mindsafe.common.enums.RiskLevel;
 import com.mindsafe.domain.entity.RiskEvent;
 import com.mindsafe.domain.mapper.RiskEventMapper;
 import com.mindsafe.service.notification.NotificationService;
+import com.mindsafe.service.notification.RiskNotifyOutboxService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -34,10 +35,13 @@ public class SosEventService {
 
     private final RiskEventMapper riskEventMapper;
     private final NotificationService notificationService;
+    private final RiskNotifyOutboxService riskNotifyOutboxService;
 
-    public SosEventService(RiskEventMapper riskEventMapper, NotificationService notificationService) {
+    public SosEventService(RiskEventMapper riskEventMapper, NotificationService notificationService,
+                           RiskNotifyOutboxService riskNotifyOutboxService) {
         this.riskEventMapper = riskEventMapper;
         this.notificationService = notificationService;
+        this.riskNotifyOutboxService = riskNotifyOutboxService;
     }
 
     /** SOS 上报结果 */
@@ -83,11 +87,13 @@ public class SosEventService {
             throw new IllegalStateException("SOS 事件持久化失败", e);
         }
 
-        // 教师通知尽力而为：事件已落库，通知失败不阻断 SOS 链路
+        // 教师通知 + outbox 状态标记（P0-4）：失败不再静默，进补偿队列
         try {
             notificationService.notifyRiskEvent(event);
+            riskNotifyOutboxService.markSent(event);
         } catch (Exception e) {
-            log.error("SOS 教师通知失败(事件已持久化): riskEventId={}", event.getRiskEventId(), e);
+            log.error("SOS 教师通知失败(已标记 failed 进补偿队列): riskEventId={}", event.getRiskEventId(), e);
+            riskNotifyOutboxService.markFailed(event);
         }
 
         return new SosResult(event.getRiskEventId(), false);

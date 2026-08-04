@@ -92,6 +92,8 @@ services:
       WECOM_AGENT_ID: ${WECOM_AGENT_ID:-}
       WECOM_SECRET: ${WECOM_SECRET:-}
       WECOM_REDIRECT_URI: ${WECOM_REDIRECT_URI:-}
+      # 监护人同意：默认 false（fail-closed，PIPL §31），显式置 true 仅用于内部试用环境
+      MINDSAFE_CONSENT_TRIAL_AUTO_GRANT: ${MINDSAFE_CONSENT_TRIAL_AUTO_GRANT:-false}
       JAVA_OPTS: "-XX:MaxRAMPercentage=75.0"
     depends_on:
       postgres:
@@ -101,7 +103,8 @@ services:
       tts-service:
         condition: service_started
     ports:
-      - "8080:8080"
+      # 仅本机可访问（P0-3）：公网唯一入口为 nginx（80/443），避免绕过 nginx 直连后端伪造 XFF 头
+      - "127.0.0.1:8080:8080"
     restart: unless-stopped
 
   # ===== 前端构建（静态资源） =====

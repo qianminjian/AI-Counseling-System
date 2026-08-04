@@ -4,6 +4,7 @@ import com.mindsafe.ai.orchestrator.EmotionOrchestrationEvaluator;
 import com.mindsafe.domain.entity.RiskEvent;
 import com.mindsafe.domain.mapper.RiskEventMapper;
 import com.mindsafe.service.profile.ProfileEffectivenessTracker;
+import com.mindsafe.service.notification.RiskNotifyOutboxService;
 import com.mindsafe.service.voice.TrendAnomalySignaler;
 import com.mindsafe.service.voice.VoiceEmotionTrendAnalyzer;
 import org.junit.jupiter.api.BeforeEach;
@@ -44,6 +45,7 @@ class SessionEndAnalyticsServiceTest {
     @Mock private EmotionOrchestrationEvaluator orchestrationEvaluator;
     @Mock private ProfileEffectivenessTracker effectivenessTracker;
     @Mock private RiskEventMapper riskEventMapper;
+    @Mock private RiskNotifyOutboxService riskNotifyOutboxService;
 
     private SessionEndAnalyticsService service;
 
@@ -53,7 +55,8 @@ class SessionEndAnalyticsServiceTest {
     @BeforeEach
     void setUp() {
         service = new SessionEndAnalyticsService(
-                trendAnalyzer, anomalySignaler, orchestrationEvaluator, effectivenessTracker, riskEventMapper);
+                trendAnalyzer, anomalySignaler, orchestrationEvaluator, effectivenessTracker,
+                riskEventMapper, riskNotifyOutboxService);
     }
 
     private VoiceEmotionTrendAnalyzer.TrendResult trend(double negRatio) {
@@ -111,6 +114,8 @@ class SessionEndAnalyticsServiceTest {
             assertThat(event.getTenantId()).isEqualTo(tenantId);
             assertThat(event.getStudentUserId()).isEqualTo(studentId);
             assertThat(event.getStatus()).isEqualTo("open");
+            // P0-4：无通知义务（BL-08 关注通道）→ 标记完成态，防止补偿任务误重试
+            verify(riskNotifyOutboxService).markSent(event);
         }
 
         @Test

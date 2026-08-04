@@ -178,6 +178,7 @@ public class VoiceprintController {
 
         double bestScore = 0;
         UUID bestUserId = null;
+        UUID bestTenantId = null;
 
         for (Map.Entry<UUID, List<VoiceprintEmbedding>> entry : byUser.entrySet()) {
             for (List<Double> inputEmb : inputEmbeddings) {
@@ -188,6 +189,7 @@ public class VoiceprintController {
                     if (score > bestScore) {
                         bestScore = score;
                         bestUserId = entry.getKey();
+                        bestTenantId = entry.getValue().get(0).getTenantId();
                     }
                 }
             }
@@ -198,6 +200,12 @@ public class VoiceprintController {
 
         boolean matched = bestScore >= verifyThreshold;
         if (!matched) {
+            // P0-3：失败审计——库非空时记录 VOICEPRINT_VERIFY_FAILED，暴力探测可追踪；
+            // 库为空（bestUserId=null）无比对对象，静默返回
+            if (bestUserId != null && bestTenantId != null) {
+                auditLogService.log(bestTenantId, bestUserId, "VOICEPRINT_VERIFY_FAILED",
+                        "user", bestUserId, null);
+            }
             return ApiResponse.ok(Map.of("matched", false));
         }
 
@@ -234,11 +242,18 @@ public class VoiceprintController {
 
     // ===== 内部工具 =====
 
-    /** 解析客户端 IP（支持反向代理 X-Forwarded-For） */
+    /**
+     * 解析客户端 IP（P0-3 防伪造）：
+     * - 经 nginx 代理：X-Forwarded-For 取最右条目——nginx 用 $proxy_add_x_forwarded_for
+     *   在真实客户端 IP 前追加客户端提供的头，最右 = 不可伪造的真实 IP
+     * - 直连：使用 remoteAddr
+     * 直连伪造面已收窄：docker-compose 将 8080 绑定 127.0.0.1，公网唯一入口为 nginx。
+     */
     private String resolveClientIp(HttpServletRequest request) {
         String forwarded = request.getHeader("X-Forwarded-For");
         if (forwarded != null && !forwarded.isBlank()) {
-            return forwarded.split(",")[0].trim();
+            int idx = forwarded.lastIndexOf(',');
+            return (idx >= 0 ? forwarded.substring(idx + 1) : forwarded).trim();
         }
         return request.getRemoteAddr();
     }

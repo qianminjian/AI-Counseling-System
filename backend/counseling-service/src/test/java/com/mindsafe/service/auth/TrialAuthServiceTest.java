@@ -144,6 +144,39 @@ class TrialAuthServiceTest {
         verify(userMapper).insert(any(User.class));
     }
 
+    @Test
+    @DisplayName("fail-closed：未显式开启试运行开关时，age<14 不自动写入监护人同意（PIPL §31）")
+    void guardianConsentNotAutoGrantedWhenSwitchOff() {
+        // 默认不设置 trialAutoGrantGuardianConsent（=false，fail-closed）
+        ReflectionTestUtils.setField(service, "trialAutoGrantGuardianConsent", false);
+        when(inviteCodeMapper.selectOne(any())).thenReturn(usableCode());
+        when(userMapper.selectCount(any())).thenReturn(0L);
+
+        service.registerTrialUser("TRIAL123", "小明同学", 10, null, "boy", "v0.1", null);
+
+        // 仅写 trial_terms，不写 guardian_consent（须由真实监护人 SMS 闭环产生）
+        ArgumentCaptor<ConsentRecord> consentCaptor = ArgumentCaptor.forClass(ConsentRecord.class);
+        verify(consentRecordMapper, times(1)).insert(consentCaptor.capture());
+        assertEquals("trial_terms", consentCaptor.getValue().getConsentType());
+    }
+
+    @Test
+    @DisplayName("age>=14：本人同意即生效，无需试运行开关（与监护人同意逻辑正交）")
+    void teenSelfConsentWorksRegardlessOfSwitch() {
+        ReflectionTestUtils.setField(service, "trialAutoGrantGuardianConsent", false);
+        when(inviteCodeMapper.selectOne(any())).thenReturn(usableCode());
+        when(userMapper.selectCount(any())).thenReturn(0L);
+
+        service.registerTrialUser("TRIAL123", "小明同学", 15, null, "boy", "v0.1", null);
+
+        // age>=14：本人勾选即生效 → trial_terms + guardian_consent 双留痕
+        ArgumentCaptor<ConsentRecord> consentCaptor = ArgumentCaptor.forClass(ConsentRecord.class);
+        verify(consentRecordMapper, times(2)).insert(consentCaptor.capture());
+        List<String> types = consentCaptor.getAllValues().stream()
+                .map(ConsentRecord::getConsentType).toList();
+        assertTrue(types.contains("guardian_consent"));
+    }
+
     // ===== loginWithPin =====
 
     @Test

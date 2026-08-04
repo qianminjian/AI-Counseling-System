@@ -200,7 +200,8 @@ public class TeacherQualityController {
         statsResult.put("avgEmpathy", Math.round(avgEmpathy * 100.0) / 100.0);
         statsResult.put("avgSafety", Math.round(avgSafety * 100.0) / 100.0);
         statsResult.put("flaggedCount", flaggedCount);
-        statsResult.put("flagRate", Math.round((double) flaggedCount / all.size() * 100.0) / 100.0);
+        // P1 审计修复：与 getQualityStats 百分比口径一致（此前 round(*100)/100 把百分比又除以 100，50% 返回 0.5）
+        statsResult.put("flagRate", Math.round((double) flaggedCount / all.size() * 1000.0) / 10.0);
         return ApiResponse.ok(statsResult);
     }
 

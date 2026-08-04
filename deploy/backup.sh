@@ -11,7 +11,7 @@
 # 功能：
 #   1. pg_dump 全库备份（自定义格式，支持并行恢复）
 #   2. 保留最近 7 天日备份 + 最近 4 周周备份 + 最近 3 月月备份
-#   3. 备份完成后校验文件完整性（pg_restore --list）
+#   3. 备份完成后校验文件完整性（pg_restore --list），校验失败立即阻断（fail 退出，不进入周/月备份与清理）
 #   4. 可选：rsync 到异地（配置 REMOTE_BACKUP_HOST）
 
 set -euo pipefail
@@ -73,12 +73,15 @@ fi
 FILESIZE=$(du -h "${STAGING_DIR}/daily/${BACKUP_NAME}" | cut -f1)
 log "备份完成: ${BACKUP_NAME} (${FILESIZE})"
 
-# 校验备份可恢复性（列出 TOC）
+# 校验备份可恢复性（列出 TOC）。安全关键：校验失败必须阻断（exit 1），
+# 不允许将损坏备份当作有效备份继续流转——否则 restore.sh 在灾难恢复时才会发现备份不可用。
 if docker run --rm -v "${BACKUP_VOLUME}:/backups" -w /backups \
         pgvector/pgvector:pg16 pg_restore --list "daily/${BACKUP_NAME}" > /dev/null 2>&1; then
     log "备份完整性校验通过"
 else
-    log "WARNING: 备份完整性校验失败，文件可能损坏"
+    log "ERROR: 备份完整性校验失败（pg_restore --list 未通过），文件可能损坏，备份不可用！"
+    log "提示: 保留 ${BACKUP_NAME} 供人工排查；修复后可手动重跑备份。"
+    exit 1
 fi
 
 # ===== 周备份（每周日） =====

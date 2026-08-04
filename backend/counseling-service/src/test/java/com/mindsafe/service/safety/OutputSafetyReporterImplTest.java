@@ -6,6 +6,7 @@ import com.mindsafe.domain.entity.RiskEvent;
 import com.mindsafe.domain.mapper.CounselingSessionMapper;
 import com.mindsafe.domain.mapper.RiskEventMapper;
 import com.mindsafe.service.notification.NotificationService;
+import com.mindsafe.service.notification.RiskNotifyOutboxService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -45,6 +46,7 @@ class OutputSafetyReporterImplTest {
     @Mock private CounselingSessionMapper sessionMapper;
     @Mock private RiskEventMapper riskEventMapper;
     @Mock private NotificationService notificationService;
+    @Mock private RiskNotifyOutboxService riskNotifyOutboxService;
     @Mock private ChatMemoryRepository chatMemoryRepository;
 
     private OutputSafetyReporterImpl reporter;
@@ -55,7 +57,8 @@ class OutputSafetyReporterImplTest {
 
     @BeforeEach
     void setUp() {
-        reporter = new OutputSafetyReporterImpl(sessionMapper, riskEventMapper, notificationService, chatMemoryRepository);
+        reporter = new OutputSafetyReporterImpl(sessionMapper, riskEventMapper,
+                notificationService, riskNotifyOutboxService, chatMemoryRepository);
     }
 
     private CounselingSession session() {
@@ -70,7 +73,7 @@ class OutputSafetyReporterImplTest {
     class Layer1 {
 
         @Test
-        @DisplayName("会话存在 → RED 事件落库 + 教师通知（risk_type 含违规类别）")
+        @DisplayName("会话存在 → RED 事件落库 + 教师通知 + outbox 标记 sent")
         void block_reportsRedAndNotifies() {
             when(sessionMapper.selectById(sessionId)).thenReturn(session());
 
@@ -83,6 +86,21 @@ class OutputSafetyReporterImplTest {
             assertThat(event.getRiskLevel()).isEqualTo(RiskLevel.RED.severity());
             assertThat(event.getDetectedBy()).isEqualTo("output_filter");
             verify(notificationService).notifyRiskEvent(event);
+            // P0-4：通知成功 → 状态标记 sent
+            verify(riskNotifyOutboxService).markSent(event);
+        }
+
+        @Test
+        @DisplayName("教师通知失败：不抛出（不影响对话流），标记 failed 进补偿队列（P0-4）")
+        void notifyFailure_marksFailed() {
+            when(sessionMapper.selectById(sessionId)).thenReturn(session());
+            doThrow(new RuntimeException("企业微信不可用"))
+                    .when(notificationService).notifyRiskEvent(any(RiskEvent.class));
+
+            reporter.reportLayer1Block(sessionId, "self_harm", "关键词", "片段");
+
+            verify(riskEventMapper).insert(any(RiskEvent.class));
+            verify(riskNotifyOutboxService).markFailed(any(RiskEvent.class));
         }
 
         @Test
@@ -113,7 +131,7 @@ class OutputSafetyReporterImplTest {
     class Layer2Violation {
 
         @Test
-        @DisplayName("会话存在 → YELLOW 留痕，不触发教师通知（人工抽检）")
+        @DisplayName("会话存在 → YELLOW 留痕，不触发教师通知（人工抽检），outbox 标记完成防误重试")
         void violation_recordsYellowWithoutNotify() {
             when(sessionMapper.selectById(sessionId)).thenReturn(session());
 
@@ -125,6 +143,8 @@ class OutputSafetyReporterImplTest {
             assertThat(captor.getValue().getRiskLevel()).isEqualTo(RiskLevel.YELLOW.severity());
             assertThat(captor.getValue().getDetectedBy()).isEqualTo("output_review");
             verifyNoInteractions(notificationService);
+            // P0-4：无通知义务的事件标记 sent（完成态），防止补偿任务误重试留痕事件
+            verify(riskNotifyOutboxService).markSent(captor.getValue());
         }
 
         @Test
@@ -145,7 +165,7 @@ class OutputSafetyReporterImplTest {
         private final String replacement = "抱歉，刚才的话不合适。我们换个方式聊聊。";
 
         @Test
-        @DisplayName("rewrite → 替换记忆最后一条 AI 回复，YELLOW 留痕不通知")
+        @DisplayName("rewrite → 替换记忆最后一条 AI 回复，YELLOW 留痕不通知，outbox 标记完成")
         void rewrite_replacesMemoryYellowNoNotify() {
             when(sessionMapper.selectById(sessionId)).thenReturn(session());
             when(chatMemoryRepository.findByConversationId(sessionId.toString()))
@@ -165,10 +185,12 @@ class OutputSafetyReporterImplTest {
             assertThat(eventCaptor.getValue().getRiskType()).isEqualTo("output_safety:recall:rewrite");
             assertThat(eventCaptor.getValue().getRiskLevel()).isEqualTo(RiskLevel.YELLOW.severity());
             verifyNoInteractions(notificationService);
+            // P0-4：无通知义务 → 标记完成态
+            verify(riskNotifyOutboxService).markSent(eventCaptor.getValue());
         }
 
         @Test
-        @DisplayName("block → ORANGE 事件 + 教师通知")
+        @DisplayName("block → ORANGE 事件 + 教师通知 + outbox 标记 sent")
         void block_orangeAndNotifies() {
             when(sessionMapper.selectById(sessionId)).thenReturn(session());
             when(chatMemoryRepository.findByConversationId(anyString())).thenReturn(List.of());
@@ -180,10 +202,11 @@ class OutputSafetyReporterImplTest {
             assertThat(captor.getValue().getRiskType()).isEqualTo("output_safety:recall:block");
             assertThat(captor.getValue().getRiskLevel()).isEqualTo(RiskLevel.ORANGE.severity());
             verify(notificationService).notifyRiskEvent(captor.getValue());
+            verify(riskNotifyOutboxService).markSent(captor.getValue());
         }
 
         @Test
-        @DisplayName("escalate → RED 事件 + 教师通知")
+        @DisplayName("escalate → RED 事件 + 教师通知 + outbox 标记 sent")
         void escalate_redAndNotifies() {
             when(sessionMapper.selectById(sessionId)).thenReturn(session());
             when(chatMemoryRepository.findByConversationId(anyString())).thenReturn(List.of());
@@ -195,6 +218,7 @@ class OutputSafetyReporterImplTest {
             assertThat(captor.getValue().getRiskType()).isEqualTo("output_safety:recall:escalate");
             assertThat(captor.getValue().getRiskLevel()).isEqualTo(RiskLevel.RED.severity());
             verify(notificationService).notifyRiskEvent(captor.getValue());
+            verify(riskNotifyOutboxService).markSent(captor.getValue());
         }
 
         @Test

@@ -3,6 +3,7 @@ package com.mindsafe.service.safety;
 import com.mindsafe.domain.entity.RiskEvent;
 import com.mindsafe.domain.mapper.RiskEventMapper;
 import com.mindsafe.service.notification.NotificationService;
+import com.mindsafe.service.notification.RiskNotifyOutboxService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -30,6 +31,9 @@ class SosEventServiceTest {
     @Mock
     private NotificationService notificationService;
 
+    @Mock
+    private RiskNotifyOutboxService riskNotifyOutboxService;
+
     private SosEventService service;
 
     private final UUID tenantId = UUID.randomUUID();
@@ -37,7 +41,7 @@ class SosEventServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new SosEventService(riskEventMapper, notificationService);
+        service = new SosEventService(riskEventMapper, notificationService, riskNotifyOutboxService);
     }
 
     @Test
@@ -64,6 +68,8 @@ class SosEventServiceTest {
         assertThat(event.getStatus()).isEqualTo("open");
 
         verify(notificationService).notifyRiskEvent(event);
+        // P0-4：通知成功 → 状态标记 sent
+        verify(riskNotifyOutboxService).markSent(event);
     }
 
     @Test
@@ -79,7 +85,7 @@ class SosEventServiceTest {
     }
 
     @Test
-    @DisplayName("通知失败不阻断：事件已落库，SOS 链路对教师通知尽力而为")
+    @DisplayName("通知失败不阻断：事件已落库，标记 failed 进补偿队列（P0-4）")
     void recordSosEvent_notificationFailure_swallowed() {
         when(riskEventMapper.selectCount(any())).thenReturn(0L);
         when(riskEventMapper.insert(any(RiskEvent.class))).thenReturn(1);
@@ -90,6 +96,7 @@ class SosEventServiceTest {
         assertThat(result.deduplicated()).isFalse();
         assertThat(result.riskEventId()).isNotNull();
         verify(riskEventMapper).insert(any(RiskEvent.class));
+        verify(riskNotifyOutboxService).markFailed(any(RiskEvent.class));
     }
 
     @Test

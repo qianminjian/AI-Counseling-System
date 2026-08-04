@@ -45,9 +45,10 @@ public class TrialAuthService {
 
     /**
      * 试运行开关：age<14 注册时自动写入监护人同意（跳过 SMS 闭环）。
-     * 生产环境须置 false，走 GuardianConsentService 真实 SMS 闭环（AUTH-040，PIPL §31）。
+     * 默认 false（fail-closed，PIPL §31：未成年人须真实监护人同意）；
+     * 仅当部署显式配置 MINDSAFE_CONSENT_TRIAL_AUTO_GRANT=true 时才启用试用自动授予。
      */
-    @org.springframework.beans.factory.annotation.Value("${mindsafe.consent.trial-auto-grant:true}")
+    @org.springframework.beans.factory.annotation.Value("${mindsafe.consent.trial-auto-grant:false}")
     private boolean trialAutoGrantGuardianConsent;
 
     public TrialAuthService(TrialInviteCodeMapper inviteCodeMapper,

@@ -8,6 +8,7 @@ import com.mindsafe.domain.entity.LongTermMemory;
 import com.mindsafe.domain.entity.RiskEvent;
 import com.mindsafe.domain.mapper.LongTermMemoryMapper;
 import com.mindsafe.domain.mapper.RiskEventMapper;
+import com.mindsafe.service.notification.RiskNotifyOutboxService;
 import com.mindsafe.service.profile.MemoryProfileBackfillService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -54,6 +55,7 @@ public class LongTermMemoryService {
     private final MemoryRelevanceScorer memoryRelevanceScorer;
     private final ThemeEvolutionEngine themeEvolutionEngine;
     private final RiskEventMapper riskEventMapper;
+    private final RiskNotifyOutboxService riskNotifyOutboxService;
 
     public LongTermMemoryService(LongTermMemoryMapper memoryMapper,
                                  AiChatService aiChatService,
@@ -62,7 +64,8 @@ public class LongTermMemoryService {
                                  MemoryRiskCorrelator memoryRiskCorrelator,
                                  MemoryRelevanceScorer memoryRelevanceScorer,
                                  ThemeEvolutionEngine themeEvolutionEngine,
-                                 RiskEventMapper riskEventMapper) {
+                                 RiskEventMapper riskEventMapper,
+                                 RiskNotifyOutboxService riskNotifyOutboxService) {
         this.memoryMapper = memoryMapper;
         this.aiChatService = aiChatService;
         this.objectMapper = objectMapper;
@@ -71,6 +74,7 @@ public class LongTermMemoryService {
         this.memoryRelevanceScorer = memoryRelevanceScorer;
         this.themeEvolutionEngine = themeEvolutionEngine;
         this.riskEventMapper = riskEventMapper;
+        this.riskNotifyOutboxService = riskNotifyOutboxService;
     }
 
     /**
@@ -442,6 +446,8 @@ public class LongTermMemoryService {
             event.setCreatedAt(Instant.now());
             event.setUpdatedAt(Instant.now());
             riskEventMapper.insert(event);
+            // P0-4：无通知义务的事件标记完成态，防止补偿任务误重试留痕事件
+            riskNotifyOutboxService.markSent(event);
             log.info("RISK-204 记忆风险信号已持久化: riskEventId={}, theme={}", event.getRiskEventId(), signal.theme());
         } catch (Exception e) {
             log.warn("RISK-204 记忆风险持久化降级（不影响业务）: {}", e.getMessage());
