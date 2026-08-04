@@ -53,7 +53,7 @@ export default function BigScreen({ onExit }: { onExit?: () => void }) {
       <div style={styles.metricsRow}>
         <MetricCard label="今日会话" value={d.todaySessions || 0} unit="次" color="#4fc3f7" />
         <MetricCard label="活跃学生" value={d.activeStudents || 0} unit="人" color="#81c784" />
-        <MetricCard label="待处理预警" value={d.openAlerts || 0} unit="条" color="#ff8a65" />
+        <MetricCard label="待处理预警" value={d.pendingAlerts || 0} unit="条" color="#ff8a65" />
         <MetricCard label="平均满意度" value={satisfaction?.avgRating || '-'} unit="/ 5" color="#ffd54f" />
         <MetricCard label="累计会话" value={d.totalSessions || 0} unit="次" color="#ce93d8" />
       </div>

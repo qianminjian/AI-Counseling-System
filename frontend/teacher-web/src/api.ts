@@ -53,6 +53,8 @@ export interface DashboardVO {
   pendingAlerts: number
   todayAlerts: number
   todaySessions: number
+  activeStudents: number
+  totalSessions: number
   weeklyTrend: DailyCount[]
   avgSatisfaction: number
   satisfactionCount: number

@@ -16,6 +16,7 @@ import java.io.IOException;
 import java.net.URI;
 import java.time.Instant;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -26,6 +27,10 @@ import static org.mockito.Mockito.*;
 /**
  * AlertWebSocketHandler 单元测试（13/20 篇审计补齐：api.websocket 0%→80%）
  * 覆盖：三重认证拒绝路径、角色门禁、租户分组、心跳、推送与故障 session 清理
+ * <p>
+ * P1-FE-4 改造：JWT 不再进 query string，由 AlertAuthHandshakeInterceptor 从
+ * Sec-WebSocket-Protocol（auth.<jwt> 项）提取后写入 attributes["wsToken"]；
+ * handler 是唯一认证点，测试直接预置 attributes 模拟握手已完成提取。
  */
 class AlertWebSocketHandlerTest {
 
@@ -43,10 +48,13 @@ class AlertWebSocketHandlerTest {
         handler = new AlertWebSocketHandler(jwtTokenProvider, blacklistService, new ObjectMapper());
     }
 
-    private WebSocketSession mockSession(String uri) {
+    /** token 为 null 时模拟"握手未提取到 wsToken"（无 auth subprotocol） */
+    private WebSocketSession mockSession(String token) {
         WebSocketSession session = mock(WebSocketSession.class);
-        when(session.getUri()).thenReturn(uri == null ? null : URI.create(uri));
-        when(session.getAttributes()).thenReturn(new HashMap<>());
+        when(session.getUri()).thenReturn(URI.create("ws://host/ws/alerts"));
+        Map<String, Object> attrs = new HashMap<>();
+        if (token != null) attrs.put(AlertAuthHandshakeInterceptor.TOKEN_ATTR, token);
+        when(session.getAttributes()).thenReturn(attrs);
         when(session.isOpen()).thenReturn(true);
         return session;
     }
@@ -63,8 +71,8 @@ class AlertWebSocketHandlerTest {
     // ===== 连接认证：拒绝路径 =====
 
     @Test
-    @DisplayName("URI 为 null → 静默关闭")
-    void rejectNullUri() throws IOException {
+    @DisplayName("握手未提取到 wsToken（无 auth subprotocol）→ 静默关闭")
+    void rejectMissingWsToken() throws IOException {
         WebSocketSession session = mockSession(null);
         handler.afterConnectionEstablished(session);
         verify(session).close(CloseStatus.POLICY_VIOLATION);
@@ -72,9 +80,9 @@ class AlertWebSocketHandlerTest {
     }
 
     @Test
-    @DisplayName("无 token 参数 → 拒绝")
-    void rejectMissingToken() throws IOException {
-        WebSocketSession session = mockSession("ws://host/ws/alerts");
+    @DisplayName("wsToken 为空串 → 拒绝")
+    void rejectBlankWsToken() throws IOException {
+        WebSocketSession session = mockSession("");
         handler.afterConnectionEstablished(session);
         verify(session).close(CloseStatus.POLICY_VIOLATION);
         verifyNoInteractions(jwtTokenProvider);
@@ -83,7 +91,7 @@ class AlertWebSocketHandlerTest {
     @Test
     @DisplayName("token 无效 → 拒绝且不继续校验")
     void rejectInvalidToken() throws IOException {
-        WebSocketSession session = mockSession("ws://host/ws/alerts?token=bad");
+        WebSocketSession session = mockSession("bad");
         when(jwtTokenProvider.validateToken("bad")).thenReturn(false);
 
         handler.afterConnectionEstablished(session);
@@ -95,7 +103,7 @@ class AlertWebSocketHandlerTest {
     @Test
     @DisplayName("refresh token（非 access）→ 拒绝")
     void rejectNonAccessToken() throws IOException {
-        WebSocketSession session = mockSession("ws://host/ws/alerts?token=rf");
+        WebSocketSession session = mockSession("rf");
         when(jwtTokenProvider.validateToken("rf")).thenReturn(true);
         when(jwtTokenProvider.isAccessToken("rf")).thenReturn(false);
 
@@ -108,7 +116,7 @@ class AlertWebSocketHandlerTest {
     @Test
     @DisplayName("黑名单 token（已登出）→ 拒绝")
     void rejectBlacklistedToken() throws IOException {
-        WebSocketSession session = mockSession("ws://host/ws/alerts?token=bl");
+        WebSocketSession session = mockSession("bl");
         when(jwtTokenProvider.validateToken("bl")).thenReturn(true);
         when(jwtTokenProvider.isAccessToken("bl")).thenReturn(true);
         when(blacklistService.isBlacklisted("bl")).thenReturn(true);
@@ -122,7 +130,7 @@ class AlertWebSocketHandlerTest {
     @Test
     @DisplayName("学生角色接入 → 拒绝（防全租户未成年人预警泄漏）")
     void rejectStudentRole() throws IOException {
-        WebSocketSession session = mockSession("ws://host/ws/alerts?token=stu");
+        WebSocketSession session = mockSession("stu");
         when(jwtTokenProvider.validateToken("stu")).thenReturn(true);
         when(jwtTokenProvider.isAccessToken("stu")).thenReturn(true);
         when(blacklistService.isBlacklisted("stu")).thenReturn(false);
@@ -137,7 +145,7 @@ class AlertWebSocketHandlerTest {
     @Test
     @DisplayName("userType 为 null → 拒绝")
     void rejectNullUserType() throws IOException {
-        WebSocketSession session = mockSession("ws://host/ws/alerts?token=nt");
+        WebSocketSession session = mockSession("nt");
         when(jwtTokenProvider.validateToken("nt")).thenReturn(true);
         when(jwtTokenProvider.isAccessToken("nt")).thenReturn(true);
         when(blacklistService.isBlacklisted("nt")).thenReturn(false);
@@ -151,7 +159,7 @@ class AlertWebSocketHandlerTest {
     @Test
     @DisplayName("tenantId/userId 缺失 → 拒绝")
     void rejectMissingIds() throws IOException {
-        WebSocketSession session = mockSession("ws://host/ws/alerts?token=nid");
+        WebSocketSession session = mockSession("nid");
         when(jwtTokenProvider.validateToken("nid")).thenReturn(true);
         when(jwtTokenProvider.isAccessToken("nid")).thenReturn(true);
         when(blacklistService.isBlacklisted("nid")).thenReturn(false);
@@ -169,7 +177,7 @@ class AlertWebSocketHandlerTest {
     @Test
     @DisplayName("教师 token → 注册成功，attributes 写入 tenantId/userId")
     void teacherConnectSuccess() {
-        WebSocketSession session = mockSession("ws://host/ws/alerts?foo=1&token=tk&bar=2");
+        WebSocketSession session = mockSession("tk");
         stubValidTeacherToken("tk");
 
         handler.afterConnectionEstablished(session);
@@ -184,7 +192,7 @@ class AlertWebSocketHandlerTest {
     void allAllowedRoles() {
         for (String role : new String[]{"psych_teacher", "class_teacher", "admin"}) {
             AlertWebSocketHandler h = new AlertWebSocketHandler(jwtTokenProvider, blacklistService, new ObjectMapper());
-            WebSocketSession session = mockSession("ws://host/ws/alerts?token=" + role);
+            WebSocketSession session = mockSession(role);
             when(jwtTokenProvider.validateToken(role)).thenReturn(true);
             when(jwtTokenProvider.isAccessToken(role)).thenReturn(true);
             when(blacklistService.isBlacklisted(role)).thenReturn(false);
@@ -200,8 +208,8 @@ class AlertWebSocketHandlerTest {
     @Test
     @DisplayName("同租户多 session 在线计数累加")
     void multipleSessionsSameTenant() {
-        WebSocketSession s1 = mockSession("ws://host/ws/alerts?token=tk");
-        WebSocketSession s2 = mockSession("ws://host/ws/alerts?token=tk");
+        WebSocketSession s1 = mockSession("tk");
+        WebSocketSession s2 = mockSession("tk");
         stubValidTeacherToken("tk");
 
         handler.afterConnectionEstablished(s1);
@@ -210,12 +218,18 @@ class AlertWebSocketHandlerTest {
         assertEquals(2, handler.getOnlineCount(tenantId));
     }
 
+    @Test
+    @DisplayName("subprotocol 协商列表包含 alerts.v1（前端连接必传）")
+    void exposesSubProtocols() {
+        assertEquals(List.of("alerts.v1"), handler.getSubProtocols());
+    }
+
     // ===== 断连清理 =====
 
     @Test
     @DisplayName("断连后 session 移除，租户空则整组清理")
     void connectionClosedCleanup() {
-        WebSocketSession session = mockSession("ws://host/ws/alerts?token=tk");
+        WebSocketSession session = mockSession("tk");
         stubValidTeacherToken("tk");
         handler.afterConnectionEstablished(session);
         assertEquals(1, handler.getOnlineCount(tenantId));
@@ -227,7 +241,7 @@ class AlertWebSocketHandlerTest {
     @Test
     @DisplayName("未认证 session 断连（无 tenantId attribute）不抛异常")
     void closedUnauthenticatedSession() {
-        WebSocketSession session = mockSession("ws://host/ws/alerts");
+        WebSocketSession session = mockSession(null);
         assertDoesNotThrow(() -> handler.afterConnectionClosed(session, CloseStatus.NORMAL));
     }
 
@@ -236,7 +250,7 @@ class AlertWebSocketHandlerTest {
     @Test
     @DisplayName("ping → pong 心跳响应")
     void pingPong() throws IOException {
-        WebSocketSession session = mockSession("ws://host/ws/alerts?token=tk");
+        WebSocketSession session = mockSession("tk");
         handler.handleTextMessage(session, new TextMessage("ping"));
         ArgumentCaptor<TextMessage> captor = ArgumentCaptor.forClass(TextMessage.class);
         verify(session).sendMessage(captor.capture());
@@ -246,7 +260,7 @@ class AlertWebSocketHandlerTest {
     @Test
     @DisplayName("非 ping 消息忽略；心跳发送 IOException 静默吞掉")
     void nonPingIgnoredAndHeartbeatIoErrorSwallowed() throws IOException {
-        WebSocketSession session = mockSession("ws://host/ws/alerts?token=tk");
+        WebSocketSession session = mockSession("tk");
         handler.handleTextMessage(session, new TextMessage("hello"));
         verify(session, never()).sendMessage(any());
 
@@ -262,7 +276,7 @@ class AlertWebSocketHandlerTest {
         assertEquals(0, handler.getOnlineCount(tenantId));
         handler.pushAlert(tenantId, Map.of("type", "alert.new")); // 无人在线不抛异常
 
-        WebSocketSession session = mockSession("ws://host/ws/alerts?token=tk");
+        WebSocketSession session = mockSession("tk");
         stubValidTeacherToken("tk");
         handler.afterConnectionEstablished(session);
 
@@ -281,7 +295,7 @@ class AlertWebSocketHandlerTest {
     @Test
     @DisplayName("pushAlert：已关闭 session 被移除")
     void pushAlertRemovesClosedSession() {
-        WebSocketSession session = mockSession("ws://host/ws/alerts?token=tk");
+        WebSocketSession session = mockSession("tk");
         stubValidTeacherToken("tk");
         handler.afterConnectionEstablished(session);
         when(session.isOpen()).thenReturn(false);
@@ -293,7 +307,7 @@ class AlertWebSocketHandlerTest {
     @Test
     @DisplayName("pushAlert：发送 IOException 的 session 被移除")
     void pushAlertRemovesBrokenSession() throws IOException {
-        WebSocketSession session = mockSession("ws://host/ws/alerts?token=tk");
+        WebSocketSession session = mockSession("tk");
         stubValidTeacherToken("tk");
         handler.afterConnectionEstablished(session);
         doThrow(new IOException("broken pipe")).when(session).sendMessage(any(TextMessage.class));
@@ -305,7 +319,7 @@ class AlertWebSocketHandlerTest {
     @Test
     @DisplayName("pushAlert：序列化失败不推送不抛异常")
     void pushAlertSerializationFailure() {
-        WebSocketSession session = mockSession("ws://host/ws/alerts?token=tk");
+        WebSocketSession session = mockSession("tk");
         stubValidTeacherToken("tk");
         handler.afterConnectionEstablished(session);
 
@@ -345,7 +359,7 @@ class AlertWebSocketHandlerTest {
     @Test
     @DisplayName("listener：在线时推送完整 payload（含 sessionId）")
     void listenerPushesFullPayload() throws IOException {
-        WebSocketSession session = mockSession("ws://host/ws/alerts?token=tk");
+        WebSocketSession session = mockSession("tk");
         stubValidTeacherToken("tk");
         handler.afterConnectionEstablished(session);
 
@@ -365,7 +379,7 @@ class AlertWebSocketHandlerTest {
     @Test
     @DisplayName("listener：sessionId 为 null 时 payload 省略该字段")
     void listenerOmitsNullSessionId() throws IOException {
-        WebSocketSession session = mockSession("ws://host/ws/alerts?token=tk");
+        WebSocketSession session = mockSession("tk");
         stubValidTeacherToken("tk");
         handler.afterConnectionEstablished(session);
 

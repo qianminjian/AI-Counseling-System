@@ -10,7 +10,7 @@ import org.springframework.web.socket.*;
 import org.springframework.web.socket.handler.TextWebSocketHandler;
 
 import java.io.IOException;
-import java.net.URI;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -20,15 +20,19 @@ import java.util.concurrent.CopyOnWriteArraySet;
 /**
  * 教师端预警实时推送 WebSocket Handler
  * <p>
- * 连接地址：ws://host/ws/alerts?token=JWT
- * 认证：从 query param 中解析 JWT，三重校验（access 类型 + 非黑名单 + 教师/管理员角色），
- * 提取 tenantId + userId
+ * 连接地址：ws://host/ws/alerts
+ * 认证：JWT 由 AlertAuthHandshakeInterceptor 从握手头 Sec-WebSocket-Protocol（auth.&lt;jwt&gt; 项）
+ * 提取后写入 attributes，本 handler 统一做三重校验（access 类型 + 非黑名单 + 教师/管理员角色），
+ * 提取 tenantId + userId（P1-FE-4：JWT 不进 query string，避免入 nginx access log）
  * 推送：按 tenantId 分组，新风险事件秒级推送到同租户所有在线教师
  */
 @Component
-public class AlertWebSocketHandler extends TextWebSocketHandler {
+public class AlertWebSocketHandler extends TextWebSocketHandler implements SubProtocolCapable {
 
     private static final Logger log = LoggerFactory.getLogger(AlertWebSocketHandler.class);
+
+    /** 协商子协议：前端连接必须携带该标识（与 auth.&lt;jwt&gt; 项一并提交） */
+    private static final List<String> SUB_PROTOCOLS = List.of("alerts.v1");
 
     /** 允许接入预警推送的角色（与 SecurityConfig /api/v1/alerts/** 对齐，学生/家长严禁接入） */
     private static final Set<String> ALERT_ROLES = Set.of("teacher", "psych_teacher", "class_teacher", "admin");
@@ -49,13 +53,15 @@ public class AlertWebSocketHandler extends TextWebSocketHandler {
     }
 
     @Override
-    public void afterConnectionEstablished(WebSocketSession session) {
-        URI uri = session.getUri();
-        if (uri == null) { closeQuietly(session); return; }
+    public List<String> getSubProtocols() {
+        return SUB_PROTOCOLS;
+    }
 
-        // 从 query param 提取 token，三重校验与 JwtAuthenticationFilter 对齐（SEC-002）
-        String token = extractParam(uri, "token");
-        if (token == null
+    @Override
+    public void afterConnectionEstablished(WebSocketSession session) {
+        // token 由 AlertAuthHandshakeInterceptor 在握手时从 Sec-WebSocket-Protocol 提取（P1-FE-4）
+        String token = (String) session.getAttributes().get(AlertAuthHandshakeInterceptor.TOKEN_ATTR);
+        if (token == null || token.isBlank()
                 || !jwtTokenProvider.validateToken(token)
                 || !jwtTokenProvider.isAccessToken(token)
                 || blacklistService.isBlacklisted(token)) {
@@ -141,16 +147,6 @@ public class AlertWebSocketHandler extends TextWebSocketHandler {
     public int getOnlineCount(UUID tenantId) {
         Set<WebSocketSession> sessions = tenantSessions.get(tenantId);
         return sessions != null ? sessions.size() : 0;
-    }
-
-    private String extractParam(URI uri, String name) {
-        String query = uri.getQuery();
-        if (query == null) return null;
-        for (String pair : query.split("&")) {
-            String[] kv = pair.split("=", 2);
-            if (kv.length == 2 && kv[0].equals(name)) return kv[1];
-        }
-        return null;
     }
 
     private void closeQuietly(WebSocketSession session) {

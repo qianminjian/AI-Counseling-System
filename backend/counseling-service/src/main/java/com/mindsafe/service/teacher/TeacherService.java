@@ -111,6 +111,20 @@ public class TeacherService {
                         .ge(CounselingSession::getStartedAt, todayStart)
         );
 
+        // 今日活跃学生数（今日有会话的去重学生）：单次 DISTINCT 查询，避免全量 会话查列表（P1-FE-2）
+        List<Object> activeStudentIds = sessionMapper.selectObjs(
+                new QueryWrapper<CounselingSession>()
+                        .select("DISTINCT student_user_id")
+                        .eq("tenant_id", tenantId)
+                        .ge("started_at", todayStart));
+        long activeStudents = activeStudentIds.stream().filter(Objects::nonNull).count();
+        
+        // 累计会话数（该租户全部会话，P1-FE-2 大屏"累计会话"卡片）
+        long totalSessions = sessionMapper.selectCount(
+                new LambdaQueryWrapper<CounselingSession>()
+                        .eq(CounselingSession::getTenantId, tenantId)
+        );
+        
         // 周趋势（最近 7 天每天的风险事件数）：单次查询 + 内存分桶，替代 7 次循环 count
         Instant weekStart = now.minus(6, ChronoUnit.DAYS).truncatedTo(ChronoUnit.DAYS);
         Instant tomorrowStart = now.truncatedTo(ChronoUnit.DAYS).plus(1, ChronoUnit.DAYS);
@@ -144,8 +158,8 @@ public class TeacherService {
                 .average().orElse(0.0);
         long satisfactionCount = ratedSessions.size();
 
-        return new DashboardVO(pendingAlerts, todayAlerts, todaySessions, weeklyTrend,
-                Math.round(avgSatisfaction * 10) / 10.0, satisfactionCount);
+        return new DashboardVO(pendingAlerts, todayAlerts, todaySessions, activeStudents, totalSessions,
+                weeklyTrend, Math.round(avgSatisfaction * 10) / 10.0, satisfactionCount);
     }
 
     // ===== 预警队列 =====
@@ -740,6 +754,8 @@ public class TeacherService {
             long pendingAlerts,
             long todayAlerts,
             long todaySessions,
+            long activeStudents,
+            long totalSessions,
             List<DailyCount> weeklyTrend,
             double avgSatisfaction,
             long satisfactionCount

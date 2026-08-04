@@ -10,6 +10,7 @@ export default function QualityPanel() {
   const [flagged, setFlagged] = useState([])
   const [loading, setLoading] = useState(true)
   const [replayOpen, setReplayOpen] = useState(false)
+  const [currentSessionId, setCurrentSessionId] = useState(null)
   const [messages, setMessages] = useState([])
   const [replayLoading, setReplayLoading] = useState(false)
 
@@ -21,6 +22,7 @@ export default function QualityPanel() {
   }, [])
 
   const openReplay = async (sessionId) => {
+    setCurrentSessionId(sessionId)
     setReplayOpen(true)
     setReplayLoading(true)
     setMessages([])
@@ -81,8 +83,8 @@ export default function QualityPanel() {
       {/* 会话回放抽屉 */}
       <Drawer title="会话回放" open={replayOpen} onClose={() => setReplayOpen(false)} width={480}
         extra={<Button size="small" icon={<EyeOutlined />} onClick={() => {
-          const sid = flagged.find(f => messages.length > 0)?.sessionId
-          if (sid) exportSessionPdf(sid)
+          // P1-FE-3：导出当前回放的会话；曾误用 flagged.find 取列表第一条 → 张冠李戴
+          if (currentSessionId) exportSessionPdf(currentSessionId)
         }}>导出 PDF</Button>}>
         {replayLoading ? <Spin /> : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
