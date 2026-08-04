@@ -192,7 +192,9 @@ class DataAnalyticsServiceTest {
         assertThat(curve.get(0).get("negativeRatio")).isEqualTo(0.5);
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> freq = (List<Map<String, Object>>) result.get("sessionFrequency");
-        assertThat(freq).hasSize(2);
+        // 10 个会话集中在一周内 → 单周分组，会话数不丢失
+        assertThat(freq).hasSize(1);
+        assertThat(freq.get(0).get("sessionCount")).isEqualTo(10L);
     }
 
     @Test
@@ -274,7 +276,8 @@ class DataAnalyticsServiceTest {
 
         @SuppressWarnings("unchecked")
         Map<String, Object> overview = (Map<String, Object>) report.get("overview");
-        assertThat(overview.get("avgSessionsPerStudent")).isEqualTo(0);
+        // 三目表达式 int 0 被提升为 double 0.0
+        assertThat(overview.get("avgSessionsPerStudent")).isEqualTo(0.0);
         assertThat(report.get("riskResolutionRate")).isEqualTo(100.0);
         assertThat(report.get("avgSatisfaction")).isEqualTo(0.0);
         assertThat(report).doesNotContainKey("aiQuality");
