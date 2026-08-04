@@ -117,7 +117,8 @@ class TeacherControllerFullTest {
     @DisplayName("getDashboard 透传租户与用户")
     void dashboard() {
         when(teacherService.getDashboard(tenantId, teacherUserId))
-                .thenReturn(new TeacherService.DashboardVO(2, 1, 3, List.of(), 4.2, 10));
+                // FE-2 后 DashboardVO 扩展为 8 参数（新增 activeStudents/totalSessions）
+                .thenReturn(new TeacherService.DashboardVO(2, 1, 3, 0L, 0L, List.of(), 4.2, 10));
 
         ApiResponse<TeacherService.DashboardVO> resp = controller.getDashboard(teacherAuth("psych_teacher"));
 

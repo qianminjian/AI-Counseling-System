@@ -1,6 +1,7 @@
 # MindSafe CD Pipeline
 # OPS-001: CI → 镜像 → Registry → 部署触发
 # OPS-002: Docker 镜像版本化（Git SHA tag + semver）
+# OPS-003: CI 全绿门禁（needs）→ 镜像 → 真实 SSH 部署 → 冒烟验证（P1-DEP）
 name: CD
 
 on:
@@ -16,6 +17,8 @@ jobs:
   build-and-push:
     name: Build & Push Docker Images
     runs-on: ubuntu-latest
+    # P1-DEP：CI 三个 job 全绿才允许发版（此前 CD 与 CI 无依赖，测试失败也可发布）
+    needs: [backend-build-test, dependency-scan, frontend-build]
     permissions:
       contents: read
       packages: write
@@ -131,5 +134,76 @@ jobs:
           echo "Frontend: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/frontend:${GITHUB_SHA::7}"
           echo "voice-service: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/voice-service:${GITHUB_SHA::7}"
           echo "tts-service: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/tts-service:${GITHUB_SHA::7}"
-          echo ""
-          echo "To deploy: ssh to server → 在 .env 配置 *_IMAGE 指向以上 tag → docker compose -f docker-compose.prod.yml pull && up -d"
+
+  # P1-DEP：真实 SSH 部署（此前仅 echo 通知，无实际发布动作）
+  # 前置：服务器已首次手动部署（/guju/mindsafe 含 .env），本 job 只做镜像切换 + 拉起
+  deploy:
+    name: SSH Deploy to Production
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    if: success() && github.ref == 'refs/heads/main'
+    environment: production
+
+    steps:
+      - name: Install SSH key
+        uses: shimataro/ssh-key-action@v2
+        with:
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          known_hosts: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+
+      - name: Deploy via SSH
+        run: |
+          set -euo pipefail
+          REMOTE_DIR=/guju/mindsafe
+          SHA=${{ github.sha }}
+          IMAGE_TAG=${SHA:0:7}
+          IMAGES="backend frontend voice-service tts-service"
+
+          # 1. 在服务器 .env 中把各服务镜像指向本次构建 tag（幂等替换）
+          for svc in $IMAGES; do
+            VAR=$(echo "${svc^^}-IMAGE" | tr '-' '_')
+            ssh "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
+              "cd $REMOTE_DIR/deploy && sed -i \"s|^${VAR}=.*|${VAR}=${REGISTRY}/${IMAGE_PREFIX}/${svc}:${IMAGE_TAG}|\" .env"
+          done
+
+          # 2. 拉取新镜像并滚动重启（数据库/Redis 不动）
+          ssh "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
+            "cd $REMOTE_DIR/deploy && docker compose -f docker-compose.prod.yml pull backend voice-service tts-service nginx && docker compose -f docker-compose.prod.yml up -d --no-deps backend voice-service tts-service nginx"
+
+      - name: Health check (backend)
+        run: |
+          for i in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' https://${{ secrets.DEPLOY_HOST }}/actuator/health || true)
+            if [ "$code" = "200" ]; then echo "✅ backend healthy"; exit 0; fi
+            sleep 10
+          done
+          echo "❌ backend health check timeout"
+          exit 1
+
+  # P1-DEP：冒烟测试接入流水线（此前 smoke-test.sh 从无流水线调用）
+  smoke:
+    name: E2E Smoke Test
+    runs-on: ubuntu-latest
+    needs: deploy
+    if: success()
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install SSH key
+        uses: shimataro/ssh-key-action@v2
+        with:
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          known_hosts: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+
+      - name: Run smoke tests on server
+        run: |
+          set -euo pipefail
+          # 上传冒烟脚本到服务器并执行（SMOKE_URL 缺省用 https://域名）
+          SMOKE_URL="${{ secrets.SMOKE_URL }}"
+          if [ -z "$SMOKE_URL" ]; then
+            SMOKE_URL="https://${{ secrets.DEPLOY_HOST }}"
+          fi
+          scp tests/e2e/smoke-test.sh "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/tmp/mindsafe-smoke.sh"
+          # 环境变量必须在远程命令内 export，不能作为独立参数（否则变成位置参数）
+          ssh "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" "export BASE_URL='$SMOKE_URL' TEACHER_USER='${{ secrets.TEACHER_USER }}' TEACHER_PASS='${{ secrets.TEACHER_PASS }}' ADMIN_USER='${{ secrets.ADMIN_USER }}' ADMIN_PASS='${{ secrets.ADMIN_PASS }}' && bash /tmp/mindsafe-smoke.sh"

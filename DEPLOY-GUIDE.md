@@ -135,7 +135,7 @@ ssh root@<公网IP>
 ### Step 4：配置环境变量
 
 ```bash
-cd /opt/mindsafe
+cd /guju/mindsafe
 vim .env
 ```
 
@@ -173,12 +173,17 @@ docker login ghcr.io -u <your-github-username>
 | `DEPLOY_HOST` | 阿里云 ECS 公网 IP |
 | `DEPLOY_USER` | `root`（或你创建的用户名） |
 | `DEPLOY_SSH_KEY` | SSH 私钥文件全部内容 |
+| `DEPLOY_KNOWN_HOSTS` | `ssh-keyscan <公网 IP>` 输出（ssh-key-action 校验主机指纹，防中间人） |
 | `SMOKE_URL` | 部署后的访问地址（如 `http://<公网 IP>`） |
+| `TEACHER_USER` / `TEACHER_PASS` | 冒烟测试用的教师账号（tests/e2e/smoke-test.sh） |
+| `ADMIN_USER` / `ADMIN_PASS` | 冒烟测试用的管理员账号 |
+
+> 冒烟测试缺少教师/管理员账号时，相关用例将告警跳过（smoke-test.sh 对空账号有保护），建议用首次部署种子数据中的账号。
 
 ### Step 7：首次部署
 
 ```bash
-cd /opt/mindsafe
+cd /guju/mindsafe
 docker compose -f docker-compose.test.yml pull
 docker compose -f docker-compose.test.yml run --rm frontend-init
 docker compose -f docker-compose.test.yml up -d
@@ -207,7 +212,7 @@ DNS 设置：A 记录 → 阿里云 ECS 公网 IP
 
 修改教师端域名：
 ```bash
-vim /opt/mindsafe/nginx/default.conf
+vim /guju/mindsafe/nginx/default.conf
 # 将 server_name teacher.mindsafe.app 改为你的域名
 docker compose -f docker-compose.test.yml restart nginx
 ```
@@ -225,7 +230,7 @@ mkdir -p /var/www/certbot
 certbot certonly --standalone -d yun.gxjugu.com --agree-tos -m <你的邮箱>
 
 # 3. 启动服务（nginx 容器只读挂载 /etc/letsencrypt 与 /var/www/certbot）
-cd /opt/mindsafe && docker compose -f docker-compose.prod.yml up -d
+cd /guju/mindsafe && docker compose -f docker-compose.prod.yml up -d
 
 # 4. 自动续期（续期走 webroot 挑战，无需停服；续期后 reload nginx）
 echo '0 3 * * 1 certbot renew --webroot -w /var/www/certbot --deploy-hook "docker exec mindsafe-nginx nginx -s reload" >> /var/log/certbot-renew.log 2>&1' | crontab -

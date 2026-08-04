@@ -37,6 +37,10 @@ ASR_ENGINE = os.environ.get("ASR_ENGINE", "funasr").lower()
 SER_ENABLED = os.environ.get("SER_ENABLED", "true").lower() == "true"
 DASHSCOPE_API_KEY = os.environ.get("DASHSCOPE_API_KEY", "")
 
+# 单请求超时（P1-DEP：ffmpeg 转码 / ASR / SER 挂死时避免请求永久挂起；超时返回 504）
+VOICE_PROCESS_TIMEOUT = float(os.environ.get("VOICE_PROCESS_TIMEOUT", "30"))   # ffmpeg 转码超时（秒）
+VOICE_ANALYZE_TIMEOUT = float(os.environ.get("VOICE_ANALYZE_TIMEOUT", "60"))   # ASR/SER 分析超时（秒）
+
 if ASR_ENGINE not in ("funasr", "dashscope"):
     raise ValueError(f"ASR_ENGINE 必须为 funasr 或 dashscope，当前值: {ASR_ENGINE}")
 
@@ -223,6 +227,7 @@ async def analyze_voice(file: UploadFile = File(...)):
             ["ffmpeg", "-y", "-i", tmp_path, "-ar", "16000", "-ac", "1", wav_path],
             check=True,
             capture_output=True,
+            timeout=VOICE_PROCESS_TIMEOUT,  # P1-DEP：转码挂死时不再永久挂起
         )
 
         # 读取 WAV 获取时长
@@ -234,11 +239,15 @@ async def analyze_voice(file: UploadFile = File(...)):
 
         if emotion_model is not None:
             # ASR 和 SER 并行（ASR 可能是网络IO或CPU，SER 是CPU，并行提升响应速度）
-            with ThreadPoolExecutor(max_workers=2) as executor:
+            # P1-DEP：result(timeout) 防挂死；显式 shutdown(wait=False) 避免 with 退出时 join 挂死线程
+            executor = ThreadPoolExecutor(max_workers=2)
+            try:
                 asr_future = executor.submit(asr_fn, wav_path)
                 ser_future = executor.submit(_funasr_ser, wav_path)
-                text = asr_future.result()
-                emotion = ser_future.result()
+                text = asr_future.result(timeout=VOICE_ANALYZE_TIMEOUT)
+                emotion = ser_future.result(timeout=VOICE_ANALYZE_TIMEOUT)
+            finally:
+                executor.shutdown(wait=False, cancel_futures=True)
         else:
             text = asr_fn(wav_path)
             emotion = EmotionResult(label="中性", label_en="neutral", confidence=0.0, scores=[0.0] * 9)
@@ -255,6 +264,13 @@ async def analyze_voice(file: UploadFile = File(...)):
     except subprocess.CalledProcessError as e:
         logger.error(f"音频转码失败: {e.stderr.decode(errors='ignore') if e.stderr else e}")
         raise HTTPException(status_code=500, detail="音频格式转换失败")
+    except subprocess.TimeoutExpired:
+        logger.error(f"ffmpeg 转码超时 ({VOICE_PROCESS_TIMEOUT}s)")
+        raise HTTPException(status_code=504, detail="音频转码超时")
+    except TimeoutError:
+        # concurrent.futures.TimeoutError = builtins.TimeoutError（3.11+）
+        logger.error(f"ASR/SER 分析超时 ({VOICE_ANALYZE_TIMEOUT}s)")
+        raise HTTPException(status_code=504, detail="语音分析超时")
     except HTTPException:
         raise  # DashScope 502 等已包装的异常直接抛出
     except Exception as e:

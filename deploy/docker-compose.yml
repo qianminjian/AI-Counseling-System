@@ -122,6 +122,8 @@ services:
       - "80:80"
     volumes:
       - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      # 公共安全头（P1-DEP：default.conf include 引用，必须挂载到 /etc/nginx/ 下）
+      - ./nginx/security-headers.conf:/etc/nginx/security-headers.conf:ro
       - frontend_assets:/app:ro
     depends_on:
       - backend

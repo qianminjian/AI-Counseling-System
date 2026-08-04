@@ -30,6 +30,9 @@ app = FastAPI(title="MindSafe TTS Service", version="3.0.0")
 # 全局复用 httpx 客户端（edge-tts 降级时用）
 http_client: httpx.AsyncClient = None
 
+# 单次合成超时（P1-DEP：SDK 线程挂死/网络黑洞时避免请求永久挂起；超时后自动降级或 503）
+TTS_SYNTHESIZE_TIMEOUT = float(os.environ.get("TTS_SYNTHESIZE_TIMEOUT", "30"))
+
 
 @app.on_event("startup")
 async def _startup():
@@ -383,9 +386,15 @@ async def _synthesize_dashscope(text: str, voice: str, speed: float, instruction
     t.start()
 
     # 缓冲全部音频（等待合成完成或出错）
+    # P1-DEP：queue.get() 无超时 → SDK 线程挂死时请求永久挂起；wait_for 超时后抛错交给上层降级
     chunks = []
     while True:
-        chunk = await queue.get()
+        try:
+            chunk = await asyncio.wait_for(queue.get(), timeout=TTS_SYNTHESIZE_TIMEOUT)
+        except asyncio.TimeoutError:
+            raise RuntimeError(
+                f"CosyVoice 合成超时 ({TTS_SYNTHESIZE_TIMEOUT}s, voice={voice})"
+            ) from None
         if chunk is None:
             break
         chunks.append(chunk)
@@ -418,9 +427,17 @@ async def _synthesize_edge_tts(text: str, voice: str, speed: float, pitch: float
 
     communicate = edge_tts.Communicate(text, voice, rate=rate_str, pitch=pitch_str)
     buffer = io.BytesIO()
-    async for chunk in communicate.stream():
-        if chunk["type"] == "audio":
-            buffer.write(chunk["data"])
+
+    async def _stream_audio():
+        async for chunk in communicate.stream():
+            if chunk["type"] == "audio":
+                buffer.write(chunk["data"])
+
+    # P1-DEP：stream() 无超时 → 微软侧连接挂死时请求永久挂起；wait_for 超时抛错交给上层 503
+    try:
+        await asyncio.wait_for(_stream_audio(), timeout=TTS_SYNTHESIZE_TIMEOUT)
+    except asyncio.TimeoutError:
+        raise RuntimeError(f"edge-tts 合成超时 ({TTS_SYNTHESIZE_TIMEOUT}s, voice={voice})") from None
 
     if buffer.tell() == 0:
         raise RuntimeError("edge-tts 返回音频为空")
