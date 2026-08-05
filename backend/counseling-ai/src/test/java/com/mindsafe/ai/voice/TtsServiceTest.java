@@ -22,7 +22,7 @@ import static org.mockito.Mockito.when;
 /**
  * TtsService 单测（AI-007 / 54_语音情感分析设计方案 TTS 合成链路）。
  * <p>
- * 覆盖：合成成功/空音频/异常静默降级、persona/emotion 缺省、dialect/languageMode 过滤、
+ * 覆盖：合成成功/空音频/异常静默降级、persona/emotion 缺省、dialect 透传、
  * 音色列表、健康检查、服务不可达降级。
  */
 @SuppressWarnings({"unchecked", "rawtypes"})
@@ -61,13 +61,13 @@ class TtsServiceTest {
                     .retrieve()
                     .bodyToMono(byte[].class)).thenReturn(Mono.just(new byte[]{1, 2, 3}));
 
-            byte[] audio = service.synthesize("你好呀", "bobo", "happy", 1.0, 1.0, 1, null, "mandarin");
+            byte[] audio = service.synthesize("你好呀", "bobo", "happy", 1.0, 1.0, 1, null);
 
             assertThat(audio).hasSize(3);
         }
 
         @Test
-        @DisplayName("persona/emotion 为 null → 走缺省（xiaoxing/neutral）；方言+非普通话模式参数透传")
+        @DisplayName("persona/emotion 为 null → 走缺省（xiaoxing/neutral）；方言参数透传")
         void defaultsAndDialectParams() {
             WebClient deep = injectDeepClient();
             when(deep.post().uri(SYNTH_URI)
@@ -76,7 +76,7 @@ class TtsServiceTest {
                     .retrieve()
                     .bodyToMono(byte[].class)).thenReturn(Mono.just(new byte[]{9}));
 
-            byte[] audio = service.synthesize("你好", null, null, 0.9, 1.0, 2, "yue", "dialect");
+            byte[] audio = service.synthesize("你好", null, null, 0.9, 1.0, 2, "yue");
 
             assertThat(audio).containsExactly((byte) 9);
         }
@@ -91,7 +91,7 @@ class TtsServiceTest {
                     .retrieve()
                     .bodyToMono(byte[].class)).thenReturn(Mono.just(new byte[0]));
 
-            assertThat(service.synthesize("你好", "bobo", "neutral", 1.0, 1.0, 1, null, null)).isNull();
+            assertThat(service.synthesize("你好", "bobo", "neutral", 1.0, 1.0, 1, null)).isNull();
         }
 
         @Test
@@ -104,13 +104,13 @@ class TtsServiceTest {
                     .retrieve()
                     .bodyToMono(byte[].class)).thenReturn(Mono.error(new RuntimeException("boom")));
 
-            assertThat(service.synthesize("你好", "bobo", "neutral", 1.0, 1.0, 1, null, null)).isNull();
+            assertThat(service.synthesize("你好", "bobo", "neutral", 1.0, 1.0, 1, null)).isNull();
         }
 
         @Test
         @DisplayName("服务不可达 → 静默降级返回 null")
         void unreachable_null() {
-            assertThat(service.synthesize("你好", "bobo", "neutral", 1.0, 1.0, 1, null, null)).isNull();
+            assertThat(service.synthesize("你好", "bobo", "neutral", 1.0, 1.0, 1, null)).isNull();
         }
     }
 

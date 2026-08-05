@@ -70,7 +70,6 @@ public class TtsController {
         String scene = (String) request.getOrDefault("scene", "chat");
         String riskLevel = (String) request.get("riskLevel"); // TTSFX-002：可选风险等级
         String dialect = (String) request.get("dialect"); // design/56：方言代码（可选，仅方言音色 qiqiu 生效）
-        String languageMode = (String) request.get("language_mode"); // 语言模式：mandarin/dialect（原生方言音色）
         double speed = request.containsKey("speed")
                 ? ((Number) request.get("speed")).doubleValue() : 1.0;
 
@@ -103,7 +102,7 @@ public class TtsController {
         VoiceRenderProfile profile = personaResolver.resolve(tenantId, userId, persona, emotion, scene, dialect);
 
         byte[] audio = ttsService.synthesize(text, profile.persona(), profile.emotionInstruct(),
-                speed * profile.speed(), profile.pitchScale(), profile.pauseStyle(), profile.dialect(), languageMode);
+                speed * profile.speed(), profile.pitchScale(), profile.pauseStyle(), profile.dialect());
         if (audio == null) {
             return ResponseEntity.noContent().build();
         }
@@ -175,7 +174,7 @@ public class TtsController {
             persona = "xiaoxing";
         }
 
-        byte[] audio = ttsService.synthesize(text.trim(), persona, "happy", 0.9, 1.0, 0, null, null);
+        byte[] audio = ttsService.synthesize(text.trim(), persona, "happy", 0.9, 1.0, 0, null);
         if (audio == null) {
             return ResponseEntity.noContent().build();
         }

@@ -81,7 +81,7 @@ class TtsControllerTest {
     @DisplayName("synthesize 成功 → MP3 音频 + 音色头")
     void synthesize_mp3() {
         when(personaResolver.resolve(tenantId, userId, "bobo", "happy", "chat", null)).thenReturn(profile());
-        when(ttsService.synthesize("你好", "bobo", "happy", 1.0, 1.0, 0, null, null)).thenReturn(mp3());
+        when(ttsService.synthesize("你好", "bobo", "happy", 1.0, 1.0, 0, null)).thenReturn(mp3());
 
         ResponseEntity<byte[]> resp = controller.synthesize(
                 Map.of("text", "你好", "persona", "bobo", "emotion", "happy"), auth());
@@ -98,7 +98,7 @@ class TtsControllerTest {
     void synthesize_wav() {
         when(personaResolver.resolve(tenantId, userId, null, "neutral", "chat", null)).thenReturn(profile());
         when(ttsService.synthesize(anyString(), anyString(), anyString(), anyDouble(), anyDouble(),
-                anyInt(), any(), any())).thenReturn(wav());
+                anyInt(), any())).thenReturn(wav());
 
         ResponseEntity<byte[]> resp = controller.synthesize(Map.of("text", "你好"), auth());
 
@@ -126,7 +126,7 @@ class TtsControllerTest {
     void synthesize_anonymous() {
         when(personaResolver.resolve(null, null, null, "neutral", "chat", null)).thenReturn(profile());
         when(ttsService.synthesize(anyString(), anyString(), anyString(), anyDouble(), anyDouble(),
-                anyInt(), any(), any())).thenReturn(mp3());
+                anyInt(), any())).thenReturn(mp3());
 
         ResponseEntity<byte[]> resp = controller.synthesize(Map.of("text", "你好"), null);
 
@@ -135,16 +135,16 @@ class TtsControllerTest {
     }
 
     @Test
-    @DisplayName("synthesize 方言 + language_mode 透传")
+    @DisplayName("synthesize 方言透传（language_mode 已废弃 v4，不再传递）")
     void synthesize_dialect() {
         VoiceRenderProfile p = new VoiceRenderProfile("qiqiu", "happy", 1.0, 1.0, 0, false, "auto", "sichuan");
         when(personaResolver.resolve(tenantId, userId, null, "neutral", "chat", "sichuan")).thenReturn(p);
-        when(ttsService.synthesize("你好", "qiqiu", "happy", 1.0, 1.0, 0, "sichuan", "dialect"))
+        when(ttsService.synthesize("你好", "qiqiu", "happy", 1.0, 1.0, 0, "sichuan"))
                 .thenReturn(mp3());
 
-        controller.synthesize(Map.of("text", "你好", "dialect", "sichuan", "language_mode", "dialect"), auth());
+        controller.synthesize(Map.of("text", "你好", "dialect", "sichuan"), auth());
 
-        verify(ttsService).synthesize("你好", "qiqiu", "happy", 1.0, 1.0, 0, "sichuan", "dialect");
+        verify(ttsService).synthesize("你好", "qiqiu", "happy", 1.0, 1.0, 0, "sichuan");
     }
 
     @Test
@@ -152,7 +152,7 @@ class TtsControllerTest {
     void synthesize_nullAudio() {
         when(personaResolver.resolve(tenantId, userId, null, "neutral", "chat", null)).thenReturn(profile());
         when(ttsService.synthesize(anyString(), anyString(), anyString(), anyDouble(), anyDouble(),
-                anyInt(), any(), any())).thenReturn(null);
+                anyInt(), any())).thenReturn(null);
 
         ResponseEntity<byte[]> resp = controller.synthesize(Map.of("text", "你好"), auth());
 
@@ -173,7 +173,7 @@ class TtsControllerTest {
 
         assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
         verify(ttsService, org.mockito.Mockito.never()).synthesize(anyString(), anyString(), anyString(),
-                anyDouble(), anyDouble(), anyInt(), any(), any());
+                anyDouble(), anyDouble(), anyInt(), any());
     }
 
     @Test
@@ -185,11 +185,11 @@ class TtsControllerTest {
         when(personaResolver.resolve(tenantId, userId, null, "calm", "chat", null))
                 .thenReturn(new VoiceRenderProfile("bobo", "calm", 1.0, 1.0, 0, false, "user_pick", null));
         when(ttsService.synthesize(anyString(), anyString(), eq("calm"), eq(0.9), anyDouble(), anyInt(),
-                any(), any())).thenReturn(mp3());
+                any())).thenReturn(mp3());
 
         controller.synthesize(Map.of("text", "你好", "riskLevel", "S1"), auth());
 
-        verify(ttsService).synthesize("你好", "bobo", "calm", 0.9, 1.0, 0, null, null);
+        verify(ttsService).synthesize("你好", "bobo", "calm", 0.9, 1.0, 0, null);
     }
 
     @Test
@@ -201,11 +201,11 @@ class TtsControllerTest {
         when(personaResolver.resolve(tenantId, userId, null, "calm", "chat", null))
                 .thenReturn(new VoiceRenderProfile("bobo", "calm", 1.0, 1.0, 0, false, "user_pick", null));
         when(ttsService.synthesize(anyString(), anyString(), anyString(), anyDouble(), anyDouble(),
-                anyInt(), any(), any())).thenReturn(mp3());
+                anyInt(), any())).thenReturn(mp3());
 
         controller.synthesize(Map.of("text", "你好", "riskLevel", "S2", "emotion", "angry"), auth());
 
-        verify(ttsService).synthesize("你好", "bobo", "calm", 1.0, 1.0, 0, null, null);
+        verify(ttsService).synthesize("你好", "bobo", "calm", 1.0, 1.0, 0, null);
     }
 
     @Test
@@ -216,11 +216,11 @@ class TtsControllerTest {
                         VoiceDegradationPolicy.VoiceMode.NORMAL, null, false, "正常"));
         when(personaResolver.resolve(tenantId, userId, null, "happy", "chat", null)).thenReturn(profile());
         when(ttsService.synthesize(anyString(), anyString(), anyString(), anyDouble(), anyDouble(),
-                anyInt(), any(), any())).thenReturn(mp3());
+                anyInt(), any())).thenReturn(mp3());
 
         controller.synthesize(Map.of("text", "你好", "riskLevel", "S3", "emotion", "happy"), auth());
 
-        verify(ttsService).synthesize("你好", "bobo", "happy", 1.0, 1.0, 0, null, null);
+        verify(ttsService).synthesize("你好", "bobo", "happy", 1.0, 1.0, 0, null);
     }
 
     @Test
@@ -229,11 +229,11 @@ class TtsControllerTest {
         VoiceRenderProfile p = new VoiceRenderProfile("bobo", "neutral", 1.1, 0.8, 0, false, "user_pick", null);
         when(personaResolver.resolve(tenantId, userId, null, "neutral", "chat", null)).thenReturn(p);
         when(ttsService.synthesize(anyString(), anyString(), anyString(), eq(0.8), eq(1.1), anyInt(),
-                any(), any())).thenReturn(mp3());
+                any())).thenReturn(mp3());
 
         controller.synthesize(Map.of("text", "你好", "speed", 1.0), auth());
 
-        verify(ttsService).synthesize("你好", "bobo", "neutral", 0.8, 1.1, 0, null, null);
+        verify(ttsService).synthesize("你好", "bobo", "neutral", 0.8, 1.1, 0, null);
     }
 
     // ===== 音色列表 / 状态 =====
@@ -283,7 +283,7 @@ class TtsControllerTest {
     @Test
     @DisplayName("loginPrompt 白名单文本 → 合成 + 默认 persona xiaoxing")
     void loginPrompt_success() {
-        when(ttsService.synthesize("嗨！我是波波，跟我打个招呼吧！", "xiaoxing", "happy", 0.9, 1.0, 0, null, null))
+        when(ttsService.synthesize("嗨！我是波波，跟我打个招呼吧！", "xiaoxing", "happy", 0.9, 1.0, 0, null))
                 .thenReturn(mp3());
 
         ResponseEntity<byte[]> resp = controller.loginPrompt(Map.of("text", " 嗨！我是波波，跟我打个招呼吧！  "));
@@ -296,19 +296,19 @@ class TtsControllerTest {
     @Test
     @DisplayName("loginPrompt 非法 persona → 回退 xiaoxing")
     void loginPrompt_badPersona() {
-        when(ttsService.synthesize("嗨！我是波波，跟我打个招呼吧！", "xiaoxing", "happy", 0.9, 1.0, 0, null, null))
+        when(ttsService.synthesize("嗨！我是波波，跟我打个招呼吧！", "xiaoxing", "happy", 0.9, 1.0, 0, null))
                 .thenReturn(mp3());
 
         controller.loginPrompt(Map.of("text", "嗨！我是波波，跟我打个招呼吧！", "persona", "evil"));
 
-        verify(ttsService).synthesize("嗨！我是波波，跟我打个招呼吧！", "xiaoxing", "happy", 0.9, 1.0, 0, null, null);
+        verify(ttsService).synthesize("嗨！我是波波，跟我打个招呼吧！", "xiaoxing", "happy", 0.9, 1.0, 0, null);
     }
 
     @Test
     @DisplayName("loginPrompt 合成失败 → 204")
     void loginPrompt_nullAudio() {
         when(ttsService.synthesize(anyString(), anyString(), anyString(), anyDouble(), anyDouble(),
-                anyInt(), any(), any())).thenReturn(null);
+                anyInt(), any())).thenReturn(null);
 
         ResponseEntity<byte[]> resp = controller.loginPrompt(Map.of("text", "嗨！我是波波，跟我打个招呼吧！"));
 

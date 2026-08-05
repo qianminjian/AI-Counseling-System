@@ -47,11 +47,13 @@ public class TtsService {
      * @param pitch        音高基调（TMATCH-001 prosody，1.0=自然）
      * @param pauseStyle   停顿风格（0=轻快 1=自然 2=多停顿安抚）
      * @param dialect      方言代码（可为 null，仅方言音色 qiqiu 生效，design/56）
-     * @param languageMode 语言模式（mandarin=普通话, dialect=原生方言音色）
      * @return 音频字节数组（wav/mp3）
+     * <p>
+     * D1（2026-08-05）：移除已废弃的 languageMode 参数——tts-service v4 起原生方言自动生效，
+     * language_mode 不再被读取，Java 侧不再传递。
      */
     public byte[] synthesize(String text, String persona, String emotion, double speed,
-                             double pitch, int pauseStyle, String dialect, String languageMode) {
+                             double pitch, int pauseStyle, String dialect) {
         try {
             var bodyBuilder = new java.util.HashMap<String, Object>();
             bodyBuilder.put("text", text);
@@ -62,9 +64,6 @@ public class TtsService {
             bodyBuilder.put("pause_style", pauseStyle);
             if (dialect != null && !dialect.isBlank()) {
                 bodyBuilder.put("dialect", dialect);
-            }
-            if (languageMode != null && !languageMode.isBlank() && !"mandarin".equals(languageMode)) {
-                bodyBuilder.put("language_mode", languageMode);
             }
             Map<String, Object> body = bodyBuilder;
 

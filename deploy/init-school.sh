@@ -69,14 +69,6 @@ echo "   学校ID：$SCHOOL_ID"
 echo "   管理员ID：$ADMIN_USER_ID"
 echo ""
 
-# ===== 生成 BCrypt 密码哈希 =====
-# 使用 Python bcrypt（服务器通常有 python3）
-PASSWORD_HASH=$(python3 -c "
-import hashlib, base64, os
-# 简化：使用 PostgreSQL 的 crypt 函数代替
-print('USE_PG_CRYPT')
-" 2>/dev/null || echo "USE_PG_CRYPT")
-
 # ===== 构建 SQL =====
 read -r -d '' SQL << 'EOSQL' || true
 -- 1. 创建租户
