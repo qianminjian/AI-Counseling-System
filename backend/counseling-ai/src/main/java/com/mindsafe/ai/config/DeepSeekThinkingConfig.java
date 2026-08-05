@@ -49,7 +49,8 @@ public class DeepSeekThinkingConfig {
                         request.getHeaders().setContentLength(body.length);
                     }
                 } catch (Exception e) {
-                    // JSON 解析失败不阻断请求（安全降级）
+                    // JSON 解析失败不阻断请求（安全降级），C4：留痕避免静默
+                    log.debug("enable_thinking 请求体重写失败（安全降级）: {}", e.getMessage());
                 }
             }
             return execution.execute(request, body);

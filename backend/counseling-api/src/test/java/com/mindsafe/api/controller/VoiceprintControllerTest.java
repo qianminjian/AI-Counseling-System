@@ -225,4 +225,60 @@ class VoiceprintControllerTest {
             verify(jwtTokenProvider, never()).generateToken(any(), any(), any());
         }
     }
+
+    @Nested
+    @DisplayName("损坏数据隔离（C4：异常不得吞没/扩散）")
+    class CorruptedData {
+
+        @Test
+        @DisplayName("库中存在损坏 embedding JSON：跳过该记录，好记录仍可正常匹配")
+        void corruptedEmbeddingSkipped() {
+            UUID goodUserId = UUID.randomUUID();
+            UUID tenantId = UUID.randomUUID();
+            VoiceprintEmbedding corrupted = new VoiceprintEmbedding();
+            corrupted.setUserId(UUID.randomUUID());
+            corrupted.setTenantId(tenantId);
+            corrupted.setEmbedding("{not-json");
+            corrupted.setSampleIndex(0);
+            corrupted.setCreatedAt(Instant.now());
+            when(embeddingMapper.selectList(any()))
+                    .thenReturn(List.of(corrupted, record(goodUserId, tenantId, 1.0)));
+            User user = new User();
+            user.setUserId(goodUserId);
+            user.setTenantId(tenantId);
+            user.setStatus("active");
+            user.setPseudonym("小明");
+            user.setUserType("student");
+            when(userMapper.selectById(goodUserId)).thenReturn(user);
+            when(tenantAccessGuard.isLoginAllowed(tenantId)).thenReturn(true);
+            when(jwtTokenProvider.generateToken(goodUserId, "student", tenantId)).thenReturn("tok");
+            when(jwtTokenProvider.generateRefreshToken(goodUserId, "student", tenantId)).thenReturn("rtok");
+
+            ApiResponse<Map<String, Object>> resp = controller.verify(
+                    new VoiceprintController.VerifyRequest(List.of(List.of(1.0, 1.0))), request());
+
+            // 损坏记录被跳过且不抛异常：验证流程不因单条脏数据中断，也不误匹配
+            assertThat(resp.data().get("matched")).isEqualTo(true);
+            assertThat(resp.data().get("token")).isEqualTo("tok");
+        }
+
+        @Test
+        @DisplayName("全部记录损坏：返回未匹配，不抛异常、不签发 token")
+        void allCorruptedNoMatch() {
+            UUID tenantId = UUID.randomUUID();
+            VoiceprintEmbedding corrupted = new VoiceprintEmbedding();
+            corrupted.setUserId(UUID.randomUUID());
+            corrupted.setTenantId(tenantId);
+            corrupted.setEmbedding("[1.0, \"oops\"");
+            corrupted.setSampleIndex(0);
+            corrupted.setCreatedAt(Instant.now());
+            when(embeddingMapper.selectList(any())).thenReturn(List.of(corrupted));
+
+            ApiResponse<Map<String, Object>> resp = controller.verify(
+                    new VoiceprintController.VerifyRequest(List.of(List.of(1.0, 1.0))), request());
+
+            assertThat(resp.data().get("matched")).isEqualTo(false);
+            verify(jwtTokenProvider, never()).generateToken(any(), any(), any());
+        }
+    }
 }

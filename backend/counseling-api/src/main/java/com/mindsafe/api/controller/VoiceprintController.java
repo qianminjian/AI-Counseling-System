@@ -184,7 +184,12 @@ public class VoiceprintController {
             for (List<Double> inputEmb : inputEmbeddings) {
                 for (VoiceprintEmbedding stored : entry.getValue()) {
                     List<Double> storedEmb = parseEmbedding(stored.getEmbedding());
-                    if (storedEmb == null) continue;
+                    if (storedEmb == null) {
+                        // C4：损坏记录不静默吞没——留痕（userId/sampleIndex 可定位），流程继续比对其他记录
+                        log.warn("声纹 embedding 记录损坏已跳过: userId={}, sampleIndex={}",
+                                stored.getUserId(), stored.getSampleIndex());
+                        continue;
+                    }
                     double score = cosineSimilarity(inputEmb, storedEmb);
                     if (score > bestScore) {
                         bestScore = score;
@@ -211,7 +216,7 @@ public class VoiceprintController {
 
         // 匹配成功：查用户 + 签发 token
         User user = userMapper.selectById(bestUserId);
-        if (user == null || !"active".equals(user.getStatus())
+        if (user == null || !User.STATUS_ACTIVE.equals(user.getStatus())
                 || !tenantAccessGuard.isLoginAllowed(user.getTenantId())) {
             return ApiResponse.ok(Map.of("matched", false));
         }
