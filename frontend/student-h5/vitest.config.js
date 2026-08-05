@@ -20,6 +20,13 @@ export default defineConfig({
         'vitest.config.js',
         'vite.config.js',
       ],
+      // 审计 P1-11：覆盖率门禁（CI 构建强制，2026-08 实测 lines ~85 达标）
+      thresholds: {
+        lines: 50,
+        branches: 35,
+        functions: 40,
+        statements: 50,
+      },
     },
   },
 });

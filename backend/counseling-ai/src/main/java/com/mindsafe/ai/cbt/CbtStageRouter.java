@@ -1,5 +1,6 @@
 package com.mindsafe.ai.cbt;
 
+import com.mindsafe.ai.orchestrator.StrategyProfile;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -48,6 +49,47 @@ public class CbtStageRouter {
         if (effectiveGrade <= 2) return AgeStrategy.BEHAVIORAL_FIRST;
         if (effectiveGrade <= 4) return AgeStrategy.BALANCED;
         return AgeStrategy.COGNITIVE_FIRST;
+    }
+
+    /**
+     * 阶段推断（WIRE-002/CBT-201，design/03 §11.4）。
+     * <p>
+     * 启发式：轮次作阶段代理 + 容纳之窗门控（design/03 §11.2）：
+     * CRISIS/ACTIVATED 高唤醒态不进认知节点，降级为稳定化（SKILL_PRACTICE 呼吸/着陆）。
+     * M2+ 由分诊段 LLM 回名替代本启发式。
+     *
+     * @param turn         当前轮次（从 1 起）
+     * @param emotionState 情绪状态机当前态（容纳之窗门控输入）
+     * @return 推断的 CBT 阶段
+     */
+    public CbtStage inferStage(int turn, StrategyProfile.EmotionState emotionState) {
+        if (emotionState == StrategyProfile.EmotionState.CRISIS
+                || emotionState == StrategyProfile.EmotionState.ACTIVATED) {
+            return CbtStage.SKILL_PRACTICE;
+        }
+        if (turn <= 2) return CbtStage.RAPPORT;
+        if (turn >= 9) return CbtStage.CLOSURE;
+        return CbtStage.PROBLEM_IDENTIFY;
+    }
+
+    /**
+     * 渲染阶段指令片段（追加到 system 层，WIRE-002）。
+     * <p>
+     * 优先级裁决在提示词之外完成（本方法只渲染 mark() 的裁决结果，不做新决策）。
+     */
+    public String stageDirective(StageMark mark) {
+        if (!mark.allowCbt()) {
+            return "【CBT 阶段指令】当前情绪高唤醒，先稳定化陪伴：只用呼吸/着陆/情绪命名技术，"
+                    + "不讲道理、不追问、不做认知重构。";
+        }
+        StringBuilder sb = new StringBuilder("【CBT 阶段指令】当前阶段：").append(mark.stage().name())
+                .append("；本轮允许技术：").append(String.join("/", mark.allowedTechniques()));
+        if (mark.ageStrategy() == AgeStrategy.BEHAVIORAL_FIRST) {
+            sb.append("；年龄约束：低年级不做认知重构，用想法泡泡外化与转移注意替代");
+        } else if (mark.ageStrategy() == AgeStrategy.BALANCED) {
+            sb.append("；年龄约束：认知重构须用具象化工具（想法天平/侦探找线索）");
+        }
+        return sb.append("。").toString();
     }
 
     /**

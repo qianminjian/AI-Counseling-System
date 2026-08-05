@@ -6,6 +6,7 @@ import com.mindsafe.domain.entity.LongTermMemory;
 import com.mindsafe.domain.mapper.LongTermMemoryMapper;
 import com.mindsafe.service.profile.MemoryProfileBackfillService;
 import com.mindsafe.service.profile.MemoryProfileBackfillService.MemoryEvent;
+import com.mindsafe.service.notification.RiskNotifyOutboxService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -60,6 +61,9 @@ class LongTermMemoryServiceTest {
     @Mock
     private com.mindsafe.domain.mapper.RiskEventMapper riskEventMapper;
 
+    @Mock
+    private RiskNotifyOutboxService riskNotifyOutboxService;
+
     private LongTermMemoryService service;
 
     private final UUID tenantId = UUID.randomUUID();
@@ -70,7 +74,8 @@ class LongTermMemoryServiceTest {
     void setUp() {
         service = new LongTermMemoryService(
                 memoryMapper, aiChatService, new ObjectMapper(), backfillService,
-                memoryRiskCorrelator, memoryRelevanceScorer, themeEvolutionEngine, riskEventMapper);
+                memoryRiskCorrelator, memoryRelevanceScorer, themeEvolutionEngine, riskEventMapper,
+                riskNotifyOutboxService);
         // selectCount 两处调用（幂等检查 + evict），返回 0 同时满足
         when(memoryMapper.selectCount(any())).thenReturn(0L);
     }

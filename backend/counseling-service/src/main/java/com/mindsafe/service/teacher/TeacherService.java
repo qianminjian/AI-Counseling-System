@@ -1,13 +1,16 @@
 package com.mindsafe.service.teacher;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.mindsafe.domain.entity.*;
 import com.mindsafe.domain.mapper.*;
+import com.mindsafe.service.casemanage.CaseLifecycleService;
 import com.mindsafe.service.security.FieldEncryptionService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -32,6 +35,19 @@ public class TeacherService {
     private final MessageSummaryMapper messageSummaryMapper;
     private final FieldEncryptionService fieldEncryptionService;
 
+    // 预警待办静音规则（design/35 §4.2 降噪第 3 条，纯规则内联实例化）
+    private final AlertTodoMutePolicy alertTodoMutePolicy = new AlertTodoMutePolicy();
+
+    /** 个案跟踪标志的备注类型与生效值（复用 teacher_notes 免 schema 变更） */
+    private static final String CASE_TRACKING_NOTE_TYPE = "case_tracking";
+    private static final String CASE_TRACKING_ACTIVE = "active";
+
+    /** 个案阶段推进的备注类型（复用 teacher_notes 免 schema 变更，content=阶段名） */
+    private static final String CASE_STAGE_NOTE_TYPE = "case_stage";
+
+    // 个案生命周期纯函数（无状态，同 AlertTodoMutePolicy 内联实例化先例）
+    private final CaseLifecycleService caseLifecycleService = new CaseLifecycleService();
+
     public TeacherService(RiskEventMapper riskEventMapper,
                           CounselingSessionMapper sessionMapper,
                           UserMapper userMapper,
@@ -52,7 +68,8 @@ public class TeacherService {
 
     /**
      * 解析当前用户的数据可见范围。
-     * 返回 null 表示全校可见，返回 classCode 表示仅该班级可见。
+     * 返回 null 表示全校可见，返回 classCode 表示仅该班级可见，
+     * 返回空串 "" 表示班主任未绑定班级（无可见范围，查询自然为空结果）。
      */
     public String resolveClassScope(UUID tenantId, UUID userId, String userType) {
         if ("class_teacher".equals(userType)) {
@@ -60,7 +77,8 @@ public class TeacherService {
             if (teacher != null && teacher.getClassCode() != null && !teacher.getClassCode().isBlank()) {
                 return teacher.getClassCode();
             }
-            // 班主任未绑定班级 → 默认全校可见（避免空数据）
+            // P1 审计修复：班主任未绑定班级 → 返回空范围，不再全校可见兜底（防数据越权）
+            return "";
         }
         return null; // admin / psych_teacher / teacher → 全校
     }
@@ -93,18 +111,38 @@ public class TeacherService {
                         .ge(CounselingSession::getStartedAt, todayStart)
         );
 
-        // 周趋势（最近 7 天每天的风险事件数）
+        // 今日活跃学生数（今日有会话的去重学生）：单次 DISTINCT 查询，避免全量 会话查列表（P1-FE-2）
+        List<Object> activeStudentIds = sessionMapper.selectObjs(
+                new QueryWrapper<CounselingSession>()
+                        .select("DISTINCT student_user_id")
+                        .eq("tenant_id", tenantId)
+                        .ge("started_at", todayStart));
+        long activeStudents = activeStudentIds.stream().filter(Objects::nonNull).count();
+        
+        // 累计会话数（该租户全部会话，P1-FE-2 大屏"累计会话"卡片）
+        long totalSessions = sessionMapper.selectCount(
+                new LambdaQueryWrapper<CounselingSession>()
+                        .eq(CounselingSession::getTenantId, tenantId)
+        );
+        
+        // 周趋势（最近 7 天每天的风险事件数）：单次查询 + 内存分桶，替代 7 次循环 count
+        Instant weekStart = now.minus(6, ChronoUnit.DAYS).truncatedTo(ChronoUnit.DAYS);
+        Instant tomorrowStart = now.truncatedTo(ChronoUnit.DAYS).plus(1, ChronoUnit.DAYS);
+        List<RiskEvent> weekEvents = riskEventMapper.selectList(
+                new LambdaQueryWrapper<RiskEvent>()
+                        .eq(RiskEvent::getTenantId, tenantId)
+                        .ge(RiskEvent::getDetectedAt, weekStart)
+                        .lt(RiskEvent::getDetectedAt, tomorrowStart)
+        );
+        Map<Instant, Long> eventsByDay = weekEvents.stream()
+                .map(RiskEvent::getDetectedAt)
+                .filter(Objects::nonNull)
+                .collect(Collectors.groupingBy(t -> t.truncatedTo(ChronoUnit.DAYS), Collectors.counting()));
         List<DailyCount> weeklyTrend = new ArrayList<>();
         for (int i = 6; i >= 0; i--) {
             Instant dayStart = now.minus(i, ChronoUnit.DAYS).truncatedTo(ChronoUnit.DAYS);
-            Instant dayEnd = dayStart.plus(1, ChronoUnit.DAYS);
-            long count = riskEventMapper.selectCount(
-                    new LambdaQueryWrapper<RiskEvent>()
-                            .eq(RiskEvent::getTenantId, tenantId)
-                            .ge(RiskEvent::getDetectedAt, dayStart)
-                            .lt(RiskEvent::getDetectedAt, dayEnd)
-            );
-            weeklyTrend.add(new DailyCount(dayStart.toString().substring(0, 10), count));
+            weeklyTrend.add(new DailyCount(dayStart.toString().substring(0, 10),
+                    eventsByDay.getOrDefault(dayStart, 0L)));
         }
 
         // 满意度统计（近 30 天有评价的会话）
@@ -120,13 +158,37 @@ public class TeacherService {
                 .average().orElse(0.0);
         long satisfactionCount = ratedSessions.size();
 
-        return new DashboardVO(pendingAlerts, todayAlerts, todaySessions, weeklyTrend,
-                Math.round(avgSatisfaction * 10) / 10.0, satisfactionCount);
+        return new DashboardVO(pendingAlerts, todayAlerts, todaySessions, activeStudents, totalSessions,
+                weeklyTrend, Math.round(avgSatisfaction * 10) / 10.0, satisfactionCount);
     }
 
     // ===== 预警队列 =====
 
     public List<AlertVO> getAlerts(UUID tenantId, String status, Integer minLevel, int limit) {
+        return getAlerts(tenantId, null, status, minLevel, limit);
+    }
+
+    /**
+     * 预警队列（支持班级范围过滤，P1 审计修复：班主任导出/列表不再全校可见）。
+     *
+     * @param classScope 班级范围（null=全校；空串=无可见范围，返回空列表）
+     */
+    public List<AlertVO> getAlerts(UUID tenantId, String classScope, String status, Integer minLevel, int limit) {
+        // 班级范围解析：先确认该班存在学生，空班/未绑定班级直接返回空列表
+        Set<UUID> classStudentIds = null;
+        if (classScope != null) {
+            List<User> classStudents = userMapper.selectList(
+                    new LambdaQueryWrapper<User>()
+                            .eq(User::getTenantId, tenantId)
+                            .eq(User::getUserType, "student")
+                            .eq(User::getClassCode, classScope)
+            );
+            if (classStudents.isEmpty()) {
+                return List.of();
+            }
+            classStudentIds = classStudents.stream().map(User::getUserId).collect(Collectors.toSet());
+        }
+
         LambdaQueryWrapper<RiskEvent> wrapper = new LambdaQueryWrapper<RiskEvent>()
                 .eq(RiskEvent::getTenantId, tenantId);
 
@@ -141,17 +203,114 @@ public class TeacherService {
                 .last("LIMIT " + Math.min(limit, 100));
 
         List<RiskEvent> events = riskEventMapper.selectList(wrapper);
+        // 班级过滤（内存过滤，与 getHighRiskStudents 同模式，避免 inSql 注入面）
+        if (classStudentIds != null) {
+            Set<UUID> finalIds = classStudentIds;
+            events = events.stream()
+                    .filter(e -> finalIds.contains(e.getStudentUserId()))
+                    .toList();
+        }
+        Set<UUID> caseTrackedStudents = getCaseTrackedStudentIds(tenantId);
+
+        // 批量查询学生信息（避免 N+1）
+        Set<UUID> studentIds = events.stream().map(RiskEvent::getStudentUserId).collect(Collectors.toSet());
+        Map<UUID, User> studentMap = studentIds.isEmpty() ? Map.of()
+                : userMapper.selectBatchIds(studentIds).stream()
+                        .collect(Collectors.toMap(User::getUserId, u -> u));
 
         return events.stream().map(e -> {
-            // 查询学生信息
-            User student = userMapper.selectById(e.getStudentUserId());
+            User student = studentMap.get(e.getStudentUserId());
             String studentName = student != null ? student.getPseudonym() : "未知学生";
+            boolean mutedFromTodo = alertTodoMutePolicy.isMutedFromTodo(
+                    e.getRiskLevel(), caseTrackedStudents.contains(e.getStudentUserId()));
             return new AlertVO(
                     e.getRiskEventId(), e.getStudentUserId(), studentName,
                     e.getRiskType(), e.getRiskLevel(), e.getStatus(),
-                    e.getDetectedAt(), e.getAssignedUserId()
+                    e.getDetectedAt(), e.getAssignedUserId(), mutedFromTodo
             );
         }).toList();
+    }
+
+    /**
+     * 转派预警（design/35 §4.1）。
+     * 规则：转派后重置为 open（目标教师的"新预警"）；重置认领但不重置 SLA（detectedAt 不变）。
+     */
+    @Transactional
+    public void transferAlert(UUID tenantId, UUID riskEventId, UUID fromTeacherId,
+                              UUID targetTeacherId, String note) {
+        RiskEvent event = getEventWithTenantCheck(tenantId, riskEventId);
+
+        // 目标教师必须存在且同租户（防止跨租户转派泄露学生数据）
+        User target = userMapper.selectById(targetTeacherId);
+        if (target == null || !tenantId.equals(target.getTenantId())) {
+            throw new IllegalArgumentException("目标教师不存在: " + targetTeacherId);
+        }
+
+        event.setStatus("open");
+        event.setAssignedUserId(targetTeacherId);
+        event.setUpdatedAt(Instant.now());
+        riskEventMapper.updateById(event);
+
+        if (note != null && !note.isBlank()) {
+            TeacherNote transferNote = TeacherNote.create(
+                    tenantId, event.getStudentUserId(), fromTeacherId,
+                    fieldEncryptionService.encrypt("【预警转派】" + note), "transfer"
+            );
+            teacherNoteMapper.insert(transferNote);
+        }
+        log.info("预警已转派: riskEventId={}, from={}, target={}", riskEventId, fromTeacherId, targetTeacherId);
+    }
+
+    /**
+     * 设置学生“已在个案跟踪中”标志（design/35 §4.2 降噪第 3 条）。
+     * 落地为 teacher_notes（type=case_tracking）最新一条，避免 schema 变更。
+     */
+    public void setCaseTracking(UUID tenantId, UUID studentUserId, UUID teacherUserId, boolean enabled) {
+        User student = userMapper.selectById(studentUserId);
+        if (student == null || !tenantId.equals(student.getTenantId())) {
+            throw new IllegalArgumentException("学生不存在: " + studentUserId);
+        }
+        TeacherNote note = TeacherNote.create(
+                tenantId, studentUserId, teacherUserId,
+                fieldEncryptionService.encrypt(enabled ? CASE_TRACKING_ACTIVE : "inactive"), CASE_TRACKING_NOTE_TYPE
+        );
+        teacherNoteMapper.insert(note);
+        log.info("个案跟踪标志更新: student={}, enabled={}", studentUserId, enabled);
+    }
+
+    /** 学生是否在个案跟踪中（最新一条 case_tracking 备注为 active） */
+    public boolean isCaseTracking(UUID tenantId, UUID studentUserId) {
+        List<TeacherNote> notes = teacherNoteMapper.selectList(
+                new LambdaQueryWrapper<TeacherNote>()
+                        .eq(TeacherNote::getTenantId, tenantId)
+                        .eq(TeacherNote::getStudentUserId, studentUserId)
+                        .eq(TeacherNote::getNoteType, CASE_TRACKING_NOTE_TYPE)
+                        .orderByDesc(TeacherNote::getCreatedAt)
+                        .last("LIMIT 1")
+        );
+        return !notes.isEmpty() && CASE_TRACKING_ACTIVE.equals(fieldEncryptionService.decrypt(notes.get(0).getContent()));
+    }
+
+    /** 租户内全部个案跟踪中的学生 ID 集合（批量查询避免 N+1） */
+    private Set<UUID> getCaseTrackedStudentIds(UUID tenantId) {
+        List<TeacherNote> notes = teacherNoteMapper.selectList(
+                new LambdaQueryWrapper<TeacherNote>()
+                        .eq(TeacherNote::getTenantId, tenantId)
+                        .eq(TeacherNote::getNoteType, CASE_TRACKING_NOTE_TYPE)
+        );
+        // 按学生取最新一条，仅保留 active
+        Map<UUID, TeacherNote> latestByStudent = new HashMap<>();
+        for (TeacherNote note : notes) {
+            TeacherNote current = latestByStudent.get(note.getStudentUserId());
+            if (current == null || (note.getCreatedAt() != null && current.getCreatedAt() != null
+                    && note.getCreatedAt().isAfter(current.getCreatedAt()))) {
+                latestByStudent.put(note.getStudentUserId(), note);
+            }
+        }
+        return latestByStudent.values().stream()
+                .filter(n -> CASE_TRACKING_ACTIVE.equals(fieldEncryptionService.decrypt(n.getContent())))
+                .map(TeacherNote::getStudentUserId)
+                .collect(Collectors.toSet());
     }
 
     /** 认领预警 */
@@ -176,6 +335,7 @@ public class TeacherService {
     }
 
     /** 处理完成（线下干预后标记 resolved） */
+    @Transactional
     public void resolveAlert(UUID tenantId, UUID riskEventId, UUID teacherUserId, String resolutionNote) {
         RiskEvent event = getEventWithTenantCheck(tenantId, riskEventId);
         event.setStatus("resolved");
@@ -211,6 +371,7 @@ public class TeacherService {
     }
 
     /** DATA-004：完成回访（填写回访记录 + 最终评估） */
+    @Transactional
     public void completeFollowUp(UUID tenantId, UUID riskEventId, UUID teacherUserId,
                                  String followUpNote, String outcome) {
         RiskEvent event = getEventWithTenantCheck(tenantId, riskEventId);
@@ -253,6 +414,70 @@ public class TeacherService {
         return event;
     }
 
+    // ===== 个案阶段推进（P1 审计修复：transitionCase 伪 API 无持久化 → 落地 teacher_notes） =====
+
+    /**
+     * 读取学生当前个案阶段：teacher_notes（note_type=case_stage）最新一条，无记录 → INTAKE。
+     */
+    public CaseLifecycleService.CaseStage getCurrentCaseStage(UUID tenantId, UUID studentUserId) {
+        List<TeacherNote> notes = teacherNoteMapper.selectList(
+                new LambdaQueryWrapper<TeacherNote>()
+                        .eq(TeacherNote::getTenantId, tenantId)
+                        .eq(TeacherNote::getStudentUserId, studentUserId)
+                        .eq(TeacherNote::getNoteType, CASE_STAGE_NOTE_TYPE)
+                        .orderByDesc(TeacherNote::getCreatedAt)
+        );
+        if (notes.isEmpty()) {
+            return CaseLifecycleService.CaseStage.INTAKE;
+        }
+        // 内存取 createdAt 最新一条（不依赖 DB 排序语义，与 getCaseTrackedStudentIds 同模式）
+        TeacherNote latest = notes.get(0);
+        for (TeacherNote n : notes) {
+            if (n.getCreatedAt() != null && (latest.getCreatedAt() == null
+                    || n.getCreatedAt().isAfter(latest.getCreatedAt()))) {
+                latest = n;
+            }
+        }
+        try {
+            return CaseLifecycleService.CaseStage.valueOf(fieldEncryptionService.decrypt(latest.getContent()));
+        } catch (IllegalArgumentException e) {
+            // 存量脏数据兜底：无法解析的阶段名按建案处理
+            log.warn("个案阶段备注内容非法，按 INTAKE 处理: student={}, content={}",
+                    studentUserId, latest.getContent());
+            return CaseLifecycleService.CaseStage.INTAKE;
+        }
+    }
+
+    /**
+     * 推进个案阶段（学生须存在且同租户）。
+     * <p>
+     * 起点从存储读取（无历史=INTAKE），不可跳级；允许推进时落 case_stage 备注（content=目标阶段名，加密）。
+     *
+     * @return 推进结果（allowed=false 时未做任何持久化）
+     */
+    public CaseLifecycleService.StageTransition transitionCaseStage(
+            UUID tenantId, UUID studentUserId, UUID teacherUserId,
+            CaseLifecycleService.CaseStage targetStage) {
+        User student = userMapper.selectById(studentUserId);
+        if (student == null || !tenantId.equals(student.getTenantId())) {
+            throw new IllegalArgumentException("学生不存在: " + studentUserId);
+        }
+
+        CaseLifecycleService.CaseStage current = getCurrentCaseStage(tenantId, studentUserId);
+        CaseLifecycleService.StageTransition result =
+                caseLifecycleService.transition(current, targetStage, false);
+
+        if (result.allowed()) {
+            TeacherNote note = TeacherNote.create(
+                    tenantId, studentUserId, teacherUserId,
+                    fieldEncryptionService.encrypt(targetStage.name()), CASE_STAGE_NOTE_TYPE
+            );
+            teacherNoteMapper.insert(note);
+            log.info("个案阶段推进: student={}, {} -> {}", studentUserId, current, targetStage);
+        }
+        return result;
+    }
+
     // ===== 学生档案 =====
 
     public StudentProfileVO getStudentProfile(UUID tenantId, UUID studentUserId, String userType) {
@@ -280,7 +505,7 @@ public class TeacherService {
                     null, 0,
                     null, null,
                     notes.stream().map(n -> new NoteVO(
-                            n.getNoteId(), n.getTeacherUserId(), n.getContent(),
+                            n.getNoteId(), n.getTeacherUserId(), fieldEncryptionService.decrypt(n.getContent()),
                             n.getNoteType(), n.getCreatedAt()
                     )).toList()
             );
@@ -309,6 +534,9 @@ public class TeacherService {
                 .mapToInt(RiskEvent::getRiskLevel)
                 .max().orElse(0);
 
+        // 个案跟踪状态（提前计算避免 stream 内重复查询）
+        boolean caseTracking = isCaseTracking(tenantId, studentUserId);
+
         return new StudentProfileVO(
                 student.getUserId(), student.getPseudonym(),
                 student.getGradeCode(), student.getClassCode(),
@@ -320,10 +548,11 @@ public class TeacherService {
                 riskHistory.stream().map(e -> new AlertVO(
                         e.getRiskEventId(), e.getStudentUserId(), student.getPseudonym(),
                         e.getRiskType(), e.getRiskLevel(), e.getStatus(),
-                        e.getDetectedAt(), e.getAssignedUserId()
+                        e.getDetectedAt(), e.getAssignedUserId(),
+                        alertTodoMutePolicy.isMutedFromTodo(e.getRiskLevel(), caseTracking)
                 )).toList(),
                 notes.stream().map(n -> new NoteVO(
-                        n.getNoteId(), n.getTeacherUserId(), n.getContent(),
+                        n.getNoteId(), n.getTeacherUserId(), fieldEncryptionService.decrypt(n.getContent()),
                         n.getNoteType(), n.getCreatedAt()
                 )).toList()
         );
@@ -357,6 +586,11 @@ public class TeacherService {
         Map<UUID, List<RiskEvent>> byStudent = openEvents.stream()
                 .collect(Collectors.groupingBy(RiskEvent::getStudentUserId));
 
+        // 批量查询学生信息（避免 N+1）
+        Map<UUID, User> studentMap = byStudent.keySet().isEmpty() ? Map.of()
+                : userMapper.selectBatchIds(byStudent.keySet()).stream()
+                        .collect(Collectors.toMap(User::getUserId, u -> u));
+
         return byStudent.entrySet().stream().map(entry -> {
             UUID studentId = entry.getKey();
             List<RiskEvent> events = entry.getValue();
@@ -365,7 +599,7 @@ public class TeacherService {
                     .map(RiskEvent::getDetectedAt)
                     .max(Instant::compareTo).orElse(Instant.now());
 
-            User student = userMapper.selectById(studentId);
+            User student = studentMap.get(studentId);
             String name = student != null ? student.getPseudonym() : "未知";
             String grade = student != null ? student.getGradeCode() : "";
 
@@ -380,8 +614,10 @@ public class TeacherService {
 
     public TeacherNote addNote(UUID tenantId, UUID studentUserId, UUID teacherUserId,
                                String content, String noteType) {
-        TeacherNote note = TeacherNote.create(tenantId, studentUserId, teacherUserId, content, noteType);
+        TeacherNote note = TeacherNote.create(tenantId, studentUserId, teacherUserId,
+                fieldEncryptionService.encrypt(content), noteType);
         teacherNoteMapper.insert(note);
+        note.setContent(content); // API 响应返回明文
         log.info("教师备注已添加: noteId={}, student={}", note.getNoteId(), studentUserId);
         return note;
     }
@@ -469,33 +705,42 @@ public class TeacherService {
                 .limit(10)
                 .toList();
 
-        // 3. 近 30 天会话趋势
+        // 3. 近 30 天会话趋势：单次查询 + 内存分桶（替代 30 次循环 selectCount）
+        Instant trendStart = now.minus(29, ChronoUnit.DAYS).truncatedTo(ChronoUnit.DAYS);
+        Instant tomorrowStart = now.truncatedTo(ChronoUnit.DAYS).plus(1, ChronoUnit.DAYS);
+        List<CounselingSession> trendSessions = sessionMapper.selectList(
+                new LambdaQueryWrapper<CounselingSession>()
+                        .eq(CounselingSession::getTenantId, tenantId)
+                        .ge(CounselingSession::getStartedAt, trendStart)
+                        .lt(CounselingSession::getStartedAt, tomorrowStart)
+        );
+        Map<Instant, Long> sessionsByDay = trendSessions.stream()
+                .map(CounselingSession::getStartedAt)
+                .filter(Objects::nonNull)
+                .collect(Collectors.groupingBy(t -> t.truncatedTo(ChronoUnit.DAYS), Collectors.counting()));
         List<DailyCount> sessionTrend = new ArrayList<>();
         for (int i = 29; i >= 0; i--) {
             Instant dayStart = now.minus(i, ChronoUnit.DAYS).truncatedTo(ChronoUnit.DAYS);
-            Instant dayEnd = dayStart.plus(1, ChronoUnit.DAYS);
-            long count = sessionMapper.selectCount(
-                    new LambdaQueryWrapper<CounselingSession>()
-                            .eq(CounselingSession::getTenantId, tenantId)
-                            .ge(CounselingSession::getStartedAt, dayStart)
-                            .lt(CounselingSession::getStartedAt, dayEnd)
-            );
-            sessionTrend.add(new DailyCount(dayStart.toString().substring(0, 10), count));
+            sessionTrend.add(new DailyCount(dayStart.toString().substring(0, 10),
+                    sessionsByDay.getOrDefault(dayStart, 0L)));
         }
 
-        // 4. 情绪分布（近 30 天 message_summaries 中 student 消息的 emotion_label）
+        // 4. 情绪分布（近 30 天 student 消息的 emotion_label）：DB GROUP BY 聚合，
+        //    不再将全租户 30 天 message_summaries 加载进内存
         Instant monthAgo = now.minus(30, ChronoUnit.DAYS);
-        List<MessageSummary> emotions = messageSummaryMapper.selectList(
-                new LambdaQueryWrapper<MessageSummary>()
-                        .eq(MessageSummary::getTenantId, tenantId)
-                        .eq(MessageSummary::getSenderType, "student")
-                        .ge(MessageSummary::getCreatedAt, monthAgo)
-                        .isNotNull(MessageSummary::getEmotionLabel)
+        List<Map<String, Object>> emotionRows = messageSummaryMapper.selectMaps(
+                new QueryWrapper<MessageSummary>()
+                        .select("emotion_label, COUNT(*) AS cnt")
+                        .eq("tenant_id", tenantId)
+                        .eq("sender_type", "student")
+                        .ge("created_at", monthAgo)
+                        .isNotNull("emotion_label")
+                        .groupBy("emotion_label")
         );
-        Map<String, Long> emotionMap = emotions.stream()
-                .collect(Collectors.groupingBy(MessageSummary::getEmotionLabel, Collectors.counting()));
-        List<EmotionItem> emotionDistribution = emotionMap.entrySet().stream()
-                .map(e -> new EmotionItem(e.getKey(), e.getValue()))
+        List<EmotionItem> emotionDistribution = emotionRows.stream()
+                .filter(r -> r.get("emotion_label") != null && r.get("cnt") instanceof Number)
+                .map(r -> new EmotionItem((String) r.get("emotion_label"),
+                        ((Number) r.get("cnt")).longValue()))
                 .sorted(Comparator.comparingLong(EmotionItem::count).reversed())
                 .limit(8)
                 .toList();
@@ -509,6 +754,8 @@ public class TeacherService {
             long pendingAlerts,
             long todayAlerts,
             long todaySessions,
+            long activeStudents,
+            long totalSessions,
             List<DailyCount> weeklyTrend,
             double avgSatisfaction,
             long satisfactionCount
@@ -519,7 +766,8 @@ public class TeacherService {
     public record AlertVO(
             UUID alertId, UUID studentUserId, String studentName,
             String riskType, int riskLevel, String status,
-            Instant detectedAt, UUID assignedUserId
+            Instant detectedAt, UUID assignedUserId,
+            boolean mutedFromTodo
     ) {}
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
@@ -569,31 +817,48 @@ public class TeacherService {
     // ===== 满意度统计 =====
 
     public SatisfactionStatsVO getSatisfactionStats(UUID tenantId) {
-        List<CounselingSession> rated = sessionMapper.selectList(
-                new LambdaQueryWrapper<CounselingSession>()
-                        .eq(CounselingSession::getTenantId, tenantId)
-                        .isNotNull(CounselingSession::getSatisfactionRating)
-        );
+        // DB 端聚合：全量 + 近 7 天各一次 GROUP BY，
+        // 不再将全量历史已评会话加载进内存（审计 fix-perf）
+        Instant weekAgo = Instant.now().minus(7, ChronoUnit.DAYS);
+        Map<Integer, Long> dist = ratingDistribution(tenantId, null);
+        Map<Integer, Long> recentDist = ratingDistribution(tenantId, weekAgo);
 
-        long total = rated.size();
-        double avg = rated.stream().mapToInt(CounselingSession::getSatisfactionRating).average().orElse(0);
+        long total = dist.values().stream().mapToLong(Long::longValue).sum();
+        long weightedSum = dist.entrySet().stream()
+                .mapToLong(e -> (long) e.getKey() * e.getValue()).sum();
+        double avg = total == 0 ? 0.0 : weightedSum / (double) total;
 
-        Map<Integer, Long> dist = rated.stream()
-                .collect(java.util.stream.Collectors.groupingBy(CounselingSession::getSatisfactionRating,
-                        java.util.stream.Collectors.counting()));
-        List<RatingDistItem> distribution = new java.util.ArrayList<>();
+        List<RatingDistItem> distribution = new ArrayList<>();
         for (int i = 1; i <= 5; i++) {
             distribution.add(new RatingDistItem(i, dist.getOrDefault(i, 0L)));
         }
 
-        java.time.Instant weekAgo = java.time.Instant.now().minus(7, java.time.temporal.ChronoUnit.DAYS);
-        List<CounselingSession> recent = rated.stream()
-                .filter(s -> s.getStartedAt() != null && s.getStartedAt().isAfter(weekAgo))
-                .toList();
-        double recentAvg = recent.stream().mapToInt(CounselingSession::getSatisfactionRating).average().orElse(0);
+        long recentCount = recentDist.values().stream().mapToLong(Long::longValue).sum();
+        long recentSum = recentDist.entrySet().stream()
+                .mapToLong(e -> (long) e.getKey() * e.getValue()).sum();
+        double recentAvg = recentCount == 0 ? 0.0 : recentSum / (double) recentCount;
 
         return new SatisfactionStatsVO(total, Math.round(avg * 10) / 10.0, distribution,
-                recent.size(), Math.round(recentAvg * 10) / 10.0);
+                recentCount, Math.round(recentAvg * 10) / 10.0);
+    }
+
+    /** 评分分布聚合（rating → count）；since 非空时仅统计该时点之后的会话 */
+    private Map<Integer, Long> ratingDistribution(UUID tenantId, Instant since) {
+        QueryWrapper<CounselingSession> wrapper = new QueryWrapper<CounselingSession>()
+                .select("satisfaction_rating AS rating, COUNT(*) AS cnt")
+                .eq("tenant_id", tenantId)
+                .isNotNull("satisfaction_rating")
+                .groupBy("satisfaction_rating");
+        if (since != null) {
+            wrapper.ge("started_at", since);
+        }
+        Map<Integer, Long> result = new HashMap<>();
+        for (Map<String, Object> row : sessionMapper.selectMaps(wrapper)) {
+            if (row.get("rating") instanceof Number rating && row.get("cnt") instanceof Number cnt) {
+                result.put(rating.intValue(), cnt.longValue());
+            }
+        }
+        return result;
     }
 
     public record SatisfactionStatsVO(long totalRated, double avgRating, List<RatingDistItem> distribution,

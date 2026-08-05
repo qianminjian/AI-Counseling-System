@@ -13,6 +13,7 @@ import { useTheme, THEMES } from '../theme/ThemeProvider'
 import { useVoicePersona, VOICE_PERSONAS, NATIVE_DIALECT_IDS } from '../hooks/useVoicePersona'
 import { api, getUser, issueVoiceCredential, getVoiceprintConfig, remoteVoiceprintEnroll } from '../api'
 import { hasAnyVoiceprint, deleteVoiceprint, enrollVoiceprint, saveVoiceCredential, markRemoteVoiceprintEnrolled, clearRemoteVoiceprintMark } from '../utils/voiceprintStore'
+import { useMotionPreference } from '../hooks/useMotionPreference'
 import VoiceLoginOverlay from './VoiceLoginOverlay'
 import ConfirmDialog from './ConfirmDialog'
 
@@ -32,6 +33,8 @@ export default function SettingsPanel({ open, onClose, muted, onToggleMute, wake
   hasNativeVoice?: boolean
 }) {
   const { themeId, changeTheme } = useTheme()
+  // 动效/触感开关（design/37 §4.3）：默认跟随系统“减弱动态效果”，可手动覆盖
+  const motion = useMotionPreference()
   const internalPersona = useVoicePersona()
   // 优先使用外部传入的 persona 状态（与 ChatRoom TTS 共享同一份 state）
   const personaId = externalPersonaId ?? internalPersona.personaId
@@ -286,6 +289,69 @@ export default function SettingsPanel({ open, onClose, muted, onToggleMute, wake
               }`} />
             </div>
           </button>
+        </section>
+
+        {/* 动效与触感（design/37 §4.3）：动画效果 + 触觉反馈开关 */}
+        <section className="mb-4">
+          <h3 className="mb-3 text-sm font-semibold text-gray-500">✨ 动效与触感</h3>
+          <div className="flex flex-col gap-3">
+            <button
+              onClick={() => motion.setAnimationEnabled(!motion.animationEnabled)}
+              data-testid="toggle-animation"
+              className={`flex w-full items-center justify-between rounded-2xl border-2 p-4 transition-all active:scale-[0.98] ${
+                motion.animationEnabled
+                  ? 'border-[var(--primary)] bg-[var(--primary-light)]'
+                  : 'border-gray-100 bg-gray-50'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">{motion.animationEnabled ? '🎞️' : '🖼️'}</span>
+                <div className="text-left">
+                  <p className="text-sm font-medium text-gray-700">
+                    {motion.animationEnabled ? '动画效果已开启' : '动画效果已关闭'}
+                  </p>
+                  <p className="text-xs text-gray-400">
+                    {motion.animationEnabled ? '波波和界面会有可爱动效' : '关闭后画面更安静、更省电'}
+                  </p>
+                </div>
+              </div>
+              <div className={`h-7 w-12 rounded-full p-1 transition-colors ${
+                motion.animationEnabled ? 'bg-[var(--primary)]' : 'bg-gray-300'
+              }`}>
+                <div className={`h-5 w-5 rounded-full bg-white shadow transition-transform ${
+                  motion.animationEnabled ? 'translate-x-5' : 'translate-x-0'
+                }`} />
+              </div>
+            </button>
+            <button
+              onClick={() => motion.setHapticsEnabled(!motion.hapticsEnabled)}
+              data-testid="toggle-haptics"
+              className={`flex w-full items-center justify-between rounded-2xl border-2 p-4 transition-all active:scale-[0.98] ${
+                motion.hapticsEnabled
+                  ? 'border-[var(--primary)] bg-[var(--primary-light)]'
+                  : 'border-gray-100 bg-gray-50'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">{motion.hapticsEnabled ? '📳' : '📴'}</span>
+                <div className="text-left">
+                  <p className="text-sm font-medium text-gray-700">
+                    {motion.hapticsEnabled ? '触觉反馈已开启' : '触觉反馈已关闭'}
+                  </p>
+                  <p className="text-xs text-gray-400">
+                    {motion.hapticsEnabled ? '按住说话时会轻轻震动' : '开启后按住说话会有轻微震动感'}
+                  </p>
+                </div>
+              </div>
+              <div className={`h-7 w-12 rounded-full p-1 transition-colors ${
+                motion.hapticsEnabled ? 'bg-[var(--primary)]' : 'bg-gray-300'
+              }`}>
+                <div className={`h-5 w-5 rounded-full bg-white shadow transition-transform ${
+                  motion.hapticsEnabled ? 'translate-x-5' : 'translate-x-0'
+                }`} />
+              </div>
+            </button>
+          </div>
         </section>
         
         {/* 声纹登录管理 */}

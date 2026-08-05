@@ -1,22 +1,63 @@
-# MindSafe 监控栈（Prometheus + Grafana）
 # 用法：docker compose -f docker-compose.monitoring.yml up -d
-# 前提：后端已运行且 /actuator/prometheus 可访问
+# 前提：后端已运行且 /actuator/prometheus 可访问；tts/voice 服务已运行且 /metrics 可访问
 
 services:
   prometheus:
     image: prom/prometheus:latest
     container_name: mindsafe-prometheus
     restart: unless-stopped
-    ports:
-      - "9090:9090"
+    # P1-DEP：不再公网暴露 9090（此前裸奔可任意访问 UI 与查询）；
+    # 仅 Grafana（同网络）与 docker exec 可访问，UI 已非必要不开放
+    expose:
+      - "9090"
+    environment:
+      # 本地开发：在 .env 中设 PROM_TARGETS=host.docker.internal:8080
+      # 注意：Prometheus 配置展开不支持 :- 默认值，默认值必须在此注入
+      - PROM_TARGETS=${PROM_TARGETS:-backend:8080}
+      - PROM_ENV=${PROM_ENV:-prod}
+      # P1-10：Python 服务抓取目标（本地开发覆盖为 host.docker.internal:10096/10095）
+      - TTS_PROM_TARGETS=${TTS_PROM_TARGETS:-tts-service:10096}
+      - VOICE_PROM_TARGETS=${VOICE_PROM_TARGETS:-voice-service:10095}
+      # P1-10：Alertmanager 地址
+      - ALERTMANAGER_TARGETS=${ALERTMANAGER_TARGETS:-alertmanager:9093}
     volumes:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      # P1-10：告警规则挂载（prometheus.yml rule_files 引用）
+      - ./monitoring/alert-rules.yml:/etc/prometheus/alert-rules.yml:ro
       - promdata:/prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.retention.time=30d'
+      # P1-DEP：移除 --web.enable-admin-api（admin API 可删/改 TSDB 数据，公网暴露风险高）
     networks:
       - monitoring
+      - internal
+
+  # P1-10：告警接收与推送（企业微信应用消息）
+  # 未配置 WECOM_* 时注入哨兵值 → 运行时推送失败仅留日志，不阻塞监控栈启动
+  alertmanager:
+    image: prom/alertmanager:latest
+    container_name: mindsafe-alertmanager
+    restart: unless-stopped
+    # 不公网暴露 9093（与 Prometheus 同策略：仅 internal 网络可达）
+    expose:
+      - "9093"
+    environment:
+      # Alertmanager 配置文件中的 ${VAR} 由容器环境变量展开（未定义 → 空串导致校验失败，
+      # 故此处全部注入非空哨兵默认值，缺配置时运行时报错可见、服务不崩）
+      - WECOM_CORP_ID=${WECOM_CORP_ID:-not-configured}
+      - WECOM_AGENT_ID=${WECOM_AGENT_ID:-0}
+      - WECOM_SECRET=${WECOM_SECRET:-not-configured}
+      - WECOM_ALERT_TO_USER=${WECOM_ALERT_TO_USER:-@all}
+    volumes:
+      - ./monitoring/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertdata:/alertmanager
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--storage.path=/alertmanager'
+    networks:
+      - monitoring
+      - internal
 
   grafana:
     image: grafana/grafana:latest
@@ -26,7 +67,8 @@ services:
       - "3002:3000"
     environment:
       GF_SECURITY_ADMIN_USER: admin
-      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-mindsafe}
+      # P1-DEP：强制必填（:? 语法缺省 fail-fast），禁止弱默认密码 mindsafe
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:?GRAFANA_PASSWORD 必须设置（强密码，见 .env.example）}
       GF_USERS_ALLOW_SIGN_UP: "false"
     volumes:
       - grafanadata:/var/lib/grafana
@@ -38,8 +80,12 @@ services:
 
 volumes:
   promdata:
+  alertdata:
   grafanadata:
 
 networks:
   monitoring:
     driver: bridge
+  internal:
+    name: mindsafe-internal
+    external: true

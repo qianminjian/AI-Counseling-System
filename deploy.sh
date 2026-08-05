@@ -14,11 +14,19 @@
 # 前置条件：已 commit + push，CI 通过
 set -eo pipefail
 
-SERVER="mindsafe@116.8.109.229"
+# 部署目标通过环境变量指定（不在仓库内硬编码生产 IP）
+# 建议写入 ~/.zshrc：export MINDSAFE_SERVER=user@<服务器IP>
+SERVER="${MINDSAFE_SERVER:-}"
+if [ -z "${SERVER}" ]; then
+  echo "ERROR: 必须设置 MINDSAFE_SERVER（如 export MINDSAFE_SERVER=mindsafe@<服务器IP>）"
+  exit 1
+fi
 REMOTE_DIR="/guju/mindsafe"
 PROJECT_ROOT="$(cd "$(dirname "$0")" && pwd)"
 STATE_FILE="$PROJECT_ROOT/.deploy-state"
-JAR="counseling-app/target/counseling-app-0.1.0-SNAPSHOT.jar"
+# 服务器上 compose 位于 $REMOTE_DIR/deploy/，挂载/构建上下文为仓库镜像结构：
+#   ../frontend/<app>/dist（nginx 挂载）、../backend/<svc>（compose build context）
+# 与 service-manager.sh 的 COMPOSE_DIR 保持一致
 
 # ===== 参数解析 =====
 FORCE_ALL=false
@@ -45,19 +53,21 @@ while [[ $# -gt 0 ]]; do
 done
 
 # ===== 回滚模式 =====
+# 说明：回滚 = 用服务器上已同步的源码重新构建镜像；
+# 真正的版本回退请先 git revert + push 后再执行 ./deploy.sh
 if [ -n "$ROLLBACK_TARGET" ]; then
-  echo "⏪ 回滚 $ROLLBACK_TARGET..."
+  echo "⏪ 重建 $ROLLBACK_TARGET..."
   case "$ROLLBACK_TARGET" in
     backend)
-      ssh "$SERVER" "cd $REMOTE_DIR && [ -f app.jar.prev ] && cp app.jar.prev app.jar && docker compose up -d --build backend"
-      echo "✅ 后端已回滚到上一版本"
+      ssh "$SERVER" "cd $REMOTE_DIR/deploy && docker compose -f docker-compose.prod.yml build backend && docker compose -f docker-compose.prod.yml up -d backend"
+      echo "✅ 后端已重建"
       ;;
     tts)
-      ssh "$SERVER" "cd $REMOTE_DIR && docker compose up -d --build tts-service"
+      ssh "$SERVER" "cd $REMOTE_DIR/deploy && docker compose -f docker-compose.prod.yml build tts-service && docker compose -f docker-compose.prod.yml up -d tts-service"
       echo "✅ TTS 服务已重建"
       ;;
     voice)
-      ssh "$SERVER" "cd $REMOTE_DIR && docker compose up -d --build voice-service"
+      ssh "$SERVER" "cd $REMOTE_DIR/deploy && docker compose -f docker-compose.prod.yml build voice-service && docker compose -f docker-compose.prod.yml up -d voice-service"
       echo "✅ Voice 服务已重建"
       ;;
     *)
@@ -174,13 +184,10 @@ echo ""
 
 # ===== 选择性构建 =====
 if $DEPLOY_BACKEND; then
-  echo "📦 构建后端..."
+  echo "📦 后端：本地预检编译（服务器 compose build 会重新打包）..."
   cd "$PROJECT_ROOT/backend"
-  mvn clean package -DskipTests -pl counseling-app -am -q
-  if [ ! -f "$JAR" ]; then
-    echo "❌ JAR 构建失败"; exit 1
-  fi
-  echo "✅ 后端 JAR 就绪"
+  mvn -q compile -DskipTests -pl counseling-app -am || { echo "❌ 后端编译失败，中止部署"; exit 1; }
+  echo "✅ 后端编译通过"
 fi
 
 if $DEPLOY_STUDENT; then
@@ -220,38 +227,62 @@ rsync_retry() {
   return 1
 }
 
-# ===== 选择性上传 =====
+# ===== 选择性上传（路径与 deploy/docker-compose.prod.yml 挂载/构建上下文对齐） =====
 echo ""
 echo "🚀 部署到服务器..."
 
 if $DEPLOY_BACKEND; then
-  # 保留上一版本用于回滚
-  ssh "$SERVER" "[ -f $REMOTE_DIR/app.jar ] && cp $REMOTE_DIR/app.jar $REMOTE_DIR/app.jar.prev || true"
-  rsync_retry -avz "$PROJECT_ROOT/backend/$JAR" "$SERVER:$REMOTE_DIR/app.jar"
+  # backend compose build context = ../backend（多阶段源码构建），排除构建产物与大文件
+  rsync_retry -avz --delete \
+    --exclude 'target/' --exclude '.git/' \
+    --exclude 'tts-service/wheels/' \
+    "$PROJECT_ROOT/backend/" "$SERVER:$REMOTE_DIR/backend/"
+  # 同步 backend 根 Dockerfile（context=backend）
 fi
 
-$DEPLOY_STUDENT && rsync_retry -avz --delete --exclude 'models/' "$PROJECT_ROOT/frontend/student-h5/dist/" "$SERVER:$REMOTE_DIR/frontend/student/"
-$DEPLOY_TEACHER && rsync_retry -avz --delete "$PROJECT_ROOT/frontend/teacher-web/dist/" "$SERVER:$REMOTE_DIR/frontend/teacher/"
-$DEPLOY_PARENT && rsync_retry -avz --delete "$PROJECT_ROOT/frontend/parent-h5/dist/" "$SERVER:$REMOTE_DIR/frontend/parent/"
+$DEPLOY_STUDENT && rsync_retry -avz --delete --exclude 'models/' "$PROJECT_ROOT/frontend/student-h5/dist/" "$SERVER:$REMOTE_DIR/frontend/student-h5/dist/"
+$DEPLOY_TEACHER && rsync_retry -avz --delete "$PROJECT_ROOT/frontend/teacher-web/dist/" "$SERVER:$REMOTE_DIR/frontend/teacher-web/dist/"
+$DEPLOY_PARENT && rsync_retry -avz --delete "$PROJECT_ROOT/frontend/parent-h5/dist/" "$SERVER:$REMOTE_DIR/frontend/parent-h5/dist/"
 
 
 if $DEPLOY_TTS; then
-  rsync_retry -avz --delete "$PROJECT_ROOT/backend/tts-service/" "$SERVER:$REMOTE_DIR/tts-service/"
+  # 审计 P2-24：wheels/ 为可再生的本地构建产物，不再随 rsync 上传（Dockerfile 已改在线安装）
+  rsync_retry -avz --delete --exclude 'wheels/' "$PROJECT_ROOT/backend/tts-service/" "$SERVER:$REMOTE_DIR/backend/tts-service/"
 fi
 
 if $DEPLOY_VOICE; then
-  rsync_retry -avz --delete "$PROJECT_ROOT/backend/voice-service/" "$SERVER:$REMOTE_DIR/voice-service/"
+  rsync_retry -avz --delete "$PROJECT_ROOT/backend/voice-service/" "$SERVER:$REMOTE_DIR/backend/voice-service/"
 fi
+
+# 同步 deploy/ 目录（compose + nginx 配置 + 运维脚本），变更检测命中 deploy/ 时为全量部署
+rsync_retry -avz --exclude '.env' "$PROJECT_ROOT/deploy/" "$SERVER:$REMOTE_DIR/deploy/"
 
 # ===== 上传 service-manager.sh（确保服务器有最新版本） =====
 rsync_retry -avz "$PROJECT_ROOT/service-manager.sh" "$SERVER:$REMOTE_DIR/service-manager.sh"
 ssh "$SERVER" "chmod +x $REMOTE_DIR/service-manager.sh"
+
+# ===== 构建镜像（源码变更类组件需先 build，再经 service-manager 重启） =====
+BUILD_TARGETS=""
+$DEPLOY_BACKEND && BUILD_TARGETS="$BUILD_TARGETS backend"
+$DEPLOY_TTS && BUILD_TARGETS="$BUILD_TARGETS tts-service"
+$DEPLOY_VOICE && BUILD_TARGETS="$BUILD_TARGETS voice-service"
+
+if [ -n "$BUILD_TARGETS" ]; then
+  echo "🔨 构建镜像:$BUILD_TARGETS"
+  if ! ssh "$SERVER" "cd $REMOTE_DIR/deploy && docker compose -f docker-compose.prod.yml build $BUILD_TARGETS"; then
+    echo "❌ 镜像构建失败，部署中止（服务仍运行旧版本）"
+    exit 1
+  fi
+  echo "✅ 镜像构建完成"
+fi
 
 # ===== 选择性重启（通过 service-manager.sh 统一管理） =====
 RESTART_TARGETS=""
 $DEPLOY_BACKEND && RESTART_TARGETS="$RESTART_TARGETS backend"
 $DEPLOY_TTS && RESTART_TARGETS="$RESTART_TARGETS tts"
 $DEPLOY_VOICE && RESTART_TARGETS="$RESTART_TARGETS voice"
+# 前端 dist 由 nginx 容器挂载，静态文件更新后需重载 nginx 才生效
+{ $DEPLOY_STUDENT || $DEPLOY_TEACHER || $DEPLOY_PARENT; } && RESTART_TARGETS="$RESTART_TARGETS nginx"
 
 if [ -n "$RESTART_TARGETS" ]; then
   echo "🔄 重启服务:$RESTART_TARGETS"
@@ -262,7 +293,7 @@ if [ -n "$RESTART_TARGETS" ]; then
   fi
   echo "✅ 服务重启 + 健康检查通过"
 else
-  echo "✅ 前端静态文件已更新（无需重启容器）"
+  echo "ℹ️  仅前端变更时也应重载 nginx（已纳入重启目标）"
 fi
 
 # ===== 更新部署状态（仅在部署成功后） =====

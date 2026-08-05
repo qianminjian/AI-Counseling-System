@@ -37,6 +37,9 @@ services:
       - internal
 
   backend:
+    # 镜像名与 cd.yml 发布链路对齐：默认本地构建；
+    # 用 GHCR 镜像时在 .env 设 BACKEND_IMAGE=ghcr.io/<owner>/<repo>/backend:<sha> 后 docker compose pull
+    image: ${BACKEND_IMAGE:-mindsafe/backend:local}
     build:
       context: ../backend
       dockerfile: Dockerfile
@@ -54,13 +57,15 @@ services:
       LLM_API_KEY: ${LLM_API_KEY}
       LLM_BASE_URL: ${LLM_BASE_URL:-https://api.deepseek.com}
       LLM_MODEL: ${LLM_MODEL:-deepseek-v4-flash}
+      DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:-}
       MINDSAFE_JWT_SECRET: ${JWT_SECRET}
       MINDSAFE_ENCRYPTION_KEY: ${ENCRYPTION_KEY}
       MINDSAFE_ENCRYPTION_KEY_VERSION: ${ENCRYPTION_KEY_VERSION:-1}
       MINDSAFE_ENCRYPTION_PREVIOUS_KEYS: ${ENCRYPTION_PREVIOUS_KEYS:-}
       MINDSAFE_ALERT_WECOM_WEBHOOK_URL: ${ALERT_WECOM_WEBHOOK_URL:-}
       MINDSAFE_ALERT_WECOM_MENTIONED: ${ALERT_WECOM_MENTIONED:-}
-      MINDSAFE_SMS_PROVIDER: ${SMS_PROVIDER:-logging}
+      # SMS provider（P1 审计修复：prod profile 禁止默认 logging，未显式配置时 fail-closed 启动失败）
+      MINDSAFE_SMS_PROVIDER: ${SMS_PROVIDER:-aliyun}
       MINDSAFE_SMS_ALIYUN_ACCESS_KEY_ID: ${SMS_ALIYUN_ACCESS_KEY_ID:-}
       MINDSAFE_SMS_ALIYUN_ACCESS_KEY_SECRET: ${SMS_ALIYUN_ACCESS_KEY_SECRET:-}
       MINDSAFE_SMS_ALIYUN_SIGN_NAME: ${SMS_ALIYUN_SIGN_NAME:-}
@@ -68,6 +73,11 @@ services:
       # 监护人同意（AUTH-040）：生产必须 false（走 SMS 真实闭环）
       MINDSAFE_CONSENT_TRIAL_AUTO_GRANT: ${CONSENT_TRIAL_AUTO_GRANT:-false}
       MINDSAFE_CORS_ORIGINS: ${CORS_ORIGINS:-https://yun.gxjugu.com}
+      # 企业微信 OAuth（可选，空 = 企微登录返回 501）
+      WECOM_CORP_ID: ${WECOM_CORP_ID:-}
+      WECOM_AGENT_ID: ${WECOM_AGENT_ID:-}
+      WECOM_SECRET: ${WECOM_SECRET:-}
+      WECOM_REDIRECT_URI: ${WECOM_REDIRECT_URI:-}
       VOICE_SERVICE_URL: http://voice-service:10095
       TTS_SERVICE_URL: http://tts-service:10096
       LOGGING_LEVEL_COM_MINDSAFE: INFO
@@ -90,6 +100,7 @@ services:
       - internal
 
   voice-service:
+    image: ${VOICE_SERVICE_IMAGE:-mindsafe/voice-service:local}
     build:
       context: ../backend/voice-service
       dockerfile: Dockerfile
@@ -106,17 +117,24 @@ services:
     volumes:
       # 模型缓存：宿主机持久化（emotion2vec ~300MB + SenseVoice ~1GB）
       # 使用前需运行: bash deploy/scripts/prepare-funasr.sh
-      - ${MODEL_CACHE_DIR:-./cache/modelscope}:/root/.cache/modelscope
+      # 容器内挂载到非 root 用户 HOME（审计 P3-31：容器不再以 root 运行）
+      - ${MODEL_CACHE_DIR:-./cache/modelscope}:/home/appuser/.cache/modelscope
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:10095/health')"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 120s
+    # 内存限额（镜像 Dockerfile 注释：dashscope+SER ~1.5GB / funasr+SER ~4GB，默认 6G 留余量）
+    deploy:
+      resources:
+        limits:
+          memory: ${VOICE_MEMORY_LIMIT:-6G}
     networks:
       - internal
 
   tts-service:
+    image: ${TTS_SERVICE_IMAGE:-mindsafe/tts-service:local}
     build:
       context: ../backend/tts-service
       dockerfile: Dockerfile
@@ -147,6 +165,8 @@ services:
     volumes:
       # TLS 版配置（80 仅 ACME 续期 + 301，443 承载全部流量）
       - ./nginx/default-ssl.conf:/etc/nginx/conf.d/default.conf:ro
+      # 公共安全头（P1-DEP：default-ssl.conf include 引用，必须挂载到 /etc/nginx/ 下）
+      - ./nginx/security-headers.conf:/etc/nginx/security-headers.conf:ro
       # Let's Encrypt 证书（宿主机 certbot 签发，见 DEPLOY-GUIDE.md）
       - /etc/letsencrypt:/etc/letsencrypt:ro
       - /var/www/certbot:/var/www/certbot:ro
@@ -160,6 +180,7 @@ services:
       - internal
 
   # P1-2: 每日凌晨 2 点自动 pg_dump 备份（保留 7 天）
+  # 写入 daily/ 子目录：与 backup.sh/restore.sh 的 volume 目录约定一致（restore.sh 只列 daily/weekly/monthly）
   db-backup:
     image: pgvector/pgvector:pg16
     container_name: mindsafe-db-backup
@@ -172,9 +193,9 @@ services:
     volumes:
       - dbbackups:/backups
     entrypoint: >
-      sh -c 'while true; do
-        pg_dump -Fc -f /backups/mindsafe_$(date +%Y%m%d_%H%M%S).dump;
-        find /backups -name "*.dump" -mtime +7 -delete;
+      sh -c 'mkdir -p /backups/daily && while true; do
+        pg_dump -Fc -f /backups/daily/mindsafe_$(date +%Y%m%d_%H%M%S).dump;
+        find /backups/daily -name "*.dump" -mtime +7 -delete;
         sleep 86400;
       done'
     depends_on:
@@ -190,4 +211,5 @@ volumes:
 
 networks:
   internal:
+    name: mindsafe-internal
     driver: bridge

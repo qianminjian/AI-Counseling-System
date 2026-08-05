@@ -113,14 +113,19 @@ public class ProfileRadarService {
         if (node == null) return DEFAULT_SCORE;
 
         int score = DEFAULT_SCORE;
-        // expression_depth: shallow/moderate/deep → 30/60/90
+        // expression_depth: 写入侧为 0-1 浮点（越深越大），兼容历史字符串 shallow/moderate/deep
         if (node.has("expression_depth")) {
-            String depth = node.get("expression_depth").asText("moderate");
-            score = switch (depth) {
-                case "deep" -> 85;
-                case "moderate" -> 60;
-                default -> 35;
-            };
+            JsonNode depthNode = node.get("expression_depth");
+            if (depthNode.isNumber()) {
+                score = 35 + (int) (Math.max(0, Math.min(1, depthNode.asDouble())) * 50);
+            } else {
+                String depth = depthNode.asText("moderate");
+                score = switch (depth) {
+                    case "deep" -> 85;
+                    case "moderate" -> 60;
+                    default -> 35;
+                };
+            }
         }
         // preferred_style 加分：expressive > narrative > reserved
         if (node.has("preferred_style")) {
@@ -144,10 +149,20 @@ public class ProfileRadarService {
         if (node.has("coping_skills_used") && node.get("coping_skills_used").isArray()) {
             int skillCount = node.get("coping_skills_used").size();
             score = clamp(score + skillCount * 5);
-        } else if (node.has("coping_skills") && node.get("coping_skills").isArray()) {
+        } else if (node.has("coping_skills")) {
+            // 写入侧契约：coping_skills 为 skill → {uses, effective} 对象映射，兼容数组形态
+            JsonNode skills = node.get("coping_skills");
             int totalUses = 0;
-            for (JsonNode skill : node.get("coping_skills")) {
-                totalUses += skill.has("uses") ? skill.get("uses").asInt(0) : 0;
+            if (skills.isArray()) {
+                for (JsonNode skill : skills) {
+                    totalUses += skill.has("uses") ? skill.get("uses").asInt(0) : 0;
+                }
+            } else if (skills.isObject()) {
+                Iterator<Map.Entry<String, JsonNode>> fields = skills.fields();
+                while (fields.hasNext()) {
+                    JsonNode skill = fields.next().getValue();
+                    totalUses += skill.has("uses") ? skill.get("uses").asInt(0) : 0;
+                }
             }
             score = clamp(score + Math.min(totalUses * 2, 20));
         }
@@ -194,23 +209,40 @@ public class ProfileRadarService {
         if (node == null) return DEFAULT_SCORE;
 
         int score = DEFAULT_SCORE;
-        // help_seeking: willing/reluctant → 高分/低分
+        // help_seeking: 写入侧为 0-1 浮点（越主动越高），兼容历史字符串 willing/moderate/reluctant
         if (node.has("help_seeking")) {
-            String hs = node.get("help_seeking").asText("moderate");
-            score = switch (hs) {
-                case "willing", "active" -> 80;
-                case "moderate" -> 55;
-                default -> 30;
-            };
+            JsonNode hsNode = node.get("help_seeking");
+            if (hsNode.isNumber()) {
+                score = 30 + (int) (Math.max(0, Math.min(1, hsNode.asDouble())) * 50);
+            } else {
+                String hs = hsNode.asText("moderate");
+                score = switch (hs) {
+                    case "willing", "active" -> 80;
+                    case "moderate" -> 55;
+                    default -> 30;
+                };
+            }
         }
-        // key_persons 正面情感越多 → 社交越健康
-        if (node.has("key_persons") && node.get("key_persons").isArray()) {
+        // key_persons 正面情感越多 → 社交越健康（写入侧契约：role → {role, sentiment} 对象映射，兼容数组）
+        if (node.has("key_persons")) {
+            JsonNode persons = node.get("key_persons");
             double sentimentSum = 0;
             int count = 0;
-            for (JsonNode person : node.get("key_persons")) {
-                if (person.has("sentiment")) {
-                    sentimentSum += person.get("sentiment").asDouble(0);
-                    count++;
+            if (persons.isArray()) {
+                for (JsonNode person : persons) {
+                    if (person.has("sentiment")) {
+                        sentimentSum += person.get("sentiment").asDouble(0);
+                        count++;
+                    }
+                }
+            } else if (persons.isObject()) {
+                Iterator<Map.Entry<String, JsonNode>> fields = persons.fields();
+                while (fields.hasNext()) {
+                    JsonNode person = fields.next().getValue();
+                    if (person.has("sentiment")) {
+                        sentimentSum += person.get("sentiment").asDouble(0);
+                        count++;
+                    }
                 }
             }
             if (count > 0) {

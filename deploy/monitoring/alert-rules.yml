@@ -1,0 +1,102 @@
+# MindSafe Prometheus 告警规则（P1-10：监控零告警规则 → 补齐）
+# 挂载路径：prometheus 容器 /etc/prometheus/alert-rules.yml（见 docker-compose.monitoring.yml）
+# 阈值口径：
+#   - 服务不可达（critical）：学生对话/风险识别/语音链路中断，立即人工介入
+#   - 5xx 错误率 > 5%（warning）：持续 5 分钟，排查依赖（LLM/DB/Redis）
+#   - P95 延迟 > 2s（warning）：持续 10 分钟，排除 LLM 慢响应
+#   - TTS 全引擎不可用（critical）：语音合成完全中断（浏览器 speechSynthesis 是最后兜底）
+# 告警发送：Alertmanager → 企业微信应用消息（WECOM_* 配置，未配置时仅留存不推送）
+
+groups:
+  - name: mindsafe-services
+    rules:
+      # ----- 服务可用性（up 指标：Prometheus 抓取失败即 0） -----
+      - alert: MindsafeBackendDown
+        expr: up{job="mindsafe-backend"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "MindSafe 后端不可达"
+          description: "后端 {{ $labels.instance }} 已离线超过 1 分钟，学生对话/风险识别/家长通知全部中断。"
+
+      - alert: MindsafeTtsDown
+        expr: up{job="tts-service"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "TTS 服务不可达"
+          description: "TTS 服务 {{ $labels.instance }} 已离线超过 1 分钟，语音合成降级链（CosyVoice → edge-tts）不可用。"
+
+      - alert: MindsafeVoiceDown
+        expr: up{job="voice-service"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "语音分析服务不可达"
+          description: "语音分析服务 {{ $labels.instance }} 已离线超过 1 分钟，ASR 转写与语音情感识别不可用。"
+
+      # ----- 后端业务质量（Spring Boot Micrometer：http_server_requests_seconds） -----
+      - alert: MindsafeHighErrorRate
+        expr: |
+          sum(rate(http_server_requests_seconds_count{status=~"5.."}[5m])) by (instance)
+            / clamp_min(sum(rate(http_server_requests_seconds_count)[5m]) by (instance), 0.001) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "后端 5xx 错误率过高"
+          description: "{{ $labels.instance }} 5xx 错误率 {{ $value | humanizePercentage }} 持续 5 分钟，检查 LLM/DB/Redis 依赖。"
+
+      - alert: MindsafeHighLatency
+        expr: |
+          histogram_quantile(0.95, sum(rate(http_server_requests_seconds_bucket[5m])) by (le)) > 2
+        for: 10m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "后端 P95 延迟超过 2s"
+          description: "后端 P95 延迟 {{ $value }}s 持续 10 分钟，检查 LLM 响应与数据库慢查询。"
+
+      # ----- TTS 引擎状态（tts-service /metrics 手写指标） -----
+      - alert: MindsafeTtsAllEnginesDown
+        expr: tts_engine_available == 0
+        for: 5m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "TTS 全部引擎不可用"
+          description: "CosyVoice 与 edge-tts 均不可用，语音合成完全中断（仅剩浏览器 speechSynthesis 兜底）。"
+
+      - alert: MindsafeTtsHighFailureRate
+        expr: |
+          sum(rate(tts_synthesize_requests_total{engine="error"}[5m]))
+            / clamp_min(sum(rate(tts_synthesize_requests_total)[5m]), 0.001) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "TTS 失败率过高"
+          description: "TTS 合成失败率 {{ $value | humanizePercentage }} 持续 5 分钟（含 503 全降级场景）。"
+
+      # ----- 语音分析服务质量（voice-service /metrics 手写指标） -----
+      - alert: MindsafeVoiceHighFailureRate
+        expr: |
+          sum(rate(voice_analyze_requests_total{result!="success"}[5m]))
+            / clamp_min(sum(rate(voice_analyze_requests_total)[5m]), 0.001) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "语音分析失败/超时率过高"
+          description: "语音分析失败率 {{ $value | humanizePercentage }} 持续 5 分钟，检查 ffmpeg/ASR/SER 链路。"

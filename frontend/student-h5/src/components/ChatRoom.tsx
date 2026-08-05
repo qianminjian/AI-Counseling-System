@@ -4,6 +4,8 @@ import VoiceCallConsentDialog, { useVoiceCallConsent } from './VoiceCallConsentD
 import SatisfactionDialog from './SatisfactionDialog'
 import SettingsPanel from './SettingsPanel'
 import ConfirmDialog from './ConfirmDialog'
+import ToolboxPanel from './ToolboxPanel'
+import SosPanel from './SosPanel'
 import BoBoPet from './BoBoPet'
 import DraggableVoiceButton from './DraggableVoiceButton'
 import MessageBubble, { EMOTION_EMOJI, type ChatMessage } from './MessageBubble'
@@ -15,6 +17,9 @@ import { preloadWakeModel } from '../hooks/useWakeWord'
 import { useSilenceNudge } from '../hooks/useSilenceNudge'
 import { useAudioRecorder } from '../hooks/useAudioRecorder'
 import { authFetch, api, getUser } from '../api'
+import { emotionBus } from '../utils/emotionBus'
+import { useBoboExpression } from '../hooks/useBoboExpression'
+import { useMotionPreference } from '../hooks/useMotionPreference'
 
 /** 语音唤醒开关持久化 key（design/28 §1.1） */
 const WAKE_PREF_KEY = 'mindsafe_wake_enabled'
@@ -26,14 +31,23 @@ export interface SessionInfo {
   emotionTag: string
 }
 
+/** 语音情绪对象（/api/v1/voice/analyze 返回，Java 端 VoiceController 组装） */
+export interface VoiceEmotion {
+  label: string
+  labelEn: string
+  confidence: number
+  scores: number[]
+}
+
 export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: SessionInfo; onEnd: () => void; onSwitchUser?: () => void }) {
   const [messages, setMessages] = useState<import('./MessageBubble').ChatMessage[]>([
     { role: 'assistant', content: session.greeting, emotion: session.emotionTag },
   ])
   const [input, setInput] = useState('')
   const [streaming, setStreaming] = useState(false)
-  const [voiceEmotion, setVoiceEmotion] = useState(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [toolboxOpen, setToolboxOpen] = useState(false) // 百宝箱（F-2，design/36）
+  const [sosOpen, setSosOpen] = useState(false) // SOS 面板（design/36 §3.4 全局常驻）
   const [speakingMsgIdx, setSpeakingMsgIdx] = useState(-1)
   const [voiceNotice, setVoiceNotice] = useState('')
   const [cancelArmed, setCancelArmed] = useState(false) // 按住说话：上滑进入取消态
@@ -50,6 +64,11 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: Se
 
   // 主题 + 音色
   const { theme } = useTheme()
+
+  // 波波表情状态机（TTSFX-004，design/37 §4.1）：emotionBus 同源信号 + 交互事件注入
+  const boboExpression = useBoboExpression()
+  // 动效偏好（design/37 §4.3/§4.4）：动画/触觉开关 + 帧率降级守卫
+  const motion = useMotionPreference()
   const { personaId, changePersona, activeDialect, selectedDialect, changeDialect, supportedDialects, persona, hasNativeVoice } = useVoicePersona()
 
   // 语音授权（合规）
@@ -63,7 +82,7 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: Se
   const userGender = getUser()?.gender
   const tts = useTtsPlayer({
     persona: personaId,
-    emotion: voiceEmotion?.labelEn || 'neutral',
+    emotion: 'neutral',
     speed: userGender === 'male' ? 1.05 : userGender === 'female' ? 0.95 : 1.0,
     dialect: activeDialect,
   })
@@ -377,7 +396,7 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: Se
     return t
   }
 
-  const sendMessage = async (autoText?: string, autoEmotion?: string | null) => {
+  const sendMessage = async (autoText?: string, autoEmotion?: VoiceEmotion | null) => {
     const text = deduplicateText((autoText ?? input).trim())
     if (!text || streaming) return false
 
@@ -389,8 +408,8 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: Se
     // 在发送时（AI 生成前）就释放，给系统留足切回扬声器的时间，确保整段回复走扩音
     releaseStream()
 
-    // 语音自动发送时用传入的 emotion（修复此前服务端情绪从未存入 state 的问题）；手动打字时用当前 state
-    const emotion = autoEmotion !== undefined ? autoEmotion : voiceEmotion
+    // 语音自动发送时用传入的 emotion（服务端情绪存入 state）；手动打字时无情绪标注
+    const emotion = autoEmotion
 
     const body: Record<string, unknown> = { content: text }
     if (emotion) {
@@ -402,9 +421,8 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: Se
     body.ttsMuted = tts.muted
     body.wakeEnabled = wakeEnabled
 
-    const msgEmotion = emotion
+    const msgEmotion = emotion?.labelEn
     setInput('')
-    setVoiceEmotion(null)
     // 冷场引导：孩子一说话即重置沉默计时 + 清零连续暖场计数
     recordInteraction()
     setMessages((prev) => [...prev, { role: 'user', content: text, emotion: msgEmotion }])
@@ -413,7 +431,11 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: Se
     setMessages((prev) => [...prev, { role: 'assistant', content: '', emotion: msgEmotion || session.emotionTag }])
 
     let fullResponse = ''
+    let replyEmotionReceived = false
     let timeoutChecker: ReturnType<typeof setInterval> | null = null
+
+    // AI 思考中：波波切换 think 表情（design/37 §4.1）
+    boboExpression.dispatch({ type: 'thinking' })
 
     // 流式 TTS：首句完成即开始合成播放，不等全文接收完
     if (!tts.muted) tts.startStreaming()
@@ -464,12 +486,19 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: Se
                 updated[updated.length - 1] = { ...last, content: last.content + event.content }
                 return updated
               })
+            } else if (event.type === 'emotion') {
+              // AI 回复情绪标签（design/37 §三.1 三方同源）：统一经 emotionBus 分发给
+              // 表情状态机/TTS/主题层，禁止各消费方另取信号源
+              replyEmotionReceived = true
+              emotionBus.publish(event.content)
             } else if (event.type === 'risk') {
               // 风险事件是系统/心理老师的内部处理指令（如"允许继续 CBT 微干预，趋势观察"），
               // 不能展示给学生：孩子看不懂临床术语，且会意识到"被监控"而破坏辅导信任。
               // 风险数据由后端另行落库并推送教师后台；红色风险后端会单独下发孩子能懂的安抚语。
               // 这里仅记录日志便于调试，不渲染到聊天界面。
               console.info('[risk]', event.metadata?.riskLevel, event.content)
+              // S0/S1 风险锁定波波 hug 安抚姿态（design/37 §4.1 安全红线，riskLevel≥2 锁定）
+              boboExpression.dispatch({ type: 'risk', riskLevel: event.metadata?.riskLevel ?? 1 })
             }
           } catch { /* ignore parse errors */ }
         }
@@ -498,6 +527,8 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: Se
           tts.stop()
         }
       }
+      // 流结束：本轮无情绪标签则波波回落 idle（有则保持情绪表情）
+      if (!replyEmotionReceived) boboExpression.dispatch({ type: 'idle' })
       setStreaming(false)
     }
     return true
@@ -545,6 +576,8 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: Se
   const boBoPet = (size, bubbleAlign = 'center') => (
     <BoBoPet
       state={boboState}
+      expression={boboExpression.expression}
+      motionOff={!motion.animationEnabled}
       colors={theme.bobo}
       sentenceText=""
       liveTranscript={effectiveTranscript}
@@ -586,6 +619,22 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: Se
                 <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/>
               </svg>
             )}
+          </button>
+          {/* SOS 常驻入口（design/36 §3.4：非埋藏在菜单里，暖色不制造焦虑） */}
+          <button
+            onClick={() => setSosOpen(true)}
+            className="px-3 py-1.5 lg:px-3.5 lg:py-2 rounded-full bg-rose-50 border border-rose-200 text-rose-500 hover:bg-rose-100 active:scale-95 transition-all"
+            title="SOS 帮助"
+          >
+            <span className="text-sm lg:text-base font-semibold">🆘</span>
+          </button>
+          {/* 百宝箱入口（design/36 §3.1） */}
+          <button
+            onClick={() => setToolboxOpen(true)}
+            className="p-2 lg:p-2.5 rounded-full text-gray-400 hover:text-[var(--primary)] transition-colors"
+            title="百宝箱"
+          >
+            <span className="text-lg lg:text-xl">🧰</span>
           </button>
           {/* 设置按钮 */}
           <button
@@ -733,12 +782,14 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: Se
               </div>
             )}
 
-            {/* 手机语音情绪预览（voiceEmotion 当前流程中始终为 null，保留状态供后续扩展） */}
-
             <div className="relative flex gap-3 max-w-lg lg:max-w-2xl mx-auto items-center">
               <input
                 value={input}
-                onChange={(e) => setInput(e.target.value)}
+                onChange={(e) => {
+                  setInput(e.target.value)
+                  // 学生输入中：波波侧耳倾听（design/37 §4.1）
+                  if (e.target.value) boboExpression.dispatch({ type: 'typing' })
+                }}
                 onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && sendMessage()}
                 placeholder={recording ? '正在录音...' : analyzing ? '分析中...' : '也可以打字告诉我'}
                 disabled={streaming || analyzing}
@@ -811,6 +862,9 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: Se
         supportedDialects={supportedDialects}
         hasNativeVoice={hasNativeVoice}
       />
+      {/* 百宝箱与 SOS 面板（F-2，design/36） */}
+      {toolboxOpen && <ToolboxPanel onBack={() => setToolboxOpen(false)} />}
+      {sosOpen && <SosPanel onBack={() => setSosOpen(false)} />}
       {/* 切换同学二次确认 */}
       <ConfirmDialog
         open={confirmSwitch}

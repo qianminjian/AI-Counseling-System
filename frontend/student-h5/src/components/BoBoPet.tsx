@@ -1,20 +1,26 @@
 /**
- * 波波宠物（design/27 §四/§五）
+ * 波波宠物（design/27 §四/§五 + design/37 §4.1 表情状态机）
  * - 纯 SVG 逐部件可动画海豚角色，随主题换色
- * - 五态状态机：idle 漂浮眨眼 / listening 蜷成发光圆球 / thinking 思考 / speaking 说话冒气泡 /
+ * - 五态交互状态机：idle 漂浮眨眼 / listening 蜷成发光圆球 / thinking 思考 / speaking 说话冒气泡 /
  *   waitingWake 待唤醒（侧耳倾听 + 柔和脉冲光晕，design/28 §1.1）
+ * - 表情层（TTSFX-004）：expression prop 承接 emotionBus 驱动的表情状态机输出，
+ *   与交互态正交叠加；motionOff 为减弱动效降级（design/37 §4.3）
  * - 波波即语音输入圆球：interactive 模式下按住说话（复用 ChatRoom 录音 handlers）
  * - 触感反馈：Android vibrate，iOS 降级为视觉挤压
  */
 import SpeechBubble from './SpeechBubble'
+import { motionPref } from '../hooks/useMotionPreference'
 
-/** 触感反馈（iOS Safari 不支持 vibrate，自动降级为纯视觉） */
+/** 触感反馈（iOS Safari 不支持 vibrate，自动降级为纯视觉；触觉开关关闭时不触发，design/37 §4.3） */
 function vibrate(pattern) {
+  if (!motionPref.hapticsEnabled()) return
   try { navigator.vibrate?.(pattern) } catch { /* ignore */ }
 }
 
 export default function BoBoPet({
   state = 'idle',            // 'idle' | 'listening' | 'thinking' | 'speaking' | 'waitingWake'
+  expression = 'idle',       // 表情层（design/37 §4.1）：idle/happy/gentle/cheer/hug/listen/think/sleep
+  motionOff = false,         // 减弱动效降级（design/37 §4.3）：全部动画停用，静态呈现
   colors = { body: '#38BDF8', belly: '#E0F2FE', fin: '#0284C7' },
   sentenceText = '',         // speaking 时气泡展示的句子
   liveTranscript = '',       // listening 时气泡展示的实时转写
@@ -36,6 +42,13 @@ export default function BoBoPet({
   const bubbleText = state === 'listening' ? (liveTranscript || '我在听...') : sentenceText
   const listening = state === 'listening'
 
+  // 表情层派生（design/37 §4.1）：闭眼系（hug/sleep）、弯弯眼（happy）、胸鳍举高（cheer）
+  const eyesClosed = expression === 'hug' || expression === 'sleep'
+  const eyesHappy = expression === 'happy'
+  const leanIn = expression === 'hug'          // 靠近（抱抱姿态）
+  // 动效类统一经 anim() 门控：motionOff 时全部退化为静态（§4.3）
+  const anim = (cls) => (motionOff ? '' : cls)
+
   const handleDown = (e) => {
     if (!interactive || disabled) return
     vibrate(10)
@@ -56,6 +69,7 @@ export default function BoBoPet({
     <div
       className={`relative select-none ${interactive ? 'cursor-pointer' : ''} ${className}`}
       style={{ width: size, height: size, touchAction: interactive ? 'none' : undefined }}
+      data-expression={expression}
       onPointerDown={interactive ? handleDown : undefined}
       onPointerMove={interactive ? onPointerMove : undefined}
       onPointerUp={interactive ? handleUp : undefined}
@@ -71,15 +85,18 @@ export default function BoBoPet({
       <div
         className={`absolute inset-0 flex items-center justify-center transition-all duration-300
           ${listening ? 'opacity-0 scale-50 pointer-events-none' : 'opacity-100 scale-100'}
-          ${state === 'idle' ? 'animate-[bobo-float_2.6s_ease-in-out_infinite]' : ''}
-          ${state === 'thinking' ? 'animate-[bobo-sway_2s_ease-in-out_infinite]' : ''}
-          ${state === 'speaking' ? 'animate-[bobo-groove_1.4s_ease-in-out_infinite]' : ''}
-          ${state === 'waitingWake' ? 'animate-[bobo-listen_2.2s_ease-in-out_infinite]' : ''}`}
+          ${state === 'idle' && expression === 'idle' ? anim('animate-[bobo-float_2.6s_ease-in-out_infinite]') : ''}
+          ${expression === 'happy' ? anim('animate-[bobo-bounce_0.9s_ease-in-out_infinite]') : ''}
+          ${expression === 'gentle' ? anim('animate-[bobo-nod_2.8s_ease-in-out_infinite]') : ''}
+          ${state === 'thinking' || expression === 'think' ? anim('animate-[bobo-sway_2s_ease-in-out_infinite]') : ''}
+          ${state === 'speaking' ? anim('animate-[bobo-groove_1.4s_ease-in-out_infinite]') : ''}
+          ${(state === 'waitingWake' || expression === 'listen') ? anim('animate-[bobo-listen_2.2s_ease-in-out_infinite]') : ''}`}
       >
-        <svg viewBox="0 0 200 160" className="w-full h-full overflow-visible">
+        <svg viewBox="0 0 200 160" className={`w-full h-full overflow-visible ${leanIn ? 'bobo-lean' : ''}`}
+          style={leanIn ? { transform: 'scale(1.08) translateX(4px)', transition: 'transform 0.3s' } : { transition: 'transform 0.3s' }}>
           {/* 尾鳍（两瓣，可摆动） */}
           <g
-            className="animate-[bobo-tail_1.3s_ease-in-out_infinite]"
+            className={anim('animate-[bobo-tail_1.3s_ease-in-out_infinite]')}
             style={{ transformBox: 'fill-box', transformOrigin: '90% 50%' }}
           >
             <path d="M 38 76 C 26 62, 12 54, 4 58 C 8 70, 18 80, 32 84 Z" fill={colors.fin} />
@@ -101,32 +118,61 @@ export default function BoBoPet({
           {/* 呼吸孔 */}
           <ellipse cx="158" cy="37" rx="4" ry="2" fill={colors.fin} opacity="0.5" />
 
-          {/* 胸鳍（可扇动） */}
-          <path
-            d="M 118 82 C 112 96, 100 105, 92 102 C 98 92, 108 84, 116 79 Z"
-            fill={colors.fin}
-            className={state === 'listening' ? '' : 'animate-[bobo-fin_2s_ease-in-out_infinite]'}
-            style={{ transformBox: 'fill-box', transformOrigin: '80% 20%' }}
-          />
-
-          {/* 眼睛（可眨眼；thinking 时瞳孔看天） */}
-          <g
-            className="animate-[bobo-blink_4.5s_ease-in-out_infinite]"
-            style={{ transformBox: 'fill-box', transformOrigin: 'center' }}
-          >
-            <circle cx="148" cy="60" r="13" fill="#FFFFFF" />
-            <circle
-              cx={state === 'waitingWake' ? 154 : 151}
-              cy={state === 'thinking' ? 56 : state === 'waitingWake' ? 58 : 62}
-              r="6.5"
-              fill="#0F172A"
-              style={{ transition: 'cy 0.3s' }}
+          {/* 胸鳍（可扇动；cheer 时举高加油，design/37 §4.1） */}
+          {expression === 'cheer' ? (
+            <path
+              data-testid="bobo-fin-cheer"
+              d="M 118 78 C 118 62, 128 50, 138 50 C 136 62, 130 72, 122 80 Z"
+              fill={colors.fin}
+              className={anim('animate-[bobo-wave-fin_0.8s_ease-in-out_infinite]')}
+              style={{ transformBox: 'fill-box', transformOrigin: '20% 90%' }}
             />
-            <circle cx="153" cy="58" r="2.5" fill="#FFFFFF" />
-          </g>
+          ) : (
+            <path
+              d="M 118 82 C 112 96, 100 105, 92 102 C 98 92, 108 84, 116 79 Z"
+              fill={colors.fin}
+              className={state === 'listening' ? '' : anim('animate-[bobo-fin_2s_ease-in-out_infinite]')}
+              style={{ transformBox: 'fill-box', transformOrigin: '80% 20%' }}
+            />
+          )}
 
-          {/* 腮红 */}
-          <ellipse cx="157" cy="80" rx="9" ry="5.5" fill="#FDA4AF" opacity="0.75" />
+          {/* 眼睛：三套形态——闭眼（hug/sleep）/ 弯弯眼（happy）/ 圆眼（默认，可眨眼；thinking 时瞳孔看天） */}
+          {eyesClosed ? (
+            <g data-testid="bobo-eyes-closed">
+              <path d="M 138 60 Q 148 68, 158 60" stroke="#0F172A" strokeWidth="4" fill="none" strokeLinecap="round" />
+            </g>
+          ) : eyesHappy ? (
+            <g data-testid="bobo-eyes-happy">
+              <path d="M 137 62 Q 148 50, 159 62" stroke="#0F172A" strokeWidth="5" fill="none" strokeLinecap="round" />
+            </g>
+          ) : (
+            <g
+              data-testid="bobo-eyes"
+              className={anim(expression === 'gentle'
+                ? 'animate-[bobo-blink-slow_6s_ease-in-out_infinite]'
+                : 'animate-[bobo-blink_4.5s_ease-in-out_infinite]')}
+              style={{ transformBox: 'fill-box', transformOrigin: 'center' }}
+            >
+              <circle cx="148" cy="60" r="13" fill="#FFFFFF" />
+              <circle
+                cx={state === 'waitingWake' ? 154 : 151}
+                cy={state === 'thinking' ? 56 : state === 'waitingWake' ? 58 : 62}
+                r="6.5"
+                fill="#0F172A"
+                style={{ transition: 'cy 0.3s' }}
+              />
+              <circle cx="153" cy="58" r="2.5" fill="#FFFFFF" />
+            </g>
+          )}
+
+          {/* 腮红（hug 时加深，安抚感） */}
+          <ellipse data-testid="bobo-blush" cx="157" cy="80" rx="9" ry="5.5" fill="#FDA4AF" opacity={expression === 'hug' ? '0.95' : '0.75'} />
+
+          {/* 打盹 zzz（sleep/离线，design/37 §4.1） */}
+          {expression === 'sleep' && (
+            <text x="168" y="34" fontSize="20" fill="#94A3B8" fontStyle="italic"
+              className={anim('animate-[bobo-float_2.6s_ease-in-out_infinite]')}>z z</text>
+          )}
 
           {/* 嘴巴：说话时开合椭圆，否则微笑曲线 */}
           {state === 'speaking' ? (
@@ -136,7 +182,7 @@ export default function BoBoPet({
               rx="6"
               ry="4"
               fill="#0369A1"
-              className="animate-[bobo-mouth_0.5s_ease-in-out_infinite]"
+              className={anim('animate-[bobo-mouth_0.5s_ease-in-out_infinite]')}
               style={{ transformBox: 'fill-box', transformOrigin: 'center' }}
             />
           ) : (
@@ -149,13 +195,13 @@ export default function BoBoPet({
       {listening && (
         <div className="absolute inset-0 flex items-center justify-center">
           {/* 声波纹（涟漪扩散） */}
-          <span className="absolute rounded-full animate-[bobo-ripple_1.5s_ease-out_infinite]"
+          <span className={`absolute rounded-full ${anim('animate-[bobo-ripple_1.5s_ease-out_infinite]')}`}
             style={{ width: size * 0.72, height: size * 0.72, border: `2px solid ${cancelArmed ? '#F87171' : colors.body}` }} />
-          <span className="absolute rounded-full animate-[bobo-ripple_1.5s_ease-out_infinite]"
+          <span className={`absolute rounded-full ${anim('animate-[bobo-ripple_1.5s_ease-out_infinite]')}`}
             style={{ width: size * 0.72, height: size * 0.72, border: `2px solid ${cancelArmed ? '#F87171' : colors.body}`, animationDelay: '0.5s' }} />
           {/* 球体 */}
           <div
-            className={`rounded-full animate-[bobo-pulse_1.1s_ease-in-out_infinite] transition-colors duration-200`}
+            className={`rounded-full ${anim('animate-[bobo-pulse_1.1s_ease-in-out_infinite]')} transition-colors duration-200`}
             style={{
               width: size * 0.68,
               height: size * 0.68,
@@ -183,14 +229,18 @@ export default function BoBoPet({
         />
       )}
 
-      {/* 动画 keyframes */}
+      {/* 动画 keyframes（新增 bounce/nod/wave-fin/blink-slow，TTSFX-004） */}
       <style>{`
         @keyframes bobo-float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
+        @keyframes bobo-bounce{ 0%,100% { transform: translateY(0) scale(1); } 50% { transform: translateY(-8px) scale(1.03); } }
+        @keyframes bobo-nod   { 0%,100% { transform: rotate(0deg); } 30% { transform: rotate(3deg); } 60% { transform: rotate(-2deg); } }
+        @keyframes bobo-wave-fin { 0%,100% { transform: rotate(0deg); } 50% { transform: rotate(-16deg); } }
         @keyframes bobo-sway  { 0%,100% { transform: rotate(-2deg); } 50% { transform: rotate(2deg); } }
         @keyframes bobo-groove{ 0%,100% { transform: translateY(0) rotate(-1.5deg); } 50% { transform: translateY(-3px) rotate(1.5deg); } }
         @keyframes bobo-tail  { 0%,100% { transform: rotate(-9deg); } 50% { transform: rotate(9deg); } }
         @keyframes bobo-fin   { 0%,100% { transform: rotate(0deg); } 50% { transform: rotate(-12deg); } }
         @keyframes bobo-blink { 0%,90%,100% { transform: scaleY(1); } 93% { transform: scaleY(0.08); } 96% { transform: scaleY(1); } }
+        @keyframes bobo-blink-slow { 0%,80%,100% { transform: scaleY(1); } 85% { transform: scaleY(0.08); } 92% { transform: scaleY(1); } }
         @keyframes bobo-mouth { 0%,100% { transform: scaleY(0.35); } 50% { transform: scaleY(1); } }
         @keyframes bobo-ripple{ 0% { transform: scale(0.85); opacity: 0.85; } 100% { transform: scale(1.7); opacity: 0; } }
         @keyframes bobo-pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.07); } }

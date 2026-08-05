@@ -102,8 +102,9 @@ public class FieldEncryptionService {
 
             return "v" + activeKeyVersion + ":" + Base64.getEncoder().encodeToString(combined);
         } catch (Exception e) {
-            log.error("字段加密失败，降级为明文", e);
-            return plaintext;
+            // fail-fast：密钥已配置但加密异常（JCE 异常等），绝不允许敏感字段静默落库明文
+            log.error("字段加密失败(fail-fast，拒绝明文降级)", e);
+            throw new IllegalStateException("字段加密失败", e);
         }
     }
 

@@ -146,11 +146,23 @@ jobs:
 
       # Trivy 漏洞扫描（轻量漏洞库 ~30MB，1-2 分钟完成，替代 OWASP dependency-check）
       # 审计 Q-03：exit-code 改 1，CRITICAL/HIGH 漏洞阻断合入（此前仅告警不阻断）
-      - name: Trivy Vulnerability Scan
+      - name: Trivy Vulnerability Scan (backend)
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: 'fs'
           scan-ref: 'backend'
+          scanners: 'vuln'
+          severity: 'CRITICAL,HIGH'
+          format: 'table'
+          exit-code: '1'
+          ignore-unfixed: true
+
+      # 审计 P1-12：前端依赖漏洞扫描（npm lock 文件），此前 Trivy 仅扫后端
+      - name: Trivy Vulnerability Scan (frontend)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: 'fs'
+          scan-ref: 'frontend'
           scanners: 'vuln'
           severity: 'CRITICAL,HIGH'
           format: 'table'
@@ -178,7 +190,9 @@ jobs:
           cache-dependency-path: frontend/${{ matrix.app }}/package-lock.json
 
       - name: Install & Build
+        # 审计 P2-22：构建前清理 dist，保证可复现（残留旧产物不混入新构建）
         run: |
+          rm -rf dist
           npm ci
           npm run build
 
@@ -186,5 +200,7 @@ jobs:
       - name: Lint
         run: npm run lint --if-present
 
-      - name: Test
-        run: npm test --if-present
+      # 审计 P1-11：覆盖率门禁强制生效——此前 CI 只跑 npm test（无 coverage），
+      # vitest.config 中的 thresholds 从未被强制执行；现统一跑 test:coverage（三端均已配置阈值）
+      - name: Test (with coverage gate)
+        run: npm run test:coverage

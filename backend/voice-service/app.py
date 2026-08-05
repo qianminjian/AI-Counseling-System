@@ -14,22 +14,35 @@ import logging
 import re
 import subprocess
 import tempfile
+import threading
 import os
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import numpy as np
 import soundfile as sf
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
 from pydantic import BaseModel
+
+from config import load_config
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("voice-service")
+
+# ===== 配置加载（CFG-007：从 config.yaml 外置，回退内置默认值） =====
+
+_CONFIG = load_config()
 
 # ===== 引擎选择（环境变量驱动） =====
 ASR_ENGINE = os.environ.get("ASR_ENGINE", "funasr").lower()
 SER_ENABLED = os.environ.get("SER_ENABLED", "true").lower() == "true"
 DASHSCOPE_API_KEY = os.environ.get("DASHSCOPE_API_KEY", "")
+
+# 单请求超时（P1-DEP：ffmpeg 转码 / ASR / SER 挂死时避免请求永久挂起；超时返回 504）
+VOICE_PROCESS_TIMEOUT = float(os.environ.get("VOICE_PROCESS_TIMEOUT", "30"))   # ffmpeg 转码超时（秒）
+VOICE_ANALYZE_TIMEOUT = float(os.environ.get("VOICE_ANALYZE_TIMEOUT", "60"))   # ASR/SER 分析超时（秒）
 
 if ASR_ENGINE not in ("funasr", "dashscope"):
     raise ValueError(f"ASR_ENGINE 必须为 funasr 或 dashscope，当前值: {ASR_ENGINE}")
@@ -37,13 +50,59 @@ if ASR_ENGINE not in ("funasr", "dashscope"):
 if ASR_ENGINE == "dashscope" and not DASHSCOPE_API_KEY:
     raise ValueError("ASR_ENGINE=dashscope 时 DASHSCOPE_API_KEY 不能为空")
 
-app = FastAPI(title="MindSafe Voice Analysis", version="2.0.0")
+app = FastAPI(title="MindSafe Voice Analysis", version="2.1.0")
 
+# ===== Prometheus 指标（P1-10：手写文本格式，零新增依赖，供监控栈 internal 网络抓取） =====
+_METRICS_LOCK = threading.Lock()
+_VOICE_REQUESTS: dict = {}    # result -> 请求总数（result: success/error/timeout）
+_VOICE_DURATION_SUM = 0.0     # 分析耗时总和（秒，summary 的 _sum）
+_VOICE_DURATION_COUNT = 0     # 分析次数（summary 的 _count）
+
+
+def _record_voice_request(result: str, duration_sec: float):
+    """记录一次语音分析请求结果（线程安全）"""
+    global _VOICE_DURATION_SUM, _VOICE_DURATION_COUNT
+    with _METRICS_LOCK:
+        _VOICE_REQUESTS[result] = _VOICE_REQUESTS.get(result, 0) + 1
+        _VOICE_DURATION_SUM += duration_sec
+        _VOICE_DURATION_COUNT += 1
+
+
+@app.get("/metrics")
+def metrics():
+    """Prometheus 文本格式指标（P1-10；服务仅在 internal 网络暴露，不公网开放）"""
+    out = [
+        "# HELP voice_analyze_requests_total Voice analyze requests total by result",
+        "# TYPE voice_analyze_requests_total counter",
+    ]
+    with _METRICS_LOCK:
+        for result in sorted(_VOICE_REQUESTS):
+            out.append(f'voice_analyze_requests_total{{result="{result}"}} {_VOICE_REQUESTS[result]}')
+        out += [
+            "# HELP voice_analyze_duration_seconds Voice analyze duration in seconds",
+            "# TYPE voice_analyze_duration_seconds summary",
+            f"voice_analyze_duration_seconds_sum {_VOICE_DURATION_SUM:.6f}",
+            f"voice_analyze_duration_seconds_count {_VOICE_DURATION_COUNT}",
+        ]
+    out += [
+        "# HELP voice_asr_ready ASR engine readiness (1=ready 0=unavailable)",
+        "# TYPE voice_asr_ready gauge",
+        f"voice_asr_ready {1 if asr_model is not None or ASR_ENGINE == 'dashscope' else 0}",
+        "# HELP voice_ser_ready SER model readiness (1=ready 0=unavailable)",
+        "# TYPE voice_ser_ready gauge",
+        f"voice_ser_ready {1 if emotion_model is not None else 0}",
+    ]
+    return Response(content="\n".join(out) + "\n", media_type="text/plain; version=0.0.4; charset=utf-8")
+
+# CORS 白名单（安全收敛）：默认拒绝跨域（本服务仅由同网络后端调用）；
+# 确需前端直连时用 VOICE_CORS_ORIGINS="https://a.com,https://b.com" 显式声明，禁止 *
+_cors_env = os.getenv("VOICE_CORS_ORIGINS", "").strip()
+_allowed_origins = [o.strip() for o in _cors_env.split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=_allowed_origins,
+    allow_methods=["POST", "GET"],
+    allow_headers=["Content-Type"],
 )
 
 # ===== 模型初始化（ASR 与 SER 解耦） =====
@@ -54,10 +113,10 @@ emotion_model = None
 if ASR_ENGINE == "funasr":
     from funasr import AutoModel
 
-    logger.info("正在加载 ASR 模型 (SenseVoiceSmall)...")
+    logger.info("正在加载 ASR 模型 (%s)...", _CONFIG["asr"]["funasr_model"])
     asr_model = AutoModel(
-        model="iic/SenseVoiceSmall",
-        vad_model="fsmn-vad",
+        model=_CONFIG["asr"]["funasr_model"],
+        vad_model=_CONFIG["asr"]["vad_model"],
         vad_kwargs={"max_single_segment_time": 30000},
         device="cpu",
     )
@@ -77,8 +136,8 @@ if SER_ENABLED:
     try:
         if ASR_ENGINE != "funasr":
             from funasr import AutoModel  # dashscope 模式也需要 funasr 包来加载 emotion2vec
-        logger.info("正在加载 SER 模型 (emotion2vec+)...")
-        emotion_model = AutoModel(model="iic/emotion2vec_plus_large", device="cpu")
+        logger.info("正在加载 SER 模型 (%s)...", _CONFIG["ser"]["model"])
+        emotion_model = AutoModel(model=_CONFIG["ser"]["model"], device="cpu")
         logger.info("SER 模型加载完成")
     except Exception as e:
         logger.warning(f"⚠️ SER 模型加载失败（降级为中性情绪）: {e}")
@@ -104,19 +163,9 @@ class VoiceAnalysisResponse(BaseModel):
     duration_seconds: float     # 音频时长（秒）
 
 
-# ===== 情绪映射 =====
+# ===== 情绪映射（从 config.yaml 加载） =====
 
-EMOTION_LABELS = [
-    ("angry", "愤怒"),
-    ("disgusted", "厌恶"),
-    ("fearful", "恐惧"),
-    ("happy", "开心"),
-    ("neutral", "中性"),
-    ("other", "其他"),
-    ("sad", "悲伤"),
-    ("surprised", "惊讶"),
-    ("unknown", "未知"),
-]
+EMOTION_LABELS = [tuple(item) for item in _CONFIG["emotion_labels"]]
 
 
 def parse_emotion_result(raw: dict) -> EmotionResult:
@@ -149,7 +198,7 @@ def health():
 def _dashscope_asr(wav_path: str) -> str:
     """通过 DashScope Recognition SDK 进行语音转写（Paraformer-V2，WebSocket 协议，同步模式）"""
     recognition = Recognition(
-        model="paraformer-realtime-v2",
+        model=_CONFIG["asr"]["dashscope_model"],
         format="wav",
         sample_rate=16000,
         callback=RecognitionCallback(),  # no-op callback, call() 模式同步返回
@@ -198,6 +247,7 @@ async def analyze_voice(file: UploadFile = File(...)):
     - 合规：处理完立即删除临时文件，不存储原始音频
     - 引擎：由 ASR_ENGINE 环境变量控制（funasr=本地 / dashscope=云端）
     """
+    t_start = time.time()
     if not file.content_type or not file.content_type.startswith("audio/"):
         raise HTTPException(status_code=400, detail="仅支持音频文件")
 
@@ -223,6 +273,7 @@ async def analyze_voice(file: UploadFile = File(...)):
             ["ffmpeg", "-y", "-i", tmp_path, "-ar", "16000", "-ac", "1", wav_path],
             check=True,
             capture_output=True,
+            timeout=VOICE_PROCESS_TIMEOUT,  # P1-DEP：转码挂死时不再永久挂起
         )
 
         # 读取 WAV 获取时长
@@ -234,11 +285,15 @@ async def analyze_voice(file: UploadFile = File(...)):
 
         if emotion_model is not None:
             # ASR 和 SER 并行（ASR 可能是网络IO或CPU，SER 是CPU，并行提升响应速度）
-            with ThreadPoolExecutor(max_workers=2) as executor:
+            # P1-DEP：result(timeout) 防挂死；显式 shutdown(wait=False) 避免 with 退出时 join 挂死线程
+            executor = ThreadPoolExecutor(max_workers=2)
+            try:
                 asr_future = executor.submit(asr_fn, wav_path)
                 ser_future = executor.submit(_funasr_ser, wav_path)
-                text = asr_future.result()
-                emotion = ser_future.result()
+                text = asr_future.result(timeout=VOICE_ANALYZE_TIMEOUT)
+                emotion = ser_future.result(timeout=VOICE_ANALYZE_TIMEOUT)
+            finally:
+                executor.shutdown(wait=False, cancel_futures=True)
         else:
             text = asr_fn(wav_path)
             emotion = EmotionResult(label="中性", label_en="neutral", confidence=0.0, scores=[0.0] * 9)
@@ -246,6 +301,7 @@ async def analyze_voice(file: UploadFile = File(...)):
         logger.info(f"分析完成 [ASR={ASR_ENGINE}, SER={'on' if emotion_model else 'off'}]: "
                     f"text_len={len(text)}, emotion={emotion.label_en}({emotion.confidence:.2f}), duration={duration:.1f}s")
 
+        _record_voice_request("success", time.time() - t_start)
         return VoiceAnalysisResponse(
             text=text,
             emotion=emotion,
@@ -253,11 +309,23 @@ async def analyze_voice(file: UploadFile = File(...)):
         )
 
     except subprocess.CalledProcessError as e:
+        _record_voice_request("error", time.time() - t_start)
         logger.error(f"音频转码失败: {e.stderr.decode(errors='ignore') if e.stderr else e}")
         raise HTTPException(status_code=500, detail="音频格式转换失败")
+    except subprocess.TimeoutExpired:
+        _record_voice_request("timeout", time.time() - t_start)
+        logger.error(f"ffmpeg 转码超时 ({VOICE_PROCESS_TIMEOUT}s)")
+        raise HTTPException(status_code=504, detail="音频转码超时")
+    except TimeoutError:
+        # concurrent.futures.TimeoutError = builtins.TimeoutError（3.11+）
+        _record_voice_request("timeout", time.time() - t_start)
+        logger.error(f"ASR/SER 分析超时 ({VOICE_ANALYZE_TIMEOUT}s)")
+        raise HTTPException(status_code=504, detail="语音分析超时")
     except HTTPException:
+        _record_voice_request("error", time.time() - t_start)
         raise  # DashScope 502 等已包装的异常直接抛出
     except Exception as e:
+        _record_voice_request("error", time.time() - t_start)
         logger.error(f"语音分析失败: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"语音分析失败: {str(e)}")
 

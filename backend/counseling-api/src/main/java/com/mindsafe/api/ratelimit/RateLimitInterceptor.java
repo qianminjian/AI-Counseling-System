@@ -14,8 +14,9 @@ import java.util.UUID;
 /**
  * 全局 API 限流拦截器
  * <p>
- * 对 /api/v1/chat/ 路径下的消息发送接口进行限流：
- * - 每用户 30 次/分钟
+ * 对 /api/v1/chat/ 路径下的消息发送与会话创建接口进行限流：
+ * - chat_message / create_session：每用户 30 次/分钟（配额由 RateLimiter 统一控制）
+ * 会话轮次另有 12 轮/次上限（ConversationState.maxTurns）
  * <p>
  * 注册方式：WebMvcConfigurer.addInterceptors
  */
@@ -42,7 +43,7 @@ public class RateLimitInterceptor implements HandlerInterceptor {
             return true; // 未认证请求由 Security 层拦截
         }
 
-        String action = resolveAction(request.getRequestURI());
+        String action = resolveAction(request.getMethod(), request.getRequestURI());
         if (action == null) {
             return true; // 非限流路径
         }
@@ -59,12 +60,15 @@ public class RateLimitInterceptor implements HandlerInterceptor {
         return true;
     }
 
-    /** 根据 URI 确定限流动作（null = 不限流） */
-    private String resolveAction(String uri) {
+    /** 根据 HTTP 方法与 URI 确定限流动作（null = 不限流） */
+    private String resolveAction(String method, String uri) {
         if (uri.contains("/chat/sessions/") && uri.contains("/messages")) {
             return "chat_message";
         }
-        if (uri.contains("/chat/sessions") && "POST".equalsIgnoreCase(uri)) {
+        // AUDIT-P0-2：原实现误将路径 uri 与字面量 "POST" 比较（恒 false），
+        // create_session 限流从未生效，攻击者可无限创建会话烧 LLM 配额。
+        // 修复：改判 request.getMethod()。
+        if (uri.contains("/chat/sessions") && "POST".equalsIgnoreCase(method)) {
             return "create_session";
         }
         return null;

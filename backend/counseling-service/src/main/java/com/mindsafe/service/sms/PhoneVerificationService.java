@@ -14,7 +14,7 @@ import java.util.concurrent.TimeUnit;
  * 手机验证码服务（AUTH-013）
  * <p>
  * 流程：生成 6 位验证码 → Redis 存储（5 分钟 TTL）→ 通过 SmsService 发送 → 校验。
- * 防刷：同一手机号 60 秒内不可重复发送。
+ * 防刷：同一手机号 60 秒内不可重复发送；验证 5 次失败即废码（O3 防爆破）。
  */
 @Service
 public class PhoneVerificationService {
@@ -26,6 +26,8 @@ public class PhoneVerificationService {
     private static final int CODE_LENGTH = 6;
     private static final int CODE_TTL_MINUTES = 5;
     private static final int COOLDOWN_SECONDS = 60;
+    private static final String ATTEMPT_KEY_PREFIX = "sms:attempt:";
+    private static final int MAX_ATTEMPTS = 5;   // O3：5 次失败即废码，防暴力枚举
 
     private final StringRedisTemplate redisTemplate;
     private final SmsService smsService;
@@ -54,10 +56,12 @@ public class PhoneVerificationService {
         // 生成验证码
         String code = generateCode();
 
-        // 存储（5 分钟有效）
+        // 存储（5 分钟有效）+ 清除旧失败计数
         String codeKey = CODE_KEY_PREFIX + phone;
+        String attemptKey = ATTEMPT_KEY_PREFIX + phone;
         redisTemplate.opsForValue().set(codeKey, code, CODE_TTL_MINUTES, TimeUnit.MINUTES);
         redisTemplate.opsForValue().set(cooldownKey, "1", COOLDOWN_SECONDS, TimeUnit.SECONDS);
+        redisTemplate.delete(attemptKey);
 
         // 发送
         boolean sent = smsService.sendVerificationCode(phone, code, purpose);
@@ -69,7 +73,8 @@ public class PhoneVerificationService {
     }
 
     /**
-     * 校验验证码。验证成功后立即删除（一次性）。
+     * 校验验证码（O3 防爆破：同一手机号最多 5 次失败尝试，超限即废码）。
+     * 验证成功后立即删除 code + attempt（一次性，防重放）。
      *
      * @param phone 手机号
      * @param code  用户输入的验证码
@@ -79,17 +84,34 @@ public class PhoneVerificationService {
         if (phone == null || code == null) return false;
 
         String codeKey = CODE_KEY_PREFIX + phone;
+        String attemptKey = ATTEMPT_KEY_PREFIX + phone;
+
+        // O3：失败计数检查
+        String attemptVal = redisTemplate.opsForValue().get(attemptKey);
+        int attempts = attemptVal != null ? Integer.parseInt(attemptVal) : 0;
+        if (attempts >= MAX_ATTEMPTS) {
+            // 超限废码：删除验证码，确保攻击者无法继续尝试
+            redisTemplate.delete(codeKey);
+            redisTemplate.delete(attemptKey);
+            log.warn("验证码暴力尝试锁定: phone={}, attempts={}", maskPhone(phone), attempts);
+            return false;
+        }
+
         String stored = redisTemplate.opsForValue().get(codeKey);
 
         if (stored == null) {
             return false; // 过期或未发送
         }
         if (!stored.equals(code.trim())) {
-            return false; // 验证码不匹配
+            // O3：失败计数 +1，TTL 对齐验证码有效期（5 分钟）
+            redisTemplate.opsForValue().set(attemptKey, String.valueOf(attempts + 1),
+                    CODE_TTL_MINUTES, TimeUnit.MINUTES);
+            return false;
         }
 
-        // 验证成功，立即删除（防重放）
+        // 验证成功，立即删除 code + attempt（防重放）
         redisTemplate.delete(codeKey);
+        redisTemplate.delete(attemptKey);
         return true;
     }
 

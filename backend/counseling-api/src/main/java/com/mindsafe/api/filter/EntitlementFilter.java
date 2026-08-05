@@ -77,11 +77,6 @@ public class EntitlementFilter extends OncePerRequestFilter {
             return;
         }
 
-        // 配额阈值告警（不拦截，仅日志）
-        if (entitlementChecker.shouldAlert(plan, EntitlementChecker.QUOTA_AI_SESSION, 0)) {
-            log.info("配额告警: plan={}, metric=ai_chat_session 使用率 >= 80%", plan);
-        }
-
         filterChain.doFilter(request, response);
     }
 

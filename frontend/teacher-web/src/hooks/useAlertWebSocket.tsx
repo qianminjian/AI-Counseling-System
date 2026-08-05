@@ -4,7 +4,9 @@ import { getToken, takeoverSession } from '../api'
 
 /**
  * 教师端预警 WebSocket 实时推送 Hook
- * 连接 ws://host/ws/alerts?token=JWT
+ * 连接 ws://host/ws/alerts
+ * 认证：JWT 通过 subprotocol 携带（['alerts.v1', 'auth.<jwt>']），不进 query string，
+ * 避免入 nginx access log / 浏览器历史（P1-FE-4）
  * 收到 risk_alert 消息时弹出 antd notification + 触发回调
  */
 export function useAlertWebSocket({ onAlert, enabled = true }) {
@@ -17,9 +19,9 @@ export function useAlertWebSocket({ onAlert, enabled = true }) {
     if (!token) return
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const url = `${protocol}//${window.location.host}/ws/alerts?token=${token}`
-
-    const ws = new WebSocket(url)
+    const url = `${protocol}//${window.location.host}/ws/alerts`
+    // alerts.v1 与服务端子协议协商；auth.<jwt> 由后端握手拦截器提取认证
+    const ws = new WebSocket(url, ['alerts.v1', `auth.${token}`])
     wsRef.current = ws
 
     ws.onopen = () => {

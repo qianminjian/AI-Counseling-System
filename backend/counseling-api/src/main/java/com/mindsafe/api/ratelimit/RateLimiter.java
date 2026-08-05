@@ -57,6 +57,31 @@ public class RateLimiter {
     }
 
     /**
+     * 按任意键限流（用于无认证上下文的公开端点，如按 IP 限流声纹验证）
+     *
+     * @param key       限流键（如客户端 IP）
+     * @param action    操作类型
+     * @param maxInWindow 窗口内最大次数
+     * @param window    时间窗口
+     * @return true = 允许通过，false = 已限流
+     */
+    public boolean tryAcquire(String key, String action, int maxInWindow, Duration window) {
+        String redisKey = KEY_PREFIX + action + ":" + key;
+        Long count = redisTemplate.opsForValue().increment(redisKey);
+        if (count == null) {
+            return true; // Redis 异常时放行
+        }
+        if (count == 1) {
+            redisTemplate.expire(redisKey, window);
+        }
+        if (count > maxInWindow) {
+            log.warn("限流触发: key={}, action={}, count={}", key, action, count);
+            return false;
+        }
+        return true;
+    }
+
+    /**
      * 获取剩余配额
      */
     public int remainingQuota(UUID userId, String action) {

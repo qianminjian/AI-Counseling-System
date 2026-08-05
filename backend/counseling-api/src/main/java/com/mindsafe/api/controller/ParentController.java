@@ -5,6 +5,7 @@ import com.mindsafe.api.security.JwtTokenProvider;
 import com.mindsafe.common.dto.ApiResponse;
 import com.mindsafe.common.dto.ErrorCode;
 import com.mindsafe.common.exception.BizException;
+import com.mindsafe.common.tenant.TenantContextHolder;
 import com.mindsafe.domain.entity.CounselingSession;
 import com.mindsafe.domain.entity.MessageSummary;
 import com.mindsafe.domain.entity.User;
@@ -24,7 +25,12 @@ import java.util.stream.Collectors;
  * 家长端 API（只读，token 鉴权）
  * <p>
  * 家长通过教师分享的链接访问，无需登录。
- * Token 由教师端生成，包含 studentUserId + 7 天有效期。
+ * Token 由教师端生成，包含 studentUserId + tenantId + 7 天有效期。
+ * <p>
+ * <b>B1 修复</b>：parent_report token 不会被 JwtAuthenticationFilter 识别（其只处理 access token），
+ * 但 parent_report token 包含 tenantId claim，本 Controller 在 resolveParentToken 时直接从
+ * token 提取 tenantId，并在每个端点的 DB 访问前通过 {@link TenantContextHolder#set(UUID)}
+ * 显式绑定租户上下文，finally 中清除，确保租户行隔离拦截器不会 fail-fast。
  */
 @RestController
 @RequestMapping("/api/v1/parent")
@@ -57,21 +63,17 @@ public class ParentController {
      */
     @GetMapping("/report")
     public ApiResponse<Map<String, Object>> getWeeklyReport(@RequestHeader("Authorization") String authHeader) {
-        String token = authHeader.replace("Bearer ", "");
-
-        // 验证 token（复用 JWT 验证逻辑）
-        UUID studentUserId;
+        ParentTokenInfo info = resolveParentToken(authHeader);
+        TenantContextHolder.set(info.tenantId());
         try {
-            if (!jwtTokenProvider.validateToken(token)) {
-                throw new BizException(ErrorCode.UNAUTHORIZED, "链接已过期或无效");
-            }
-            studentUserId = jwtTokenProvider.getUserId(token);
-        } catch (BizException e) {
-            throw e;
-        } catch (Exception e) {
-            throw new BizException(ErrorCode.UNAUTHORIZED, "链接已过期或无效");
+            return doGetWeeklyReport(info);
+        } finally {
+            TenantContextHolder.clear();
         }
+    }
 
+    private ApiResponse<Map<String, Object>> doGetWeeklyReport(ParentTokenInfo info) {
+        UUID studentUserId = info.studentUserId();
         User student = userMapper.selectById(studentUserId);
         if (student == null) {
             throw new BizException(ErrorCode.RESOURCE_NOT_FOUND, "学生不存在");
@@ -136,13 +138,23 @@ public class ParentController {
      */
     @PostMapping("/consent/withdraw")
     public ApiResponse<Map<String, Object>> withdrawConsent(@RequestHeader("Authorization") String authHeader) {
-        UUID studentUserId = resolveStudentUserId(authHeader);
+        ParentTokenInfo info = resolveParentToken(authHeader);
+        TenantContextHolder.set(info.tenantId());
+        try {
+            return doWithdrawConsent(info);
+        } finally {
+            TenantContextHolder.clear();
+        }
+    }
+
+    private ApiResponse<Map<String, Object>> doWithdrawConsent(ParentTokenInfo info) {
+        UUID studentUserId = info.studentUserId();
         User student = userMapper.selectById(studentUserId);
         if (student == null) {
             throw new BizException(ErrorCode.RESOURCE_NOT_FOUND, "学生不存在");
         }
 
-        consentWithdrawalService.withdrawConsent(student.getTenantId(), studentUserId);
+        consentWithdrawalService.withdrawConsent(info.tenantId(), studentUserId);
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("studentUserId", studentUserId);
@@ -152,19 +164,51 @@ public class ParentController {
         return ApiResponse.ok(result);
     }
 
-    /** 校验家长 token 并解析出学生用户 ID */
-    private UUID resolveStudentUserId(String authHeader) {
+    /**
+     * 解析 parent_report token，返回 studentUserId + tenantId（B1 修复：从 token 提取 tenantId
+     * 供端点绑定 TenantContextHolder，避免 MyBatis-Plus 租户行隔离 fail-fast）。
+     * <p>
+     * 四重校验：签名有效 + 非 refresh/声纹凭证 + userType 必须为 parent +
+     * 学生账号未被撤回同意（P1 审计修复：status=withdrawn 后旧 token 立即失效）。
+     * 学生自持的 access token（userType=student）无法调用家长接口（如撤回监护人同意）。
+     */
+    private ParentTokenInfo resolveParentToken(String authHeader) {
         String token = authHeader.replace("Bearer ", "");
         try {
-            if (!jwtTokenProvider.validateToken(token)) {
+            if (!jwtTokenProvider.validateToken(token)
+                    || jwtTokenProvider.isRefreshToken(token)
+                    || jwtTokenProvider.isVoiceCredential(token)
+                    || !"parent".equals(jwtTokenProvider.getUserType(token))) {
                 throw new BizException(ErrorCode.UNAUTHORIZED, "链接已过期或无效");
             }
-            return jwtTokenProvider.getUserId(token);
+            ParentTokenInfo info = new ParentTokenInfo(
+                    jwtTokenProvider.getUserId(token),
+                    jwtTokenProvider.getTenantId(token));
+
+            // P1 审计修复：撤回同意后旧 token 失效。selectById 受租户行隔离拦截，必须先绑定租户上下文
+            TenantContextHolder.set(info.tenantId());
+            try {
+                User student = userMapper.selectById(info.studentUserId());
+                if (student == null
+                        || ConsentWithdrawalService.STATUS_WITHDRAWN.equals(student.getStatus())) {
+                    throw new BizException(ErrorCode.UNAUTHORIZED, "监护人同意已撤回，链接已失效");
+                }
+            } finally {
+                TenantContextHolder.clear();
+            }
+            return info;
         } catch (BizException e) {
             throw e;
         } catch (Exception e) {
             throw new BizException(ErrorCode.UNAUTHORIZED, "链接已过期或无效");
         }
+    }
+
+    private record ParentTokenInfo(UUID studentUserId, UUID tenantId) {}
+
+    /** @deprecated 由 {@link #resolveParentToken} 替代，保留兼容性注释 */
+    private UUID resolveStudentUserId(String authHeader) {
+        return resolveParentToken(authHeader).studentUserId();
     }
 
     // ===== AUTH-013 手机验证 =====
@@ -179,8 +223,8 @@ public class ParentController {
     public ApiResponse<Map<String, String>> sendVerificationCode(
             @RequestHeader("Authorization") String authHeader,
             @RequestBody Map<String, String> body) {
-        // 验证初始 token 有效
-        resolveStudentUserId(authHeader);
+        // 验证初始 token 有效（B1：sendCode 不触 DB，仅需 token 校验，不需租户上下文）
+        resolveParentToken(authHeader);
 
         String phone = body.get("phone");
         phoneVerificationService.sendCode(phone, "家长身份验证");
@@ -198,7 +242,17 @@ public class ParentController {
     public ApiResponse<Map<String, Object>> verifyPhone(
             @RequestHeader("Authorization") String authHeader,
             @RequestBody Map<String, String> body) {
-        UUID studentUserId = resolveStudentUserId(authHeader);
+        ParentTokenInfo info = resolveParentToken(authHeader);
+        TenantContextHolder.set(info.tenantId());
+        try {
+            return doVerifyPhone(info, body);
+        } finally {
+            TenantContextHolder.clear();
+        }
+    }
+
+    private ApiResponse<Map<String, Object>> doVerifyPhone(ParentTokenInfo info, Map<String, String> body) {
+        UUID studentUserId = info.studentUserId();
 
         String phone = body.get("phone");
         String code = body.get("code");
@@ -208,13 +262,13 @@ public class ParentController {
             throw new BizException(ErrorCode.UNAUTHORIZED, "验证码错误或已过期");
         }
 
-        // 验证通过，签发正式 7 天 token（复用现有 JWT 生成）
+        // 验证通过，签发正式 7 天 token（SEC-006：独立 parent_report tokenType + 7d TTL，兑现有效期承诺）
         User student = userMapper.selectById(studentUserId);
         if (student == null) {
             throw new BizException(ErrorCode.RESOURCE_NOT_FOUND, "学生不存在");
         }
 
-        String formalToken = jwtTokenProvider.generateToken(studentUserId, "parent", student.getTenantId());
+        String formalToken = jwtTokenProvider.generateParentReportToken(studentUserId, info.tenantId());
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("token", formalToken);

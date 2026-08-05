@@ -3,15 +3,17 @@
 # 访问：http://localhost（学生端）/ http://localhost/teacher（教师端）/ http://localhost/bigscreen（大屏）
 
 services:
-  # ===== PostgreSQL =====
+  # ===== PostgreSQL（pgvector 镜像：Flyway V24 需要 vector 扩展；与 prod 对齐） =====
   postgres:
-    image: postgres:16-alpine
+    image: pgvector/pgvector:pg16
     environment:
       POSTGRES_DB: mindsafe
       POSTGRES_USER: mindsafe
       POSTGRES_PASSWORD: ${DB_PASSWORD:-mindsafe2026}
     volumes:
       - pgdata:/var/lib/postgresql/data
+      # 首次初始化：pgvector/uuid-ossp/pgcrypto 扩展（与 prod 一致）
+      - ./init/pg-init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
     ports:
       - "5432:5432"
     healthcheck:
@@ -21,7 +23,20 @@ services:
       retries: 5
     restart: unless-stopped
 
-  # ===== TTS 语音合成微服务（edge-tts） =====
+  # ===== Redis（会话状态/限流/token黑名单/验证码均依赖，与 prod 对齐） =====
+  redis:
+    image: redis:7-alpine
+    command: redis-server --maxmemory 128mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  # ===== TTS 语音合成微服务（CosyVoice + edge-tts 降级） =====
   tts-service:
     build:
       context: ../backend/tts-service
@@ -29,6 +44,8 @@ services:
     restart: unless-stopped
     environment:
       DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:-}
+      # TTS 模型名（CFG-004：运行时切换模型无需改代码，默认 cosyvoice-v3-flash）
+      DASHSCOPE_TTS_MODEL: ${DASHSCOPE_TTS_MODEL:-cosyvoice-v3-flash}
 
   # ===== 语音识别与情绪分析微服务（ASR + SER 解耦） =====
   voice-service:
@@ -46,7 +63,8 @@ services:
     volumes:
       # 模型缓存：宿主机持久化（emotion2vec ~300MB + SenseVoice ~1GB）
       # 使用前需运行: bash deploy/scripts/prepare-funasr.sh
-      - ${MODEL_CACHE_DIR:-./cache/modelscope}:/root/.cache/modelscope
+      # 容器内挂载到非 root 用户 HOME（审计 P3-31：容器不再以 root 运行）
+      - ${MODEL_CACHE_DIR:-./cache/modelscope}:/home/appuser/.cache/modelscope
     restart: unless-stopped
 
   # ===== Spring Boot 后端 =====
@@ -58,21 +76,36 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/mindsafe
       SPRING_DATASOURCE_USERNAME: mindsafe
       SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:-mindsafe2026}
-      SPRING_AI_DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-sk-placeholder}
-      SPRING_AI_DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
-      JWT_SECRET: ${JWT_SECRET:-mindsafe-jwt-secret-change-in-production}
+      SPRING_DATA_REDIS_HOST: redis
+      # 变量名必须与 application.yml 占位符 ${LLM_API_KEY}/${LLM_BASE_URL} 一致；
+      # 写成 SPRING_AI_DEEPSEEK_* 时 Spring 不会绑定，LLM 调用将用 sk-placeholder 失败
+      LLM_API_KEY: ${LLM_API_KEY:-sk-placeholder}
+      LLM_BASE_URL: ${LLM_BASE_URL:-https://api.deepseek.com}
+      LLM_MODEL: ${LLM_MODEL:-deepseek-v4-flash}
+      # application.yml 读取 ${MINDSAFE_JWT_SECRET}，裸 JWT_SECRET 不会被使用
+      MINDSAFE_JWT_SECRET: ${JWT_SECRET:-mindsafe-jwt-secret-change-in-production}
       # 变量名必须与 application.yml 占位符 ${TTS_SERVICE_URL} 一致；
       # 写成 MINDSAFE_TTS_SERVICE_URL 时 Spring 松散绑定匹配不上，会回落 localhost
       TTS_SERVICE_URL: http://tts-service:10096
       VOICE_SERVICE_URL: http://voice-service:10095
+      # 企业微信 OAuth（可选，空 = 企微登录返回 501）
+      WECOM_CORP_ID: ${WECOM_CORP_ID:-}
+      WECOM_AGENT_ID: ${WECOM_AGENT_ID:-}
+      WECOM_SECRET: ${WECOM_SECRET:-}
+      WECOM_REDIRECT_URI: ${WECOM_REDIRECT_URI:-}
+      # 监护人同意：默认 false（fail-closed，PIPL §31），显式置 true 仅用于内部试用环境
+      MINDSAFE_CONSENT_TRIAL_AUTO_GRANT: ${MINDSAFE_CONSENT_TRIAL_AUTO_GRANT:-false}
       JAVA_OPTS: "-XX:MaxRAMPercentage=75.0"
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
       tts-service:
         condition: service_started
     ports:
-      - "8080:8080"
+      # 仅本机可访问（P0-3）：公网唯一入口为 nginx（80/443），避免绕过 nginx 直连后端伪造 XFF 头
+      - "127.0.0.1:8080:8080"
     restart: unless-stopped
 
   # ===== 前端构建（静态资源） =====
@@ -90,6 +123,8 @@ services:
       - "80:80"
     volumes:
       - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      # 公共安全头（P1-DEP：default.conf include 引用，必须挂载到 /etc/nginx/ 下）
+      - ./nginx/security-headers.conf:/etc/nginx/security-headers.conf:ro
       - frontend_assets:/app:ro
     depends_on:
       - backend
@@ -98,4 +133,5 @@ services:
 
 volumes:
   pgdata:
+  redisdata:
   frontend_assets:

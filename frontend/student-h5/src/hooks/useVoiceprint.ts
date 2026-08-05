@@ -20,6 +20,7 @@ import {
   VP_SILENCE_THRESHOLD,
   VP_INFERENCE_TIMEOUT,
 } from '../config/voiceprint'
+import { getConfigValue } from '../config/remote'
 import { getAllVoiceprints } from '../utils/voiceprintStore'
 
 // ===== 全局模型加载状态（跨组件共享，LoginPage / VoiceLoginOverlay 均可订阅） =====
@@ -361,7 +362,7 @@ export function useVoiceprint() {
       }
     }
 
-    const matched = bestScore >= VP_VERIFY_THRESHOLD
+    const matched = bestScore >= getConfigValue('voiceprint.verifyThreshold', VP_VERIFY_THRESHOLD)
     return {
       matched,
       userId: matched ? bestMatch?.userId : undefined,

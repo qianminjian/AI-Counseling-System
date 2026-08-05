@@ -27,7 +27,7 @@ public interface NotificationService {
     long countUnread(UUID recipientUserId);
 
     /**
-     * 标记通知为已读
+     * 标记通知为已读（P1 审计修复：必须携带收件人 ID，仅本人通知可标记，防 IDOR）
      */
-    void markAsRead(UUID notificationId);
+    void markAsRead(UUID notificationId, UUID recipientUserId);
 }

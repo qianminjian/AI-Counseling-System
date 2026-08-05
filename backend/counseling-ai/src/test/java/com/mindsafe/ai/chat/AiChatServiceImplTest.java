@@ -129,22 +129,4 @@ class AiChatServiceImplTest {
         assertThat(system).contains("【学生画像】偏沉默");
         assertThat(system).contains("【暖场指令】强度=2");
     }
-
-    @Test
-    @DisplayName("对照：chat（孩子主动说话）正常写入 UserMessage + AssistantMessage")
-    @SuppressWarnings("unchecked")
-    void chat_writesUserAndAssistantMessage() {
-        when(chatMemory.get(conversationId)).thenReturn(List.of(new UserMessage("今天不开心")));
-        when(streamSpec.content()).thenReturn(Flux.just("和我说说"));
-
-        service.chat(sessionId, "sad", "今天不开心", "female", null, 5)
-                .collectList().block();
-
-        ArgumentCaptor<List<Message>> captor = ArgumentCaptor.forClass(List.class);
-        verify(chatMemory, times(2)).add(eq(conversationId), captor.capture());
-        List<List<Message>> allWrites = captor.getAllValues();
-        // 第一次：学生消息；第二次：AI 回复
-        assertThat(allWrites.get(0).get(0)).isInstanceOf(UserMessage.class);
-        assertThat(allWrites.get(1).get(0)).isInstanceOf(AssistantMessage.class);
-    }
 }

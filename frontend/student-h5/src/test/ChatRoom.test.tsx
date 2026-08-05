@@ -115,6 +115,12 @@ vi.mock('../components/MessageBubble', () => ({
   default: ({ msg }: any) => <div data-testid="msg-bubble">{msg.content}</div>,
   EMOTION_EMOJI: { happy: '😊', sad: '😢' },
 }))
+vi.mock('../components/ToolboxPanel', () => ({
+  default: ({ onBack }: any) => <div data-testid="toolbox-panel"><button onClick={onBack}>关闭百宝箱</button></div>,
+}))
+vi.mock('../components/SosPanel', () => ({
+  default: ({ onBack }: any) => <div data-testid="sos-panel"><button onClick={onBack}>关闭SOS</button></div>,
+}))
 vi.mock('../theme/ThemeProvider', () => ({
   useTheme: () => ({
     theme: {
@@ -159,6 +165,31 @@ describe('ChatRoom', () => {
     render(<ChatRoom session={SESSION} onEnd={vi.fn()} />)
     expect(screen.getByText('波波')).toBeTruthy()
     expect(screen.getByText('结束')).toBeTruthy()
+  })
+
+  // ===== F-2 工具箱/SOS 入口（design/36 §3.4：SOS 全局常驻，非埋藏在菜单里）=====
+  it('header 常驻百宝箱与 SOS 入口', () => {
+    render(<ChatRoom session={SESSION} onEnd={vi.fn()} />)
+    expect(screen.getByTitle('百宝箱')).toBeTruthy()
+    expect(screen.getByTitle('SOS 帮助')).toBeTruthy()
+  })
+
+  it('点击百宝箱打开工具箱面板，可关闭', () => {
+    render(<ChatRoom session={SESSION} onEnd={vi.fn()} />)
+    expect(screen.queryByTestId('toolbox-panel')).toBeNull()
+    fireEvent.click(screen.getByTitle('百宝箱'))
+    expect(screen.getByTestId('toolbox-panel')).toBeTruthy()
+    fireEvent.click(screen.getByText('关闭百宝箱'))
+    expect(screen.queryByTestId('toolbox-panel')).toBeNull()
+  })
+
+  it('点击 SOS 打开 SOS 面板，可关闭', () => {
+    render(<ChatRoom session={SESSION} onEnd={vi.fn()} />)
+    expect(screen.queryByTestId('sos-panel')).toBeNull()
+    fireEvent.click(screen.getByTitle('SOS 帮助'))
+    expect(screen.getByTestId('sos-panel')).toBeTruthy()
+    fireEvent.click(screen.getByText('关闭SOS'))
+    expect(screen.queryByTestId('sos-panel')).toBeNull()
   })
 
   it('初始显示打招呼消息', () => {

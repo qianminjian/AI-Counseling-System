@@ -13,6 +13,7 @@ import com.mindsafe.common.tenant.TenantContextHolder;
 import com.mindsafe.domain.entity.User;
 import com.mindsafe.domain.mapper.UserMapper;
 import com.mindsafe.service.auth.TrialAuthService;
+import com.mindsafe.service.auth.TenantAccessGuard;
 import com.mindsafe.service.auth.LoginLockoutService;
 import com.mindsafe.service.auth.PasswordPolicyService;
 import com.mindsafe.service.auth.TokenBlacklistService;
@@ -41,6 +42,8 @@ import java.util.UUID;
 @RequestMapping("/api/v1/auth")
 public class AuthController {
 
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(AuthController.class);
+
     private final UserMapper userMapper;
     private final PasswordEncoder passwordEncoder;
     private final JwtTokenProvider jwtTokenProvider;
@@ -51,6 +54,7 @@ public class AuthController {
     private final PasswordPolicyService passwordPolicyService;
     private final GuardianConsentService guardianConsentService;
     private final TokenBlacklistService tokenBlacklistService;
+    private final TenantAccessGuard tenantAccessGuard;
 
     public AuthController(UserMapper userMapper,
                           PasswordEncoder passwordEncoder,
@@ -61,7 +65,8 @@ public class AuthController {
                           LoginLockoutService lockoutService,
                           PasswordPolicyService passwordPolicyService,
                           GuardianConsentService guardianConsentService,
-                          TokenBlacklistService tokenBlacklistService) {
+                          TokenBlacklistService tokenBlacklistService,
+                          TenantAccessGuard tenantAccessGuard) {
         this.userMapper = userMapper;
         this.passwordEncoder = passwordEncoder;
         this.jwtTokenProvider = jwtTokenProvider;
@@ -72,6 +77,7 @@ public class AuthController {
         this.passwordPolicyService = passwordPolicyService;
         this.guardianConsentService = guardianConsentService;
         this.tokenBlacklistService = tokenBlacklistService;
+        this.tenantAccessGuard = tenantAccessGuard;
     }
 
     /**
@@ -83,17 +89,28 @@ public class AuthController {
         lockoutService.checkLockout(request.username());
 
         // 前置认证链路（无 JWT，跨租户按昵称查用户）：显式声明系统作用域（M1-003 fail-fast 配套）
-        User user = TenantContextHolder.callAsSystem(() -> userMapper.selectOne(
+        // SEC-003：昵称无全局唯一约束，重名时拒绝登录（防 LIMIT 1 随机命中他人账号）
+        java.util.List<User> candidates = TenantContextHolder.callAsSystem(() -> userMapper.selectList(
                 new LambdaQueryWrapper<User>()
                         .eq(User::getPseudonym, request.username())
                         .eq(User::getStatus, "active")
-                        .last("LIMIT 1")
         ));
+        if (candidates.size() > 1) {
+            log.warn("登录拒绝：昵称重复无法唯一定位账号, username={}, matches={}", request.username(), candidates.size());
+            lockoutService.recordFailure(request.username());
+            throw new BizException(ErrorCode.UNAUTHORIZED, "用户名或密码错误");
+        }
+        User user = candidates.isEmpty() ? null : candidates.get(0);
 
         if (user == null || user.getPasswordHash() == null
                 || !passwordEncoder.matches(request.password(), user.getPasswordHash())) {
             lockoutService.recordFailure(request.username());
             throw new BizException(ErrorCode.UNAUTHORIZED, "用户名或密码错误");
+        }
+
+        // SEC-004：租户状态门禁——suspended/archived 租户禁止登录
+        if (!tenantAccessGuard.isLoginAllowed(user.getTenantId())) {
+            throw new BizException(ErrorCode.FORBIDDEN, "学校账号暂时不可用，请联系管理员");
         }
 
         // 登录成功，清除失败计数
@@ -253,7 +270,7 @@ public class AuthController {
         if (vc == null || !jwtTokenProvider.validateToken(vc) || !jwtTokenProvider.isVoiceCredential(vc)) {
             throw new BizException(ErrorCode.UNAUTHORIZED, "设备凭证无效或已过期，请重新录入声纹");
         }
-        if (tokenBlacklistService.isBlacklisted(vc)) {
+        if (tokenBlacklistService.isBlacklisted(jwtTokenProvider.getTokenId(vc))) {
             throw new BizException(ErrorCode.UNAUTHORIZED, "设备凭证已失效，请重新录入声纹");
         }
 
@@ -320,7 +337,7 @@ public class AuthController {
         if (rt == null || !jwtTokenProvider.validateToken(rt) || !jwtTokenProvider.isRefreshToken(rt)) {
             throw new BizException(ErrorCode.UNAUTHORIZED, "刷新令牌无效或已过期，请重新登录");
         }
-        if (tokenBlacklistService.isBlacklisted(rt)) {
+        if (tokenBlacklistService.isBlacklisted(jwtTokenProvider.getTokenId(rt))) {
             throw new BizException(ErrorCode.UNAUTHORIZED, "令牌已失效，请重新登录");
         }
 
@@ -332,8 +349,8 @@ public class AuthController {
         String newAccess = jwtTokenProvider.generateToken(userId, userType, tenantId);
         String newRefresh = jwtTokenProvider.generateRefreshToken(userId, userType, tenantId);
 
-        // 旧 refresh token 拉黑（防重放）
-        tokenBlacklistService.blacklist(rt, jwtTokenProvider.getRemainingMs(rt));
+        // 旧 refresh token 拉黑（防重放；AUDIT-P1-13 按 jti 粒度）
+        tokenBlacklistService.blacklist(jwtTokenProvider.getTokenId(rt), jwtTokenProvider.getRemainingMs(rt));
 
         return ApiResponse.ok(Map.of("token", newAccess, "refreshToken", newRefresh));
     }
@@ -346,15 +363,15 @@ public class AuthController {
             @RequestHeader("Authorization") String authHeader,
             @RequestBody(required = false) LogoutRequest request,
             Authentication authentication) {
-        // 拉黑 access token
+        // 拉黑 access token（AUDIT-P1-13：按 jti 粒度）
         String accessToken = authHeader.replace("Bearer ", "");
-        tokenBlacklistService.blacklist(accessToken, jwtTokenProvider.getRemainingMs(accessToken));
+        tokenBlacklistService.blacklist(jwtTokenProvider.getTokenId(accessToken), jwtTokenProvider.getRemainingMs(accessToken));
 
         // 拉黑 refresh token（如果前端传了）
         if (request != null && request.refreshToken() != null && !request.refreshToken().isBlank()) {
             String rt = request.refreshToken();
             if (jwtTokenProvider.validateToken(rt)) {
-                tokenBlacklistService.blacklist(rt, jwtTokenProvider.getRemainingMs(rt));
+                tokenBlacklistService.blacklist(jwtTokenProvider.getTokenId(rt), jwtTokenProvider.getRemainingMs(rt));
             }
         }
 

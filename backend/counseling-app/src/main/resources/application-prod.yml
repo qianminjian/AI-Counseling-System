@@ -33,6 +33,14 @@ spring:
       # 与 base 一致接 DeepSeek（OpenAI 兼容协议）；api-key 无默认值，未配置时 fail-fast
       api-key: ${LLM_API_KEY}
       base-url: ${LLM_BASE_URL:https://api.deepseek.com}
+      # Embedding（RAG KB-101）：注意主对话供应商（如 DeepSeek）未必提供 embeddings 端点，
+      # 生产应将 EMBEDDING_BASE_URL 指向支持 embeddings 的供应商；未配置时端点继承主配置，
+      # 检索失败由 RagAdvisorService 失败安全降级（对话主线不受影响）。维度须匹配 vector(1536)（V24）
+      embedding:
+        base-url: ${EMBEDDING_BASE_URL:${LLM_BASE_URL:https://api.deepseek.com}}
+        api-key: ${EMBEDDING_API_KEY:${LLM_API_KEY}}
+        options:
+          model: ${EMBEDDING_MODEL:text-embedding-ada-002}
 
   flyway:
     enabled: true

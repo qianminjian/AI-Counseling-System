@@ -46,6 +46,14 @@ public class GlobalExceptionHandler {
         return ApiResponse.error(ErrorCode.PARAM_INVALID.code(), e.getMessage());
     }
 
+    /** 非法参数（P1 审计修复：服务层 IllegalArgumentException（归属校验/学生不存在等）→ 400，不再 500） */
+    @ExceptionHandler(IllegalArgumentException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public ApiResponse<Void> handleIllegalArgument(IllegalArgumentException e) {
+        log.warn("非法参数: {}", e.getMessage());
+        return ApiResponse.error(ErrorCode.PARAM_INVALID.code(), e.getMessage());
+    }
+
     /** 兜底：未预期异常 */
     @ExceptionHandler(Exception.class)
     @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)

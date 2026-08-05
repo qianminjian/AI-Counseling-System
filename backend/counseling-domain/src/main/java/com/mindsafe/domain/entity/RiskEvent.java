@@ -35,6 +35,11 @@ public class RiskEvent {
     private Boolean followUpDone;
     private String outcome;
 
+    // P0-4：通知 outbox 补偿（pending/sent/failed/dead）
+    private String notifyStatus;
+    private Integer notifyAttempts;
+    private Instant lastNotifyAttemptAt;
+
     private Instant createdAt;
     private Instant updatedAt;
 
@@ -123,4 +128,13 @@ public class RiskEvent {
 
     public String getOutcome() { return outcome; }
     public void setOutcome(String outcome) { this.outcome = outcome; }
+
+    public String getNotifyStatus() { return notifyStatus; }
+    public void setNotifyStatus(String notifyStatus) { this.notifyStatus = notifyStatus; }
+
+    public Integer getNotifyAttempts() { return notifyAttempts; }
+    public void setNotifyAttempts(Integer notifyAttempts) { this.notifyAttempts = notifyAttempts; }
+
+    public Instant getLastNotifyAttemptAt() { return lastNotifyAttemptAt; }
+    public void setLastNotifyAttemptAt(Instant lastNotifyAttemptAt) { this.lastNotifyAttemptAt = lastNotifyAttemptAt; }
 }

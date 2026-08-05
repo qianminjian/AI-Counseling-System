@@ -46,7 +46,7 @@ public class DataRetentionCleanupJob {
             MessageSummaryMapper messageSummaryMapper,
             CounselingSessionMapper sessionMapper,
             AuditLogService auditLogService,
-            @Value("${mindsafe.security.data-retention.normal-session-days:30}") int normalRetentionDays,
+            @Value("${mindsafe.security.data-retention.normal-session-days:180}") int normalRetentionDays,
             @Value("${mindsafe.security.data-retention.high-risk-session-days:365}") int highRiskRetentionDays) {
         this.messageSummaryMapper = messageSummaryMapper;
         this.sessionMapper = sessionMapper;

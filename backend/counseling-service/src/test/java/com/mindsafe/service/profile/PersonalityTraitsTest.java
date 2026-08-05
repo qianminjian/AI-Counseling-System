@@ -178,7 +178,7 @@ class PersonalityTraitsTest {
     }
 
     @Nested
-    @DisplayName("PROF-022: 元数据戳与画像→编排信号")
+    @DisplayName("PROF-025: 元数据戳与画像→编排信号")
     class ProvenanceMetadata {
 
         private final ObjectMapper om = new ObjectMapper();

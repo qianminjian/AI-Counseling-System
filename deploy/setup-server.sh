@@ -62,19 +62,19 @@ else
     echo "  Swap already exists ✓"
 fi
 
-# 4. 创建部署目录
-echo "[4/6] Creating /opt/mindsafe..."
-mkdir -p /opt/mindsafe
-chown $USER:$USER /opt/mindsafe 2>/dev/null || true
+# 4. 创建部署目录（P1-DEP：与 deploy.sh / service-manager.sh 的 REMOTE_DIR=/guju/mindsafe 对齐）
+echo "[4/6] Creating /guju/mindsafe..."
+mkdir -p /guju/mindsafe
+chown $USER:$USER /guju/mindsafe 2>/dev/null || true
 
 # 5. 复制部署文件（假设从 git clone 或 scp 过来）
 echo "[5/6] Copying deploy configs..."
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 if [ -f "$SCRIPT_DIR/docker-compose.test.yml" ]; then
-    cp "$SCRIPT_DIR/docker-compose.test.yml" /opt/mindsafe/
-    cp -r "$SCRIPT_DIR/nginx" /opt/mindsafe/ 2>/dev/null || true
-    cp "$SCRIPT_DIR/.env.example" /opt/mindsafe/.env 2>/dev/null || true
-    echo "  Configs copied. Edit /opt/mindsafe/.env with your secrets!"
+    cp "$SCRIPT_DIR/docker-compose.test.yml" /guju/mindsafe/
+    cp -r "$SCRIPT_DIR/nginx" /guju/mindsafe/ 2>/dev/null || true
+    cp "$SCRIPT_DIR/.env.example" /guju/mindsafe/.env 2>/dev/null || true
+    echo "  Configs copied. Edit /guju/mindsafe/.env with your secrets!"
 else
     echo "  ⚠️  Run this script from the deploy/ directory"
 fi
@@ -88,10 +88,10 @@ echo ""
 echo "===== Setup Complete ====="
 echo ""
 echo "Next steps:"
-echo "  1. Edit /opt/mindsafe/.env (DB_PASSWORD, REDIS_PASSWORD, LLM_API_KEY)"
+echo "  1. Edit /guju/mindsafe/.env (DB_PASSWORD, REDIS_PASSWORD, LLM_API_KEY)"
 echo "  2. docker login ghcr.io -u <github-username>"
-echo "  3. cd /opt/mindsafe && docker compose -f docker-compose.test.yml up -d"
-echo "  4. Configure GitHub Secrets: DEPLOY_HOST, DEPLOY_USER, DEPLOY_SSH_KEY"
+echo "  3. cd /guju/mindsafe && docker compose -f docker-compose.test.yml up -d"
+echo "  4. Configure GitHub Secrets: DEPLOY_HOST, DEPLOY_USER, DEPLOY_SSH_KEY, DEPLOY_KNOWN_HOSTS"
 echo ""
 echo "阿里云注意事项:"
 echo "  - 安全组需开放 80/443 端口（ECS → 安全组 → 配置规则）"

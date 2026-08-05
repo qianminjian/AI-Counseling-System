@@ -93,7 +93,8 @@
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
             </plugin>
-            <!-- 覆盖率聚合报告：汇总全部依赖模块的 exec 数据，输出 target/site/jacoco-aggregate/（CI 门禁读取） -->
+            <!-- 覆盖率聚合报告：汇总全部依赖模块的 exec 数据，输出 target/site/jacoco-aggregate/（CI 门禁读取）
+                 AUDIT-P2-18：排除 entity 包——纯 getter/setter 数据载体无业务逻辑，纳入统计会稀释覆盖率真实性 -->
             <plugin>
                 <groupId>org.jacoco</groupId>
                 <artifactId>jacoco-maven-plugin</artifactId>
@@ -104,6 +105,11 @@
                         <goals>
                             <goal>report-aggregate</goal>
                         </goals>
+                        <configuration>
+                            <excludes>
+                                <exclude>com/mindsafe/domain/entity/*</exclude>
+                            </excludes>
+                        </configuration>
                     </execution>
                 </executions>
             </plugin>

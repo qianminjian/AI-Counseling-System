@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import SettingsPanel from '../components/SettingsPanel'
+import { motionPref } from '../hooks/useMotionPreference'
 
 // mock 依赖（可控 getUser 返回值）
 let mockUser: any = { userId: 'u1', pseudonym: '小明', familyCode: 'FAM123' }
@@ -287,5 +288,21 @@ describe('SettingsPanel', () => {
     expect(screen.getByTestId('confirm-dialog')).toBeTruthy()
     fireEvent.click(screen.getByText('取消'))
     expect(screen.queryByTestId('confirm-dialog')).toBeNull()
+  })
+
+  it('动效与触感开关：点击切换并持久化（design/37 §4.3）', () => {
+    localStorage.clear()
+    motionPref.setAnimationEnabled(true)
+    motionPref.setHapticsEnabled(true)
+    render(<SettingsPanel {...defaultProps} />)
+    expect(screen.getByText('✨ 动效与触感')).toBeTruthy()
+    expect(screen.getByText('动画效果已开启')).toBeTruthy()
+    fireEvent.click(screen.getByTestId('toggle-animation'))
+    expect(screen.getByText('动画效果已关闭')).toBeTruthy()
+    expect(localStorage.getItem('bobo.animationEnabled')).toBe('false')
+    expect(screen.getByText('触觉反馈已开启')).toBeTruthy()
+    fireEvent.click(screen.getByTestId('toggle-haptics'))
+    expect(screen.getByText('触觉反馈已关闭')).toBeTruthy()
+    expect(localStorage.getItem('bobo.hapticsEnabled')).toBe('false')
   })
 })

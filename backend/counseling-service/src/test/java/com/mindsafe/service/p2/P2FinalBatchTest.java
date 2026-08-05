@@ -4,8 +4,6 @@ import com.mindsafe.ai.orchestrator.EmotionOrchestrationEvaluator;
 import com.mindsafe.ai.orchestrator.EmotionOrchestrationEvaluator.*;
 import com.mindsafe.service.casemanage.CaseLifecycleService;
 import com.mindsafe.service.casemanage.CaseLifecycleService.*;
-import com.mindsafe.service.offline.OfflineMessageReplayService;
-import com.mindsafe.service.offline.OfflineMessageReplayService.*;
 import com.mindsafe.service.tts.TtsPipelineScheduler;
 import com.mindsafe.service.tts.TtsPipelineScheduler.*;
 import org.junit.jupiter.api.DisplayName;
@@ -15,12 +13,11 @@ import org.junit.jupiter.api.Test;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
-import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * P2 §近期偏后批次测试：WB-003 + TOOL-003 + TTSFX-003 + ORCH-008
+ * P2 §近期偏后批次测试：WB-003 + TTSFX-003 + ORCH-008
  */
 class P2FinalBatchTest {
 
@@ -108,93 +105,6 @@ class P2FinalBatchTest {
             List<FollowupTodo> todos = service.getDueFollowups(cases, now);
             assertThat(todos).hasSize(1);
             assertThat(todos.get(0).caseId()).isEqualTo("c1");
-        }
-    }
-
-    // ==================== TOOL-003 离线消息 ====================
-
-    @Nested
-    @DisplayName("TOOL-003 离线消息队列")
-    class TOOL003 {
-
-        private final OfflineMessageReplayService service = new OfflineMessageReplayService();
-        private final Instant now = Instant.parse("2026-07-28T12:00:00Z");
-
-        @Test
-        @DisplayName("幂等：新消息接受")
-        void dedup_new() {
-            DeduplicationResult r = service.deduplicate("msg-001", Set.of("msg-000"));
-            assertThat(r.accepted()).isTrue();
-        }
-
-        @Test
-        @DisplayName("幂等：重复拒绝")
-        void dedup_duplicate() {
-            DeduplicationResult r = service.deduplicate("msg-001", Set.of("msg-001"));
-            assertThat(r.accepted()).isFalse();
-        }
-
-        @Test
-        @DisplayName("≥3条→合并回复")
-        void batchMerge() {
-            List<QueuedMessage> msgs = List.of(
-                    new QueuedMessage("m1", "我不开心", now.minus(1, ChronoUnit.HOURS), false),
-                    new QueuedMessage("m2", "同学不理我", now.minus(50, ChronoUnit.MINUTES), false),
-                    new QueuedMessage("m3", "怎么办", now.minus(30, ChronoUnit.MINUTES), false)
-            );
-            ReplayStrategy s = service.computeReplayStrategy(msgs, now);
-            assertThat(s.mergeReply()).isTrue();
-            assertThat(s.messageCount()).isEqualTo(3);
-            assertThat(s.aiContext()).contains("3 条消息");
-        }
-
-        @Test
-        @DisplayName("<3条→不合并")
-        void noMerge() {
-            List<QueuedMessage> msgs = List.of(
-                    new QueuedMessage("m1", "你好", now.minus(10, ChronoUnit.MINUTES), false)
-            );
-            ReplayStrategy s = service.computeReplayStrategy(msgs, now);
-            assertThat(s.mergeReply()).isFalse();
-            assertThat(s.aiContext()).isEqualTo("你好");
-        }
-
-        @Test
-        @DisplayName(">24h→过期")
-        void expired() {
-            List<QueuedMessage> msgs = List.of(
-                    new QueuedMessage("m1", "old", now.minus(25, ChronoUnit.HOURS), false),
-                    new QueuedMessage("m2", "new", now.minus(1, ChronoUnit.HOURS), false)
-            );
-            ReplayStrategy s = service.computeReplayStrategy(msgs, now);
-            assertThat(s.expiredMessages()).hasSize(1);
-            assertThat(s.validMessages()).hasSize(1);
-        }
-
-        @Test
-        @DisplayName("风险消息标注")
-        void riskAnnotation() {
-            List<QueuedMessage> risk = List.of(
-                    new QueuedMessage("m1", "我不想活了", now.minus(2, ChronoUnit.HOURS), true)
-            );
-            String annotation = service.buildRiskAnnotation(risk);
-            assertThat(annotation).contains("离线期间");
-        }
-
-        @Test
-        @DisplayName("退避策略")
-        void backoff() {
-            assertThat(service.getBackoffSeconds(1)).isEqualTo(1);
-            assertThat(service.getBackoffSeconds(2)).isEqualTo(5);
-            assertThat(service.getBackoffSeconds(3)).isEqualTo(30);
-            assertThat(service.getBackoffSeconds(10)).isEqualTo(30); // 上限
-        }
-
-        @Test
-        @DisplayName("超过退避→放弃")
-        void abandon() {
-            assertThat(service.shouldAbandon(4)).isTrue();
-            assertThat(service.shouldAbandon(2)).isFalse();
         }
     }
 

@@ -135,7 +135,7 @@ ssh root@<公网IP>
 ### Step 4：配置环境变量
 
 ```bash
-cd /opt/mindsafe
+cd /guju/mindsafe
 vim .env
 ```
 
@@ -173,12 +173,17 @@ docker login ghcr.io -u <your-github-username>
 | `DEPLOY_HOST` | 阿里云 ECS 公网 IP |
 | `DEPLOY_USER` | `root`（或你创建的用户名） |
 | `DEPLOY_SSH_KEY` | SSH 私钥文件全部内容 |
+| `DEPLOY_KNOWN_HOSTS` | `ssh-keyscan <公网 IP>` 输出（ssh-key-action 校验主机指纹，防中间人） |
 | `SMOKE_URL` | 部署后的访问地址（如 `http://<公网 IP>`） |
+| `TEACHER_USER` / `TEACHER_PASS` | 冒烟测试用的教师账号（tests/e2e/smoke-test.sh） |
+| `ADMIN_USER` / `ADMIN_PASS` | 冒烟测试用的管理员账号 |
+
+> 冒烟测试缺少教师/管理员账号时，相关用例将告警跳过（smoke-test.sh 对空账号有保护），建议用首次部署种子数据中的账号。
 
 ### Step 7：首次部署
 
 ```bash
-cd /opt/mindsafe
+cd /guju/mindsafe
 docker compose -f docker-compose.test.yml pull
 docker compose -f docker-compose.test.yml run --rm frontend-init
 docker compose -f docker-compose.test.yml up -d
@@ -207,7 +212,7 @@ DNS 设置：A 记录 → 阿里云 ECS 公网 IP
 
 修改教师端域名：
 ```bash
-vim /opt/mindsafe/nginx/default.conf
+vim /guju/mindsafe/nginx/default.conf
 # 将 server_name teacher.mindsafe.app 改为你的域名
 docker compose -f docker-compose.test.yml restart nginx
 ```
@@ -225,13 +230,25 @@ mkdir -p /var/www/certbot
 certbot certonly --standalone -d yun.gxjugu.com --agree-tos -m <你的邮箱>
 
 # 3. 启动服务（nginx 容器只读挂载 /etc/letsencrypt 与 /var/www/certbot）
-cd /opt/mindsafe && docker compose -f docker-compose.prod.yml up -d
+cd /guju/mindsafe && docker compose -f docker-compose.prod.yml up -d
 
 # 4. 自动续期（续期走 webroot 挑战，无需停服；续期后 reload nginx）
 echo '0 3 * * 1 certbot renew --webroot -w /var/www/certbot --deploy-hook "docker exec mindsafe-nginx nginx -s reload" >> /var/log/certbot-renew.log 2>&1' | crontab -
 ```
 
 > 域名变更时同步修改 `deploy/nginx/default-ssl.conf` 中的 `server_name` 与证书路径，以及 `.env` 的 `CORS_ORIGINS`。
+
+### 端侧 ONNX 模型投放（语音唤醒/声纹，发布前端前必做）
+
+学生端语音唤醒（whisper-tiny）与声纹登录（wespeaker）均为浏览器内推理，前端配置为 `SAME_ORIGIN` 同源加载（`/mindsafe/models/`）。**模型文件不入仓**，发布 student-h5 前必须先投放：
+
+```bash
+# 下载 whisper-tiny + wespeaker 量化模型到 frontend/student-h5/public/models/（约 60MB）
+bash deploy/scripts/prepare-models.sh
+# 脚本自带投放自检：关键文件缺失时非零退出并告警，禁止带缺失发布
+```
+
+投放后 Vite 构建会把 `public/models/` 拷入 dist，随 CI 镜像发布；未执行脚本直接发布会导致模型 404，唤醒/声纹功能加载失败（对话主路径不受影响）。
 
 ---
 
@@ -258,12 +275,13 @@ git push origin feature/xxx
 | 文件 | 用途 |
 |------|------|
 | `.github/workflows/ci.yml` | PR 检查（后端编译 + 前端构建） |
-| `.github/workflows/deploy.yml` | 自动部署（Build → GHCR → SSH） |
+| `.github/workflows/cd.yml` | 自动部署（Build → GHCR → SSH） |
 | `deploy/docker-compose.test.yml` | 轻量测试环境（不含 voice/tts） |
 | `deploy/docker-compose.prod.yml` | 完整生产环境（含 voice/tts） |
 | `deploy/nginx/default.conf` | Nginx 双域名反向代理 |
 | `deploy/setup-server.sh` | 服务器一键初始化（含 Docker 镜像加速） |
 | `deploy/.env.example` | 环境变量模板 |
+| `deploy/scripts/prepare-models.sh` | 端侧 ONNX 模型投放（语音唤醒/声纹） |
 | `frontend/Dockerfile` | 前端打包镜像（CI 用） |
 | `backend/Dockerfile` | 后端多阶段构建镜像 |
 
@@ -305,23 +323,53 @@ sudo systemctl restart docker
 5. **HTTPS**：测试阶段（docker-compose.test.yml）用 HTTP 即可；生产（docker-compose.prod.yml）已强制 TLS，首次部署先按「HTTPS 证书」节签发证书
 6. **安全组**：SSH 端口建议限制来源 IP，避免暴力破解
 7. **续费**：经济型 e 实例首购 99元/年，续费同价（阿里云活动期）；关注续费提醒
+8. **端侧模型**：发布 student-h5 前必须先跑 `deploy/scripts/prepare-models.sh`（见「四、端侧 ONNX 模型投放」），否则语音唤醒/声纹不可用
 
-## 九、监控与告警
+## 九、配置变更流程
 
-生产环境建议启用 Prometheus + Grafana 监控栈：
+> 本系统采用分层配置架构（design/06 配置与外部服务依赖设计，源：design/57），改配置不改代码。
+
+| 配置类型 | 文件位置 | 变更方式 |
+|---------|---------|--------|
+| 密钥/凭证 | `deploy/.env` | 改 .env + `docker compose up -d` 重启 |
+| 声纹阈值/引导脚本/唤醒参数 | `backend/counseling-app/src/main/resources/application.yml` 的 `mindsafe.system-config` | 改 yml + 重新构建后端镜像 + 重启 |
+| TTS 音色/方言/情感 | `backend/tts-service/config.yaml` | 改 yaml + 重新构建 tts-service 镜像 + 重启 |
+| TTS 模型名 | `.env` 的 `DASHSCOPE_TTS_MODEL` | 改 .env + `docker compose up -d tts-service` |
+| ASR/SER 模型名/情绪标签 | `backend/voice-service/config.yaml` | 改 yaml + 重新构建 voice-service 镜像 + 重启 |
+| ASR 引擎切换 | `.env` 的 `ASR_ENGINE` | 改 .env + `docker compose up -d voice-service` |
+| 前端运行时配置 | 自动从 `GET /api/v1/system/config` 拉取 | 后端配置变更后前端自动生效（5min 缓存） |
+
+---
+
+## 十、监控与告警
+
+生产环境建议启用 Prometheus + Grafana + Alertmanager 监控栈：
 
 ```bash
 # 在主服务运行后启动监控（独立 compose，不影响主服务）
+# 前置：.env 中已设置 GRAFANA_PASSWORD（强密码，缺省 compose 直接 fail-fast）
 cd deploy
 docker compose -f docker-compose.monitoring.yml up -d
 ```
 
-- **Prometheus**：`http://<服务器IP>:9090`（抓取后端 `/actuator/prometheus` 指标）
-- **Grafana**：`http://<服务器IP>:3000`（默认账号 admin/admin，首次登录强制改密）
+- **Prometheus**：仅 internal 网络可达（不公网暴露，`docker exec` 可查 UI）；抓取后端 `/actuator/prometheus` + tts/voice 服务 `/metrics`
+- **Grafana**：`http://<服务器IP>:3002`（默认账号 admin，密码为 .env 的 `GRAFANA_PASSWORD`，关闭开放注册）
+- **Alertmanager**：接收 Prometheus 告警，推送企业微信应用消息（仅 internal 网络可达）
 - **数据源**：Grafana 已预配置 Prometheus 数据源（`deploy/monitoring/grafana/provisioning/`）
 
 关键监控指标：
-- `http_server_requests_seconds`：API 响应时间
-- `hikaricp_connections_active`：数据库连接池
-- `jvm_memory_used_bytes`：JVM 内存
-- 告警通道：企业微信 Webhook（配置 `MINDSAFE_ALERT_WECOM_WEBHOOK_URL`）
+- `http_server_requests_seconds`：API 响应时间（后端）
+- `hikaricp_connections_active`：数据库连接池（后端）
+- `jvm_memory_used_bytes`：JVM 内存（后端）
+- `tts_synthesize_requests_total` / `tts_engine_available`：TTS 合成量与引擎可用性
+- `voice_analyze_requests_total` / `voice_asr_ready` / `voice_ser_ready`：语音分析量与引擎就绪状态
+
+告警规则（`deploy/monitoring/alert-rules.yml`，P1-10）：
+- 服务不可达（后端/TTS/语音，critical）：离线 1 分钟即告警
+- 后端 5xx 错误率 > 5% / P95 延迟 > 2s（warning）
+- TTS 全部引擎不可用（critical）与合成失败率 > 50%（warning）
+- 语音分析失败/超时率 > 50%（warning）
+
+告警通道：Alertmanager → 企业微信应用消息（复用 .env 的 `WECOM_CORP_ID`/`WECOM_AGENT_ID`/`WECOM_SECRET`），
+接收人 `WECOM_ALERT_TO_USER`（企微 userid，`@all` 需全员权限）；未配置时告警仅留存 Alertmanager 不推送（日志可见）。
+业务告警（SlaEscalationScanner）仍走企业微信 Webhook（`ALERT_WECOM_WEBHOOK_URL`），两者独立。

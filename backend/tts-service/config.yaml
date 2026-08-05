@@ -1,0 +1,129 @@
+# TTS 服务配置（CFG-004 配置外置）
+# 非敏感业务参数，修改后重启容器生效，无需改代码/重新构建镜像
+# 敏感凭证（DASHSCOPE_API_KEY）仍通过环境变量注入
+# 模型名可通过环境变量 DASHSCOPE_TTS_MODEL 覆盖（优先级：环境变量 > 本文件 > 内置默认值）
+
+model:
+  dashscope: cosyvoice-v3-flash  # v3-flash（非 v3.5，后者已 418 错误）
+  edge_fallback: true             # edge-tts 降级开关
+
+# 音色人设矩阵（7 音色）
+voice_personas:
+  xiaoxing:
+    name: "小星"
+    desc: "温暖的邻家姐姐"
+    speed: 1.0
+    dashscope_voice: "longxing_v3"
+    edge_voice: "zh-CN-XiaoxiaoNeural"
+    dialect_capable: false
+    emotion_capable: false
+  bobo:
+    name: "波波老师"
+    desc: "温柔的女老师"
+    speed: 0.95
+    dashscope_voice: "longyingling_v3"
+    edge_voice: "zh-CN-XiaohanNeural"
+    dialect_capable: false
+    emotion_capable: false
+  yueliang:
+    name: "月亮"
+    desc: "轻声讲故事"
+    speed: 0.92
+    dashscope_voice: "longwan_v3"
+    edge_voice: "zh-CN-XiaohanNeural"
+    dialect_capable: false
+    emotion_capable: false
+  xiaotaiyang:
+    name: "小太阳"
+    desc: "阳光大哥哥"
+    speed: 1.05
+    dashscope_voice: "longanyang"
+    edge_voice: "zh-CN-YunxiNeural"
+    dialect_capable: false
+    emotion_capable: true     # 唯一支持情感 Instruct
+  dashu:
+    name: "大树"
+    desc: "暖心大叔"
+    speed: 0.95
+    dashscope_voice: "longanyun_v3"
+    edge_voice: "zh-CN-YunyangNeural"
+    dialect_capable: false
+    emotion_capable: false
+  doudou:
+    name: "豆豆"
+    desc: "同龄小伙伴"
+    speed: 1.05
+    dashscope_voice: "longjielidou_v3"
+    edge_voice: "zh-CN-YunxiaNeural"
+    dialect_capable: false
+    emotion_capable: false
+  qiqiu:
+    name: "方言"
+    desc: "方言伙伴"
+    speed: 1.05
+    dashscope_voice: "longanhuan_v3"
+    edge_voice: "zh-CN-XiaoyiNeural"
+    dialect_capable: true     # 唯一支持 Instruct 方言
+    emotion_capable: false
+
+# 方言配置（v4 双模式：native = 原生方言音色 / instruct = Instruct 指令）
+dialects:
+  cantonese:
+    label: "粤语"
+    mode: native
+    edge_voice: null
+  minnan:
+    label: "闽南话"
+    mode: native
+    edge_voice: null
+  northeastern:
+    label: "东北话"
+    mode: instruct
+    instruct: "请用东北话表达。"
+    edge_voice: "zh-CN-liaoning-XiaobeiNeural"
+  sichuan:
+    label: "四川话"
+    mode: instruct
+    instruct: "请用四川话表达。"
+    edge_voice: null
+  henan:
+    label: "河南话"
+    mode: instruct
+    instruct: "请用河南话表达。"
+    edge_voice: null
+  shandong:
+    label: "山东话"
+    mode: instruct
+    instruct: "请用山东话表达。"
+    edge_voice: null
+  hunan:
+    label: "湖南话"
+    mode: instruct
+    instruct: "请用湖南话表达。"
+    edge_voice: null
+  shaanxi:
+    label: "陕西话"
+    mode: instruct
+    instruct: "请用陕西话表达。"
+    edge_voice: "zh-CN-shaanxi-XiaoniNeural"
+
+# 原生方言音色（仅 cantonese/minnan，选中即自动使用对应音色，无需 Instruct）
+native_dialect_voices:
+  cantonese:
+    female: "longjiayi_v3"
+    male: "longanyue_v3"
+  minnan:
+    male: "longanmin_v3"
+
+# 情感 Instruct 映射（仅 xiaotaiyang/longanyang 支持）
+emotion_instruct_map:
+  neutral: "你正在进行闲聊互动，你说话的情感是neutral。"
+  happy: "你正在进行闲聊互动，你说话的情感是happy。"
+  sad: "你正在进行闲聊互动，你说话的情感是sad。"
+  angry: "你正在进行闲聊互动，你说话的情感是angry。"
+  fearful: "你正在进行闲聊互动，你说话的情感是fearful。"
+  surprised: "你正在进行闲聊互动，你说话的情感是surprised。"
+  disgusted: "你正在进行闲聊互动，你说话的情感是disgusted。"
+  calm: "你正在进行闲聊互动，你说话的情感是neutral。"
+  anxious: "你正在进行闲聊互动，你说话的情感是fearful。"
+  excited: "你正在进行闲聊互动，你说话的情感是happy。"

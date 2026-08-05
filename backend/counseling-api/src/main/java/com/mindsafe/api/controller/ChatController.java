@@ -65,15 +65,15 @@ public class ChatController {
 
         // 同步前端设置状态（TTS静音/唤醒开关），让 AI 知道自己的能力边界
         if (request.ttsMuted() != null || request.wakeEnabled() != null) {
-            conversationService.updateClientSettings(sessionId, request.ttsMuted(), request.wakeEnabled());
+            conversationService.updateClientSettings(ctx.tenantId(), ctx.userId(), sessionId, request.ttsMuted(), request.wakeEnabled());
         }
 
         if (request.hasVoiceEmotion()) {
             return conversationService.sendMessageStream(
-                    ctx.tenantId(), sessionId, request.content(),
+                    ctx.tenantId(), ctx.userId(), sessionId, request.content(),
                     request.voiceEmotion(), request.voiceEmotionConfidence());
         }
-        return conversationService.sendMessageStream(ctx.tenantId(), sessionId, request.content());
+        return conversationService.sendMessageStream(ctx.tenantId(), ctx.userId(), sessionId, request.content());
     }
 
     /**
@@ -89,7 +89,7 @@ public class ChatController {
             Authentication authentication) {
         TenantContext ctx = extractContext(authentication);
         requireGuardianConsent(ctx);
-        return conversationService.sendNudgeStream(ctx.tenantId(), sessionId, request.silenceSeconds());
+        return conversationService.sendNudgeStream(ctx.tenantId(), ctx.userId(), sessionId, request.silenceSeconds());
     }
 
     /**
@@ -99,7 +99,7 @@ public class ChatController {
     public ApiResponse<Void> endSession(@PathVariable UUID sessionId,
                                         Authentication authentication) {
         TenantContext ctx = extractContext(authentication);
-        conversationService.endSession(ctx.tenantId(), sessionId);
+        conversationService.endSession(ctx.tenantId(), ctx.userId(), sessionId);
         return ApiResponse.ok();
     }
 

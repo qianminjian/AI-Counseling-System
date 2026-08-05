@@ -210,15 +210,13 @@ public class RiskDetectorServiceImpl implements RiskDetectorService {
         return false;
     }
 
-    /** 红色关键词匹配（排除否定前缀） */
+    /** 红色关键词匹配（design/04 §九铁律：RED 不可被否定/引用降级，仅允许人工核验回收误报） */
     private List<String> matchRedKeywords(String text) {
         List<String> matches = new ArrayList<>();
         for (String keyword : RED_HARD_KEYWORDS) {
             if (text.contains(keyword)) {
-                // 检查关键词前是否有否定词（如「不想死」中的「想死」）
-                if (hasNegationPrefix(text, keyword)) {
-                    continue; // 否定表达，跳过
-                }
+                // 设计铁律："我不想死""我不会自杀"等否定表达本身即高风险信号，
+                // 命中即 RED；否定降噪仅适用于橙/黄档，误报由教师人工核验回收
                 matches.add(keyword);
             }
         }

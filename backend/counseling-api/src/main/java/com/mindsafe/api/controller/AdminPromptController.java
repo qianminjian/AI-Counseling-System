@@ -3,6 +3,7 @@ package com.mindsafe.api.controller;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.mindsafe.api.security.JwtAuthenticationFilter.TenantContext;
 import com.mindsafe.common.dto.ApiResponse;
+import com.mindsafe.common.dto.ErrorCode;
 import com.mindsafe.domain.entity.CounselingSession;
 import com.mindsafe.domain.entity.PromptVersion;
 import com.mindsafe.domain.entity.QualityScore;
@@ -11,6 +12,7 @@ import com.mindsafe.domain.mapper.PromptVersionMapper;
 import com.mindsafe.domain.mapper.QualityScoreMapper;
 import com.mindsafe.service.audit.AuditLogService;
 import com.mindsafe.service.prompt.PromptEvalGovernance;
+import com.mindsafe.service.prompt.PromptEvalScoreReader;
 import com.mindsafe.service.prompt.PromptVersionService;
 import com.mindsafe.service.prompt.TemplateMatrixRegistry;
 import org.springframework.security.core.Authentication;
@@ -36,6 +38,7 @@ public class AdminPromptController {
     private final AuditLogService auditLogService;
     private final TemplateMatrixRegistry templateMatrixRegistry;
     private final PromptEvalGovernance promptEvalGovernance;
+    private final PromptEvalScoreReader evalScoreReader;
 
     public AdminPromptController(PromptVersionService promptVersionService,
                                  PromptVersionMapper promptVersionMapper,
@@ -43,7 +46,8 @@ public class AdminPromptController {
                                  QualityScoreMapper qualityScoreMapper,
                                  AuditLogService auditLogService,
                                  TemplateMatrixRegistry templateMatrixRegistry,
-                                 PromptEvalGovernance promptEvalGovernance) {
+                                 PromptEvalGovernance promptEvalGovernance,
+                                 PromptEvalScoreReader evalScoreReader) {
         this.promptVersionService = promptVersionService;
         this.promptVersionMapper = promptVersionMapper;
         this.sessionMapper = sessionMapper;
@@ -51,6 +55,7 @@ public class AdminPromptController {
         this.auditLogService = auditLogService;
         this.templateMatrixRegistry = templateMatrixRegistry;
         this.promptEvalGovernance = promptEvalGovernance;
+        this.evalScoreReader = evalScoreReader;
     }
 
     // ===== 版本 CRUD =====
@@ -96,12 +101,35 @@ public class AdminPromptController {
         return ApiResponse.ok(toVersionMap(pv));
     }
 
-    /** 激活版本（同组下唯一生效） */
+    /**
+     * 激活版本（同组下唯一生效）——走发布门禁（G-1 硬化，design/45 §6.1/§7.3）
+     * <p>
+     * 请求体：reviewer（审校人，<b>必填</b>，不再缺省取登录名）。eval 分数由服务端从库读数
+     * （counseling_sessions.prompt_version + quality_scores），不接受自报。
+     * 安全关键模板必过红队静态回归，全部门禁通过才写库。
+     */
     @PostMapping("/versions/{versionId}/activate")
-    public ApiResponse<Void> activateVersion(@PathVariable UUID versionId, Authentication auth) {
+    public ApiResponse<Void> activateVersion(@PathVariable UUID versionId,
+                                             @RequestBody(required = false) Map<String, Object> body,
+                                             Authentication auth) {
         TenantContext ctx = (TenantContext) auth.getDetails();
-        promptVersionService.activateVersion(versionId);
-        auditLogService.log(ctx.tenantId(), ctx.userId(), "PROMPT_ACTIVATE", "prompt_version", versionId, null);
+        Map<String, Object> b = body != null ? body : Map.of();
+        String reviewer = b.get("reviewer") != null ? String.valueOf(b.get("reviewer")).trim() : "";
+        if (reviewer.isBlank()) {
+            return ApiResponse.error(ErrorCode.PARAM_INVALID.code(), "reviewer 为必填项（审校人签字）");
+        }
+
+        try {
+            promptVersionService.activateVersion(versionId, reviewer);
+        } catch (IllegalArgumentException e) {
+            return ApiResponse.error(ErrorCode.RESOURCE_NOT_FOUND.code(), e.getMessage());
+        } catch (IllegalStateException e) {
+            // 门禁拒绝：保留明细返回（HTTP 200 + success=false，前端统一约定）
+            return ApiResponse.error(ErrorCode.PARAM_INVALID.code(), e.getMessage());
+        }
+        // 操作者留痕（门禁明细留痕由服务层 PROMPT_VERSION_ACTIVATE 承担）
+        auditLogService.log(ctx.tenantId(), ctx.userId(), "PROMPT_ACTIVATE", "prompt_version", versionId,
+                "reviewer=" + reviewer);
         return ApiResponse.ok(null);
     }
 
@@ -211,16 +239,52 @@ public class AdminPromptController {
     }
 
     /**
-     * PEVAL-004：灰度放量评估（判断是否可进入下一阶段）
+     * PEVAL-004：灰度放量评估（判断是否可进入下一阶段）。
+     * fix-gate：safetyMean / evalDelta 从库读数，拒绝自报分数。
+     * blockRate / baselineBlockRate 由调用方从监控系统（如 Prometheus）提供（非 eval 维度）。
      */
     @PostMapping("/rollout-eval")
     public ApiResponse<PromptEvalGovernance.RolloutDecision> evaluateRollout(
             @RequestBody Map<String, Object> body) {
         int stageIndex = body.containsKey("stageIndex") ? ((Number) body.get("stageIndex")).intValue() : 0;
-        double safetyMean = body.containsKey("safetyMean") ? ((Number) body.get("safetyMean")).doubleValue() : 1.0;
+        UUID versionId = body.containsKey("versionId")
+                ? UUID.fromString(body.get("versionId").toString()) : null;
+
+        // fix-gate：safetyMean 从库读数（quality_scores.safety_compliance）
+        double safetyMean = 1.0;
+        String versionTag = null;
+        if (versionId != null) {
+            PromptVersion version = promptVersionMapper.selectById(versionId);
+            if (version != null) {
+                versionTag = version.versionTag();
+                safetyMean = evalScoreReader.readSafetyMean(versionTag);
+            }
+        }
+
+        // fix-gate：evalDelta 从库读数（目标版本 vs 基线版本 overall score 差值）
+        double evalDelta = 0.0;
+        if (versionId != null) {
+            PromptVersion target = promptVersionMapper.selectById(versionId);
+            if (target != null) {
+                PromptEvalScoreReader.EvalStat targetStat = evalScoreReader.read(target.versionTag());
+                // 基线取最近一条非当前版本的活跃版本
+                List<PromptVersion> activeOthers = promptVersionMapper.selectList(
+                        new LambdaQueryWrapper<PromptVersion>()
+                                .eq(PromptVersion::getTemplateKey, target.getTemplateKey())
+                                .eq(PromptVersion::getIsActive, true)
+                                .ne(PromptVersion::getVersionId, versionId)
+                                .orderByDesc(PromptVersion::getUpdatedAt)
+                                .last("LIMIT 1"));
+                if (!activeOthers.isEmpty()) {
+                    PromptEvalScoreReader.EvalStat baseStat = evalScoreReader.read(activeOthers.get(0).versionTag());
+                    evalDelta = targetStat.overallScore() - baseStat.overallScore();
+                }
+            }
+        }
+
+        // blockRate / baselineBlockRate 仍由调用方提供（来自外部监控系统，非 eval 维度）
         double blockRate = body.containsKey("blockRate") ? ((Number) body.get("blockRate")).doubleValue() : 0.0;
         double baselineBlock = body.containsKey("baselineBlockRate") ? ((Number) body.get("baselineBlockRate")).doubleValue() : 0.0;
-        double evalDelta = body.containsKey("evalDelta") ? ((Number) body.get("evalDelta")).doubleValue() : 0.0;
 
         PromptEvalGovernance.RolloutDecision decision = promptEvalGovernance.evaluateRollout(
                 stageIndex, safetyMean, blockRate, baselineBlock, evalDelta);

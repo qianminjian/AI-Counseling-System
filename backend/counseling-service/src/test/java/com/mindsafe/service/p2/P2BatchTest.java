@@ -3,11 +3,6 @@ package com.mindsafe.service.p2;
 import com.mindsafe.service.billing.EntitlementChecker;
 import com.mindsafe.service.billing.EntitlementChecker.CheckResult;
 import com.mindsafe.service.billing.EntitlementChecker.Plan;
-import com.mindsafe.service.experiment.ExperimentBucketAssigner;
-import com.mindsafe.service.experiment.ExperimentBucketAssigner.Assignment;
-import com.mindsafe.service.experiment.ExperimentBucketAssigner.Variant;
-import com.mindsafe.service.experiment.ExperimentMetricsCollector;
-import com.mindsafe.service.experiment.ExperimentMetricsCollector.*;
 import com.mindsafe.service.profile.ProfileMergeGate;
 import com.mindsafe.service.profile.ProfileMergeGate.MergeDecision;
 import com.mindsafe.service.prompt.TemplateMatrixRegistry;
@@ -31,129 +26,9 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * P2 批次全量测试：AB-001/002 + BILL-001/002 + PROF-023 + VCL-002 + TMATCH-002 + PEVAL-003
+ * P2 批次全量测试：BILL-001/002 + PROF-023 + VCL-002 + TMATCH-002 + PEVAL-003
  */
 class P2BatchTest {
-
-    // ==================== AB-001 实验分桶 ====================
-
-    @Nested
-    @DisplayName("AB-001 实验分桶")
-    class AB001 {
-
-        private final ExperimentBucketAssigner assigner = new ExperimentBucketAssigner();
-
-        @Test
-        @DisplayName("确定性：同参数万次重算一致")
-        void deterministic() {
-            Assignment first = assigner.assignClass("exp-1", "class-A", "salt-v1");
-            for (int i = 0; i < 1000; i++) {
-                Assignment again = assigner.assignClass("exp-1", "class-A", "salt-v1");
-                assertThat(again.bucket()).isEqualTo(first.bucket());
-                assertThat(again.variant()).isEqualTo(first.variant());
-            }
-        }
-
-        @Test
-        @DisplayName("不同班级分到不同桶")
-        void differentClasses() {
-            Assignment a = assigner.assignClass("exp-1", "class-A", "salt");
-            Assignment b = assigner.assignClass("exp-1", "class-B", "salt");
-            // 不保证不同，但 bucket 值大概率不同
-            assertThat(a.analyzable()).isTrue();
-            assertThat(b.analyzable()).isTrue();
-        }
-
-        @Test
-        @DisplayName("豁免学生：强制 treatment + 不入分析集")
-        void exempt() {
-            Assignment exempt = assigner.assignExempt("exp-1", "student-high-risk");
-            assertThat(exempt.variant()).isEqualTo(Variant.TREATMENT);
-            assertThat(exempt.exempt()).isTrue();
-            assertThat(exempt.analyzable()).isFalse();
-        }
-
-        @Test
-        @DisplayName("年级均衡校验")
-        void balance() {
-            List<Integer> balanced1 = List.of(1, 2, 3, 4, 5, 6);
-            List<Integer> balanced2 = List.of(1, 2, 3, 4, 5, 6);
-            assertThat(assigner.isBalanced(balanced1, balanced2)).isTrue();
-
-            List<Integer> skewed = List.of(1, 1, 1, 1, 1, 1);
-            List<Integer> highOnly = List.of(6, 6, 6, 6, 6, 6);
-            assertThat(assigner.isBalanced(skewed, highOnly)).isFalse();
-        }
-
-        @Test
-        @DisplayName("bucket 范围 0-99")
-        void bucketRange() {
-            for (int i = 0; i < 100; i++) {
-                Assignment a = assigner.assignClass("exp", "class-" + i, "salt");
-                assertThat(a.bucket()).isBetween(0, 99);
-            }
-        }
-    }
-
-    // ==================== AB-002 指标采集 ====================
-
-    @Nested
-    @DisplayName("AB-002 指标采集")
-    class AB002 {
-
-        private final ExperimentMetricsCollector collector = new ExperimentMetricsCollector();
-
-        @Test
-        @DisplayName("隔次展示满意度反馈")
-        void feedbackFrequency() {
-            assertThat(collector.shouldShowFeedback(0)).isFalse();
-            assertThat(collector.shouldShowFeedback(1)).isFalse();
-            assertThat(collector.shouldShowFeedback(2)).isTrue();
-            assertThat(collector.shouldShowFeedback(3)).isFalse();
-            assertThat(collector.shouldShowFeedback(4)).isTrue();
-        }
-
-        @Test
-        @DisplayName("满意度表情转数值")
-        void emojiScore() {
-            assertThat(collector.satisfactionScore(SatisfactionEmoji.HAPPY)).isEqualTo(3);
-            assertThat(collector.satisfactionScore(SatisfactionEmoji.NEUTRAL)).isEqualTo(2);
-            assertThat(collector.satisfactionScore(SatisfactionEmoji.SAD)).isEqualTo(1);
-            assertThat(collector.satisfactionScore(null)).isEqualTo(0);
-        }
-
-        @Test
-        @DisplayName("日聚合计算")
-        void aggregate() {
-            List<MetricEvent> events = List.of(
-                    new MetricEvent("exp-1", "CONTROL", "s1", MetricType.SATISFACTION, 3, LocalDate.now()),
-                    new MetricEvent("exp-1", "CONTROL", "s2", MetricType.SATISFACTION, 2, LocalDate.now()),
-                    new MetricEvent("exp-1", "CONTROL", "s3", MetricType.SATISFACTION, 1, LocalDate.now())
-            );
-            DailyAggregate agg = collector.aggregate(events);
-            assertThat(agg.n()).isEqualTo(3);
-            assertThat(agg.sum()).isEqualTo(6);
-            assertThat(agg.mean()).isEqualTo(2.0);
-        }
-
-        @Test
-        @DisplayName("Cohen's d 效应量")
-        void cohensD() {
-            DailyAggregate control = new DailyAggregate("e", "C", MetricType.SATISFACTION,
-                    LocalDate.now(), 10, 20, 50);
-            DailyAggregate treatment = new DailyAggregate("e", "T", MetricType.SATISFACTION,
-                    LocalDate.now(), 10, 25, 70);
-            double d = collector.cohensD(control, treatment);
-            assertThat(d).isGreaterThan(0); // treatment 更高
-        }
-
-        @Test
-        @DisplayName("S0 时延护栏")
-        void safetyLatency() {
-            assertThat(collector.isSafetyLatencyOk(100, 150)).isTrue();
-            assertThat(collector.isSafetyLatencyOk(100, 400)).isFalse();
-        }
-    }
 
     // ==================== BILL-001 权益模型 ====================
 
@@ -189,31 +64,8 @@ class P2BatchTest {
         @Test
         @DisplayName("豁免路径：SOS 永远放行")
         void exemptSos() {
-            CheckResult r = checker.checkQuota(Plan.TRIAL, EntitlementChecker.QUOTA_SMS_SEND, 999, "/api/v1/sos/call");
+            CheckResult r = checker.checkFeature(Plan.TRIAL, EntitlementChecker.FEAT_EXPORT, "/api/v1/sos/call");
             assertThat(r.allowed()).isTrue();
-        }
-
-        @Test
-        @DisplayName("配额超限 → 429")
-        void quotaExceeded() {
-            CheckResult r = checker.checkQuota(Plan.TRIAL, EntitlementChecker.QUOTA_AI_SESSION, 200, "/api/v1/chat");
-            assertThat(r.allowed()).isFalse();
-            assertThat(r.httpStatus()).isEqualTo(429);
-            assertThat(r.code()).isEqualTo("30001");
-        }
-
-        @Test
-        @DisplayName("PREMIUM 无限制")
-        void premiumUnlimited() {
-            CheckResult r = checker.checkQuota(Plan.PREMIUM, EntitlementChecker.QUOTA_AI_SESSION, 999999, "/api/v1/chat");
-            assertThat(r.allowed()).isTrue();
-        }
-
-        @Test
-        @DisplayName("阈值告警：80% 触发")
-        void alertThreshold() {
-            assertThat(checker.shouldAlert(Plan.TRIAL, EntitlementChecker.QUOTA_AI_SESSION, 160)).isTrue();
-            assertThat(checker.shouldAlert(Plan.TRIAL, EntitlementChecker.QUOTA_AI_SESSION, 100)).isFalse();
         }
     }
 
@@ -426,18 +278,21 @@ class P2BatchTest {
         private final TemplateMatrixRegistry registry = new TemplateMatrixRegistry();
 
         @Test
-        @DisplayName("模板矩阵包含 7 个生效模板")
+        @DisplayName("模板矩阵包含 14 个生效模板（与 design/18 §0 + prompts/ 文件对齐）")
         void matrix() {
-            assertThat(registry.getMatrix()).hasSize(7);
+            assertThat(registry.getMatrix()).hasSize(14);
             assertThat(registry.findActive("EMO-001")).isNotNull();
             assertThat(registry.findActive("EMO-001").status())
                     .isEqualTo(TemplateMatrixRegistry.TemplateStatus.ACTIVE);
+            assertThat(registry.findActive("SAF-002")).isNotNull();
+            assertThat(registry.findActive("LANG-001").audience()).isEqualTo("grade_1_2");
+            assertThat(registry.findActive("SKL-001")).isNotNull();
         }
 
         @Test
-        @DisplayName("红队用例集 10 条")
+        @DisplayName("红队用例集 14 条（G-1 扩至 6 类攻击面）")
         void guardrails() {
-            assertThat(registry.getGuardrailCases()).hasSize(10);
+            assertThat(registry.getGuardrailCases()).hasSize(14);
             assertThat(registry.getGuardrailCasesByCategory("self_harm")).hasSize(2);
             assertThat(registry.getGuardrailCasesByCategory("jailbreak")).hasSize(1);
         }

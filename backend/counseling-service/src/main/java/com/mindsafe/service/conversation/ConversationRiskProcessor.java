@@ -8,11 +8,14 @@ import com.mindsafe.common.enums.RiskLevel;
 import com.mindsafe.domain.entity.RiskEvent;
 import com.mindsafe.domain.mapper.RiskEventMapper;
 import com.mindsafe.service.notification.NotificationService;
+import com.mindsafe.service.notification.RiskNotifyOutboxService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.Objects;
+import java.util.Set;
 
 /**
  * 对话风险处理器（P0-2 审计修复：从 ConversationServiceImpl 上帝类拆分）。
@@ -35,17 +38,20 @@ public class ConversationRiskProcessor {
     private final RiskScoreCalculator riskScoreCalculator;
     private final RiskEventMapper riskEventMapper;
     private final NotificationService notificationService;
+    private final RiskNotifyOutboxService riskNotifyOutboxService;
 
     public ConversationRiskProcessor(RiskDetectorService riskDetectorService,
                                      SemanticRiskClassifier semanticRiskClassifier,
                                      RiskScoreCalculator riskScoreCalculator,
                                      RiskEventMapper riskEventMapper,
-                                     NotificationService notificationService) {
+                                     NotificationService notificationService,
+                                     RiskNotifyOutboxService riskNotifyOutboxService) {
         this.riskDetectorService = riskDetectorService;
         this.semanticRiskClassifier = semanticRiskClassifier;
         this.riskScoreCalculator = riskScoreCalculator;
         this.riskEventMapper = riskEventMapper;
         this.notificationService = notificationService;
+        this.riskNotifyOutboxService = riskNotifyOutboxService;
     }
 
     /**
@@ -129,11 +135,16 @@ public class ConversationRiskProcessor {
     }
 
     /**
-     * 持久化风险事件 + 结构化评分（RISK-203）+ 教师通知。
+     * 持久化风险事件 + 结构化评分（RISK-203）+ 教师通知（P0-4 outbox 补偿）。
+     * <p>
+     * fail-fast：DB 写入失败必须上抛（安全关键记录不允许静默丢失，
+     * 由调用方决定降级策略）；教师通知失败标记 notify_status=failed，
+     * 由补偿任务重试（超 5 次/24h 转 dead 人工兜底），不再静默丢失。
      */
     public void persistRiskEvent(SessionState session, RiskDetectionResult riskResult) {
+        RiskEvent event;
         try {
-            RiskEvent event = RiskEvent.fromDetection(
+            event = RiskEvent.fromDetection(
                     session.getTenantId(),
                     session.getStudentUserId(),
                     session.getSessionId(),
@@ -142,10 +153,12 @@ public class ConversationRiskProcessor {
             );
 
             // RISK-203：结构化风险评分（C-SSRS 儿童适配，可解释 reason_codes 供教师复核）
+            // P1 修复：从命中关键词抽取意图/计划/C-SSRS 因子，不再恒 0（审计 7/11 维度恒 0）
+            ScoreFactors factors = extractScoreFactors(riskResult.matchedKeywords());
             RiskScoreCalculator.ScoreInput scoreInput = new RiskScoreCalculator.ScoreInput(
                     riskResult.score(),           // categoryBaseScore
-                    0,                            // intentWeight（待语义层抽取）
-                    0,                            // planWeight
+                    factors.intentWeight(),       // intentWeight（明确+15/含混+8）
+                    factors.planWeight(),         // planWeight（方法类每+5 上限 20）
                     10,                           // recencyWeight（当前会话=今天）
                     0,                            // actionWeight
                     0,                            // repetitionWeight
@@ -153,8 +166,8 @@ public class ConversationRiskProcessor {
                     0,                            // falsePositivePenalty
                     0.8,                          // confidenceAdjustment（硬规则默认 0.8）
                     riskResult.level().severity() >= RiskLevel.RED.severity() ? riskResult.level() : null,
-                    null,                         // cssrsIdeation（待语义层抽取）
-                    null                          // cssrsBehavior
+                    factors.cssrsIdeation(),      // C-SSRS 意念强度轴（被动抽取）
+                    factors.cssrsBehavior()       // C-SSRS 行为轴（被动抽取）
             );
             RiskScoreCalculator.ScoreResult scoreResult = riskScoreCalculator.calculate(scoreInput);
             log.info("风险评分计算: sessionId={}, score={}, level={}, reasons={}",
@@ -163,12 +176,106 @@ public class ConversationRiskProcessor {
             riskEventMapper.insert(event);
             log.info("风险事件已持久化: riskEventId={}, level={}, score={}",
                     event.getRiskEventId(), riskResult.level(), scoreResult.score());
-
-            // 触发教师通知
-            notificationService.notifyRiskEvent(event);
         } catch (Exception e) {
-            log.error("风险事件持久化失败（不影响对话流）: sessionId={}", session.getSessionId(), e);
+            log.error("风险事件持久化失败(fail-fast 上抛): sessionId={}, level={}",
+                    session.getSessionId(), riskResult.level(), e);
+            throw new IllegalStateException("风险事件持久化失败", e);
         }
+
+        // 教师通知 + outbox 状态标记（P0-4）：失败不再静默，进补偿队列
+        try {
+            notificationService.notifyRiskEvent(event);
+            riskNotifyOutboxService.markSent(event);
+        } catch (Exception e) {
+            log.error("风险教师通知失败(已标记 failed 进补偿队列): riskEventId={}", event.getRiskEventId(), e);
+            riskNotifyOutboxService.markFailed(event);
+        }
+    }
+
+    /**
+     * RISK-203 评分因子抽取结果。
+     *
+     * @param intentWeight  意图权重（明确+15/含混+8/无 0）
+     * @param planWeight    计划权重（方法类关键词每类+5，上限 20）
+     * @param cssrsIdeation C-SSRS 意念强度轴（null=非自伤类）
+     * @param cssrsBehavior C-SSRS 行为轴（null=无行为证据）
+     */
+    public record ScoreFactors(
+            int intentWeight,
+            int planWeight,
+            RiskScoreCalculator.CssrsIdeation cssrsIdeation,
+            RiskScoreCalculator.CssrsBehavior cssrsBehavior
+    ) {
+        public static ScoreFactors zero() {
+            return new ScoreFactors(0, 0, null, null);
+        }
+    }
+
+    // ===== 评分因子关键词映射（design/04 §十权重表 + 现有风险词典） =====
+
+    /** 明确自伤意图（I=+15）："我不想活了" 等直接表达 */
+    private static final Set<String> EXPLICIT_INTENT_KEYWORDS = Set.of(
+            "想死", "自杀", "去死", "杀了自己", "结束生命", "不想活", "不想活了", "死了算了"
+    );
+
+    /** 含混死亡愿望（I=+8）："活着没意思" 等间接表达 */
+    private static final Set<String> VAGUE_INTENT_KEYWORDS = Set.of(
+            "活着没意思", "活着很累", "没希望", "什么都没意思", "我是累赘", "把东西送人", "告别"
+    );
+
+    /** 自伤方法/工具关键词（P 每类 +5，上限 20） */
+    private static final Set<String> SELF_HARM_METHOD_KEYWORDS = Set.of(
+            "跳楼", "上吊", "割腕", "吃药", "带刀"
+    );
+
+    /** 准备行为关键词（C-SSRS 行为轴 PREPARATORY） */
+    private static final Set<String> PREPARATORY_KEYWORDS = Set.of("遗书");
+
+    /**
+     * RISK-203 审计修复：从命中的风险关键词抽取评分因子，替代恒 0/恒 null。
+     * <p>
+     * 纯函数、可解释：命中词来自硬规则词典（RiskDetectorServiceImpl），
+     * 语义层路径（matchedKeywords 为空）返回全零，不越权加分。
+     */
+    public static ScoreFactors extractScoreFactors(List<String> matchedKeywords) {
+        if (matchedKeywords == null || matchedKeywords.isEmpty()) {
+            return ScoreFactors.zero();
+        }
+
+        // 意图权重：明确 > 含混（只取最高一档，不叠加）
+        boolean explicitIntent = containsAny(matchedKeywords, EXPLICIT_INTENT_KEYWORDS);
+        boolean vagueIntent = containsAny(matchedKeywords, VAGUE_INTENT_KEYWORDS);
+        int intentWeight = explicitIntent ? 15 : vagueIntent ? 8 : 0;
+
+        // 计划权重：方法类关键词每个 +5，上限 20
+        int planWeight = matchedKeywords.stream()
+                .filter(SELF_HARM_METHOD_KEYWORDS::contains)
+                .limit(4) // 5*4=20 封顶
+                .mapToInt(kw -> 5)
+                .sum();
+
+        // C-SSRS 意念强度轴：取最高档（计划 > 方法 > 主动 > 死亡愿望）
+        RiskScoreCalculator.CssrsIdeation ideation = null;
+        if (containsAny(matchedKeywords, PREPARATORY_KEYWORDS)) {
+            ideation = RiskScoreCalculator.CssrsIdeation.WITH_PLAN_INTENT;
+        } else if (containsAny(matchedKeywords, SELF_HARM_METHOD_KEYWORDS)) {
+            ideation = RiskScoreCalculator.CssrsIdeation.WITH_METHOD;
+        } else if (explicitIntent) {
+            ideation = RiskScoreCalculator.CssrsIdeation.ACTIVE_IDEATION;
+        } else if (vagueIntent) {
+            ideation = RiskScoreCalculator.CssrsIdeation.DEATH_WISH;
+        }
+
+        // C-SSRS 行为轴：准备行为（写遗书）
+        RiskScoreCalculator.CssrsBehavior behavior = containsAny(matchedKeywords, PREPARATORY_KEYWORDS)
+                ? RiskScoreCalculator.CssrsBehavior.PREPARATORY
+                : null;
+
+        return new ScoreFactors(intentWeight, planWeight, ideation, behavior);
+    }
+
+    private static boolean containsAny(List<String> keywords, Set<String> candidates) {
+        return keywords.stream().anyMatch(candidates::contains);
     }
 
     /**

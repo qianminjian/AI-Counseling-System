@@ -16,10 +16,9 @@ AI-Counseling-System/
 ├── STRUCTURE.md            # 本文件：目录结构约定
 ├── README.md               # 项目入口导航
 │
-├── design/                 # 设计层：BEACON.md + 总览/跟踪表 + 01~20 md 设计文档（单一事实源）
-├── doc/                    # 归档层（只读留档，冲突以 design/*.md 为准）
-│   ├── 01~15_*.docx        #   设计文档原始 docx
-│   └── his/                #   早期需求/探索产物（原 prd/ + prompts/，已无活跃用途）
+├── design/                 # 设计层：BEACON.md + 总览/跟踪表 + 12 份合并设计文档（单一事实源）+ his/（历史归档）+ frozen/（34/38-43/58 冻结区）
+├── doc/                    # 历史物料归档层（只读留档，全部在 doc/his/，冲突以 design/*.md 为准）
+│   └── his/                #   全量历史物料：15 份原始 docx + 早期需求/探索产物 + 警示说明
 ├── scripts/                # 工具脚本：文档生成、数据处理等一次性/辅助脚本
 │
 ├── backend/                # 后端源代码（Java 21 + Spring Boot 3 + Spring AI，Maven 多模块，详见 §2.5）
@@ -39,10 +38,10 @@ AI-Counseling-System/
 
 ## 2. 各目录职责与规则
 
-### 2.1 `doc/his/` — 早期需求与探索产物归档
+### 2.1 `doc/his/` — 全量历史物料归档
 
-- **来源**：原 `prd/`（需求初稿、3 版建设方案、架构图）+ `prompts/`（探索期 prompt 记录），2026-07-23 归档
-- **性质**：只读留档，内容已被 `design/*.md` 完全取代，无活跃用途
+- **来源**：① 原 `prd/`（需求初稿、3 版建设方案、架构图）+ `prompts/`（探索期 prompt 记录），2026-07-23 归档；② 15 份原始 docx（`01~15_*.docx`）+ 归档区警示说明 `README.md`，2026-07-29 归档（doc/ 根目录清空，仅存 his/）
+- **性质**：只读留档（废弃，不再维护），内容已被 `design/*.md` 完全取代，无活跃用途
 - **现状文件**：
   - `AI心理辅导系统.docx` — 最初方案初稿（2026-05-29）
   - `AI小学生心理辅导系统建设方案.docx` / `_20260529-2019.docx` / `AI心理辅导系统建设方案_20260529-2106.docx` — 3 版建设方案（md5 不同，保留溯源）
@@ -53,19 +52,21 @@ AI-Counseling-System/
 
 - **存什么**：
   - `BEACON.md` — 项目明灯文件（设计决策、范围、当前状态），**唯一强制**
-  - `DESIGN-OVERVIEW.md` — 15 份设计文档总览入口（目录导航 + 关键摘要）
+  - `DESIGN-OVERVIEW.md` — 设计文档总览 v5.0（12 份合并文档目录导航 + 旧编号对照表 + 关键摘要）
   - `TASK-TRACKER.md` — 任务跟踪表（文档整合任务 + MVP 开发任务 + 决策/风险/里程碑）
-  - `01_*.md` ~ `20_*.md` — **当前设计文档（md 格式，单一事实源）**，由 `doc/*.docx` 整合而来，直接平铺在 design/ 根下；16-20 为新增（API 接口 + 前端架构 + Prompt 模板库 + 界面详设 + 端到端流程）
+  - `01_系统概述与产品功能说明.md` ~ `12_家长端功能详细设计.md` — **12 份合并设计文档（md 格式，当前单一事实源）**：01 概述/02 数据库/03 技术架构/04 部署/05 测试/06 配置与外部服务/07 商业化合规/08 概要设计（三端+接口）/09 学生端上卷（对话引擎与安全）/10 学生端下卷（个性化与情感交互）/11 老师端/12 家长端；每份含合并来源标注与任务归口总表
+  - `his/` — **历史设计文档归档**（50 份旧编号文档，只读溯源，编号对照见 DESIGN-OVERVIEW §二）
+  - `frozen/` — **冻结区**（真正冻结的远期任务，触发条件未到不实施、不合并：34/38-43/58，待后续开发时整合）
   - `*-PLAN.md` — Plan Mode 产出的执行计划（按 design-persistence.md §6 硬性要求）
-  - `demo/` — 交互原型（独立 HTML Demo，供设计选型/现场预览，不参与前端构建，与 design/19 界面详设配套）
+  - `demo/` — 交互原型（独立 HTML Demo，供设计选型/现场预览，不参与前端构建，与旧 design/19 界面详设配套）
   - `discussion/`（可选）多轮设计讨论摘要；`decisions/`（可选）ADR；`reference/`（可选）外部参考
-- **命名约定**：新增正式设计文档在 `design/` 根下沿用 `NN_主题.md` 编号制，接着 20 往后排
-- **文档权威性**：以 `design/*.md` 为准；原始 docx 存于项目根 `doc/`，仅作溯源，二者冲突时以 md 为准（md 已按 Java 技术栈决策改写）
+- **命名约定**：新增正式设计文档优先**并入对应合并文档**（同板块设计演进不新开篇）；确需独立成篇时在 `design/` 根下沿用 `NN_主题.md` 编号制，接着 12 往后排（13、14...），并在 DESIGN-OVERVIEW 登记
+- **文档权威性**：以 12 份合并 `design/*.md` 为准；历史文档（`design/his/`）与原始 docx（`doc/his/`）仅作溯源，冲突时以合并文档为准
 - **读取时机**：任何新任务启动前，先读 `BEACON.md`；查设计细节先读 `DESIGN-OVERVIEW.md` 导航
 
-### 2.2.1 `doc/` — 原始 docx 归档
+### 2.2.1 `doc/` — 历史物料归档（已并入 `doc/his/`）
 
-- **存什么**：15 份 `NN_主题.docx` 只读留档，供追溯早期原文
+- **存什么**：15 份 `NN_主题.docx` + 警示说明 `README.md`（COMP-010），2026-07-29 已全部移入 `doc/his/`；doc/ 根目录仅保留 `his/` 子目录
 - **不存什么**：新版设计文档（去 `design/`）、临时导出（去 `tmp/`）
 - **权威性**：低于 `design/*.md`；若发现 md 与 docx 有实质差异，以 md 为准（转换时已按 Java 技术栈重写）
 
@@ -86,7 +87,7 @@ AI-Counseling-System/
 backend/
 ├── pom.xml                     # parent：依赖版本管理、模块聚合
 ├── counseling-common/          # 通用：配置、工具、异常、常量、统一响应
-├── counseling-domain/          # 领域模型：实体、MyBatis Mapper（落地 design/06 的 DDL）
+├── counseling-domain/          # 领域模型：实体、MyBatis Mapper（落地 design/02 的 DDL）
 ├── counseling-ai/              # AI 编排：Spring AI、Agent、CBT 状态机、风险识别、prompt 模板
 ├── counseling-service/         # 业务服务：对话编排、预警通知、档案
 ├── counseling-api/             # Web 层：Controller、DTO、Spring Security + JWT、WebSocket
@@ -98,10 +99,10 @@ backend/
 - **架构形态**：模块化单体（不建微服务，决策 #8）；Maven 模块边界即领域边界，未来可拆
 - **多租户**：当前通过 tenant_id 字段级隔离（行级），Schema 级隔离待后续升级
 - **LLM 接入**：供应商无关，Spring AI 配置驱动（决策 #7），任意国产合规 LLM 可接入
-- **Agent 编排**：Spring AI ChatClient + Advisor 链 + 状态机（决策 #9），7 Agent 职责按 design/13
+- **Agent 编排**：Spring AI ChatClient + Advisor 链 + 状态机（决策 #9），7 Agent 职责按 design/03 §4
 - **测试**：各模块 `src/test/java`（JUnit 5 + Mockito），集成测试用 Testcontainers（PG/Redis），命名与管理规则见 §2.7
 - **DB 脚本**：`backend/scripts/sql/`，Flyway 版本化命名（`V{n}__desc.sql`），详见 §2.10
-- **Prompt 资源**：`counseling-ai/src/main/resources/prompts/`（classpath 加载，与 design/18 一一对应），详见 §2.12
+- **Prompt 资源**：`counseling-ai/src/main/resources/prompts/`（classpath 加载，与 design/09 一一对应），详见 §2.12
 
 ### 2.6 `frontend/` — 前端应用组
 
@@ -149,8 +150,8 @@ frontend/
 | `mvn test` | 单元测试（surefire，匹配 `*Test`） | `target/surefire-reports/` |
 | `mvn verify` | 单元 + 集成（failsafe，匹配 `*IT`） | `target/failsafe-reports/` |
 | `mvn test -Dtest=XxxTest` | 单个测试类 | 同上 |
-| `pnpm test` | 前端单元/组件（Vitest） | `frontend/*/coverage/` |
-| `pnpm test:e2e` | E2E（Playwright，需先启动服务） | `tests/e2e/playwright-report/` |
+| `npm test`（各 frontend/* 目录） | 前端单元/组件（Vitest） | `frontend/*/coverage/` |
+| `tests/e2e/smoke-test.sh` | E2E 冒烟（curl 脚本，需先启动服务） | 终端输出 |
 
 - 覆盖率：JaCoCo，报告 `target/site/jacoco/index.html`
 - 报告均为 gitignore 产物，CI 通过 artifacts 保留，本地直查 target 目录
@@ -188,22 +189,28 @@ frontend/
 |------|------|-----------|
 | Maven 构建 | `backend/**/target/` | ✅ |
 | Vite 构建 | `frontend/*/dist/` | ✅ |
-| pnpm 依赖 | `**/node_modules/` | ✅ |
-| Playwright 产物 | `tests/e2e/playwright-report/`、`test-results/` | ✅ |
+| npm 依赖 | `**/node_modules/` | ✅ |
 
-- 构建产物永不入库，一律可通过 `mvn package` / `pnpm build` 再生
-- 依赖版本：后端由 parent pom `<dependencyManagement>` 统一管控，子模块不得自行指定版本；前端由 workspace 根 `package.json` + `pnpm-workspace.yaml` 管控
-- 新增依赖：须更新 design/12 技术栈文档并说明理由；YAGNI 清单（§4.6）内技术禁止引入
+- 构建产物永不入库，一律可通过 `mvn package` / `npm run build` 再生
+- 依赖版本：后端由 parent pom `<dependencyManagement>` 统一管控，子模块不得自行指定版本；前端三个应用各自独立 npm 管理（无 workspace，各含 package-lock.json）
+- 新增依赖：须更新 design/03 技术架构文档并说明理由；YAGNI 清单（§4.6）内技术禁止引入
 
 ### 2.9 Docker / 基础设施配置（`deploy/`）
 
 ```
 deploy/
-├── docker-compose.yml          # 本地开发环境：PG 16 + pgvector、Redis 7
-├── docker-compose.prod.yml     # 生产 All-in-One（私有化交付用）
+├── docker-compose.yml          # 本地开发环境：PG 16 + pgvector、Redis 7、tts/voice、nginx
+├── docker-compose.prod.yml     # 生产 All-in-One（私有化交付用，TLS + 自动备份）
+├── docker-compose.test.yml     # 轻量测试/演示环境（不含 voice/tts）
+├── docker-compose.monitoring.yml # Prometheus + Grafana 监控栈
+├── nginx/                      # default.conf（HTTP）/ default-ssl.conf（TLS）
+├── scripts/                    # prepare-funasr.sh / prepare-models.sh（模型投放）
+├── backup.sh / restore.sh      # 宿主机备份/恢复（dbbackups volume）
+├── setup-server.sh             # 服务器一键初始化
+├── init-school.sh              # 学校租户初始化
+├── .env.example                # 环境变量模板
 └── init/                       # 基础设施初始化
-    ├── pg-init.sql             # 创建扩展（vector）、公共 schema
-    └── redis.conf              # Redis 最小配置（maxmemory/持久化策略）
+    └── pg-init.sql             # 创建扩展（vector）、公共 schema
 ```
 
 - 应用 Dockerfile 随模块：`backend/Dockerfile`、`frontend/Dockerfile`
@@ -216,10 +223,10 @@ deploy/
 - 命名：Flyway 规范 `V{版本}__{描述}.sql`（双下划线分隔）
 - 初始脚本：
   - `V1__init_public_schema.sql` — 公共 Schema（租户注册表、全局配置）
-  - `V2__init_tenant_template.sql` — 租户 Schema 模板（design/06 全部 DDL）
+  - `V2__init_tenant_template.sql` — 租户 Schema 模板（design/02 全部 DDL）
   - `V3__seed_data.sql` — 种子数据（角色、风险规则、情绪标签）
 - 后续变更：版本递增，由 Flyway 在应用启动时自动执行
-- 多租户迁移：`counseling-tenant` 模块的迁移执行器遍历所有租户 Schema 应用未执行版本
+- 多租户隔离：`tenant_template` 为共享 schema，靠 tenant_id 列隔离（无每租户 schema 迁移执行器，counseling-tenant 模块从未存在）
 - **红线**：DDL 变更必须走版本化脚本，禁止手工改库；脚本须向后兼容（支持灰度发布）
 
 ### 2.11 日志与报告输出
@@ -239,7 +246,7 @@ deploy/
 ### 2.12 Prompt 资源文件
 
 - 位置：`backend/counseling-ai/src/main/resources/prompts/`
-- 目录结构与 design/18 Prompt 模板库一一对应：
+- 目录结构与 design/09 上卷 Prompt 体系一一对应：
 
 ```
 prompts/
@@ -252,7 +259,7 @@ prompts/
 
 - 格式：`.st`（Spring AI StringTemplate）或 `.txt`，由 PromptTemplateLoader 统一加载
 - 版本管理：随代码 git 管理；M3+ 管理端上线后可迁移至 DB 存储（热更新）
-- 禁止在 Java 代码中硬编码 Prompt 文本（安全回复模板除外，见 design/18 §12）
+- 禁止在 Java 代码中硬编码 Prompt 文本（安全回复模板除外，见 design/09 §二）
 
 ### 2.13 `tmp/` — 唯一临时目录
 
@@ -265,8 +272,8 @@ prompts/
 
 - **存什么**：`data/knowledge-base/` 知识库语料文件（待审/已审），如首批入库语料、后续补全语料；未来其他内容资产（如量表题库文案）按子目录扩展
 - **性质**：**入库源文件**（人工审核 → 经 KnowledgeBaseService 摄入 pgvector），非临时产物（区别于 tmp/）、非设计文档（区别于 design/）
-- **审核状态约定**：文件头部标注 `审核状态：待审核/已审核`；**未经钱敏健审核的语料禁止入库**（15 §12.4 定稿流程、49 §5 审核门禁）
-- **命名**：`NN-主题_vN.md`，语料条目格式遵循 design/49 §4.2 元数据规范
+- **审核状态约定**：文件头部标注 `审核状态：待审核/已审核`；**未经钱敏健审核的语料禁止入库**（design/09 上卷知识库章节定稿流程与审核门禁）
+- **命名**：`NN-主题_vN.md`，语料条目格式遵循 design/09 上卷知识库章节元数据规范
 
 ---
 
@@ -308,3 +315,6 @@ prompts/
 | 2026-07-28 | 目录结构纠偏补漏：`design/docs/` 残留 2 份 md（16_语音情感分析/17_全感官交互）迁入 `design/` 并重编号为 54/55，删除空 `design/docs/` 目录 | 完成 2026-07-23 “拍平”决策的遗漏收尾 |
 | 2026-07-29 | 新增 §2.14 `data/` 内容资产目录（`data/knowledge-base/` 知识库语料，待审/已审约定） | KB-101 首批语料落档需正式位置（非 tmp 非 design），约束先行 |
 | 2026-07-28 | 重大修订：`apps/`→`frontend/`、`student/`→`student-h5/`、`teacher/`→`teacher-web/`、新增 `parent-h5/`；移除 counseling-tenant 描述（未进入构建）；pnpm→npm；YAGNI 清单移除“语音/生物识别”（已实现） | 审计发现文档与实际严重不符，纠正失实描述 |
+| 2026-07-29 | 幽灵项清偿收尾：上条修订声称完成但正文残留未改——pnpm 命令/workspace 表述改 npm（三应用各自独立管理）、redis.conf 幽灵条目删除、counseling-tenant 多租户迁移执行器表述改为 tenant_template 共享 schema 事实、§2.9 deploy/ 树补齐实际文件 | 审计复核发现变更记录虚标（声称已改实际未改），如实补完 |
+| 2026-07-28 | 设计文档整体规整：§2.2 全面更新——58 份旧文档合并为 **12 份合并文档**（01 概述/02 数据库/03 架构/04 部署/05 测试/06 配置/07 商业化合规/08 概要/09 学生端上卷/10 学生端下卷/11 老师端/12 家长端），旧文档（50 份）归档 `design/his/`，frozen/（34/38-43/58）不合并待后续整合；§2.5/§2.10/§2.12/§2.14 旧编号引用全部更新为新合并文档编号 | 用户指令：设计文档整体规整（合并分类、最终设计方法输出、旧文档归档、冻结文档不动） |
+| 2026-07-29 | doc/ 根目录 15 份原始 docx + README.md 全量归档至 `doc/his/`（git mv），doc/ 仅存 his/；§1 目录树/§2.1/§2.2/§2.2.1 同步 | 用户指令：doc/ 文档全部归档至 his/，废弃作历史材料 |

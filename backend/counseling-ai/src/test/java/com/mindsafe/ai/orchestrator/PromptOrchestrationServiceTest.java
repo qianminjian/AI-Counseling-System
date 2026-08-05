@@ -18,7 +18,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * PromptOrchestrationService 单元测试（ORCH-001/002，design/44 §4.2/§4.4/§十二）
  * <p>
  * 覆盖：合规裁决短路、情绪门控 allowCbt、轮级情绪优先、年级降级透传、模板变量契约、
- * 画像微调置信门控（PROF-022，design/46 §5.1/§5.2）。
+ * 画像微调置信门控（PROF-025，design/46 §5.1/§5.2）。
  */
 class PromptOrchestrationServiceTest {
 
@@ -164,7 +164,7 @@ class PromptOrchestrationServiceTest {
     }
 
     @Nested
-    @DisplayName("画像微调置信门控（PROF-022，design/46 §5.1/§5.2）")
+    @DisplayName("画像微调置信门控（PROF-025，design/46 §5.1/§5.2）")
     class ProfileTuning {
 
         private OrchestrationContext ctxWithSignals(String entryMood, RiskLevel riskLevel, ProfileSignals signals) {

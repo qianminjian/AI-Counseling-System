@@ -73,6 +73,8 @@ public class SecurityConfig {
                         .requestMatchers("/api/v1/voiceprint/verify").permitAll()
                         // 声纹登录引导语 TTS（白名单文本，无需认证）
                         .requestMatchers("/api/v1/tts/login-prompt").permitAll()
+                        // 前端运行时配置（CFG-001，登录前即需拉取，如声纹模式判断）
+                        .requestMatchers("/api/v1/system/config").permitAll()
                         .requestMatchers("/api/v1/auth/refresh").permitAll()
                         // 企微 OAuth 回调（无 JWT，靠 code 换 token）
                         .requestMatchers("/api/v1/auth/wecom/**").permitAll()

@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.mindsafe.api.ratelimit.RateLimiter;
 import com.mindsafe.api.security.JwtAuthenticationFilter.TenantContext;
 import com.mindsafe.api.security.JwtTokenProvider;
 import com.mindsafe.common.dto.ApiResponse;
@@ -15,6 +16,8 @@ import com.mindsafe.domain.mapper.UserMapper;
 import com.mindsafe.domain.mapper.VoiceprintEmbeddingMapper;
 import com.mindsafe.common.tenant.TenantContextHolder;
 import com.mindsafe.service.audit.AuditLogService;
+import com.mindsafe.service.auth.TenantAccessGuard;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
@@ -25,6 +28,7 @@ import org.springframework.web.bind.annotation.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
 
@@ -48,6 +52,11 @@ public class VoiceprintController {
     private final JwtTokenProvider jwtTokenProvider;
     private final AuditLogService auditLogService;
     private final ObjectMapper objectMapper;
+    private final RateLimiter rateLimiter;
+    private final TenantAccessGuard tenantAccessGuard;
+
+    /** 公开端点按 IP 限流：每分钟最多 10 次声纹验证尝试（防暴力探测） */
+    private static final int VERIFY_MAX_PER_MINUTE = 10;
 
     @Value("${mindsafe.voiceprint.mode:local}")
     private String voiceprintMode;
@@ -62,12 +71,16 @@ public class VoiceprintController {
                                 UserMapper userMapper,
                                 JwtTokenProvider jwtTokenProvider,
                                 AuditLogService auditLogService,
-                                ObjectMapper objectMapper) {
+                                ObjectMapper objectMapper,
+                                RateLimiter rateLimiter,
+                                TenantAccessGuard tenantAccessGuard) {
         this.embeddingMapper = embeddingMapper;
         this.userMapper = userMapper;
         this.jwtTokenProvider = jwtTokenProvider;
         this.auditLogService = auditLogService;
         this.objectMapper = objectMapper;
+        this.rateLimiter = rateLimiter;
+        this.tenantAccessGuard = tenantAccessGuard;
     }
 
     /**
@@ -125,10 +138,18 @@ public class VoiceprintController {
      * 前端提取 embedding 后传到服务端比对，通过则直接签发双 token
      */
     @PostMapping("/verify")
-    public ApiResponse<Map<String, Object>> verify(@Valid @RequestBody VerifyRequest request) {
+    public ApiResponse<Map<String, Object>> verify(@Valid @RequestBody VerifyRequest request,
+                                                   HttpServletRequest httpRequest) {
         List<List<Double>> inputEmbeddings = request.embeddings();
         if (inputEmbeddings.isEmpty()) {
             throw new BizException(ErrorCode.PARAM_INVALID, "embedding 不能为空");
+        }
+
+        // SEC-007：公开端点按 IP 限流，防 embedding 暴力探测
+        String clientIp = resolveClientIp(httpRequest);
+        if (!rateLimiter.tryAcquire(clientIp, "voiceprint_verify",
+                VERIFY_MAX_PER_MINUTE, Duration.ofMinutes(1))) {
+            throw new BizException(ErrorCode.RATE_LIMITED, "尝试太频繁了，请稍等一下再试");
         }
 
         // 声纹验证是公开端点（permitAll），无 JWT → 无租户上下文
@@ -142,7 +163,8 @@ public class VoiceprintController {
                 new LambdaQueryWrapper<VoiceprintEmbedding>());
 
         if (allRecords.isEmpty()) {
-            return ApiResponse.ok(Map.of("matched", false, "score", 0.0));
+            // 不回显相似度分数，防止阈值探测（SEC-007）
+            return ApiResponse.ok(Map.of("matched", false));
         }
 
         // 按 userId 分组
@@ -156,6 +178,7 @@ public class VoiceprintController {
 
         double bestScore = 0;
         UUID bestUserId = null;
+        UUID bestTenantId = null;
 
         for (Map.Entry<UUID, List<VoiceprintEmbedding>> entry : byUser.entrySet()) {
             for (List<Double> inputEmb : inputEmbeddings) {
@@ -166,6 +189,7 @@ public class VoiceprintController {
                     if (score > bestScore) {
                         bestScore = score;
                         bestUserId = entry.getKey();
+                        bestTenantId = entry.getValue().get(0).getTenantId();
                     }
                 }
             }
@@ -176,13 +200,20 @@ public class VoiceprintController {
 
         boolean matched = bestScore >= verifyThreshold;
         if (!matched) {
-            return ApiResponse.ok(Map.of("matched", false, "score", bestScore));
+            // P0-3：失败审计——库非空时记录 VOICEPRINT_VERIFY_FAILED，暴力探测可追踪；
+            // 库为空（bestUserId=null）无比对对象，静默返回
+            if (bestUserId != null && bestTenantId != null) {
+                auditLogService.log(bestTenantId, bestUserId, "VOICEPRINT_VERIFY_FAILED",
+                        "user", bestUserId, null);
+            }
+            return ApiResponse.ok(Map.of("matched", false));
         }
 
         // 匹配成功：查用户 + 签发 token
         User user = userMapper.selectById(bestUserId);
-        if (user == null || !"active".equals(user.getStatus())) {
-            return ApiResponse.ok(Map.of("matched", false, "score", bestScore));
+        if (user == null || !"active".equals(user.getStatus())
+                || !tenantAccessGuard.isLoginAllowed(user.getTenantId())) {
+            return ApiResponse.ok(Map.of("matched", false));
         }
 
         // 更新最后登录时间
@@ -201,7 +232,6 @@ public class VoiceprintController {
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("matched", true);
-        result.put("score", bestScore);
         result.put("token", token);
         result.put("refreshToken", refreshToken);
         result.put("userId", user.getUserId());
@@ -211,6 +241,22 @@ public class VoiceprintController {
     }
 
     // ===== 内部工具 =====
+
+    /**
+     * 解析客户端 IP（P0-3 防伪造）：
+     * - 经 nginx 代理：X-Forwarded-For 取最右条目——nginx 用 $proxy_add_x_forwarded_for
+     *   在真实客户端 IP 前追加客户端提供的头，最右 = 不可伪造的真实 IP
+     * - 直连：使用 remoteAddr
+     * 直连伪造面已收窄：docker-compose 将 8080 绑定 127.0.0.1，公网唯一入口为 nginx。
+     */
+    private String resolveClientIp(HttpServletRequest request) {
+        String forwarded = request.getHeader("X-Forwarded-For");
+        if (forwarded != null && !forwarded.isBlank()) {
+            int idx = forwarded.lastIndexOf(',');
+            return (idx >= 0 ? forwarded.substring(idx + 1) : forwarded).trim();
+        }
+        return request.getRemoteAddr();
+    }
 
     private double cosineSimilarity(List<Double> a, List<Double> b) {
         if (a == null || b == null || a.size() != b.size()) return 0;

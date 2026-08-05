@@ -1,11 +1,15 @@
 package com.mindsafe.service.knowledge;
 
+import com.mindsafe.service.knowledge.HybridRetrievalService.RetrievalHit;
 import com.mindsafe.service.knowledge.KnowledgeBaseService.KnowledgeChunk;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -30,6 +34,15 @@ public class RagAdvisorService {
 
     /** 触发检索的最短消息长度（过短多为寒暄："你好""在吗"） */
     private static final int MIN_MESSAGE_LENGTH = 6;
+
+    /** KB-103：两路检索各自的候选条数（宽召回后 RRF 精排） */
+    private static final int CANDIDATE_TOP_K = 5;
+
+    /** KB-103：RRF 融合后保留的候选条数 */
+    private static final int FUSE_TOP_K = 6;
+
+    /** 最终注入 Prompt 的参考条数 */
+    private static final int FINAL_TOP_K = 3;
 
     /** 场景触发信号：情绪困扰 / 求助提问 / 成长场景（design/49 §6.2 场景触发，闲聊不检索） */
     private static final Pattern TRIGGER_SIGNALS = Pattern.compile(
@@ -66,9 +79,23 @@ public class RagAdvisorService {
             return "";
         }
         try {
-            List<KnowledgeChunk> chunks = knowledgeBaseService.search(tenantId, message, 3).stream()
+            // KB-103：向量路（主线）+ 关键词路（ILIKE）双路宽召回
+            List<KnowledgeChunk> vectorChunks =
+                    knowledgeBaseService.search(tenantId, message, CANDIDATE_TOP_K);
+            List<KnowledgeChunk> keywordChunks = List.of();
+            try {
+                keywordChunks =
+                        knowledgeBaseService.searchKeyword(tenantId, message, CANDIDATE_TOP_K);
+            } catch (Exception e) {
+                // 关键词路失败降级纯向量路，不阻断
+                log.warn("KB-103 关键词检索降级: {}", e.getMessage());
+            }
+
+            // RRF 融合排序（双路命中者优先），再执行危机隔离 + 年级段过滤 + 截断
+            List<KnowledgeChunk> chunks = fuse(vectorChunks, keywordChunks).stream()
                     .filter(c -> !KnowledgeCorpusIngestService.CATEGORY_CRISIS.equals(c.category()))
                     .filter(c -> matchesGradeBand(c.content(), gradeBandOf(grade)))
+                    .limit(FINAL_TOP_K)
                     .toList();
             if (chunks.isEmpty()) {
                 return "";
@@ -86,13 +113,38 @@ public class RagAdvisorService {
     }
 
     /**
+     * KB-103：RRF 融合两路检索结果（{@link HybridRetrievalService#fuseRRF} 接主线）。
+     * 按 chunkId 去重映射，保留 RRF 排序。
+     */
+    private List<KnowledgeChunk> fuse(List<KnowledgeChunk> vectorChunks,
+                                      List<KnowledgeChunk> keywordChunks) {
+        Map<String, KnowledgeChunk> byChunkId = new LinkedHashMap<>();
+        for (KnowledgeChunk c : vectorChunks) {
+            byChunkId.putIfAbsent(c.chunkId().toString(), c);
+        }
+        for (KnowledgeChunk c : keywordChunks) {
+            byChunkId.putIfAbsent(c.chunkId().toString(), c);
+        }
+        List<RetrievalHit> vectorHits = vectorChunks.stream()
+                .map(c -> new RetrievalHit(c.chunkId().toString(), c.title(), c.similarity(), "vector"))
+                .toList();
+        List<RetrievalHit> keywordHits = keywordChunks.stream()
+                .map(c -> new RetrievalHit(c.chunkId().toString(), c.title(), c.similarity(), "keyword"))
+                .toList();
+        return hybridRetrievalService.fuseRRF(vectorHits, keywordHits, FUSE_TOP_K).stream()
+                .map(f -> byChunkId.get(f.docId()))
+                .filter(Objects::nonNull)
+                .toList();
+    }
+
+    /**
      * KB-103 检索有效性评估（groundedness 回收）。
      * 当前简化：以命中数/请求 topK 作为 groundedness 近似，低分记录日志供运营分析。
      */
     private void evaluateRetrievalEffectiveness(UUID tenantId, String query, List<KnowledgeChunk> chunks) {
         try {
-            // 简化 groundedness：命中数 / 请求 topK（3）
-            int requestedTopK = 3;
+            // 简化 groundedness：命中数 / 最终注入条数上限
+            int requestedTopK = FINAL_TOP_K;
             HybridRetrievalService.GroundednessResult result = hybridRetrievalService.evaluateGroundedness(
                     tenantId.toString(), requestedTopK, chunks.size());
             if (!result.effective()) {

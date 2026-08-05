@@ -1,0 +1,186 @@
+package com.mindsafe.service.teacher;
+
+import com.baomidou.mybatisplus.core.conditions.Wrapper;
+import com.mindsafe.domain.entity.RiskEvent;
+import com.mindsafe.domain.entity.TeacherNote;
+import com.mindsafe.domain.entity.User;
+import com.mindsafe.domain.mapper.*;
+import com.mindsafe.service.security.FieldEncryptionService;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+
+import java.time.Instant;
+import java.util.List;
+import java.util.UUID;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+
+/**
+ * TeacherService 数据范围解析单测（P1 审计修复：班主任无 classCode 不再全校可见兜底）。
+ * <p>
+ * 契约：
+ * - resolveClassScope：admin/psych_teacher → null（全校）；班主任有班级 → classCode；
+ *   班主任无班级（或查不到）→ 空串（无可见范围）
+ * - getAlerts 支持 classScope 过滤：本班学生事件保留、他班剔除；空班级/未绑定 → 空列表
+ * - getStats 空范围 → 空统计 VO（不再全校聚合）
+ */
+class TeacherClassScopeTest {
+
+    private RiskEventMapper riskEventMapper;
+    private UserMapper userMapper;
+    private TeacherNoteMapper teacherNoteMapper;
+    private MessageSummaryMapper messageSummaryMapper;
+    private TeacherService teacherService;
+
+    private final UUID tenantId = UUID.randomUUID();
+    private final UUID teacherId = UUID.randomUUID();
+
+    @BeforeEach
+    void setUp() {
+        riskEventMapper = mock(RiskEventMapper.class);
+        userMapper = mock(UserMapper.class);
+        teacherNoteMapper = mock(TeacherNoteMapper.class);
+        messageSummaryMapper = mock(MessageSummaryMapper.class);
+        FieldEncryptionService fieldEncryptionService = mock(FieldEncryptionService.class);
+        teacherService = new TeacherService(
+                riskEventMapper,
+                mock(CounselingSessionMapper.class),
+                userMapper,
+                teacherNoteMapper,
+                mock(NotificationMapper.class),
+                messageSummaryMapper,
+                fieldEncryptionService);
+    }
+
+    private User teacherWithClass(String classCode) {
+        User teacher = new User();
+        teacher.setUserId(teacherId);
+        teacher.setTenantId(tenantId);
+        teacher.setClassCode(classCode);
+        when(userMapper.selectById(teacherId)).thenReturn(teacher);
+        return teacher;
+    }
+
+    // ===== resolveClassScope =====
+
+    @Test
+    @DisplayName("班主任绑定班级 → 返回班级代码")
+    void classTeacher_withClass_returnsClassCode() {
+        teacherWithClass("CLASS_1");
+        assertEquals("CLASS_1", teacherService.resolveClassScope(tenantId, teacherId, "class_teacher"));
+    }
+
+    @Test
+    @DisplayName("班主任未绑定班级（null）→ 返回空串（无可见范围，而非全校）")
+    void classTeacher_withoutClass_returnsEmpty() {
+        teacherWithClass(null);
+        assertEquals("", teacherService.resolveClassScope(tenantId, teacherId, "class_teacher"));
+    }
+
+    @Test
+    @DisplayName("班主任未绑定班级（空白）→ 返回空串")
+    void classTeacher_blankClass_returnsEmpty() {
+        teacherWithClass("  ");
+        assertEquals("", teacherService.resolveClassScope(tenantId, teacherId, "class_teacher"));
+    }
+
+    @Test
+    @DisplayName("班主任查无此人 → 返回空串（防越权兜底）")
+    void classTeacher_notFound_returnsEmpty() {
+        when(userMapper.selectById(teacherId)).thenReturn(null);
+        assertEquals("", teacherService.resolveClassScope(tenantId, teacherId, "class_teacher"));
+    }
+
+    @Test
+    @DisplayName("admin → 全校（null）")
+    void admin_returnsNull() {
+        assertEquals(null, teacherService.resolveClassScope(tenantId, teacherId, "admin"));
+    }
+
+    @Test
+    @DisplayName("psych_teacher → 全校（null）")
+    void psychTeacher_returnsNull() {
+        assertEquals(null, teacherService.resolveClassScope(tenantId, teacherId, "psych_teacher"));
+    }
+
+    // ===== getAlerts 班级过滤 =====
+
+    private User student(UUID id, String classCode) {
+        User s = new User();
+        s.setUserId(id);
+        s.setTenantId(tenantId);
+        s.setUserType("student");
+        s.setClassCode(classCode);
+        return s;
+    }
+
+    private RiskEvent alert(UUID studentId) {
+        return RiskEvent.fromDetection(tenantId, studentId, UUID.randomUUID(), "self_harm", 3);
+    }
+
+    @Test
+    @DisplayName("getAlerts 带 classScope → 仅保留本班学生事件")
+    void getAlerts_withScope_filtersByClass() {
+        UUID inClass = UUID.randomUUID();
+        UUID otherClass = UUID.randomUUID();
+        // 班级学生查询（DB 已按 classCode 过滤）→ 仅本班学生；事件列表含他班 → 内存过滤剔除
+        when(userMapper.selectList(any(Wrapper.class))).thenReturn(List.of(student(inClass, "CLASS_1")));
+        when(riskEventMapper.selectList(any(Wrapper.class))).thenReturn(List.of(
+                alert(inClass), alert(otherClass)));
+        when(teacherNoteMapper.selectList(any(Wrapper.class))).thenReturn(List.of());
+
+        List<TeacherService.AlertVO> alerts = teacherService.getAlerts(tenantId, "CLASS_1", null, null, 50);
+
+        assertEquals(1, alerts.size());
+        assertEquals(inClass, alerts.get(0).studentUserId());
+    }
+
+    @Test
+    @DisplayName("getAlerts 空班级（无学生）→ 空列表（不全校兜底）")
+    void getAlerts_emptyClass_returnsEmpty() {
+        when(userMapper.selectList(any(Wrapper.class))).thenReturn(List.of());
+
+        List<TeacherService.AlertVO> alerts = teacherService.getAlerts(tenantId, "CLASS_EMPTY", null, null, 50);
+
+        assertTrue(alerts.isEmpty());
+    }
+
+    @Test
+    @DisplayName("getAlerts 未绑定班级（空串）→ 空列表")
+    void getAlerts_blankScope_returnsEmpty() {
+        when(userMapper.selectList(any(Wrapper.class))).thenReturn(List.of());
+
+        List<TeacherService.AlertVO> alerts = teacherService.getAlerts(tenantId, "", null, null, 50);
+
+        assertTrue(alerts.isEmpty());
+    }
+
+    @Test
+    @DisplayName("getAlerts 无 scope（心理老师）→ 全校事件")
+    void getAlerts_noScope_returnsAll() {
+        UUID s1 = UUID.randomUUID();
+        when(riskEventMapper.selectList(any(Wrapper.class))).thenReturn(List.of(alert(s1)));
+        when(teacherNoteMapper.selectList(any(Wrapper.class))).thenReturn(List.of());
+
+        List<TeacherService.AlertVO> alerts = teacherService.getAlerts(tenantId, null, null, null, 50);
+
+        assertEquals(1, alerts.size());
+    }
+
+    // ===== getStats 空范围 =====
+
+    @Test
+    @DisplayName("getStats 空班级范围 → 空统计（不聚合全校数据）")
+    void getStats_emptyScope_returnsEmptyVO() {
+        when(userMapper.selectList(any(Wrapper.class))).thenReturn(List.of());
+
+        TeacherService.StatsVO stats = teacherService.getStats(tenantId, "");
+
+        assertTrue(stats.riskDistribution().isEmpty());
+        assertTrue(stats.classComparison().isEmpty());
+    }
+}

@@ -1,6 +1,6 @@
 # AI 小学生心理辅导系统 - 任务跟踪表
 
-> 创建：2026-07-23 | 更新：2026-08-01（新增 §二十五 配置统一纳管；历史：2026-07-29 独立审计校正）
+> 创建：2026-07-23 | 更新：2026-08-05（**设计文档全面更新：12 份合并文档同步 fix-13 收官（bd9d215）+ CD 门禁（e173df7）+ P1 前端 4 项修复（62bb542），见 §一 DOC-052**；历史：2026-07-28 设计文档整体规整 DOC-025、2026-08-01 §二十五 配置统一纳管、2026-07-29 独立审计校正）
 > 
 > 本表用于跟踪项目各阶段任务的进度和责任人。
 
@@ -17,6 +17,8 @@
 
 **本轮修复批次（fix-01~12）：**
 > fix-01 台账重标（本节）→ fix-02 删世界B → fix-03 加密接线(R-01) → fix-04 监护人同意门禁(R-03) → fix-05 SLA兜底(P-05) → fix-06 多租户拦截器(P-02) → fix-07 弱口令fail-fast(R-04) → fix-08 TLS(R-02) → fix-09 种子数据V27清理(R-05) → fix-10 CI修真(Q-01/Q-03) → fix-11 全量回归+文档同步 → fix-12 孤儿组件逐个裁决。
+>
+> **fix-13 剩余审计问题收官（2026-07-28，16 项全闭环）**：P0-2 限流恒 false 修复+单测 → P0-3/P1-8/P2-16 V32 迁移+密文预算截断+session_summary 加密+_enc 清理 → P0-5 SMS_PROVIDER 默认值统一+logging 醒目标记 → P1-10 监控告警体系（alert-rules 8 规则+Alertmanager 企微应用消息+tts/voice Python metrics 埋点）→ P1-11/12/P2-22 CI 前端覆盖率门禁+Trivy 前端+clean → P1-13/P3-28 JWT iss/aud/jti+token 撤销+DEV_SECRET 隔离 → P1-14 本地 DB 端口 5433→5432 对齐 → P1-15 logback 全局日志脱敏 → P2-18 jacoco 排除 entity 充数+门禁口径 → P2-20 ConversationServiceImpl 占位参数处置+staging 死配置删除 → P2-24/P3-31 tts requirements 上限+Python Dockerfile 加固 → P0-6 ONNX 模型获取脚本+冒烟校验 → P0-4/P1-9 cd.yml rsync 前端+CD 回滚机制 → P2-17/23/26/27/P3-30 文档同步（design/14 保留期 30→180 天、design/12 前端 TS 修正、design/16 审计日志/系统配置 🟩、design/33 保留策略对齐）→ P1-7/P3-29 冻结目录核对（frozen/ 8 份设计文档任务已全部登记于 §二十/§二十一/§二十三 + DESIGN-OVERVIEW v4.0，无需补）。全部经独立验证（后端 mvn 测试 + 前端 tsc/build/vitest + YAML/compose 校验）。
 
 > 说明：§二十三 P0/P1/P2 backlog 中大量 ✅ 实为态③「已编码未接线」孤儿，**逐行裁决归口 fix-12**（与钱敏健逐项确认），本节仅先校正最高信号的失实条目，不在此重复逐行改标。
 
@@ -60,6 +62,9 @@
 | DOC-022 | 更新 BEACON.md/OVERVIEW 引用新结构 | ✅ 完成 | Agent | 2026-07-23 | 2026-07-23 | 修正 6 处断链接 |
 | DOC-023 | Git commit 文档整合变更 | ✅ 完成 | Agent | 2026-07-23 | 2026-07-28 | 已在 0860320 提交，工作区干净 |
 | DOC-024 | 目录结构纠偏：md 拍平至 design/、docx 迁至 doc/ | ✅ 完成 | Agent | 2026-07-23 | 2026-07-23 | 对齐钱敏健原意，STRUCTURE/BEACON/OVERVIEW 同步 |
+| DOC-025 | **设计文档整体规整**：58 份旧文档按使用场景合并为 12 份（01 概述/02 数据库/03 架构/04 部署/05 测试/06 配置与外部服务/07 商业化合规/08 概要/09 学生端上卷/10 学生端下卷/11 老师端/12 家长端）；旧文档（50 份）归档 design/his/；frozen/（34/38-43/58）不合并待后续开发时整合；DESIGN-OVERVIEW v5.0 重写（含编号对照表）；BEACON/STRUCTURE/TASK-TRACKER 引用同步 | ✅ 完成 | Agent | 2026-07-28 | 2026-07-28 | 用户指令：合并分类/最终设计方法输出/旧文档归档/冻结文档不动；编号对照见 DESIGN-OVERVIEW §二 |
+| DOC-026 | doc/ 根目录全量归档：15 份原始 docx + README.md 移入 doc/his/（git mv，doc/ 仅存 his/），废弃作历史材料；design/his/ 15 份 md 来源标注 doc/→doc/his/；BEACON/DESIGN-OVERVIEW/README/STRUCTURE 引用同步 | ✅ 完成 | Agent | 2026-07-29 | 2026-07-29 | 用户指令：doc 下的文档全部归档到 /his，废弃，作为历史材料；COMP-010 报告保留原路径引用（历史快照） |
+| DOC-052 | **设计文档全面更新**：12 份合并文档同步 2026-08-05 三个提交——bd9d215 fix-13 收官（16 项：限流 P0-2/V32 P0-3·P1-8·P2-16/ONNX P0-6/监控 P1-10/CI 门禁 P1-11·12/日志脱敏 P1-15/JWT+撤销 P1-13·P3-28/端口 P1-14/rsync+回滚 P0-4·P1-9）、e173df7 CD 门禁、62bb542 P1 前端 4 项（CSP wasm/FE-2 大屏字段对齐/FE-3 导出当前会话/FE-4 WS 握手 subprotocol 鉴权）。逐份落点：04 部署（CD 回滚/rsync/压测/本地端口/运维）、05 测试（1466 用例/84.3%/门禁口径/SIT）、09 上卷（日志 PII 脱敏/JWT 四要素+撤销/限流防爆破/归口统计）、10 下卷（TTS v3-flash/方言修正/ONNX 脚本）、11 老师端（WS 握手鉴权/QualityPanel/BigScreen/FE 四项）、02 数据库（V32 修正：content_summary 扩 TEXT+僵尸 _enc 列删除）、08 概要（WS 协议/认证安全）、06 配置（ASR 默认 funasr/language_mode 废弃/M5）、01 概述（M5 先行落地注记）、07 合规（日志脱敏双保险）、12 家长端（tokenType=parent_report）；03 架构核对无滞后。数字验证：05 §8.1（1466/84.3%/713）、10 §8.2（43/1/1/8/3=56）、11 §14（12/1/13=26）全部一致 | ✅ 完成 | Agent | 2026-08-05 | 2026-08-05 | 用户指令：结合当前代码的实际实现，根据近期开发的提交情况，全面更新设计文档，将设计文档内容进行细化、补充完善 |
 
 ---
 
@@ -387,10 +392,10 @@
 
 | 任务ID | 任务描述 | 状态 | Sprint |
 |--------|----------|------|--------|
-| TEST-001 | 后端单测覆盖率 → 80%（JaCoCo 门禁） | 🟡 门禁已修真，基线 46%（目标 80%） | A — fix-10 已完成（2026-07-29）：counseling-app report-aggregate verify 阶段生成聚合报告；CI 门禁报告缺失即失败+行覆盖≥40%（当前 46%）；目标随迭代逐步升至 80% |
+| TEST-001 | 后端单测覆盖率 → 80%（JaCoCo 门禁） | ✅ 实际已达（2026-07-28 全量验证：整体行 84.3%，各模块 81.2%~97.6%） | A — fix-10 已修真（2026-07-29）：counseling-app report-aggregate verify 阶段生成聚合报告；CI 门禁报告缺失即失败+行覆盖≥40%。P1 批次补测后实测：api 86.7%/service 81.2%/ai 84.5%/app 85.7%/domain 97.6%，整体指令 85.6%/行 84.3%，1443 测试全绿；门禁阈值可随 CI 同步上调至 80% |
 | TEST-002 | 前端组件测试（Vitest + Testing Library） | ✅ 已完成 | C |
-| TEST-003 | E2E 扩展（12 → 30+ 用例） | ✅ 已完成 | C |
-| TEST-004 | 性能压测基线（k6，100 并发 SSE） | ✅ 完成 | E |
+| TEST-003 | E2E 扩展（12 → 30+ 用例） | ✅ 已完成（实际 tests/e2e/smoke-test.sh 28 个断言，未达 30+ 目标，如实校准） | C |
+| TEST-004 | 性能压测基线（k6，100 并发 SSE） | ✅ 完成（脚本 tests/performance/chat-load.js，需手动 k6 执行） | E |
 | TEST-005 | CI 增强（覆盖率门禁 + 依赖扫描 + 缓存） | ✅ 完成（fix-10，2026-07-29） | A — fix-10 已修真：mvn verify（surefire+failsafe）替代 mvn test；Trivy exit-code=1 阻断 CRITICAL/HIGH；AuthFlowIT 正常执行（CI Docker）/本地 disabledWithoutDocker 优雅跳过；CI 触发分支加入 develop |
 | TEST-006 | 前后端契约测试（OpenAPI + mock 校验） | ⏳ 待开始 | 远期 |
 
@@ -444,7 +449,7 @@
 | 任务ID | 任务描述 | 状态 | Sprint |
 |--------|----------|------|--------|
 | UX-001 | 学生端 onboarding 优化 | ✅ 已完成 | E |
-| UX-002 | 教师端工作台改版 | 📝 设计完成，待实施 | design/35（Sprint E） |
+| UX-002 | 教师端工作台改版 | ✅ 实质完成（WB-001/002/003 + F-3 余量补全，余量见 design/35） | design/35（Sprint E） |
 | UX-003 | 多语言支持（繁体/英文） | ⏳ 待开始 | 远期 |
 | UX-004 | 无障碍增强（WCAG 2.1 AA） | ⏳ 待开始 | 远期 |
 | UX-005 | 动效与微交互（Lottie + 粒子） | 📝 设计完成，待实施 | design/37 §四 |
@@ -590,10 +595,10 @@
 | ORCH-004 | 情绪镜映话术库（情绪×年龄，纳入模板） | 近期 | design/44 P1 | PROF-021 | ✅ 已完成（2026-07-28） |
 | ORCH-005 | 优先级裁决合并 + 冷场(28)/降级(29) 统一入编排 | 近期 | design/44 P1 | PROF-021 | ✅ 已完成（2026-07-28） |
 | WB-001 | 教师工作台首屏（待办+时间线+概况条）+ 预警工作流（认领/处理/关闭 + SLA 逾期提醒） | 近期 | design/35 M1 | UX-002 | ✅ 已完成（2026-07-28：后端 AlertSlaPolicy + 前端 TodayTodoPanel/SLA倒计时列/预警时间线） |
-| WB-002 | 学生详情页统一落地页 + 五角色字段裁剪 + 降噪（合并/聚合/静音） | 近期 | design/35 M2 | UX-002 | ✅ 已完成（2026-07-28：前端详情页 + 服务端角色裁剪 class_teacher 不见风险轨迹/对话摘要） |
-| TOOL-001 | 心理工具箱框架 + 情绪温度计 + 接地 + 正念（呼吸并入）+ 前后心情记录，内容包可离线打开 | 近期 | design/36 M1 | PROD-006 | ✅ 已完成（2026-07-28，ToolboxRegistry+MoodCheckRecorder） |
-| TOOL-002 | SOS 模式 + 安全小岛（断网可打开、热线可拨号，恢复网络 1min 内产 S2 事件） | 近期 | design/36 M2 | PROD-006/007 | ✅ 已完成（2026-07-28，ToolboxRegistry SOS 工具列表） |
-| TTSFX-001 | 情绪信号源统一 + 波波表情状态机 + 基础微交互（气泡/输入/思考中）+ 减弱动效降级 | 近期 | design/37 M1 | UX-005 | ✅ 已完成（2026-07-28，情绪信号源统一入编排） |
+| WB-002 | 学生详情页统一落地页 + 五角色字段裁剪 + 降噪（合并/聚合/静音） | 近期 | design/35 M2 | UX-002 | ✅ 已完成（2026-07-28：前端详情页 + 服务端角色裁剪；**F-3 补齐降噪静音规则 AlertTodoMutePolicy + 个案跟踪标志（免 schema 变更）TDD 全绿**） |
+| TOOL-001 | 心理工具箱框架 + 情绪温度计 + 接地 + 正念（呼吸并入）+ 前后心情记录，内容包可离线打开 | 近期 | design/36 M1 | PROD-006 | ✅ 已完成（2026-07-28，后端 ToolboxRegistry+MoodCheckRecorder；前端 ToolboxPanel/ToolPractice/ChatRoom 入口 TDD 全绿；2026-07-29 补落地步骤内容包 src/data/toolSteps.ts 分步引导，音频/Lottie 余量见 design/36） |
+| TOOL-002 | SOS 模式 + 安全小岛（断网可打开、热线可拨号，恢复网络 1min 内产 S2 事件） | 近期 | design/36 M2 | PROD-006/007 | ✅ 已完成（2026-07-28，后端 SOS 工具列表；前端 SosPanel 纯静态三段式+12355 拨号 TDD 全绿；S2 事件端点/安全小岛创建流程余量见 design/36） |
+| TTSFX-001 | 情绪信号源统一 + 波波表情状态机 + 基础微交互（气泡/输入/思考中）+ 减弱动效降级 | 近期 | design/37 M1 | UX-005 | ✅ 已完成（2026-07-28，情绪信号源统一入编排；**✅ 以后端信号源为准，前端动效余量归 TTSFX-004**） |
 | TTSFX-002 | 风险语音降级 + 预合成话术库 + 缓存（S1 用预合成、CosyVoice2 超时 2s 内切 edge-tts/纯文字） | 近期 | design/37 M2 | PROD-003 | ✅ 已完成（2026-07-28，VoiceDegradationPolicy） |
 | SCALE-002 | 量表任务调度 + 复测 recurrence + 教师端趋势卡片；**施测已定稿暂缓同 SCALE-001（2026-07-28，完成开发不接线，34 头部）** | 近期 | design/34 M2 | AI-009 | ✅ 开发完成（2026-07-28，RecurrenceCalculator，不接线施测） |
 
@@ -603,13 +608,14 @@
 |--------|----------|------|----------|-----------|------|
 | ORCH-006 | 性格层微调并入编排（衔接 design/29 personality_traits） | 近期 | design/44 P2 | PROF-021 | ✅ 已完成（2026-07-28） |
 | ORCH-007 | EMO-001 A/B 版本（不同开场策略）经 PromptVersionService 灰度 | 近期 | design/44 P2 | PROF-021 | ✅ 已完成（2026-07-28） |
-| WB-003 | 个案管理 + 测评管理入口（依赖 SCALE-002） | 近期 | design/35 M3 | UX-002 | ✅ 已完成 |
-| TOOL-003 | 离线检测 UI + 消息队列 + 重放幂等 + 本地对话缓存 | 近期 | design/36 M3 | PROD-007 | ✅ 已完成 |
-| TTSFX-003 | 延迟流水线 + 成就粒子 + 触觉 + 帧率性能自动降级 | 近期 | design/37 M3 | UX-005 | ✅ 已完成 |
-| AB-001 | 实验模型 + 班级整群分桶 + 变体注入点 + 曝光日志 + 个案豁免 | 近期 | design/39 M1 | PROF-020 | ✅ 已完成（2026-07-28） |
-| AB-002 | 指标采集（三表情满意度反馈 + 风险属实勾选 + 各聚合任务） | 近期 | design/39 M2 | PROF-020 | ✅ 已完成（2026-07-28） |
+| WB-003 | 个案管理 + 测评管理入口（依赖 SCALE-002） | 近期 | design/35 M3 | UX-002 | ✅ 已完成（**F-3 补齐预警转派端点 + 五角色默认落地页差异化路由，teacher-web 新增 vitest 测试基建 TDD 全绿**） |
+| TOOL-003 | 离线检测 UI + 消息队列 + 重放幂等 + 本地对话缓存 | 近期 | design/36 M3 | PROD-007 | ⛔ 已回退（2026-07-28 审计：OfflineMessageReplayService 为假接线已清除，目标态保留 design/36） |
+| TTSFX-003 | 延迟流水线 + 成就粒子 + 触觉 + 帧率性能自动降级 | 近期 | design/37 M3 | UX-005 | ✅ 已完成（**后端信号源为准；前端动效余量归 TTSFX-004**） |
+| TTSFX-004 | 37 前端动效余量：BoBoPet 表情状态机接编排信号 + Lottie 动效层（微交互/成就粒子/触觉）+ 帧率降级与减弱动效的前端实现 + 低端机延迟播放 | 近期 | design/37 审计余量（design/37 落地记录） | UX-005/TTSFX-001 | ✅ 已完成（2026-07-28，见 design/37 TTSFX-004 实施记录，TDD 覆盖 ≥80%） |
+| AB-001 | 实验模型 + 班级整群分桶 + 变体注入点 + 曝光日志 + 个案豁免 | 近期 | design/39 M1 | PROF-020 | ⛔ 已清除（2026-07-28 审计判死：注入后零业务消费纯装饰日志，目标态保留 design/39） |
+| AB-002 | 指标采集（三表情满意度反馈 + 风险属实勾选 + 各聚合任务） | 近期 | design/39 M2 | PROF-020 | ⛔ 已清除（2026-07-28 随 AB-001 一并清除，目标态保留 design/39） |
 | BILL-001 | plans/entitlements/subscriptions 模型 + EntitlementFilter（bool 权益）+ 危机链路豁免注解 | 近期 | design/38 M1 | BIZ-004 | ✅ 已完成（2026-07-28） |
-| BILL-002 | 计量事件流 + quota 执行 + 429 头 + 阈值告警 + 学校用量视图 | 近期 | design/38 M2 | BIZ-004 | ✅ 已完成（2026-07-28，合并入 BILL-001 EntitlementChecker） |
+| BILL-002 | 计量事件流 + quota 执行 + 429 头 + 阈值告警 + 学校用量视图 | 近期 | design/38 M2 | BIZ-004 | ⛔ 未实现（2026-07-28：quota 代码按 YAGNI 清除，仅 bool 权益保留于 EntitlementChecker；接入计量后按 design/38 重建） |
 
 ### 远期（规模化 / 采购 / 版权 / 企业认证触发）
 
@@ -647,11 +653,11 @@
 
 | 任务ID | 阶段任务 | 优先级 | 来源设计 | 关联主任务 | 状态 |
 |--------|----------|--------|----------|-----------|------|
-| PEVAL-001 | 接线未调用的 evaluateConversationQuality 到会话结束异步流程 + 落库 prompt_eval_result（四维分+版本+人群维度） | P0 近期 | design/45 P0 | AI-002/PROF-021 | ✅ 已完成（2026-07-28） |
+| PEVAL-001 | 接线未调用的 evaluateConversationQuality 到会话结束异步流程 + 落库 quality_scores（四维分+版本；实际表名 quality_scores（V19），非早期规划的 prompt_eval_result） | P0 近期 | design/45 P0 | AI-002/PROF-021 | ✅ 已完成（2026-07-28） |
 | PEVAL-002 | 补全 EMO-001 模板正文并纳入 PromptVersionService（配合 ORCH-001） | P0 近期 | design/45 P0 | PROF-021 | ✅ 已完成（2026-07-28） |
-| PEVAL-003 | 模板矩阵登记+版本命名规范 + 红队护栏用例集资产化 + 改版三门禁（红队/审校/eval 不回退） | P1 近期 | design/45 P1 | AI-005 | ✅ 已完成（2026-07-28） |
+| PEVAL-003 | 模板矩阵登记+版本命名规范 + 红队护栏用例集资产化 + 改版三门禁（红队/审校/eval 不回退） | P1 近期 | design/45 P1 | AI-005 | ✅ 已完成（2026-07-28；G-1 补齐门禁接线：RedTeamRegressionRunner 静态回归+activateVersion 三门禁+audit_logs 审批留痕，护栏 14 条/6 类，测试 55 用例全绿） |
 | PEVAL-004 | 评估人群下钻看板 + 提示词 metrics + 灰度分阶段放量/自动回滚 + LLM-as-Judge κ 校准 | P2 近期偏后 | design/45 P2 | AI-003 | ✅ 已完成（2026-07-28） |
-| PROF-022 | 画像字段加 provenance/confidence/updated_at/decay 元数据 + 画像→StrategyProfile 结构化决策接线（低置信不参与） | P0 近期 | design/46 P0 | PROF-021/AI-008 | ✅ 已完成（2026-07-28） |
+| PROF-025 | 画像字段加 provenance/confidence/updated_at/decay 元数据 + 画像→StrategyProfile 结构化决策接线（低置信不参与）；**原名 PROF-022，2026-07-28 审计发现与 L220 初高中学段适配挂账同号，改 PROF-025 消歧** | P0 近期 | design/46 P0 | PROF-021/AI-008 | ✅ 已完成（2026-07-28） |
 | PROF-023 | 画像合并门控（置信加权+冲突检测+时效衰减）+ 量表结果回写画像 + 质量评估四维 | P1 近期 | design/46 P1 | AI-009 | ✅ 已完成（2026-07-28） |
 | PROF-024 | 画像效果回收（有/无画像会话质量对比接 39/45）+ 无效维度降权自校准 + 教师侧脱敏摘要与订正回流 | P2 近期偏后 | design/46 P2 | PROF-020 | ✅ 已完成（2026-07-28） |
 | VCL-001 | 语音情绪映射进 44 currentEmotion 驱动共情策略 + 会话结束聚合回注画像 emotionBaseline | P0 近期 | design/47 P0 | AI-007/PROF-021 | ✅ 已完成（2026-07-28） |
@@ -662,14 +668,14 @@
 | TMATCH-003 | 音色效果回收（完成率/切换/参与度）+ 会话内稳定性 + 匹配规则 A/B 进化 | P2/远期 | design/48 P2/P3 | PROF-020 | ✅ 已完成（2026-07-28） |
 | KB-101 | 知识内容首批生产（CBT/SEL/PFA/危机/工具箱，结构化 02/03/36）+ RAG Advisor 接入对话主线（场景触发+年龄过滤+不覆盖安全） | P0 近期 | design/49 P0 | AI-006 | ✅ 已完成（2026-07-28）：62 条语料解析+幂等入库机制（`POST /api/v1/knowledge/corpus`，危机类 10 条缓入待 KB-102）+ `RagAdvisorService` 接主线（场景触发/grade_band 近似过滤/危机双保险/失败安全），解 AI-006 门禁，见 design/49 §6.5 |
 | KB-102 | 审核工作流状态机+门禁 + 知识条目元数据增强 + 危机内容与 04/14 单一事实源打通 | P1 近期 | design/49 P1 | AI-006 | ✅ 已完成（2026-07-28，ReviewWorkflowStateMachine+ReviewGateValidator+KnowledgeMetadata） |
-| KB-103 | 混合检索 RRF（向量0.6+关键词0.4，落地 15 未实现项）+ groundedness 回收+未命中查询补全 + 语义分块优化 | P2/远期 | design/49 P2/P3 | AI-006 | ✅ 已完成（2026-07-28） |
+| KB-103 | 混合检索（向量+关键词双路 RRF 融合，实际为 RRF 排序而非加权求和）+ groundedness 回收+未命中查询补全 + 语义分块优化 | P2/远期 | design/49 P2/P3 | AI-006 | ✅ 已完成（2026-07-28；审计发现 fuseRRF 仅测试调用未接主线，已于后续审计修复接入 RagAdvisorService.buildRagContext：向量路+关键词路各 top5 → RRF 融合 → 危机隔离/年级段过滤 → top3，关键词路异常降级纯向量，17 用例绿） |
 | MEM-101 | **更正 AI-008 状态**（已在十七完成）+ 记忆→画像回注（growthTrack/socialGraph，provenance=memory） | P0 近期 | design/50 P0 | AI-008 | ✅ 已完成（2026-07-28） |
 | MEM-102 | recurring_theme 主题演化（聚类+反思）+ 相关性召回升级（向量+重要性+时效+recurring）+ MEM-CTX+continuity 接 45 | P1 近期 | design/50 P1 | AI-008 | ✅ 已完成（2026-07-28，MemoryRelevanceScorer+ThemeEvolutionEngine） |
 | MEM-103 | 记忆与风险纵向关联（负面主题→关注信号，非实时报警）+ 遗忘策略升级（时效/敏感/被遗忘权）+ 双向互哺权重调优 | P2/远期 | design/50 P2/P3 | AI-008 | ✅ 已完成（2026-07-28） |
 
 ### design/51~53 分析文档衍生（2026-07-28 新增，✅ 钱敏健 2026-07-28 全部确认）
 
-> 背景：design/51（横向断链）/52（核心板块心理深化）/53（全板块设计-实现脱节）为分析型文档。其优化方向**绝大多数映射到上方已登记 ID**（ORCH-001~004/PEVAL-001/KB-101/PROF-022/WB-001/MEM-101~102/TMATCH-001/STATE-002~003/BILL-*/SCALE-*/AB-*），不重复登记。下表仅登记 design/52 衍生的**真正新增**项，**2026-07-28 钱敏健全部确认**，状态统一为 ⏳ 待实施（未开发）。总前提：“双世界架构”（世界A线上单 prompt vs 世界B 孤儿 Agent 编排）——见 design/52 〇。**DEC-CBT 重新决策：删除世界 B**（钱敏健 2026-07-29，推翻原「路径1激活」）——世界B 整链死代码、与 SSE 流式冲突、无接线价值，fix-02 删除，线上保留世界A 单 prompt 主线。
+> 背景：design/51（横向断链）/52（核心板块心理深化）/53（全板块设计-实现脱节）为分析型文档。其优化方向**绝大多数映射到上方已登记 ID**（ORCH-001~004/PEVAL-001/KB-101/PROF-025/WB-001/MEM-101~102/TMATCH-001/STATE-002~003/BILL-*/SCALE-*/AB-*），不重复登记。下表仅登记 design/52 衍生的**真正新增**项，**2026-07-28 钱敏健全部确认**，状态统一为 ⏳ 待实施（未开发）。总前提：“双世界架构”（世界A线上单 prompt vs 世界B 孤儿 Agent 编排）——见 design/52 〇。**DEC-CBT 重新决策：删除世界 B**（钱敏健 2026-07-29，推翻原「路径1激活」）——世界B 整链死代码、与 SSE 流式冲突、无接线价值，fix-02 删除，线上保留世界A 单 prompt 主线。
 
 | 任务ID | 阶段任务 | 优先级 | 来源设计 | 依赖 | 状态 |
 |--------|----------|--------|----------|------|------|
@@ -771,11 +777,11 @@
 | 42 | 部署架构升级 | 🟢 | 近期已深化（远期）；维护 | P2 | Agent | 🟢 维护 |
 | 43 | 家长端小程序化 | 🟢 | 近期已深化（远期）；随 26 维护 | P2 | Agent | 🟢 维护 |
 | 44 | 个性化提示词动态编排引擎 | 🟢 | 编排核心；DEC-CBT 世界B收敛对齐（ORCH 策略层并入世界B链） | **P0 关联** | Agent | 🟢 维护 |
-| 45 | 提示词工程体系深化 | 🟢 | 近期已深化；随 02/18 维护 | P1 | Agent | 🟢 维护 |
+| 45 | 提示词工程体系深化 | 🟢 | 近期已深化；随 02/18 维护 | P1 | Agent | 🟢 维护（G-1 落地 P1：模板矩阵/红队门禁/三门禁审批留痕，2026-07-28） |
 | 46 | 学生画像自动化迭代闭环 | 🟢 | 近期已深化；随 23/29 维护 | P1 | Agent | 🟢 维护 |
 | 47 | 语音情感分析数据闭环 | 🟢 | 近期已深化；与 54 去重对齐 | P1 | Agent | 🟢 维护 |
 | 48 | 多音色音调自适应匹配 | 🟢 | 近期已深化；随 37 维护 | P1 | Agent | 🟢 维护 |
-| 49 | 心理知识库建设深化 | 🟢 | 近期已深化；与 15 对齐 | P1 | Agent | 🟢 维护 |
+| 49 | 心理知识库建设深化 | 🟢 | 近期已深化；与 15 对齐 | P1 | Agent | 🟢 维护（G-2 落地运营侧采编工作流：EditorialWorkflowService 四动作编排+缺口报表+editorial 端点，2026-07-28） |
 | 50 | 长期记忆增强系统 | 🟢 | 近期已深化；维护 | P1 | Agent | 🟢 维护 |
 | 51 | 横向断链分析 | 🟢 | 分析型，本轮横向基准；维护 | 基准 | Agent | 🟢 维护 |
 | 52 | 核心功能板块心理深化 | 🟢 | 分析型，DEC-CBT 已决策；P0 深化直接落 02/03/04/13/14 | 基准 | Agent | 🟢 维护 |
@@ -788,18 +794,69 @@
 > 2. **虚假设计未落地重点**（承 51-53）：世界B Agent 编排 / ConversationStateManager / evaluateSessionAsync / buildRagContext / 语言模板路由均「已建零调用」——深化时须在对应文档（13/03/04/40/49/29）显式标注「已实现未接线」，避免误读为已生效。
 > 3. 本次仅深化设计与定级，**未进行任何开发、未做 git 提交**。
 
-## 二十五、配置统一纳管（design/56）
+## 二十五、配置统一纳管（design/57）
 
-> 背景：配置分散于环境变量、application.yml、Python 硬编码、前端 TypeScript 四处，存在前后端阈值不同步、TTS 音色矩阵改参数需改代码发版、引导脚本运营不可调等痛点。本专题统一纳管，实现"改配置不改代码"。
-> 设计文档：`design/56_配置统一纳管设计.md`（2026-08-01）
+> 背景：配置分散于环境变量、application.yml、Python 硬编码、前端 TypeScript 四处，存在前后端阈值不同步、TTS 音色矩阵改参数需改代码发版、引导脚本运营不可调等痛点。本专题统一纳管，实现“改配置不改代码”。
+> 设计文档：`design/57_配置统一纳管设计.md`（2026-08-01 创建，2026-07-28 v2 更新）
+> v2 更新要点：对齐 TTS v4 方言重构（native/instruct 双模式）、ASR-SER 解耦、声纹 remote 模式、TTS 模型 v3-flash、Dockerfile 影响分析
 
 | 任务ID | 任务描述 | 优先级 | 状态 | 备注 |
 |--------|----------|--------|------|------|
-| CFG-001 | 后端 API + 前端注入：application.yml 新增 system-config 节点 + SystemConfigController（GET /api/v1/system/config）+ 前端 remote.ts 启动加载 + 声纹阈值去重 | P0 | ⏳ 待实施 | design/56 M1 |
-| CFG-002 | TTS 配置外置：新建 tts-service/config.yaml（音色矩阵+方言+情感 Instruct）+ app.py 加载改造 + 环境变量覆盖 | P1 | ⏳ 待实施 | design/56 M2 |
-| CFG-003 | Voice 配置外置：新建 voice-service/config.yaml + app.py 加载改造 | P2 | ⏳ 待实施 | design/56 M3 |
-| CFG-004 | 文档同步：.env.example 补注释 + DEPLOY-GUIDE 更新配置变更流程 + design/33 补配置测试点 | P2 | ⏳ 待实施 | design/56 M4 |
+| CFG-001 | **M1 后端 API**：application.yml 新增 `mindsafe.system-config` 节点（voiceprint/wakeWord/tts/guideScripts）+ 新增 SystemConfigController（GET /api/v1/system/config，permitAll，Cache-Control 5min） | P0 | ✅ 已完成 | design/57 M1①②；TDD 7 个测试全绿 |
+| CFG-002 | **M1 前端注入**：新建 `config/remote.ts`（initRemoteConfig + getConfigValue）+ main.tsx 启动加载（3s AbortController 超时静默降级）+ Security 白名单 | P0 | ✅ 已完成 | design/57 M1③；12 个测试全绿 |
+| CFG-003 | **M1 声纹阈值统一管控**：useVoiceprint.ts 改从 getConfigValue() 读取 local 阈值（0.70），保留 voiceprint.ts 为 fallback；引导脚本改从远程读取 | P0 | ✅ 已完成 | design/57 M1④；影响 VoiceLoginOverlay + voiceprintStore；578 个前端测试全绿 |
+| CFG-004 | **M2 TTS 配置外置**：新建 `tts-service/config.yaml`（7 音色 + 8 方言 native/instruct + 10 情感 + native_dialect_voices）+ app.py 加载改造（保留硬编码 fallback） | P1 | ✅ 已完成 | design/57 M2①②；11 个配置测试全绿 |
+| CFG-005 | **M2 部署链路**：Dockerfile 增加 `COPY config.yaml` + docker-compose 透传 DASHSCOPE_TTS_MODEL + .env.example 补变量 | P1 | ✅ 已完成 | design/57 M2③④ |
+| CFG-006 | **M2 验证**：35 个 Python TTS 测试全绿（test_app 24 + test_config 11） | P1 | ✅ 已完成 | design/57 M2⑤ |
+| CFG-007 | **M3 Voice 配置外置**：新建 `voice-service/config.yaml` + `config.py`（独立模块，解耦重量级依赖）+ app.py 加载改造 + Dockerfile COPY | P2 | ✅ 已完成 | design/57 M3；8 个配置测试全绿 |
+| CFG-008 | **M4 文档同步**：.env.example 补 DASHSCOPE_TTS_MODEL + DEPLOY-GUIDE 配置变更流程 + design/57 状态更新 | P2 | ✅ 已完成 | design/57 M4 |
+
+---
+
+## 二十六、审计缺口登记（design/13 + design/20 篇审计，2026-07-28）
+
+> 背景：13/20 两篇深度审计（设计完善度/代码达标度/测试覆盖三维度）修复完成后，遗留 3 项功能/测试缺口 + 2 项历史对标审计残留项，按优先级登记如下。优先级判据同 §二十三：**安全/合规 > 对话产品力 > 教师效率 > 学生体验 > 商业化 > 规模化架构**。
+
+| 任务ID | 任务描述 | 优先级 | 来源 | 状态 | 备注 |
+|--------|----------|--------|------|------|------|
+| ESC-001 | **/escalate 转人工端点 + 学生端 safety_mode 交互**：学生主动求助（"我想找老师"）触发升级端点（写 risk_event + 通知教师 + 会话置 escalated）+ 前端安全模式界面（热线/找老师入口）。当前仅系统侧 RED 自动升级（RISK-201），学生**主动**求助通道缺失 | **P0 安全**（危机兜底通道） | design/20 §10.1 F-03 / §10.2 升级时序（文档标 ⬜ 属实）；**专题设计见 frozen/58** | 🔒 冻结（远期任务规划，2026-07-28 钱敏健定级；设计文档已产出并移入 frozen/，解冻实施前须确认） | 与 M2-006（红色风险教师接管，✅ 已完成）互补：M2-006 为系统自动升级，本项为主动求助入口 |
+| TEST-007 | TeacherService 测试覆盖 33.2% → ≥80%（属教师管理域） | P2 | design/05 责任范围 | ⏳ 待实施 | 13/20 审计按范围纪律未扩入；design/05 篇审计时激活 |
+| TEST-008 | 量表发放/答题/结果流程（Service+Controller）补齐——评分引擎（AssessmentScoringEngine/PHQ-A·GAD-7/RecurrenceCalculator）已完备 | —（不单独排期） | design/20 §10.1 F-06 | 🔒 挂起 | **与 SCALE-001/002 施测接线暂缓决策同一门禁**（未成年人测评合规，待钱敏健再决策），不重复立项 |
+| DOC-051 | QuickStart 快速启动指南（新人 5 分钟跑通：docker compose up + 前端 dev） | P3 远期 | 全代码库对标审计 P2-6 | ⏳ 待实施 | 残留项核实：CONTRIBUTING/QUICKSTART 均不存在 |
+| UX-006 | ChatRoom.tsx 拆分（827 行 → useSseStream / useChatSession hooks 抽离） | P2 | 全代码库对标审计 P2-3 | ⏳ 待实施 | 残留项核实：869→827 行小幅改善，SSE/TTS/情绪/满意度仍混杂单组件 |
+
+> 说明：
+> 1. 上一轮全代码库对标审计（"明天上线 1 所试点校"标准）其余 P1/P2 项已核实**均已修复**：ErrorBoundary 三端 ✅ / db-backup 定时容器 ✅ / api.ts 类型化（0 处 any）✅ / DEPLOY-GUIDE §十监控启动说明 ✅ / application.yml DEBUG→INFO ✅ / nginx client_max_body_size ✅ / parent-h5 vitest ✅ / ConversationServiceImpl 813→777 行（改善中，随迭代继续拆分）。
+> 2. 本次仅登记任务与排序，**未进行任何开发、未做 git 提交**。
 
 ---
 
 _本表由 Agent 维护，每次任务变更时更新。_
+
+---
+
+## 二十七、深度审计过度设计待议项（2026-08-04，四 Agent 独立审计产出）
+
+> 背景：四路独立深度审计（后端/前端/部署/设计一致性）发现多项「为解决问题不断叠加设计导致复杂度失控」的过度设计。按钱敏健决策，**全部登记为待议项，反复讨论后再定处置**（保留/简化/删除），本批次不实施。
+> 议决机制：后续每轮讨论会逐项评估——证据（是否有真实数据支撑参数）> 简化收益 > 拆除成本；待议期间维持现状运行。
+
+| 任务ID | 待议项 | 现状 | 复杂度症状 | 候选方向 | 状态 |
+|--------|--------|------|-----------|----------|------|
+| OD-001 | **声纹双模式（local WASM + remote）** | 前端 WeSpeaker WASM + 服务端 256 维比对两套并存，阈值前后端各一份（0.70/0.55） | 双链路维护成本×2；阈值双源已自认缺乏统一管控 | 只保留 remote 模式，删前端 WASM 链路，收敛单一权威阈值 | 🟡 待议 |
+| OD-002 | **通知链路五层叠加** | WebSocket 推送 + DB 通知 + WeCom 运维告警 + SMS + SLA 扫描器，职责交错 | SLA 超时只告运维不告教师；各层无对账 | 简化为 risk_events 落库 → outbox → 教师 WS + 超时升级三层 | 🟡 待议 |
+| OD-003 | **发布三门禁运行时常驻** | 红队护栏 14 条 + 人工复核 + eval 分数门禁在 TemplateMatrixRegistry 运行时承载 | 门禁结果不影响线上行为属仪式性代码 | 移到 CI/CD 脚本，运行时只留读取 | 🟡 待议 |
+| OD-004 | **画像合并门控参数缺实证** | ProfileMergeGate EMA/衰减/冲突三策略 + 0.4 冲突阈值 + 60 天半衰期 | 小样本无实证依据，参数拍脑袋 | 先简单加权平均，待真实数据回流再复杂化 | 🟡 待议 |
+| OD-005 | **双层输出安全审查** | OutputContentFilter（规则）+ OutputReviewService（LLM 复审）职责重叠 | 每次对话多一次 LLM 往返 | 合并单一审查管线 | 🟡 待议 |
+| OD-006 | **手工 eq(tenantId) 与拦截器双写** | 24 处 .last() 裸 SQL 面靠人肉保证 + TenantLineInnerInterceptor | 拦截器未覆盖面无 fail-fast | 只保留拦截器 + fail-fast，手工 eq 收敛为豁免清单 | 🟡 待议 |
+| OD-007 | **备份双轨** | db-backup 容器每 24h pg_dump + backup.sh 宿主机 cron 同写 daily/ | 无互斥无协调，纯重复 | 二选一作为唯一事实源 | 🟡 待议 |
+| OD-008 | **上帝类拆分** | TeacherService 748 行 / ConversationServiceImpl 787 行 / AuthController 475 行 | 职责跨域，新增需求加速腐化 | 按域拆分（统计/预警/个案/报表） | 🟡 待议（随迭代渐进，不一次重构） |
+| OD-009 | **prepare-funasr.sh manifest 版本管理** | EXPECTED_MODELS 全 pin "master"，python3 JSON 解析替代 jq | 版本比较恒真，复杂绕远 | 简化或删版本比较 | 🟡 待议 |
+| OD-010 | **TTS 音色×方言×情感矩阵收敛** | 7 音色 × 8 方言 × 10 情感，但仅 1 emotion_capable + 1 dialect_capable | 矩阵 90% 死配置；persona_gender 恒传 female | 按实际能力裁剪矩阵，死配置清理 | 🟡 待议（与 design/56 对齐） |
+| OD-011 | **init-school.sh 三重保险** | ON CONFLICT 幂等 + 随机密码 + must_change_password | 一次性运维脚本过度防御 | 简化保留幂等即可 | 🟡 待议 |
+| OD-012 | **tts 离线 wheels 强绑定 --no-index** | 新增依赖忘记 refresh-wheels.sh 构建即失败 | 单点人工流程无兜底提示 | 构建失败时给出明确提示或 fallback 源 | 🟡 待议 |
+| OD-013 | **Grafana 面板先建后补** | LLM 面板有真实指标，TTS 面板无指标即上线（空面板） | 指标缺失补丁未闭环 | 删空面板或补指标（P1-7 已另行处理） | 🟡 待议 |
+| OD-014 | **声纹阈值 0.55 双源**（局部关联 OD-001） | 后端 0.55 与前端 0.70 两套参数 | 同一决策两处定义 | 随 OD-001 一并收敛 | 🟡 待议 |
+
+> 说明：
+> 1. 以上仅登记，**本批次不实施**；修复批次只处理审计 P0/P1 与僵死代码，不触碰本表各项。
+> 2. 与 OD 相关的紧急修复（声纹 1:N 比对/XFF 伪造等 P0）已另立任务在 §二十八修复，不阻塞本表讨论。

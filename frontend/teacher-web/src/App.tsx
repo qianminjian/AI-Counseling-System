@@ -6,6 +6,7 @@ import Dashboard from './pages/Dashboard'
 import BigScreen from './pages/BigScreen'
 import ChangePassword from './pages/ChangePassword'
 import { getToken, clearToken } from './api'
+import { defaultLandingFor, type LandingPage } from './utils/landing'
 
 const MUST_CHANGE_KEY = 'mindsafe_must_change_password'
 const DARK_MODE_KEY = 'mindsafe_dark_mode'
@@ -49,6 +50,9 @@ export default function App() {
     }
   })
 
+  // 落地页差异化路由（design/35 §3.1）：管理者默认大屏，教师默认工作台
+  const [view, setView] = useState<LandingPage>(() => defaultLandingFor(user?.userType))
+
   // 数据大屏路由（全屏展示，需已登录）
   if (window.location.pathname === '/bigscreen' && getToken()) {
     return <ConfigProvider locale={zhCN} theme={{ algorithm: theme.darkAlgorithm }}><BigScreen /></ConfigProvider>
@@ -58,6 +62,7 @@ export default function App() {
     // 持久化 mustChangePassword 标记（刷新页面后仍需强制改密）
     setMustChange(userData.mustChangePassword)
     setUser(userData)
+    setView(defaultLandingFor(userData.userType))
   }
 
   const handleLogout = () => {
@@ -80,6 +85,10 @@ export default function App() {
           userName={user.displayName}
           onChanged={handlePasswordChanged}
         />
+      ) : view === 'bigscreen' ? (
+        <div style={{ background: '#0a1628' }}>
+          <BigScreen onExit={() => setView('dashboard')} />
+        </div>
       ) : (
         <Dashboard user={user} onLogout={handleLogout} darkMode={darkMode} toggleDark={toggleDark} />
       )}

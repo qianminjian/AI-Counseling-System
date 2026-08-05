@@ -72,6 +72,36 @@ public class TeacherAlertController {
         return ApiResponse.ok(null);
     }
 
+    /** 转派预警（design/35 §4.1：重置认领不重置 SLA，目标教师获得新预警） */
+    @PostMapping("/alerts/{id}/transfer")
+    public ApiResponse<Void> transferAlert(@PathVariable UUID id,
+                                           @RequestBody Map<String, String> body,
+                                           Authentication auth) {
+        TenantContext ctx = (TenantContext) auth.getDetails();
+        UUID userId = (UUID) auth.getPrincipal();
+        String target = body.get("targetTeacherId");
+        if (target == null || target.isBlank()) {
+            throw new IllegalArgumentException("缺少目标教师 targetTeacherId");
+        }
+        String note = body.get("note");
+        teacherService.transferAlert(ctx.tenantId(), id, userId, UUID.fromString(target), note);
+        auditLogService.log(ctx.tenantId(), userId, "ALERT_TRANSFER", "risk_event", id, target);
+        return ApiResponse.ok(null);
+    }
+
+    /** 设置学生“已在个案跟踪中”标志（design/35 §4.2 降噪第 3 条：S2/S3 只进时间线） */
+    @PutMapping("/teacher/students/{studentId}/case-tracking")
+    public ApiResponse<Void> setCaseTracking(@PathVariable UUID studentId,
+                                             @RequestBody Map<String, Object> body,
+                                             Authentication auth) {
+        TenantContext ctx = (TenantContext) auth.getDetails();
+        UUID userId = (UUID) auth.getPrincipal();
+        boolean enabled = Boolean.TRUE.equals(body.get("enabled"));
+        teacherService.setCaseTracking(ctx.tenantId(), studentId, userId, enabled);
+        auditLogService.log(ctx.tenantId(), userId, "CASE_TRACKING_SET", "student", studentId, String.valueOf(enabled));
+        return ApiResponse.ok(null);
+    }
+
     /** DATA-004：安排回访（处置后计划回访确认效果） */
     @PostMapping("/alerts/{id}/schedule-followup")
     public ApiResponse<Void> scheduleFollowUp(@PathVariable UUID id,

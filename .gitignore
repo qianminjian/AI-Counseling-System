@@ -30,6 +30,8 @@ venv/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+# tts 离线 wheels（可再生产物，不入库；需要时跑 refresh-wheels.sh 生成）
+backend/tts-service/wheels/
 
 # ===== Node =====
 node_modules/

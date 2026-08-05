@@ -1,10 +1,10 @@
 #!/bin/bash
 # MindSafe 学校初始化工具
 # 用法：./deploy/init-school.sh <学校名称> <学校编码> <管理员姓名> [管理员密码]
-# 示例：./deploy/init-school.sh "南宁市青秀区实验小学" "NN-QX-001" "张老师" "Init@2026"
+# 示例：./deploy/init-school.sh "南宁市青秀区实验小学" "NN-QX-001" "张老师"
 #
-# 环境变量（可选）：
-#   MINDSAFE_SERVER  - SSH 目标（默认 root@116.8.109.229）
+# 环境变量：
+#   MINDSAFE_SERVER  - SSH 目标（必填，如 root@10.0.1.50；不设默认值避免误连生产）
 #   MINDSAFE_PG_CONTAINER - PostgreSQL 容器名（默认 mindsafe-pg）
 #   MINDSAFE_DB_NAME - 数据库名（默认 mindsafe）
 #   MINDSAFE_DB_USER - 数据库用户（默认 mindsafe）
@@ -23,7 +23,11 @@
 #   - 已部署 MindSafe 后端（Flyway 迁移已完成）
 set -euo pipefail
 
-SERVER="${MINDSAFE_SERVER:-root@116.8.109.229}"
+SERVER="${MINDSAFE_SERVER:-}"
+if [ -z "${SERVER}" ]; then
+  echo "ERROR: 必须通过 MINDSAFE_SERVER 指定 SSH 目标（如 MINDSAFE_SERVER=root@10.0.1.50），不设默认值避免误连生产"
+  exit 1
+fi
 CONTAINER="${MINDSAFE_PG_CONTAINER:-mindsafe-pg}"
 DB_NAME="${MINDSAFE_DB_NAME:-mindsafe}"
 DB_USER="${MINDSAFE_DB_USER:-mindsafe}"
@@ -31,14 +35,20 @@ DB_USER="${MINDSAFE_DB_USER:-mindsafe}"
 # ===== 参数校验 =====
 if [ $# -lt 3 ]; then
   echo "用法：$0 <学校名称> <学校编码> <管理员姓名> [管理员密码]"
-  echo "示例：$0 \"南宁市青秀区实验小学\" \"NN-QX-001\" \"张老师\" \"Init@2026\""
+  echo "示例：MINDSAFE_SERVER=root@10.0.1.50 $0 \"南宁市青秀区实验小学\" \"NN-QX-001\" \"张老师\""
   exit 1
 fi
 
 SCHOOL_NAME="$1"
 SCHOOL_CODE="$2"
 ADMIN_NAME="$3"
-ADMIN_PASSWORD="${4:-Init@2026}"
+# 未指定密码时随机生成（首次登录强制改密，must_change_password=true）
+if [ $# -ge 4 ]; then
+  ADMIN_PASSWORD="$4"
+else
+  ADMIN_PASSWORD=$(openssl rand -base64 12)
+  echo "🔑 未指定管理员密码，已随机生成（请妥善保管，首次登录需改密）：${ADMIN_PASSWORD}"
+fi
 
 echo "🏫 学校初始化"
 echo "   学校名称：$SCHOOL_NAME"

@@ -16,24 +16,32 @@ import java.util.UUID;
  * JWT 令牌工具（双 Token 模式：access 2h + refresh 7d；另有声纹设备凭证 90d）
  * <p>
  * 生产环境必须配置 mindsafe.jwt.secret（≥ 32 字符），否则启动失败。
+ * <p>
+ * AUDIT-P1-13：token 携带 iss/aud/jti（黑名单按 jti 粒度）；AUDIT-P3-28：开发密钥不再硬编码，
+ * 改由配置项 mindsafe.jwt.dev-secret 提供（仅非 prod 生效）。
  */
 @Component
 public class JwtTokenProvider {
 
     private static final Logger log = LoggerFactory.getLogger(JwtTokenProvider.class);
-    private static final String DEV_SECRET = "mindsafe-dev-secret-key-at-least-256-bits-long!!";
+    private static final String AUDIENCE = "mindsafe-api";
 
     private final SecretKey key;
+    private final String issuer;
     private final long accessExpirationMs;
     private final long refreshExpirationMs;
     private final long voiceCredentialExpirationMs;
+    private final long parentReportExpirationMs;
 
     public JwtTokenProvider(
             @Value("${mindsafe.jwt.secret:}") String secret,
             @Value("${mindsafe.jwt.access-expiration-ms:7200000}") long accessExpirationMs,
             @Value("${mindsafe.jwt.refresh-expiration-ms:604800000}") long refreshExpirationMs,
             @Value("${mindsafe.jwt.voice-credential-expiration-ms:7776000000}") long voiceCredentialExpirationMs,
-            @Value("${spring.profiles.active:dev}") String activeProfile) {
+            @Value("${mindsafe.jwt.parent-report-expiration-ms:604800000}") long parentReportExpirationMs,
+            @Value("${spring.profiles.active:dev}") String activeProfile,
+            @Value("${mindsafe.jwt.dev-secret:}") String devSecret,
+            @Value("${mindsafe.jwt.issuer:mindsafe}") String issuer) {
 
         // 生产环境强制配置密钥
         if (secret == null || secret.isBlank()) {
@@ -42,17 +50,25 @@ public class JwtTokenProvider {
                         "[FATAL] mindsafe.jwt.secret 未配置！生产环境禁止使用默认密钥。" +
                         "请设置环境变量 MINDSAFE_JWT_SECRET（≥ 32 字符随机串）");
             }
-            log.warn("[JWT] 使用开发默认密钥，仅限本地开发！生产必须配置 mindsafe.jwt.secret");
-            secret = DEV_SECRET;
+            // AUDIT-P3-28：开发密钥从配置读取（application.yml mindsafe.jwt.dev-secret），不再硬编码于代码
+            if (devSecret == null || devSecret.isBlank() || devSecret.length() < 32) {
+                throw new IllegalStateException(
+                        "[FATAL] mindsafe.jwt.dev-secret 未配置或长度不足 32 字符！" +
+                        "本地开发请通过 MINDSAFE_JWT_DEV_SECRET 或 application.yml 配置");
+            }
+            log.warn("[JWT] 使用开发密钥（dev-secret），仅限本地开发！生产必须配置 mindsafe.jwt.secret");
+            secret = devSecret;
         } else if (secret.length() < 32) {
             throw new IllegalStateException(
                     "[FATAL] mindsafe.jwt.secret 长度不足 32 字符，不安全！");
         }
 
         this.key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
+        this.issuer = issuer;
         this.accessExpirationMs = accessExpirationMs;
         this.refreshExpirationMs = refreshExpirationMs;
         this.voiceCredentialExpirationMs = voiceCredentialExpirationMs;
+        this.parentReportExpirationMs = parentReportExpirationMs;
     }
 
     /** 生成 Access Token（2h） */
@@ -70,6 +86,11 @@ public class JwtTokenProvider {
         return buildToken(userId, userType, tenantId, "voice_credential", voiceCredentialExpirationMs);
     }
 
+    /** 生成家长报告链接 token（默认 7d，SEC-006）：独立 tokenType，与学生 access token 区分，防学生自持 token 调家长接口 */
+    public String generateParentReportToken(UUID studentUserId, UUID tenantId) {
+        return buildToken(studentUserId, "parent", tenantId, "parent_report", parentReportExpirationMs);
+    }
+
     private String buildToken(UUID userId, String userType, UUID tenantId, String tokenType, long ttl) {
         Date now = new Date();
         return Jwts.builder()
@@ -77,6 +98,10 @@ public class JwtTokenProvider {
                 .claim("userType", userType)
                 .claim("tenantId", tenantId.toString())
                 .claim("tokenType", tokenType)
+                // AUDIT-P1-13：jti（黑名单粒度）/ iss / aud
+                .id(UUID.randomUUID().toString())
+                .issuer(issuer)
+                .audience().add(AUDIENCE).and()
                 .issuedAt(now)
                 .expiration(new Date(now.getTime() + ttl))
                 .signWith(key)
@@ -86,6 +111,7 @@ public class JwtTokenProvider {
     public Claims parseToken(String token) {
         return Jwts.parser()
                 .verifyWith(key)
+                .requireIssuer(issuer)
                 .build()
                 .parseSignedClaims(token)
                 .getPayload();
@@ -130,6 +156,16 @@ public class JwtTokenProvider {
         }
     }
 
+    /** 验证是否为家长报告链接 token（SEC-006） */
+    public boolean isParentReportToken(String token) {
+        try {
+            Claims claims = parseToken(token);
+            return "parent_report".equals(claims.get("tokenType", String.class));
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     public UUID getUserId(String token) {
         return UUID.fromString(parseToken(token).getSubject());
     }
@@ -151,5 +187,10 @@ public class JwtTokenProvider {
     public long getRemainingMs(String token) {
         Date exp = getExpiration(token);
         return Math.max(0, exp.getTime() - System.currentTimeMillis());
+    }
+
+    /** 获取 token JWT ID（AUDIT-P1-13：黑名单按 jti 粒度，避免完整 token 作 Redis key） */
+    public String getTokenId(String token) {
+        return parseToken(token).getId();
     }
 }

@@ -21,7 +21,7 @@ import java.util.Map;
  *   <li>情绪门控：currentEmotion（轮级）优先，缺失时用 entryMood（会话级）→ EmotionState</li>
  *   <li>语言层：effectiveGrade 由调用方计算（含 design/29 动态降级），本层透传</li>
  *   <li>情绪策略：{@link EntryMoodStrategyResolver} → 开场/节奏/技能/禁忌/镜映</li>
- *   <li>画像微调（PROF-022）：置信门控后 introversion→开场/节奏、interests→镜映取材</li>
+ *   <li>画像微调（PROF-025）：置信门控后 introversion→开场/节奏、interests→镜映取材</li>
  *   <li>冷场协同（ORCH-005）：nudge 触发时偏向留白低压策略（design/28 并入编排）</li>
  * </ol>
  * 纯规则计算，零额外 LLM 调用。
@@ -98,7 +98,7 @@ public class PromptOrchestrationService {
         StrategyProfile.EmotionState effectiveState = transition.state();
         boolean allowCbt = strategy.allowCbt() && effectiveState == StrategyProfile.EmotionState.STABLE;
     
-        // 5. 画像微调（PROF-022 + ORCH-006）
+        // 5. 画像微调（PROF-025 + ORCH-006）
         StrategyProfile.OpeningStrategy opening = strategy.opening();
         StrategyProfile.Pace pace = strategy.pace();
         ProfileSignals signals = ctx.profileSignals();

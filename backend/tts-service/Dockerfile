@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 FROM python:3.11-slim
 
 WORKDIR /app
@@ -7,14 +8,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Python 依赖（离线安装，避免服务器网络慢）
-COPY wheels/ /tmp/wheels/
+# Python 依赖（在线安装，阿里云镜像加速；与 voice-service 一致）
+# 审计 P2-24：不再依赖 wheels/ 离线目录（避免 15MB 二进制入库与"忘刷新即构建失败"）
+# 可选离线方案：本地跑 ./refresh-wheels.sh 生成 wheels/ 后手动同步，pip 加 --no-index --find-links
 COPY requirements-lite.txt .
-RUN pip install --no-cache-dir --no-index --find-links=/tmp/wheels -r requirements-lite.txt \
-    && rm -rf /tmp/wheels
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/ \
+    && pip install -r requirements-lite.txt
 
-# 应用代码
-COPY app.py .
+# 应用代码 + 配置文件（CFG-004：config.yaml 外置，修改无需重建镜像）
+COPY app.py config.yaml ./
+
+# 非 root 运行（审计 P3-31）
+RUN useradd -m -u 1000 appuser
+USER appuser
 
 EXPOSE 10096
 

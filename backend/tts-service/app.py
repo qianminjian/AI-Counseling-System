@@ -12,21 +12,66 @@ import json
 import logging
 import os
 import threading
+import time
 from typing import Optional
 
 import httpx
+import yaml
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("tts-service")
 
-app = FastAPI(title="MindSafe TTS Service", version="3.0.0")
+app = FastAPI(title="MindSafe TTS Service", version="3.1.0")
+
+# ===== Prometheus 指标（P1-10：手写文本格式，零新增依赖，供监控栈 internal 网络抓取） =====
+_METRICS_LOCK = threading.Lock()
+_TTS_REQUESTS: dict = {}      # engine -> 请求总数（engine: cosyvoice/cosyvoice_fallback/edge_tts/error）
+_TTS_DURATION_SUM = 0.0       # 合成耗时总和（秒，summary 的 _sum）
+_TTS_DURATION_COUNT = 0       # 合成次数（summary 的 _count）
+
+
+def _record_tts_request(engine: str, duration_sec: float):
+    """记录一次合成请求结果（线程安全）"""
+    global _TTS_DURATION_SUM, _TTS_DURATION_COUNT
+    with _METRICS_LOCK:
+        _TTS_REQUESTS[engine] = _TTS_REQUESTS.get(engine, 0) + 1
+        _TTS_DURATION_SUM += duration_sec
+        _TTS_DURATION_COUNT += 1
+
+
+@app.get("/metrics")
+def metrics():
+    """Prometheus 文本格式指标（P1-10；服务仅在 internal 网络暴露，不公网开放）"""
+    out = [
+        "# HELP tts_synthesize_requests_total TTS synthesize requests total by final engine/result",
+        "# TYPE tts_synthesize_requests_total counter",
+    ]
+    with _METRICS_LOCK:
+        for engine in sorted(_TTS_REQUESTS):
+            out.append(f'tts_synthesize_requests_total{{engine="{engine}"}} {_TTS_REQUESTS[engine]}')
+        out += [
+            "# HELP tts_synthesize_duration_seconds TTS synthesize duration in seconds",
+            "# TYPE tts_synthesize_duration_seconds summary",
+            f"tts_synthesize_duration_seconds_sum {_TTS_DURATION_SUM:.6f}",
+            f"tts_synthesize_duration_seconds_count {_TTS_DURATION_COUNT}",
+        ]
+    out += [
+        "# HELP tts_engine_available TTS engine availability (1=ready 0=unavailable)",
+        "# TYPE tts_engine_available gauge",
+        f'tts_engine_available{{engine="cosyvoice"}} {1 if CLOUD_TTS_AVAILABLE else 0}',
+        f'tts_engine_available{{engine="edge_tts"}} {1 if EDGE_TTS_AVAILABLE else 0}',
+    ]
+    return Response(content="\n".join(out) + "\n", media_type="text/plain; version=0.0.4; charset=utf-8")
 
 # 全局复用 httpx 客户端（edge-tts 降级时用）
 http_client: httpx.AsyncClient = None
+
+# 单次合成超时（P1-DEP：SDK 线程挂死/网络黑洞时避免请求永久挂起；超时后自动降级或 503）
+TTS_SYNTHESIZE_TIMEOUT = float(os.environ.get("TTS_SYNTHESIZE_TIMEOUT", "30"))
 
 
 @app.on_event("startup")
@@ -40,17 +85,104 @@ async def _shutdown():
     if http_client:
         await http_client.aclose()
 
+# CORS 白名单（安全收敛）：默认拒绝跨域（本服务仅由同网络后端调用）；
+# 确需前端直连时用 TTS_CORS_ORIGINS="https://a.com,https://b.com" 显式声明，禁止 *
+_cors_env = os.getenv("TTS_CORS_ORIGINS", "").strip()
+_allowed_origins = [o.strip() for o in _cors_env.split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=_allowed_origins,
+    allow_methods=["POST", "GET"],
+    allow_headers=["Content-Type"],
 )
+
+# ===== 配置加载（CFG-004：从 config.yaml 外置，回退内置默认值） =====
+
+# 内置默认配置（config.yaml 不存在时的 fallback）
+_DEFAULT_CONFIG = {
+    "model": {
+        "dashscope": "cosyvoice-v3-flash",
+        "edge_fallback": True,
+    },
+    "voice_personas": {
+        "xiaoxing": {"name": "小星", "desc": "温暖的邻家姐姐", "speed": 1.0, "dashscope_voice": "longxing_v3", "edge_voice": "zh-CN-XiaoxiaoNeural", "dialect_capable": False, "emotion_capable": False},
+        "bobo": {"name": "波波老师", "desc": "温柔的女老师", "speed": 0.95, "dashscope_voice": "longyingling_v3", "edge_voice": "zh-CN-XiaohanNeural", "dialect_capable": False, "emotion_capable": False},
+        "yueliang": {"name": "月亮", "desc": "轻声讲故事", "speed": 0.92, "dashscope_voice": "longwan_v3", "edge_voice": "zh-CN-XiaohanNeural", "dialect_capable": False, "emotion_capable": False},
+        "xiaotaiyang": {"name": "小太阳", "desc": "阳光大哥哥", "speed": 1.05, "dashscope_voice": "longanyang", "edge_voice": "zh-CN-YunxiNeural", "dialect_capable": False, "emotion_capable": True},
+        "dashu": {"name": "大树", "desc": "暖心大叔", "speed": 0.95, "dashscope_voice": "longanyun_v3", "edge_voice": "zh-CN-YunyangNeural", "dialect_capable": False, "emotion_capable": False},
+        "doudou": {"name": "豆豆", "desc": "同龄小伙伴", "speed": 1.05, "dashscope_voice": "longjielidou_v3", "edge_voice": "zh-CN-YunxiaNeural", "dialect_capable": False, "emotion_capable": False},
+        "qiqiu": {"name": "方言", "desc": "方言伙伴", "speed": 1.05, "dashscope_voice": "longanhuan_v3", "edge_voice": "zh-CN-XiaoyiNeural", "dialect_capable": True, "emotion_capable": False},
+    },
+    "dialects": {
+        "cantonese": {"label": "粤语", "mode": "native", "edge_voice": None},
+        "minnan": {"label": "闽南话", "mode": "native", "edge_voice": None},
+        "northeastern": {"label": "东北话", "mode": "instruct", "instruct": "请用东北话表达。", "edge_voice": "zh-CN-liaoning-XiaobeiNeural"},
+        "sichuan": {"label": "四川话", "mode": "instruct", "instruct": "请用四川话表达。", "edge_voice": None},
+        "henan": {"label": "河南话", "mode": "instruct", "instruct": "请用河南话表达。", "edge_voice": None},
+        "shandong": {"label": "山东话", "mode": "instruct", "instruct": "请用山东话表达。", "edge_voice": None},
+        "hunan": {"label": "湖南话", "mode": "instruct", "instruct": "请用湖南话表达。", "edge_voice": None},
+        "shaanxi": {"label": "陕西话", "mode": "instruct", "instruct": "请用陕西话表达。", "edge_voice": "zh-CN-shaanxi-XiaoniNeural"},
+    },
+    "native_dialect_voices": {
+        "cantonese": {"female": "longjiayi_v3", "male": "longanyue_v3"},
+        "minnan": {"male": "longanmin_v3"},
+    },
+    "emotion_instruct_map": {
+        "neutral": "你正在进行闲聊互动，你说话的情感是neutral。",
+        "happy": "你正在进行闲聊互动，你说话的情感是happy。",
+        "sad": "你正在进行闲聊互动，你说话的情感是sad。",
+        "angry": "你正在进行闲聊互动，你说话的情感是angry。",
+        "fearful": "你正在进行闲聊互动，你说话的情感是fearful。",
+        "surprised": "你正在进行闲聊互动，你说话的情感是surprised。",
+        "disgusted": "你正在进行闲聊互动，你说话的情感是disgusted。",
+        "calm": "你正在进行闲聊互动，你说话的情感是neutral。",
+        "anxious": "你正在进行闲聊互动，你说话的情感是fearful。",
+        "excited": "你正在进行闲聊互动，你说话的情感是happy。",
+    },
+}
+
+
+def load_config(config_path: str = None) -> dict:
+    """
+    加载 TTS 配置（CFG-004）
+    优先级：环境变量 > config.yaml > 内置默认值
+    """
+    import copy
+    config = copy.deepcopy(_DEFAULT_CONFIG)
+
+    # 尝试从 config.yaml 加载
+    if config_path is None:
+        config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.yaml")
+
+    if os.path.isfile(config_path):
+        try:
+            with open(config_path, "r", encoding="utf-8") as f:
+                file_cfg = yaml.safe_load(f) or {}
+            # 深度合并（文件值覆盖默认值）
+            for key, value in file_cfg.items():
+                if isinstance(value, dict) and key in config and isinstance(config[key], dict):
+                    config[key].update(value)
+                else:
+                    config[key] = value
+            logger.info("✅ 配置已从 %s 加载", config_path)
+        except Exception as e:
+            logger.warning("配置加载失败，使用内置默认值: %s", e)
+
+    # 环境变量覆盖（12-Factor：敏感/部署相关参数由环境变量注入）
+    env_model = os.environ.get("DASHSCOPE_TTS_MODEL")
+    if env_model:
+        config.setdefault("model", {})["dashscope"] = env_model
+
+    return config
+
+
+# 加载配置（模块级，启动时执行一次）
+_CONFIG = load_config()
 
 # ===== Level 1：阿里云百炼 CosyVoice（DashScope SDK WebSocket 流式） =====
 
 DASHSCOPE_API_KEY = os.environ.get("DASHSCOPE_API_KEY", "")
-DASHSCOPE_TTS_MODEL = os.environ.get("DASHSCOPE_TTS_MODEL", "cosyvoice-v3-flash")
+DASHSCOPE_TTS_MODEL = _CONFIG["model"]["dashscope"]
 CLOUD_TTS_AVAILABLE = False
 
 if DASHSCOPE_API_KEY:
@@ -77,121 +209,21 @@ except ImportError:
     logger.warning("edge-tts 未安装，备用方案不可用")
 
 
-# ===== 音色人设配置（7 音色差异化矩阵，见 design/56） =====
-# dashscope_voice: 阿里云 CosyVoice 音色名（cosyvoice-v3.5-flash 音色列表）
-# edge_voice: edge-tts 备用音色
-# dialect_capable: 支持方言 Instruct（仅 longanhuan_v3）
-# emotion_capable: 支持情感 Instruct（仅 longanyang）
+# ===== 音色人设配置（从 config.yaml 加载，见 design/56） =====
 
-VOICE_PERSONAS = {
-    "xiaoxing": {
-        "name": "小星",
-        "desc": "温暖的邻家姐姐",
-        "speed": 1.0,
-        "dashscope_voice": "longxing_v3",
-        "edge_voice": "zh-CN-XiaoxiaoNeural",
-        "dialect_capable": False,
-        "emotion_capable": False,
-    },
-    "bobo": {
-        "name": "波波老师",
-        "desc": "温柔的女老师",
-        "speed": 0.95,
-        "dashscope_voice": "longyingling_v3",
-        "edge_voice": "zh-CN-XiaohanNeural",
-        "dialect_capable": False,
-        "emotion_capable": False,
-    },
-    "yueliang": {
-        "name": "月亮",
-        "desc": "轻声讲故事",
-        "speed": 0.92,
-        "dashscope_voice": "longwan_v3",
-        "edge_voice": "zh-CN-XiaohanNeural",
-        "dialect_capable": False,
-        "emotion_capable": False,
-    },
-    "xiaotaiyang": {
-        "name": "小太阳",
-        "desc": "阳光大哥哥",
-        "speed": 1.05,
-        "dashscope_voice": "longanyang",
-        "edge_voice": "zh-CN-YunxiNeural",
-        "dialect_capable": False,
-        "emotion_capable": True,
-    },
-    "dashu": {
-        "name": "大树",
-        "desc": "暖心大叔",
-        "speed": 0.95,
-        "dashscope_voice": "longanyun_v3",
-        "edge_voice": "zh-CN-YunyangNeural",
-        "dialect_capable": False,
-        "emotion_capable": False,
-    },
-    "doudou": {
-        "name": "豆豆",
-        "desc": "同龄小伙伴",
-        "speed": 1.05,
-        "dashscope_voice": "longjielidou_v3",
-        "edge_voice": "zh-CN-YunxiaNeural",
-        "dialect_capable": False,
-        "emotion_capable": False,
-    },
-    "qiqiu": {
-        "name": "方言",
-        "desc": "方言伙伴",
-        "speed": 1.05,
-        "dashscope_voice": "longanhuan_v3",
-        "edge_voice": "zh-CN-XiaoyiNeural",
-        "dialect_capable": True,
-        "emotion_capable": False,
-    },
-}
+VOICE_PERSONAS = _CONFIG["voice_personas"]
 
 # ===== 方言配置 =====
-# 两类实现方式：
-#   native：原生方言音色（不需要 instruction，天生说方言，直接替换 voice）
-#   instruct：通过 longanhuan_v3 Instruct 指令实现（"请用XX话表达。"）
 
-SUPPORTED_DIALECTS = {
-    # 原生方言音色（无需 Instruct，直接使用专属音色）
-    "cantonese":    {"label": "粤语", "mode": "native", "edge_voice": None},
-    "minnan":       {"label": "闽南话", "mode": "native", "edge_voice": None},
-    # Instruct 方言（通过 longanhuan_v3 指令实现）
-    "northeastern": {"label": "东北话", "mode": "instruct", "instruct": "请用东北话表达。", "edge_voice": "zh-CN-liaoning-XiaobeiNeural"},
-    "sichuan":      {"label": "四川话", "mode": "instruct", "instruct": "请用四川话表达。", "edge_voice": None},
-    "henan":        {"label": "河南话", "mode": "instruct", "instruct": "请用河南话表达。", "edge_voice": None},
-    "shandong":     {"label": "山东话", "mode": "instruct", "instruct": "请用山东话表达。", "edge_voice": None},
-    "hunan":        {"label": "湖南话", "mode": "instruct", "instruct": "请用湖南话表达。", "edge_voice": None},
-    "shaanxi":      {"label": "陕西话", "mode": "instruct", "instruct": "请用陕西话表达。", "edge_voice": "zh-CN-shaanxi-XiaoniNeural"},
-}
+SUPPORTED_DIALECTS = _CONFIG["dialects"]
 
-# ===== 原生方言音色（不需要 instruction，天生说方言） =====
-# 仅 cantonese / minnan 走此路径，选中即自动使用对应音色，无需用户切换模式
-# 性别匹配：female 优先女声，male 优先男声
+# ===== 原生方言音色 =====
 
-NATIVE_DIALECT_VOICES = {
-    "cantonese": {"female": "longjiayi_v3", "male": "longanyue_v3"},
-    "minnan": {"male": "longanmin_v3"},
-}
+NATIVE_DIALECT_VOICES = _CONFIG["native_dialect_voices"]
 
-# ===== 情感 Instruct 映射（仅 longanyang / 小太阳支持） =====
-# 格式严格遵循官方文档："你正在进行闲聊互动，你说话的情感是<情感值>。"
+# ===== 情感 Instruct 映射 =====
 
-EMOTION_INSTRUCT_MAP = {
-    "neutral": "你正在进行闲聊互动，你说话的情感是neutral。",
-    "happy": "你正在进行闲聊互动，你说话的情感是happy。",
-    "sad": "你正在进行闲聊互动，你说话的情感是sad。",
-    "angry": "你正在进行闲聊互动，你说话的情感是angry。",
-    "fearful": "你正在进行闲聊互动，你说话的情感是fearful。",
-    "surprised": "你正在进行闲聊互动，你说话的情感是surprised。",
-    "disgusted": "你正在进行闲聊互动，你说话的情感是disgusted。",
-    # 非标准情感值回退到 neutral
-    "calm": "你正在进行闲聊互动，你说话的情感是neutral。",
-    "anxious": "你正在进行闲聊互动，你说话的情感是fearful。",
-    "excited": "你正在进行闲聊互动，你说话的情感是happy。",
-}
+EMOTION_INSTRUCT_MAP = _CONFIG["emotion_instruct_map"]
 
 
 def build_instruction(persona_cfg: dict, dialect: Optional[str], emotion: str,
@@ -296,20 +328,29 @@ async def synthesize(req: TtsRequest):
     )
     actual_voice = override_voice or persona_cfg["dashscope_voice"]
 
-    logger.info(f"TTS 合成: text_len={len(req.text)}, persona={req.persona}, "
+    t_start = time.time()
+    logger.debug(f"TTS 请求: text_len={len(req.text)}, persona={req.persona}, "
                 f"emotion={req.emotion}, speed={final_speed:.2f}, dialect={req.dialect}, "
                 f"voice={actual_voice}, instruction={instruction}")
 
     # Level 1：阿里云 CosyVoice
     if CLOUD_TTS_AVAILABLE:
         try:
-            return await _synthesize_dashscope(req.text, actual_voice, final_speed, instruction)
+            resp = await _synthesize_dashscope(req.text, actual_voice, final_speed, instruction)
+            logger.info(f"TTS 合成完成 [cosyvoice]: text_len={len(req.text)}, voice={actual_voice}, "
+                        f"elapsed={time.time() - t_start:.3f}s")
+            _record_tts_request("cosyvoice", time.time() - t_start)
+            return resp
         except Exception as e:
             if instruction:
                 # Instruct 失败 → 无指令重试（保留音色品质）
                 logger.warning(f"CosyVoice Instruct 失败，无指令重试: voice={actual_voice}, instruction={instruction}")
                 try:
-                    return await _synthesize_dashscope(req.text, actual_voice, final_speed, None)
+                    resp = await _synthesize_dashscope(req.text, actual_voice, final_speed, None)
+                    logger.info(f"TTS 合成完成 [cosyvoice-no-instruct]: text_len={len(req.text)}, voice={actual_voice}, "
+                                f"elapsed={time.time() - t_start:.3f}s")
+                    _record_tts_request("cosyvoice_fallback", time.time() - t_start)
+                    return resp
                 except Exception as e2:
                     logger.warning(f"CosyVoice 无指令重试也失败，降级 edge-tts: {e2}")
             else:
@@ -325,11 +366,16 @@ async def synthesize(req: TtsRequest):
                 if dialect_info and dialect_info.get("edge_voice"):
                     edge_voice = dialect_info["edge_voice"]
                 # 无对应 edge 方言音色 → 用默认普通话 edge_voice
-            return await _synthesize_edge_tts(req.text, edge_voice, final_speed, req.pitch)
+            resp = await _synthesize_edge_tts(req.text, edge_voice, final_speed, req.pitch)
+            logger.info(f"TTS 合成完成 [edge-tts]: text_len={len(req.text)}, voice={edge_voice}, "
+                        f"elapsed={time.time() - t_start:.3f}s")
+            _record_tts_request("edge_tts", time.time() - t_start)
+            return resp
         except Exception as e:
-            logger.error(f"edge-tts 也失败: {e}")
+            logger.error(f"edge-tts 也失败 (elapsed={time.time() - t_start:.3f}s): {e}")
 
     # Level 3：返回 503，前端自动降级到浏览器 speechSynthesis
+    _record_tts_request("error", time.time() - t_start)
     raise HTTPException(status_code=503, detail="TTS 服务不可用")
 
 
@@ -384,9 +430,15 @@ async def _synthesize_dashscope(text: str, voice: str, speed: float, instruction
     t.start()
 
     # 缓冲全部音频（等待合成完成或出错）
+    # P1-DEP：queue.get() 无超时 → SDK 线程挂死时请求永久挂起；wait_for 超时后抛错交给上层降级
     chunks = []
     while True:
-        chunk = await queue.get()
+        try:
+            chunk = await asyncio.wait_for(queue.get(), timeout=TTS_SYNTHESIZE_TIMEOUT)
+        except asyncio.TimeoutError:
+            raise RuntimeError(
+                f"CosyVoice 合成超时 ({TTS_SYNTHESIZE_TIMEOUT}s, voice={voice})"
+            ) from None
         if chunk is None:
             break
         chunks.append(chunk)
@@ -400,7 +452,7 @@ async def _synthesize_dashscope(text: str, voice: str, speed: float, instruction
     if not audio_bytes:
         raise RuntimeError(f"CosyVoice 返回空音频 (voice={voice})")
 
-    logger.info(f"CosyVoice 合成完成: voice={voice}, instruction={instruction}, bytes={len(audio_bytes)}")
+    logger.debug(f"CosyVoice 合成完成: voice={voice}, instruction={instruction}, bytes={len(audio_bytes)}")
     return StreamingResponse(
         io.BytesIO(audio_bytes),
         media_type="audio/mpeg",
@@ -419,15 +471,23 @@ async def _synthesize_edge_tts(text: str, voice: str, speed: float, pitch: float
 
     communicate = edge_tts.Communicate(text, voice, rate=rate_str, pitch=pitch_str)
     buffer = io.BytesIO()
-    async for chunk in communicate.stream():
-        if chunk["type"] == "audio":
-            buffer.write(chunk["data"])
+
+    async def _stream_audio():
+        async for chunk in communicate.stream():
+            if chunk["type"] == "audio":
+                buffer.write(chunk["data"])
+
+    # P1-DEP：stream() 无超时 → 微软侧连接挂死时请求永久挂起；wait_for 超时抛错交给上层 503
+    try:
+        await asyncio.wait_for(_stream_audio(), timeout=TTS_SYNTHESIZE_TIMEOUT)
+    except asyncio.TimeoutError:
+        raise RuntimeError(f"edge-tts 合成超时 ({TTS_SYNTHESIZE_TIMEOUT}s, voice={voice})") from None
 
     if buffer.tell() == 0:
         raise RuntimeError("edge-tts 返回音频为空")
 
     buffer.seek(0)
-    logger.info(f"edge-tts 合成成功: voice={voice}, bytes={buffer.tell()}")
+    logger.debug(f"edge-tts 合成成功: voice={voice}, bytes={buffer.tell()}")
     return StreamingResponse(
         buffer,
         media_type="audio/mpeg",

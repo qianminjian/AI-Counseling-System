@@ -4,6 +4,8 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.mindsafe.api.security.JwtAuthenticationFilter.TenantContext;
 import com.mindsafe.api.security.JwtTokenProvider;
 import com.mindsafe.common.dto.ApiResponse;
+import com.mindsafe.common.dto.ErrorCode;
+import com.mindsafe.common.exception.BizException;
 import com.mindsafe.domain.entity.CounselingSession;
 import com.mindsafe.domain.entity.MessageSummary;
 import com.mindsafe.domain.entity.Notification;
@@ -19,6 +21,7 @@ import com.mindsafe.service.casemanage.CaseLifecycleService;
 import com.mindsafe.service.profile.ProfileRadarService;
 import com.mindsafe.service.teacher.TeacherService;
 import com.mindsafe.service.audit.AuditLogService;
+import com.mindsafe.service.security.FieldEncryptionService;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
@@ -50,7 +53,7 @@ public class TeacherController {
     private final MessageSummaryMapper messageSummaryMapper;
     private final AuditLogService auditLogService;
     private final JwtTokenProvider jwtTokenProvider;
-    private final CaseLifecycleService caseLifecycleService;
+    private final FieldEncryptionService fieldEncryptionService;
 
     public TeacherController(NotificationService notificationService,
                              TeacherService teacherService,
@@ -61,7 +64,7 @@ public class TeacherController {
                              MessageSummaryMapper messageSummaryMapper,
                              AuditLogService auditLogService,
                              JwtTokenProvider jwtTokenProvider,
-                             CaseLifecycleService caseLifecycleService) {
+                             FieldEncryptionService fieldEncryptionService) {
         this.notificationService = notificationService;
         this.teacherService = teacherService;
         this.profileRadarService = profileRadarService;
@@ -71,7 +74,7 @@ public class TeacherController {
         this.messageSummaryMapper = messageSummaryMapper;
         this.auditLogService = auditLogService;
         this.jwtTokenProvider = jwtTokenProvider;
-        this.caseLifecycleService = caseLifecycleService;
+        this.fieldEncryptionService = fieldEncryptionService;
     }
 
     // ===== 工作台 =====
@@ -178,7 +181,8 @@ public class TeacherController {
         if (session == null) {
             return ApiResponse.ok(Map.of("summary", "", "status", "not_found"));
         }
-        String summary = session.getSessionSummary();
+        // AUDIT-P1-8：session_summary 密文存储，教师端读取时解密（明文兼容透传）
+        String summary = fieldEncryptionService.decrypt(session.getSessionSummary());
         String status = summary != null ? "ready" : "pending";
         return ApiResponse.ok(Map.of("summary", summary != null ? summary : "", "status", status));
     }
@@ -222,8 +226,8 @@ public class TeacherController {
         if (student == null) {
             return ApiResponse.ok(Map.of("error", "学生不存在"));
         }
-        // 生成 parent 类型 JWT（userId=studentId，userType=parent）
-        String parentToken = jwtTokenProvider.generateToken(studentId, "parent", ctx.tenantId());
+        // SEC-006：生成 parent_report 类型 JWT（userId=studentId，userType=parent，7 天 TTL，与 expiresIn 声明一致）
+        String parentToken = jwtTokenProvider.generateParentReportToken(studentId, ctx.tenantId());
         String link = "/parent?token=" + parentToken;
         return ApiResponse.ok(Map.of("link", link, "expiresIn", "7天"));
     }
@@ -267,10 +271,11 @@ public class TeacherController {
         return ApiResponse.ok(notificationService.countUnread(userId));
     }
 
-    /** 标记通知为已读 */
+    /** 标记通知为已读（P1 审计修复：携带收件人 ID，防 IDOR） */
     @PutMapping("/teacher/notifications/{id}/read")
-    public ApiResponse<Void> markAsRead(@PathVariable UUID id) {
-        notificationService.markAsRead(id);
+    public ApiResponse<Void> markAsRead(@PathVariable UUID id, Authentication auth) {
+        UUID userId = (UUID) auth.getPrincipal();
+        notificationService.markAsRead(id, userId);
         return ApiResponse.ok(null);
     }
 
@@ -300,7 +305,9 @@ public class TeacherController {
         TenantContext ctx = (TenantContext) auth.getDetails();
         UUID userId = (UUID) auth.getPrincipal();
         auditLogService.log(ctx.tenantId(), userId, "EXPORT_ALERTS", "export");
-        List<TeacherService.AlertVO> alerts = teacherService.getAlerts(ctx.tenantId(), null, null, 500);
+        // P1 审计修复：导出跟随数据范围（班主任仅导出本班，不再全校可见）
+        String classScope = teacherService.resolveClassScope(ctx.tenantId(), ctx.userId(), ctx.userType());
+        List<TeacherService.AlertVO> alerts = teacherService.getAlerts(ctx.tenantId(), classScope, null, null, 500);
 
         response.setContentType("text/csv; charset=UTF-8");
         response.setHeader("Content-Disposition", "attachment; filename=alerts_export.csv");
@@ -359,7 +366,7 @@ public class TeacherController {
 
     // ===== 个案管理（WB-003，design/35 M3） =====
 
-    /** 个案阶段推进（建案→评估→干预跟踪→结案） */
+    /** 个案阶段推进（建案→评估→干预跟踪→结案，P1 审计修复：读取真实当前阶段并持久化） */
     @PostMapping("/teacher/cases/{studentId}/transition")
     public ApiResponse<Map<String, Object>> transitionCase(
             @PathVariable UUID studentId,
@@ -368,12 +375,17 @@ public class TeacherController {
         TenantContext ctx = (TenantContext) auth.getDetails();
         UUID userId = (UUID) auth.getPrincipal();
         String targetStage = body.getOrDefault("targetStage", "ASSESSMENT");
-        String source = body.getOrDefault("source", "MANUAL");
 
-        CaseLifecycleService.StageTransition result = caseLifecycleService.transition(
-                CaseLifecycleService.CaseStage.INTAKE,
-                CaseLifecycleService.CaseStage.valueOf(targetStage),
-                false);
+        // P1 审计修复：非法阶段值 → 400 参数错误（不再 500）
+        CaseLifecycleService.CaseStage target;
+        try {
+            target = CaseLifecycleService.CaseStage.valueOf(targetStage);
+        } catch (IllegalArgumentException e) {
+            throw new BizException(ErrorCode.PARAM_INVALID, "非法个案阶段: " + targetStage);
+        }
+
+        CaseLifecycleService.StageTransition result =
+                teacherService.transitionCaseStage(ctx.tenantId(), studentId, userId, target);
 
         auditLogService.log(ctx.tenantId(), userId, "CASE_TRANSITION", "student", studentId, targetStage);
         return ApiResponse.ok(Map.of(

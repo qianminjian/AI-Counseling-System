@@ -3,6 +3,7 @@ package com.mindsafe.api.controller;
 import com.mindsafe.api.security.JwtAuthenticationFilter.TenantContext;
 import com.mindsafe.common.dto.ApiResponse;
 import com.mindsafe.service.audit.AuditLogService;
+import com.mindsafe.service.knowledge.EditorialWorkflowService;
 import com.mindsafe.service.knowledge.KnowledgeBaseService;
 import com.mindsafe.service.knowledge.KnowledgeCorpusIngestService;
 import com.mindsafe.service.knowledge.KnowledgeMetadata;
@@ -15,6 +16,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 /**
  * 心理知识库管理 API（AI-006：RAG 知识库）
@@ -31,17 +33,20 @@ public class KnowledgeBaseController {
     private final AuditLogService auditLogService;
     private final ReviewWorkflowStateMachine reviewStateMachine;
     private final ReviewGateValidator reviewGateValidator;
+    private final EditorialWorkflowService editorialWorkflowService;
 
     public KnowledgeBaseController(KnowledgeBaseService knowledgeBaseService,
                                    KnowledgeCorpusIngestService corpusIngestService,
                                    AuditLogService auditLogService,
                                    ReviewWorkflowStateMachine reviewStateMachine,
-                                   ReviewGateValidator reviewGateValidator) {
+                                   ReviewGateValidator reviewGateValidator,
+                                   EditorialWorkflowService editorialWorkflowService) {
         this.knowledgeBaseService = knowledgeBaseService;
         this.corpusIngestService = corpusIngestService;
         this.auditLogService = auditLogService;
         this.reviewStateMachine = reviewStateMachine;
         this.reviewGateValidator = reviewGateValidator;
+        this.editorialWorkflowService = editorialWorkflowService;
     }
 
     /** 摄入文档（分块 + 嵌入） */
@@ -113,7 +118,7 @@ public class KnowledgeBaseController {
     @DeleteMapping("/documents/{docId}")
     public ApiResponse<Void> delete(@PathVariable UUID docId, Authentication auth) {
         TenantContext ctx = (TenantContext) auth.getDetails();
-        knowledgeBaseService.deleteDocument(docId);
+        knowledgeBaseService.deleteDocument(ctx.tenantId(), docId);
         auditLogService.log(ctx.tenantId(), ctx.userId(), "KNOWLEDGE_DELETE",
                 "knowledge_document", docId, null);
         return ApiResponse.ok(null);
@@ -133,12 +138,17 @@ public class KnowledgeBaseController {
         TenantContext ctx = (TenantContext) auth.getDetails();
 
         String targetStatus = body.get("targetStatus");
-        String currentStatus = body.getOrDefault("currentStatus", "draft");
         if (targetStatus == null || targetStatus.isBlank()) {
             return ApiResponse.error(400, "缺少 targetStatus 参数");
         }
 
-        ReviewStatus from = ReviewWorkflowStateMachine.fromDbStatus(currentStatus);
+        // 当前状态以 DB 真实值为准（不信请求体，防绕过状态机）
+        String dbStatus = knowledgeBaseService.findDocumentStatus(ctx.tenantId(), docId);
+        if (dbStatus == null) {
+            return ApiResponse.error(404, "知识文档不存在: " + docId);
+        }
+
+        ReviewStatus from = ReviewWorkflowStateMachine.fromDbStatus(dbStatus);
         ReviewStatus to = ReviewWorkflowStateMachine.fromDbStatus(targetStatus);
 
         // 构建元数据（从请求体提取门禁所需字段）
@@ -162,6 +172,12 @@ public class KnowledgeBaseController {
             return ApiResponse.error(400, "门禁校验失败: " + String.join("; ", gateResult.violations()));
         }
 
+        // 门禁通过 → 状态与审核字段落库（KB-102，V30）
+        knowledgeBaseService.transitionReviewStatus(ctx.tenantId(), docId,
+                ReviewWorkflowStateMachine.toDbStatus(to),
+                body.get("gradeBand"), body.get("sourceType"),
+                body.get("evidenceLevel"), body.get("reviewer"));
+
         auditLogService.log(ctx.tenantId(), ctx.userId(), "KNOWLEDGE_REVIEW_TRANSITION",
                 "knowledge_document", docId,
                 from + " → " + to + ", reviewer=" + body.get("reviewer"));
@@ -172,5 +188,88 @@ public class KnowledgeBaseController {
                 "to", ReviewWorkflowStateMachine.toDbStatus(to),
                 "searchable", reviewStateMachine.isSearchable(to)
         ));
+    }
+
+    /**
+     * 运营侧采编工作流（G-2，design/49 §五）：采编流水线统一入口
+     * <p>
+     * 请求体：action=submit（提交审核）/publish（发布）/reject（驳回）/deprecate（下线）；
+     * 门禁所需字段 category/gradeBand/sourceType/evidenceLevel/reviewer；驳回/下线附 reason。
+     * 门禁不过不落库，留痕由服务层 audit_logs 承担。
+     */
+    @PostMapping("/documents/{docId}/editorial")
+    public ApiResponse<Map<String, Object>> editorialAction(
+            @PathVariable UUID docId,
+            @RequestBody Map<String, String> body,
+            Authentication auth) {
+        TenantContext ctx = (TenantContext) auth.getDetails();
+        String action = body.get("action");
+        if (action == null || action.isBlank()) {
+            return ApiResponse.error(400, "缺少 action 参数（submit/publish/reject/deprecate）");
+        }
+
+        EditorialWorkflowService.EditorialRequest request = new EditorialWorkflowService.EditorialRequest(
+                body.get("category"), body.get("gradeBand"), body.get("sourceType"),
+                body.get("evidenceLevel"), body.get("reviewer"));
+
+        EditorialWorkflowService.TransitionResult result = switch (action) {
+            case "submit" -> editorialWorkflowService.submitForReview(
+                    ctx.tenantId(), ctx.userId(), docId, request);
+            case "publish" -> editorialWorkflowService.publish(
+                    ctx.tenantId(), ctx.userId(), docId, request);
+            case "reject" -> editorialWorkflowService.reject(
+                    ctx.tenantId(), ctx.userId(), docId, body.get("reason"));
+            case "deprecate" -> editorialWorkflowService.deprecate(
+                    ctx.tenantId(), ctx.userId(), docId, body.get("reason"));
+            default -> null;
+        };
+
+        if (result == null) {
+            return ApiResponse.error(400, "未知 action: " + action);
+        }
+        if (!result.success()) {
+            return ApiResponse.error(400, "采编门禁拒绝: " + String.join("; ", result.violations()));
+        }
+
+        return ApiResponse.ok(Map.of(
+                "docId", docId,
+                "from", result.fromStatus(),
+                "to", result.toStatus(),
+                "searchable", result.searchable()
+        ));
+    }
+
+    /**
+     * 运营报表（design/49 §五 运营闭环）：暴露 operationalReport 主链路。
+     * <p>
+     * 覆盖统计从库内 knowledge_documents 实时聚合（分类 × 审核状态）；
+     * missedQueries 为可选参数（运营从检索日志采样的未命中查询，逗号分隔，
+     * 用于产出内容缺口清单；无持久化 miss 表，免 schema 变更）。
+     */
+    @GetMapping("/editorial/report")
+    public ApiResponse<EditorialWorkflowService.OperationalReport> operationalReport(
+            @RequestParam(value = "missedQueries", required = false) String missedQueriesParam,
+            Authentication auth) {
+        TenantContext ctx = (TenantContext) auth.getDetails();
+
+        // 分类 × 状态覆盖输入：文档列表（含全部审核状态）
+        Map<String, List<String>> docsByCategory =
+                knowledgeBaseService.listDocuments(ctx.tenantId(), null).stream()
+                        .collect(Collectors.groupingBy(
+                                row -> String.valueOf(row.get("category")),
+                                Collectors.mapping(row -> String.valueOf(row.get("status")),
+                                        Collectors.toList())));
+
+        List<String> missedQueries = missedQueriesParam == null || missedQueriesParam.isBlank()
+                ? List.of()
+                : List.of(missedQueriesParam.split("[,|]"));
+
+        EditorialWorkflowService.OperationalReport report =
+                editorialWorkflowService.operationalReport(ctx.tenantId(), missedQueries, docsByCategory);
+
+        auditLogService.log(ctx.tenantId(), ctx.userId(), "KNOWLEDGE_OPERATIONAL_REPORT",
+                "knowledge_document");
+
+        return ApiResponse.ok(report);
     }
 }

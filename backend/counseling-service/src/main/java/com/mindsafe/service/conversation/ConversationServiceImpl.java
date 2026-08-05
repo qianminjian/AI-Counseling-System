@@ -1,15 +1,15 @@
 package com.mindsafe.service.conversation;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.mindsafe.ai.ally.AllianceEnhancer;
 import com.mindsafe.ai.cbt.CbtStageRouter;
-import com.mindsafe.ai.orchestrator.PromptVariantRouter;
-import com.mindsafe.service.experiment.ExperimentBucketAssigner;
-import com.mindsafe.service.experiment.ExperimentMetricsCollector;
-import com.mindsafe.service.offline.OfflineMessageReplayService;
 import com.mindsafe.ai.chat.AiChatService;
 import com.mindsafe.ai.orchestrator.OrchestrationContext;
 import com.mindsafe.ai.orchestrator.ProfileSignals;
 import com.mindsafe.ai.orchestrator.PromptOrchestrationService;
+import com.mindsafe.ai.orchestrator.ReplyEmotionResolver;
 import com.mindsafe.ai.orchestrator.StrategyProfile;
 import com.mindsafe.ai.prompt.PromptTemplateService;
 import com.mindsafe.ai.safety.ConfidentialityNotice;
@@ -17,10 +17,12 @@ import com.mindsafe.ai.safety.CrisisResourceProvider;
 import com.mindsafe.ai.safety.CrisisResources;
 import com.mindsafe.ai.safety.HighSensitivityCategories;
 import com.mindsafe.ai.safety.PiiDesensitizer;
+import com.mindsafe.common.dto.ErrorCode;
 import com.mindsafe.common.dto.chat.SessionInfo;
 import com.mindsafe.common.dto.chat.StreamMessageEvent;
 import com.mindsafe.common.dto.risk.RiskDetectionResult;
 import com.mindsafe.common.enums.RiskLevel;
+import com.mindsafe.common.exception.BizException;
 import com.mindsafe.domain.entity.CounselingSession;
 import com.mindsafe.domain.entity.MessageSummary;
 import com.mindsafe.domain.entity.User;
@@ -31,6 +33,7 @@ import com.mindsafe.service.knowledge.RagAdvisorService;
 import com.mindsafe.service.memory.LongTermMemoryService;
 import com.mindsafe.service.profile.StudentProfileService;
 import com.mindsafe.service.prompt.PromptVersionService;
+import com.mindsafe.service.security.FieldEncryptionService;
 import com.mindsafe.service.usage.UsageTimeLimitService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -39,6 +42,7 @@ import org.springframework.transaction.annotation.Transactional;
 import reactor.core.publisher.Flux;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -68,20 +72,23 @@ public class ConversationServiceImpl implements ConversationService {
     private final RagAdvisorService ragAdvisorService;
     private final PromptOrchestrationService promptOrchestrationService;
     private final MessageSummaryService messageSummaryService;
+    private final FieldEncryptionService fieldEncryptionService;
     private final CrisisResourceProvider crisisResourceProvider;
     private final AllianceEnhancer allianceEnhancer;
     private final CbtStageRouter cbtStageRouter;
-    private final ExperimentBucketAssigner experimentBucketAssigner;
-    private final ExperimentMetricsCollector experimentMetricsCollector;
     private final SessionEndAnalyticsService sessionEndAnalyticsService;
-    private final PromptVariantRouter promptVariantRouter;
-    private final OfflineMessageReplayService offlineMessageReplayService;
     private final RedisSessionStateStore sessionStateStore;
     private final ConversationContextAgent contextAgent;
     private final SessionSummaryUpdater sessionSummaryUpdater;
 
     /** 冷场决策模型（无状态纯计算，design/28 §三） */
     private final NudgeDecisionModel nudgeDecisionModel = new NudgeDecisionModel();
+
+    /** 回复情绪推导器（TTSFX-004，design/37 §三.1）：纯规则零依赖，同 NudgeDecisionModel 内联实例化 */
+    private final ReplyEmotionResolver replyEmotionResolver = new ReplyEmotionResolver();
+
+    /** CBT state_path JSON 序列化工具（CBT-201） */
+    private static final ObjectMapper STATE_PATH_MAPPER = new ObjectMapper();
 
     public ConversationServiceImpl(AiChatService aiChatService,
                                    PromptTemplateService promptTemplateService,
@@ -97,14 +104,11 @@ public class ConversationServiceImpl implements ConversationService {
                                    RagAdvisorService ragAdvisorService,
                                    PromptOrchestrationService promptOrchestrationService,
                                    MessageSummaryService messageSummaryService,
+                                   FieldEncryptionService fieldEncryptionService,
                                    CrisisResourceProvider crisisResourceProvider,
                                    AllianceEnhancer allianceEnhancer,
                                    CbtStageRouter cbtStageRouter,
-                                   ExperimentBucketAssigner experimentBucketAssigner,
-                                   ExperimentMetricsCollector experimentMetricsCollector,
                                    SessionEndAnalyticsService sessionEndAnalyticsService,
-                                   PromptVariantRouter promptVariantRouter,
-                                   OfflineMessageReplayService offlineMessageReplayService,
                                    RedisSessionStateStore sessionStateStore,
                                    ConversationContextAgent contextAgent,
                                    SessionSummaryUpdater sessionSummaryUpdater) {
@@ -122,14 +126,11 @@ public class ConversationServiceImpl implements ConversationService {
         this.ragAdvisorService = ragAdvisorService;
         this.promptOrchestrationService = promptOrchestrationService;
         this.messageSummaryService = messageSummaryService;
+        this.fieldEncryptionService = fieldEncryptionService;
         this.crisisResourceProvider = crisisResourceProvider;
         this.allianceEnhancer = allianceEnhancer;
         this.cbtStageRouter = cbtStageRouter;
-        this.experimentBucketAssigner = experimentBucketAssigner;
-        this.experimentMetricsCollector = experimentMetricsCollector;
         this.sessionEndAnalyticsService = sessionEndAnalyticsService;
-        this.promptVariantRouter = promptVariantRouter;
-        this.offlineMessageReplayService = offlineMessageReplayService;
         this.sessionStateStore = sessionStateStore;
         this.contextAgent = contextAgent;
         this.sessionSummaryUpdater = sessionSummaryUpdater;
@@ -152,16 +153,6 @@ public class ConversationServiceImpl implements ConversationService {
         
         // 3. 问候语个性化："哈喽，[昵称]！" + 情绪问候（唤醒词 onboarding，design/28 §2.2）
         String greeting = ConversationUtils.buildGreeting(emotionTag, pseudonym);
-        
-        // ORCH-007：EMO-001 A/B 开场策略路由（确定性分桶，CRISIS 强制走 A）
-        try {
-            PromptVariantRouter.RouteResult variantRoute = promptVariantRouter.route(
-                    studentUserId.toString(), "emo001", null);
-            log.debug("开场策略路由: student={}, variant={}, bucket={}",
-                    studentUserId, variantRoute.variant(), variantRoute.bucket());
-        } catch (Exception e) {
-            log.debug("开场策略路由降级: {}", e.getMessage());
-        }
 
         // 3.5 SAFE-201：首次会话注入保密边界告知（design/14 §12.3，预审核模板）。
         // 告知完成标记复用 message_summary：senderType='ai' + turnCount=0（正常 AI 摘要 turn>=1，具唯一区分性），
@@ -175,12 +166,6 @@ public class ConversationServiceImpl implements ConversationService {
 
         // 4. 加载学生画像沟通偏好（冷场决策模型信号 F，首次对话为 null 不阻塞）
         Double expressionDepth = profileService.getExpressionDepth(tenantId, studentUserId);
-        
-        // AB-001：实验分桶（确定性哈希，同班同组；当前以 studentUserId 为分配键，待班级字段补全后切换 classId）
-        ExperimentBucketAssigner.Assignment experimentAssignment =
-                experimentBucketAssigner.assignClass("default_exp", studentUserId.toString(), null);
-        log.debug("AB 分桶: sessionId={}, variant={}, bucket={}", sessionId,
-                experimentAssignment.variant(), experimentAssignment.bucket());
 
         SessionState newState = new SessionState(
                 sessionId, tenantId, studentUserId, emotionTag, channel, gender, expressionDepth, grade);
@@ -204,32 +189,26 @@ public class ConversationServiceImpl implements ConversationService {
     }
 
     @Override
-    public Flux<StreamMessageEvent> sendMessageStream(UUID tenantId, UUID sessionId, String content) {
-        return sendMessageStream(tenantId, sessionId, content, null, null);
+    public Flux<StreamMessageEvent> sendMessageStream(UUID tenantId, UUID studentUserId, UUID sessionId, String content) {
+        return sendMessageStream(tenantId, studentUserId, sessionId, content, null, null);
     }
 
     @Override
-    public Flux<StreamMessageEvent> sendMessageStream(UUID tenantId, UUID sessionId, String content,
+    public Flux<StreamMessageEvent> sendMessageStream(UUID tenantId, UUID studentUserId, UUID sessionId, String content,
                                                       String voiceEmotion, Double voiceEmotionConfidence) {
         SessionState session = sessionStateStore.get(sessionId);
         if (session == null) {
+            return Flux.just(StreamMessageEvent.error("会话不存在"));
+        }
+        // SEC-001：会话归属校验——拦截跨租户/跨学生的会话劫持（同校学生拿到他人 sessionId 不可注入消息）
+        if (!isSessionOwner(session, tenantId, studentUserId)) {
+            log.warn("会话归属校验失败，拒绝消息: sessionId={}, tenantId={}, userId={}", sessionId, tenantId, studentUserId);
             return Flux.just(StreamMessageEvent.error("会话不存在"));
         }
 
         int turn = session.incrementTurnCount();
         log.debug("收到消息: sessionId={}, turn={}, length={}, voiceEmotion={}",
                 sessionId, turn, content.length(), voiceEmotion);
-
-        // TOOL-003：离线消息幂等去重（clientMsgId 由前端传入，缺省时跳过）
-        // 当前版本：仅记录能力接入点，待前端支持 clientMsgId 后启用完整去重
-        if (content != null && content.startsWith("[offline_replay]")) {
-            var dedup = offlineMessageReplayService.deduplicate(
-                    sessionId + "_" + turn, java.util.Set.of());
-            if (!dedup.accepted()) {
-                log.info("离线消息重复，跳过: sessionId={}, turn={}", sessionId, turn);
-                return Flux.empty();
-            }
-        }
 
         // AUTH-030：累计每日使用时长（按距上次消息的间隔，上限 5 分钟）
         long elapsedSec = session.markActiveAndElapsed();
@@ -407,9 +386,15 @@ public class ConversationServiceImpl implements ConversationService {
                 promptOrchestrationService.toTemplateVariables(strategy));
         systemPromptContent = systemPromptContent + "\n\n" + emoResolved.content();
 
-        // CBT-201/202：CBT 阶段标记 + 年龄分层路由（design/52 §一，design/03 §11.3/11.4）
-        CbtStageRouter.AgeStrategy ageStrategy = cbtStageRouter.resolveAgeStrategy(effectiveGrade);
-        log.debug("CBT 年龄分层: sessionId={}, grade={}, strategy={}", sessionId, effectiveGrade, ageStrategy);
+        // CBT-201/202 + WIRE-002：阶段推断 + 年龄分层标记 → 指令注入 + state_path 落库（design/03 §11.3/11.4）
+        CbtStageRouter.CbtStage cbtStage = cbtStageRouter.inferStage(turn, session.getEmotionState());
+        boolean allowCbt = session.getEmotionState() == StrategyProfile.EmotionState.STABLE;
+        CbtStageRouter.StageMark stageMark = cbtStageRouter.mark(cbtStage, effectiveGrade, allowCbt);
+        systemPromptContent = systemPromptContent + "\n\n" + cbtStageRouter.stageDirective(stageMark);
+        CounselingSession dbSession = sessionMapper.selectById(sessionId);
+        String statePath = appendStatePath(dbSession != null ? dbSession.getStatePath() : null, turn, stageMark);
+        log.debug("CBT 阶段标记: sessionId={}, turn={}, stage={}, strategy={}, allowCbt={}",
+                sessionId, turn, cbtStage, stageMark.ageStrategy(), allowCbt);
 
         // ALLY 连续性开场 / 回归照护已纳入 CTX-Agent contextBrief，不再单独注入
 
@@ -421,11 +406,12 @@ public class ConversationServiceImpl implements ConversationService {
             log.info("RAG 参考知识已注入: sessionId={}, contextLen={}", sessionId, ragContext.length());
         }
 
-        // 记录 Prompt 版本到会话（用于 A/B 效果对比）
+        // 记录 Prompt 版本与 CBT state_path 到会话（A/B 对比 + design/45 评估闭环数据源）
         String versionTag = sysResolved.versionTag();
         CounselingSession versionUpdate = new CounselingSession();
         versionUpdate.setSessionId(sessionId);
         versionUpdate.setPromptVersion(versionTag);
+        versionUpdate.setStatePath(statePath);
         versionUpdate.setUpdatedAt(Instant.now());
         sessionMapper.updateById(versionUpdate);
 
@@ -460,15 +446,23 @@ public class ConversationServiceImpl implements ConversationService {
                     return Flux.just(StreamMessageEvent.error("小助手暂时走神了，请再说一次好吗？"));
                 });
 
-        // 6. 组合：风险事件 + AI 回复
-        return riskEvents.concatWith(aiStream);
+        // 6. 组合：风险事件 + 回复情绪事件（TTSFX-004：波波表情状态机需在语音开播前收到信号，design/37 M1） + AI 回复
+        ReplyEmotionResolver.Result replyEmotion = replyEmotionResolver.resolve(strategy);
+        Flux<StreamMessageEvent> emotionEvent = Flux.just(
+                StreamMessageEvent.emotion(replyEmotion.emotion(), replyEmotion.intensity()));
+        return riskEvents.concatWith(emotionEvent).concatWith(aiStream);
     }
 
     @Override
-    public Flux<StreamMessageEvent> sendNudgeStream(UUID tenantId, UUID sessionId, int silenceSeconds) {
+    public Flux<StreamMessageEvent> sendNudgeStream(UUID tenantId, UUID studentUserId, UUID sessionId, int silenceSeconds) {
         SessionState session = sessionStateStore.get(sessionId);
         if (session == null) {
             log.debug("nudge: 会话不存在，返回空流: sessionId={}", sessionId);
+            return Flux.empty();
+        }
+        // SEC-001：会话归属校验
+        if (!isSessionOwner(session, tenantId, studentUserId)) {
+            log.warn("nudge: 会话归属校验失败，返回空流: sessionId={}, tenantId={}, userId={}", sessionId, tenantId, studentUserId);
             return Flux.empty();
         }
 
@@ -569,21 +563,40 @@ public class ConversationServiceImpl implements ConversationService {
     }
 
     @Override
-    public void updateClientSettings(UUID sessionId, Boolean ttsMuted, Boolean wakeEnabled) {
+    public void updateClientSettings(UUID tenantId, UUID studentUserId, UUID sessionId, Boolean ttsMuted, Boolean wakeEnabled) {
         SessionState session = sessionStateStore.get(sessionId);
         if (session == null) return;
+        // SEC-001：会话归属校验（非持有人静默忽略，不泄漏会话存在性）
+        if (!isSessionOwner(session, tenantId, studentUserId)) {
+            log.warn("updateClientSettings: 会话归属校验失败，忽略: sessionId={}, tenantId={}, userId={}", sessionId, tenantId, studentUserId);
+            return;
+        }
         if (ttsMuted != null) session.setTtsMuted(ttsMuted);
         if (wakeEnabled != null) session.setWakeEnabled(wakeEnabled);
         sessionStateStore.save(sessionId, session);
     }
 
+    /**
+     * SEC-001：会话归属校验——调用方租户与学生身份必须与会话状态完全匹配。
+     * Redis 面不受租户拦截器保护，此校验是防跨会话劫持的唯一防线。
+     */
+    private boolean isSessionOwner(SessionState session, UUID tenantId, UUID studentUserId) {
+        return java.util.Objects.equals(session.getTenantId(), tenantId)
+                && java.util.Objects.equals(session.getStudentUserId(), studentUserId);
+    }
+
+    @Transactional
     @Override
-    public void endSession(UUID tenantId, UUID sessionId) {
+    public void endSession(UUID tenantId, UUID studentUserId, UUID sessionId) {
         SessionState session = sessionStateStore.get(sessionId);
         if (session != null) {
-            sessionStateStore.remove(sessionId);
+            // SEC-001：非持有人拒绝结束他人会话
+            if (!isSessionOwner(session, tenantId, studentUserId)) {
+                log.warn("endSession: 会话归属校验失败，拒绝: sessionId={}, tenantId={}, userId={}", sessionId, tenantId, studentUserId);
+                throw new BizException(ErrorCode.FORBIDDEN);
+            }
 
-            // 更新 DB 会话状态 + 轮次数
+            // 先落库再删缓存：DB 写失败时 Redis 会话状态不丢失（fix-tx）
             CounselingSession update = new CounselingSession();
             update.setSessionId(sessionId);
             update.setEndedAt(Instant.now());
@@ -592,20 +605,11 @@ public class ConversationServiceImpl implements ConversationService {
             update.setUpdatedAt(Instant.now());
             sessionMapper.updateById(update);
 
+            sessionStateStore.remove(sessionId);
+
             // 清除 AI 对话记忆
             aiChatService.clearMemory(sessionId);
             log.info("会话结束: sessionId={}, turns={}", sessionId, session.getTurnCount());
-
-            // AB-002：采集会话深度指标（异步聚合，不阻塞主流程）
-            try {
-                ExperimentMetricsCollector.MetricEvent depthEvent = new ExperimentMetricsCollector.MetricEvent(
-                        "default_exp", "CONTROL", session.getStudentUserId().toString(),
-                        ExperimentMetricsCollector.MetricType.SESSION_DEPTH,
-                        session.getTurnCount(), java.time.LocalDate.now());
-                log.debug("AB 指标采集: sessionId={}, metric=SESSION_DEPTH, value={}", sessionId, depthEvent.value());
-            } catch (Exception e) {
-                log.debug("AB 指标采集失败（不影响业务）: {}", e.getMessage());
-            }
 
             // 异步生成 AI 会话摘要（摘要完成后触发 PROF-003 画像 LLM 提炼）
             messageSummaryService.generateSummaryAsync(tenantId, sessionId, session.getStudentUserId());
@@ -624,11 +628,45 @@ public class ConversationServiceImpl implements ConversationService {
                         session.getTenantId(), session.getStudentUserId(),
                         voiceEmotions, // 近期情绪（当前仅本会话，后续扩展跨会话查询）
                         session.emotionLabels(),
-                        List.of(), // studentMessages 待后续从 DB 补充
+                        loadStudentMessages(tenantId, sessionId),
                         session.getEmotionTag());
             } catch (Exception e) {
                 log.debug("会话结束分析降级: {}", e.getMessage());
             }
+        }
+    }
+
+    /**
+     * AUDIT-P2-20：加载本会话学生消息明文列表，供 ORCH-008 会话深度量化使用。
+     * <p>
+     * 修复前调用方传 {@code List.of()} 占位，measureDepth 恒为 0，深度量化形同虚设。
+     * 消息摘要逐轮同步落库（见 MessageSummaryService.persistStudentMessageSummary），
+     * 会话结束时 DB 中数据已完整，此处查询并解密即可；失败降级为空列表（分析本身异步可降级）。
+     */
+    private List<String> loadStudentMessages(UUID tenantId, UUID sessionId) {
+        try {
+            List<MessageSummary> messages = messageSummaryMapper.selectList(
+                    new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<MessageSummary>()
+                            .eq(MessageSummary::getTenantId, tenantId)
+                            .eq(MessageSummary::getSessionId, sessionId)
+                            .eq(MessageSummary::getSenderType, "student")
+                            .orderByAsc(MessageSummary::getTurnCount)
+                            .orderByAsc(MessageSummary::getCreatedAt)
+            );
+            if (messages.isEmpty()) {
+                return List.of();
+            }
+            List<String> texts = new ArrayList<>(messages.size());
+            for (MessageSummary m : messages) {
+                String plain = fieldEncryptionService.decrypt(m.getContentSummary());
+                if (plain != null && !plain.isBlank()) {
+                    texts.add(plain);
+                }
+            }
+            return texts;
+        } catch (Exception e) {
+            log.debug("会话结束分析加载学生消息失败，降级为空列表: {}", e.getMessage());
+            return List.of();
         }
     }
 
@@ -748,6 +786,40 @@ public class ConversationServiceImpl implements ConversationService {
             }
         } catch (Exception e) {
             log.debug("个人信息提取失败（不影响对话）: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * 追加 CBT state_path 阶段标记（CBT-201，design/03 §11.4）。
+     * <p>
+     * state_path 为 jsonb 数组，每轮追加一条 {turn,stage,age_strategy,allowed_techniques,allow_cbt}。
+     * 复用现有会话表 JSONB 列，无 schema 变更；敏感原文不入标记（§六隐私策略）。
+     * 解析/序列化失败时降级为本轮单条记录，不阻断主流程。
+     */
+    private String appendStatePath(String existingJson, int turn, CbtStageRouter.StageMark mark) {
+        try {
+            ObjectNode record = STATE_PATH_MAPPER.createObjectNode();
+            record.put("turn", turn);
+            record.put("stage", mark.stage().name());
+            record.put("age_strategy", mark.ageStrategy().name());
+            ArrayNode techniques = record.putArray("allowed_techniques");
+            mark.allowedTechniques().forEach(techniques::add);
+            record.put("allow_cbt", mark.allowCbt());
+
+            ArrayNode arr;
+            if (existingJson == null || existingJson.isBlank()) {
+                arr = STATE_PATH_MAPPER.createArrayNode();
+            } else {
+                var parsed = STATE_PATH_MAPPER.readTree(existingJson);
+                arr = parsed.isArray() ? (ArrayNode) parsed : STATE_PATH_MAPPER.createArrayNode();
+            }
+            arr.add(record);
+            return STATE_PATH_MAPPER.writeValueAsString(arr);
+        } catch (Exception e) {
+            log.warn("state_path 序列化失败，降级为本轮单条记录: {}", e.getMessage());
+            return String.format(
+                    "[{\"turn\":%d,\"stage\":\"%s\",\"age_strategy\":\"%s\",\"allow_cbt\":%b}]",
+                    turn, mark.stage().name(), mark.ageStrategy().name(), mark.allowCbt());
         }
     }
 }

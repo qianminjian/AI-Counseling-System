@@ -108,6 +108,27 @@ export async function tryRefresh() {
 }
 
 /**
+ * 带业务错误码的 API 异常（后端 BizException → HTTP 200 + body.code 约定）。
+ * 调用方可按 code 分支处理（如 CONSENT_REQUIRED 20003 → 监护人同意门禁）。
+ */
+export class ApiError extends Error {
+  code: number
+  constructor(code: number, message: string) {
+    super(message)
+    this.name = 'ApiError'
+    this.code = code
+  }
+}
+
+/** 监护人同意门禁错误码（对齐后端 ErrorCode.CONSENT_REQUIRED） */
+export const CONSENT_REQUIRED_CODE = 20003
+
+/** 判断错误是否为监护人同意门禁拦截 */
+export function isConsentRequired(err: unknown): boolean {
+  return err instanceof ApiError && err.code === CONSENT_REQUIRED_CODE
+}
+
+/**
  * 通用 API 请求（自动携带 JWT + 401 自动刷新）
  */
 export async function api(path: string, options: RequestInit & { headers?: Record<string, string> } = {}) {
@@ -135,7 +156,7 @@ export async function api(path: string, options: RequestInit & { headers?: Recor
         },
       })
       const json = await retry.json()
-      if (!json.success) throw new Error(json.message || '请求失败')
+      if (!json.success) throw new ApiError(json.code ?? 0, json.message || '请求失败')
       return json.data
     }
     clearToken()
@@ -145,7 +166,7 @@ export async function api(path: string, options: RequestInit & { headers?: Recor
 
   const json = await res.json()
   if (!json.success) {
-    throw new Error(json.message || '请求失败')
+    throw new ApiError(json.code ?? 0, json.message || '请求失败')
   }
   return json.data
 }
@@ -283,7 +304,7 @@ export async function getVoiceprintConfig(): Promise<VoiceprintConfig> {
  * 声纹远程验证登录（remote 模式，公开端点）
  * 前端提取 embedding 后传服务端比对，通过则直接签发双 token
  */
-export async function remoteVoiceprintVerify(embeddings: number[][]): Promise<AuthResult & { matched: boolean; score: number }> {
+export async function remoteVoiceprintVerify(embeddings: number[][]): Promise<AuthResult & { matched: boolean }> {
   const res = await fetch('/api/v1/voiceprint/verify', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

@@ -80,7 +80,7 @@ public class StudentProfileService {
 
             Map<String, Object> emotionBaseline = buildEmotionBaseline(recentSessions);
             Map<String, Object> riskTrajectory = buildRiskTrajectory(tenantId, userId);
-            // PROF-022：规则聚合维度盖元数据戳（provenance=rule_agg，confidence 随样本量增长，10 次会话封顶）
+            // PROF-025：规则聚合维度盖元数据戳（provenance=rule_agg，confidence 随样本量增长，10 次会话封顶）
             stampRuleAggMeta(emotionBaseline, recentSessions.size());
             stampRuleAggMeta(riskTrajectory, recentSessions.size());
             // VCL-001：语音情绪子对象（累计 counts；无新数据时保留既有，避免纯文本会话冲掉语音基线）
@@ -270,7 +270,7 @@ public class StudentProfileService {
     }
 
     /**
-     * PROF-022：读取画像结构化信号供编排引擎微调（design/46 §5.1）
+     * PROF-025：读取画像结构化信号供编排引擎微调（design/46 §5.1）
      * <p>
      * 置信度取自维度 JSONB 内 {@code _meta}（LLM 提炼合并时写入）；元数据缺失时置信计 0，
      * 由编排层门控拒绝采用（宁可不用，不可乱用）。失败/无画像 → null，不阻塞会话。
@@ -304,7 +304,7 @@ public class StudentProfileService {
 
     // ===== 私有方法 =====
 
-    /** PROF-022：从维度 {@code _meta.<field>.confidence} 读置信度，缺失计 0 */
+    /** PROF-025：从维度 {@code _meta.<field>.confidence} 读置信度，缺失计 0 */
     private double metaConfidence(Map<String, Object> dimension, String field) {
         if (dimension.get("_meta") instanceof Map<?, ?> meta
                 && meta.get(field) instanceof Map<?, ?> entry
@@ -314,7 +314,7 @@ public class StudentProfileService {
         return 0.0;
     }
 
-    /** PROF-022：规则聚合维度的元数据戳（维度级，provenance=rule_agg） */
+    /** PROF-025：规则聚合维度的元数据戳（维度级，provenance=rule_agg） */
     private void stampRuleAggMeta(Map<String, Object> dimension, int evidenceCount) {
         Map<String, Object> meta = new LinkedHashMap<>();
         meta.put("provenance", "rule_agg");

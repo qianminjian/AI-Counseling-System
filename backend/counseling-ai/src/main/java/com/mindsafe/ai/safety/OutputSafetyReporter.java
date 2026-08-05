@@ -29,4 +29,16 @@ public interface OutputSafetyReporter {
      * @param reviewJson  SAF-002 审查原始 JSON 输出（审计留痕）
      */
     void reportLayer2Violation(UUID sessionId, String decision, String reviewJson);
+
+    /**
+     * Layer2 召回替换（SAFE-202，design/14 §12.2）：用预审核话术替换已落记忆的 AI 回复 + 写 risk_events 审计链。
+     * <p>
+     * 分级：rewrite→YELLOW 留痕不通知；block→ORANGE 留痕+通知；escalate→RED 留痕+通知。
+     *
+     * @param sessionId       会话 ID
+     * @param decision        SAF-002 决策（rewrite / block / escalate）
+     * @param replacementText 替换后的文本（rewrite=LLM 改写版；block/escalate=预审核召回话术）
+     * @param reviewJson      SAF-002 审查原始 JSON 输出（审计留痕）
+     */
+    void applyLayer2Recall(UUID sessionId, String decision, String replacementText, String reviewJson);
 }

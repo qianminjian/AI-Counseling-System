@@ -10,6 +10,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
@@ -35,52 +36,56 @@ public class NotificationServiceImpl implements NotificationService {
         this.eventPublisher = eventPublisher;
     }
 
-    @Transactional
+    /**
+     * 风险通知（P0-4 outbox 补偿改造）：
+     * <ul>
+     *   <li>REQUIRES_NEW：独立事务，DB 失败不影响主事务（risk_event 落库）；
+     *       通知失败通过异常抛出，由调用方标记 notify_status=failed 进入补偿队列</li>
+     *   <li>不再内部吞异常——静默失败即静默丢通知，由 outbox 状态机承接重试</li>
+     * </ul>
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     @Override
     public void notifyRiskEvent(RiskEvent event) {
-        try {
-            // 查找同租户下所有教师（psych_teacher + class_teacher）
-            List<User> teachers = userMapper.selectList(
-                    new LambdaQueryWrapper<User>()
-                            .eq(User::getTenantId, event.getTenantId())
-                            .in(User::getUserType, "psych_teacher", "class_teacher")
-                            .eq(User::getStatus, "active")
-            );
+        // 查找同租户下所有教师（psych_teacher + class_teacher）
+        List<User> teachers = userMapper.selectList(
+                new LambdaQueryWrapper<User>()
+                        .eq(User::getTenantId, event.getTenantId())
+                        .in(User::getUserType, "psych_teacher", "class_teacher")
+                        .eq(User::getStatus, "active")
+        );
 
-            if (teachers.isEmpty()) {
-                log.warn("租户 {} 无活跃教师，跳过通知", event.getTenantId());
-                return;
-            }
-
-            String title = buildTitle(event);
-            String body = buildBody(event);
-
-            for (User teacher : teachers) {
-                Notification notification = Notification.riskAlert(
-                        event.getTenantId(),
-                        teacher.getUserId(),
-                        teacher.getUserType(),
-                        title,
-                        body,
-                        event.getRiskEventId()
-                );
-                notification.setSeverity(event.getRiskLevel());
-                notification.markSent(); // 站内消息立即可达
-                notificationMapper.insert(notification);
-            }
-
-            log.info("风险通知已发送: riskEventId={}, 通知教师数={}", event.getRiskEventId(), teachers.size());
-
-            // 发布 WebSocket 实时推送事件
-            eventPublisher.publishEvent(new RiskAlertPushEvent(
-                    event.getTenantId(), event.getRiskEventId(), event.getStudentUserId(),
-                    event.getSourceId(),
-                    event.getRiskType(), event.getRiskLevel(),
-                    title, body, event.getDetectedAt()
-            ));
-        } catch (Exception e) {
-            log.error("发送风险通知失败（不影响主流程）: riskEventId={}", event.getRiskEventId(), e);
+        if (teachers.isEmpty()) {
+            log.warn("租户 {} 无活跃教师，跳过通知", event.getTenantId());
+            return;
         }
+
+        String title = buildTitle(event);
+        String body = buildBody(event);
+
+        for (User teacher : teachers) {
+            Notification notification = Notification.riskAlert(
+                    event.getTenantId(),
+                    teacher.getUserId(),
+                    teacher.getUserType(),
+                    title,
+                    body,
+                    event.getRiskEventId()
+            );
+            notification.setSeverity(event.getRiskLevel());
+            notification.markSent(); // 站内消息立即可达
+            notificationMapper.insert(notification);
+        }
+
+        log.info("风险通知已发送: riskEventId={}, 通知教师数={}", event.getRiskEventId(), teachers.size());
+
+        // 发布 WebSocket 实时推送事件
+        eventPublisher.publishEvent(new RiskAlertPushEvent(
+                event.getTenantId(), event.getRiskEventId(), event.getStudentUserId(),
+                event.getSourceId(),
+                event.getRiskType(), event.getRiskLevel(),
+                title, body, event.getDetectedAt()
+        ));
     }
 
     @Override
@@ -102,8 +107,17 @@ public class NotificationServiceImpl implements NotificationService {
         );
     }
 
+    /**
+     * 标记通知为已读（P1 审计修复：归属校验，防 IDOR）
+     * <p>
+     * 仅收件人本人可标记；他人通知或通知不存在 → 拒绝（IllegalArgumentException → 400）
+     */
     @Override
-    public void markAsRead(UUID notificationId) {
+    public void markAsRead(UUID notificationId, UUID recipientUserId) {
+        Notification existing = notificationMapper.selectById(notificationId);
+        if (existing == null || !recipientUserId.equals(existing.getRecipientUserId())) {
+            throw new IllegalArgumentException("通知不存在: " + notificationId);
+        }
         Notification update = new Notification();
         update.setNotificationId(notificationId);
         update.setDeliveryStatus("read");

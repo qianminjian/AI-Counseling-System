@@ -3,6 +3,7 @@ package com.mindsafe.service.conversation;
 import com.mindsafe.ai.orchestrator.EmotionOrchestrationEvaluator;
 import com.mindsafe.domain.entity.RiskEvent;
 import com.mindsafe.domain.mapper.RiskEventMapper;
+import com.mindsafe.service.notification.RiskNotifyOutboxService;
 import com.mindsafe.service.profile.ProfileEffectivenessTracker;
 import com.mindsafe.service.voice.TrendAnomalySignaler;
 import com.mindsafe.service.voice.VoiceEmotionTrendAnalyzer;
@@ -37,17 +38,20 @@ public class SessionEndAnalyticsService {
     private final EmotionOrchestrationEvaluator orchestrationEvaluator;
     private final ProfileEffectivenessTracker effectivenessTracker;
     private final RiskEventMapper riskEventMapper;
+    private final RiskNotifyOutboxService riskNotifyOutboxService;
 
     public SessionEndAnalyticsService(VoiceEmotionTrendAnalyzer trendAnalyzer,
                                       TrendAnomalySignaler anomalySignaler,
                                       EmotionOrchestrationEvaluator orchestrationEvaluator,
                                       ProfileEffectivenessTracker effectivenessTracker,
-                                      RiskEventMapper riskEventMapper) {
+                                      RiskEventMapper riskEventMapper,
+                                      RiskNotifyOutboxService riskNotifyOutboxService) {
         this.trendAnalyzer = trendAnalyzer;
         this.anomalySignaler = anomalySignaler;
         this.orchestrationEvaluator = orchestrationEvaluator;
         this.effectivenessTracker = effectivenessTracker;
         this.riskEventMapper = riskEventMapper;
+        this.riskNotifyOutboxService = riskNotifyOutboxService;
     }
 
     /** 会话结束分析结果 */
@@ -165,6 +169,8 @@ public class SessionEndAnalyticsService {
             event.setCreatedAt(java.time.Instant.now());
             event.setUpdatedAt(java.time.Instant.now());
             riskEventMapper.insert(event);
+            // P0-4：无通知义务的事件标记完成态，防止补偿任务误重试留痕事件
+            riskNotifyOutboxService.markSent(event);
             log.info("RISK-204 趋势关注信号已持久化: riskEventId={}, type={}", event.getRiskEventId(), signal.signalType());
         } catch (Exception e) {
             log.warn("RISK-204 持久化降级（不影响业务）: {}", e.getMessage());

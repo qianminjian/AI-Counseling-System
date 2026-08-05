@@ -75,7 +75,7 @@ public class TtsService {
                     .retrieve()
                     .bodyToMono(byte[].class)
                     .timeout(SYNTH_TIMEOUT)
-                    .block();
+                    .block(SYNTH_TIMEOUT.plusSeconds(5));
 
             if (audio != null && audio.length > 0) {
                 log.debug("TTS 合成成功: text_len={}, audio_len={}", text.length(), audio.length);
@@ -98,7 +98,7 @@ public class TtsService {
                     .uri("/api/v1/tts/personas")
                     .retrieve()
                     .bodyToMono(Map.class)
-                    .block();
+                    .block(Duration.ofSeconds(5));
             if (response != null && response.containsKey("data")) {
                 return (List<Map<String, Object>>) response.get("data");
             }
@@ -118,7 +118,7 @@ public class TtsService {
                     .uri("/health")
                     .retrieve()
                     .bodyToMono(Map.class)
-                    .block();
+                    .block(Duration.ofSeconds(5));
             return health != null && "UP".equals(health.get("status"));
         } catch (Exception e) {
             return false;
