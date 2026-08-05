@@ -3,7 +3,7 @@
 # 用法：./restore.sh <备份路径> [--force]
 #
 # 备份路径两种形式：
-#   1. volume 相对路径：daily/mindsafe_20260728_020000.dump（db-backup 容器/backup.sh 写入的 dbbackups volume）
+#   1. volume 相对路径：daily/mindsafe_20260728_020000.dump（backup.sh 写入的 dbbackups volume）
 #   2. 宿主机绝对路径：/guju/mindsafe/backups/daily/xxx.dump（存在的宿主机文件）
 #
 # ⚠️ 警告：此操作会覆盖当前数据库！

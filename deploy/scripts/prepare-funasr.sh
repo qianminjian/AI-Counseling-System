@@ -4,14 +4,13 @@
 # ================================================================
 # 功能：在部署主机上预下载 FunASR 模型和 pip 依赖，避免每次构建/启动时重复下载
 # 逻辑：
-#   1. 读取本地 manifest.json 中已缓存的模型版本
-#   2. 与期望版本比较
-#   3. 不一致 → 下载/更新
-#   4. 一致 → 跳过，直接使用
+#   1. 校验本地缓存中模型目录是否存在
+#   2. 缺失 → 下载；齐全 → 跳过，直接使用
+#   3. 下载失败 → 非零退出（fail-fast，部署不得静默降级）
 #
 # 用法：
 #   bash deploy/scripts/prepare-funasr.sh [--force]
-#   --force: 强制重新下载（忽略版本比较）
+#   --force: 强制重新下载
 #
 # 前置条件：
 #   - 部署主机已安装 Docker（用临时容器下载，无需主机装 Python）
@@ -31,11 +30,11 @@ MODEL_CACHE="${CACHE_BASE}/modelscope"
 PIP_CACHE="${CACHE_BASE}/pip"
 MANIFEST="${CACHE_BASE}/manifest.json"
 
-# 期望的模型版本（更新模型时改这里）
-declare -A EXPECTED_MODELS=(
-    ["iic/SenseVoiceSmall"]="master"
-    ["iic/emotion2vec_plus_large"]="master"
-    ["damo/fsmn-vad"]="master"
+# 需要缓存的模型（存在性校验对象；更新模型时改这里）
+MODEL_IDS=(
+    "iic/SenseVoiceSmall"
+    "iic/emotion2vec_plus_large"
+    "damo/fsmn-vad"
 )
 
 # pip 依赖版本
@@ -59,40 +58,6 @@ ensure_dir() {
     log "目录就绪: $1"
 }
 
-# 读取 manifest 中某个 key 的值
-get_manifest_value() {
-    local key="$1"
-    if [[ -f "$MANIFEST" ]]; then
-        # 简单 JSON 解析（无需 jq 依赖）
-        python3 -c "
-import json, sys
-try:
-    m = json.load(open('$MANIFEST'))
-    print(m.get('$key', ''))
-except: pass
-" 2>/dev/null || echo ""
-    else
-        echo ""
-    fi
-}
-
-# 读取 manifest 中模型版本
-get_model_version() {
-    local model="$1"
-    if [[ -f "$MANIFEST" ]]; then
-        python3 -c "
-import json
-try:
-    m = json.load(open('$MANIFEST'))
-    models = m.get('models', {})
-    print(models.get('$model', {}).get('revision', ''))
-except: pass
-" 2>/dev/null || echo ""
-    else
-        echo ""
-    fi
-}
-
 # 写入/更新 manifest
 update_manifest() {
     python3 -c "
@@ -105,10 +70,10 @@ try:
 except:
     m = {'models': {}, 'pip': {}}
 
-# 更新模型信息
+# 更新模型就绪标记
 models = {
-$(for model in "${!EXPECTED_MODELS[@]}"; do
-    echo "    '$model': {'revision': '${EXPECTED_MODELS[$model]}', 'ready': True},"
+$(for model in "${MODEL_IDS[@]}"; do
+    echo "    '$model': {'ready': True},"
 done)
 }
 m['models'] = models
@@ -144,47 +109,22 @@ echo ""
 ensure_dir "$MODEL_CACHE"
 ensure_dir "$PIP_CACHE"
 
-# 2. 版本比较
+# 2. 缓存存在性校验
 NEED_UPDATE=false
 
 if [[ "$FORCE" == "true" ]]; then
-    log "强制模式：跳过版本比较，全量下载"
-    NEED_UPDATE=true
-elif [[ ! -f "$MANIFEST" ]]; then
-    log "manifest.json 不存在，首次下载"
+    log "强制模式：全量下载"
     NEED_UPDATE=true
 else
-    # 检查 pip 版本
-    cached_torch=$(get_manifest_value "pip" | python3 -c "
-import json, sys
-try:
-    d = json.loads(sys.stdin.read() or '{}')
-    print(d.get('torch', ''))
-except: pass
-" 2>/dev/null || echo "")
-
-    # 简单版本检查
-    for model in "${!EXPECTED_MODELS[@]}"; do
-        cached_rev=$(get_model_version "$model")
-        expected_rev="${EXPECTED_MODELS[$model]}"
-        if [[ "$cached_rev" != "$expected_rev" ]]; then
-            log "模型版本不一致: $model (缓存=$cached_rev, 期望=$expected_rev)"
+    # 检查模型文件是否实际存在（缺失 → 触发下载）
+    for model in "${MODEL_IDS[@]}"; do
+        model_dir="$MODEL_CACHE/hub/$model"
+        if [[ ! -d "$model_dir" ]]; then
+            log "模型目录缺失: $model_dir"
             NEED_UPDATE=true
             break
         fi
     done
-
-    # 检查模型文件是否实际存在
-    if [[ "$NEED_UPDATE" == "false" ]]; then
-        for model in "${!EXPECTED_MODELS[@]}"; do
-            model_dir="$MODEL_CACHE/hub/$model"
-            if [[ ! -d "$model_dir" ]]; then
-                log "模型目录缺失: $model_dir"
-                NEED_UPDATE=true
-                break
-            fi
-        done
-    fi
 fi
 
 # 3. 执行下载（使用临时 Docker 容器，无需主机安装 Python 环境）
@@ -261,10 +201,10 @@ PYTHON_EOF
         exit 1
     fi
 else
-    log_skip "版本一致，无需更新"
+    log_skip "模型缓存已就绪，无需下载"
     log "  已缓存模型:"
-    for model in "${!EXPECTED_MODELS[@]}"; do
-        echo "    - $model (rev: ${EXPECTED_MODELS[$model]})"
+    for model in "${MODEL_IDS[@]}"; do
+        echo "    - $model"
     done
 fi
 

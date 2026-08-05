@@ -4,7 +4,7 @@
 # 定时任务：crontab -e → 0 2 * * * /guju/mindsafe/backup.sh >> /guju/mindsafe/logs/backup.log 2>&1
 #
 # 链路对齐（OPS）：
-#   - 备份统一写入 compose db-backup 服务的 dbbackups volume（与自动备份容器同目录），
+#   - 备份统一写入 dbbackups volume（backup.sh 为唯一备份入口，db-backup 容器已于 OD-007 移除），
 #     restore.sh 也从同一 volume 读取，避免"备在宿主机、恢复找不到"的断裂。
 #   - 依赖：docker compose -f docker-compose.prod.yml 已启动（mindsafe-pg 容器存在）。
 #
@@ -50,7 +50,7 @@ log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"
 }
 
-# ===== 执行备份（直写 dbbackups volume，与自动备份容器同链路） =====
+# ===== 执行备份（直写 dbbackups volume，唯一备份链路） =====
 BACKUP_NAME="mindsafe_${TIMESTAMP}.dump"
 log "开始备份: ${DB_NAME} → volume ${BACKUP_VOLUME}:/daily/${BACKUP_NAME}"
 

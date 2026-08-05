@@ -118,8 +118,9 @@ mindsafe:
       base-url: ${LLM_FALLBACK_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode/v1}
       api-key: ${LLM_FALLBACK_API_KEY:}
       model: ${LLM_FALLBACK_MODEL:qwen-plus}
-      temperature: 0.7
-      max-tokens: 2048
+      # S4-2：单一事实源 = spring.ai.openai.chat.options.*（主/备供应商同步，防漂移）
+      temperature: ${spring.ai.openai.chat.options.temperature}
+      max-tokens: ${spring.ai.openai.chat.options.max-tokens}
   # JWT 认证（生产必须配置 secret）
   jwt:
     secret: ${MINDSAFE_JWT_SECRET:}  # 空 = 开发默认（生产 fail-fast）
@@ -151,13 +152,15 @@ mindsafe:
   # 2026-07-28 审计裁决：默认 local（儿童生物数据最小化），remote 仅按需开启（需家长单独同意）
   voiceprint:
     mode: ${MINDSAFE_VOICEPRINT_MODE:local}  # local | remote
-    verify-threshold: 0.55                    # remote 模式余弦相似度阈值（低于 local 0.70，因网络传输损耗实测 0.70 过不了）
+    verify-threshold: 0.55                    # 声纹验证阈值单一事实源（remote 模式实测值；system-config 按 S4-1 派生）
     max-templates: 8                          # 每用户最大模板数
   # 前端运行时配置（通过 GET /api/v1/system/config 下发，CFG-001）
   # 设计原则：此处仅放“前端需要知道”的业务参数，密钥/服务 URL 不下发
   system-config:
     voiceprint:
-      verify-threshold: 0.70        # 前端 local 模式余弦相似度阈值（本地 embedding 质量稳定，可用较严阈值）
+      # S4-1：单一事实源 = mindsafe.voiceprint.verify-threshold（0.55，remote 实测值）；
+      # 前端 local/remote 模式阈值统一随远程下发，消灭双源漂移（design/doing/58 S4）
+      verify-threshold: ${mindsafe.voiceprint.verify-threshold}
       max-templates: 8
       enroll-segments: 3
       verify-segments: 2
