@@ -239,8 +239,8 @@ public class TeacherController {
         String classScope = teacherService.resolveClassScope(ctx.tenantId(), ctx.userId(), ctx.userType());
         LambdaQueryWrapper<User> wrapper = new LambdaQueryWrapper<User>()
                 .eq(User::getTenantId, ctx.tenantId())
-                .eq(User::getUserType, "student")
-                .eq(User::getStatus, "active")
+                .eq(User::getUserType, User.USER_TYPE_STUDENT)
+                .eq(User::getStatus, User.STATUS_ACTIVE)
                 .orderByAsc(User::getGradeCode)
                 .orderByAsc(User::getClassCode);
         if (classScope != null) {
@@ -333,8 +333,8 @@ public class TeacherController {
         List<User> students = userMapper.selectList(
                 new LambdaQueryWrapper<User>()
                         .eq(User::getTenantId, ctx.tenantId())
-                        .eq(User::getUserType, "student")
-                        .eq(User::getStatus, "active")
+                        .eq(User::getUserType, User.USER_TYPE_STUDENT)
+                        .eq(User::getStatus, User.STATUS_ACTIVE)
                         .orderByAsc(User::getGradeCode)
                         .orderByAsc(User::getClassCode)
         );
@@ -387,7 +387,7 @@ public class TeacherController {
         CaseLifecycleService.StageTransition result =
                 teacherService.transitionCaseStage(ctx.tenantId(), studentId, userId, target);
 
-        auditLogService.log(ctx.tenantId(), userId, "CASE_TRANSITION", "student", studentId, targetStage);
+        auditLogService.log(ctx.tenantId(), userId, "CASE_TRANSITION", User.USER_TYPE_STUDENT, studentId, targetStage);
         return ApiResponse.ok(Map.of(
                 "allowed", result.allowed(),
                 "newStage", result.to().name(),
@@ -480,7 +480,7 @@ public class TeacherController {
             .append(java.time.LocalDateTime.now().toString().substring(0, 16)).append("</p><hr>");
 
         for (var msg : messages) {
-            boolean isStudent = "student".equals(msg.senderType());
+            boolean isStudent = User.USER_TYPE_STUDENT.equals(msg.senderType());
             html.append("<div class='msg ").append(isStudent ? "student" : "ai").append("'>");
             html.append("<div class='meta'>").append(isStudent ? "🧒 学生" : "🤖 AI");
             if (msg.emotionLabel() != null) html.append(" · ").append(emotionZh(msg.emotionLabel()));

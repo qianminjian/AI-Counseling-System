@@ -2,6 +2,7 @@ package com.mindsafe.api.websocket;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mindsafe.api.security.JwtTokenProvider;
+import com.mindsafe.domain.entity.User;
 import com.mindsafe.service.auth.TokenBlacklistService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -35,7 +36,7 @@ public class AlertWebSocketHandler extends TextWebSocketHandler implements SubPr
     private static final List<String> SUB_PROTOCOLS = List.of("alerts.v1");
 
     /** 允许接入预警推送的角色（与 SecurityConfig /api/v1/alerts/** 对齐，学生/家长严禁接入） */
-    private static final Set<String> ALERT_ROLES = Set.of("teacher", "psych_teacher", "class_teacher", "admin");
+    private static final Set<String> ALERT_ROLES = Set.of(User.USER_TYPE_TEACHER, User.USER_TYPE_PSYCH_TEACHER, User.USER_TYPE_CLASS_TEACHER, User.USER_TYPE_ADMIN);
 
     /** tenantId → 该租户下所有在线教师 session */
     private final Map<UUID, Set<WebSocketSession>> tenantSessions = new ConcurrentHashMap<>();

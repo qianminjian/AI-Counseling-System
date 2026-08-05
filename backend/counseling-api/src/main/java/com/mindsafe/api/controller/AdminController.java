@@ -85,7 +85,7 @@ public class AdminController {
         code.setMaxUses(maxUses);
         code.setUsedCount(0);
         code.setExpiresAt(Instant.now().plus(expireDays, ChronoUnit.DAYS));
-        code.setStatus("active");
+        code.setStatus(TrialInviteCode.STATUS_ACTIVE);
         code.setCreatedBy(userId);
         code.setCreatedAt(Instant.now());
 
@@ -123,7 +123,7 @@ public class AdminController {
             code.setMaxUses(1); // 一人一码
             code.setUsedCount(0);
             code.setExpiresAt(Instant.now().plus(expireDays, ChronoUnit.DAYS));
-            code.setStatus("active");
+            code.setStatus(TrialInviteCode.STATUS_ACTIVE);
             code.setCreatedBy(userId);
             code.setCreatedAt(Instant.now());
             code.setBatchId(batchId);
@@ -270,7 +270,7 @@ public class AdminController {
                         new LambdaQueryWrapper<User>()
                                 .eq(User::getTenantId, tenantId)
                                 .eq(User::getPseudonym, pseudonym)
-                                .eq(User::getUserType, "student")
+                                .eq(User::getUserType, User.USER_TYPE_STUDENT)
                 );
                 if (exists > 0) {
                     errors.add("第" + lineNo + "行：\"" + pseudonym + "\" 已存在，跳过");

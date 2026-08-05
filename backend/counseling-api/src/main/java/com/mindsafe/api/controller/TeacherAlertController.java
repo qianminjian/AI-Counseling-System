@@ -2,6 +2,7 @@ package com.mindsafe.api.controller;
 
 import com.mindsafe.api.security.JwtAuthenticationFilter.TenantContext;
 import com.mindsafe.common.dto.ApiResponse;
+import com.mindsafe.domain.entity.User;
 import com.mindsafe.service.audit.AuditLogService;
 import com.mindsafe.service.teacher.TeacherService;
 import org.springframework.security.core.Authentication;
@@ -98,7 +99,7 @@ public class TeacherAlertController {
         UUID userId = (UUID) auth.getPrincipal();
         boolean enabled = Boolean.TRUE.equals(body.get("enabled"));
         teacherService.setCaseTracking(ctx.tenantId(), studentId, userId, enabled);
-        auditLogService.log(ctx.tenantId(), userId, "CASE_TRACKING_SET", "student", studentId, String.valueOf(enabled));
+        auditLogService.log(ctx.tenantId(), userId, "CASE_TRACKING_SET", User.USER_TYPE_STUDENT, studentId, String.valueOf(enabled));
         return ApiResponse.ok(null);
     }
 

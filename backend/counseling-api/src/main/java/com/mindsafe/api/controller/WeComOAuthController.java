@@ -112,7 +112,7 @@ public class WeComOAuthController {
             User matchedUser = TenantContextHolder.callAsSystem(() -> userMapper.selectOne(
                     new LambdaQueryWrapper<User>()
                             .eq(User::getPseudonym, wecomUserId)
-                            .eq(User::getUserType, "teacher")
+                            .eq(User::getUserType, User.USER_TYPE_TEACHER)
                             .last("LIMIT 1")));
 
             if (matchedUser == null) {

@@ -96,7 +96,7 @@ public class ParentController {
                 new LambdaQueryWrapper<MessageSummary>()
                         .eq(MessageSummary::getTenantId, tenantId)
                         .eq(MessageSummary::getStudentUserId, studentUserId)
-                        .eq(MessageSummary::getSenderType, "student")
+                        .eq(MessageSummary::getSenderType, User.USER_TYPE_STUDENT)
                         .ge(MessageSummary::getCreatedAt, weekAgo)
         );
 

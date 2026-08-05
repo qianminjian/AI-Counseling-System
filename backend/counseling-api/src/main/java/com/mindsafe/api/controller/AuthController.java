@@ -93,7 +93,7 @@ public class AuthController {
         java.util.List<User> candidates = TenantContextHolder.callAsSystem(() -> userMapper.selectList(
                 new LambdaQueryWrapper<User>()
                         .eq(User::getPseudonym, request.username())
-                        .eq(User::getStatus, "active")
+                        .eq(User::getStatus, User.STATUS_ACTIVE)
         ));
         if (candidates.size() > 1) {
             log.warn("登录拒绝：昵称重复无法唯一定位账号, username={}, matches={}", request.username(), candidates.size());
@@ -278,7 +278,7 @@ public class AuthController {
         // 需显式声明系统作用域，否则多租户拦截器拒绝 SQL（M1-003）
         User user = TenantContextHolder.callAsSystem(() ->
                 userMapper.selectById(jwtTokenProvider.getUserId(vc)));
-        if (user == null || !"active".equals(user.getStatus())) {
+        if (user == null || !User.STATUS_ACTIVE.equals(user.getStatus())) {
             throw new BizException(ErrorCode.UNAUTHORIZED, "账号不可用，请联系老师");
         }
 
