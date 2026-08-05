@@ -97,6 +97,7 @@
 | `agent-collaboration.md` | Subagent 设计 / Skill 设计 / Hook 设计 / MCP 调用 | Subagent 三要素 / Prompt 模板 / Hook 模板 / 多 Agent 编排 / 模式与权限 |
 | `context-management.md` | 长会话 / 上下文压缩后 / 会话 >30 轮 | 会话阈值 / 压缩恢复 / 关键信息防丢失 / 持久化定位 |
 | `framework-integration.md` | 与 GSD / Superpowers / atdo 等外部框架交互 | 通用优先级链 / GSD 协作 / Superpowers 协作 / 冲突矩阵 |
+| `design-document-management.md` | 设计文档讨论 / 子文档开发迭代 / 发起合并设计文档 | doing 子文档工作流：独立编号生成（接续 01-57）/ 开发期冻结 12 份主文档 / 完成时主动合并仅并入最终态 / 合并后归档 his |
 
 ### 7.4 Apply Manually（手动引入 - @rule 触发）
 
@@ -138,6 +139,7 @@
 | `.qoder/rules/*.md` | 规则约束 | 项目生命周期 |
 | `AGENTS.md` | 项目入口 + 总览 | 项目生命周期 |
 | `design/BEACON.md` | 项目设计决策、范围、当前状态 | 项目生命周期 |
+| `design/doing/*.md` | 进行中的子设计文档（编号接续 01-57，独立生成与迭代） | 开发期 → 合并完成后归档 `design/his/` |
 | `design/session-summary.md` | 长会话状态快照 | 会话级 |
 
 ---
