@@ -12,11 +12,17 @@ ARG ASR_ENGINE=dashscope
 
 WORKDIR /app
 
-# 系统依赖（soundfile 需要 libsndfile）
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libsndfile1 \
-    ffmpeg \
-    && rm -rf /var/lib/apt/lists/*
+# 系统依赖（soundfile 需要 libsndfile，funasr 需要 ffmpeg 转码）
+# 修复：与 pip 一致启用 BuildKit --mount=type=cache + 阿里云镜像加速，
+# 避免 ffmpeg(~200MB) 每次构建都从海外 snapshot.debian.org 重新拉取。
+# 设计依据：design/04 §13.3（BuildKit pip 加速）— 系统包同等适用。
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    sed -i 's|http://deb.debian.org|https://mirrors.aliyun.com|g' /etc/apt/sources.list.d/debian.sources \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends \
+        libsndfile1 \
+        ffmpeg
 
 # Python 依赖 — 始终安装全量（torch + funasr + dashscope）
 # 这样无论运行时 ASR_ENGINE 设什么，emotion2vec SER 都可用
