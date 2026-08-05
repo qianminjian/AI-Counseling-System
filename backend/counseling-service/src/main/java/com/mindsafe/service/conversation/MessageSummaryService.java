@@ -87,7 +87,8 @@ public class MessageSummaryService {
             if (summary != null && !summary.isBlank()) {
                 CounselingSession update = new CounselingSession();
                 update.setSessionId(sessionId);
-                update.setSessionSummary(summary);
+                // AUDIT-P1-8：session_summary 字段级加密后落库（教师端读取时解密）
+                update.setSessionSummary(fieldEncryptionService.encrypt(summary));
                 update.setUpdatedAt(Instant.now());
                 sessionMapper.updateById(update);
                 log.info("会话摘要已生成: sessionId={}", sessionId);

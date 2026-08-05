@@ -1,6 +1,6 @@
 # AI 小学生心理辅导系统 - 项目明灯
 
-> 创建：2026-07-23 | 更新：2026-07-28 | 阶段：商业化版本开发完成 + 生产部署上线 + UAT 缺陷修复 + P0-P2 孤儿组件接线收官 + 语音服务生产化（TTS v3 三级降级 + ASR/SER 解耦）+ 声纹登录 remote 模式 + 学生端体验升级（吐泡泡气泡/悬浮球拖拽/声纹按钮化）+ **配置统一纳管（CFG-001~008 TDD 全量实施）**；设计深化工程 33 篇完成；2026-07-28 frozen 区审计解冻（35-37/44-51 已实施或建议实施移回 design/ 根目录，frozen/ 仅余 34/38-43/58 真正冻结项）；分析专题（design/52-55）+ 实施专题（design/56-57）已完成
+> 创建：2026-07-23 | 更新：2026-07-28 | 阶段：商业化版本开发完成 + 生产部署上线 + UAT 缺陷修复 + P0-P2 孤儿组件接线收官 + 语音服务生产化（TTS v3 三级降级 + ASR/SER 解耦）+ 声纹登录 remote 模式 + 学生端体验升级（吐泡泡气泡/悬浮球拖拽/声纹按钮化）+ **配置统一纳管（CFG-001~008 TDD 全量实施）** + **剩余审计问题收官（fix-13，16 项）**；设计深化工程 33 篇完成；2026-07-28 frozen 区审计解冻（35-37/44-51 已实施或建议实施移回 design/ 根目录，frozen/ 仅余 34/38-43/58 真正冻结项）；分析专题（design/52-55）+ 实施专题（design/56-57）已完成
 
 ---
 
@@ -66,7 +66,7 @@
   - 部署：Docker Compose 一键启动（PostgreSQL + Redis + Spring Boot + Nginx + voice-service + tts-service）；CI/CD 流水线（GitHub Actions）；生产 mindsafe 专用用户；deploy.sh 增量部署（含 --voice）
   - 商业化功能：企微 OAuth、会话导出 PDF、批量导入、满意度分析、干预话术模板、新手引导、RAG 知识库
   - 安全加固：SecurityConfig authenticated() + actuator/swagger 访问控制 + CSP + 种子用户禁用 + 加密 fail-fast + AES-256 + 审计日志 + PII 脱敏
-- **最近动作**（2026-07-28）：①**配置统一纳管 CFG-001~008 TDD 全量实施**（design/57）：Java 后端 SystemConfigController + 前端 remote.ts 运行时注入 + TTS/Voice config.yaml 外置 + 部署链路透传 + 文档同步；②环境变量精简分析：修复 WECOM 4 变量 docker-compose 未透传缺陷 + 归属决策矩阵 + 设计原则补充；③测试 635 全绿（Java 14 + Frontend 578 + TTS 35 + Voice 8）
+- **最近动作**（2026-07-28）：①**配置统一纳管 CFG-001~008 TDD 全量实施**（design/57）：Java 后端 SystemConfigController + 前端 remote.ts 运行时注入 + TTS/Voice config.yaml 外置 + 部署链路透传 + 文档同步；②环境变量精简分析：修复 WECOM 4 变量 docker-compose 未透传缺陷 + 归属决策矩阵 + 设计原则补充；③测试 635 全绿（Java 14 + Frontend 578 + TTS 35 + Voice 8）；④**剩余审计问题收官（fix-13，16 项）**：限流恒 false 修复 + 加密收口（V32/session_summary/_enc 清理）+ JWT iss/aud/jti+撤销 + logback 全局脱敏 + 监控告警体系（8 规则 + Alertmanager 企微 + Python metrics）+ CI/CD 门禁（前端覆盖率/Trivy/rsync/回滚）+ 文档同步（保留期 180 天/前端 TS/审计日志状态）
 - **下一步**：WAKE-012 真机测试（需物理设备）→ 量表合规（SCALE-001/002）→ RAG 知识库填充（AI-006 解空库门禁）→ 按用户指令提交/推送/发布；远期任务见 TASK-TRACKER §二十~二十四
 - **阻塞项**：无
 

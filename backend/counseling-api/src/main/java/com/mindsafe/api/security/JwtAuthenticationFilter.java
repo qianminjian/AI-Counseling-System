@@ -40,7 +40,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         if (token != null
                 && jwtTokenProvider.validateToken(token)
                 && jwtTokenProvider.isAccessToken(token)
-                && !blacklistService.isBlacklisted(token)) {
+                && !blacklistService.isBlacklisted(jwtTokenProvider.getTokenId(token))) {
 
             UUID userId = jwtTokenProvider.getUserId(token);
             String userType = jwtTokenProvider.getUserType(token);

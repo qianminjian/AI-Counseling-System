@@ -165,6 +165,7 @@ class ConversationServiceImplTest {
                 // ORCH-001/003：编排引擎+情绪状态机纯规则无依赖，直接用真实实例
                 new PromptOrchestrationService(new EntryMoodStrategyResolver(), new EmotionStateMachine()),
                 messageSummaryService,
+                plainEnc,
                 crisisResourceProvider,
                 allianceEnhancer, cbtStageRouter,
                 sessionEndAnalyticsService, sessionStateStore,
@@ -352,6 +353,7 @@ class ConversationServiceImplTest {
                     new PromptOrchestrationService(new EntryMoodStrategyResolver(), new EmotionStateMachine()),
                     new MessageSummaryService(messageSummaryMapper, sessionMapper,
                             aiChatService, keyedEnc, conversationQualityService, profileExtractorService, longTermMemoryService),
+                    keyedEnc,
                     crisisResourceProvider,
                     allianceEnhancer, cbtStageRouter,
                     sessionEndAnalyticsService, sessionStateStore,
@@ -1039,6 +1041,51 @@ class ConversationServiceImplTest {
             service.endSession(tenantId, studentId, sessionId);
 
             verify(profileService).updateProfile(eq(tenantId), eq(studentId), eq(List.of()));
+        }
+
+        @Test
+        @DisplayName("AUDIT-P2-20：endSession 分析收到 DB 真实学生消息（不再传占位空列表）")
+        void endSession_passesRealStudentMessagesToAnalyze() {
+            UUID sessionId = createSession("happy");
+
+            // 模拟 DB 已落库 2 条学生消息摘要（明文透传加密模式：密文=明文）
+            MessageSummary m1 = new MessageSummary();
+            m1.setSessionId(sessionId);
+            m1.setTenantId(tenantId);
+            m1.setSenderType("student");
+            m1.setContentSummary("我今天有点不开心");
+            MessageSummary m2 = new MessageSummary();
+            m2.setSessionId(sessionId);
+            m2.setTenantId(tenantId);
+            m2.setSenderType("student");
+            m2.setContentSummary("嗯");
+            when(messageSummaryMapper.selectList(any())).thenReturn(List.of(m1, m2));
+
+            service.endSession(tenantId, studentId, sessionId);
+
+            @SuppressWarnings("unchecked")
+            ArgumentCaptor<List<String>> captor = ArgumentCaptor.forClass(List.class);
+            verify(sessionEndAnalyticsService)
+                    .analyze(eq(tenantId), eq(studentId), any(), any(), captor.capture(), any());
+            // 单字过滤由 measureDepth 内部完成，loadStudentMessages 原样透传所有学生消息
+            assertThat(captor.getValue()).containsExactly("我今天有点不开心", "嗯");
+        }
+
+        @Test
+        @DisplayName("AUDIT-P2-20：消息加载失败时降级为空列表（不影响会话结束）")
+        void endSession_messageLoadFailureDegradesGracefully() {
+            UUID sessionId = createSession("happy");
+            // selectList 抛异常（mock 默认 null 也会被 catch 拦截）
+            when(messageSummaryMapper.selectList(any()))
+                    .thenThrow(new RuntimeException("db down"));
+
+            service.endSession(tenantId, studentId, sessionId);
+
+            @SuppressWarnings("unchecked")
+            ArgumentCaptor<List<String>> captor = ArgumentCaptor.forClass(List.class);
+            verify(sessionEndAnalyticsService)
+                    .analyze(eq(tenantId), eq(studentId), any(), any(), captor.capture(), any());
+            assertThat(captor.getValue()).isEmpty();
         }
 
         @Test

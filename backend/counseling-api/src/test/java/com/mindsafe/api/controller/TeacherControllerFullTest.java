@@ -16,6 +16,7 @@ import com.mindsafe.domain.mapper.UserMapper;
 import com.mindsafe.service.audit.AuditLogService;
 import com.mindsafe.service.notification.NotificationService;
 import com.mindsafe.service.profile.ProfileRadarService;
+import com.mindsafe.service.security.FieldEncryptionService;
 import com.mindsafe.service.teacher.TeacherService;
 import jakarta.servlet.ServletOutputStream;
 import jakarta.servlet.http.HttpServletResponse;
@@ -56,6 +57,7 @@ class TeacherControllerFullTest {
     private MessageSummaryMapper messageSummaryMapper;
     private AuditLogService auditLogService;
     private JwtTokenProvider jwtTokenProvider;
+    private FieldEncryptionService fieldEncryptionService;
     private TeacherController controller;
 
     private final UUID tenantId = UUID.randomUUID();
@@ -79,9 +81,10 @@ class TeacherControllerFullTest {
         messageSummaryMapper = mock(MessageSummaryMapper.class);
         auditLogService = mock(AuditLogService.class);
         jwtTokenProvider = mock(JwtTokenProvider.class);
+        fieldEncryptionService = mock(FieldEncryptionService.class);
         controller = new TeacherController(notificationService, teacherService, profileRadarService,
                 riskEventMapper, userMapper, sessionMapper, messageSummaryMapper, auditLogService,
-                jwtTokenProvider);
+                jwtTokenProvider, fieldEncryptionService);
     }
 
     private Authentication teacherAuth(String userType) {
@@ -243,6 +246,7 @@ class TeacherControllerFullTest {
         CounselingSession s = new CounselingSession();
         s.setSessionSummary("摘要内容");
         when(sessionMapper.selectOne(any())).thenReturn(s);
+        when(fieldEncryptionService.decrypt("摘要内容")).thenReturn("摘要内容");
 
         var resp = controller.getSessionSummary(UUID.randomUUID(), teacherAuth("psych_teacher"));
 

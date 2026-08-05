@@ -17,6 +17,8 @@
 
 **本轮修复批次（fix-01~12）：**
 > fix-01 台账重标（本节）→ fix-02 删世界B → fix-03 加密接线(R-01) → fix-04 监护人同意门禁(R-03) → fix-05 SLA兜底(P-05) → fix-06 多租户拦截器(P-02) → fix-07 弱口令fail-fast(R-04) → fix-08 TLS(R-02) → fix-09 种子数据V27清理(R-05) → fix-10 CI修真(Q-01/Q-03) → fix-11 全量回归+文档同步 → fix-12 孤儿组件逐个裁决。
+>
+> **fix-13 剩余审计问题收官（2026-07-28，16 项全闭环）**：P0-2 限流恒 false 修复+单测 → P0-3/P1-8/P2-16 V32 迁移+密文预算截断+session_summary 加密+_enc 清理 → P0-5 SMS_PROVIDER 默认值统一+logging 醒目标记 → P1-10 监控告警体系（alert-rules 8 规则+Alertmanager 企微应用消息+tts/voice Python metrics 埋点）→ P1-11/12/P2-22 CI 前端覆盖率门禁+Trivy 前端+clean → P1-13/P3-28 JWT iss/aud/jti+token 撤销+DEV_SECRET 隔离 → P1-14 本地 DB 端口 5433→5432 对齐 → P1-15 logback 全局日志脱敏 → P2-18 jacoco 排除 entity 充数+门禁口径 → P2-20 ConversationServiceImpl 占位参数处置+staging 死配置删除 → P2-24/P3-31 tts requirements 上限+Python Dockerfile 加固 → P0-6 ONNX 模型获取脚本+冒烟校验 → P0-4/P1-9 cd.yml rsync 前端+CD 回滚机制 → P2-17/23/26/27/P3-30 文档同步（design/14 保留期 30→180 天、design/12 前端 TS 修正、design/16 审计日志/系统配置 🟩、design/33 保留策略对齐）→ P1-7/P3-29 冻结目录核对（frozen/ 8 份设计文档任务已全部登记于 §二十/§二十一/§二十三 + DESIGN-OVERVIEW v4.0，无需补）。全部经独立验证（后端 mvn 测试 + 前端 tsc/build/vitest + YAML/compose 校验）。
 
 > 说明：§二十三 P0/P1/P2 backlog 中大量 ✅ 实为态③「已编码未接线」孤儿，**逐行裁决归口 fix-12**（与钱敏健逐项确认），本节仅先校正最高信号的失实条目，不在此重复逐行改标。
 

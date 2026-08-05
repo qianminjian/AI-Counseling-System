@@ -343,20 +343,33 @@ sudo systemctl restart docker
 
 ## 十、监控与告警
 
-生产环境建议启用 Prometheus + Grafana 监控栈：
+生产环境建议启用 Prometheus + Grafana + Alertmanager 监控栈：
 
 ```bash
 # 在主服务运行后启动监控（独立 compose，不影响主服务）
+# 前置：.env 中已设置 GRAFANA_PASSWORD（强密码，缺省 compose 直接 fail-fast）
 cd deploy
 docker compose -f docker-compose.monitoring.yml up -d
 ```
 
-- **Prometheus**：`http://<服务器IP>:9090`（抓取后端 `/actuator/prometheus` 指标）
-- **Grafana**：`http://<服务器IP>:3000`（默认账号 admin/admin，首次登录强制改密）
+- **Prometheus**：仅 internal 网络可达（不公网暴露，`docker exec` 可查 UI）；抓取后端 `/actuator/prometheus` + tts/voice 服务 `/metrics`
+- **Grafana**：`http://<服务器IP>:3002`（默认账号 admin，密码为 .env 的 `GRAFANA_PASSWORD`，关闭开放注册）
+- **Alertmanager**：接收 Prometheus 告警，推送企业微信应用消息（仅 internal 网络可达）
 - **数据源**：Grafana 已预配置 Prometheus 数据源（`deploy/monitoring/grafana/provisioning/`）
 
 关键监控指标：
-- `http_server_requests_seconds`：API 响应时间
-- `hikaricp_connections_active`：数据库连接池
-- `jvm_memory_used_bytes`：JVM 内存
-- 告警通道：企业微信 Webhook（配置 `MINDSAFE_ALERT_WECOM_WEBHOOK_URL`）
+- `http_server_requests_seconds`：API 响应时间（后端）
+- `hikaricp_connections_active`：数据库连接池（后端）
+- `jvm_memory_used_bytes`：JVM 内存（后端）
+- `tts_synthesize_requests_total` / `tts_engine_available`：TTS 合成量与引擎可用性
+- `voice_analyze_requests_total` / `voice_asr_ready` / `voice_ser_ready`：语音分析量与引擎就绪状态
+
+告警规则（`deploy/monitoring/alert-rules.yml`，P1-10）：
+- 服务不可达（后端/TTS/语音，critical）：离线 1 分钟即告警
+- 后端 5xx 错误率 > 5% / P95 延迟 > 2s（warning）
+- TTS 全部引擎不可用（critical）与合成失败率 > 50%（warning）
+- 语音分析失败/超时率 > 50%（warning）
+
+告警通道：Alertmanager → 企业微信应用消息（复用 .env 的 `WECOM_CORP_ID`/`WECOM_AGENT_ID`/`WECOM_SECRET`），
+接收人 `WECOM_ALERT_TO_USER`（企微 userid，`@all` 需全员权限）；未配置时告警仅留存 Alertmanager 不推送（日志可见）。
+业务告警（SlaEscalationScanner）仍走企业微信 Webhook（`ALERT_WECOM_WEBHOOK_URL`），两者独立。

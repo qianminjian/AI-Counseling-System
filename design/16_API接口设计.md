@@ -1038,7 +1038,7 @@ public record RecommendedActions(
 | 管理报表 | §4.9 | 🟫 | teacher-web 有统计页，报表端点覆盖度未逐一核对 |
 | 租户/用户管理 | §5.1-5.2 | 🟫 | platform/* 平台管理端点已实现（新增形态），与本文 admin/* 命名不一致，以实现为准 |
 | 知识库审核工作流 | §5.3 | ⬜ | KnowledgeController 仅 documents/search；submit-review/approve/reject 无状态字段支撑，归 49/KB 系列（呼应 15 §12.1 审核铁律） |
-| 审计日志/系统配置 | §5.4-5.5 | ⬜ | 未核对到实现 |
+| 审计日志/系统配置 | §5.4-5.5 | 🟩 | 审计日志：GET /api/v1/admin/audit-logs（AdminController，action 过滤 + limit 默认 200/上限 500，audit_logs 表）；系统配置：GET /api/v1/system/config（SystemConfigController，前端运行时下发，permitAll + SystemConfigControllerTest）；审计写入点：IMPORT_STUDENTS/ALERT_TRANSFER/EDITORIAL_*/PROMPT_VERSION_ACTIVATE 等（AuditLogService + audit_logs，免 schema 变更）；§5.5 的 risk-rules/notification-channels PATCH 端点未实现（设计期，无对应 Controller） |
 | 内部 AI 服务 API | §6 | ⬜ | 编排实际在 ConversationServiceImpl 进程内完成，未拆独立内部 API；~~§6 保留为世界B目标态~~ → 世界B 已删除（DEC-CBT 2026-07-29），§6 作为远期微服务拆分参考保留，归 ORCH 系列 |
 | WebSocket 推送 | §7 | 🟫 | alert.new 已生效（useAlertWebSocket + 15s 轮询兜底）；sla_warning/escalated/appointment.reminder/session.risk_change ⬜ |
 

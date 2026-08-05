@@ -19,7 +19,8 @@ spring:
 
   # 数据源（PostgreSQL 16 + pgvector）
   datasource:
-    url: jdbc:postgresql://localhost:5433/mindsafe
+    # AUDIT-P1-14：本地端口 5433→5432，与 deploy compose / 生产保持一致（避免环境漂移）
+    url: jdbc:postgresql://localhost:5432/mindsafe
     username: mindsafe
     password: ${DB_PASSWORD:mindsafe_dev}
     driver-class-name: org.postgresql.Driver
@@ -122,6 +123,10 @@ mindsafe:
   # JWT 认证（生产必须配置 secret）
   jwt:
     secret: ${MINDSAFE_JWT_SECRET:}  # 空 = 开发默认（生产 fail-fast）
+    # AUDIT-P3-28：开发密钥不再硬编码于代码，此处提供默认值（仅非 prod profile 生效）
+    dev-secret: ${MINDSAFE_JWT_DEV_SECRET:mindsafe-dev-secret-key-at-least-256-bits-long!!}
+    # AUDIT-P1-13：签发者声明（parseToken 强制校验）
+    issuer: ${MINDSAFE_JWT_ISSUER:mindsafe}
     access-expiration-ms: 7200000    # 2 小时
     refresh-expiration-ms: 604800000 # 7 天
   # CORS 允许的前端域名（生产环境仅允许正式域名）
@@ -142,9 +147,10 @@ mindsafe:
       enabled: true                     # 风险预警 SLA 超时兜底扫描（P-05）
       scan-cron: "0 * * * * ?"           # 扫描 cron（每分钟）
       re-alert-cooldown-minutes: 30     # 同一事件重复告警冷却期（分钟，防告警风暴）
-  # 声纹识别模式（local=浏览器端比对，remote=embedding传服务端比对）
+  # 声纹识别模式（local=浏览器端比对，声纹不出设备；remote=embedding传服务端比对）
+  # 2026-07-28 审计裁决：默认 local（儿童生物数据最小化），remote 仅按需开启（需家长单独同意）
   voiceprint:
-    mode: ${MINDSAFE_VOICEPRINT_MODE:remote}  # local | remote
+    mode: ${MINDSAFE_VOICEPRINT_MODE:local}  # local | remote
     verify-threshold: 0.55                    # remote 模式余弦相似度阈值（低于 local 0.70，因网络传输损耗实测 0.70 过不了）
     max-templates: 8                          # 每用户最大模板数
   # 前端运行时配置（通过 GET /api/v1/system/config 下发，CFG-001）
@@ -178,6 +184,8 @@ mindsafe:
     url: ${TTS_SERVICE_URL:http://localhost:10096}
   # 短信服务（家长手机验证）
   sms:
+    # AUDIT-P0-5：默认 logging 仅限非 prod（LoggingSmsService @Profile(!prod)）；
+    # 生产由 prod compose 强制 ${SMS_PROVIDER:-aliyun}，未配置凭证时 fail-fast 启动失败
     provider: ${MINDSAFE_SMS_PROVIDER:logging}  # logging | aliyun
     aliyun:
       access-key-id: ${MINDSAFE_SMS_ALIYUN_ACCESS_KEY_ID:}

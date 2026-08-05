@@ -20,7 +20,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Python 依赖 — 始终安装全量（torch + funasr + dashscope）
 # 这样无论运行时 ASR_ENGINE 设什么，emotion2vec SER 都可用
-COPY requirements.txt requirements-dashscope.txt ./
+COPY requirements.txt ./
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/ \
     && echo "📦 安装 torch + funasr + dashscope 全量依赖..." \
@@ -33,11 +33,16 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 #   1. 镜像体积从 ~5GB 降至 ~2GB（funasr 模式）
 #   2. 模型文件持久化在宿主机，重建容器无需重新下载
 #   3. 通过 prepare-funasr.sh 脚本管理版本和更新
-# 挂载点：/root/.cache/modelscope（由 docker-compose volumes 配置）
+# 挂载点：/home/appuser/.cache/modelscope（由 docker-compose volumes 配置）
 
 # 应用代码 + 配置 + 启动脚本
 COPY app.py config.py config.yaml entrypoint.sh ./
 RUN chmod +x entrypoint.sh
+
+# 非 root 运行（审计 P3-31）
+# 模型缓存挂载到 $HOME/.cache/modelscope（与 entrypoint.sh MODEL_BASE 对齐）
+RUN useradd -m -u 1000 appuser
+USER appuser
 
 EXPOSE 10095
 

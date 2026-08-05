@@ -8,6 +8,15 @@ on:
   push:
     branches: [main]
     tags: ['v*']
+  # P1-9 修复：CD 手动回滚入口（GitHub 页面 Run workflow → 填旧镜像 tag）
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: '回滚目标镜像 tag（git SHA 前 7 位或 v 标签）'
+        required: true
+      targets:
+        description: '回滚范围，逗号分隔：backend,voice,tts,frontend（默认全部）'
+        default: 'backend,voice,tts,frontend'
 
 env:
   REGISTRY: ghcr.io
@@ -131,7 +140,7 @@ jobs:
         run: |
           echo "✅ Images pushed to GHCR"
           echo "Backend: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/backend:${GITHUB_SHA::7}"
-          echo "Frontend: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/frontend:${GITHUB_SHA::7}"
+          echo "Frontend: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/frontend:${GITHUB_SHA::7}（生产不消费镜像，以 dist 直传发布，见 deploy-frontend job）"
           echo "voice-service: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/voice-service:${GITHUB_SHA::7}"
           echo "tts-service: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/tts-service:${GITHUB_SHA::7}"
 
@@ -180,11 +189,135 @@ jobs:
           echo "❌ backend health check timeout"
           exit 1
 
+  # P0-4 修复：前端 dist 直传服务器
+  # 背景：生产 nginx 直接挂载宿主机 frontend/<app>/dist 目录（docker-compose.prod.yml），
+  #       frontend 镜像虽构建推送但生产从不消费——前端发布链路此前是断的。
+  # 与 deploy.sh 的 rsync 模式对齐；rsync 前保留上一版 dist.prev 供回滚（P1-9）
+  deploy-frontend:
+    name: Rsync Frontend Dist
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    if: success() && github.ref == 'refs/heads/main'
+    environment: production
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Build student-h5
+        working-directory: frontend/student-h5
+        run: |
+          npm ci
+          npm run build
+
+      - name: Build teacher-web
+        working-directory: frontend/teacher-web
+        run: |
+          npm ci
+          npm run build
+
+      - name: Build parent-h5
+        working-directory: frontend/parent-h5
+        run: |
+          npm ci
+          npm run build
+
+      - name: Install SSH key
+        uses: shimataro/ssh-key-action@v2
+        with:
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          known_hosts: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+
+      - name: Rsync dist & keep previous for rollback
+        run: |
+          set -euo pipefail
+          REMOTE_DIR=/guju/mindsafe
+          HOST="${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}"
+          # 1. 服务器端保留上一版 dist（回滚用）
+          ssh "$HOST" "cd $REMOTE_DIR/frontend && for d in student-h5 teacher-web parent-h5; do rm -rf \$d/dist.prev && [ -d \$d/dist ] && mv \$d/dist \$d/dist.prev; done"
+          # 2. rsync 新 dist（与 deploy.sh 同参数：--delete 清理旧文件）
+          for app in student-h5 teacher-web parent-h5; do
+            rsync -avz --delete "frontend/$app/dist/" "$HOST:$REMOTE_DIR/frontend/$app/dist/"
+          done
+          echo "✅ 前端 dist 已发布（上一版保留在 dist.prev）"
+
+      - name: Health check (frontend)
+        run: |
+          for i in $(seq 1 10); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' https://${{ secrets.DEPLOY_HOST }}/ || true)
+            if [ "$code" = "200" ] || [ "$code" = "302" ]; then echo "✅ frontend reachable ($code)"; exit 0; fi
+            sleep 10
+          done
+          echo "❌ frontend reachability check timeout"
+          exit 1
+
+  # P1-9 修复：CD 手动回滚（workflow_dispatch 指定旧镜像 tag）
+  # 后端/微服务：.env 镜像指向旧 tag → pull → up
+  # 前端：服务器 dist.prev → dist（由 deploy-frontend 每次发布前保留）
+  rollback:
+    name: Rollback Deployment
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    environment: production
+
+    steps:
+      - name: Install SSH key
+        uses: shimataro/ssh-key-action@v2
+        with:
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          known_hosts: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+
+      - name: Rollback images & frontend
+        run: |
+          set -euo pipefail
+          REMOTE_DIR=/guju/mindsafe
+          HOST="${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}"
+          IMAGE_TAG="${{ inputs.image_tag }}"
+          TARGETS=",${{ inputs.targets }},"
+
+          # 1. 镜像回滚（backend / voice / tts）
+          SERVICES=""
+          if echo "$TARGETS" | grep -q ',backend,'; then SERVICES="$SERVICES backend"; fi
+          if echo "$TARGETS" | grep -q ',voice,'; then SERVICES="$SERVICES voice-service"; fi
+          if echo "$TARGETS" | grep -q ',tts,'; then SERVICES="$SERVICES tts-service"; fi
+          if [ -n "$SERVICES" ]; then
+            for svc in $SERVICES; do
+              VAR=$(echo "${svc^^}-IMAGE" | tr '-' '_')
+              ssh "$HOST" "cd $REMOTE_DIR/deploy && sed -i \"s|^${VAR}=.*|${VAR}=${REGISTRY}/${IMAGE_PREFIX}/${svc}:${IMAGE_TAG}|\" .env"
+            done
+            ssh "$HOST" "cd $REMOTE_DIR/deploy && docker compose -f docker-compose.prod.yml pull $SERVICES && docker compose -f docker-compose.prod.yml up -d --no-deps $SERVICES"
+            echo "✅ 镜像已回滚到 ${IMAGE_TAG}: ${SERVICES}"
+          fi
+
+          # 2. 前端回滚（dist.prev → dist；无 prev 则跳过）
+          if echo "$TARGETS" | grep -q ',frontend,'; then
+            ssh "$HOST" "cd $REMOTE_DIR/frontend && for d in student-h5 teacher-web parent-h5; do rm -rf \$d/dist && [ -d \$d/dist.prev ] && mv \$d/dist.prev \$d/dist; done"
+            echo "✅ 前端已回滚到上一版 dist"
+          fi
+
+      - name: Health check after rollback
+        run: |
+          TARGETS=",${{ inputs.targets }},"
+          if echo "$TARGETS" | grep -q ',backend,'; then
+            for i in $(seq 1 30); do
+              code=$(curl -s -o /dev/null -w '%{http_code}' https://${{ secrets.DEPLOY_HOST }}/actuator/health || true)
+              if [ "$code" = "200" ]; then echo "✅ backend healthy after rollback"; exit 0; fi
+              sleep 10
+            done
+            echo "❌ backend health check timeout after rollback"
+            exit 1
+          fi
+          echo "✅ rollback done (no backend in scope)"
+
   # P1-DEP：冒烟测试接入流水线（此前 smoke-test.sh 从无流水线调用）
   smoke:
     name: E2E Smoke Test
     runs-on: ubuntu-latest
-    needs: deploy
+    needs: [deploy, deploy-frontend]
     if: success()
 
     steps:

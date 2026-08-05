@@ -12,6 +12,7 @@ import com.mindsafe.service.audit.AuditLogService;
 import com.mindsafe.service.casemanage.CaseLifecycleService;
 import com.mindsafe.service.notification.NotificationService;
 import com.mindsafe.service.profile.ProfileRadarService;
+import com.mindsafe.service.security.FieldEncryptionService;
 import com.mindsafe.service.teacher.TeacherService;
 import jakarta.servlet.ServletOutputStream;
 import jakarta.servlet.http.HttpServletResponse;
@@ -71,7 +72,8 @@ class TeacherControllerTest {
                 mock(CounselingSessionMapper.class),
                 mock(MessageSummaryMapper.class),
                 auditLogService,
-                mock(JwtTokenProvider.class));
+                mock(JwtTokenProvider.class),
+                mock(FieldEncryptionService.class));
     }
 
     private Authentication teacherAuth(String userType) {

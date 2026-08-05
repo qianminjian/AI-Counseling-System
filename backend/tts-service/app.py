@@ -19,13 +19,53 @@ import httpx
 import yaml
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("tts-service")
 
-app = FastAPI(title="MindSafe TTS Service", version="3.0.0")
+app = FastAPI(title="MindSafe TTS Service", version="3.1.0")
+
+# ===== Prometheus 指标（P1-10：手写文本格式，零新增依赖，供监控栈 internal 网络抓取） =====
+_METRICS_LOCK = threading.Lock()
+_TTS_REQUESTS: dict = {}      # engine -> 请求总数（engine: cosyvoice/cosyvoice_fallback/edge_tts/error）
+_TTS_DURATION_SUM = 0.0       # 合成耗时总和（秒，summary 的 _sum）
+_TTS_DURATION_COUNT = 0       # 合成次数（summary 的 _count）
+
+
+def _record_tts_request(engine: str, duration_sec: float):
+    """记录一次合成请求结果（线程安全）"""
+    global _TTS_DURATION_SUM, _TTS_DURATION_COUNT
+    with _METRICS_LOCK:
+        _TTS_REQUESTS[engine] = _TTS_REQUESTS.get(engine, 0) + 1
+        _TTS_DURATION_SUM += duration_sec
+        _TTS_DURATION_COUNT += 1
+
+
+@app.get("/metrics")
+def metrics():
+    """Prometheus 文本格式指标（P1-10；服务仅在 internal 网络暴露，不公网开放）"""
+    out = [
+        "# HELP tts_synthesize_requests_total TTS synthesize requests total by final engine/result",
+        "# TYPE tts_synthesize_requests_total counter",
+    ]
+    with _METRICS_LOCK:
+        for engine in sorted(_TTS_REQUESTS):
+            out.append(f'tts_synthesize_requests_total{{engine="{engine}"}} {_TTS_REQUESTS[engine]}')
+        out += [
+            "# HELP tts_synthesize_duration_seconds TTS synthesize duration in seconds",
+            "# TYPE tts_synthesize_duration_seconds summary",
+            f"tts_synthesize_duration_seconds_sum {_TTS_DURATION_SUM:.6f}",
+            f"tts_synthesize_duration_seconds_count {_TTS_DURATION_COUNT}",
+        ]
+    out += [
+        "# HELP tts_engine_available TTS engine availability (1=ready 0=unavailable)",
+        "# TYPE tts_engine_available gauge",
+        f'tts_engine_available{{engine="cosyvoice"}} {1 if CLOUD_TTS_AVAILABLE else 0}',
+        f'tts_engine_available{{engine="edge_tts"}} {1 if EDGE_TTS_AVAILABLE else 0}',
+    ]
+    return Response(content="\n".join(out) + "\n", media_type="text/plain; version=0.0.4; charset=utf-8")
 
 # 全局复用 httpx 客户端（edge-tts 降级时用）
 http_client: httpx.AsyncClient = None
@@ -299,6 +339,7 @@ async def synthesize(req: TtsRequest):
             resp = await _synthesize_dashscope(req.text, actual_voice, final_speed, instruction)
             logger.info(f"TTS 合成完成 [cosyvoice]: text_len={len(req.text)}, voice={actual_voice}, "
                         f"elapsed={time.time() - t_start:.3f}s")
+            _record_tts_request("cosyvoice", time.time() - t_start)
             return resp
         except Exception as e:
             if instruction:
@@ -308,6 +349,7 @@ async def synthesize(req: TtsRequest):
                     resp = await _synthesize_dashscope(req.text, actual_voice, final_speed, None)
                     logger.info(f"TTS 合成完成 [cosyvoice-no-instruct]: text_len={len(req.text)}, voice={actual_voice}, "
                                 f"elapsed={time.time() - t_start:.3f}s")
+                    _record_tts_request("cosyvoice_fallback", time.time() - t_start)
                     return resp
                 except Exception as e2:
                     logger.warning(f"CosyVoice 无指令重试也失败，降级 edge-tts: {e2}")
@@ -327,11 +369,13 @@ async def synthesize(req: TtsRequest):
             resp = await _synthesize_edge_tts(req.text, edge_voice, final_speed, req.pitch)
             logger.info(f"TTS 合成完成 [edge-tts]: text_len={len(req.text)}, voice={edge_voice}, "
                         f"elapsed={time.time() - t_start:.3f}s")
+            _record_tts_request("edge_tts", time.time() - t_start)
             return resp
         except Exception as e:
             logger.error(f"edge-tts 也失败 (elapsed={time.time() - t_start:.3f}s): {e}")
 
     # Level 3：返回 503，前端自动降级到浏览器 speechSynthesis
+    _record_tts_request("error", time.time() - t_start)
     raise HTTPException(status_code=503, detail="TTS 服务不可用")
 
 

@@ -88,6 +88,10 @@ class AuthControllerTest {
     private static final String ACCESS_TOKEN = "access-token";
     private static final String REFRESH_TOKEN = "refresh-token";
     private static final String VOICE_CRED = "voice-cred";
+    // AUDIT-P1-13：黑名单按 jti 粒度
+    private static final String ACCESS_JTI = "jti-access";
+    private static final String REFRESH_JTI = "jti-refresh";
+    private static final String VOICE_JTI = "jti-voice";
 
     @BeforeEach
     void setUp() {
@@ -428,7 +432,8 @@ class AuthControllerTest {
     void voiceLogin_blacklisted() {
         when(jwtTokenProvider.validateToken(VOICE_CRED)).thenReturn(true);
         when(jwtTokenProvider.isVoiceCredential(VOICE_CRED)).thenReturn(true);
-        when(tokenBlacklistService.isBlacklisted(VOICE_CRED)).thenReturn(true);
+        when(jwtTokenProvider.getTokenId(VOICE_CRED)).thenReturn(VOICE_JTI);
+        when(tokenBlacklistService.isBlacklisted(VOICE_JTI)).thenReturn(true);
 
         assertThatThrownBy(() -> controller.voiceLogin(new VoiceLoginRequest(VOICE_CRED)))
                 .isExactlyInstanceOf(BizException.class)
@@ -441,7 +446,8 @@ class AuthControllerTest {
     void voiceLogin_userUnavailable() {
         when(jwtTokenProvider.validateToken(VOICE_CRED)).thenReturn(true);
         when(jwtTokenProvider.isVoiceCredential(VOICE_CRED)).thenReturn(true);
-        when(tokenBlacklistService.isBlacklisted(VOICE_CRED)).thenReturn(false);
+        when(jwtTokenProvider.getTokenId(VOICE_CRED)).thenReturn(VOICE_JTI);
+        when(tokenBlacklistService.isBlacklisted(VOICE_JTI)).thenReturn(false);
         when(jwtTokenProvider.getUserId(VOICE_CRED)).thenReturn(userId);
         when(userMapper.selectById(userId)).thenReturn(null);
 
@@ -457,7 +463,8 @@ class AuthControllerTest {
         User user = activeStudent();
         when(jwtTokenProvider.validateToken(VOICE_CRED)).thenReturn(true);
         when(jwtTokenProvider.isVoiceCredential(VOICE_CRED)).thenReturn(true);
-        when(tokenBlacklistService.isBlacklisted(VOICE_CRED)).thenReturn(false);
+        when(jwtTokenProvider.getTokenId(VOICE_CRED)).thenReturn(VOICE_JTI);
+        when(tokenBlacklistService.isBlacklisted(VOICE_JTI)).thenReturn(false);
         when(jwtTokenProvider.getUserId(VOICE_CRED)).thenReturn(userId);
         when(userMapper.selectById(userId)).thenReturn(user);
         mockTokenIssuance();
@@ -540,7 +547,8 @@ class AuthControllerTest {
     void refresh_blacklisted() {
         when(jwtTokenProvider.validateToken(REFRESH_TOKEN)).thenReturn(true);
         when(jwtTokenProvider.isRefreshToken(REFRESH_TOKEN)).thenReturn(true);
-        when(tokenBlacklistService.isBlacklisted(REFRESH_TOKEN)).thenReturn(true);
+        when(jwtTokenProvider.getTokenId(REFRESH_TOKEN)).thenReturn(REFRESH_JTI);
+        when(tokenBlacklistService.isBlacklisted(REFRESH_JTI)).thenReturn(true);
 
         assertThatThrownBy(() -> controller.refresh(new RefreshRequest(REFRESH_TOKEN)))
                 .isExactlyInstanceOf(BizException.class)
@@ -554,7 +562,8 @@ class AuthControllerTest {
     void refresh_success() {
         when(jwtTokenProvider.validateToken(REFRESH_TOKEN)).thenReturn(true);
         when(jwtTokenProvider.isRefreshToken(REFRESH_TOKEN)).thenReturn(true);
-        when(tokenBlacklistService.isBlacklisted(REFRESH_TOKEN)).thenReturn(false);
+        when(jwtTokenProvider.getTokenId(REFRESH_TOKEN)).thenReturn(REFRESH_JTI);
+        when(tokenBlacklistService.isBlacklisted(REFRESH_JTI)).thenReturn(false);
         when(jwtTokenProvider.getUserId(REFRESH_TOKEN)).thenReturn(userId);
         when(jwtTokenProvider.getUserType(REFRESH_TOKEN)).thenReturn("student");
         when(jwtTokenProvider.getTenantId(REFRESH_TOKEN)).thenReturn(tenantId);
@@ -567,7 +576,7 @@ class AuthControllerTest {
         assertThat(resp.code()).isEqualTo(0);
         assertEquals("new-access", resp.data().get("token"));
         assertEquals("new-refresh", resp.data().get("refreshToken"));
-        verify(tokenBlacklistService).blacklist(REFRESH_TOKEN, 3600000L);
+        verify(tokenBlacklistService).blacklist(REFRESH_JTI, 3600000L);
     }
 
     // ===== logout =====
@@ -575,33 +584,37 @@ class AuthControllerTest {
     @Test
     @DisplayName("logout 成功：access + refresh 双拉黑 + 审计")
     void logout_success() {
+        when(jwtTokenProvider.getTokenId(ACCESS_TOKEN)).thenReturn(ACCESS_JTI);
         when(jwtTokenProvider.getRemainingMs(ACCESS_TOKEN)).thenReturn(7200000L);
         when(jwtTokenProvider.validateToken(REFRESH_TOKEN)).thenReturn(true);
+        when(jwtTokenProvider.getTokenId(REFRESH_TOKEN)).thenReturn(REFRESH_JTI);
         when(jwtTokenProvider.getRemainingMs(REFRESH_TOKEN)).thenReturn(604800000L);
 
         ApiResponse<Void> resp = controller.logout("Bearer " + ACCESS_TOKEN,
                 new LogoutRequest(REFRESH_TOKEN), auth());
 
         assertThat(resp.code()).isEqualTo(0);
-        verify(tokenBlacklistService).blacklist(ACCESS_TOKEN, 7200000L);
-        verify(tokenBlacklistService).blacklist(REFRESH_TOKEN, 604800000L);
+        verify(tokenBlacklistService).blacklist(ACCESS_JTI, 7200000L);
+        verify(tokenBlacklistService).blacklist(REFRESH_JTI, 604800000L);
         verify(auditLogService).log(tenantId, userId, "LOGOUT", "user", userId, null);
     }
 
     @Test
     @DisplayName("logout 未传 refresh → 仅拉黑 access")
     void logout_noRefresh() {
+        when(jwtTokenProvider.getTokenId(ACCESS_TOKEN)).thenReturn(ACCESS_JTI);
         when(jwtTokenProvider.getRemainingMs(ACCESS_TOKEN)).thenReturn(7200000L);
 
         controller.logout("Bearer " + ACCESS_TOKEN, null, null);
 
-        verify(tokenBlacklistService).blacklist(ACCESS_TOKEN, 7200000L);
-        verify(tokenBlacklistService, never()).blacklist(REFRESH_TOKEN, 604800000L);
+        verify(tokenBlacklistService).blacklist(ACCESS_JTI, 7200000L);
+        verify(tokenBlacklistService, never()).blacklist(REFRESH_JTI, 604800000L);
     }
 
     @Test
     @DisplayName("logout refresh 已过期（validateToken false）→ 跳过拉黑不报错")
     void logout_invalidRefresh() {
+        when(jwtTokenProvider.getTokenId(ACCESS_TOKEN)).thenReturn(ACCESS_JTI);
         when(jwtTokenProvider.getRemainingMs(ACCESS_TOKEN)).thenReturn(7200000L);
         when(jwtTokenProvider.validateToken(REFRESH_TOKEN)).thenReturn(false);
 
@@ -609,8 +622,8 @@ class AuthControllerTest {
                 new LogoutRequest(REFRESH_TOKEN), null);
 
         assertThat(resp.code()).isEqualTo(0);
-        verify(tokenBlacklistService).blacklist(ACCESS_TOKEN, 7200000L);
-        verify(tokenBlacklistService, never()).blacklist(REFRESH_TOKEN, 604800000L);
+        verify(tokenBlacklistService).blacklist(ACCESS_JTI, 7200000L);
+        verify(tokenBlacklistService, never()).blacklist(REFRESH_JTI, 604800000L);
     }
 
     // ===== guardian-consent 闭环 =====

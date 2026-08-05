@@ -1,0 +1,28 @@
+# MindSafe Alertmanager 配置（P1-10）
+# 挂载路径：alertmanager 容器 /etc/alertmanager/alertmanager.yml（见 docker-compose.monitoring.yml）
+# 推送通道：企业微信应用消息（复用 .env 的 WECOM_CORP_ID/WECOM_AGENT_ID/WECOM_SECRET）
+#   - 未配置 WECOM_*（或仅配置 OAuth 未配 secret）时：compose 注入哨兵值，
+#     运行时企微 API 拒绝 → 告警仅留存 Alertmanager（日志可见），与后端
+#     ALERT_WECOM_WEBHOOK_URL 空 = 降级日志告警 的项目约定一致
+# 接收人：WECOM_ALERT_TO_USER（企微 userid，多个用 | 分隔；@all = 全员，需应用有全员权限）
+# 注意：${VAR} 由 Alertmanager 启动时环境变量展开；未定义变量展开为空字符串
+
+global:
+  resolve_timeout: 5m
+
+route:
+  receiver: default
+  group_by: ['alertname', 'severity']
+  group_wait: 30s      # 同组首条告警等待 30s（聚合抖动）
+  group_interval: 5m   # 同组新告警发送间隔
+  repeat_interval: 4h  # 未解决告警重复提醒间隔
+
+receivers:
+  - name: default
+    wechat_configs:
+      - corp_id: '${WECOM_CORP_ID}'
+        api_secret: '${WECOM_SECRET}'
+        agent_id: '${WECOM_AGENT_ID}'
+        to_user: '${WECOM_ALERT_TO_USER}'
+        send_resolved: true
+        message: '【{{ .Status | toUpper }}】{{ range .Alerts }}{{ .Labels.alertname }}（{{ .Labels.severity }}）: {{ .Annotations.summary }}{{ end }}'

@@ -14,13 +14,16 @@ import logging
 import re
 import subprocess
 import tempfile
+import threading
 import os
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import numpy as np
 import soundfile as sf
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
 from pydantic import BaseModel
 
 from config import load_config
@@ -47,7 +50,49 @@ if ASR_ENGINE not in ("funasr", "dashscope"):
 if ASR_ENGINE == "dashscope" and not DASHSCOPE_API_KEY:
     raise ValueError("ASR_ENGINE=dashscope 时 DASHSCOPE_API_KEY 不能为空")
 
-app = FastAPI(title="MindSafe Voice Analysis", version="2.0.0")
+app = FastAPI(title="MindSafe Voice Analysis", version="2.1.0")
+
+# ===== Prometheus 指标（P1-10：手写文本格式，零新增依赖，供监控栈 internal 网络抓取） =====
+_METRICS_LOCK = threading.Lock()
+_VOICE_REQUESTS: dict = {}    # result -> 请求总数（result: success/error/timeout）
+_VOICE_DURATION_SUM = 0.0     # 分析耗时总和（秒，summary 的 _sum）
+_VOICE_DURATION_COUNT = 0     # 分析次数（summary 的 _count）
+
+
+def _record_voice_request(result: str, duration_sec: float):
+    """记录一次语音分析请求结果（线程安全）"""
+    global _VOICE_DURATION_SUM, _VOICE_DURATION_COUNT
+    with _METRICS_LOCK:
+        _VOICE_REQUESTS[result] = _VOICE_REQUESTS.get(result, 0) + 1
+        _VOICE_DURATION_SUM += duration_sec
+        _VOICE_DURATION_COUNT += 1
+
+
+@app.get("/metrics")
+def metrics():
+    """Prometheus 文本格式指标（P1-10；服务仅在 internal 网络暴露，不公网开放）"""
+    out = [
+        "# HELP voice_analyze_requests_total Voice analyze requests total by result",
+        "# TYPE voice_analyze_requests_total counter",
+    ]
+    with _METRICS_LOCK:
+        for result in sorted(_VOICE_REQUESTS):
+            out.append(f'voice_analyze_requests_total{{result="{result}"}} {_VOICE_REQUESTS[result]}')
+        out += [
+            "# HELP voice_analyze_duration_seconds Voice analyze duration in seconds",
+            "# TYPE voice_analyze_duration_seconds summary",
+            f"voice_analyze_duration_seconds_sum {_VOICE_DURATION_SUM:.6f}",
+            f"voice_analyze_duration_seconds_count {_VOICE_DURATION_COUNT}",
+        ]
+    out += [
+        "# HELP voice_asr_ready ASR engine readiness (1=ready 0=unavailable)",
+        "# TYPE voice_asr_ready gauge",
+        f"voice_asr_ready {1 if asr_model is not None or ASR_ENGINE == 'dashscope' else 0}",
+        "# HELP voice_ser_ready SER model readiness (1=ready 0=unavailable)",
+        "# TYPE voice_ser_ready gauge",
+        f"voice_ser_ready {1 if emotion_model is not None else 0}",
+    ]
+    return Response(content="\n".join(out) + "\n", media_type="text/plain; version=0.0.4; charset=utf-8")
 
 # CORS 白名单（安全收敛）：默认拒绝跨域（本服务仅由同网络后端调用）；
 # 确需前端直连时用 VOICE_CORS_ORIGINS="https://a.com,https://b.com" 显式声明，禁止 *
@@ -202,6 +247,7 @@ async def analyze_voice(file: UploadFile = File(...)):
     - 合规：处理完立即删除临时文件，不存储原始音频
     - 引擎：由 ASR_ENGINE 环境变量控制（funasr=本地 / dashscope=云端）
     """
+    t_start = time.time()
     if not file.content_type or not file.content_type.startswith("audio/"):
         raise HTTPException(status_code=400, detail="仅支持音频文件")
 
@@ -255,6 +301,7 @@ async def analyze_voice(file: UploadFile = File(...)):
         logger.info(f"分析完成 [ASR={ASR_ENGINE}, SER={'on' if emotion_model else 'off'}]: "
                     f"text_len={len(text)}, emotion={emotion.label_en}({emotion.confidence:.2f}), duration={duration:.1f}s")
 
+        _record_voice_request("success", time.time() - t_start)
         return VoiceAnalysisResponse(
             text=text,
             emotion=emotion,
@@ -262,18 +309,23 @@ async def analyze_voice(file: UploadFile = File(...)):
         )
 
     except subprocess.CalledProcessError as e:
+        _record_voice_request("error", time.time() - t_start)
         logger.error(f"音频转码失败: {e.stderr.decode(errors='ignore') if e.stderr else e}")
         raise HTTPException(status_code=500, detail="音频格式转换失败")
     except subprocess.TimeoutExpired:
+        _record_voice_request("timeout", time.time() - t_start)
         logger.error(f"ffmpeg 转码超时 ({VOICE_PROCESS_TIMEOUT}s)")
         raise HTTPException(status_code=504, detail="音频转码超时")
     except TimeoutError:
         # concurrent.futures.TimeoutError = builtins.TimeoutError（3.11+）
+        _record_voice_request("timeout", time.time() - t_start)
         logger.error(f"ASR/SER 分析超时 ({VOICE_ANALYZE_TIMEOUT}s)")
         raise HTTPException(status_code=504, detail="语音分析超时")
     except HTTPException:
+        _record_voice_request("error", time.time() - t_start)
         raise  # DashScope 502 等已包装的异常直接抛出
     except Exception as e:
+        _record_voice_request("error", time.time() - t_start)
         logger.error(f"语音分析失败: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"语音分析失败: {str(e)}")
 

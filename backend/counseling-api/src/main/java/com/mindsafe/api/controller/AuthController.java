@@ -270,7 +270,7 @@ public class AuthController {
         if (vc == null || !jwtTokenProvider.validateToken(vc) || !jwtTokenProvider.isVoiceCredential(vc)) {
             throw new BizException(ErrorCode.UNAUTHORIZED, "设备凭证无效或已过期，请重新录入声纹");
         }
-        if (tokenBlacklistService.isBlacklisted(vc)) {
+        if (tokenBlacklistService.isBlacklisted(jwtTokenProvider.getTokenId(vc))) {
             throw new BizException(ErrorCode.UNAUTHORIZED, "设备凭证已失效，请重新录入声纹");
         }
 
@@ -337,7 +337,7 @@ public class AuthController {
         if (rt == null || !jwtTokenProvider.validateToken(rt) || !jwtTokenProvider.isRefreshToken(rt)) {
             throw new BizException(ErrorCode.UNAUTHORIZED, "刷新令牌无效或已过期，请重新登录");
         }
-        if (tokenBlacklistService.isBlacklisted(rt)) {
+        if (tokenBlacklistService.isBlacklisted(jwtTokenProvider.getTokenId(rt))) {
             throw new BizException(ErrorCode.UNAUTHORIZED, "令牌已失效，请重新登录");
         }
 
@@ -349,8 +349,8 @@ public class AuthController {
         String newAccess = jwtTokenProvider.generateToken(userId, userType, tenantId);
         String newRefresh = jwtTokenProvider.generateRefreshToken(userId, userType, tenantId);
 
-        // 旧 refresh token 拉黑（防重放）
-        tokenBlacklistService.blacklist(rt, jwtTokenProvider.getRemainingMs(rt));
+        // 旧 refresh token 拉黑（防重放；AUDIT-P1-13 按 jti 粒度）
+        tokenBlacklistService.blacklist(jwtTokenProvider.getTokenId(rt), jwtTokenProvider.getRemainingMs(rt));
 
         return ApiResponse.ok(Map.of("token", newAccess, "refreshToken", newRefresh));
     }
@@ -363,15 +363,15 @@ public class AuthController {
             @RequestHeader("Authorization") String authHeader,
             @RequestBody(required = false) LogoutRequest request,
             Authentication authentication) {
-        // 拉黑 access token
+        // 拉黑 access token（AUDIT-P1-13：按 jti 粒度）
         String accessToken = authHeader.replace("Bearer ", "");
-        tokenBlacklistService.blacklist(accessToken, jwtTokenProvider.getRemainingMs(accessToken));
+        tokenBlacklistService.blacklist(jwtTokenProvider.getTokenId(accessToken), jwtTokenProvider.getRemainingMs(accessToken));
 
         // 拉黑 refresh token（如果前端传了）
         if (request != null && request.refreshToken() != null && !request.refreshToken().isBlank()) {
             String rt = request.refreshToken();
             if (jwtTokenProvider.validateToken(rt)) {
-                tokenBlacklistService.blacklist(rt, jwtTokenProvider.getRemainingMs(rt));
+                tokenBlacklistService.blacklist(jwtTokenProvider.getTokenId(rt), jwtTokenProvider.getRemainingMs(rt));
             }
         }
 

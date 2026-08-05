@@ -14,8 +14,8 @@ ASR_ENGINE="${ASR_ENGINE:-dashscope}"
 if [ "$ASR_ENGINE" = "funasr" ]; then
     echo "🔍 FunASR 模式：检查模型文件..."
 
-    # ModelScope 缓存路径（对应 docker-compose volume 挂载点）
-    MODEL_BASE="/root/.cache/modelscope/hub"
+    # ModelScope 缓存路径（对应 docker-compose volume 挂载点；非 root 用户 HOME=/home/appuser）
+    MODEL_BASE="${HOME}/.cache/modelscope/hub"
 
     REQUIRED_MODELS=(
         "iic/SenseVoiceSmall"
@@ -43,7 +43,7 @@ if [ "$ASR_ENGINE" = "funasr" ]; then
         echo "    1. 在部署主机运行: bash deploy/scripts/prepare-funasr.sh"
         echo "    2. 确认 docker-compose.yml 中 voice-service 已挂载模型目录："
         echo "       volumes:"
-        echo "         - \${MODEL_CACHE_DIR:-./cache/modelscope}:/root/.cache/modelscope"
+        echo "         - \${MODEL_CACHE_DIR:-./cache/modelscope}:/home/appuser/.cache/modelscope"
         echo ""
         echo "  或切换为 DashScope 模式（无需本地模型）："
         echo "    ASR_ENGINE=dashscope"

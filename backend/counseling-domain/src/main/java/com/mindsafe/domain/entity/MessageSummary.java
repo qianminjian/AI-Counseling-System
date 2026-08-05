@@ -35,12 +35,6 @@ public class MessageSummary {
     @TableField(typeHandler = JsonbTypeHandler.class)
     private String riskSignals;
 
-    /** 学生需求摘要（加密存储，MVP 阶段暂用明文） */
-    private String studentNeedSummaryEnc;
-
-    /** AI 干预摘要 */
-    private String aiInterventionSummaryEnc;
-
     /** 建议下一步行动 */
     private String suggestedNextAction;
 
@@ -58,7 +52,7 @@ public class MessageSummary {
     /** 单条消息风险等级（0=无风险） */
     private Integer riskLevel;
 
-    /** 消息内容摘要（截断至 1024 字符） */
+    /** 消息内容摘要（语义截断至 1024 字符；AES-256-GCM 加密后落库，V32 起列类型 TEXT 容纳密文膨胀，AUDIT-P0-3） */
     private String contentSummary;
 
     /** CBT 结构化字段 JSON */
@@ -144,12 +138,6 @@ public class MessageSummary {
 
     public String getRiskSignals() { return riskSignals; }
     public void setRiskSignals(String riskSignals) { this.riskSignals = riskSignals; }
-
-    public String getStudentNeedSummaryEnc() { return studentNeedSummaryEnc; }
-    public void setStudentNeedSummaryEnc(String studentNeedSummaryEnc) { this.studentNeedSummaryEnc = studentNeedSummaryEnc; }
-
-    public String getAiInterventionSummaryEnc() { return aiInterventionSummaryEnc; }
-    public void setAiInterventionSummaryEnc(String aiInterventionSummaryEnc) { this.aiInterventionSummaryEnc = aiInterventionSummaryEnc; }
 
     public String getSuggestedNextAction() { return suggestedNextAction; }
     public void setSuggestedNextAction(String suggestedNextAction) { this.suggestedNextAction = suggestedNextAction; }

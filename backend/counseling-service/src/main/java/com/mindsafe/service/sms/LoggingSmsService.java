@@ -27,7 +27,8 @@ public class LoggingSmsService implements SmsService {
     public boolean sendVerificationCode(String phone, String code, String purpose) {
         // 脱敏手机号用于日志（138****7890）
         String masked = maskPhone(phone);
-        log.info("[SMS-DEV] 验证码发送 | phone={} | code={} | purpose={}", masked, code, purpose);
+        // AUDIT-P0-5：醒目标记，防止生产日志被误读为真实短信已发送
+        log.info("[SMS-DEV-ONLY][生产环境禁用-验证码未真实发送] phone={} | code={} | purpose={}", masked, code, purpose);
         return true;
     }
 

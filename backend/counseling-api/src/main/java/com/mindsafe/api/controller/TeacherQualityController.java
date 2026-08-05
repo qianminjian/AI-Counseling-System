@@ -265,7 +265,9 @@ public class TeacherQualityController {
         replayResult.put("startedAt", session.getStartedAt() != null ? session.getStartedAt().toString() : "");
         replayResult.put("endedAt", session.getEndedAt() != null ? session.getEndedAt().toString() : "");
         replayResult.put("turnCount", session.getTurnCount() != null ? session.getTurnCount() : 0);
-        replayResult.put("sessionSummary", session.getSessionSummary() != null ? session.getSessionSummary() : "");
+        // AUDIT-P1-8：session_summary 密文存储，回放时解密（明文兼容透传）
+        String sessionSummary = fieldEncryptionService.decrypt(session.getSessionSummary());
+        replayResult.put("sessionSummary", sessionSummary != null ? sessionSummary : "");
         replayResult.put("messages", replayMessages);
         replayResult.put("qualityScore", scoreInfo != null ? scoreInfo : Map.of());
         return ApiResponse.ok(replayResult);

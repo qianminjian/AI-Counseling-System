@@ -117,7 +117,8 @@ services:
     volumes:
       # 模型缓存：宿主机持久化（emotion2vec ~300MB + SenseVoice ~1GB）
       # 使用前需运行: bash deploy/scripts/prepare-funasr.sh
-      - ${MODEL_CACHE_DIR:-./cache/modelscope}:/root/.cache/modelscope
+      # 容器内挂载到非 root 用户 HOME（审计 P3-31：容器不再以 root 运行）
+      - ${MODEL_CACHE_DIR:-./cache/modelscope}:/home/appuser/.cache/modelscope
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:10095/health')"]
       interval: 30s

@@ -64,7 +64,7 @@ public class AlertWebSocketHandler extends TextWebSocketHandler implements SubPr
         if (token == null || token.isBlank()
                 || !jwtTokenProvider.validateToken(token)
                 || !jwtTokenProvider.isAccessToken(token)
-                || blacklistService.isBlacklisted(token)) {
+                || blacklistService.isBlacklisted(jwtTokenProvider.getTokenId(token))) {
             log.warn("WebSocket 连接拒绝：无效/非 access/已登出 token");
             closeQuietly(session);
             return;

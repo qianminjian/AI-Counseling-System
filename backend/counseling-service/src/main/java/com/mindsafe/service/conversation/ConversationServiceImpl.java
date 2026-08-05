@@ -33,6 +33,7 @@ import com.mindsafe.service.knowledge.RagAdvisorService;
 import com.mindsafe.service.memory.LongTermMemoryService;
 import com.mindsafe.service.profile.StudentProfileService;
 import com.mindsafe.service.prompt.PromptVersionService;
+import com.mindsafe.service.security.FieldEncryptionService;
 import com.mindsafe.service.usage.UsageTimeLimitService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -41,6 +42,7 @@ import org.springframework.transaction.annotation.Transactional;
 import reactor.core.publisher.Flux;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -70,6 +72,7 @@ public class ConversationServiceImpl implements ConversationService {
     private final RagAdvisorService ragAdvisorService;
     private final PromptOrchestrationService promptOrchestrationService;
     private final MessageSummaryService messageSummaryService;
+    private final FieldEncryptionService fieldEncryptionService;
     private final CrisisResourceProvider crisisResourceProvider;
     private final AllianceEnhancer allianceEnhancer;
     private final CbtStageRouter cbtStageRouter;
@@ -101,6 +104,7 @@ public class ConversationServiceImpl implements ConversationService {
                                    RagAdvisorService ragAdvisorService,
                                    PromptOrchestrationService promptOrchestrationService,
                                    MessageSummaryService messageSummaryService,
+                                   FieldEncryptionService fieldEncryptionService,
                                    CrisisResourceProvider crisisResourceProvider,
                                    AllianceEnhancer allianceEnhancer,
                                    CbtStageRouter cbtStageRouter,
@@ -122,6 +126,7 @@ public class ConversationServiceImpl implements ConversationService {
         this.ragAdvisorService = ragAdvisorService;
         this.promptOrchestrationService = promptOrchestrationService;
         this.messageSummaryService = messageSummaryService;
+        this.fieldEncryptionService = fieldEncryptionService;
         this.crisisResourceProvider = crisisResourceProvider;
         this.allianceEnhancer = allianceEnhancer;
         this.cbtStageRouter = cbtStageRouter;
@@ -623,11 +628,45 @@ public class ConversationServiceImpl implements ConversationService {
                         session.getTenantId(), session.getStudentUserId(),
                         voiceEmotions, // 近期情绪（当前仅本会话，后续扩展跨会话查询）
                         session.emotionLabels(),
-                        List.of(), // studentMessages 待后续从 DB 补充
+                        loadStudentMessages(tenantId, sessionId),
                         session.getEmotionTag());
             } catch (Exception e) {
                 log.debug("会话结束分析降级: {}", e.getMessage());
             }
+        }
+    }
+
+    /**
+     * AUDIT-P2-20：加载本会话学生消息明文列表，供 ORCH-008 会话深度量化使用。
+     * <p>
+     * 修复前调用方传 {@code List.of()} 占位，measureDepth 恒为 0，深度量化形同虚设。
+     * 消息摘要逐轮同步落库（见 MessageSummaryService.persistStudentMessageSummary），
+     * 会话结束时 DB 中数据已完整，此处查询并解密即可；失败降级为空列表（分析本身异步可降级）。
+     */
+    private List<String> loadStudentMessages(UUID tenantId, UUID sessionId) {
+        try {
+            List<MessageSummary> messages = messageSummaryMapper.selectList(
+                    new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<MessageSummary>()
+                            .eq(MessageSummary::getTenantId, tenantId)
+                            .eq(MessageSummary::getSessionId, sessionId)
+                            .eq(MessageSummary::getSenderType, "student")
+                            .orderByAsc(MessageSummary::getTurnCount)
+                            .orderByAsc(MessageSummary::getCreatedAt)
+            );
+            if (messages.isEmpty()) {
+                return List.of();
+            }
+            List<String> texts = new ArrayList<>(messages.size());
+            for (MessageSummary m : messages) {
+                String plain = fieldEncryptionService.decrypt(m.getContentSummary());
+                if (plain != null && !plain.isBlank()) {
+                    texts.add(plain);
+                }
+            }
+            return texts;
+        } catch (Exception e) {
+            log.debug("会话结束分析加载学生消息失败，降级为空列表: {}", e.getMessage());
+            return List.of();
         }
     }
 

@@ -21,6 +21,7 @@ import com.mindsafe.service.casemanage.CaseLifecycleService;
 import com.mindsafe.service.profile.ProfileRadarService;
 import com.mindsafe.service.teacher.TeacherService;
 import com.mindsafe.service.audit.AuditLogService;
+import com.mindsafe.service.security.FieldEncryptionService;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
@@ -52,6 +53,7 @@ public class TeacherController {
     private final MessageSummaryMapper messageSummaryMapper;
     private final AuditLogService auditLogService;
     private final JwtTokenProvider jwtTokenProvider;
+    private final FieldEncryptionService fieldEncryptionService;
 
     public TeacherController(NotificationService notificationService,
                              TeacherService teacherService,
@@ -61,7 +63,8 @@ public class TeacherController {
                              CounselingSessionMapper sessionMapper,
                              MessageSummaryMapper messageSummaryMapper,
                              AuditLogService auditLogService,
-                             JwtTokenProvider jwtTokenProvider) {
+                             JwtTokenProvider jwtTokenProvider,
+                             FieldEncryptionService fieldEncryptionService) {
         this.notificationService = notificationService;
         this.teacherService = teacherService;
         this.profileRadarService = profileRadarService;
@@ -71,6 +74,7 @@ public class TeacherController {
         this.messageSummaryMapper = messageSummaryMapper;
         this.auditLogService = auditLogService;
         this.jwtTokenProvider = jwtTokenProvider;
+        this.fieldEncryptionService = fieldEncryptionService;
     }
 
     // ===== 工作台 =====
@@ -177,7 +181,8 @@ public class TeacherController {
         if (session == null) {
             return ApiResponse.ok(Map.of("summary", "", "status", "not_found"));
         }
-        String summary = session.getSessionSummary();
+        // AUDIT-P1-8：session_summary 密文存储，教师端读取时解密（明文兼容透传）
+        String summary = fieldEncryptionService.decrypt(session.getSessionSummary());
         String status = summary != null ? "ready" : "pending";
         return ApiResponse.ok(Map.of("summary", summary != null ? summary : "", "status", status));
     }
