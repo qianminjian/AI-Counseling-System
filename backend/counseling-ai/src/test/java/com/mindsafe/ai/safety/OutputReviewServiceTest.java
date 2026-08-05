@@ -1,5 +1,6 @@
 package com.mindsafe.ai.safety;
 
+import com.mindsafe.common.tenant.TenantContextHolder;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -9,12 +10,19 @@ import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -24,17 +32,19 @@ import static org.mockito.Mockito.when;
  * OutputReviewService（Layer2 异步审查）单元测试
  * <p>
  * 覆盖：SAF-002 决策 JSON 解析（含 markdown 代码围栏容错）、模板加载、
- * reviewAsync 空操作保护、review 主流程与 SAFE-202 四决策处置分发。
+ * reviewAsync 空操作保护、review 主流程与 SAFE-202 四决策处置分发、
+ * A1（2026-08-05）异步子线程租户上下文传播（手动线程池不走 TaskDecorator）。
  */
 class OutputReviewServiceTest {
 
     private OutputReviewService service;
+    private ChatClient.Builder builder;
     private ChatClient reviewClient;
     private OutputSafetyReporter reporter;
 
     @BeforeEach
     void setUp() {
-        ChatClient.Builder builder = mock(ChatClient.Builder.class);
+        builder = mock(ChatClient.Builder.class);
         reviewClient = mock(ChatClient.class, Answers.RETURNS_DEEP_STUBS);
         reporter = mock(OutputSafetyReporter.class);
         when(builder.build()).thenReturn(reviewClient);
@@ -226,6 +236,53 @@ class OutputReviewServiceTest {
 
             // 打桩时深桩链也会记录一次 prompt()，故用 atLeastOnce
             verify(reviewClient, atLeastOnce()).prompt();
+        }
+
+        @Test
+        @DisplayName("A1: reviewAsync 异步子线程应继承调用线程的租户上下文（Layer2 留痕/召回不再 fail-fast 静默失效）")
+        void reviewAsync_propagatesTenantContextToWorkerThread() throws Exception {
+            // 真实单线程池模拟生产 outputReviewExecutor（手动线程池，不走 TaskDecorator）
+            ExecutorService executor = Executors.newSingleThreadExecutor(r -> {
+                Thread t = new Thread(r, "test-output-review");
+                t.setDaemon(true);
+                return t;
+            });
+            try {
+                service = new OutputReviewService(builder, executor, reporter);
+                ReflectionTestUtils.setField(service, "promptTemplate", "审查：{candidate_reply} / {context}");
+                when(reviewClient.prompt().user(anyString()).call().content())
+                        .thenReturn("{\"decision\":\"block\"}");
+
+                UUID tenantId = UUID.randomUUID();
+                CountDownLatch executed = new CountDownLatch(1);
+                AtomicReference<AssertionError> workerError = new AtomicReference<>();
+                doAnswer(inv -> {
+                    try {
+                        assertThat(TenantContextHolder.get())
+                                .as("子线程执行上报时应有调用线程的租户上下文")
+                                .isEqualTo(tenantId);
+                    } catch (AssertionError e) {
+                        workerError.set(e);
+                    } finally {
+                        executed.countDown();
+                    }
+                    return null;
+                }).when(reporter).applyLayer2Recall(any(), anyString(), anyString(), anyString());
+
+                TenantContextHolder.set(tenantId);
+                try {
+                    service.reviewAsync(sessionId, "违规回复", "sad");
+                } finally {
+                    TenantContextHolder.clear();
+                }
+
+                assertThat(executed.await(5, TimeUnit.SECONDS))
+                        .as("异步任务应在超时前完成")
+                        .isTrue();
+                assertThat(workerError.get()).as("子线程应继承调用线程租户上下文").isNull();
+            } finally {
+                executor.shutdownNow();
+            }
         }
     }
 }

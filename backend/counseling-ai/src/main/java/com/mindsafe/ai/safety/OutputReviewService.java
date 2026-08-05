@@ -2,6 +2,7 @@ package com.mindsafe.ai.safety;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.mindsafe.common.tenant.TenantContextHolder;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -86,7 +87,23 @@ public class OutputReviewService {
         if (promptTemplate.isBlank() || fullReply == null || fullReply.isBlank()) {
             return;
         }
-        CompletableFuture.runAsync(() -> review(sessionId, fullReply, emotionTag), outputReviewExecutor)
+        // A1（2026-08-05）：outputReviewExecutor 为手动线程池，不走 TaskDecorator——
+        // 提交时捕获调用线程的租户上下文/系统作用域，子线程执行前恢复、finally 清除；
+        // 否则 OutputSafetyReporterImpl 的 DB 写入（sessionMapper/risk_events）在无上下文下
+        // 触发租户行隔离 fail-fast，被异常兜底吞掉 → Layer2 留痕与 SAFE-202 召回静默失效。
+        UUID tenantId = TenantContextHolder.get();
+        boolean systemScope = TenantContextHolder.isSystemScope();
+        CompletableFuture.runAsync(() -> {
+            try {
+                if (tenantId != null) {
+                    TenantContextHolder.set(tenantId);
+                }
+                TenantContextHolder.setSystemScope(systemScope);
+                review(sessionId, fullReply, emotionTag);
+            } finally {
+                TenantContextHolder.clear();
+            }
+        }, outputReviewExecutor)
                 .exceptionally(e -> {
                     log.error("Layer2 异步审查任务异常: sessionId={}", sessionId, e);
                     return null;
