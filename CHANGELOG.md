@@ -2,6 +2,7 @@
 
 ### 文档
 
+- docs: O 专题过度设计收敛实施完成闭环登记（DOC-057）：S1~S5 + OD-007 落地 + TEST-007/UX-006 完成 + 全量回归 1529 用例绿（doing/58 §11、TASK-TRACKER §26/27、design/04 §8、06 §3.3、his/46/50/57）
 - docs: DOC-055 A/C/D/E 闭环登记+文档落点同步（04/06/09/10） (8049519)
 - docs: 设计文档一致性全面核对（DOC-053）：2026-08-02 以来提交同步 6 份文档 (3641dcb)
 - docs: 新增 doing 子设计文档工作流规则（design-document-management） (06d6ca9)

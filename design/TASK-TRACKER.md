@@ -825,10 +825,10 @@
 | 任务ID | 任务描述 | 优先级 | 来源 | 状态 | 备注 |
 |--------|----------|--------|------|------|------|
 | ESC-001 | **/escalate 转人工端点 + 学生端 safety_mode 交互**：学生主动求助（"我想找老师"）触发升级端点（写 risk_event + 通知教师 + 会话置 escalated）+ 前端安全模式界面（热线/找老师入口）。当前仅系统侧 RED 自动升级（RISK-201），学生**主动**求助通道缺失 | **P0 安全**（危机兜底通道） | design/20 §10.1 F-03 / §10.2 升级时序（文档标 ⬜ 属实）；**专题设计见 frozen/58** | 🔒 冻结（远期任务规划，2026-07-28 钱敏健定级；设计文档已产出并移入 frozen/，解冻实施前须确认） | 与 M2-006（红色风险教师接管，✅ 已完成）互补：M2-006 为系统自动升级，本项为主动求助入口 |
-| TEST-007 | TeacherService 测试覆盖 33.2% → ≥80%（属教师管理域） | P2 | design/05 责任范围 | ⏳ 待实施 | 13/20 审计按范围纪律未扩入；design/05 篇审计时激活 |
+| TEST-007 | TeacherService 测试覆盖 33.2% → ≥80%（属教师管理域） | P2 | design/05 责任范围 | ✅ 已完成（2026-08-05） | 行覆盖率 100%（0/439 行未覆盖）、分支 87.7%、方法 98%，净新增 3 用例（TeacherStatsPerformanceTest +2 / TeacherAlertWorkflowTest +1，共 19 个新断言） |
 | TEST-008 | 量表发放/答题/结果流程（Service+Controller）补齐——评分引擎（AssessmentScoringEngine/PHQ-A·GAD-7/RecurrenceCalculator）已完备 | —（不单独排期） | design/20 §10.1 F-06 | 🔒 冻结（frozen/59 量表施测接线专题） | **与 SCALE-001/002 施测接线同一门禁**（未成年人测评合规），解冻后随 frozen/59 §4.2 实施，不重复立项 |
 | DOC-051 | QuickStart 快速启动指南（新人 5 分钟跑通：docker compose up + 前端 dev） | P2 | 全代码库对标审计 P2-6 | ⛔ 作废（2026-08-05 钱敏健指示） | 残留项核实：CONTRIBUTING/QUICKSTART 均不存在 |
-| UX-006 | ChatRoom.tsx 拆分（827 行 → useSseStream / useChatSession hooks 抽离） | P2 | 全代码库对标审计 P2-3 | ⏳ 待实施 | 残留项核实：869→827 行小幅改善，SSE/TTS/情绪/满意度仍混杂单组件 |
+| UX-006 | ChatRoom.tsx 拆分（827 行 → useSseStream / useChatSession hooks 抽离） | P2 | 全代码库对标审计 P2-3 | ✅ 已完成（2026-08-05） | ChatRoom 877→714 行，SSE 传输（useSseStream，10 用例）+ 会话编排（useChatSession，14 用例）抽离，行为等价由 ChatRoom.test.tsx 34 用例 + 新 hooks 24 用例保证，student-h5 全量 685 用例绿 + tsc 干净 |
 
 > 说明：
 > 1. 上一轮全代码库对标审计（"明天上线 1 所试点校"标准）其余 P1/P2 项已核实**均已修复**：ErrorBoundary 三端 ✅ / db-backup 定时容器 ✅ / api.ts 类型化（0 处 any）✅ / DEPLOY-GUIDE §十监控启动说明 ✅ / application.yml DEBUG→INFO ✅ / nginx client_max_body_size ✅ / parent-h5 vitest ✅ / ConversationServiceImpl 813→777 行（改善中，随迭代继续拆分）。
@@ -845,24 +845,26 @@ _本表由 Agent 维护，每次任务变更时更新。_
 > 背景：四路独立深度审计（后端/前端/部署/设计一致性）发现多项「为解决问题不断叠加设计导致复杂度失控」的过度设计。按钱敏健决策，**全部登记为待议项，反复讨论后再定处置**（保留/简化/删除），本批次不实施。
 > 议决机制：后续每轮讨论会逐项评估——证据（是否有真实数据支撑参数）> 简化收益 > 拆除成本；待议期间维持现状运行。
 > **2026-08-05 全量议决完成**：14 项逐项经代码证据核验，裁决为 ✅ 维持（8）/ 🟩 并入 O 专题（3：OD-004→S2、OD-009→S5、OD-014→S4-1）/ ✅ 已解决（2：OD-012/013）/ ✅ 已议决（1：OD-007，真冗余，保留 backup.sh 移除容器，2026-08-05 钱敏健拍板）。裁决详情与证据锚点见 `design/doing/58_O专题_过度设计收敛_方案与SPEC.md` §2.7；并入项随 O 专题 M2/M4/M6 统一实施，OD-007 实施随统一批次登记。
+> **2026-08-05 实施完成（DOC-057）**：O 专题 M1-M6 全部落地（S1 合并双 LLM 提炼 / S2 删 ProfileMergeGate 死分支 / S3 前端 API 合并 / S4 配置双源占位符派生 / S5 删 prepare-funasr 版本比较 / OD-007 移除 db-backup 容器）。全量回归 1529 用例全绿（后端 734 / student-h5 685 / teacher-web 34 / parent-h5 23 / scripts 53），文档同步见 doing/58 §11 实施记录。🟩 并入项与 OD-007 状态列同步更新为 ✅ 已实施。
 
 | 任务ID | 待议项 | 现状 | 复杂度症状 | 候选方向 | 状态 | 议决（2026-08-05） |
 |--------|--------|------|-----------|----------|------|------|
 | OD-001 | **声纹双模式（local WASM + remote）** | 前端 WeSpeaker WASM + 服务端 256 维比对两套并存，阈值前后端各一份（0.70/0.55） | 双链路维护成本×2；阈值双源已自认缺乏统一管控 | 只保留 remote 模式，删前端 WASM 链路，收敛单一权威阈值 | 🟡 待议 | ✅ 维持：否决删 local（BEACON 决策 #22：生物数据不出设备）；阈值随 O 专题 S4-1 收敛 |
 | OD-002 | **通知链路五层叠加** | WebSocket 推送 + DB 通知 + WeCom 运维告警 + SMS + SLA 扫描器，职责交错 | SLA 超时只告运维不告教师；各层无对账 | 简化为 risk_events 落库 → outbox → 教师 WS + 超时升级三层 | 🟡 待议 | ✅ 维持：描述失真（实测即三层目标态，notify_status 即对账；SMS 属监护人链路） |
 | OD-003 | **发布三门禁运行时常驻** | 红队护栏 14 条 + 人工复核 + eval 分数门禁在 TemplateMatrixRegistry 运行时承载 | 门禁结果不影响线上行为属仪式性代码 | 移到 CI/CD 脚本，运行时只留读取 | 🟡 待议 | ✅ 维持：fail-closed 真实拦截（activateVersion 失败拒绝激活 + audit_logs，唯一入口） |
-| OD-004 | **画像合并门控参数缺实证** | ProfileMergeGate EMA/衰减/冲突三策略 + 0.4 冲突阈值 + 60 天半衰期 | 小样本无实证依据，参数拍脑袋 | 先简单加权平均，待真实数据回流再复杂化 | 🟡 待议 | 🟩 并入 O 专题 S2：删 applyDecay/isExpired 死分支；参数（0.4/EMA）不改待数据回流 |
+| OD-004 | **画像合并门控参数缺实证** | ProfileMergeGate EMA/衰减/冲突三策略 + 0.4 冲突阈值 + 60 天半衰期 | 小样本无实证依据，参数拍脑袋 | 先简单加权平均，待真实数据回流再复杂化 | ✅ 已实施（S2，2026-08-05） | 🟩 并入 O 专题 S2：删 applyDecay/isExpired 死分支；参数（0.4/EMA）不改待数据回流 |
 | OD-005 | **双层输出安全审查** | OutputContentFilter（规则）+ OutputReviewService（LLM 复审）职责重叠 | 每次对话多一次 LLM 往返 | 合并单一审查管线 | 🟡 待议 | ✅ 维持：规则抓已知词 + LLM 抓语义变体 = 儿童安全纵深防御；可选低优先：按风险等级抽样复审 |
 | OD-006 | **手工 eq(tenantId) 与拦截器双写** | 24 处 .last() 裸 SQL 面靠人肉保证 + TenantLineInnerInterceptor | 拦截器未覆盖面无 fail-fast | 只保留拦截器 + fail-fast，手工 eq 收敛为豁免清单 | 🟡 待议 | ✅ 维持：描述失真（.last() 为 LIMIT 分页非裸 SQL，手工条件为拦截器外显式兜底） |
-| OD-007 | **备份双轨** | db-backup 容器每 24h pg_dump + backup.sh 宿主机 cron 同写 daily/ | 无互斥无协调，纯重复 | 二选一作为唯一事实源 | 🟡 待议 | ✅ 已议决（2026-08-05）：确认真冗余；按建议保留 backup.sh（周/月分层+恢复演练+生产在用），移除 db-backup 容器；实施待统一批次（不阻塞 O 专题） |
+| OD-007 | **备份双轨** | db-backup 容器每 24h pg_dump + backup.sh 宿主机 cron 同写 daily/ | 无互斥无协调，纯重复 | 二选一作为唯一事实源 | ✅ 已实施（2026-08-05） | ✅ 已议决（2026-08-05）：确认真冗余；按建议保留 backup.sh（周/月分层+恢复演练+生产在用），移除 db-backup 容器；实施随 O 专题批次完成（compose 删 db-backup 服务，备份统一走 backup.sh/restore.sh） |
 | OD-008 | **上帝类拆分** | TeacherService 748 行 / ConversationServiceImpl 787 行 / AuthController 475 行 | 职责跨域，新增需求加速腐化 | 按域拆分（统计/预警/个案/报表） | 🟡 待议（随迭代渐进，不一次重构） | ✅ 维持渐进：C3 拆分模式已建（TeacherQualityService 抽出），触碰时按域拆 |
-| OD-009 | **prepare-funasr.sh manifest 版本管理** | EXPECTED_MODELS 全 pin "master"，python3 JSON 解析替代 jq | 版本比较恒真，复杂绕远 | 简化或删版本比较 | 🟡 待议 | 🟩 并入 O 专题 S5：删恒真比较，保留模型存在性/加载校验（fail-fast） |
+| OD-009 | **prepare-funasr.sh manifest 版本管理** | EXPECTED_MODELS 全 pin "master"，python3 JSON 解析替代 jq | 版本比较恒真，复杂绕远 | 简化或删版本比较 | ✅ 已实施（S5，2026-08-05） | 🟩 并入 O 专题 S5：删恒真比较，保留模型存在性/加载校验（fail-fast） |
 | OD-010 | **TTS 音色×方言×情感矩阵收敛** | 7 音色 × 8 方言 × 10 情感，但仅 1 emotion_capable + 1 dialect_capable | 矩阵 90% 死配置；persona_gender 恒传 female | 按实际能力裁剪矩阵，死配置清理 | 🟡 待议（与 design/56 对齐） | ✅ 维持：CFG-004 声明式能力文档，运行时按 capable 分支消费无死代码；裁剪失扩展性 |
 | OD-011 | **init-school.sh 三重保险** | ON CONFLICT 幂等 + 随机密码 + must_change_password | 一次性运维脚本过度防御 | 简化保留幂等即可 | 🟡 待议 | ✅ 维持：随机密码 + 强制改密 = 弱口令安全基线（同 R-04）；幂等面向学校现场重复执行 |
 | OD-012 | **tts 离线 wheels 强绑定 --no-index** | 新增依赖忘记 refresh-wheels.sh 构建即失败 | 单点人工流程无兜底提示 | 构建失败时给出明确提示或 fallback 源 | 🟡 待议 | ✅ 已解决：fix-13 bd9d215 改 requirements-lite.txt 在线安装，wheels 降级为可选方案 |
 | OD-013 | **Grafana 面板先建后补** | LLM 面板有真实指标，TTS 面板无指标即上线（空面板） | 指标缺失补丁未闭环 | 删空面板或补指标（P1-7 已另行处理） | 🟡 待议 | ✅ 已解决：P1-7 已删空 TTS 面板（仅剩 llm-performance.json），登记快照过期 |
-| OD-014 | **声纹阈值 0.55 双源**（局部关联 OD-001） | 后端 0.55 与前端 0.70 两套参数 | 同一决策两处定义 | 随 OD-001 一并收敛 | 🟡 待议 | 🟩 并入 O 专题 S4-1：占位符派生收敛双源（0.55/0.70 为两模式实测值，真重复仅后端 0.55 与前端 fallback） |
+| OD-014 | **声纹阈值 0.55 双源**（局部关联 OD-001） | 后端 0.55 与前端 0.70 两套参数 | 同一决策两处定义 | 随 OD-001 一并收敛 | ✅ 已实施（S4-1，2026-08-05） | 🟩 并入 O 专题 S4-1：占位符派生收敛双源（0.55/0.70 为两模式实测值，真重复仅后端 0.55 与前端 fallback） |
 
 > 说明：
-> 1. 本表于 2026-08-05 完成全量议决（见 §二十七 头部），裁决依据为代码级证据核验（doing/58 §2.7），非照抄登记描述；🟩 并入项随 O 专题统一实施，⏳ 待决项维持现状运行。
+> 1. 本表于 2026-08-05 完成全量议决（见 §二十七 头部），裁决依据为代码级证据核验（doing/58 §2.7），非照抄登记描述；🟩 并入项随 O 专题统一实施（2026-08-05 全部完成，见 DOC-057），⏳ 待决项维持现状运行。
 > 2. 与 OD 相关的紧急修复（声纹 1:N 比对/XFF 伪造等 P0）已另立任务在 §二十八修复，不阻塞本表讨论。
+> 3. **DOC-057 登记**（2026-08-05）：O 专题过度设计收敛实施完成闭环登记——S1~S5 + OD-007 全部落地，全量回归 1529 用例全绿（后端 734 / student-h5 685 / teacher-web 34 / parent-h5 23 / scripts 53），实施记录与文档落点见 doing/58 §11、design/04 §8、design/06 §3.3、his/46 §4.2 落地记录、his/50 落地记录。

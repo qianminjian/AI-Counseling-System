@@ -472,8 +472,27 @@ mindsafe:
 | 前端 `api.ts`/`api/toolboxApi.ts`/`config/remote.ts` | 327/60 行/L96 | ✅ 与描述一致 |
 | OD-001~014 登记与议决 | TASK-TRACKER §二十七（L849-862） | ✅ 引用一致（2026-08-05 全量议决后同步） |
 | `prepare-funasr.sh` 版本比较 | L35-38/L66 | ✅ 恒真比较证据一致（S5） |
-| S1-S5 目标设计 | 本专题改造 | ⏳ 未实施（本文件发布后按 M1-M6 执行） |
+| S1-S5 目标设计 | 本专题改造 | ✅ 已实施（M1-M6 全部完成，2026-08-05，见 §11 实施记录） |
 
 ---
 
 _设计文档 v1.0 | 状态：Doing | 创建：2026-08-05 | 评审定稿后归档至 design/ 根目录并同步 TASK-TRACKER_
+
+---
+
+## 11. 实施记录（M1-M6 全部完成，2026-08-05）
+
+| 里程碑 | 交付内容 | 验证结果 |
+|---|---|---|
+| M1/S1 | 合并双 LLM 提炼：`MessageSummaryService.dispatchInsights()` 一次提炼调用产出双节点 JSON（profile_patch + key_events），解析后分发 `ProfileExtractorService.extractAndMerge(patch)`（纯合并）与 `LongTermMemoryService`（直接收已解析事件节点）；删旧提炼方法 | 新方法测试 + 编排测试全绿；AiChatServiceImplLlmCallTest/ProfileExtractorServiceTest/LongTermMemoryServiceTest 回归通过 |
+| M2/S2 | 删 `ProfileMergeGate.applyDecay/isExpired` 死分支及相关常量（零调用验证），冲突阈值 0.4/EMA 参数保留待数据回流 | 编译通过 + 全库 grep 零引用；ProfileExtractorServiceTest 回归绿 |
+| M3/S3 | 前端 API 合并：`api/toolboxApi.ts` 并入 `src/api.ts`，删 `src/api/` 目录；SosPanel/ToolPractice/ToolboxPanel 导入路径收敛 | `src/api/` 目录不存在；全仓 grep 无 `api/toolboxApi` 导入；student-h5 全量 685 用例绿 + tsc --noEmit 干净 |
+| M4/S4 | 配置双源占位符派生 2 处（application.yml）：`system-config.voiceprint.verify-threshold` → `${mindsafe.voiceprint.verify-threshold}`；`ai.fallback.temperature/max-tokens` → 主配置占位符派生 | 无第二手数值；design/06 §3.3 / his/57 同步 |
+| M6/S5 | 删 `prepare-funasr.sh` 版本比较（OD-009，恒真比较），保留模型存在性/加载校验（entrypoint fail-fast） | prepare-funasr-test.sh 8 用例绿；scripts 全量 53 用例绿 |
+| OD-007 | 移除 `docker-compose.prod.yml` 的 db-backup 容器，备份统一走 `backup.sh`（cron 02:00 daily/weekly/monthly 分层）+ `restore.sh` | compose config 校验通过；design/04 §8 同步 |
+| TEST-007 | TeacherService 覆盖率 33.2% → ≥80% | 行 100%（0/439 未覆盖）/ 分支 87.7% / 方法 98%；TeacherStatsPerformanceTest +2、TeacherAlertWorkflowTest +1 用例 |
+| UX-006 | ChatRoom.tsx 拆分（877→714 行）：`useSseStream`（SSE 传输，10 用例）+ `useChatSession`（会话编排，14 用例） | ChatRoom.test.tsx 34 用例 + hooks 24 用例全绿；student-h5 全量 685 用例绿 |
+
+**全量回归（G6 基线 1474 → 实际 1529，全部绿）**：后端 734（基线 711）/ student-h5 685（基线 661）/ teacher-web 34 / parent-h5 23 / scripts 53（基线 45）。无存储结构变更、无 API 契约变更。
+
+**文档落点**：TASK-TRACKER §二十六（TEST-007/UX-006 ✅）+ §二十七（OD 并入项/OD-007 状态同步 + DOC-057 登记）；design/04 §8（备份统一）；design/06 §3.3（S4-1 收敛）；his/46 §4.2 落地记录（S1/S2）；his/50 落地记录（S1）；CHANGELOG。
