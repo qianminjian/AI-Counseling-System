@@ -66,6 +66,8 @@ public class SessionState {
     private int lastSummaryTurn;           // 上次生成摘要的轮次
 
     // ===== 会话级个人信息（对话中结构化收集，会话结束即销毁） =====
+    /** 个人条目上限：防止会话状态无限膨胀（Redis 每轮全量 JSON 序列化，Map 无界会线性放大成本） */
+    private static final int MAX_PERSONAL_INFO_ENTRIES = 20;
     private Map<String, String> personalInfo = new LinkedHashMap<>();  // realName/age/grade/class 等
 
     // ===== 前端设置状态（每轮消息同步，让 AI 知道自己的能力边界） =====
@@ -240,9 +242,13 @@ public class SessionState {
     public Boolean getWakeEnabled() { return wakeEnabled; }
     public void setWakeEnabled(Boolean wakeEnabled) { this.wakeEnabled = wakeEnabled; }
 
-    /** 更新个人信息（仅当新值非空时覆盖） */
+    /** 更新个人信息（仅当新值非空时覆盖；超过容量上限拒绝新增 key，防无限膨胀） */
     public void updatePersonalInfo(String key, String value) {
         if (key != null && value != null && !value.isBlank()) {
+            // A3（2026-08-05）：容量上限——新 key 超限拒绝，已有 key 覆盖写不受限（不增加条目）
+            if (!personalInfo.containsKey(key) && personalInfo.size() >= MAX_PERSONAL_INFO_ENTRIES) {
+                return;
+            }
             personalInfo.put(key, value.trim());
         }
     }
