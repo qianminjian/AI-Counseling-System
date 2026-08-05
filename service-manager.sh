@@ -25,6 +25,12 @@ HEALTH_MAX_RETRIES=3
 HEALTH_POLL_INTERVAL=5
 HEALTH_MAX_POLLS=12  # 每个服务最多等 60s
 
+# 健康检查需要的密钥变量（仅按需加载 REDIS_PASSWORD，其他变量不暴露给本脚本环境）
+if [ -f /guju/mindsafe/.env ]; then
+  REDIS_PASSWORD=$(grep '^REDIS_PASSWORD=' /guju/mindsafe/.env | head -1 | cut -d= -f2-)
+  export REDIS_PASSWORD
+fi
+
 # 颜色（终端友好）
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -69,7 +75,8 @@ check_health() {
       docker exec "${CONTAINER_NAME[postgres]}" pg_isready -U mindsafe >/dev/null 2>&1
       ;;
     redis)
-      docker exec "${CONTAINER_NAME[redis]}" redis-cli ping 2>/dev/null | grep -q PONG
+      # redis 设了 requirepass，必须带密码才能 ping
+      docker exec -e REDIS_PASSWORD="$REDIS_PASSWORD" "${CONTAINER_NAME[redis]}" redis-cli -a "$REDIS_PASSWORD" --no-auth-warning ping 2>/dev/null | grep -q PONG
       ;;
     tts)
       docker exec "${CONTAINER_NAME[tts]}" python -c "import urllib.request; urllib.request.urlopen('http://localhost:10096/health')" >/dev/null 2>&1
