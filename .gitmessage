@@ -1,0 +1,23 @@
+# ============================================================
+# 提交消息模板（E5: 提交粒度规范）
+# 规范来源：.qoder/rules/code-engineering.md §2 Git 工作流
+#
+# 用法：git config commit.template .gitmessage
+#       或用  git commit -t .gitmessage 指定
+# 校验：scripts/check-commit.sh（--last / --staged 双模式）
+# ============================================================
+
+# <type>(<scope>): <subject>    # subject ≤ 50 字符
+# type: feat/fix/docs/style/refactor/test/chore/perf/ci/revert/security/hotfix
+# scope 可选：模块名（chat/risk/voice/tenant/auth/...）
+
+feat(scope): 简要描述本次变更
+
+# ---- body（可选）：为什么改、影响什么 ----
+# - 关联工单/需求编号（合规追溯，必填）
+# - 涉及资金/账务的变更必须说明业务影响范围
+
+# ---- 原子提交自检 ----
+# ☐ 一个 commit 只解决一个问题
+# ☐ 提交前已跑测试 + lint
+# ☐ 变更文件数 ≤ 15（scripts/check-commit.sh 自动校验）

@@ -1,0 +1,135 @@
+#!/usr/bin/env bash
+# ============================================================
+# E5: 提交质量检查（修复审计项 E5：提交粒度不均）
+#
+# 校验规则（与 .qoder/rules/code-engineering.md §2 Git 工作流一致）：
+#   1. 消息格式：<type>(<scope>): <subject> 或 <type>: <subject>
+#   2. type 白名单：feat/fix/docs/style/refactor/test/chore/perf/ci/
+#                   revert/security/hotfix
+#   3. subject（冒号后）≤ 50 字符
+#   4. 原子提交：单提交变更文件数 ≤ 15（防大杂烩提交）
+#   merge 提交自动跳过（不校验）
+#
+# 用法：
+#   ./scripts/check-commit.sh --last <N>   校验最近 N 个提交（默认 --last 1）
+#   ./scripts/check-commit.sh --staged     校验暂存区（配合 commit-msg hook）
+#
+# 退出码：全部通过 = 0；任一违规 = 1
+# ============================================================
+set -euo pipefail
+
+TYPES="feat fix docs style refactor test chore perf ci revert security hotfix"
+MAX_FILES=15
+MAX_SUBJECT=50
+LAST=""
+STAGED=0
+FAILED=0
+
+usage() {
+  cat <<'EOF'
+用法: check-commit.sh [--last <N> | --staged]
+  --last <N>   校验最近 N 个提交（默认 1）
+  --staged     校验暂存区提交消息（用于 commit-msg hook）
+EOF
+}
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --last) LAST="$2"; shift 2 ;;
+    --staged) STAGED=1 ;;
+    --help|-h) usage; exit 0 ;;
+    *) echo "未知参数: $1" >&2; usage >&2; exit 2 ;;
+  esac
+done
+
+[ "$STAGED" -eq 0 ] && [ -z "$LAST" ] && LAST=1
+[ "$STAGED" -eq 1 ] && [ -n "$LAST" ] && { echo "错误：--staged 与 --last 不能同时使用" >&2; exit 2; }
+
+fail() { echo "  ✗ $1"; FAILED=$((FAILED + 1)); }
+pass() { echo "  ✓ $1"; }
+
+check_one() {
+  local hash="$1"
+  local subject files count
+  subject=$(git log -1 --format='%s' "$hash")
+
+  # merge 提交跳过
+  if git rev-list --merges -1 "$hash" > /dev/null 2>&1 \
+      && [ "$(git log -1 --merges --format='%H' "$hash")" = "$hash" ]; then
+    pass "$hash merge 提交（跳过检查）"
+    return 0
+  fi
+
+  local type="" rest=""
+  # 提取 type（可选 scope）
+  if echo "$subject" | grep -qE '^(feat|fix|docs|style|refactor|test|chore|perf|ci|revert|security|hotfix)(\([^)]*\))?: '; then
+    type=$(echo "$subject" | sed -E 's/^([a-z]+)(\([^)]*\))?: .*/\1/')
+    rest=$(echo "$subject" | sed -E 's/^[a-z]+(\([^)]*\))?: //')
+  else
+    fail "$hash 消息格式违规: $subject"
+    return 0
+  fi
+
+  # type 白名单
+  if ! echo "$TYPES" | grep -qw "$type"; then
+    fail "$hash type 不在白名单: $type"
+  else
+    pass "$hash type 合法: $type"
+  fi
+
+  # subject 长度（按字符计）
+  local len
+  len=${#rest}
+  if [ "$len" -gt "$MAX_SUBJECT" ]; then
+    fail "$hash subject 超长（${len} > ${MAX_SUBJECT}）: $rest"
+  else
+    pass "$hash subject 长度 ${len} ≤ ${MAX_SUBJECT}"
+  fi
+
+  # 原子提交：文件数
+  files=$(git show --name-only --format='' "$hash" | sed '/^$/d' | wc -l | tr -d ' ')
+  if [ "$files" -gt "$MAX_FILES" ]; then
+    fail "$hash 变更文件数超限（${files} > ${MAX_FILES}），应拆分原子提交"
+  else
+    pass "$hash 变更文件数 ${files} ≤ ${MAX_FILES}"
+  fi
+}
+
+if [ "$STAGED" -eq 1 ]; then
+  # commit-msg hook 模式：校验 $1（消息文件）
+  MSG_FILE="${1:-}"
+  [ -f "$MSG_FILE" ] || { echo "错误：--staged 需要消息文件参数（commit-msg hook 用法: check-commit.sh --staged \$1）" >&2; exit 2; }
+  SUBJECT=$(head -1 "$MSG_FILE")
+  echo "== 暂存提交消息检查 =="
+  echo "  消息: $SUBJECT"
+  if echo "$SUBJECT" | grep -qE '^(feat|fix|docs|style|refactor|test|chore|perf|ci|revert|security|hotfix)(\([^)]*\))?: '; then
+    pass "格式合法"
+  else
+    fail "格式违规（应为 <type>(<scope>): <subject>）: $SUBJECT"
+    echo ""
+    usage >&2
+    exit 1
+  fi
+  exit 0
+fi
+
+echo "== 提交质量检查（最近 ${LAST} 个提交）=="
+HASHES=$(git rev-list -n "$LAST" HEAD 2>/dev/null || true)
+if [ -z "$HASHES" ]; then
+  echo "  无提交可检查（空仓库）"
+  echo "检查通过：无违规"
+  exit 0
+fi
+for h in $HASHES; do
+  echo ""
+  check_one "$h"
+done
+
+echo ""
+if [ "$FAILED" -eq 0 ]; then
+  echo "检查通过：最近 ${LAST} 个提交全部合规"
+  exit 0
+else
+  echo "检查失败：${FAILED} 项违规（消息格式 / type 白名单 / subject 长度 / 原子粒度）"
+  exit 1
+fi
