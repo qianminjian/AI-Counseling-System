@@ -1,6 +1,8 @@
 package com.mindsafe.service.teacher;
 
 import com.mindsafe.domain.entity.CounselingSession;
+import com.mindsafe.domain.entity.RiskEvent;
+import com.mindsafe.domain.entity.User;
 import com.mindsafe.domain.mapper.CounselingSessionMapper;
 import com.mindsafe.domain.mapper.MessageSummaryMapper;
 import com.mindsafe.domain.mapper.NotificationMapper;
@@ -141,5 +143,62 @@ class TeacherStatsPerformanceTest {
         assertThat(stats.totalRated()).isZero();
         assertThat(stats.avgRating()).isZero();
         assertThat(stats.recentCount()).isZero();
+    }
+
+    @Test
+    @DisplayName("getStats 风险分布与班级对比：有数据路径（等级分组/班级关联/排序）")
+    void riskDistributionAndClassComparison_withData() {
+        UUID studentA = UUID.randomUUID();
+        UUID studentB = UUID.randomUUID();
+        UUID studentC = UUID.randomUUID();
+        UUID studentNoClass = UUID.randomUUID();
+        User ua = new User(); ua.setUserId(studentA); ua.setClassCode("C1");
+        User ub = new User(); ub.setUserId(studentB); ub.setClassCode("C1");
+        User uc = new User(); uc.setUserId(studentC); uc.setClassCode("C2");
+        User un = new User(); un.setUserId(studentNoClass); un.setClassCode(null); // 无班级 → 被过滤
+        when(userMapper.selectList(any())).thenReturn(List.of(ua, ub, uc, un));
+
+        RiskEvent e1 = RiskEvent.fromDetection(tenantId, studentA, UUID.randomUUID(), "self_harm", 3);
+        RiskEvent e2 = RiskEvent.fromDetection(tenantId, studentB, UUID.randomUUID(), "bullying", 1);
+        RiskEvent e3 = RiskEvent.fromDetection(tenantId, studentC, UUID.randomUUID(), "anxiety", 2);
+        RiskEvent e4 = RiskEvent.fromDetection(tenantId, studentNoClass, UUID.randomUUID(), "anxiety", 2); // 计入分布、不计入班级对比
+        when(riskEventMapper.selectList(any())).thenReturn(List.of(e1, e2, e3, e4));
+
+        TeacherService.StatsVO stats = service.getStats(tenantId, null);
+
+        // 风险等级分布：黄色=1（level1）、橙色=2（level2）、红色=1（level3）
+        assertThat(stats.riskDistribution()).containsExactly(
+                new TeacherService.RiskDistItem(1, "黄色", 1),
+                new TeacherService.RiskDistItem(2, "橙色", 2),
+                new TeacherService.RiskDistItem(3, "红色", 1));
+        // 班级对比：无班级学生被过滤；按 alertCount 降序 C1(2) → C2(1)
+        assertThat(stats.classComparison()).containsExactly(
+                new TeacherService.ClassRiskItem("C1", 2, 2),
+                new TeacherService.ClassRiskItem("C2", 1, 1));
+    }
+
+    @Test
+    @DisplayName("getStats 班级范围：classScope 过滤 + 空班级返回全空")
+    void classScopeFilterAndEmptyClass() {
+        // 空班级：本班学生为空集合 → 直接返回全空 VO
+        when(userMapper.selectList(any())).thenReturn(List.of());
+        TeacherService.StatsVO empty = service.getStats(tenantId, "C9");
+        assertThat(empty.riskDistribution()).isEmpty();
+        assertThat(empty.classComparison()).isEmpty();
+        assertThat(empty.sessionTrend()).isEmpty();
+        assertThat(empty.emotionDistribution()).isEmpty();
+
+        // 有数据班级：仅统计本班学生
+        UUID studentA = UUID.randomUUID();
+        User ua = new User(); ua.setUserId(studentA); ua.setClassCode("C1");
+        when(userMapper.selectList(any())).thenReturn(List.of(ua));
+        RiskEvent e1 = RiskEvent.fromDetection(tenantId, studentA, UUID.randomUUID(), "self_harm", 3);
+        when(riskEventMapper.selectList(any())).thenReturn(List.of(e1));
+
+        TeacherService.StatsVO stats = service.getStats(tenantId, "C1");
+
+        assertThat(stats.riskDistribution().get(2).count()).isEqualTo(1); // 红色=1
+        assertThat(stats.classComparison()).containsExactly(
+                new TeacherService.ClassRiskItem("C1", 1, 1));
     }
 }
