@@ -2,6 +2,7 @@ package com.mindsafe.api.websocket;
 
 import org.springframework.http.server.ServerHttpRequest;
 import org.springframework.http.server.ServerHttpResponse;
+import org.springframework.stereotype.Component;
 import org.springframework.web.socket.WebSocketHandler;
 import org.springframework.web.socket.server.HandshakeInterceptor;
 
@@ -15,6 +16,7 @@ import java.util.Map;
  * JWT 在握手请求头中传输：不进 nginx access log、不落浏览器历史。
  * 本拦截器只负责提取放入 attributes，认证校验统一由 AlertWebSocketHandler 完成（单一认证点）。
  */
+@Component
 public class AlertAuthHandshakeInterceptor implements HandshakeInterceptor {
 
     private static final String SEC_WEBSOCKET_PROTOCOL = "Sec-WebSocket-Protocol";
