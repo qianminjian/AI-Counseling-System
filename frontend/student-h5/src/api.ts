@@ -350,8 +350,16 @@ export interface ToolboxTool {
   category: string
 }
 
+/** 练习前后心情记录结果（对齐后端 ToolboxController 返回：toolId/preMood/postMood/delta/level/needsAttention） */
 export interface MoodCheckResult {
-  effect: string
+  toolId: string
+  preMood: number
+  postMood: number
+  /** 情绪得分差值（post - pre） */
+  delta: number
+  /** 情绪等级（如 IMPROVED/WORSENED/UNCHANGED） */
+  level: string
+  /** 恶化需特别关注（前端据此提示） */
   needsAttention: boolean
 }
 

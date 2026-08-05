@@ -38,13 +38,14 @@ describe('api 工具箱段', () => {
   })
 
   it('recordMoodCheck 以 toolId/preMood/postMood 提交 POST /toolbox/mood-check', async () => {
-    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockReturnValue(mockJson({ effect: 'IMPROVED', needsAttention: false }))
+    // mock 对齐后端真实返回结构（ToolboxController：toolId/preMood/postMood/delta/level/needsAttention）
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockReturnValue(mockJson({ toolId: 'grounding_54321', preMood: 3, postMood: 7, delta: 4, level: 'IMPROVED', needsAttention: false }))
     const result = await recordMoodCheck('grounding_54321', 3, 7)
     const [url, init] = fetchSpy.mock.calls[0]
     expect(url).toBe('/api/v1/toolbox/mood-check')
     expect(init?.method).toBe('POST')
     expect(JSON.parse(init?.body as string)).toEqual({ toolId: 'grounding_54321', preMood: 3, postMood: 7 })
-    expect(result).toMatchObject({ effect: 'IMPROVED' })
+    expect(result).toMatchObject({ delta: 4, level: 'IMPROVED', needsAttention: false })
   })
 
   it('reportSosEvent 成功时不抛错', async () => {
