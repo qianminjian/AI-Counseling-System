@@ -14,15 +14,13 @@ import { useVoicePersona } from '../hooks/useVoicePersona'
 import { useTtsPlayer } from '../hooks/useTtsPlayer'
 import { useVoiceCallMode } from '../hooks/useVoiceCallMode'
 import { preloadWakeModel } from '../hooks/useWakeWord'
+import { useWakeEnabled } from '../hooks/useWakeEnabled'
 import { useSilenceNudge } from '../hooks/useSilenceNudge'
 import { useAudioRecorder } from '../hooks/useAudioRecorder'
 import { authFetch, api, getUser } from '../api'
 import { emotionBus } from '../utils/emotionBus'
 import { useBoboExpression } from '../hooks/useBoboExpression'
 import { useMotionPreference } from '../hooks/useMotionPreference'
-
-/** 语音唤醒开关持久化 key（design/28 §1.1） */
-const WAKE_PREF_KEY = 'mindsafe_wake_enabled'
 
 /** 会话信息（由 EmotionSelect 传入） */
 export interface SessionInfo {
@@ -74,8 +72,8 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: Se
   // 语音授权（合规）
   const { showDialog: showConsent, hasConsent, requestConsent, grantConsent, denyConsent } = useVoiceConsent()
 
-  // 语音唤醒（design/28 §1.1）：单独授权 + 开关持久化
-  const [wakeEnabled, setWakeEnabled] = useState(() => localStorage.getItem(WAKE_PREF_KEY) !== '0')
+  // 语音唤醒（design/28 §1.1）：单独授权 + 开关持久化（A4：收敛为 useWakeEnabled 单一来源）
+  const { enabled: wakeEnabled, setEnabled: setWakeEnabled } = useWakeEnabled()
   const wakeConsent = useVoiceCallConsent()
 
   // TTS 播放器（语速根据性别微调：男生稍快、女生稍慢）
@@ -353,12 +351,10 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: Se
   const handleToggleWake = useCallback(() => {
     if (wakeEnabled) {
       setWakeEnabled(false)
-      localStorage.setItem(WAKE_PREF_KEY, '0')
       // 关闭唤醒时释放预热的麦克风流（消除浏览器录音指示器）
       releaseStream()
     } else if (wakeConsent.requestConsent()) {
       setWakeEnabled(true)
-      localStorage.setItem(WAKE_PREF_KEY, '1')
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wakeEnabled])
@@ -367,7 +363,6 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: Se
   const handleWakeConsentGrant = useCallback(() => {
     wakeConsent.grantConsent()
     setWakeEnabled(true)
-    localStorage.setItem(WAKE_PREF_KEY, '1')
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
