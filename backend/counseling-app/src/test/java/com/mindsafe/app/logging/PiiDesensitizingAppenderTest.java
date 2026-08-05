@@ -109,4 +109,23 @@ class PiiDesensitizingAppenderTest {
         noDelegate.start();
         assertThat(noDelegate.isStarted()).isFalse();
     }
+
+    @Test
+    @DisplayName("addAppender 装配（AppenderAttachable，logback-spring.xml <appender-ref> 路径）可脱敏")
+    void worksWithAppenderAttachableAssembly() {
+        PiiDesensitizingAppender attached = new PiiDesensitizingAppender();
+        attached.setName("attached-pii");
+        attached.setContext(listAppender.getContext());
+        attached.addAppender(listAppender);
+        attached.start();
+        try {
+            assertThat(attached.isStarted()).isTrue();
+            attached.doAppend(event("手机号 13900001111 已登记"));
+            assertThat(listAppender.list).hasSize(1);
+            assertThat(listAppender.list.get(0).getFormattedMessage())
+                    .isEqualTo("手机号 139****11 已登记");
+        } finally {
+            attached.stop();
+        }
+    }
 }

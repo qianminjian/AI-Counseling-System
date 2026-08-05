@@ -5,14 +5,13 @@
     <!-- ==================== 开发/测试环境：彩色控制台 ==================== -->
     <springProfile name="default,test">
         <!-- AUDIT-P1-15：全局日志脱敏（手机/身份证/邮箱/姓名/地址） -->
+        <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+            <encoder>
+                <pattern>%d{HH:mm:ss.SSS} [%thread] [%X{traceId:-}] %-5level %logger{36} - %msg%n</pattern>
+            </encoder>
+        </appender>
         <appender name="PII_CONSOLE" class="com.mindsafe.app.logging.PiiDesensitizingAppender">
-            <delegate>
-                <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
-                    <encoder>
-                        <pattern>%d{HH:mm:ss.SSS} [%thread] [%X{traceId:-}] %-5level %logger{36} - %msg%n</pattern>
-                    </encoder>
-                </appender>
-            </delegate>
+            <appender-ref ref="CONSOLE"/>
         </appender>
 
         <logger name="com.mindsafe" level="DEBUG"/>
@@ -26,21 +25,20 @@
     <!-- ==================== 生产环境：JSON 结构化日志 ==================== -->
     <springProfile name="prod">
         <!-- AUDIT-P1-15：全局日志脱敏（手机/身份证/邮箱/姓名/地址） -->
+        <appender name="JSON_CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+            <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+                <customFields>{"app":"${APP_NAME}","env":"prod"}</customFields>
+                <timestampPattern>yyyy-MM-dd'T'HH:mm:ss.SSSXXX</timestampPattern>
+                <fieldNames>
+                    <timestamp>ts</timestamp>
+                    <version>[ignore]</version>
+                    <levelValue>[ignore]</levelValue>
+                </fieldNames>
+                <includeMdcKeyName>traceId</includeMdcKeyName>
+            </encoder>
+        </appender>
         <appender name="PII_JSON" class="com.mindsafe.app.logging.PiiDesensitizingAppender">
-            <delegate>
-                <appender name="JSON_CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
-                    <encoder class="net.logstash.logback.encoder.LogstashEncoder">
-                        <customFields>{"app":"${APP_NAME}","env":"prod"}</customFields>
-                        <timestampPattern>yyyy-MM-dd'T'HH:mm:ss.SSSXXX</timestampPattern>
-                        <fieldNames>
-                            <timestamp>ts</timestamp>
-                            <version>[ignore]</version>
-                            <levelValue>[ignore]</levelValue>
-                        </fieldNames>
-                        <includeMdcKeyName>traceId</includeMdcKeyName>
-                    </encoder>
-                </appender>
-            </delegate>
+            <appender-ref ref="JSON_CONSOLE"/>
         </appender>
 
         <logger name="com.mindsafe" level="INFO"/>
