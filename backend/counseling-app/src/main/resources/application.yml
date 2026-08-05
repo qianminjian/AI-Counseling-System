@@ -46,7 +46,9 @@ spring:
   # Spring AI - LLM 配置（供应商无关，OpenAI 兼容协议）
   ai:
     openai:
-      api-key: ${LLM_API_KEY:sk-placeholder}
+      # 嵌套默认：env 优先 LLM_API_KEY，否则取 DEEPSEEK_API_KEY（试点期与 DEEPSEEK_API_KEY 同值），
+      # 最后回落到 sk-placeholder。修复：避免 .env 仅设 DEEPSEEK_API_KEY 时 api-key=空字符串触发 Assert.hasText
+      api-key: ${LLM_API_KEY:${DEEPSEEK_API_KEY:sk-placeholder}}
       base-url: ${LLM_BASE_URL:https://api.deepseek.com}
       chat:
         options:
