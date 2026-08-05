@@ -3,7 +3,8 @@
 > 关联任务：ARCH-001（对话主链路架构深化，C1~C5 候选，待登记 TASK-TRACKER）
 > 状态：📝 方案定稿 → 待决策（架构审查 2026-08-05，选候选后进入决策循环）
 > 依据：improve-codebase-architecture 第 2 轮审查报告（tmp/architecture-review-20260805-232048.html，git 忽略不落库）、git 热点分析（近 50 提交）、后端/前端只读代码扫描
-> 词汇：模块 / 接口 / 深度 / 接缝 / 局域性 / 删除测试——见 [CONTEXT.md](../CONTEXT.md) 架构词汇表
+> 审计修正（2026-08-05 深度审计）：C4 裸 fetch 实为 5 处（非 4 处，含 useSilenceNudge 且 2 处实走 authFetch）；C5 测试 mock 实为 18 个（非 15 个）；toolboxApi.test.ts 非空壳（不删除）。详见 §7/§8 修订文字。
+> 词汇：模块 / 接口 / 深度 / 接缝 / 局域性 / 删除测试——见 [13 领域词汇表](../13_领域词汇表.md) 架构词汇表
 
 ---
 
@@ -12,9 +13,9 @@
 架构审查（第 2 轮）以最近变更热土为范围（后端 AI 对话编排链 + 前端 student-h5），以「深度」与「局域性」为判据扫描，发现 5 组结构摩擦：
 
 1. **对话编排上帝类**：`ConversationServiceImpl` 826 行 / 22 构造器依赖，混入风险融合、Prompt 组装、CBT 注入、正则提取、JSON 序列化 8 种职责；私有方法的关键词表与 `ThemeEvolutionEngine.THEME_KEYWORDS` 重叠却不可测试。
-2. **风险领域知识无单一源**：同一风险概念（"想死""割腕""遗书"）在 4 份静态词典重复；负面情绪集合 5 处成员不一致（同一 `anxious` 在会话内/冷场计数/会话结束分析得出不同结论）；评分魔法数 85/60/35/30 与权重 `10,0,0,0,0.8` 散落三处。
+2. **风险领域知识无单一源**：同一风险概念（"想死""割腕""遗书"）在 **≥5 份静态词典**重复（审计修正：初版记 4 份，实测含 TemplateMatrixRegistry/SafetyKeywordLibrary 等 ≥5 处）；负面情绪集合 **6 处**成员不一致（审计修正：初版记 5 处，实测 6 处含情绪判定消费点；同一 `anxious` 在会话内/冷场计数/会话结束分析得出不同结论）；评分魔法数 85/60/35/30 与权重 `10,0,0,0,0.8` 散落三处。
 3. **假功能与死代码并存**：ORCH-006 消费端为 `ProfileSignals` 6 字段写了微调逻辑（单测通过），生产端 `getProfileSignals` 只填 4 字段、其余恒 null——「测试绿、生产死」；另有 6 处零调用死代码与 1 个僵尸参数。
-4. **SSE/API 接缝泄漏（前端）**：同一 SSE 流式协议实现 3 遍（useSseStream / useSilenceNudge / 测试内联），nudge 的 emotion/risk 事件被静默丢弃；4 处绕过 api.ts 的裸 fetch（其一绕过 401 刷新）；契约测试只覆盖 15/23+ 端点，最核心的消息/TTS/声纹路径反而最不受保护。
+4. **SSE/API 接缝泄漏（前端）**：同一 SSE 流式协议实现 3 遍（useSseStream / useSilenceNudge / 测试内联），nudge 的 emotion/risk 事件被静默丢弃；**5 处**绕过 api.ts 的裸 fetch（审计修正：初版记 4 处，实测 5 处，其中 2 处实走 authFetch、1 处绕过 401 刷新）；契约测试只覆盖 15/23+ 端点，最核心的消息/TTS/声纹路径反而最不受保护。
 5. **ChatRoom 神组件（前端）**：715 行 / 13+ hooks / 15 state·ref；语音输入编排（录音→分析→自动发送）整链内联；测试 135 行 mock + 白盒回调捕获，成为重构阻力；`useWakeEnabled` 被第二消费者绕过。
 
 ## 2. 目标
@@ -104,13 +105,13 @@
 **涉及文件**：
 - `frontend/student-h5/src/hooks/useSseStream.ts`（协议解析唯一实现，L47-99）
 - `frontend/student-h5/src/hooks/useSilenceNudge.ts`（第 2 遍内联重写 L72-102 + 裸 fetch + 手拼 Authorization，绕过 401 刷新；emotion/risk 事件被静默丢弃）
-- 裸调用 4 处：`ChatRoom.tsx` L149（voice/analyze）/ `config/remote.ts` L54（system/config）/ `VoiceLoginOverlay.tsx` L82（tts/login-prompt）/ `useTtsPlayer.ts` L166（tts/synthesize）
+- 裸调用 5 处（**审计修正 2026-08-05**）：`useSilenceNudge.ts` L72（nudge，绕过 401 刷新）/ `ChatRoom.tsx` L149（voice/analyze）/ `config/remote.ts` L54（system/config）/ `VoiceLoginOverlay.tsx` L82（tts/login-prompt）/ `useTtsPlayer.ts` L166（tts/synthesize）；其中 2 处实走 authFetch
 - `frontend/student-h5/src/test/apiContract.test.ts`（FRONTEND_ENDPOINTS 仅 15 个，漏消息/nudge/voice/tts/config/close 8+ 端点；mock 样例三处手写重复）
-- 残留：`toolboxApi.test.ts`（S3 合并后空壳）
+- 残留：`toolboxApi.test.ts`（S3 合并后经深度审计核实**非空壳**，保留并纳入统一 mock source）
 
 **问题**：协议接缝没有收敛点——解析实现 3 遍、测试 reader 工厂 3 份；最核心的消息/TTS/声纹数据路径游离在契约保护之外。
 
-**方案**：`useSilenceNudge` 改为复用 `useSseStream().streamMessage()`（本就只消费 token 类型）；4 个散落端点收进 api.ts 具名函数；`FRONTEND_ENDPOINTS` 扩到 23+；mock 样例单一 source（从 openapi.json 派生或集中定义）；删除 `toolboxApi.test.ts` 空壳。
+**方案**：`useSilenceNudge` 改为复用 `useSseStream().streamMessage()`（本就只消费 token 类型）；5 个散落端点收进 api.ts 具名函数；`FRONTEND_ENDPOINTS` 扩到 23+；mock 样例单一 source（从 openapi.json 派生或集中定义）；`toolboxApi.test.ts` 非空壳保留，纳入统一 mock source（审计修正：不删除）。
 
 **收益**：局域性（协议解析收敛为单点，reader 工厂可合并）；杠杆（契约防线补上最核心链路，后端改契约 = 前端 23 端点全量报警）；测试（mock 单一源消灭三处漂移）。
 
@@ -122,7 +123,7 @@
 
 **涉及文件**：
 - `frontend/student-h5/src/components/ChatRoom.tsx`（715 行 / 13+ hooks / 15 state·ref）
-- `frontend/student-h5/src/test/ChatRoom.test.tsx`（548 行 / 15 个 vi.mock / 白盒回调捕获）
+- `frontend/student-h5/src/test/ChatRoom.test.tsx`（548 行 / **18 个 vi.mock**（审计修正 2026-08-05：初版记 15 个，实测 18 个）/ 白盒回调捕获）
 - `frontend/student-h5/src/hooks/useWakeEnabled.ts`（34 行半接入）+ `frontend/student-h5/src/components/EmotionSelect.tsx`（L21/L32/L114-118 重新声明同一 localStorage key，无失败安全）
 - `frontend/student-h5/src/hooks/useChatSession.ts`（与 ChatRoom 存在 sendMessageRef/recordInteractionRef/stopRecordingRef 跨 hook 接线）
 
@@ -183,10 +184,10 @@
 - 世界 B 编排（DEC-CBT 已决删除，不复活）
 - design/52 已映射任务（ORCH/PEVAL/KB/MEM 系列已实施完成，不重复登记）
 - 前端 UI 视觉/交互重构（非结构摩擦）
-- CONTEXT.md 领域词汇表不在本方案合并范围（常驻设计目录）
+- 13 领域词汇表（原 CONTEXT.md）不在本方案合并范围（常驻设计目录）
 
 ## 13. 关联与落点
 
 - 关联 TASK-TRACKER：待登记 ARCH-001（本方案实施时按 §9 顺序拆分子任务）
 - 关联设计：design/04 风险识别规则库（C2 规则清单同步源）、design/44 个性化提示词动态编排（C3 ORCH-006）、design/16 API 接口设计 + design/05 §8.6 契约防线（C4）、design/37 情感化 TTS（C5 表情状态机边界）
-- 词汇表：[CONTEXT.md](../CONTEXT.md)
+- 词汇表：[13 领域词汇表](../13_领域词汇表.md)

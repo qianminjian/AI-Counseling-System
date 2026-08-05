@@ -831,7 +831,7 @@
 | UX-006 | ChatRoom.tsx 拆分（827 行 → useSseStream / useChatSession hooks 抽离） | P2 | 全代码库对标审计 P2-3 | ✅ 已完成（2026-08-05） | ChatRoom 877→714 行，SSE 传输（useSseStream，10 用例）+ 会话编排（useChatSession，14 用例）抽离，行为等价由 ChatRoom.test.tsx 34 用例 + 新 hooks 24 用例保证，student-h5 全量 685 用例绿 + tsc 干净 |
 
 > 说明：
-> 1. 上一轮全代码库对标审计（"明天上线 1 所试点校"标准）其余 P1/P2 项已核实**均已修复**：ErrorBoundary 三端 ✅ / db-backup 定时容器 ✅ / api.ts 类型化（0 处 any）✅ / DEPLOY-GUIDE §十监控启动说明 ✅ / application.yml DEBUG→INFO ✅ / nginx client_max_body_size ✅ / parent-h5 vitest ✅ / ConversationServiceImpl 813→777 行（改善中，随迭代继续拆分）。
+> 1. 上一轮全代码库对标审计（"明天上线 1 所试点校"标准）其余 P1/P2 项已核实**均已修复**：ErrorBoundary 三端 ✅ / db-backup 定时容器 ✅ / api.ts 类型化（0 处 any）✅ / DEPLOY-GUIDE §十监控启动说明 ✅ / application.yml DEBUG→INFO ✅ / nginx client_max_body_size ✅ / parent-h5 vitest ✅ / ConversationServiceImpl 813→826 行（**2026-08-05 深度审计实测修正：初版记 777 行失实**；改善中，随迭代继续拆分，拆分任务见 ARCH-001 doing/61 与 ARCH-010 doing/70）。
 > 2. 本次仅登记任务与排序，**未进行任何开发、未做 git 提交**。
 
 ---
@@ -868,3 +868,30 @@ _本表由 Agent 维护，每次任务变更时更新。_
 > 1. 本表于 2026-08-05 完成全量议决（见 §二十七 头部），裁决依据为代码级证据核验（doing/58 §2.7），非照抄登记描述；🟩 并入项随 O 专题统一实施（2026-08-05 全部完成，见 DOC-057），⏳ 待决项维持现状运行。
 > 2. 与 OD 相关的紧急修复（声纹 1:N 比对/XFF 伪造等 P0）已另立任务在 §二十八修复，不阻塞本表讨论。
 > 3. **DOC-057 登记**（2026-08-05）：O 专题过度设计收敛实施完成闭环登记——S1~S5 + OD-007 全部落地，全量回归 1529 用例全绿（后端 734 / student-h5 685 / teacher-web 34 / parent-h5 23 / scripts 53），实施记录与文档落点见 doing/58 §11、design/04 §8、design/06 §3.3、his/46 §4.2 落地记录、his/50 落地记录。
+
+---
+
+## 二十八、深度审计回填任务总表（2026-08-05）
+
+> 背景：三域并行只读深度审计（2026-08-05，后端 6 模块 + 前端三端 + 工程化/部署/合规，对照 design/01-12 与台账逐项核验）产出 P0×2 / P1×21 / P2 精选问题清单。钱敏健 2026-08-05 指示：**全部纳入计划，每个任务先完善设计与 SPEC**。本表为审计回填任务的优先级排序单一视图，方案与 SPEC 见 doing/62~70。
+> 优先级判据同 §二十三：**安全/合规 > 对话产品力 > 教师效率 > 学生体验 > 商业化 > 规模化架构**。冻结项（frozen/34~43、58~62、COMP-007/AUTH-033 等）已按审计规则排除不扣分、不在本表。
+> 审计修正事实（2026-08-05 即日闭环）：doing/61 五处断言修正（风险词典 ≥5 份/情绪集合 6 处/裸 fetch 5 处/mock 18 个/toolboxApi 非空壳）；L834 行数失实修正（777→826 实测）。
+> **决策项（2026-07-28 全部闭环）**：D-1 ORCH-006 → 路径 B 删除 ✅；D-6 MEM-103 → 台账修正 3 维 + L207 注释同步 ✅；D-7 MessageSummary → 路径 C 两级摘要（常规 ≤200 字提炼 / L3+ 原文保真，无 schema 变更）✅；D-8 PII → 昵称置换注入（realName→pseudonym，明文不进上下文）✅。决策详情见 doing/64、doing/67。
+
+| 任务ID | 阶段任务 | 优先级 | 来源审计项 | 方案与SPEC | 依赖 | 状态 |
+|--------|----------|--------|-----------|-----------|------|------|
+| ARCH-002 | P0 前端缺陷修复（useSilenceNudge 401 刷新 + EmotionSelect localStorage 失败安全） | P0 | P0-1/P0-2 | doing/62 | 无 | ⏳ 待实施 |
+| ARCH-007 | 合规与数据安全修复（MessageSummary 两级摘要 + PII 昵称置换 + PIPL 告知链接） | P0 | B-2/B-5/F-5 | doing/67 | 无 | ⏳ 待实施（决策已闭环） |
+| ARCH-003 | 风险知识单一规则源（RiskKeywordRegistry + EmotionVocabulary + 一致性断言） | P0 安全 | B-3 | doing/63 | 无 | ⏳ 待实施 |
+| ARCH-004 | 假功能与死代码清理（ORCH-006 路径 B + 7 处僵尸 API + 台账对齐） | P1 | B-1/B-6/B-7 + P2-1 + OVD-1/3 | doing/64 | 无 | ⏳ 待实施（决策已闭环） |
+| ARCH-005 | 前端 API/SSE 接缝收敛（SSE 单点 + 5 端点收口 + 契约 23+ + 同意 key 统一） | P1 | F-1/F-2/F-3/F-9 | doing/65 | ARCH-002 | ⏳ 待实施 |
+| ARCH-006 | ChatRoom 语音编排抽取（useVoiceInputPipeline + 单例/去重收敛 + 测试黑盒化） | P1 | F-4 + P2-6/7/8 + OVD-5 | doing/66 | ARCH-005 | ⏳ 待实施 |
+| ARCH-008 | 教师端/家长端加固（authFetch 统一 + 契约防线 + CSP + token 策略） | P1 | F-6/F-7/F-8 + P2-9/10/12/13 + OVD-6 | doing/68 | 无 | ⏳ 待实施 |
+| ARCH-009 | 工程化与发布门禁（pytest 入 CI + 覆盖率 80% + 面板台账 + 回滚演练 + 模型自动化 + parent-h5 lint） | P1 | E-1~E-5 + lint | doing/69 | 无（CI/CD 改动须授权） | ⏳ 待实施 |
+| ARCH-010 | 后端代码质量清理（JSON 统一 + Redis key 租户前缀 + 异常可观测 + 模板路由 + closeSession 下线） | P2 | P2-2/4/5 + B-4 + OVD-2/4 | doing/70 | ARCH-003（魔法数引用） | ⏳ 待实施 |
+
+> 说明：
+> 1. 本表仅登记与排序，**未进行任何开发、未做 git 提交**；实施顺序建议：ARCH-002 → ARCH-007 → ARCH-003/004（可并行）→ ARCH-005 → ARCH-006 → ARCH-008/009（可并行）→ ARCH-010。
+> 2. OD-013（§二十七）「TTS 空面板已删」登记与 llm-performance.json 现状矛盾（仍有 2 个 TTS 面板查不存在的 mindsafe_tts_* 指标），由 ARCH-009 修复后联动修正 §二十七 状态列。
+> 3. 审计结论（综合 5.9/10 悲观口径）：**骨架健康、安全扎实、注释诚实，但「设计先行、实现脱节」系统性惯性仍在**——虚化面（ORCH-006/MEM-103/7 处僵尸 API）与前端接缝（SSE/契约/401）是发布就绪最大真实风险；P0 两项 + B-1/B-5 + F-1/F-3 为下一迭代强制回填项。
+> 4. 审计全文为会话内交付（未落库）；证据链与逐项评分见深度审计报告（2026-08-05，doing/62~70 各文档头部引用对应审计项）。
