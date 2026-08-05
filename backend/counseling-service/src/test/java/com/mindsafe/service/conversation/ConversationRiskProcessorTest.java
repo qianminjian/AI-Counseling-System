@@ -1,5 +1,7 @@
 package com.mindsafe.service.conversation;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mindsafe.ai.risk.RiskDetectorService;
 import com.mindsafe.ai.risk.RiskScoreCalculator;
 import com.mindsafe.ai.risk.SemanticRiskClassifier;
@@ -56,7 +58,8 @@ class ConversationRiskProcessorTest {
 
         processor = new ConversationRiskProcessor(
                 riskDetectorService, semanticRiskClassifier, riskScoreCalculator,
-                riskEventMapper, notificationService, riskNotifyOutboxService);
+                riskEventMapper, notificationService, riskNotifyOutboxService,
+                new ObjectMapper());
 
         // 默认评分结果
         when(riskScoreCalculator.calculate(any()))
@@ -278,6 +281,28 @@ class ConversationRiskProcessorTest {
             processor.persistRiskEvent(session, risk);
             verify(riskEventMapper).insert(any(RiskEvent.class));
             verify(riskNotifyOutboxService).markFailed(any(RiskEvent.class));
+        }
+
+        @Test
+        @DisplayName("A2: 结构化评分 score + reason_codes 随事件落库（教师端可解释，不再只打日志）")
+        void persistsStructuredScoreAndReasonCodes() throws Exception {
+            SessionState session = new SessionState(
+                    UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(),
+                    "sad", "web", "male", null, 4);
+            RiskDetectionResult risk = new RiskDetectionResult(
+                    RiskLevel.ORANGE, "bullying", List.of("被打"), 60, false, "建议关注");
+            when(riskScoreCalculator.calculate(any())).thenReturn(new RiskScoreCalculator.ScoreResult(
+                    72, RiskLevel.ORANGE, List.of("intent_explicit", "plan_method")));
+
+            processor.persistRiskEvent(session, risk);
+
+            ArgumentCaptor<RiskEvent> captor = ArgumentCaptor.forClass(RiskEvent.class);
+            verify(riskEventMapper).insert(captor.capture());
+            RiskEvent event = captor.getValue();
+            assertThat(event.getRiskScore()).as("结构化评分应随事件落库").isEqualTo(72);
+            JsonNode reasons = new ObjectMapper().readTree(event.getReasonCodes());
+            assertThat(reasons).as("reason_codes 应为 JSON 数组").hasSize(2);
+            assertThat(reasons.get(0).asText()).isEqualTo("intent_explicit");
         }
     }
 

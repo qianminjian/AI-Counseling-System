@@ -1,5 +1,6 @@
 package com.mindsafe.service.conversation;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mindsafe.ai.risk.RiskDetectorService;
 import com.mindsafe.ai.risk.RiskScoreCalculator;
 import com.mindsafe.ai.risk.SemanticRiskClassifier;
@@ -39,19 +40,22 @@ public class ConversationRiskProcessor {
     private final RiskEventMapper riskEventMapper;
     private final NotificationService notificationService;
     private final RiskNotifyOutboxService riskNotifyOutboxService;
+    private final ObjectMapper objectMapper;
 
     public ConversationRiskProcessor(RiskDetectorService riskDetectorService,
                                      SemanticRiskClassifier semanticRiskClassifier,
                                      RiskScoreCalculator riskScoreCalculator,
                                      RiskEventMapper riskEventMapper,
                                      NotificationService notificationService,
-                                     RiskNotifyOutboxService riskNotifyOutboxService) {
+                                     RiskNotifyOutboxService riskNotifyOutboxService,
+                                     ObjectMapper objectMapper) {
         this.riskDetectorService = riskDetectorService;
         this.semanticRiskClassifier = semanticRiskClassifier;
         this.riskScoreCalculator = riskScoreCalculator;
         this.riskEventMapper = riskEventMapper;
         this.notificationService = notificationService;
         this.riskNotifyOutboxService = riskNotifyOutboxService;
+        this.objectMapper = objectMapper;
     }
 
     /**
@@ -170,6 +174,10 @@ public class ConversationRiskProcessor {
                     factors.cssrsBehavior()       // C-SSRS 行为轴（被动抽取）
             );
             RiskScoreCalculator.ScoreResult scoreResult = riskScoreCalculator.calculate(scoreInput);
+            // A2（2026-08-05）：结构化评分随事件落库（risk_score + reason_codes），
+            // 教师端可排序/复核，不再只打日志（原实现计算了不存储，画像/教师端不可见）
+            event.setRiskScore(scoreResult.score());
+            event.setReasonCodes(objectMapper.writeValueAsString(scoreResult.reasonCodes()));
             log.info("风险评分计算: sessionId={}, score={}, level={}, reasons={}",
                     session.getSessionId(), scoreResult.score(), scoreResult.level(), scoreResult.reasonCodes());
 
