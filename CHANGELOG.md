@@ -1,5 +1,9 @@
 ## 变更记录
 
+### 代码与测试
+
+- feat(test): TEST-006 前后端契约测试三层防线（DOC-058）：L1 ContractOpenApiIT（端点全量入 OpenAPI，5 断言）+ L2 gen-openapi-snapshot.sh（快照 123 paths/93 schemas 入库）+ L3 前端契约测试（schemaValidator 22 + apiContract 26 用例）；修复 MoodCheckResult 契约漂移（effect→toolId/preMood/postMood/delta/level/needsAttention 对齐后端）
+
 ### 文档
 
 - docs: O 专题过度设计收敛实施完成闭环登记（DOC-057）：S1~S5 + OD-007 落地 + TEST-007/UX-006 完成 + 全量回归 1529 用例绿（doing/58 §11、TASK-TRACKER §26/27、design/04 §8、06 §3.3、his/46/50/57）

@@ -1,6 +1,6 @@
 # AI 小学生心理辅导系统 - 任务跟踪表
 
-> 创建：2026-07-23 | 更新：2026-08-05（**冻结专题登记：量表施测接线 frozen/59、商用发布合规与备案 frozen/60、外部服务接入与配置 frozen/61，DEC-006 并入 frozen/41**，相关任务行置 🔒 冻结；**2026-08-05 冻结范围扩展**：P2 商业化（BIZ-004/BIZ-006/BILL-002/BILL-003）归 frozen/38、部署升级（OPS-006/PERF-003/DEP-011~016）归 frozen/42、无状态化（PERF-005/STATE-001~005）归 frozen/40、信创（BIZ-005/DBAD-001~006/RISK-004）归 frozen/41、家长端小程序（AUTH-022/PARENT-WX-001~006）归 frozen/43、量表版权门禁（SCALE-003）归 frozen/34、效果量化 A/B（PROF-020/AB-003）归 frozen/39、design/32 商用发布前置归 frozen/60、M4 里程碑冻结跟踪（前置 frozen/60/61）；**远期规划冻结**：COMP-008（WebAuthn）、UX-003（多语言）、UX-004（无障碍）、PROF-022（初高中适配）纳入冻结规划；**作废登记**：DOC-051（QuickStart 指南）、DEC-004（3 版建设方案主版本确认，决策意义已消失）+ RISK-005 关闭；**状态确认**：AI-007/AI-008/PROF-021/UX-005/ORCH-008 核实完成（代码接线验证）、WAKE-012/33 标注完成、审计缺口统一 P2 级；历史：审计问题清单 A/C/D/E 修复闭环 DOC-055、独立 agent 深度审计 DOC-054、设计文档一致性全面核对 DOC-056（编号消歧，原 DOC-053）、设计文档全面更新 DOC-052、2026-07-28 设计文档整体规整 DOC-025、2026-08-01 §二十五 配置统一纳管、2026-07-29 独立审计校正）
+> 创建：2026-07-23 | 更新：2026-08-05（**TEST-006 完成登记（DOC-058）**：前后端契约测试三层防线落地——L1 ContractOpenApiIT 端点全量入文档、L2 gen-openapi-snapshot.sh 快照生成入库、L3 前端契约测试；修复 MoodCheckResult 契约漂移；**冻结专题登记：量表施测接线 frozen/59、商用发布合规与备案 frozen/60、外部服务接入与配置 frozen/61，DEC-006 并入 frozen/41**，相关任务行置 🔒 冻结；**2026-08-05 冻结范围扩展**：P2 商业化（BIZ-004/BIZ-006/BILL-002/BILL-003）归 frozen/38、部署升级（OPS-006/PERF-003/DEP-011~016）归 frozen/42、无状态化（PERF-005/STATE-001~005）归 frozen/40、信创（BIZ-005/DBAD-001~006/RISK-004）归 frozen/41、家长端小程序（AUTH-022/PARENT-WX-001~006）归 frozen/43、量表版权门禁（SCALE-003）归 frozen/34、效果量化 A/B（PROF-020/AB-003）归 frozen/39、design/32 商用发布前置归 frozen/60、M4 里程碑冻结跟踪（前置 frozen/60/61）；**远期规划冻结**：COMP-008（WebAuthn，**2026-08-06 起 AUTH-034 同事项一并冻结，远期再考虑**）、UX-003（多语言）、UX-004（无障碍）、PROF-022（初高中适配）纳入冻结规划；**AI-009（心理量表数字化）2026-08-06 纳入冻结专题管理**（施测接线 frozen/59、版权门禁 frozen/34，计分引擎已开发完成待解冻接线）；**作废登记**：DOC-051（QuickStart 指南）、DEC-004（3 版建设方案主版本确认，决策意义已消失）+ RISK-005 关闭；**状态确认**：AI-007/AI-008/PROF-021/UX-005/ORCH-008 核实完成（代码接线验证）、WAKE-012/33 标注完成、审计缺口统一 P2 级；历史：审计问题清单 A/C/D/E 修复闭环 DOC-055、独立 agent 深度审计 DOC-054、设计文档一致性全面核对 DOC-056（编号消歧，原 DOC-053）、设计文档全面更新 DOC-052、2026-07-28 设计文档整体规整 DOC-025、2026-08-01 §二十五 配置统一纳管、2026-07-29 独立审计校正）
 > 
 > 本表用于跟踪项目各阶段任务的进度和责任人。
 
@@ -259,7 +259,7 @@
 | AUTH-031 | 数据最小化审计 + 定期清理 | ✅ 完成 | DataRetentionCleanupJob + @EnableScheduling，普通30天/高风险365天 |
 | AUTH-032 | 家长撤回同意 → 冻结+删除 | ✅ 完成 | PIPL §47，ConsentWithdrawalService + ParentController 端点 |
 | AUTH-033 | 年度合规审计报送 | 🔒 冻结（同 COMP-007，见 frozen/60） | 未保条例 §37，流程性报送（非代码），上线后 1 年内 |
-| AUTH-034 | WebAuthn 设备端指纹/Face ID（可选） | ⏳ 待开始 | 不采集生物数据，需真机测试 |
+| AUTH-034 | WebAuthn 设备端指纹/Face ID（可选） | 🔒 冻结（同 COMP-008：2026-08-05 纳入冻结规划，真机测试条件触发，**远期再考虑**） | 不采集生物数据，需真机测试 |
 | AUTH-040 | 监护人同意 SMS 闭环（替代试运行自动写入） | ✅ 代码侧完成（2026-07-31） | PIPL §31 完整闭环已落地：配置开关 `mindsafe.consent.trial-auto-grant`（默认 true=试运行自动写入；prod compose 默认 false）→ 注册响应 `guardianConsentPending` → 前端收集监护人手机号 + 验证码确认页（student-h5）→ `/guardian-consent/request+confirm` 写入 guardian_consent；age≥14 本人同意注册即写入（修复 14+ 被门禁卡死 bug）。测试：单测 7 用例 + GuardianConsentFlowIT 6 用例全绿。剩余前置：DEPLOY-010 阿里云 SMS 签名/模板（生产开启 `SMS_PROVIDER=aliyun`） |
 
 ---
@@ -377,7 +377,7 @@
 | AI-006 | RAG 心理知识库（Spring AI VectorStore + pgvector） | ✅ 完成 | E |
 | AI-007 | 语音情感分析 SER（emotion2vec+，风险辅助信号） | ✅ 已完成（2026-08-05 状态确认） | voice-service 已完整实现 ASR(SenseVoiceSmall)+SER(emotion2vec_plus_large 9类)+风险融合；**数据闭环 VCL-001~003 已全部接线**（design/47）：语音情绪→currentEmotion 驱动共情策略（置信门控>0.6）/会话结束回注画像 emotionBaseline/跨会话趋势与文本×语音融合/趋势异常→risk_events attention 关注信号+量表复测建议/SER 标注回流评估（SerAccuracyReport）/分类阈值自适应（TrendAnomalySignaler），见 §二十三 VCL 系列 |
 | AI-008 | 长期记忆增强（跨会话摘要 + 关键事件 + 画像回注） | ✅ 已完成（2026-08-05 状态确认） | MEM-101~103 已全部接线（design/50）：关键事件提取+top5 回注+画像回注（growthTrack/socialGraph）/主题演化+相关性召回（MemoryRelevanceScorer+ThemeEvolutionEngine）/**风险纵向关联**（MemoryRiskCorrelator 负面主题→risk_events 关注信号）/**多维遗忘策略**（学生意愿>敏感度>时效>数量，LongTermMemoryService.evictOldMemories 接线），见 §二十三 MEM 系列 |
-| AI-009 | 心理量表数字化（PHQ-A/GAD-7/SDQ 嵌入式） | 🟡 部分实现（M1 计分引擎完成，不接线施测） | design/34；SCALE-001/002 开发完成、施测接线冻结（frozen/59）；SCALE-003 版权门禁冻结（frozen/34） |
+| AI-009 | 心理量表数字化（PHQ-A/GAD-7/SDQ 嵌入式） | 🔒 冻结（2026-08-06 纳入冻结专题管理：施测接线 frozen/59、版权门禁 frozen/34；计分引擎已开发完成，解冻后接线施测） | design/34；SCALE-001/002 开发完成、施测接线冻结（frozen/59）；SCALE-003 版权门禁冻结（frozen/34） |
 
 ### 安全合规与信任体系（P0）
 
@@ -401,7 +401,7 @@
 | TEST-003 | E2E 扩展（12 → 30+ 用例） | ✅ 已完成（实际 tests/e2e/smoke-test.sh 28 个断言，未达 30+ 目标，如实校准） | C |
 | TEST-004 | 性能压测基线（k6，100 并发 SSE） | ✅ 完成（脚本 tests/performance/chat-load.js，需手动 k6 执行） | E |
 | TEST-005 | CI 增强（覆盖率门禁 + 依赖扫描 + 缓存） | ✅ 完成（fix-10，2026-07-29） | A — fix-10 已修真：mvn verify（surefire+failsafe）替代 mvn test；Trivy exit-code=1 阻断 CRITICAL/HIGH；AuthFlowIT 正常执行（CI Docker）/本地 disabledWithoutDocker 优雅跳过；CI 触发分支加入 develop |
-| TEST-006 | 前后端契约测试（OpenAPI + mock 校验） | ⏳ 待开始 | 远期 |
+| TEST-006 | 前后端契约测试（OpenAPI + mock 校验） | ✅ 已完成（2026-08-05，DOC-058）：三层防线落地——L1 ContractOpenApiIT 端点全量入文档（5 断言）+ L2 gen-openapi-snapshot.sh 快照生成（123 paths/93 schemas 入库）+ L3 前端契约测试（schemaValidator 22 + apiContract 26 用例）；修复 MoodCheckResult 契约漂移；全量回归 733 前端 + 后端全绿 | 远期 |
 
 ### DevOps 与运维能力（P1）
 
@@ -711,7 +711,7 @@
 | AI-007 | 语音情感分析 SER（emotion2vec+，风险辅助信号） | 十七·AI 对话质量 | ✅ 已完成（2026-08-05 状态确认，见 §十七/§二十三 VCL 系列） |
 | COMP-007 | 年度合规审计报送（未保条例 §37，流程性） | 十七·安全合规 / 十八 | 🔒 冻结（frozen/60，同 AUTH-033 合并） |
 | COMP-008 | WebAuthn 设备认证（可选，不采集生物数据） | 十七·安全合规 | 🔒 冻结（2026-08-05 纳入冻结规划） |
-| TEST-006 | 前后端契约测试（OpenAPI + mock 校验） | 十七·工程质量 | ⏳ 待开始（P2 远期） |
+| TEST-006 | 前后端契约测试（OpenAPI + mock 校验） | 十七·工程质量 | ✅ 已完成（2026-08-05，DOC-058，见 §五 TEST-006） |
 | DATA-005 | 研究数据脱敏导出（IRB 兼容） | 十七·数据智能 | ⏳ 待开始（P2 远期） |
 | UX-003 | 多语言支持（繁体/英文） | 十七·用户体验 | 🔒 冻结（2026-08-05 纳入冻结规划） |
 | UX-004 | 无障碍增强（WCAG 2.1 AA） | 十七·用户体验 | 🔒 冻结（2026-08-05 纳入冻结规划） |
