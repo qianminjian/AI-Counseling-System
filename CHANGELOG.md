@@ -6,6 +6,8 @@
 
 ### 文档
 
+- docs: doing 子文档合并归档（DOC-059）：doing/58 O 专题过度设计收敛分主题并入 03 §2.7/04 §6·§8/06 §3.3/10 §2.6·§2.12，doing/59 前后端契约测试并入 05 §8.6，归档 design/his/；DESIGN-OVERVIEW v5.2（新增 §2.3 已合并子文档对照、冻结区扩展至 12 份）+ BEACON 演进日志 2026-08-05 + TASK-TRACKER 登记
+
 - docs: DATA-005 研究数据脱敏导出方案定稿并冻结归档（design/frozen/62）：架构审查产出 4 深化候选（导出管线/伪名化模块/加密接缝/保留豁免）+ 主 Seam（ExportRequest→ExportResult），台账 DATA-005 两处登记置 🔒 冻结（解冻触发=启动学术合作/IRB 合规前）
 
 - docs: O 专题过度设计收敛实施完成闭环登记（DOC-057）：S1~S5 + OD-007 落地 + TEST-007/UX-006 完成 + 全量回归 1529 用例绿（doing/58 §11、TASK-TRACKER §26/27、design/04 §8、06 §3.3、his/46/50/57）
