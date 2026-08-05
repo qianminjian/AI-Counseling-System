@@ -23,9 +23,9 @@
 |------|------|
 | [backend/](backend/) | 后端源代码（Maven 多模块：common/domain/ai/service/api/app） |
 | [frontend/](frontend/) | 前端应用组（student-h5 / teacher-web / parent-h5） |
-| [design/](design/) | 设计文档（01~58）+ BEACON 项目明灯 + frozen/（34/38-43/58 冻结区） |
+| [design/](design/) | 设计文档（12 份合并版）+ BEACON 项目明灯 + his/（历史归档）+ frozen/（34/38-43/58 冻结区） |
 | [deploy/](deploy/) | 部署配置（Docker Compose、Nginx、监控） |
-| [doc/](doc/) | 归档层（原始 docx + 早期探索产物） |
+| [doc/](doc/) | 历史物料归档层（docx + 早期探索产物全部在 doc/his/，只读废弃，冲突以 design/*.md 为准） |
 | [scripts/](scripts/) | 工具脚本 |
 | [tests/](tests/) | 跨模块测试（e2e / integration / performance） |
 

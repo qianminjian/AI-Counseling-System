@@ -1,6 +1,6 @@
 # 13 Agent 工作流详细设计
 
-> 来源：`doc/13_Agent工作流.docx`（原文 552 行）
+> 来源：`doc/his/13_Agent工作流.docx`（原文 552 行）
 > 状态：**历史蓝图存档（世界B 已删除）** | 关联决策：BEACON #9（**Spring AI 替代 LangGraph**）、**DEC-CBT 删除世界B（钱敏健 2026-07-29，推翻原「路径1激活」）**
 > 
 > 🔴 **重要（2026-07-29）**：本文档描述的 7-Agent 星型编排（世界B：`ConversationOrchestrator` + `agent/` 包 + `state/` 包 + `CbtStateMachine`）为**整链零调用死代码**，已于 2026-07-29 从代码库**整体删除**。经审计（design/51-53 双世界分析），线上对话**唯一生效架构为世界A**——`ConversationServiceImpl` + `PromptOrchestrationService`（单 prompt 主线，SSE 流式）。本文档自此**降级为历史蓝图存档**，仅供设计思路追溯，**不代表任何已实现或计划实现的代码**。§2/§4/§9/§10 的 Agent 详细设计、Prompt 模板、状态机与接口定义均属已删除的世界B，勿据此实现或误读为线上架构。删除记录与世界A 事实架构见 **§十三**。

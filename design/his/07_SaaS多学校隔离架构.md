@@ -1,6 +1,6 @@
 # 07 SaaS 多学校隔离架构
 
-> 来源：`doc/07_SaaS多学校隔离架构.docx`（原文 260 行）
+> 来源：`doc/his/07_SaaS多学校隔离架构.docx`（原文 260 行）
 > 状态：已转换 | 关联：06 数据库结构、05 老师后台、12 技术架构、决策 #6（Schema 级多租户）
 > 核心：**学校为租户粒度，Schema 级隔离 `tenant_{tenant_id}`**，跨租户查询在代码层面严格禁止。
 > ⚠️ **实现现状（2026-07-28 核对 / M1-003 fail-fast 已收紧）**：当前代码为**共享表 + 行级 tenant_id 过滤**（所有实体带 `tenantId`）。fix-06 落地路线 A 纵深防线——`counseling-domain` 模块 `com.mindsafe.tenant` 包启用 MyBatis-Plus `TenantLineInnerInterceptor`（已认证请求经 `TenantContextHolder` 自动注入 `tenant_id` 条件；独立 `counseling-tenant` 模块未建，不预建空壳），M1-003 已进一步收紧为 **fail-fast**：无租户上下文且未声明系统作用域（`runAsSystem`/`callAsSystem`）的业务表 DAO 调用直接抛 `IllegalStateException`。`ParentAuthService` 已去单租户硬编码。Schema 级物理隔离仍**未落地**（仍为单 schema 共享表），与决策 #6 存在架构级偏差，详见 §11。
