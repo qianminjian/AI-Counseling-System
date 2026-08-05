@@ -17,6 +17,7 @@ import { preloadWakeModel } from '../hooks/useWakeWord'
 import { useWakeEnabled } from '../hooks/useWakeEnabled'
 import { useSilenceNudge } from '../hooks/useSilenceNudge'
 import { useAudioRecorder } from '../hooks/useAudioRecorder'
+import { useChatSession } from '../hooks/useChatSession'
 import { authFetch, api, getUser } from '../api'
 import { emotionBus } from '../utils/emotionBus'
 import { useBoboExpression } from '../hooks/useBoboExpression'
@@ -29,20 +30,7 @@ export interface SessionInfo {
   emotionTag: string
 }
 
-/** 语音情绪对象（/api/v1/voice/analyze 返回，Java 端 VoiceController 组装） */
-export interface VoiceEmotion {
-  label: string
-  labelEn: string
-  confidence: number
-  scores: number[]
-}
-
 export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: SessionInfo; onEnd: () => void; onSwitchUser?: () => void }) {
-  const [messages, setMessages] = useState<import('./MessageBubble').ChatMessage[]>([
-    { role: 'assistant', content: session.greeting, emotion: session.emotionTag },
-  ])
-  const [input, setInput] = useState('')
-  const [streaming, setStreaming] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [toolboxOpen, setToolboxOpen] = useState(false) // 百宝箱（F-2，design/36）
   const [sosOpen, setSosOpen] = useState(false) // SOS 面板（design/36 §3.4 全局常驻）
@@ -55,8 +43,6 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: Se
   const browserTranscriptRef = useRef('')
   const speechRecRef = useRef(null)
   const greetingSpokenRef = useRef(false)
-  // 指向最新的 sendMessage（handleRecordingComplete 定义在前、sendMessage 定义在后，用 ref 避免 TDZ 与闭包过期）
-  const sendMessageRef = useRef(null)
   const pointerStartYRef = useRef(0) // 按下时 Y 坐标（检测上滑取消）
   const pointerDownTimeRef = useRef(0) // 按下时间戳（检测说话过短）
 
@@ -83,6 +69,24 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: Se
     emotion: 'neutral',
     speed: userGender === 'male' ? 1.05 : userGender === 'female' ? 0.95 : 1.0,
     dialect: activeDialect,
+  })
+
+  // 会话状态（UX-006：消息/发送/SSE 编排收敛 useChatSession，design/17 §chat/hooks）
+  const { messages, setMessages, input, setInput, streaming, sendMessage, sendMessageRef, closeSession } = useChatSession({
+    sessionId: session.sessionId,
+    greeting: session.greeting,
+    emotionTag: session.emotionTag,
+    tts,
+    wakeEnabled,
+    bobo: boboExpression,
+    // recordInteraction 定义于下方 useSilenceNudge → ref 代理防 TDZ 与闭包过期
+    onInteraction: () => recordInteractionRef.current?.(),
+    // 发送前：打断朗读标记 + 释放麦克风（安卓路由保护，design/27 §5.1）
+    onBeforeSend: () => {
+      setSpeakingMsgIdx(-1)
+      releaseStream()
+    },
+    onClosed: onEnd,
   })
 
   // 进入聊天室自动朗读打招呼语
@@ -202,6 +206,12 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: Se
       setMessages((prev) => [...prev, { role: 'assistant', content: text, emotion: session.emotionTag }])
       if (!tts.muted) tts.speak(text)
     },
+  })
+
+  // 供 useChatSession.onInteraction 调用（ref 代理，避免渲染期交叉依赖）
+  const recordInteractionRef = useRef(recordInteraction)
+  useEffect(() => {
+    recordInteractionRef.current = recordInteraction
   })
 
   // AI 活动结束（回复流/朗读完毕）→ 从此刻起算沉默
@@ -377,183 +387,11 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: Se
     tts.speakSentence(text).then(() => setSpeakingMsgIdx(-1))
   }, [tts, releaseStream])
 
-  /** 语音识别去重：检测文本后半段是否与前半段重复（Android 语音识别/Whisper 偶发） */
-  const deduplicateText = (raw: string): string => {
-    const t = raw.trim()
-    if (t.length < 6) return t
-    // 尝试从中间偏后位置检测：后半段 === 前半段（允许标点差异）
-    const len = t.length
-    for (let mid = Math.floor(len * 0.4); mid <= Math.ceil(len * 0.6); mid++) {
-      const first = t.slice(0, mid).replace(/[，。！？、\s]/g, '')
-      const second = t.slice(mid).replace(/[，。！？、\s]/g, '')
-      if (first && second && first === second) return t.slice(0, mid)
-    }
-    return t
-  }
-
-  const sendMessage = async (autoText?: string, autoEmotion?: VoiceEmotion | null) => {
-    const text = deduplicateText((autoText ?? input).trim())
-    if (!text || streaming) return false
-
-    // 先停止当前播放，再在用户手势中解锁音频（避免 unlock 被 stop 打断）
-    tts.stop()
-    tts.unlock()
-    setSpeakingMsgIdx(-1)
-    // 释放麦克风：安卓把活跃麦克风视为"通话"，会把 TTS 路由到听筒。
-    // 在发送时（AI 生成前）就释放，给系统留足切回扬声器的时间，确保整段回复走扩音
-    releaseStream()
-
-    // 语音自动发送时用传入的 emotion（服务端情绪存入 state）；手动打字时无情绪标注
-    const emotion = autoEmotion
-
-    const body: Record<string, unknown> = { content: text }
-    if (emotion) {
-      body.voiceEmotion = emotion.labelEn
-      body.voiceEmotionConfidence = emotion.confidence
-      body.inputMode = 'voice'
-    }
-    // 同步前端设置状态，让 AI 知道自己的能力边界（TTS是否开启/唤醒是否开启）
-    body.ttsMuted = tts.muted
-    body.wakeEnabled = wakeEnabled
-
-    const msgEmotion = emotion?.labelEn
-    setInput('')
-    // 冷场引导：孩子一说话即重置沉默计时 + 清零连续暖场计数
-    recordInteraction()
-    setMessages((prev) => [...prev, { role: 'user', content: text, emotion: msgEmotion }])
-    setStreaming(true)
-    // AI 回复挂上孩子情绪（语音情绪优先、会话情绪兜底），驱动情感化排印
-    setMessages((prev) => [...prev, { role: 'assistant', content: '', emotion: msgEmotion || session.emotionTag }])
-
-    let fullResponse = ''
-    let replyEmotionReceived = false
-    let timeoutChecker: ReturnType<typeof setInterval> | null = null
-
-    // AI 思考中：波波切换 think 表情（design/37 §4.1）
-    boboExpression.dispatch({ type: 'thinking' })
-
-    // 流式 TTS：首句完成即开始合成播放，不等全文接收完
-    if (!tts.muted) tts.startStreaming()
-
-    try {
-      const res = await authFetch(`/api/v1/chat/sessions/${session.sessionId}/messages`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      })
-
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-
-      const reader = res.body.getReader()
-      const decoder = new TextDecoder()
-      let buffer = ''
-      let lastDataTime = Date.now()
-
-      // SSE 流超时保护：30s 无数据 → 自动结束（防止永远卡在 streaming 态）
-      timeoutChecker = setInterval(() => {
-        if (Date.now() - lastDataTime > 30000) {
-          if (timeoutChecker) clearInterval(timeoutChecker)
-          reader.cancel()
-        }
-      }, 5000)
-
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        lastDataTime = Date.now()
-
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split('\n')
-        buffer = lines.pop() || ''
-
-        for (const line of lines) {
-          if (!line.startsWith('data:')) continue
-          const jsonStr = line.slice(5)
-          try {
-            const event = JSON.parse(jsonStr)
-            if (event.type === 'token') {
-              fullResponse += event.content
-              // 流式 TTS：每个 token 喂入，首句完成即开始合成播放
-              if (!tts.muted) tts.feedToken(event.content)
-              setMessages((prev) => {
-                const updated = [...prev]
-                const last = updated[updated.length - 1]
-                updated[updated.length - 1] = { ...last, content: last.content + event.content }
-                return updated
-              })
-            } else if (event.type === 'emotion') {
-              // AI 回复情绪标签（design/37 §三.1 三方同源）：统一经 emotionBus 分发给
-              // 表情状态机/TTS/主题层，禁止各消费方另取信号源
-              replyEmotionReceived = true
-              emotionBus.publish(event.content)
-            } else if (event.type === 'risk') {
-              // 风险事件是系统/心理老师的内部处理指令（如"允许继续 CBT 微干预，趋势观察"），
-              // 不能展示给学生：孩子看不懂临床术语，且会意识到"被监控"而破坏辅导信任。
-              // 风险数据由后端另行落库并推送教师后台；红色风险后端会单独下发孩子能懂的安抚语。
-              // 这里仅记录日志便于调试，不渲染到聊天界面。
-              console.info('[risk]', event.metadata?.riskLevel, event.content)
-              // S0/S1 风险锁定波波 hug 安抚姿态（design/37 §4.1 安全红线，riskLevel≥2 锁定）
-              boboExpression.dispatch({ type: 'risk', riskLevel: event.metadata?.riskLevel ?? 1 })
-            }
-          } catch { /* ignore parse errors */ }
-        }
-      }
-
-    } catch (e) {
-      // SSE 流读取异常。常见于流结束时 chunked 终止块缺失（服务端异步收尾不干净），
-      // 此时 AI 回复其实已完整接收——保留已收到的内容，仅在完全没收到时才提示错误。
-      if (fullResponse) {
-        console.warn('SSE 流终止异常但回复已接收，忽略:', e?.message)
-      } else {
-        console.error('发送失败', e)
-        setMessages((prev) => {
-          const updated = [...prev]
-          updated[updated.length - 1] = { role: 'assistant', content: '网络出了点问题，请再试一次哦 🙏', emotion: null }
-          return updated
-        })
-      }
-    } finally {
-      if (timeoutChecker) clearInterval(timeoutChecker)
-      // 流式 TTS 结束：冲刷剩余缓冲 + 等待播放完毕；无内容时重置状态
-      if (!tts.muted) {
-        if (fullResponse) {
-          tts.endStreaming()
-        } else {
-          tts.stop()
-        }
-      }
-      // 流结束：本轮无情绪标签则波波回落 idle（有则保持情绪表情）
-      if (!replyEmotionReceived) boboExpression.dispatch({ type: 'idle' })
-      setStreaming(false)
-    }
-    return true
-  }
-
-  // 每次渲染后让 sendMessageRef 指向最新的 sendMessage（供定义在前的 handleRecordingComplete 调用）
-  useEffect(() => {
-    sendMessageRef.current = sendMessage
-  })
-
   const [showSatisfaction, setShowSatisfaction] = useState(false)
 
   const handleEnd = () => {
     tts.stop()
     setShowSatisfaction(true)
-  }
-
-  const closeSession = async (rating?: number | null, comment?: string) => {
-    setShowSatisfaction(false)
-    try {
-      const body = rating ? { rating, comment } : undefined
-      await api(`/sessions/${session.sessionId}/close`, {
-        method: 'POST',
-        body: body ? JSON.stringify(body) : undefined,
-      })
-    } catch {
-      // fallback: 旧接口
-      try { await api(`/chat/sessions/${session.sessionId}/end`, { method: 'POST' }) } catch { /* ignore */ }
-    }
-    onEnd()
   }
 
   /* ===== 波波状态机（design/27 §4.3 + design/28 §1.1）：
@@ -835,8 +673,8 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: Se
       {/* 结束会话满意度评价 */}
       {showSatisfaction && (
         <SatisfactionDialog
-          onSubmit={(rating, comment) => closeSession(rating, comment)}
-          onSkip={() => closeSession(null)}
+          onSubmit={(rating, comment) => { setShowSatisfaction(false); closeSession(rating, comment) }}
+          onSkip={() => { setShowSatisfaction(false); closeSession(null) }}
           onResume={() => setShowSatisfaction(false)}
         />
       )}

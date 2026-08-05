@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { fetchToolboxTools } from '../api/toolboxApi'
-import type { ToolboxTool } from '../api/toolboxApi'
+import { fetchToolboxTools } from '../api'
+import type { ToolboxTool } from '../api'
 import ToolPractice from './ToolPractice'
 
 /**

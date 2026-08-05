@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { recordMoodCheck } from '../api/toolboxApi'
-import type { ToolboxTool } from '../api/toolboxApi'
+import { recordMoodCheck } from '../api'
+import type { ToolboxTool } from '../api'
 import { getToolSteps } from '../data/toolSteps'
 
 /**

@@ -9,9 +9,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import ToolboxPanel from '../components/ToolboxPanel'
-import { fetchToolboxTools, recordMoodCheck } from '../api/toolboxApi'
+import { fetchToolboxTools, recordMoodCheck } from '../api'
 
-vi.mock('../api/toolboxApi', () => ({
+vi.mock('../api', () => ({
   fetchToolboxTools: vi.fn(),
   fetchSosTools: vi.fn(),
   recordMoodCheck: vi.fn(),

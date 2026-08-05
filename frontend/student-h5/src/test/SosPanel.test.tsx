@@ -9,9 +9,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import SosPanel from '../components/SosPanel'
-import { reportSosEvent } from '../api/toolboxApi'
+import { reportSosEvent } from '../api'
 
-vi.mock('../api/toolboxApi', () => ({
+vi.mock('../api', () => ({
   reportSosEvent: vi.fn(),
 }))
 

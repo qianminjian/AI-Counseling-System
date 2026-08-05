@@ -13,9 +13,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import ToolPractice from '../components/ToolPractice'
-import { recordMoodCheck } from '../api/toolboxApi'
+import { recordMoodCheck } from '../api'
 
-vi.mock('../api/toolboxApi', () => ({
+vi.mock('../api', () => ({
   recordMoodCheck: vi.fn(),
 }))
 

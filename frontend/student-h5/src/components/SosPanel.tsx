@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { reportSosEvent } from '../api/toolboxApi'
+import { reportSosEvent } from '../api'
 
 /**
  * SOS 面板（F-2，design/36 §3.4，Wysa 范式）

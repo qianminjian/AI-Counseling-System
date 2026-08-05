@@ -8,7 +8,7 @@
  * - reportSosEvent：SOS 打开上报为 fire-and-forget——任何失败（含断网）不得抛出（design/36 §3.4 不阻塞界面）
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { fetchToolboxTools, fetchSosTools, recordMoodCheck, reportSosEvent } from '../api/toolboxApi'
+import { fetchToolboxTools, fetchSosTools, recordMoodCheck, reportSosEvent } from '../api'
 
 function mockJson(data: unknown, success = true) {
   return Promise.resolve({
@@ -17,7 +17,7 @@ function mockJson(data: unknown, success = true) {
   } as Response)
 }
 
-describe('api/toolboxApi', () => {
+describe('api 工具箱段', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
     sessionStorage.setItem('mindsafe_student_token', 'test-token')
