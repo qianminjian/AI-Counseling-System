@@ -14,6 +14,13 @@
 # 前置条件：已 commit + push，CI 通过
 set -eo pipefail
 
+# macOS openrsync (/usr/bin/rsync) 仅实现 rsync 协议 29 子集，与服务器 rsync 3.x 不兼容；
+# 传输含 WASM/workbox/.gitkeep 的 dist 时 sender 进程会崩 (exit 11 / SIGSEGV)。
+# Homebrew rsync 是真 rsync 3.x，前置 PATH 即可。Linux 上无 /opt/homebrew/bin/rsync 不受影响。
+if [ -x /opt/homebrew/bin/rsync ]; then
+  export PATH="/opt/homebrew/bin:$PATH"
+fi
+
 # 部署目标通过环境变量指定（不在仓库内硬编码生产 IP）
 # 建议写入 ~/.zshrc：export MINDSAFE_SERVER=user@<服务器IP>
 SERVER="${MINDSAFE_SERVER:-}"
