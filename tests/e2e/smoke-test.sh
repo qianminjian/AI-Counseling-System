@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # ============================================================
-# MindSafe E2E 冒烟测试（30+ 用例）
+# MindSafe E2E 冒烟测试（31 个断言：默认路径 28 + TTS/会话历史 3）
 # 用途：部署后验证核心 API 链路是否可用
+# 历史：TEST-003 如实校准——默认路径实际 28 断言；E4 修复补齐至 31（2026-07-28）
 # 用法：BASE_URL=https://your-domain.com ./smoke-test.sh
 #       或指定教师账号：TEACHER_USER=xxx TEACHER_PASS=xxx ./smoke-test.sh
 #       管理员账号：ADMIN_USER=xxx ADMIN_PASS=xxx ./smoke-test.sh
@@ -155,7 +156,15 @@ if [ -n "$STUDENT_TOKEN" ]; then
   HIST_CODE=$(http_code "$API/sessions" -H "Authorization: Bearer $STUDENT_TOKEN")
   check "会话历史" "200" "$HIST_CODE"
 
-  # 3.7 不同情绪标签创建会话
+  # 3.7 会话历史包含刚创建的会话（E4：验证列表与创建链路一致，防静默丢失）
+  HIST_BODY=$(curl -s "$API/sessions" -H "Authorization: Bearer $STUDENT_TOKEN" || true)
+  if [ -n "$SESSION_ID" ]; then
+    echo "$HIST_BODY" | grep -q "$SESSION_ID" \
+      && green "  ✓ 会话历史包含本次会话" && PASS=$((PASS + 1)) \
+      || { red "  ✗ 会话历史未包含本次会话 ($SESSION_ID)"; FAIL=$((FAIL + 1)); }
+  fi
+
+  # 3.8 不同情绪标签创建会话
   SESSION2_BODY=$(curl -s -X POST "$API/chat/sessions" \
     -H "Authorization: Bearer $STUDENT_TOKEN" \
     -H 'Content-Type: application/json' \
@@ -167,7 +176,7 @@ if [ -n "$STUDENT_TOKEN" ]; then
     -H "Authorization: Bearer $STUDENT_TOKEN" > /dev/null 2>&1 || true
 else
   echo "  ⚠ 跳过（注册失败无 token）"
-  FAIL=$((FAIL + 7))
+  FAIL=$((FAIL + 8))
 fi
 
 # ===== 4. 风险识别链路 =====
@@ -272,6 +281,25 @@ else
   red "  ✗ 超长输入导致 500"
   FAIL=$((FAIL + 1))
 fi
+
+# 5.6 TTS 音色列表匿名可访问（E4：验证公开端点白名单行为）
+PERSONAS_CODE=$(http_code "$API/tts/personas")
+check "TTS 音色列表匿名可访问" "200" "$PERSONAS_CODE"
+PERSONAS_BODY=$(curl -s "$API/tts/personas" || true)
+PERSONAS_COUNT=$(echo "$PERSONAS_BODY" | python3 -c "import sys,json; d=json.load(sys.stdin); print(len(d.get('data',[])))" 2>/dev/null || echo "0")
+if [ "$PERSONAS_COUNT" -ge 1 ]; then
+  green "  ✓ TTS 音色列表非空（$PERSONAS_COUNT 个）"
+  PASS=$((PASS + 1))
+else
+  red "  ✗ TTS 音色列表为空（tts-service 未就绪或返回异常）"
+  FAIL=$((FAIL + 1))
+fi
+
+# 5.7 声纹登录引导语非白名单文本 → 400（E4：验证公开 TTS 端点防滥用）
+LOGIN_PROMPT_CODE=$(http_code -X POST "$API/tts/login-prompt" \
+  -H 'Content-Type: application/json' \
+  -d '{"text":"随便说点什么"}')
+check "login-prompt 非白名单被拒" "400" "$LOGIN_PROMPT_CODE"
 
 # ===== 6. 教师端链路 =====
 echo ""
