@@ -75,7 +75,7 @@ public class SosEventService {
         event.setRiskLevel(RiskLevel.YELLOW.severity()); // S2
         event.setDetectedBy("sos_button");
         event.setDetectedAt(Instant.now());
-        event.setStatus("open");
+        event.setStatus(RiskEvent.STATUS_OPEN);
         event.setCreatedAt(Instant.now());
         event.setUpdatedAt(Instant.now());
 

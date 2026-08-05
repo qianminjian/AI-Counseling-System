@@ -1,5 +1,6 @@
 package com.mindsafe.service.teacher;
 
+import com.mindsafe.domain.entity.RiskEvent;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
@@ -46,7 +47,7 @@ public class AlertSlaPolicy {
      */
     public SlaDecision evaluate(String riskLevel, String status, Instant createdAt, Instant now) {
         // 已解决的不评估
-        if ("resolved".equals(status) || "closed".equals(status)) {
+        if (RiskEvent.STATUS_RESOLVED.equals(status) || RiskEvent.STATUS_CLOSED.equals(status)) {
             return new SlaDecision(false, false, "NONE", 0);
         }
 
@@ -86,6 +87,6 @@ public class AlertSlaPolicy {
     private boolean shouldEscalate(String riskLevel, String status) {
         if ("S2".equals(riskLevel) || "YELLOW".equals(riskLevel)) return false;
         // S0/S1：open 状态超时 → 升级
-        return "open".equals(status);
+        return RiskEvent.STATUS_OPEN.equals(status);
     }
 }

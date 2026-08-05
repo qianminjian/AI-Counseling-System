@@ -600,7 +600,7 @@ public class ConversationServiceImpl implements ConversationService {
             CounselingSession update = new CounselingSession();
             update.setSessionId(sessionId);
             update.setEndedAt(Instant.now());
-            update.setSessionStatus("completed");
+            update.setSessionStatus(CounselingSession.STATUS_COMPLETED);
             update.setTurnCount(session.getTurnCount());
             update.setUpdatedAt(Instant.now());
             sessionMapper.updateById(update);
@@ -649,7 +649,7 @@ public class ConversationServiceImpl implements ConversationService {
                     new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<MessageSummary>()
                             .eq(MessageSummary::getTenantId, tenantId)
                             .eq(MessageSummary::getSessionId, sessionId)
-                            .eq(MessageSummary::getSenderType, "student")
+                            .eq(MessageSummary::getSenderType, User.USER_TYPE_STUDENT)
                             .orderByAsc(MessageSummary::getTurnCount)
                             .orderByAsc(MessageSummary::getCreatedAt)
             );

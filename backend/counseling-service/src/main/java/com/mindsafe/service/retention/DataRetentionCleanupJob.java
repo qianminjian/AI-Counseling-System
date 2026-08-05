@@ -95,7 +95,7 @@ public class DataRetentionCleanupJob {
             // 3. 清理已完成的普通会话（risk_level_snapshot < 2 且超过 30 天）
             deletedSessions += sessionMapper.delete(
                     new LambdaQueryWrapper<CounselingSession>()
-                            .eq(CounselingSession::getSessionStatus, "completed")
+                            .eq(CounselingSession::getSessionStatus, CounselingSession.STATUS_COMPLETED)
                             .lt(CounselingSession::getCreatedAt, normalCutoff)
                             .and(w -> w
                                     .lt(CounselingSession::getRiskLevelSnapshot, HIGH_RISK_THRESHOLD)
@@ -107,7 +107,7 @@ public class DataRetentionCleanupJob {
             // 4. 清理已完成的高风险会话（risk_level_snapshot >= 2 且超过 365 天）
             deletedSessions += sessionMapper.delete(
                     new LambdaQueryWrapper<CounselingSession>()
-                            .eq(CounselingSession::getSessionStatus, "completed")
+                            .eq(CounselingSession::getSessionStatus, CounselingSession.STATUS_COMPLETED)
                             .lt(CounselingSession::getCreatedAt, highRiskCutoff)
                             .ge(CounselingSession::getRiskLevelSnapshot, HIGH_RISK_THRESHOLD)
             );

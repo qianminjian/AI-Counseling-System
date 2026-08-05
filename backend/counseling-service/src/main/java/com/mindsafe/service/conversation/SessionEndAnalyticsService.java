@@ -1,6 +1,7 @@
 package com.mindsafe.service.conversation;
 
 import com.mindsafe.ai.orchestrator.EmotionOrchestrationEvaluator;
+import com.mindsafe.common.enums.RiskLevel;
 import com.mindsafe.domain.entity.RiskEvent;
 import com.mindsafe.domain.mapper.RiskEventMapper;
 import com.mindsafe.service.notification.RiskNotifyOutboxService;
@@ -162,10 +163,10 @@ public class SessionEndAnalyticsService {
             event.setStudentUserId(studentUserId);
             event.setSourceType("attention");
             event.setRiskType("voice_trend:" + signal.signalType());
-            event.setRiskLevel(1); // YELLOW：非实时关注
+            event.setRiskLevel(RiskLevel.YELLOW.severity()); // 非实时关注信号
             event.setDetectedBy("trend_analyzer");
             event.setDetectedAt(java.time.Instant.now());
-            event.setStatus("open");
+            event.setStatus(RiskEvent.STATUS_OPEN);
             event.setCreatedAt(java.time.Instant.now());
             event.setUpdatedAt(java.time.Instant.now());
             riskEventMapper.insert(event);

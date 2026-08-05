@@ -5,6 +5,7 @@ import com.mindsafe.domain.entity.CounselingSession;
 import com.mindsafe.domain.entity.MessageSummary;
 import com.mindsafe.domain.entity.QualityScore;
 import com.mindsafe.domain.entity.RiskEvent;
+import com.mindsafe.domain.entity.User;
 import com.mindsafe.domain.mapper.CounselingSessionMapper;
 import com.mindsafe.domain.mapper.MessageSummaryMapper;
 import com.mindsafe.domain.mapper.QualityScoreMapper;
@@ -209,7 +210,7 @@ public class DataAnalyticsService {
         report.put("riskDistribution", riskByLevel);
 
         // 风险处置率
-        long resolved = riskEvents.stream().filter(r -> "resolved".equals(r.getStatus()) || "closed".equals(r.getStatus())).count();
+        long resolved = riskEvents.stream().filter(r -> RiskEvent.STATUS_RESOLVED.equals(r.getStatus()) || RiskEvent.STATUS_CLOSED.equals(r.getStatus())).count();
         report.put("riskResolutionRate", riskEvents.isEmpty() ? 100.0 :
                 Math.round((double) resolved / riskEvents.size() * 1000) / 10.0);
 
@@ -262,7 +263,7 @@ public class DataAnalyticsService {
                 new LambdaQueryWrapper<MessageSummary>()
                         .eq(MessageSummary::getTenantId, tenantId)
                         .eq(MessageSummary::getStudentUserId, studentUserId)
-                        .eq(MessageSummary::getSenderType, "student")
+                        .eq(MessageSummary::getSenderType, User.USER_TYPE_STUDENT)
                         .ge(MessageSummary::getCreatedAt, from)
                         .lt(MessageSummary::getCreatedAt, to));
         if (summaries.isEmpty()) return 0;
@@ -329,7 +330,7 @@ public class DataAnalyticsService {
                 new LambdaQueryWrapper<MessageSummary>()
                         .eq(MessageSummary::getTenantId, tenantId)
                         .eq(MessageSummary::getStudentUserId, studentUserId)
-                        .eq(MessageSummary::getSenderType, "student")
+                        .eq(MessageSummary::getSenderType, User.USER_TYPE_STUDENT)
                         .isNotNull(MessageSummary::getEmotionLabel)
                         .ge(MessageSummary::getCreatedAt, start)
                         .lt(MessageSummary::getCreatedAt, end)
@@ -374,7 +375,7 @@ public class DataAnalyticsService {
                 .ifPresent(s -> milestones.add(milestone("first_positive", s.getStartedAt(), "首次正面情绪会话")));
         // 风险事件首次解决
         riskEvents.stream()
-                .filter(r -> "resolved".equals(r.getStatus()) || "closed".equals(r.getStatus()))
+                .filter(r -> RiskEvent.STATUS_RESOLVED.equals(r.getStatus()) || RiskEvent.STATUS_CLOSED.equals(r.getStatus()))
                 .findFirst()
                 .ifPresent(r -> milestones.add(milestone("risk_resolved", r.getUpdatedAt(), "首次风险事件成功处置")));
         // 累计 10 次会话

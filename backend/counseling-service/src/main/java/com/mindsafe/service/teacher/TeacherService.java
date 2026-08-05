@@ -72,7 +72,7 @@ public class TeacherService {
      * 返回空串 "" 表示班主任未绑定班级（无可见范围，查询自然为空结果）。
      */
     public String resolveClassScope(UUID tenantId, UUID userId, String userType) {
-        if ("class_teacher".equals(userType)) {
+        if (User.USER_TYPE_CLASS_TEACHER.equals(userType)) {
             User teacher = userMapper.selectById(userId);
             if (teacher != null && teacher.getClassCode() != null && !teacher.getClassCode().isBlank()) {
                 return teacher.getClassCode();
@@ -94,7 +94,7 @@ public class TeacherService {
         long pendingAlerts = riskEventMapper.selectCount(
                 new LambdaQueryWrapper<RiskEvent>()
                         .eq(RiskEvent::getTenantId, tenantId)
-                        .eq(RiskEvent::getStatus, "open")
+                        .eq(RiskEvent::getStatus, RiskEvent.STATUS_OPEN)
         );
 
         // 今日新增预警
@@ -180,7 +180,7 @@ public class TeacherService {
             List<User> classStudents = userMapper.selectList(
                     new LambdaQueryWrapper<User>()
                             .eq(User::getTenantId, tenantId)
-                            .eq(User::getUserType, "student")
+                            .eq(User::getUserType, User.USER_TYPE_STUDENT)
                             .eq(User::getClassCode, classScope)
             );
             if (classStudents.isEmpty()) {
@@ -246,7 +246,7 @@ public class TeacherService {
             throw new IllegalArgumentException("目标教师不存在: " + targetTeacherId);
         }
 
-        event.setStatus("open");
+                event.setStatus(RiskEvent.STATUS_OPEN);
         event.setAssignedUserId(targetTeacherId);
         event.setUpdatedAt(Instant.now());
         riskEventMapper.updateById(event);
@@ -316,7 +316,7 @@ public class TeacherService {
     /** 认领预警 */
     public void claimAlert(UUID tenantId, UUID riskEventId, UUID teacherUserId) {
         RiskEvent event = getEventWithTenantCheck(tenantId, riskEventId);
-        event.setStatus("claimed");
+        event.setStatus(RiskEvent.STATUS_CLAIMED);
         event.setAssignedUserId(teacherUserId);
         event.setUpdatedAt(Instant.now());
         riskEventMapper.updateById(event);
@@ -338,7 +338,7 @@ public class TeacherService {
     @Transactional
     public void resolveAlert(UUID tenantId, UUID riskEventId, UUID teacherUserId, String resolutionNote) {
         RiskEvent event = getEventWithTenantCheck(tenantId, riskEventId);
-        event.setStatus("resolved");
+        event.setStatus(RiskEvent.STATUS_RESOLVED);
         event.setAssignedUserId(teacherUserId);
         event.setResolutionNote(resolutionNote);
         event.setResolvedAt(Instant.now());
@@ -375,7 +375,7 @@ public class TeacherService {
     public void completeFollowUp(UUID tenantId, UUID riskEventId, UUID teacherUserId,
                                  String followUpNote, String outcome) {
         RiskEvent event = getEventWithTenantCheck(tenantId, riskEventId);
-        event.setStatus("closed");
+        event.setStatus(RiskEvent.STATUS_CLOSED);
         event.setFollowUpDone(true);
         event.setFollowUpNote(followUpNote);
         event.setOutcome(outcome);
@@ -487,7 +487,7 @@ public class TeacherService {
         }
 
         // 班主任（class_teacher）只见沟通建议，不见风险轨迹与对话摘要（design/35 §3.3/§六：服务端裁剪）
-        boolean fullAccess = !"class_teacher".equals(userType);
+        boolean fullAccess = !User.USER_TYPE_CLASS_TEACHER.equals(userType);
 
         // 教师备注（所有角色可见，沟通建议来源）
         List<TeacherNote> notes = teacherNoteMapper.selectList(
@@ -564,7 +564,7 @@ public class TeacherService {
         List<RiskEvent> openEvents = riskEventMapper.selectList(
                 new LambdaQueryWrapper<RiskEvent>()
                         .eq(RiskEvent::getTenantId, tenantId)
-                        .in(RiskEvent::getStatus, "open", "claimed")
+                                                .in(RiskEvent::getStatus, RiskEvent.STATUS_OPEN, RiskEvent.STATUS_CLAIMED)
                         .orderByDesc(RiskEvent::getRiskLevel)
         );
 
@@ -574,7 +574,7 @@ public class TeacherService {
             List<User> classStudents = userMapper.selectList(
                     new LambdaQueryWrapper<User>()
                             .eq(User::getTenantId, tenantId)
-                            .eq(User::getUserType, "student")
+                            .eq(User::getUserType, User.USER_TYPE_STUDENT)
                             .eq(User::getClassCode, classScope)
             );
             classStudentIds = classStudents.stream().map(User::getUserId).collect(Collectors.toSet());
@@ -653,7 +653,7 @@ public class TeacherService {
             List<User> classStudents = userMapper.selectList(
                     new LambdaQueryWrapper<User>()
                             .eq(User::getTenantId, tenantId)
-                            .eq(User::getUserType, "student")
+                            .eq(User::getUserType, User.USER_TYPE_STUDENT)
                             .eq(User::getClassCode, classScope)
             );
             scopeStudentIds = classStudents.stream().map(User::getUserId).collect(Collectors.toSet());
@@ -679,8 +679,8 @@ public class TeacherService {
         // 2. 班级对比（按 classCode 分组统计预警数 + 学生数）
         LambdaQueryWrapper<User> studentWrapper = new LambdaQueryWrapper<User>()
                 .eq(User::getTenantId, tenantId)
-                .eq(User::getUserType, "student")
-                .eq(User::getStatus, "active");
+                .eq(User::getUserType, User.USER_TYPE_STUDENT)
+                .eq(User::getStatus, User.STATUS_ACTIVE);
         if (classScope != null) {
             studentWrapper.eq(User::getClassCode, classScope);
         }
@@ -732,7 +732,7 @@ public class TeacherService {
                 new QueryWrapper<MessageSummary>()
                         .select("emotion_label, COUNT(*) AS cnt")
                         .eq("tenant_id", tenantId)
-                        .eq("sender_type", "student")
+                        .eq("sender_type", User.USER_TYPE_STUDENT)
                         .ge("created_at", monthAgo)
                         .isNotNull("emotion_label")
                         .groupBy("emotion_label")

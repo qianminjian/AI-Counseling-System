@@ -78,7 +78,7 @@ public class TenantProvisioningService {
         tenant.setTenantCode(tenantCode);
         tenant.setTenantName(tenantName);
         tenant.setDataRegion("cn-east");
-        tenant.setStatus("active");
+        tenant.setStatus(Tenant.STATUS_ACTIVE);
         tenant.setCreatedAt(Instant.now());
         tenant.setUpdatedAt(Instant.now());
         tenantMapper.insert(tenant);
@@ -90,7 +90,7 @@ public class TenantProvisioningService {
         school.setSchoolCode(tenantCode);
         school.setSchoolName(tenantName);
         school.setEduStage("primary");
-        school.setStatus("active");
+        school.setStatus(School.STATUS_ACTIVE);
         school.setCreatedAt(Instant.now());
         school.setUpdatedAt(Instant.now());
         schoolMapper.insert(school);
@@ -104,7 +104,7 @@ public class TenantProvisioningService {
         admin.setUserType("admin");
         admin.setPasswordHash(passwordEncoder.encode(tempPassword));
         admin.setMustChangePassword(true);
-        admin.setStatus("active");
+        admin.setStatus(User.STATUS_ACTIVE);
         admin.setCreatedAt(Instant.now());
         admin.setUpdatedAt(Instant.now());
         userMapper.insert(admin);
@@ -121,7 +121,7 @@ public class TenantProvisioningService {
     public void suspendTenant(UUID tenantId, String reason) {
         Tenant tenant = tenantMapper.selectById(tenantId);
         if (tenant == null) throw new IllegalArgumentException("租户不存在");
-        tenant.setStatus("suspended");
+        tenant.setStatus(Tenant.STATUS_SUSPENDED);
         tenant.setUpdatedAt(Instant.now());
         tenantMapper.updateById(tenant);
         log.warn("租户已暂停: tenantId={}, reason={}", tenantId, reason);
@@ -133,7 +133,7 @@ public class TenantProvisioningService {
     public void resumeTenant(UUID tenantId) {
         Tenant tenant = tenantMapper.selectById(tenantId);
         if (tenant == null) throw new IllegalArgumentException("租户不存在");
-        tenant.setStatus("active");
+        tenant.setStatus(Tenant.STATUS_ACTIVE);
         tenant.setUpdatedAt(Instant.now());
         tenantMapper.updateById(tenant);
         log.info("租户已恢复: tenantId={}", tenantId);
@@ -153,7 +153,7 @@ public class TenantProvisioningService {
                 .eq(User::getUserType, "admin"));
         long studentCount = userMapper.selectCount(new LambdaQueryWrapper<User>()
                 .eq(User::getTenantId, tenantId)
-                .eq(User::getUserType, "student"));
+                .eq(User::getUserType, User.USER_TYPE_STUDENT));
         long schoolCount = schoolMapper.selectCount(new LambdaQueryWrapper<School>()
                 .eq(School::getTenantId, tenantId));
 
@@ -166,7 +166,7 @@ public class TenantProvisioningService {
         health.put("schoolCount", schoolCount);
         health.put("hasAdmin", adminCount > 0);
         health.put("hasSchool", schoolCount > 0);
-        health.put("healthy", adminCount > 0 && schoolCount > 0 && "active".equals(tenant.getStatus()));
+        health.put("healthy", adminCount > 0 && schoolCount > 0 && Tenant.STATUS_ACTIVE.equals(tenant.getStatus()));
         return health;
     }
 

@@ -2,6 +2,7 @@ package com.mindsafe.service.conversation;
 
 import com.mindsafe.ai.chat.AiChatService;
 import com.mindsafe.domain.entity.MessageSummary;
+import com.mindsafe.domain.entity.User;
 import com.mindsafe.domain.mapper.MessageSummaryMapper;
 import com.mindsafe.service.security.FieldEncryptionService;
 import org.slf4j.Logger;
@@ -81,7 +82,7 @@ public class SessionSummaryUpdater {
             // 2. 拼接对话文本（解密）
             StringBuilder sb = new StringBuilder();
             for (MessageSummary m : messages) {
-                String role = "student".equals(m.getSenderType()) ? "学生" : "波波";
+                String role = User.USER_TYPE_STUDENT.equals(m.getSenderType()) ? "学生" : "波波";
                 String content = fieldEncryptionService.decrypt(m.getContentSummary());
                 if (content != null && !content.isBlank()) {
                     sb.append(role).append(": ").append(content).append("\n");

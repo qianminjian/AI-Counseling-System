@@ -104,7 +104,7 @@ public class TrialAuthService {
         user.setSchoolId(TRIAL_SCHOOL_ID);
         user.setUserType("trial_student");
         user.setPseudonym(pseudonym);
-        user.setStatus("active");
+        user.setStatus(User.STATUS_ACTIVE);
         user.setMustChangePassword(false);
         user.setGender(gender);
         user.setFamilyCode(generateFamilyCode());
@@ -211,7 +211,7 @@ public class TrialAuthService {
         java.util.List<User> candidates = userMapper.selectList(
                 new LambdaQueryWrapper<User>()
                         .eq(User::getPseudonym, pseudonym)
-                        .eq(User::getStatus, "active")
+                        .eq(User::getStatus, User.STATUS_ACTIVE)
         );
         if (candidates.size() > 1) {
             throw new BizException(ErrorCode.UNAUTHORIZED, "昵称或 PIN 码错误");

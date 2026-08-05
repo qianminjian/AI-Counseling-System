@@ -68,7 +68,7 @@ public class ParentAuthService {
         User student = userMapper.selectOne(
                 new LambdaQueryWrapper<User>()
                         .eq(User::getFamilyCode, familyCode != null ? familyCode.toUpperCase() : "")
-                        .eq(User::getStatus, "active")
+                        .eq(User::getStatus, User.STATUS_ACTIVE)
                         .last("LIMIT 1")
         );
         if (student == null) {
@@ -107,7 +107,7 @@ public class ParentAuthService {
         account.setPhone(phone);
         account.setPasswordHash(passwordEncoder.encode(password));
         account.setDisplayName(buildDisplayName(relation));
-        account.setStatus("active");
+        account.setStatus(ParentAccount.STATUS_ACTIVE);
         account.setCreatedAt(Instant.now());
         account.setUpdatedAt(Instant.now());
         parentAccountMapper.insert(account);
@@ -130,7 +130,7 @@ public class ParentAuthService {
         ParentAccount account = parentAccountMapper.selectOne(
                 new LambdaQueryWrapper<ParentAccount>()
                         .eq(ParentAccount::getPhone, phone)
-                        .eq(ParentAccount::getStatus, "active")
+                        .eq(ParentAccount::getStatus, ParentAccount.STATUS_ACTIVE)
                         .last("LIMIT 1")
         );
         if (account == null || !passwordEncoder.matches(password, account.getPasswordHash())) {
@@ -158,7 +158,7 @@ public class ParentAuthService {
             );
             return links.stream()
                     .map(link -> userMapper.selectById(link.getStudentUserId()))
-                    .filter(u -> u != null && "active".equals(u.getStatus()))
+                    .filter(u -> u != null && User.STATUS_ACTIVE.equals(u.getStatus()))
                     .toList();
         });
     }

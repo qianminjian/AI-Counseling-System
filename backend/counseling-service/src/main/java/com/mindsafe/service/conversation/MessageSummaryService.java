@@ -3,6 +3,7 @@ package com.mindsafe.service.conversation;
 import com.mindsafe.ai.chat.AiChatService;
 import com.mindsafe.domain.entity.CounselingSession;
 import com.mindsafe.domain.entity.MessageSummary;
+import com.mindsafe.domain.entity.User;
 import com.mindsafe.domain.mapper.CounselingSessionMapper;
 import com.mindsafe.domain.mapper.MessageSummaryMapper;
 import com.mindsafe.service.memory.LongTermMemoryService;
@@ -73,7 +74,7 @@ public class MessageSummaryService {
             // 2. 拼接对话文本
             StringBuilder sb = new StringBuilder();
             for (MessageSummary m : messages) {
-                String role = "student".equals(m.getSenderType()) ? "学生" : "AI";
+                String role = User.USER_TYPE_STUDENT.equals(m.getSenderType()) ? "学生" : "AI";
                 // R-01：contentSummary 落库时字段级加密，拼接前解密（明文数据兼容透传）
                 sb.append(role).append(": ").append(fieldEncryptionService.decrypt(m.getContentSummary())).append("\n");
             }

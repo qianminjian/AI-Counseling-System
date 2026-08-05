@@ -40,7 +40,7 @@ public class TenantAccessGuard {
                 log.warn("登录拒绝：租户不存在, tenantId={}", tenantId);
                 return false;
             }
-            if (!"active".equals(tenant.getStatus())) {
+            if (!Tenant.STATUS_ACTIVE.equals(tenant.getStatus())) {
                 log.warn("登录拒绝：租户状态不可用, tenantId={}, status={}", tenantId, tenant.getStatus());
                 return false;
             }

@@ -51,8 +51,8 @@ public class NotificationServiceImpl implements NotificationService {
         List<User> teachers = userMapper.selectList(
                 new LambdaQueryWrapper<User>()
                         .eq(User::getTenantId, event.getTenantId())
-                        .in(User::getUserType, "psych_teacher", "class_teacher")
-                        .eq(User::getStatus, "active")
+                        .in(User::getUserType, User.USER_TYPE_PSYCH_TEACHER, User.USER_TYPE_CLASS_TEACHER)
+                        .eq(User::getStatus, User.STATUS_ACTIVE)
         );
 
         if (teachers.isEmpty()) {

@@ -88,7 +88,7 @@ public class SlaEscalationScanner {
         try {
             List<RiskEvent> candidates = riskEventMapper.selectList(
                     new LambdaQueryWrapper<RiskEvent>()
-                            .in(RiskEvent::getStatus, List.of("open", "claimed"))
+                            .in(RiskEvent::getStatus, List.of(RiskEvent.STATUS_OPEN, RiskEvent.STATUS_CLAIMED))
                             .ge(RiskEvent::getRiskLevel, SLA_MIN_RISK_LEVEL));
 
             Set<UUID> breachedIds = new HashSet<>();
