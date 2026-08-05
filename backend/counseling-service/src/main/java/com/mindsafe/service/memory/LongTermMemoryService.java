@@ -1,9 +1,11 @@
 package com.mindsafe.service.memory;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mindsafe.ai.chat.AiChatService;
+import com.mindsafe.common.enums.RiskLevel;
 import com.mindsafe.domain.entity.LongTermMemory;
 import com.mindsafe.domain.entity.RiskEvent;
 import com.mindsafe.domain.mapper.LongTermMemoryMapper;
@@ -230,13 +232,14 @@ public class LongTermMemoryService {
 
         Instant now = Instant.now();
         int evicted = 0;
+        List<UUID> toDelete = new ArrayList<>();
 
-        // 1. MEM-103 多维遗忘策略：逐条评估
+        // 1. MEM-103 多维遗忘策略：逐条评估决策，命中者收集 id（C1: 收集后批量删除，消除 N+1）
         for (LongTermMemory m : allMemories) {
             MemoryRiskCorrelator.MemoryEntry entry = toMemoryEntry(m);
             MemoryRiskCorrelator.ForgetDecision decision = memoryRiskCorrelator.evaluateForget(entry, now);
             if (decision.shouldForget()) {
-                memoryMapper.deleteById(m.getMemoryId());
+                toDelete.add(m.getMemoryId());
                 evicted++;
                 log.debug("记忆遗忘[{}]: memoryId={}, reason={}", decision.action(), m.getMemoryId(), decision.reason());
             }
@@ -255,9 +258,14 @@ public class LongTermMemoryService {
                             .last("LIMIT " + excess)
             );
             for (LongTermMemory m : survivors) {
-                memoryMapper.deleteById(m.getMemoryId());
+                toDelete.add(m.getMemoryId());
             }
             evicted += survivors.size();
+        }
+
+        // C1: 一次批量删除替代 N 次 deleteById
+        if (!toDelete.isEmpty()) {
+            memoryMapper.deleteBatchIds(toDelete);
         }
 
         if (evicted > 0) {
@@ -408,11 +416,15 @@ public class LongTermMemoryService {
 
     private void updateRecallCount(List<LongTermMemory> memories) {
         try {
-            for (LongTermMemory m : memories) {
-                m.setRecallCount(m.getRecallCount() + 1);
-                m.setLastRecalledAt(Instant.now());
-                memoryMapper.updateById(m);
-            }
+            if (memories == null || memories.isEmpty()) return;
+            // C1: 批量 SQL 更新（recall_count = recall_count + 1），消除 N 次 updateById。
+            // 用 UpdateWrapper（字符串列名）而非 LambdaUpdateWrapper：set() 会立即解析 lambda 列名，
+            // 依赖 MyBatis 运行时 TableInfo，单元测试环境（无 MyBatis）会抛异常。
+            List<UUID> ids = memories.stream().map(LongTermMemory::getMemoryId).toList();
+            memoryMapper.update(null, new UpdateWrapper<LongTermMemory>()
+                    .in("memory_id", ids)
+                    .setSql("recall_count = recall_count + 1")
+                    .set("last_recalled_at", Instant.now()));
         } catch (Exception e) {
             log.debug("更新召回计数失败（忽略）: {}", e.getMessage());
         }
@@ -439,10 +451,10 @@ public class LongTermMemoryService {
             event.setStudentUserId(studentUserId);
             event.setSourceType("attention");
             event.setRiskType("memory_risk:" + signal.theme());
-            event.setRiskLevel(1); // YELLOW：非实时关注
+            event.setRiskLevel(RiskLevel.YELLOW.severity()); // 非实时关注信号
             event.setDetectedBy("memory_correlator");
             event.setDetectedAt(Instant.now());
-            event.setStatus("open");
+            event.setStatus(RiskEvent.STATUS_OPEN);
             event.setCreatedAt(Instant.now());
             event.setUpdatedAt(Instant.now());
             riskEventMapper.insert(event);

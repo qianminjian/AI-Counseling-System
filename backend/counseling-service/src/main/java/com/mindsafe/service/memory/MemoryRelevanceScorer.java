@@ -32,6 +32,9 @@ public class MemoryRelevanceScorer {
     /** key_event 类型无 recurring 加成 */
     private static final double KEY_EVENT_BOOST = 0.0;
 
+    /** C2：召回阈值（低于此值不注入记忆，宁缺毋滥） */
+    public static final double RECALL_THRESHOLD = 0.3;
+
     /**
      * 计算单条记忆的综合召回分。
      *
@@ -74,7 +77,7 @@ public class MemoryRelevanceScorer {
      * @return true=值得召回
      */
     public boolean isWorthRecalling(double score) {
-        return score >= 0.3;
+        return score >= RECALL_THRESHOLD;
     }
 
     private static double clamp01(double v) {

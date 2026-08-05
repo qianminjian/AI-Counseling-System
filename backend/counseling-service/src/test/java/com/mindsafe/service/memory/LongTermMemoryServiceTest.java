@@ -17,14 +17,21 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
+import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyDouble;
+import static org.mockito.ArgumentMatchers.anyFloat;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -130,5 +137,87 @@ class LongTermMemoryServiceTest {
 
         verify(memoryMapper, never()).insert(any(LongTermMemory.class));
         verify(backfillService, never()).backfill(any(), any(), anyList());
+    }
+
+    @Test
+    @DisplayName("C1: 召回计数批量更新——一次 update 替代 N 次 updateById（N+1 消除）")
+    void recallCountUpdate_batched() {
+        List<LongTermMemory> memories = new ArrayList<>();
+        for (int i = 0; i < 5; i++) {
+            LongTermMemory m = new LongTermMemory();
+            m.setMemoryId(UUID.randomUUID());
+            m.setImportance(0.8f);
+            m.setCreatedAt(Instant.now().minusSeconds(i));
+            m.setRecallCount(0);
+            memories.add(m);
+        }
+        when(memoryMapper.selectList(any())).thenReturn(memories);
+        when(memoryRelevanceScorer.score(anyFloat(), anyFloat(), any(), any(), any())).thenReturn(10.0);
+        when(memoryRelevanceScorer.isWorthRecalling(anyDouble())).thenReturn(true);
+
+        String prompt = service.buildMemoryPrompt(tenantId, studentUserId);
+
+        assertThat(prompt).as("召回 Prompt 应正常生成").isNotNull();
+        // C1（2026-08-05）：召回计数用一条批量 update 替代 N 次 updateById
+        verify(memoryMapper, times(1)).update(any(), any());
+        verify(memoryMapper, never()).updateById(any(LongTermMemory.class));
+    }
+
+    @Test
+    @DisplayName("C1: 遗忘淘汰批量删除——一次 deleteBatchIds 替代 N 次 deleteById（N+1 消除）")
+    void evictDecision_batchedDelete() {
+        when(aiChatService.extractKeyEvents(anyString(), any())).thenReturn("""
+                {"key_events":[{"content":"测试事件","importance":0.5}]}
+                """);
+        // 10 条存量记忆，其中前 3 条命中遗忘决策
+        List<LongTermMemory> allMemories = new ArrayList<>();
+        for (int i = 0; i < 10; i++) {
+            LongTermMemory m = new LongTermMemory();
+            m.setMemoryId(UUID.randomUUID());
+            m.setImportance(0.3f);
+            m.setCreatedAt(Instant.now().minusSeconds(1000L + i));
+            m.setRecallCount(0);
+            allMemories.add(m);
+        }
+        Set<String> forgetIds = allMemories.stream().limit(3)
+                .map(m -> m.getMemoryId().toString())
+                .collect(Collectors.toSet());
+        when(memoryMapper.selectList(any())).thenReturn(allMemories);
+        when(memoryRiskCorrelator.evaluateForget(any(), any())).thenAnswer(inv -> {
+            MemoryRiskCorrelator.MemoryEntry entry = inv.getArgument(0);
+            return new MemoryRiskCorrelator.ForgetDecision(
+                    forgetIds.contains(entry.memoryId()), "test", "delete");
+        });
+
+        service.extractAndStoreKeyEvents(tenantId, studentUserId, sessionId, "对话文本", null);
+
+        verify(memoryMapper, times(1)).deleteBatchIds(anyList());
+        verify(memoryMapper, never()).deleteById(any(UUID.class));
+    }
+
+    @Test
+    @DisplayName("C1: 数量兜底淘汰批量删除——survivors 一次 deleteBatchIds，不逐条 deleteById")
+    void evictOverflow_batchedDelete() {
+        when(aiChatService.extractKeyEvents(anyString(), any())).thenReturn("""
+                {"key_events":[{"content":"测试事件","importance":0.5}]}
+                """);
+        // 61 条存量记忆（超过 MAX_MEMORIES_PER_STUDENT=50），全部不命中遗忘决策
+        List<LongTermMemory> allMemories = new ArrayList<>();
+        for (int i = 0; i < 61; i++) {
+            LongTermMemory m = new LongTermMemory();
+            m.setMemoryId(UUID.randomUUID());
+            m.setImportance(0.3f);
+            m.setCreatedAt(Instant.now().minusSeconds(1000L + i));
+            m.setRecallCount(0);
+            allMemories.add(m);
+        }
+        when(memoryMapper.selectList(any())).thenReturn(allMemories);
+        when(memoryRiskCorrelator.evaluateForget(any(), any()))
+                .thenReturn(new MemoryRiskCorrelator.ForgetDecision(false, "keep", "none"));
+
+        service.extractAndStoreKeyEvents(tenantId, studentUserId, sessionId, "对话文本", null);
+
+        verify(memoryMapper, atLeastOnce()).deleteBatchIds(anyList());
+        verify(memoryMapper, never()).deleteById(any(UUID.class));
     }
 }

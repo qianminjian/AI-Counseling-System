@@ -33,6 +33,9 @@ public class HybridRetrievalService {
     /** groundedness 低分阈值（低于此值视为检索没帮上） */
     public static final double LOW_GROUNDEDNESS_THRESHOLD = 0.4;
 
+    /** C2：groundedness 充分使用阈值（达到即视为检索内容被充分利用） */
+    public static final double FULL_GROUNDEDNESS_THRESHOLD = 0.7;
+
     /** 未命中查询频率阈值（达到即列入缺口清单） */
     public static final int MISS_FREQUENCY_THRESHOLD = 3;
 
@@ -137,7 +140,7 @@ public class HybridRetrievalService {
         boolean effective = score >= LOW_GROUNDEDNESS_THRESHOLD;
 
         String feedback;
-        if (score >= 0.7) {
+        if (score >= FULL_GROUNDEDNESS_THRESHOLD) {
             feedback = "检索内容被充分利用";
         } else if (effective) {
             feedback = "检索内容部分被使用";
