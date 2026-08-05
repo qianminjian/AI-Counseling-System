@@ -361,7 +361,7 @@ mindsafe:
 | M2 | S2 删死分支 | 无（可并行，顺序执行） | §6.2 用例全绿 |
 | M3 | S3 前端 API 合并 | 无 | §6.3 用例全绿 + student-h5 回归 |
 | M4 | S4 配置派生 | 无 | §6.4 用例全绿 |
-| M5 | 全量回归 + 文档同步 + 登记 | M1-M4 | 1474 用例全绿；design/46/47/50 同步；TASK-TRACKER 登记 DOC-056；CHANGELOG 更新 |
+| M5 | 全量回归 + 文档同步 + 登记 | M1-M4 | 1474 用例全绿；design/46/47/50 同步；TASK-TRACKER 登记 DOC-057；CHANGELOG 更新 |
 
 **提交策略**：按 E5 提交粒度规范原子提交（S1 拆 domain/ai/service 若超 15 文件），全部 `check-commit.sh --last` 校验。
 
