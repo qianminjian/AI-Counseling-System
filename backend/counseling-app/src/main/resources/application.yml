@@ -187,8 +187,11 @@ mindsafe:
     url: ${TTS_SERVICE_URL:http://localhost:10096}
   # 短信服务（家长手机验证）
   sms:
-    # AUDIT-P0-5：默认 logging 仅限非 prod（LoggingSmsService @Profile(!prod)）；
-    # 生产由 prod compose 强制 ${SMS_PROVIDER:-aliyun}，未配置凭证时 fail-fast 启动失败
+    # AUDIT-P0-5（2026-08-06 修订）：LoggingSmsService 不再被 @Profile(!prod) 限制，
+    # prod profile 下默认仍加载 logging（不实际发短信，仅写日志），避免无 aliyun 凭证时启动失败。
+    # 切换 aliyun：须在 .env 显式设置 SMS_PROVIDER=aliyun 并补齐 MINDSAFE_SMS_ALIYUN_* 4 个凭证
+    # （AliyunSmsService 用 @ConditionalOnProperty(havingValue="aliyun") 接管）。
+    # 正式启用短信时审计需复核：.env 同步设置 SMS_PROVIDER=aliyun。
     provider: ${MINDSAFE_SMS_PROVIDER:logging}  # logging | aliyun
     aliyun:
       access-key-id: ${MINDSAFE_SMS_ALIYUN_ACCESS_KEY_ID:}

@@ -3,21 +3,22 @@ package com.mindsafe.service.sms;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
 
 /**
- * 开发/测试环境短信服务实现（AUTH-013）
+ * 开发/试点环境短信服务实现（AUTH-013）
  * <p>
  * 不实际发送短信，仅将验证码输出到日志。
- * 激活条件：mindsafe.sms.provider=logging（默认）+ 非 prod profile。
+ * 激活条件：mindsafe.sms.provider=logging（默认）。
  * <p>
- * <b>fix-smsprov：生产环境（prod profile）禁止加载此实现</b>，
- * 强制运维在 .env 中设置 SMS_PROVIDER=aliyun 并使用 AliyunSmsService，
- * 避免生产环境因配置遗漏导致家长验证码静默未发送。
+ * <b>修订（2026-08-06）：试点期 SMS 未启用，保留 LoggingSmsService 可在 prod profile 下加载，
+ * 避免 PhoneVerificationService 注入失败卡住部署。</b>原 fix-smsprov 逻辑中
+ * {@code @Profile("!prod")} 已移除；AUDIT-P0-5 修订为：
+ * prod 环境必须由 docker-compose 显式设置 SMS_PROVIDER=aliyun 并补齐 4 个 aliyun 凭证后，
+ * LoggingSmsService 才会被 AliyunSmsService 替代（{@code @ConditionalOnProperty} havingValue="aliyun"）。
+ * 正式启用短信时审计需复核：必须确保 .env 同步设置 SMS_PROVIDER=aliyun。
  */
 @Service
-@Profile("!prod")
 @ConditionalOnProperty(name = "mindsafe.sms.provider", havingValue = "logging", matchIfMissing = true)
 public class LoggingSmsService implements SmsService {
 
