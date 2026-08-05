@@ -11,6 +11,12 @@ import java.util.UUID;
 @TableName(value = "tenants", schema = "public")
 public class Tenant {
 
+    /** C2（2026-08-05）：状态魔法值收敛——租户正常 */
+    public static final String STATUS_ACTIVE = "active";
+
+    /** C2（2026-08-05）：状态魔法值收敛——租户暂停（禁止登录） */
+    public static final String STATUS_SUSPENDED = "suspended";
+
     @TableId(value = "tenant_id", type = IdType.INPUT)
     private UUID tenantId;
 

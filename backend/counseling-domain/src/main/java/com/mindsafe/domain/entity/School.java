@@ -11,6 +11,9 @@ import java.util.UUID;
 @TableName(value = "schools", schema = "public")
 public class School {
 
+    /** C2（2026-08-05）：状态魔法值收敛——学校正常 */
+    public static final String STATUS_ACTIVE = "active";
+
     @TableId(value = "school_id", type = IdType.INPUT)
     private UUID schoolId;
 

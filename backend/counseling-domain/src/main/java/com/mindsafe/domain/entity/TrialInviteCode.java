@@ -11,6 +11,9 @@ import java.util.UUID;
 @TableName(value = "trial_invite_codes", schema = "tenant_template")
 public class TrialInviteCode {
 
+    /** C2（2026-08-05）：状态魔法值收敛——邀请码有效 */
+    public static final String STATUS_ACTIVE = "active";
+
     @TableId(value = "code_id", type = IdType.INPUT)
     private UUID codeId;
 

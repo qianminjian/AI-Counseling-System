@@ -11,6 +11,9 @@ import java.util.UUID;
 @TableName(value = "parent_accounts", schema = "tenant_template")
 public class ParentAccount {
 
+    /** C2（2026-08-05）：状态魔法值收敛——家长账号正常 */
+    public static final String STATUS_ACTIVE = "active";
+
     @TableId(value = "parent_id", type = IdType.INPUT)
     private UUID parentId;
 

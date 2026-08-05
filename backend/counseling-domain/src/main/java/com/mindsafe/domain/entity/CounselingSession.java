@@ -12,6 +12,12 @@ import java.util.UUID;
 @TableName(value = "counseling_sessions", schema = "tenant_template", autoResultMap = true)
 public class CounselingSession {
 
+    /** C2（2026-08-05）：状态魔法值收敛——会话已完成 */
+    public static final String STATUS_COMPLETED = "completed";
+
+    /** C2（2026-08-05）：状态魔法值收敛——会话进行中 */
+    public static final String STATUS_ACTIVE = "active";
+
     @TableId(value = "session_id", type = IdType.INPUT)
     private UUID sessionId;
 
@@ -64,7 +70,7 @@ public class CounselingSession {
         s.channel = channel != null ? channel : "web";
         s.interactionMode = "text";
         s.startedAt = Instant.now();
-        s.sessionStatus = "active";
+        s.sessionStatus = STATUS_ACTIVE;
         s.riskLevelSnapshot = 0;
         s.transcriptPolicy = "summary_only";
         s.emotionTag = emotionTag;

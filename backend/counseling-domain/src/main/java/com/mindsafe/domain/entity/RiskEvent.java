@@ -1,6 +1,7 @@
 package com.mindsafe.domain.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
+import com.mindsafe.domain.typehandler.JsonbTypeHandler;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -10,6 +11,18 @@ import java.util.UUID;
  */
 @TableName(value = "risk_events", schema = "tenant_template")
 public class RiskEvent {
+
+    /** C2（2026-08-05）：状态魔法值收敛——待处理（非实时报警/留痕事件均使用） */
+    public static final String STATUS_OPEN = "open";
+
+    /** C2（2026-08-05）：状态魔法值收敛——预警已认领（老师接管处理中） */
+    public static final String STATUS_CLAIMED = "claimed";
+
+    /** C2（2026-08-05）：状态魔法值收敛——预警已闭环 */
+    public static final String STATUS_CLOSED = "closed";
+
+    /** C2（2026-08-05）：状态魔法值收敛——预警已解决（闭环统计口径） */
+    public static final String STATUS_RESOLVED = "resolved";
 
     @TableId(value = "risk_event_id", type = IdType.INPUT)
     private UUID riskEventId;
@@ -21,6 +34,14 @@ public class RiskEvent {
     private UUID sourceId;
     private String riskType;
     private Integer riskLevel;
+
+    // A2（2026-08-05）：RISK-203 结构化评分落库（教师端可排序/复核，不再只打日志）
+    private Integer riskScore;
+
+    /** reason_codes JSON 数组文本（如 ["intent_explicit","plan_method"]） */
+    @TableField(typeHandler = JsonbTypeHandler.class)
+    private String reasonCodes;
+
     private String detectedBy;
     private Instant detectedAt;
     private String status;
@@ -89,6 +110,12 @@ public class RiskEvent {
 
     public Integer getRiskLevel() { return riskLevel; }
     public void setRiskLevel(Integer riskLevel) { this.riskLevel = riskLevel; }
+
+    public Integer getRiskScore() { return riskScore; }
+    public void setRiskScore(Integer riskScore) { this.riskScore = riskScore; }
+
+    public String getReasonCodes() { return reasonCodes; }
+    public void setReasonCodes(String reasonCodes) { this.reasonCodes = reasonCodes; }
 
     public String getDetectedBy() { return detectedBy; }
     public void setDetectedBy(String detectedBy) { this.detectedBy = detectedBy; }

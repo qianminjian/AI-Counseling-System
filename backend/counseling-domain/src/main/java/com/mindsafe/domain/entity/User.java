@@ -12,6 +12,30 @@ import java.util.UUID;
 @TableName(value = "users", schema = "tenant_template")
 public class User {
 
+    /** C2（2026-08-05）：状态魔法值收敛——用户启用 */
+    public static final String STATUS_ACTIVE = "active";
+
+    /** C2（2026-08-05）：状态魔法值收敛——用户停用（租户暂停时批量下架） */
+    public static final String STATUS_SUSPENDED = "suspended";
+
+    /** C2（2026-08-05）：状态魔法值收敛——用户待启用（老师后台审批/初始化） */
+    public static final String STATUS_PENDING = "pending";
+
+    /** C2（2026-08-05）：用户类型魔法值收敛——学生 */
+    public static final String USER_TYPE_STUDENT = "student";
+
+    /** C2（2026-08-05）：用户类型魔法值收敛——老师 */
+    public static final String USER_TYPE_TEACHER = "teacher";
+
+    /** C2（2026-08-05）：用户类型魔法值收敛——心理老师 */
+    public static final String USER_TYPE_PSYCH_TEACHER = "psych_teacher";
+
+    /** C2（2026-08-05）：用户类型魔法值收敛——班主任 */
+    public static final String USER_TYPE_CLASS_TEACHER = "class_teacher";
+
+    /** C2（2026-08-05）：用户类型魔法值收敛——管理员 */
+    public static final String USER_TYPE_ADMIN = "admin";
+
     @TableId(value = "user_id", type = IdType.INPUT)
     private UUID userId;
 
@@ -57,7 +81,7 @@ public class User {
         User u = new User();
         u.tenantId = tenantId;
         u.schoolId = schoolId;
-        u.userType = "student";
+        u.userType = USER_TYPE_STUDENT;
         u.pseudonym = pseudonym;
         u.gradeCode = gradeCode;
         u.classCode = classCode;
