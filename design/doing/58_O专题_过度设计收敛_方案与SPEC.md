@@ -1,7 +1,7 @@
 # O 专题：过度设计收敛改造 —— 设计方案与实施 SPEC
 
-> 文档状态：**进行中（Doing）** | 创建：2026-08-05
-> 关联：DOC-054 审计问题 O1-O5（过度设计含质疑）；关联待议项 OD-001 / OD-004 / OD-014；VCL-001（已完成）
+> 文档状态：**进行中（Doing）** | 创建：2026-08-05 | 更新：2026-08-05（**OD-001~014 全量议决并入**，新增 S5/OD-009，详见 §2.7/§9）
+> 关联：DOC-054 审计问题 O1-O5（过度设计含质疑）；TASK-TRACKER §二十七 待议项 OD-001~014（本文件发布时已全量裁决）；VCL-001（已完成）
 > 目录约定：`design/doing/` 存放进行中设计文档；评审定稿后归档至 `design/` 根目录并登记 TASK-TRACKER
 
 ---
@@ -22,6 +22,8 @@
 | O5-4 guide-scripts 话术 | 配置化是运营可调功能，非冗余 | **维持现状**，登记论证 | — | — |
 
 **总体判断**："三层架构可简化"成立的部分收敛为 **O3 画像层的双 LLM 提炼合并**；O1/O2 是业务域分层而非过度设计；O4/O5 是真问题但范围小于初判。
+
+**OD-001~014 全量议决并入（2026-08-05，经代码证据逐项核验）**：14 项中仅 4 项为真问题（OD-004/OD-007/OD-009/OD-014），其中 OD-004/OD-014 已并入 S2/S4-1，OD-009 新增 **S5** 纳入本专题；OD-007 已于 2026-08-05 议决（真冗余，保留 backup.sh 移除容器），实施待统一批次（不阻塞本专题）；其余 9 项登记维持/已解决（6 项审计描述失真，2 项已修复，1 项与既定产品决策冲突）。详见 §2.7。
 
 ---
 
@@ -127,6 +129,27 @@ DOC-054 深度审计将"过度设计（含质疑）"登记为 O1-O5：
 
 **裁决**：S4-1/S4-2 占位符派生（各 1 行，消灭双源漂移）；O5-3 登记约定；O5-4 维持 + 注释。
 
+### 2.7 OD-001~014 全量议决证据库（2026-08-05 并入）
+
+> 对 TASK-TRACKER §二十七 全部 14 项做代码级逐项核验（非照抄登记表）。结论分类：✅ 维持 / 🟩 并入本专题 / ⏳ 待决 / ✅ 已解决。
+
+| 项 | 结论 | 关键证据（代码锚点） | 裁决理由 |
+|---|---|---|---|
+| OD-001 声纹双模式 | ✅ 维持 | `useVoiceprint.ts` L383（local WASM）+ `VoiceprintController` /verify（remote）；BEACON 决策 #22（local 默认） | 删 local 将推翻**既定产品决策**（生物数据不出设备=儿童隐私红线，design/22 §6.3/24）；仅阈值随 S4-1 收敛 |
+| OD-002 通知链路 | ✅ 维持 | `RiskNotifyOutboxService`（pending→sent/failed→dead）+ `AlertPushListener`（@Async→WS）+ `SlaEscalationScanner`→`WeComAlertService`；SMS 属监护人链路非预警链路 | "五层"描述失真：实测即"落库→outbox 补偿→教师 WS + SLA 升级"三层（=审计建议的目标态）；notify_status 即对账 |
+| OD-003 三门禁 | ✅ 维持 | `PromptVersionService.activateVersion` L235-296：红队/eval 从库读数/审校签字，失败抛异常**拒绝激活**（fail-closed），唯一入口+audit_logs | "仪式性代码"不成立：真实拦截且仅低频管理操作触发；移 CI/CD 将失去从库读 eval 能力与唯一入口保证 |
+| OD-004 合并门控参数 | 🟩 并入 S2 | `ProfileMergeGate` applyDecay/isExpired 零调用（死分支）+ merge() 被 `ProfileExtractorService` L145 消费 | S2 删死分支；冲突阈值 0.4/EMA 参数**不改**（无数据可校准），待真实数据回流 |
+| OD-005 双层输出审查 | ✅ 维持 | `AiChatServiceImpl` L83/L137 `outputContentFilter.apply`（流式实时）+ L96/L151 `reviewAsync`（异步 LLM 语义） | 规则抓已知词/LLM 抓语义变体=儿童安全**纵深防御**；合并=砍语义层或实时层，违安全红线；可选低优先优化：按风险等级抽样复审 |
+| OD-006 手工租户条件 | ✅ 维持 | 全库手工条件约 **10 处**（TeacherService 3+3、PlatformService 4、Notification 1）；`.last()` 20+ 处全为 LIMIT 分页；`MindSafeTenantLineHandler` 无上下文 fail-fast | "24 处裸 SQL"描述失真（.last() 与租户无关）；手工条件是拦截器外**显式兜底**（平台聚合/跨域），纵深防御非人肉保证 |
+| OD-007 备份双轨 | ✅ 已议决 | `backup.sh`（cron 02:00，daily+weekly+monthly）与 compose `db-backup` 容器（每 24h）**双写同一 volume daily/**，无互斥 | 真冗余（文件重复/清理重叠）；**2026-08-05 钱敏健拍板：保留 backup.sh（周/月分层+恢复演练+生产在用），移除 db-backup 容器**；实施待统一批次，不阻塞本专题 |
+| OD-008 上帝类拆分 | ✅ 维持渐进 | TeacherService 867 / ConversationServiceImpl 825 / AuthController 474 行 | 持续增长属实，但 C3 已建拆分模式（TeacherQualityService 抽出）；不单独排期，触碰时按域拆 |
+| OD-009 prepare-funasr 版本比较 | 🟩 新增 S5 | `prepare-funasr.sh` L35-38 `EXPECTED_MODELS` 全 pin "master" + L66 自写 JSON 解析 | 版本比较**恒真**（死比较）→ S5 删除比较，保留模型存在性/加载校验（entrypoint fail-fast 真实价值） |
+| OD-010 TTS 矩阵 | ✅ 维持 | `tts-service/config.yaml` 7 音色仅 1 emotion_capable + 1 dialect_capable | CFG-004 配置化产物=**声明式能力文档**，运行时按 capable 分支消费无死代码；裁剪失扩展性（同 O5-4 逻辑） |
+| OD-011 init-school 三重保险 | ✅ 维持 | `init-school.sh` L45 随机密码+must_change_password、L81-124 ON CONFLICT ×4 | 随机密码+强制改密=弱口令安全基线（同 R-04）；脚本面向学校现场重复执行，幂等有价值；成本几行参数 |
+| OD-012 tts wheels | ✅ 已解决 | `tts-service/Dockerfile` L12-17 已改 requirements-lite.txt 在线安装（fix-13 bd9d215） | 登记快照过期：wheels 已降级为可选方案（refresh-wheels.sh + 手动 --no-index） |
+| OD-013 Grafana 面板 | ✅ 已解决 | `deploy/monitoring/grafana/provisioning/dashboards/` 仅 `llm-performance.json` | 空 TTS 面板已删（P1-7）；登记快照过期 |
+| OD-014 声纹阈值双源 | 🟩 并入 S4-1 | `application.yml` verify-threshold=0.55（remote 权威）+ system-config 0.70（local 前端）+ `config/remote.ts` fallback 0.55 | 0.55/0.70 为**两模式各自实测值（有意不同）**；真重复仅为后端 0.55 与前端 fallback 0.55 → S4-1 占位符派生收敛 |
+
 ---
 
 ## 3. 目标与成功标准（EARS）
@@ -137,7 +160,8 @@ DOC-054 深度审计将"过度设计（含质疑）"登记为 O1-O5：
 | G2 | 消除未接线能力 | `applyDecay`/`isExpired` 从 ProfileMergeGate 删除，构建通过 |
 | G3 | 收敛前端 API 导入 | `src/api/` 目录不存在；全仓无 `api/toolboxApi` 导入路径 |
 | G4 | 配置单一事实源 | `voiceprint.verify-threshold` 与 `ai.fallback.*` 温度无第二手数值；改权威值一处生效 |
-| G5 | 行为不变 | 全量回归通过（后端 711 / student-h5 661 / teacher-web 34 / parent-h5 23 / scripts 45）；无存储结构变更 |
+| G5 | 消除恒真比较（OD-009） | `prepare-funasr.sh` 无版本比较逻辑；模型存在性/加载校验保留 |
+| G6 | 行为不变 | 全量回归通过（后端 711 / student-h5 661 / teacher-web 34 / parent-h5 23 / scripts 45）；无存储结构变更 |
 
 ---
 
@@ -148,7 +172,8 @@ DOC-054 深度审计将"过度设计（含质疑）"登记为 O1-O5：
 - S2：删除 ProfileMergeGate 死分支（applyDecay/isExpired/相关常量）
 - S3：合并前端 API 层（toolboxApi.ts 并入 api.ts，删目录）
 - S4：配置双源占位符派生（2 处）
-- 文档同步：design/46/47/50、TASK-TRACKER 登记、CHANGELOG
+- S5：删除 prepare-funasr 版本比较（OD-009，保留存在性/加载校验）
+- 文档同步：design/46/47/50、TASK-TRACKER §二十七 OD 议决状态同步 + 登记、CHANGELOG
 
 **不做：**
 - O1 情绪层、O2 记忆层、O5-3/O5-4 改造（登记论证维持）
@@ -156,6 +181,8 @@ DOC-054 深度审计将"过度设计（含质疑）"登记为 O1-O5：
 - hooks 合并（含 useWakeEnabled 复查，仅登记）
 - 删除 remote/local 声纹模式（OD-001 独立待议，S4-1 只收敛阈值来源）
 - ProfileMergeGate 参数校准（OD-004 待数据，仅登记）
+- OD-007 备份双轨移除 db-backup 容器（2026-08-05 已议决：保留 backup.sh；实施待统一批次，仅登记）
+- OD-008 上帝类拆分（随迭代渐进，不单独排期）
 - 任何数据库 schema 变更与 API 契约变更
 
 ---
@@ -257,6 +284,18 @@ mindsafe:
 | O5-3 变量命名 | 约定：新配置一律 `MINDSAFE_` 前缀（登记入本文件 + .env.example 注释），存量不改 |
 | O5-4 guide-scripts | 配置化是运营可调能力（改文案免发版），维持；补 yaml 注释声明设计意图 |
 
+### 5.6 S5：删除 prepare-funasr 版本比较（OD-009）
+
+**证据**：`deploy/scripts/prepare-funasr.sh` L35-38 `EXPECTED_MODELS` 全 pin "master"（版本比较恒真）+ L66 自写 JSON 解析（复杂绕远）。
+
+**改动清单**：
+
+| 文件 | 改动 |
+|---|---|
+| `deploy/scripts/prepare-funasr.sh` | 删除版本比较逻辑（版本字段与 JSON 解析段）；保留模型**存在性校验**与 entrypoint fail-fast（模型缺失/加载失败即非零退出，部署不得静默降级） |
+
+**理由**：恒真比较无信息量，属死逻辑（YAGNI）；存在性/加载校验是真实价值，保留。改动为纯脚本级，无行为变更。
+
 ---
 
 ## 6. 实施 SPEC（TDD，逐项验收）
@@ -341,7 +380,26 @@ mindsafe:
 | `test_单源修改生效` | 改权威值为 0.50，派生值同步 0.50（配置单测） |
 | `test_前端下发不受影响` | remoteConfig.test.ts 全绿（前端仍读下发值，契约不变） |
 
-### 6.5 测试矩阵总表
+### 6.5 S5 SPEC：删除 prepare-funasr 版本比较
+
+**正常路径：**
+
+- When 部署脚本准备 funasr 模型, the 脚本 shall 校验模型文件存在且加载成功，缺失/失败时以非零码退出（fail-fast）。
+- The 脚本 shall 不再执行模型版本比较。
+
+**异常路径：**
+
+- If 模型文件缺失或加载失败, then the 脚本 shall 非零退出并给出明确下载指引，不得静默继续。
+
+**测试用例：**
+
+| 用例 | 断言 |
+|---|---|
+| `test_版本比较已删除` | grep 版本比较关键字（EXPECTED_MODELS 版本字段/JSON 解析段）零命中 |
+| `test_存在性校验保留` | 脚本含模型存在性检查分支（缺失 → exit 非零） |
+| `test_脚本行为回归` | tests/unit/scripts 45 用例全绿 |
+
+### 6.6 测试矩阵总表
 
 | 阶段 | 范围 | 命令 |
 |---|---|---|
@@ -349,7 +407,7 @@ mindsafe:
 | 前端单测 | student-h5 | `npm test`（661 用例基线） |
 | 前端类型 | student-h5 | 构建/类型检查 |
 | 脚本测试 | scripts | `tests/unit/scripts/` 4 个行为测试（45 用例基线） |
-| 静态断言 | S1-S3 删除项 | grep 零命中断言（并入 S 系列测试） |
+| 静态断言 | S1-S3/S5 删除项 | grep 零命中断言（并入 S 系列测试） |
 
 ---
 
@@ -361,7 +419,8 @@ mindsafe:
 | M2 | S2 删死分支 | 无（可并行，顺序执行） | §6.2 用例全绿 |
 | M3 | S3 前端 API 合并 | 无 | §6.3 用例全绿 + student-h5 回归 |
 | M4 | S4 配置派生 | 无 | §6.4 用例全绿 |
-| M5 | 全量回归 + 文档同步 + 登记 | M1-M4 | 1474 用例全绿；design/46/47/50 同步；TASK-TRACKER 登记 DOC-057；CHANGELOG 更新 |
+| M5 | 全量回归 + 文档同步 + 登记 | M1-M4/M6 | 1474 用例全绿；design/46/47/50 同步；TASK-TRACKER §二十七 OD 议决状态同步 + 登记 DOC-057；CHANGELOG 更新 |
+| M6 | S5 删版本比较（OD-009） | 无 | §6.5 用例全绿 + scripts 回归 |
 
 **提交策略**：按 E5 提交粒度规范原子提交（S1 拆 domain/ai/service 若超 15 文件），全部 `check-commit.sh --last` 校验。
 
@@ -385,9 +444,12 @@ mindsafe:
 
 | 关联 | 状态 | 本专题处置 |
 |---|---|---|
-| OD-001 声纹双模式 | 🟡 待议 | S4-1 仅收敛阈值来源；模式删减由 OD-001 独立议决 |
-| OD-004 合并门控参数 | 🟡 待议 | S2 删死分支；参数校准待真实数据回流 |
-| OD-014 声纹阈值双源 | 🟡 待议 | S4-1 占位符派生后随 OD-001 一并收口 |
+| OD-001 声纹双模式 | ✅ 已裁决（维持） | 否决删减（BEACON 决策 #22：生物数据不出设备）；阈值随 S4-1 收敛 |
+| OD-004 合并门控参数 | ✅ 已裁决（并入 S2） | S2 删死分支；参数校准待真实数据回流 |
+| OD-014 声纹阈值双源 | ✅ 已裁决（并入 S4-1） | S4-1 占位符派生收敛 |
+| OD-007 备份双轨 | ✅ 已议决（2026-08-05） | 确认真冗余；保留 backup.sh（周/月分层+恢复演练+生产在用），移除 db-backup 容器；实施随统一批次，不阻塞本专题 |
+| OD-009 prepare-funasr 版本比较 | ✅ 已裁决（并入 S5） | S5 删恒真比较，保留存在性校验 |
+| OD-012/013 已修复 | ✅ 已解决 | 登记快照过期（fix-13 bd9d215 / P1-7 删空面板） |
 | VCL-001 情绪回注 | ✅ 已完成 | O1 维持的依据 |
 | A4 useWakeEnabled | ✅ 已完成 | hooks 维持的依据 |
 | MEM-102/103 主题/风险 | ✅ 已接线 | O2 维持的依据 |
@@ -408,8 +470,9 @@ mindsafe:
 | `StudentProfileService.updateProfile` | L61-95 | ✅ VCL-001 聚合派生证据一致 |
 | `application.yml` 阈值/温度/话术 | L54/121/154/160/171 | ✅ 双源证据一致 |
 | 前端 `api.ts`/`api/toolboxApi.ts`/`config/remote.ts` | 327/60 行/L96 | ✅ 与描述一致 |
-| OD-001/004/014/VCL-001 登记 | TASK-TRACKER L848/851/861/666 | ✅ 引用一致 |
-| S1/S2/S3/S4 目标设计 | 本专题改造 | ⏳ 未实施（本文件发布后按 M1-M5 执行） |
+| OD-001~014 登记与议决 | TASK-TRACKER §二十七（L849-862） | ✅ 引用一致（2026-08-05 全量议决后同步） |
+| `prepare-funasr.sh` 版本比较 | L35-38/L66 | ✅ 恒真比较证据一致（S5） |
+| S1-S5 目标设计 | 本专题改造 | ⏳ 未实施（本文件发布后按 M1-M6 执行） |
 
 ---
 
