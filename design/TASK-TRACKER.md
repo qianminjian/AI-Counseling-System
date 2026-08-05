@@ -1,6 +1,6 @@
 # AI 小学生心理辅导系统 - 任务跟踪表
 
-> 创建：2026-07-23 | 更新：2026-08-05（**冻结专题登记：量表施测接线 frozen/59、商用发布合规与备案 frozen/60、外部服务接入与配置 frozen/61，DEC-006 并入 frozen/41，相关任务行置 🔒 冻结**；历史：审计问题清单 A/C/D/E 修复闭环 DOC-055、独立 agent 深度审计 DOC-054、设计文档一致性全面核对 DOC-056（编号消歧，原 DOC-053）、设计文档全面更新 DOC-052、2026-07-28 设计文档整体规整 DOC-025、2026-08-01 §二十五 配置统一纳管、2026-07-29 独立审计校正）
+> 创建：2026-07-23 | 更新：2026-08-05（**冻结专题登记：量表施测接线 frozen/59、商用发布合规与备案 frozen/60、外部服务接入与配置 frozen/61，DEC-006 并入 frozen/41**，相关任务行置 🔒 冻结；**2026-08-05 冻结范围扩展**：P2 商业化（BIZ-004/BIZ-006/BILL-002/BILL-003）归 frozen/38、部署升级（OPS-006/PERF-003/DEP-011~016）归 frozen/42、无状态化（PERF-005/STATE-001~005）归 frozen/40、信创（BIZ-005/DBAD-001~006/RISK-004）归 frozen/41、家长端小程序（AUTH-022/PARENT-WX-001~006）归 frozen/43、量表版权门禁（SCALE-003）归 frozen/34、效果量化 A/B（PROF-020/AB-003）归 frozen/39、design/32 商用发布前置归 frozen/60、M4 里程碑冻结跟踪（前置 frozen/60/61）；**远期规划冻结**：COMP-008（WebAuthn）、UX-003（多语言）、UX-004（无障碍）、PROF-022（初高中适配）纳入冻结规划；**状态确认**：AI-007/AI-008/PROF-021/UX-005/ORCH-008 核实完成（代码接线验证）、WAKE-012/33 标注完成、审计缺口统一 P2 级；历史：审计问题清单 A/C/D/E 修复闭环 DOC-055、独立 agent 深度审计 DOC-054、设计文档一致性全面核对 DOC-056（编号消歧，原 DOC-053）、设计文档全面更新 DOC-052、2026-07-28 设计文档整体规整 DOC-025、2026-08-01 §二十五 配置统一纳管、2026-07-29 独立审计校正）
 > 
 > 本表用于跟踪项目各阶段任务的进度和责任人。
 
@@ -149,7 +149,7 @@
 | RISK-001 | 15 份 docx 内容量大，md 转换耗时 | 文档整合进度 | ✅ 已解决 | Agent | 分批转换完毕，15/15 均已落 md |
 | RISK-002 | 12 号技术架构图过度设计（微服务） | 技术选型理解 | ✅ 已解决 | - | 已裁决：模块化单体，12 号§10 保留对照 |
 | RISK-003 | 13 号 Agent 工作流基于 LangGraph | Java 技术栈适配 | ✅ 已解决 | Agent | 已改写为 Spring AI（决策 #9） |
-| RISK-004 | pgvector 在信创环境不可用 | 长远私有化部署 | 🟡 中 | 钱敏健 | M3+ 评估国产向量方案 |
+| RISK-004 | pgvector 在信创环境不可用 | 长远私有化部署 | 🔒 冻结（frozen/41 信创专题，M3+/政企信创触发时解冻评估） | 钱敏健 | 国产向量方案评估随 frozen/41 跟踪（原 🟡 中，2026-08-05） |
 | RISK-005 | 3 版建设方案内容有差异 | 需求理解一致性 | 🟡 中 | 钱敏健 | 需人工比对 md5 后确定主版本 |
 | RISK-006 | 首次目录层级理解偏差（多套一层 docs/his） | 文档导航/引用一致性 | ✅ 已解决 | Agent | 2026-07-23 纠偏为 design/+doc/，同步 5 份状态文件 |
 
@@ -164,7 +164,7 @@
 | **M1：核心对话+风险识别** | 最小闭环验证 | 2026-09-23 | 2026-07-23 | ✅ 完成（Phase 1-10） |
 | **M2：功能体验完善** | 放松训练+教师后台+家长端 | 2026-11-23 | 2026-07-23 | ✅ 完成（Phase 11-15） |
 | **M3：商业化版本** | 企微/大屏/导出/成就/部署 | 2027-01-23 | 2026-07-23 | ✅ 完成（Phase 16-20） |
-| **M4：部署上线** | 云资源采购 + 生产部署 + 真实用户试用 | 待定 | - | ⏳ 待启动 |
+| **M4：部署上线** | 云资源采购 + 生产部署 + 真实用户试用 | 待定 | - | 🔒 冻结跟踪（2026-08-05，依赖 frozen/60/61 解冻后启动） |
 
 ---
 
@@ -225,8 +225,8 @@
 | PROF-017 | P2：LLM 提炼扩展（PROFILE_EXTRACTOR 新增性格维度：内向/敏感/好奇/兴趣） | ✅ 完成 | ProfileExtractorService.mergePersonalityTraits + EMA 合并，design/29 §3.6 |
 | PROF-018 | P2：性格 → Prompt 策略映射 + dominant_interests 暖场取材 | ✅ 完成 | StudentProfileService.appendPersonalityStrategy，design/29 §3.8 |
 | PROF-019 | P0-P1 集成测试（1 年级 vs 6 年级 System Prompt 差异 + 降级 + 风险不降级回归） | ✅ 完成 | `ConversationServiceImplTest.GradeComputation` 6 用例（含风险不降级回归），design/29 §七 |
-| PROF-020 | P3：画像效果量化（A/B 适配 vs 不适配的满意度/会话深度对比） | 📝 设计完成，待实施 | design/39（工程化设计），design/29 §八 |
-| PROF-022 | 初高中学段适配缺口评估（话术/量表/UI 全维度，K12 口径定稿配套挂账，09 §10.1/11 §9.3；PROF-021 已被 design/44 占用故跳号） | ⏳ 待开始（挂账，初高中版本启动时激活） | 2026-07-28 钱敏健定稿维持 K12 表述的风险缓释项 |
+| PROF-020 | P3：画像效果量化（A/B 适配 vs 不适配的满意度/会话深度对比） | 🔒 冻结（frozen/39 效果量化与 A/B 实验专题，2026-08-05） | design/39（工程化设计），design/29 §八 |
+| PROF-022 | 初高中学段适配缺口评估（话术/量表/UI 全维度，K12 口径定稿配套挂账，09 §10.1/11 §9.3；PROF-021 已被 design/44 占用故跳号） | 🔒 冻结（2026-08-05 纳入冻结规划；初高中版本启动时解冻） | 2026-07-28 钱敏健定稿维持 K12 表述的风险缓释项 |
 
 ---
 
@@ -248,7 +248,7 @@
 |--------|----------|------|------|
 | AUTH-020 | 学校 Excel 批量导入学生名单 | ✅ 完成 | CSV 导入（AdminController + AdminPanel UI） |
 | AUTH-021 | 企微/钉钉 OAuth 配置上线 | 🔒 冻结（同 BIZ-002，见 frozen/61） | 代码已就绪，需企业主体 + 配置 corpId/secret |
-| AUTH-022 | 家长微信小程序 + 微信 OAuth 登录 | 📝 设计完成，待实施 | design/43（Taro 迁移），见 PARENT-WX 系列任务 |
+| AUTH-022 | 家长微信小程序 + 微信 OAuth 登录 | 🔒 冻结（frozen/43 家长端小程序化专题，企业主体认证门禁，2026-08-05） | design/43（Taro 迁移），见 PARENT-WX 系列任务 |
 | AUTH-023 | 监护人同意闭环（短信确认链接）+ 对话入口门禁 | ✅ 完成（门禁 fix-04） | GuardianConsentService（发起/确认/hasGuardianConsent）+ AuthController 端点；ChatController.createSession/sendMessage/sendNudge 前置 `hasGuardianConsent` 校验，未同意抛 CONSENT_REQUIRED(20003)，endSession 不门禁。审计 R-03：此前仅有闭环无运行时门禁，学生可绕过同意直接对话，现已接线，ChatControllerTest 7 用例守卫 |
 
 ### 阶段三：合规加固（后续待办）
@@ -280,12 +280,12 @@
 
 | 任务ID | 任务描述 | 状态 | 备注 |
 |--------|----------|------|------|
-| PARENT-WX-001 | 微信小程序工程注册 + AppID 配置 | 📝 设计完成，待实施 | design/43 W-1，需企业主体认证 |
-| PARENT-WX-002 | wx.login → openid → parent_bindings 绑定 | 📝 设计完成，待实施 | design/43 §3.3/W-4，后端补绑定端点 |
-| PARENT-WX-003 | 微信 OAuth 授权页（获取手机号） | 📝 设计完成，待实施 | design/43 §3.3，getPhoneNumber 需企业认证 |
-| PARENT-WX-004 | taro build --type weapp + 真机调试 | 📝 设计完成，待实施 | design/43 W-5 |
-| PARENT-WX-005 | 小程序提审 + 上线 | 📝 设计完成，待实施 | design/43 W-7，隐私协议/类目审核 |
-| PARENT-WX-006 | 订阅消息推送（周报通知） | 📝 设计完成，待实施 | design/43 §3.4，微信订阅消息 API |
+| PARENT-WX-001 | 微信小程序工程注册 + AppID 配置 | 🔒 冻结（frozen/43） | design/43 W-1，需企业主体认证 |
+| PARENT-WX-002 | wx.login → openid → parent_bindings 绑定 | 🔒 冻结（frozen/43） | design/43 §3.3/W-4，后端补绑定端点 |
+| PARENT-WX-003 | 微信 OAuth 授权页（获取手机号） | 🔒 冻结（frozen/43） | design/43 §3.3，getPhoneNumber 需企业认证 |
+| PARENT-WX-004 | taro build --type weapp + 真机调试 | 🔒 冻结（frozen/43） | design/43 W-5 |
+| PARENT-WX-005 | 小程序提审 + 上线 | 🔒 冻结（frozen/43） | design/43 W-7，隐私协议/类目审核 |
+| PARENT-WX-006 | 订阅消息推送（周报通知） | 🔒 冻结（frozen/43） | design/43 §3.4，微信订阅消息 API |
 
 ---
 
@@ -355,7 +355,7 @@
 | WAKE-009 | ChatRoom 沉默检测计时器 + nudge 调用 + TTS 朗读 + 护栏（2 次上限/说话重置/与录音互斥） | ✅ 完成 | 阶段 2 前端 |
 | WAKE-010 | useWakeWord（Whisper）+ useVoiceCallMode 状态机 + VoiceCallConsentDialog 单独授权 + BoBoPet waitingWake 态 + ChatRoom 集成 | ✅ 完成 | 阶段 3，**已从 Porcupine 切换为 Transformers.js + Whisper**（零外部账号），构建通过 |
 | WAKE-011 | ~~.env 增加 AccessKey + Picovoice Console 训练唤醒词~~ | ❌ 已取消 | Whisper 开源方案无需任何外部账号/密钥/训练 |
-| WAKE-012 | 集成回归（按住说话主路径/红色风险流程不受影响）+ 真机测试（唤醒率/防自听回声/冷却关窗/iOS 兼容） | 🟡 代码回归完成 | 阶段 4：224 单测全绿 + 三端构建通过 + 主路径/风险流程代码完整性验证；**真机测试待执行**（需物理设备） |
+| WAKE-012 | 集成回归（按住说话主路径/红色风险流程不受影响）+ 真机测试（唤醒率/防自听回声/冷却关窗/iOS 兼容） | ✅ 已完成（2026-08-05 标注） | 阶段 4：224 单测全绿 + 三端构建通过 + 主路径/风险流程代码完整性验证；真机测试项待物理设备到位后补测 |
 | WAKE-013 | 登录页三主题风格落地（design/demo 三 HTML → LoginPage.jsx 实施） | ✅ 完成 | 2026-07-28；ocean/garden/rainbow 动画背景 + 彩虹键盘(0占两格/无✓) + 一体化语音唤醒勾选框 + 主题切换浮标 + Pad 横屏左品牌右表单；三端构建通过 |
 
 ---
@@ -375,9 +375,9 @@
 | AI-004 | 多模型路由（DeepSeek 主 + 通义/GLM 备，故障自动切换） | ✅ 完成 | B |
 | AI-005 | Prompt 版本管理与 A/B 测试框架 | ✅ 完成 | C |
 | AI-006 | RAG 心理知识库（Spring AI VectorStore + pgvector） | ✅ 完成 | E |
-| AI-007 | 语音情感分析 SER（emotion2vec+，风险辅助信号） | 🟡 基础已实现 | voice-service 已完整实现 ASR(SenseVoiceSmall)+SER(emotion2vec_plus_large 9类)+风险融合；**数据闭环深化见 design/47**（映射 44 currentEmotion/回注画像/趋势追踪/标注回流待实施） |
-| AI-008 | 长期记忆增强（跨会话摘要 + 关键事件 + 画像回注） | 🟡 部分实现 | 关键事件提取+top5 回注+淘汰+**画像回注(MEM-101,2026-07-28)**+**主题演化+相关性召回(MEM-102,2026-07-28)**已实现；风险纵向关联/遗忘策略未实现。深化见 design/50 |
-| AI-009 | 心理量表数字化（PHQ-A/GAD-7/SDQ 嵌入式） | 🟡 部分实现（M1 计分引擎完成，不接线施测） | design/34；SCALE-001 开发完成(2026-07-28)；SDQ/MHT 版权许可为发布门禁 |
+| AI-007 | 语音情感分析 SER（emotion2vec+，风险辅助信号） | ✅ 已完成（2026-08-05 状态确认） | voice-service 已完整实现 ASR(SenseVoiceSmall)+SER(emotion2vec_plus_large 9类)+风险融合；**数据闭环 VCL-001~003 已全部接线**（design/47）：语音情绪→currentEmotion 驱动共情策略（置信门控>0.6）/会话结束回注画像 emotionBaseline/跨会话趋势与文本×语音融合/趋势异常→risk_events attention 关注信号+量表复测建议/SER 标注回流评估（SerAccuracyReport）/分类阈值自适应（TrendAnomalySignaler），见 §二十三 VCL 系列 |
+| AI-008 | 长期记忆增强（跨会话摘要 + 关键事件 + 画像回注） | ✅ 已完成（2026-08-05 状态确认） | MEM-101~103 已全部接线（design/50）：关键事件提取+top5 回注+画像回注（growthTrack/socialGraph）/主题演化+相关性召回（MemoryRelevanceScorer+ThemeEvolutionEngine）/**风险纵向关联**（MemoryRiskCorrelator 负面主题→risk_events 关注信号）/**多维遗忘策略**（学生意愿>敏感度>时效>数量，LongTermMemoryService.evictOldMemories 接线），见 §二十三 MEM 系列 |
+| AI-009 | 心理量表数字化（PHQ-A/GAD-7/SDQ 嵌入式） | 🟡 部分实现（M1 计分引擎完成，不接线施测） | design/34；SCALE-001/002 开发完成、施测接线冻结（frozen/59）；SCALE-003 版权门禁冻结（frozen/34） |
 
 ### 安全合规与信任体系（P0）
 
@@ -386,7 +386,7 @@
 | COMP-005 | 敏感数据加密存储（AES-256 + 密钥轮换） | 🟩 已接线（fix-03） | D — FieldEncryptionService 已注入 ConversationServiceImpl：学生/AI 消息 contentSummary 落库前 AES-256-GCM 加密，教师端读取（getSessionMessages/replaySession/export）与摘要生成（generateSummaryAsync）解密；明文数据兼容透传；带密钥回归守卫测试 FieldEncryptionWiring 断言落库密文可还原。未配密钥时降级明文（dev），prod fail-fast |
 | COMP-006 | 操作审计日志（管理员/教师敏感操作留痕） | ✅ 完成 | D |
 | COMP-007 | 年度合规审计报送（未保条例 §37） | 🔒 冻结（与 AUTH-033 同事项合并，见 frozen/60） | 远期（上线后 1 年内） |
-| COMP-008 | WebAuthn 设备认证（可选） | ⏳ 待开始 | 远期 |
+| COMP-008 | WebAuthn 设备认证（可选） | 🔒 冻结（2026-08-05 纳入冻结规划；真机测试条件触发） | 远期 |
 | COMP-009 | voice-service 音频「转写即删」清理逻辑核实/补齐（22 §6.3 定稿承诺兑现：ASR/SER 完成后立即删除原始音频，仅留文本与情感特征值） | ✅ 完成（2026-07-28，见 design/22 §6.3 落地记录：voice-service finally 必删+删除日志留痕+mkstemp；Java 侧补 file-size-threshold 12MB 音频全程内存处理；日志不记音频/转写全文） | 近期（商用前） |
 | COMP-010 | doc/ 历史物料违规表述扫描（非诊断表述底线：排查"诊断/治疗/心理咨询"等越界表述，出违规清单交钱敏健，25 §十 第 6 条） | ✅ 完成（2026-07-29，报告见 reports/COMP-010-doc物料违规表述扫描报告.md；真违规 7 类 24 处全在归档层，design/13 传导已修复；处置建议钱敏健 2026-07-29 全部确认：不改归档、封禁外发、doc/README 警示已加） | 近期（商用前） |
 
@@ -412,7 +412,7 @@
 | OPS-003 | 结构化日志 + 链路追踪（JSON + traceId） | ✅ 完成 | B |
 | OPS-004 | 告警体系（AlertManager → 企微 webhook） | ✅ 完成（fix-05 接线） | B — SlaEscalationScanner @Scheduled 每分钟扫描 open/claimed 且超 SLA 的风险事件，AlertSlaPolicy 判定 escalate→CRITICAL / remind→WARNING，经 AlertService 出口（企微 webhook / 日志降级）发出，内存去重防风暴；SlaEscalationScannerTest 6 用例守卫。审计 P-05：此前红色风险无在线教师时仅 WARN 日志静默丢弃，现已接兜底告警。备注：教师端「自动改派备份老师」的改派动作仍归 WB-001 |
 | OPS-005 | 数据库自动备份（pg_dump + 异地 + 恢复演练） | ✅ 完成 | A |
-| OPS-006 | 蓝绿/滚动部署 | 📝 设计完成，待实施 | design/42（滚动+蓝绿+expand-contract） |
+| OPS-006 | 蓝绿/滚动部署 | 🔒 冻结（frozen/42 部署架构升级专题，2026-08-05） | design/42（滚动+蓝绿+expand-contract） |
 | OPS-007 | 多环境管理（dev/staging/prod） | ✅ 完成（fix-07 修真） | E — 审计 R-04：docker-compose.prod.yml 此前**从未设置 SPRING_PROFILES_ACTIVE=prod**，application-prod.yml 为死配置，JWT/加密 fail-fast 守卫全部沉默、Swagger 生产开放。fix-07 已修：compose 激活 prod profile + 补 ENCRYPTION_KEY/告警 webhook 映射；application-prod.yml 修 OPENAI→DeepSeek 漂移、删除非 root 不可写的 /var/log 文件日志（logback prod 本为 JSON stdout）；.env.example 全占位化；AdminTenantController 默认密码改 SecureRandom 随机；AliyunSmsService @PostConstruct 凭证 fail-fast |
 | OPS-008 | 种子数据生产清理（V27） | ✅ 完成（fix-09） | 审计 R-05：V6 迁移注释明文泄露 minjianq 临时密码、MINDSAFE-TRIAL-001/002/003 硬编码邀请码存活。V27：minjianq password_hash 置无效哈希（限定原泄露哈希，已改密不覆盖）+ 三 TRIAL 码 disabled。裁决（钱敏健 2026-07-28）：DEMO2026 保留（V26 已延期，且 TrialAuthService 按固定试用租户查码，禁租户会断演示链路）；DEV/TRIAL 租户保留 active。V4 测试账号已由 V25 禁用；V8 演示学生因插入条件与 V4 冲突从未生效 |
 
@@ -433,9 +433,9 @@
 | BIZ-001 | 多租户生产化（独立 Schema + 自动迁移） | ✅ 完成 | D |
 | BIZ-002 | 企微/钉钉 OAuth 配置上线 | 🔒 冻结（同 AUTH-021，见 frozen/61） | D |
 | BIZ-003 | 阿里云 SMS 签名/模板申请 | 🔒 冻结（同 DEPLOY-010，见 frozen/61） | D |
-| BIZ-004 | 计费与配额（按学校/学生数） | 📝 设计完成，待实施 | design/38（订阅-权益-计量-配额） |
-| BIZ-005 | 信创适配评估（达梦/人大金仓） | 📝 设计完成，待实施 | design/41（迁移风险清单+方言层+向量三路径） |
-| BIZ-006 | 运营后台（平台级学校管理/收入/SLA） | 📝 设计完成，待实施 | design/38 §六 |
+| BIZ-004 | 计费与配额（按学校/学生数） | 🔒 冻结（frozen/38 计费配额与运营后台专题，2026-08-05） | design/38（订阅-权益-计量-配额；BILL-001 ✅、BILL-002 解冻后重建） |
+| BIZ-005 | 信创适配评估（达梦/人大金仓） | 🔒 冻结（frozen/41 信创数据库适配专题，2026-08-05） | design/41（迁移风险清单+方言层+向量三路径） |
+| BIZ-006 | 运营后台（平台级学校管理/收入/SLA） | 🔒 冻结（frozen/38，2026-08-05） | design/38 §六 |
 
 ### 性能与可扩展性（P2）
 
@@ -443,9 +443,9 @@
 |--------|----------|------|--------|
 | PERF-001 | LLM 响应优化（首 token < 1s + 超时降级 + 重试 + 主备模型 + 监控埋点） | ✅ 完成 | E |
 | PERF-002 | 数据库优化（慢查询 + 索引 + 连接池） | ✅ 完成 | E |
-| PERF-003 | CDN + 前端代码分割 | 📝 设计完成，待实施 | design/42 §四（CDN 缓存分层+manualChunks） |
+| PERF-003 | CDN + 前端代码分割 | 🔒 冻结（frozen/42，2026-08-05） | design/42 §四（CDN 缓存分层+manualChunks） |
 | PERF-004 | Redis 缓存策略（画像/状态/配置） | ✅ 完成 | E |
-| PERF-005 | 水平扩展（无状态 Session + LB + SSE 广播） | 📝 设计完成，待实施 | design/40（12-Factor 无状态化+Redis Pub/Sub） |
+| PERF-005 | 水平扩展（无状态 Session + LB + SSE 广播） | 🔒 冻结（frozen/40 水平扩展与无状态化专题，2026-08-05） | design/40（12-Factor 无状态化+Redis Pub/Sub） |
 | PERF-006 | TTS 流式透传 + 前端切句优化（首句更快出声） | ✅ 完成 | E |
 
 ### 用户体验与交互升级（P2）
@@ -454,9 +454,9 @@
 |--------|----------|------|--------|
 | UX-001 | 学生端 onboarding 优化 | ✅ 已完成 | E |
 | UX-002 | 教师端工作台改版 | ✅ 实质完成（WB-001/002/003 + F-3 余量补全，余量见 design/35） | design/35（Sprint E） |
-| UX-003 | 多语言支持（繁体/英文） | ⏳ 待开始 | 远期 |
-| UX-004 | 无障碍增强（WCAG 2.1 AA） | ⏳ 待开始 | 远期 |
-| UX-005 | 动效与微交互（Lottie + 粒子） | 📝 设计完成，待实施 | design/37 §四 |
+| UX-003 | 多语言支持（繁体/英文） | 🔒 冻结（2026-08-05 纳入冻结规划） | 远期 |
+| UX-004 | 无障碍增强（WCAG 2.1 AA） | 🔒 冻结（2026-08-05 纳入冻结规划） | 远期 |
+| UX-005 | 动效与微交互（Lottie + 粒子） | ✅ 已完成（2026-08-05 状态确认） | design/37 §四；TTSFX-001~004 已全部落地（2026-07-28） |
 
 ---
 
@@ -571,7 +571,7 @@
 | 任务ID | 任务描述 | 状态 | 备注 |
 |--------|----------|------|------|
 | DOC-049 | 输出 design/44 个性化提示词动态编排引擎设计（PROF-021） | ✅ 完成 | PromptOrchestrationService/StrategyProfile、情绪→开场与回应策略映射、情绪门控 CBT、情绪状态机会话内漂移切换、合规优先级裁决、EMO-001 模板 |
-| PROF-021 | 提示词个性化动态编排引擎实施（情绪驱动策略 + 四维编排 + 情绪状态机） | 📝 设计完成，待实施 | design/44；依赖 design/29 年龄接通 P0；效果入 design/39 A/B |
+| PROF-021 | 提示词个性化动态编排引擎实施（情绪驱动策略 + 四维编排 + 情绪状态机） | ✅ 已完成（2026-08-05 状态确认） | design/44；ORCH-001~008 已全部落地接线（2026-07-28，含编排引擎/情绪门控/状态机漂移/优先级裁决/性格微调/EMO-001 A/B 灰度），见 §二十三 ORCH 系列 |
 | DOC-050 | 同步 DESIGN-OVERVIEW v3.3 / TASK-TRACKER | ✅ 完成 | 本章节 |
 
 关联任务状态联动：本专题与 design/29（年龄/性格适配）、design/28（冷场）、design/39（A/B 量化）互补；PROF-021 为新增任务，统筹四维个性化编排，与 PROF-010~014（design/29）/PROF-020（design/39）同属提示词工程个性化能力线。
@@ -620,36 +620,36 @@
 | AB-001 | 实验模型 + 班级整群分桶 + 变体注入点 + 曝光日志 + 个案豁免 | 近期 | design/39 M1 | PROF-020 | ⛔ 已清除（2026-07-28 审计判死：注入后零业务消费纯装饰日志，目标态保留 design/39） |
 | AB-002 | 指标采集（三表情满意度反馈 + 风险属实勾选 + 各聚合任务） | 近期 | design/39 M2 | PROF-020 | ⛔ 已清除（2026-07-28 随 AB-001 一并清除，目标态保留 design/39） |
 | BILL-001 | plans/entitlements/subscriptions 模型 + EntitlementFilter（bool 权益）+ 危机链路豁免注解 | 近期 | design/38 M1 | BIZ-004 | ✅ 已完成（2026-07-28） |
-| BILL-002 | 计量事件流 + quota 执行 + 429 头 + 阈值告警 + 学校用量视图 | 近期 | design/38 M2 | BIZ-004 | ⛔ 未实现（2026-07-28：quota 代码按 YAGNI 清除，仅 bool 权益保留于 EntitlementChecker；接入计量后按 design/38 重建） |
+| BILL-002 | 计量事件流 + quota 执行 + 429 头 + 阈值告警 + 学校用量视图 | 近期 | design/38 M2 | BIZ-004 | 🔒 冻结（frozen/38，2026-08-05：quota 曾按 YAGNI 清除，仅 bool 权益保留；计费专题解冻后按 design/38 重建） |
 
 ### 远期（规模化 / 采购 / 版权 / 企业认证触发）
 
-> 触发条件未到前不启动；均为设计期、未实施。数据库迁移类含红线操作（AGENTS §5 红线 3），实际执行须单独授权。
+> 触发条件未到前不启动；均为设计期、未实施。**2026-08-05 起本表远期项已全部纳入对应 frozen/ 专题冻结跟踪**（状态列标注，不再作独立待办罗列），解冻触发与条件见对应冻结文档；数据库迁移类含红线操作（AGENTS §5 红线 3），实际执行须单独授权。
 
 | 任务ID | 阶段任务 | 期段 | 来源设计 | 关联主任务 | 状态 |
 |--------|----------|------|----------|-----------|------|
-| SCALE-003 | SDQ 三版本 + MHT + 家长版 H5（**版权 license 校验为发布门禁**） | 🔭 远期 | design/34 M3 | AI-009 | ⏳ 待实施 |
+| SCALE-003 | SDQ 三版本 + MHT + 家长版 H5（**版权 license 校验为发布门禁**） | 🔭 远期 | design/34 M3 | AI-009 | 🔒 冻结（frozen/34 量表数字化专题，版权门禁） |
 | ORCH-008 | 情绪编排效果量化并入 design/39 A/B（稳定回落速度/会话深度/满意 度） | 🔭 远期 | design/44 P3 | PROF-021 | ✅ 已完成 |
-| AB-003 | 月度分析任务 + 平台实验报告页（含置信区间）+ 护栏指标越界自动停 | 🔭 远期 | design/39 M3 | PROF-020 | ⏳ 待实施 |
-| BILL-003 | 订阅生命周期自动流转（grace/expired）+ 平台运营后台六模块 | 🔭 远期 | design/38 M3 | BIZ-006 | ⏳ 待实施 |
-| STATE-001 | Prompt 缓存迁 Redis（改造面小、无长连接） | 🔭 远期 | design/40 P5-1 | PERF-005 | ⏳ 待实施 |
-| STATE-002 | 会话状态外置 ConversationStateManager（双写灰度→切换） | 🔭 远期 | design/40 P5-2 | PERF-005 | ⏳ 待实施 |
-| STATE-003 | WebSocket 预警 Redis Pub/Sub 广播 | 🔭 远期 | design/40 P5-3 | PERF-005 | ⏳ 待实施 |
-| STATE-004 | nginx upstream + 后端多副本（与 DEP-011 共用） | 🔭 远期 | design/40 P5-4 | PERF-005 | ⏳ 待实施 |
-| STATE-005 | 多实例压测（500 并发 SSE + 预警广播送达率 ≥99%） | 🔭 远期 | design/40 P5-5 | PERF-005 | ⏳ 待实施 |
-| DBAD-001 | 信创兼容性评估（KDMS/DTS 扫描 + R1~R9 逐项实测结论） | 🔭 远期 | design/41 M-0 | BIZ-005/DEC-006 | ⏳ 待实施 |
-| DBAD-002 | 可插拔方言层（JsonTypeHandler/数据源路由/SQL 方言 + db-* profile，PG 仍默认） | 🔭 远期 | design/41 M-1 | BIZ-005 | ⏳ 待实施 |
-| DBAD-003 | Schema 转换（目标库 DDL + 类型人工修正 JSONB/vector/序列） | 🔭 远期 | design/41 M-2 | BIZ-005 | ⏳ 待实施 |
-| DBAD-004 | 数据迁移 + 行数/校验和/抽样一致性校验（**红线：须授权**） | 🔭 远期 | design/41 M-3 | BIZ-005 | ⏳ 待实施 |
-| DBAD-005 | 向量方案落地（按 design/41 §四选定路径迁移 RAG） | 🔭 远期 | design/41 M-4 | RISK-004 | ⏳ 待实施 |
-| DBAD-006 | 应用回归 + PG↔信创双跑对比 + 运维工具链适配 | 🔭 远期 | design/41 M-5/M-6 | BIZ-005 | ⏳ 待实施 |
-| DEP-011 | nginx 单点 → upstream 池（与 STATE-004 共用，先落地） | 🔭 远期 | design/42 D-1 | OPS-006 | ⏳ 待实施 |
-| DEP-012 | 多副本 + start-first 滚动发布（强依赖无状态化 STATE-*） | 🔭 远期 | design/42 D-2 | OPS-006 | ⏳ 待实施 |
-| DEP-013 | 优雅关闭 + LB 摘除/draining 协同 | 🔭 远期 | design/42 D-3 | OPS-006 | ⏳ 待实施 |
-| DEP-014 | 蓝绿双环境 + upstream 切换 + 冒烟门禁（秒级回滚） | 🔭 远期 | design/42 D-4 | OPS-006 | ⏳ 待实施 |
-| DEP-015 | 前端代码分割（学生端优先，manualChunks + 路由懒加载） | 🔭 远期 | design/42 D-5 | PERF-003 | ⏳ 待实施 |
-| DEP-016 | CDN 接入 + 缓存策略（仅公共静态资源，绝不缓存含 PII 响应） | 🔭 远期 | design/42 D-6 | PERF-003 | ⏳ 待实施 |
-| PARENT-WX-001~006 | 家长端小程序化（Taro 迁移 W-1~W-7，企业主体认证为门禁）——**详见「十二、家长端 H5」P2 分表** | 🔭 远期 | design/43 | AUTH-022 | ⏳ 待实施 |
+| AB-003 | 月度分析任务 + 平台实验报告页（含置信区间）+ 护栏指标越界自动停 | 🔭 远期 | design/39 M3 | PROF-020 | 🔒 冻结（frozen/39） |
+| BILL-003 | 订阅生命周期自动流转（grace/expired）+ 平台运营后台六模块 | 🔭 远期 | design/38 M3 | BIZ-006 | 🔒 冻结（frozen/38） |
+| STATE-001 | Prompt 缓存迁 Redis（改造面小、无长连接） | 🔭 远期 | design/40 P5-1 | PERF-005 | 🔒 冻结（frozen/40） |
+| STATE-002 | 会话状态外置 ConversationStateManager（双写灰度→切换） | 🔭 远期 | design/40 P5-2 | PERF-005 | 🔒 冻结（frozen/40） |
+| STATE-003 | WebSocket 预警 Redis Pub/Sub 广播 | 🔭 远期 | design/40 P5-3 | PERF-005 | 🔒 冻结（frozen/40） |
+| STATE-004 | nginx upstream + 后端多副本（与 DEP-011 共用） | 🔭 远期 | design/40 P5-4 | PERF-005 | 🔒 冻结（frozen/40） |
+| STATE-005 | 多实例压测（500 并发 SSE + 预警广播送达率 ≥99%） | 🔭 远期 | design/40 P5-5 | PERF-005 | 🔒 冻结（frozen/40） |
+| DBAD-001 | 信创兼容性评估（KDMS/DTS 扫描 + R1~R9 逐项实测结论） | 🔭 远期 | design/41 M-0 | BIZ-005/DEC-006 | 🔒 冻结（frozen/41） |
+| DBAD-002 | 可插拔方言层（JsonTypeHandler/数据源路由/SQL 方言 + db-* profile，PG 仍默认） | 🔭 远期 | design/41 M-1 | BIZ-005 | 🔒 冻结（frozen/41） |
+| DBAD-003 | Schema 转换（目标库 DDL + 类型人工修正 JSONB/vector/序列） | 🔭 远期 | design/41 M-2 | BIZ-005 | 🔒 冻结（frozen/41） |
+| DBAD-004 | 数据迁移 + 行数/校验和/抽样一致性校验（**红线：须授权**） | 🔭 远期 | design/41 M-3 | BIZ-005 | 🔒 冻结（frozen/41） |
+| DBAD-005 | 向量方案落地（按 design/41 §四选定路径迁移 RAG） | 🔭 远期 | design/41 M-4 | RISK-004 | 🔒 冻结（frozen/41） |
+| DBAD-006 | 应用回归 + PG↔信创双跑对比 + 运维工具链适配 | 🔭 远期 | design/41 M-5/M-6 | BIZ-005 | 🔒 冻结（frozen/41） |
+| DEP-011 | nginx 单点 → upstream 池（与 STATE-004 共用，先落地） | 🔭 远期 | design/42 D-1 | OPS-006 | 🔒 冻结（frozen/42） |
+| DEP-012 | 多副本 + start-first 滚动发布（强依赖无状态化 STATE-*） | 🔭 远期 | design/42 D-2 | OPS-006 | 🔒 冻结（frozen/42） |
+| DEP-013 | 优雅关闭 + LB 摘除/draining 协同 | 🔭 远期 | design/42 D-3 | OPS-006 | 🔒 冻结（frozen/42） |
+| DEP-014 | 蓝绿双环境 + upstream 切换 + 冒烟门禁（秒级回滚） | 🔭 远期 | design/42 D-4 | OPS-006 | 🔒 冻结（frozen/42） |
+| DEP-015 | 前端代码分割（学生端优先，manualChunks + 路由懒加载） | 🔭 远期 | design/42 D-5 | PERF-003 | 🔒 冻结（frozen/42） |
+| DEP-016 | CDN 接入 + 缓存策略（仅公共静态资源，绝不缓存含 PII 响应） | 🔭 远期 | design/42 D-6 | PERF-003 | 🔒 冻结（frozen/42） |
+| PARENT-WX-001~006 | 家长端小程序化（Taro 迁移 W-1~W-7，企业主体认证为门禁）——**详见「十二、家长端 H5」P2 分表** | 🔭 远期 | design/43 | AUTH-022 | 🔒 冻结（frozen/43，企业主体认证门禁） |
 
 ### design/45~50 深化设计衍生任务（2026-07-28 新增，闭环化专题）
 
@@ -708,13 +708,13 @@
 
 | 任务ID | 任务 | 来源分区 | 状态 |
 |--------|------|----------|------|
-| AI-007 | 语音情感分析 SER（emotion2vec+，风险辅助信号） | 十七·AI 对话质量 | ⏳ 待开始（远期） |
+| AI-007 | 语音情感分析 SER（emotion2vec+，风险辅助信号） | 十七·AI 对话质量 | ✅ 已完成（2026-08-05 状态确认，见 §十七/§二十三 VCL 系列） |
 | COMP-007 | 年度合规审计报送（未保条例 §37，流程性） | 十七·安全合规 / 十八 | 🔒 冻结（frozen/60，同 AUTH-033 合并） |
-| COMP-008 | WebAuthn 设备认证（可选，不采集生物数据） | 十七·安全合规 | ⏳ 待开始（远期） |
-| TEST-006 | 前后端契约测试（OpenAPI + mock 校验） | 十七·工程质量 | ⏳ 待开始（远期） |
-| DATA-005 | 研究数据脱敏导出（IRB 兼容） | 十七·数据智能 | ⏳ 待开始（远期） |
-| UX-003 | 多语言支持（繁体/英文） | 十七·用户体验 | ⏳ 待开始（远期） |
-| UX-004 | 无障碍增强（WCAG 2.1 AA） | 十七·用户体验 | ⏳ 待开始（远期） |
+| COMP-008 | WebAuthn 设备认证（可选，不采集生物数据） | 十七·安全合规 | 🔒 冻结（2026-08-05 纳入冻结规划） |
+| TEST-006 | 前后端契约测试（OpenAPI + mock 校验） | 十七·工程质量 | ⏳ 待开始（P2 远期） |
+| DATA-005 | 研究数据脱敏导出（IRB 兼容） | 十七·数据智能 | ⏳ 待开始（P2 远期） |
+| UX-003 | 多语言支持（繁体/英文） | 十七·用户体验 | 🔒 冻结（2026-08-05 纳入冻结规划） |
+| UX-004 | 无障碍增强（WCAG 2.1 AA） | 十七·用户体验 | 🔒 冻结（2026-08-05 纳入冻结规划） |
 
 > 说明：
 > 1. 本表为**排序视图**，不改变既有分区中各主任务的“📝 设计完成，待实施”标记；开发启动时以本表 P0→P1→P2→远期 顺序推进。
@@ -769,8 +769,8 @@
 | 29 | 学生画像与年龄适配 | 🔵 | 核心竞争力（近期）：与 46 画像闭环、44 编排 personality 层衔接 | P1 | Agent | ✅ 已深化（§十，2026-07-28，实现领先于文档：五断裂点已全部修复 🟩） |
 | 30 | 产品全景优化规划 | 🔵 | 路线图纳入 DEC-CBT 落地 + 本设计深化批次；Sprint 节奏对齐 | P2 | 钱敏健+Agent | ✅ 已深化（§十七，2026-07-28，Sprint A-E 已被超越不再按表执行；上线门禁=量表合规+RAG 空库；BIZ-001 挂起待 07） |
 | 31 | 等保二级差距评估 | 🔵 | 合规路径随部署推进（非开发） | P2 | 钱敏健 | ✅ 代码侧差距全部修复（2026-07-29）：fix-03 加密接线 / fix-07 prod profile 激活 / fix-08 TLS+wss+origin 收敛 / fix-10 CI 门禁修真 / SecurityConfig anyRequest().authenticated() 收紧（commit 701a3a0，白名单仅 auth 入口/wecom/guardian-consent confirm/parent/health/ws，教师端点已核实全落 /teacher/**+/alerts/** 匹配器）；剩余为运维/文档项（云安全组审计、异地备份、WAF、管理制度 3 份），钱敏健牵头 |
-| 32 | 商用发布前置待办 | 🔵 | 补量表施测合规门禁项；与本追踪表联动 | P1 | 钱敏健 | ⬜ 待深化 |
-| 33 | 系统测试培训手册 | 🔵 | 编排/量表/工具箱上线后补测试点 | P2 | Agent | ⬜ 待深化 |
+| 32 | 商用发布前置待办 | 🔵 | 补量表施测合规门禁项；与本追踪表联动 | P1 | 钱敏健 | 🔒 冻结（frozen/60 商用发布合规与备案专题关联文档，2026-08-05） |
+| 33 | 系统测试培训手册 | 🔵 | 编排/量表/工具箱上线后补测试点 | P2 | Agent | ✅ 已完成（2026-08-05 标注；DOC-031 手册已产出，测试点随上线批次维护） |
 | 34 | 心理量表数字化 | 🟢 | 近期已深化；施测接线**上线门禁**决策已冻结跟踪（frozen/59） | P1 | 钱敏健+Agent | 🟢 维护 |
 | 35 | 教师端工作台改版 | 🟢 | 近期已深化；随 05 对齐维护 | P1 | Agent | 🟢 维护 |
 | 36 | 心理工具箱与离线缓存 | 🟢 | 近期已深化；随 17/19 对齐维护 | P1 | Agent | 🟢 维护 |
@@ -820,14 +820,14 @@
 
 ## 二十六、审计缺口登记（design/13 + design/20 篇审计，2026-07-28）
 
-> 背景：13/20 两篇深度审计（设计完善度/代码达标度/测试覆盖三维度）修复完成后，遗留 3 项功能/测试缺口 + 2 项历史对标审计残留项，按优先级登记如下。优先级判据同 §二十三：**安全/合规 > 对话产品力 > 教师效率 > 学生体验 > 商业化 > 规模化架构**。
+> 背景：13/20 两篇深度审计（设计完善度/代码达标度/测试覆盖三维度）修复完成后，遗留 3 项功能/测试缺口 + 2 项历史对标审计残留项，按优先级登记如下。优先级判据同 §二十三：**安全/合规 > 对话产品力 > 教师效率 > 学生体验 > 商业化 > 规模化架构**。**2026-08-05 统一定级：未冻结缺口一律 P2 级待办**（TEST-007 / DOC-051 / UX-006）；ESC-001（frozen/58）、TEST-008（frozen/59）维持冻结跟踪。
 
 | 任务ID | 任务描述 | 优先级 | 来源 | 状态 | 备注 |
 |--------|----------|--------|------|------|------|
 | ESC-001 | **/escalate 转人工端点 + 学生端 safety_mode 交互**：学生主动求助（"我想找老师"）触发升级端点（写 risk_event + 通知教师 + 会话置 escalated）+ 前端安全模式界面（热线/找老师入口）。当前仅系统侧 RED 自动升级（RISK-201），学生**主动**求助通道缺失 | **P0 安全**（危机兜底通道） | design/20 §10.1 F-03 / §10.2 升级时序（文档标 ⬜ 属实）；**专题设计见 frozen/58** | 🔒 冻结（远期任务规划，2026-07-28 钱敏健定级；设计文档已产出并移入 frozen/，解冻实施前须确认） | 与 M2-006（红色风险教师接管，✅ 已完成）互补：M2-006 为系统自动升级，本项为主动求助入口 |
 | TEST-007 | TeacherService 测试覆盖 33.2% → ≥80%（属教师管理域） | P2 | design/05 责任范围 | ⏳ 待实施 | 13/20 审计按范围纪律未扩入；design/05 篇审计时激活 |
 | TEST-008 | 量表发放/答题/结果流程（Service+Controller）补齐——评分引擎（AssessmentScoringEngine/PHQ-A·GAD-7/RecurrenceCalculator）已完备 | —（不单独排期） | design/20 §10.1 F-06 | 🔒 冻结（frozen/59 量表施测接线专题） | **与 SCALE-001/002 施测接线同一门禁**（未成年人测评合规），解冻后随 frozen/59 §4.2 实施，不重复立项 |
-| DOC-051 | QuickStart 快速启动指南（新人 5 分钟跑通：docker compose up + 前端 dev） | P3 远期 | 全代码库对标审计 P2-6 | ⏳ 待实施 | 残留项核实：CONTRIBUTING/QUICKSTART 均不存在 |
+| DOC-051 | QuickStart 快速启动指南（新人 5 分钟跑通：docker compose up + 前端 dev） | P2 | 全代码库对标审计 P2-6 | ⏳ 待实施（统一 P2 级，2026-08-05） | 残留项核实：CONTRIBUTING/QUICKSTART 均不存在 |
 | UX-006 | ChatRoom.tsx 拆分（827 行 → useSseStream / useChatSession hooks 抽离） | P2 | 全代码库对标审计 P2-3 | ⏳ 待实施 | 残留项核实：869→827 行小幅改善，SSE/TTS/情绪/满意度仍混杂单组件 |
 
 > 说明：
