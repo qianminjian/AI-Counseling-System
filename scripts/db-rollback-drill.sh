@@ -2,8 +2,10 @@
 # ============================================================
 # E2: 数据库迁移回滚演练（修复审计项 E2：迁移无回滚演练）
 #
-# 约定：Flyway 迁移目录中每个 V<版本>__<名称>.sql 应配对
+# 约定：迁移目录中每个 V<版本>__<名称>.sql 应配对回滚文件
 #       V<版本>__<名称>.rollback.sql（回滚 = 撤销该迁移的 DDL/DML）。
+#       ⚠ rollback 文件存放于 db/rollback/（独立目录）：Flyway 只扫描 db/migration，
+#       若混放会将 .rollback.sql 误判为同版本第二个迁移导致启动失败。
 #
 # 命令：
 #   check                         校验迁移/回滚配对（默认缺配对仅警告）
@@ -21,7 +23,9 @@
 set -euo pipefail
 
 DEFAULT_MIG="backend/counseling-app/src/main/resources/db/migration"
+DEFAULT_RB="backend/counseling-app/src/main/resources/db/rollback"
 MIG_DIR="$DEFAULT_MIG"
+RB_DIR="$DEFAULT_RB"
 COMMAND=""
 STRICT=0
 TARGET=""
@@ -36,6 +40,7 @@ usage() {
                        --target V<n>：回滚到该版本之后（不含自身）
                        --execute：真实执行（需 DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASS）
   通用: --dir <迁移目录>（默认 backend/counseling-app/src/main/resources/db/migration）
+        --rb-dir <回滚目录>（默认 backend/counseling-app/src/main/resources/db/rollback）
 EOF
 }
 
@@ -46,6 +51,7 @@ while [ $# -gt 0 ]; do
     --target) TARGET="$2"; shift ;;
     --execute) EXECUTE=1 ;;
     --dir) MIG_DIR="$2"; shift ;;
+    --rb-dir) RB_DIR="$2"; shift ;;
     --help|-h) usage; exit 0 ;;
     *) echo "未知参数: $1" >&2; usage >&2; exit 2 ;;
   esac
@@ -72,10 +78,10 @@ version_of() {
 }
 
 rollback_of() {
-  # 输入: V33__name.sql → 输出: V33__name.rollback.sql 路径（存在则输出，否则空）
+  # 输入: V33__name.sql → 输出: 回滚目录中的 V33__name.rollback.sql 路径（存在则输出，否则空）
   # 注意：set -e 下命令替换要求函数总是返回 0，故用 if 而非 [ ] && echo
   local up="$1" rb
-  rb="${up%.sql}.rollback.sql"
+  rb="$RB_DIR/$(basename "${up%.sql}").rollback.sql"
   if [ -f "$rb" ]; then
     echo "$rb"
   fi
