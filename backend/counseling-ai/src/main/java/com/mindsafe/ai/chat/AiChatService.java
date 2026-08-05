@@ -64,15 +64,17 @@ public interface AiChatService {
     String generateSessionSummary(String conversationText);
 
     /**
-     * 提炼学生画像增量 patch（PROF-003，非流式，会话关闭后异步调用）
+     * 会话结束提炼（S1：画像增量 + 关键事件一次 LLM 调用双节点输出，非流式，会话关闭后异步调用）
      * <p>
+     * 返回 JSON 含 {@code profile_patch}（communication_pref/resilience/social_graph/personality_traits）
+     * 与 {@code key_events}（关键事件数组）两个节点，由编排层（MessageSummaryService）解析分发。
      * 仅输出结构化统计指标与泛化标签，严禁输出原始对话内容；人物代号化、主题泛化。
      *
      * @param conversationText 对话摘要文本
-     * @param sessionSummary   会话结构化摘要（JSON）
-     * @return JSON patch（communication_pref/resilience/social_graph），失败返回 null
+     * @param sessionSummary   会话结构化摘要（JSON，可为 null）
+     * @return JSON（profile_patch + key_events），失败返回 null
      */
-    String extractProfilePatch(String conversationText, String sessionSummary);
+    String extractConversationInsights(String conversationText, String sessionSummary);
 
     /**
      * LLM-as-Judge 对话质量评估（AI-001/AI-002，非流式，会话关闭后异步调用）
@@ -83,18 +85,6 @@ public interface AiChatService {
      * @return JSON 评分结果，失败返回 null
      */
     String evaluateConversationQuality(String conversationText);
-
-    /**
-     * 提取跨会话关键事件（AI-008，非流式，会话关闭后异步调用）
-     * <p>
-     * 从对话中提取值得长期记忆的关键事件（突破/危机/承诺/转折），
-     * 输出泛化描述（不含真实姓名/地名），供后续会话 Prompt 回注。
-     *
-     * @param conversationText 对话摘要文本
-     * @param sessionSummary   会话结构化摘要（JSON，可为 null）
-     * @return JSON 数组（key_events），失败返回 null
-     */
-    String extractKeyEvents(String conversationText, String sessionSummary);
 
     /**
      * CTX-Agent Phase 3：渐进式会话摘要（非流式，每 4 轮异步调用）。

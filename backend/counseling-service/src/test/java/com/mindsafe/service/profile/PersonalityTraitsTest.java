@@ -2,7 +2,6 @@ package com.mindsafe.service.profile;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.mindsafe.ai.chat.AiChatService;
 import com.mindsafe.ai.orchestrator.ProfileSignals;
 import com.mindsafe.domain.entity.StudentProfile;
 import com.mindsafe.domain.mapper.CounselingSessionMapper;
@@ -22,7 +21,6 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
 /**
@@ -37,10 +35,9 @@ class PersonalityTraitsTest {
     private CounselingSessionMapper sessionMapper;
     @Mock
     private RiskEventMapper riskEventMapper;
-    @Mock
-    private AiChatService aiChatService;
 
     private final ProfileMergeGate profileMergeGate = new ProfileMergeGate();
+    private final ObjectMapper om = new ObjectMapper();
 
     private StudentProfileService studentProfileService;
     private ProfileExtractorService profileExtractorService;
@@ -51,7 +48,7 @@ class PersonalityTraitsTest {
     @BeforeEach
     void setUp() {
         studentProfileService = new StudentProfileService(profileMapper, sessionMapper, riskEventMapper);
-        profileExtractorService = new ProfileExtractorService(aiChatService, profileMapper, profileMergeGate);
+        profileExtractorService = new ProfileExtractorService(profileMapper, profileMergeGate);
     }
 
     @Nested
@@ -128,50 +125,45 @@ class PersonalityTraitsTest {
 
         @Test
         @DisplayName("首次提炼 → 直接写入数值")
-        void firstExtraction() {
+        void firstExtraction() throws Exception {
             StudentProfile profile = baseProfile();
             profile.setPersonalityTraits("{}");
             when(profileMapper.selectOne(any())).thenReturn(profile);
-            when(aiChatService.extractProfilePatch(anyString(), anyString())).thenReturn("""
-                    {"personality_traits":{"introversion":0.8,"sensitivity":0.6,"curiosity":0.3,"dominant_interests":["动物"]}}
-                    """);
 
-            profileExtractorService.extractAndMerge(TENANT, USER, "conversation", "summary");
+            profileExtractorService.extractAndMerge(TENANT, USER, om.readTree("""
+                    {"personality_traits":{"introversion":0.8,"sensitivity":0.6,"curiosity":0.3,"dominant_interests":["动物"]}}
+                    """));
 
             verify(profileMapper).updateById(any(StudentProfile.class));
         }
 
         @Test
         @DisplayName("EMA 合并 → 历史值加权")
-        void emaMerge() {
+        void emaMerge() throws Exception {
             StudentProfile profile = baseProfile();
             profile.setPersonalityTraits("""
                     {"introversion":0.6,"sensitivity":0.4,"curiosity":0.5,"dominant_interests":["画画"]}
                     """);
             when(profileMapper.selectOne(any())).thenReturn(profile);
             // 新值 introversion=1.0 → EMA: 0.4*1.0 + 0.6*0.6 = 0.76
-            when(aiChatService.extractProfilePatch(anyString(), anyString())).thenReturn("""
+            profileExtractorService.extractAndMerge(TENANT, USER, om.readTree("""
                     {"personality_traits":{"introversion":1.0,"dominant_interests":["游戏"]}}
-                    """);
-
-            profileExtractorService.extractAndMerge(TENANT, USER, "conversation", "summary");
+                    """));
 
             verify(profileMapper).updateById(any(StudentProfile.class));
         }
 
         @Test
         @DisplayName("LLM 返回空 personality_traits → 不修改现有值")
-        void emptyPatchPreservesExisting() {
+        void emptyPatchPreservesExisting() throws Exception {
             StudentProfile profile = baseProfile();
             profile.setPersonalityTraits("""
                     {"introversion":0.7,"dominant_interests":["运动"]}
                     """);
             when(profileMapper.selectOne(any())).thenReturn(profile);
-            when(aiChatService.extractProfilePatch(anyString(), anyString())).thenReturn("""
+            profileExtractorService.extractAndMerge(TENANT, USER, om.readTree("""
                     {"communication_pref":{"expression_depth":0.5}}
-                    """);
-
-            profileExtractorService.extractAndMerge(TENANT, USER, "conversation", "summary");
+                    """));
 
             verify(profileMapper).updateById(any(StudentProfile.class));
         }
@@ -181,19 +173,15 @@ class PersonalityTraitsTest {
     @DisplayName("PROF-025: 元数据戳与画像→编排信号")
     class ProvenanceMetadata {
 
-        private final ObjectMapper om = new ObjectMapper();
-
         @Test
         @DisplayName("extractAndMerge → personality_traits._meta 写入 provenance/confidence/evidence_count")
         void mergeStampsMeta() throws Exception {
             StudentProfile profile = baseProfile();
             profile.setPersonalityTraits("{}");
             when(profileMapper.selectOne(any())).thenReturn(profile);
-            when(aiChatService.extractProfilePatch(anyString(), anyString())).thenReturn("""
+            profileExtractorService.extractAndMerge(TENANT, USER, om.readTree("""
                     {"personality_traits":{"introversion":0.8,"dominant_interests":["恐龙"]}}
-                    """);
-
-            profileExtractorService.extractAndMerge(TENANT, USER, "conversation", "summary");
+                    """));
 
             ArgumentCaptor<StudentProfile> captor = ArgumentCaptor.forClass(StudentProfile.class);
             verify(profileMapper).updateById(captor.capture());
@@ -216,11 +204,9 @@ class PersonalityTraitsTest {
                     {"introversion":0.6,"_meta":{"introversion":{"provenance":"llm_extract","evidence_count":1,"confidence":0.33}}}
                     """);
             when(profileMapper.selectOne(any())).thenReturn(profile);
-            when(aiChatService.extractProfilePatch(anyString(), anyString())).thenReturn("""
+            profileExtractorService.extractAndMerge(TENANT, USER, om.readTree("""
                     {"personality_traits":{"introversion":0.8}}
-                    """);
-
-            profileExtractorService.extractAndMerge(TENANT, USER, "conversation", "summary");
+                    """));
 
             ArgumentCaptor<StudentProfile> captor = ArgumentCaptor.forClass(StudentProfile.class);
             verify(profileMapper).updateById(captor.capture());

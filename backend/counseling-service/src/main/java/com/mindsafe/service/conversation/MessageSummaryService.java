@@ -1,5 +1,7 @@
 package com.mindsafe.service.conversation;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mindsafe.ai.chat.AiChatService;
 import com.mindsafe.domain.entity.CounselingSession;
 import com.mindsafe.domain.entity.MessageSummary;
@@ -25,7 +27,8 @@ import java.util.UUID;
  * 从 ConversationServiceImpl 提取，职责：
  * <ul>
  *   <li>逐轮消息摘要落库（学生/AI，字段级加密）</li>
- *   <li>会话结束后异步生成 LLM 摘要 + 画像提炼 + 长期记忆提取</li>
+ *   <li>会话结束后异步生成 LLM 摘要，并编排一次提炼 LLM 调用（S1：双节点 JSON）
+ *       分发画像合并与关键事件存储</li>
  * </ul>
  */
 @Service
@@ -40,6 +43,7 @@ public class MessageSummaryService {
     private final ConversationQualityService conversationQualityService;
     private final ProfileExtractorService profileExtractorService;
     private final LongTermMemoryService longTermMemoryService;
+    private final ObjectMapper objectMapper;
 
     public MessageSummaryService(MessageSummaryMapper messageSummaryMapper,
                                  CounselingSessionMapper sessionMapper,
@@ -47,7 +51,8 @@ public class MessageSummaryService {
                                  FieldEncryptionService fieldEncryptionService,
                                  ConversationQualityService conversationQualityService,
                                  ProfileExtractorService profileExtractorService,
-                                 LongTermMemoryService longTermMemoryService) {
+                                 LongTermMemoryService longTermMemoryService,
+                                 ObjectMapper objectMapper) {
         this.messageSummaryMapper = messageSummaryMapper;
         this.sessionMapper = sessionMapper;
         this.aiChatService = aiChatService;
@@ -55,6 +60,7 @@ public class MessageSummaryService {
         this.conversationQualityService = conversationQualityService;
         this.profileExtractorService = profileExtractorService;
         this.longTermMemoryService = longTermMemoryService;
+        this.objectMapper = objectMapper;
     }
 
     /** 异步生成会话摘要（不阻塞主流程），摘要完成后触发画像 LLM 提炼（PROF-003） */
@@ -94,15 +100,60 @@ public class MessageSummaryService {
                 sessionMapper.updateById(update);
                 log.info("会话摘要已生成: sessionId={}", sessionId);
 
-                // 4. PROF-003：基于摘要 + 对话文本提炼画像增量（沟通偏好/韧性/社交图谱）
-                profileExtractorService.extractAndMerge(tenantId, studentUserId, conversationText, summary);
-
-                // 5. AI-008：提取跨会话关键事件（长期记忆）
-                longTermMemoryService.extractAndStoreKeyEvents(tenantId, studentUserId, sessionId, conversationText, summary);
+                // 4. S1：一次提炼 LLM 调用（画像增量 + 关键事件双节点 JSON），解析后分发
+                dispatchInsights(tenantId, sessionId, studentUserId, summary, conversationText);
             }
         } catch (Exception e) {
             log.warn("会话摘要生成失败（不影响业务）: sessionId={}", sessionId, e);
         }
+    }
+
+    /**
+     * S1 编排：解析提炼 LLM 的双节点结果并分发（任一节点缺失/解析失败 → 该路静默跳过）。
+     * 由外层 catch 兜底 LLM 调用异常，不影响摘要落库主流程。
+     */
+    private void dispatchInsights(UUID tenantId, UUID sessionId, UUID studentUserId,
+                                  String summary, String conversationText) {
+        JsonNode insights = parseInsights(aiChatService.extractConversationInsights(conversationText, summary));
+        if (insights == null) return;
+
+        // 4.1 PROF-003：画像增量分发（profile_patch 缺失/非对象 → 跳过画像路）
+        JsonNode patch = insights.get("profile_patch");
+        if (patch != null && patch.isObject() && !patch.isEmpty()) {
+            profileExtractorService.extractAndMerge(tenantId, studentUserId, patch);
+        }
+
+        // 4.2 AI-008：关键事件分发（key_events 缺失/空数组 → 跳过记忆路）
+        JsonNode events = insights.get("key_events");
+        if (events != null && events.isArray() && !events.isEmpty()) {
+            longTermMemoryService.extractAndStoreKeyEvents(tenantId, studentUserId, sessionId, events);
+        }
+    }
+
+    /** 解析提炼 JSON（兼容 ```json 代码块包裹）；非法输入返回 null（静默降级） */
+    private JsonNode parseInsights(String rawJson) {
+        if (rawJson == null || rawJson.isBlank()) return null;
+        try {
+            return objectMapper.readTree(stripCodeFence(rawJson));
+        } catch (Exception e) {
+            log.warn("会话提炼 JSON 解析失败（不影响业务）: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    /** 去除 LLM 可能包裹的 ```json ... ``` 代码块标记 */
+    private String stripCodeFence(String raw) {
+        String s = raw.trim();
+        if (s.startsWith("```")) {
+            int firstNewline = s.indexOf('\n');
+            if (firstNewline > 0) {
+                s = s.substring(firstNewline + 1);
+            }
+            if (s.endsWith("```")) {
+                s = s.substring(0, s.length() - 3);
+            }
+        }
+        return s.trim();
     }
 
     /** 持久化学生消息摘要（fire-and-forget，不影响主流程） */

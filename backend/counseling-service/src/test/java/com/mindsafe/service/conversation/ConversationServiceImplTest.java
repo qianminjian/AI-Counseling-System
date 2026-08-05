@@ -21,6 +21,7 @@ import com.mindsafe.domain.entity.User;
 import com.mindsafe.domain.mapper.CounselingSessionMapper;
 import com.mindsafe.domain.mapper.MessageSummaryMapper;
 import com.mindsafe.domain.mapper.UserMapper;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mindsafe.service.knowledge.RagAdvisorService;
 import com.mindsafe.service.memory.LongTermMemoryService;
 import com.mindsafe.service.profile.ProfileExtractorService;
@@ -155,7 +156,8 @@ class ConversationServiceImplTest {
                 new com.mindsafe.service.security.FieldEncryptionService(
                         "", 1, "", new org.springframework.core.env.StandardEnvironment());
         messageSummaryService = new MessageSummaryService(messageSummaryMapper, sessionMapper,
-                aiChatService, plainEnc, conversationQualityService, profileExtractorService, longTermMemoryService);
+                aiChatService, plainEnc, conversationQualityService, profileExtractorService, longTermMemoryService,
+                new ObjectMapper());
 
         service = new ConversationServiceImpl(aiChatService, promptTemplateService,
                 riskProcessor, piiDesensitizer, sessionMapper, messageSummaryMapper,
@@ -352,7 +354,8 @@ class ConversationServiceImplTest {
                     ragAdvisorService,
                     new PromptOrchestrationService(new EntryMoodStrategyResolver(), new EmotionStateMachine()),
                     new MessageSummaryService(messageSummaryMapper, sessionMapper,
-                            aiChatService, keyedEnc, conversationQualityService, profileExtractorService, longTermMemoryService),
+                            aiChatService, keyedEnc, conversationQualityService, profileExtractorService, longTermMemoryService,
+                            new ObjectMapper()),
                     keyedEnc,
                     crisisResourceProvider,
                     allianceEnhancer, cbtStageRouter,

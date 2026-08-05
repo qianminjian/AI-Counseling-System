@@ -1,7 +1,7 @@
 package com.mindsafe.service.memory;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.mindsafe.ai.chat.AiChatService;
 import com.mindsafe.domain.entity.LongTermMemory;
 import com.mindsafe.domain.mapper.LongTermMemoryMapper;
 import com.mindsafe.service.profile.MemoryProfileBackfillService;
@@ -29,7 +29,6 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyDouble;
 import static org.mockito.ArgumentMatchers.anyFloat;
 import static org.mockito.ArgumentMatchers.anyList;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.never;
@@ -40,8 +39,10 @@ import static org.mockito.Mockito.when;
 /**
  * LongTermMemoryService 单元测试（AI-008 / MEM-101）
  * <p>
+ * O 专题 S1 后：LLM 提炼调用已上移至 MessageSummaryService 编排，
+ * 本服务直接接收已解析的 JsonNode key_events。
  * 覆盖：提取落库后回注透传 event_type/person_role、幂等跳过、
- * LLM 返回空不落库不回注。
+ * 空事件数组不落库不回注。
  */
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
@@ -49,9 +50,6 @@ class LongTermMemoryServiceTest {
 
     @Mock
     private LongTermMemoryMapper memoryMapper;
-
-    @Mock
-    private AiChatService aiChatService;
 
     @Mock
     private MemoryProfileBackfillService backfillService;
@@ -73,6 +71,7 @@ class LongTermMemoryServiceTest {
 
     private LongTermMemoryService service;
 
+    private final ObjectMapper om = new ObjectMapper();
     private final UUID tenantId = UUID.randomUUID();
     private final UUID studentUserId = UUID.randomUUID();
     private final UUID sessionId = UUID.randomUUID();
@@ -80,26 +79,28 @@ class LongTermMemoryServiceTest {
     @BeforeEach
     void setUp() {
         service = new LongTermMemoryService(
-                memoryMapper, aiChatService, new ObjectMapper(), backfillService,
+                memoryMapper, backfillService,
                 memoryRiskCorrelator, memoryRelevanceScorer, themeEvolutionEngine, riskEventMapper,
                 riskNotifyOutboxService);
         // selectCount 两处调用（幂等检查 + evict），返回 0 同时满足
         when(memoryMapper.selectCount(any())).thenReturn(0L);
     }
 
+    private JsonNode events(String json) throws Exception {
+        return om.readTree(json);
+    }
+
     @Test
     @DisplayName("提取落库后调用 backfill，event_type/person_role/emotion 正确透传")
-    void extractStoresMemoriesAndBackfillsProfile() {
-        when(aiChatService.extractKeyEvents(anyString(), any())).thenReturn("""
+    void extractStoresMemoriesAndBackfillsProfile() throws Exception {
+        service.extractAndStoreKeyEvents(tenantId, studentUserId, sessionId, events("""
                 {"key_events":[
                   {"content":"第一次主动分享了学校的烦恼","emotion_context":"委屈",
                    "importance":0.8,"event_type":"milestone"},
                   {"content":"和妈妈约定每天聊十分钟","emotion_context":"开心",
                    "importance":0.7,"event_type":"person","person_role":"妈妈"}
                 ]}
-                """);
-
-        service.extractAndStoreKeyEvents(tenantId, studentUserId, sessionId, "对话文本", null);
+                """));
 
         verify(memoryMapper, times(2)).insert(any(LongTermMemory.class));
 
@@ -117,23 +118,22 @@ class LongTermMemoryServiceTest {
     }
 
     @Test
-    @DisplayName("幂等：同会话已提取过则不调 LLM 不回注")
-    void skipsWhenSessionAlreadyExtracted() {
+    @DisplayName("幂等：同会话已提取过则跳过存储与回注")
+    void skipsWhenSessionAlreadyExtracted() throws Exception {
         when(memoryMapper.selectCount(any())).thenReturn(2L);
 
-        service.extractAndStoreKeyEvents(tenantId, studentUserId, sessionId, "对话文本", null);
+        service.extractAndStoreKeyEvents(tenantId, studentUserId, sessionId, events("""
+                {"key_events":[{"content":"不应入库","importance":0.9}]}
+                """));
 
-        verify(aiChatService, never()).extractKeyEvents(anyString(), any());
         verify(memoryMapper, never()).insert(any(LongTermMemory.class));
         verify(backfillService, never()).backfill(any(), any(), anyList());
     }
 
     @Test
-    @DisplayName("LLM 返回空/空数组：不落库不回注")
-    void emptyExtractionSkipsStoreAndBackfill() {
-        when(aiChatService.extractKeyEvents(anyString(), any())).thenReturn("{\"key_events\":[]}");
-
-        service.extractAndStoreKeyEvents(tenantId, studentUserId, sessionId, "对话文本", null);
+    @DisplayName("空事件数组：不落库不回注")
+    void emptyExtractionSkipsStoreAndBackfill() throws Exception {
+        service.extractAndStoreKeyEvents(tenantId, studentUserId, sessionId, events("{\"key_events\":[]}"));
 
         verify(memoryMapper, never()).insert(any(LongTermMemory.class));
         verify(backfillService, never()).backfill(any(), any(), anyList());
@@ -165,8 +165,8 @@ class LongTermMemoryServiceTest {
 
     @Test
     @DisplayName("C1: 遗忘淘汰批量删除——一次 deleteBatchIds 替代 N 次 deleteById（N+1 消除）")
-    void evictDecision_batchedDelete() {
-        when(aiChatService.extractKeyEvents(anyString(), any())).thenReturn("""
+    void evictDecision_batchedDelete() throws Exception {
+        JsonNode eventsNode = events("""
                 {"key_events":[{"content":"测试事件","importance":0.5}]}
                 """);
         // 10 条存量记忆，其中前 3 条命中遗忘决策
@@ -189,7 +189,7 @@ class LongTermMemoryServiceTest {
                     forgetIds.contains(entry.memoryId()), "test", "delete");
         });
 
-        service.extractAndStoreKeyEvents(tenantId, studentUserId, sessionId, "对话文本", null);
+        service.extractAndStoreKeyEvents(tenantId, studentUserId, sessionId, eventsNode);
 
         verify(memoryMapper, times(1)).deleteBatchIds(anyList());
         verify(memoryMapper, never()).deleteById(any(UUID.class));
@@ -197,8 +197,8 @@ class LongTermMemoryServiceTest {
 
     @Test
     @DisplayName("C1: 数量兜底淘汰批量删除——survivors 一次 deleteBatchIds，不逐条 deleteById")
-    void evictOverflow_batchedDelete() {
-        when(aiChatService.extractKeyEvents(anyString(), any())).thenReturn("""
+    void evictOverflow_batchedDelete() throws Exception {
+        JsonNode eventsNode = events("""
                 {"key_events":[{"content":"测试事件","importance":0.5}]}
                 """);
         // 61 条存量记忆（超过 MAX_MEMORIES_PER_STUDENT=50），全部不命中遗忘决策
@@ -215,7 +215,7 @@ class LongTermMemoryServiceTest {
         when(memoryRiskCorrelator.evaluateForget(any(), any()))
                 .thenReturn(new MemoryRiskCorrelator.ForgetDecision(false, "keep", "none"));
 
-        service.extractAndStoreKeyEvents(tenantId, studentUserId, sessionId, "对话文本", null);
+        service.extractAndStoreKeyEvents(tenantId, studentUserId, sessionId, eventsNode);
 
         verify(memoryMapper, atLeastOnce()).deleteBatchIds(anyList());
         verify(memoryMapper, never()).deleteById(any(UUID.class));

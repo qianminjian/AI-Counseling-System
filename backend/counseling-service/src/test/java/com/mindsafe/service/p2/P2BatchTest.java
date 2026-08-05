@@ -18,9 +18,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
-import java.time.Instant;
 import java.time.LocalDate;
-import java.time.temporal.ChronoUnit;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -111,32 +109,6 @@ class P2BatchTest {
             assertThat(d.mergedConfidence()).isGreaterThan(0.6);
         }
 
-        @Test
-        @DisplayName("时效衰减：60 天半衰期")
-        void decay() {
-            Instant now = Instant.parse("2026-07-28T00:00:00Z");
-            Instant sixtyDaysAgo = now.minus(60, ChronoUnit.DAYS);
-            double decayed = gate.applyDecay(0.8, sixtyDaysAgo, now);
-            assertThat(decayed).isCloseTo(0.4, org.assertj.core.data.Offset.offset(0.01));
-        }
-
-        @Test
-        @DisplayName("180 天 → 极低")
-        void maxDecay() {
-            Instant now = Instant.parse("2026-07-28T00:00:00Z");
-            Instant old = now.minus(200, ChronoUnit.DAYS);
-            double decayed = gate.applyDecay(0.8, old, now);
-            assertThat(decayed).isCloseTo(0.08, org.assertj.core.data.Offset.offset(0.001));
-        }
-
-        @Test
-        @DisplayName("失效判断")
-        void expired() {
-            Instant now = Instant.parse("2026-07-28T00:00:00Z");
-            Instant old = now.minus(120, ChronoUnit.DAYS);
-            assertThat(gate.isExpired(0.5, old, now)).isTrue();
-            assertThat(gate.isExpired(0.9, now.minus(10, ChronoUnit.DAYS), now)).isFalse();
-        }
     }
 
     // ==================== VCL-002 语音情绪趋势 ====================

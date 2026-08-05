@@ -3,8 +3,6 @@ package com.mindsafe.service.memory;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.mindsafe.ai.chat.AiChatService;
 import com.mindsafe.common.enums.RiskLevel;
 import com.mindsafe.domain.entity.LongTermMemory;
 import com.mindsafe.domain.entity.RiskEvent;
@@ -29,7 +27,8 @@ import java.util.UUID;
  * 长期记忆服务（AI-008）
  * <p>
  * 职责：
- * 1. 会话结束后异步提取关键事件（LLM 提炼）
+ * 1. 会话结束后异步存储关键事件（O 专题 S1：LLM 提炼已上移 MessageSummaryService，
+ *    本服务直接接收已解析的 JsonNode key_events）
  * 2. 新会话开始时召回 top-N 记忆供 Prompt 回注
  * 3. 记忆去重（同一会话不重复提取）
  * 4. MEM-101：关键事件回注画像 growthTrack/socialGraph（provenance=memory，design/50 §5.1）
@@ -50,8 +49,6 @@ public class LongTermMemoryService {
             "self_harm", "suicidal", "abuse", "violence", "crisis", "自伤", "虐待");
 
     private final LongTermMemoryMapper memoryMapper;
-    private final AiChatService aiChatService;
-    private final ObjectMapper objectMapper;
     private final MemoryProfileBackfillService backfillService;
     private final MemoryRiskCorrelator memoryRiskCorrelator;
     private final MemoryRelevanceScorer memoryRelevanceScorer;
@@ -60,8 +57,6 @@ public class LongTermMemoryService {
     private final RiskNotifyOutboxService riskNotifyOutboxService;
 
     public LongTermMemoryService(LongTermMemoryMapper memoryMapper,
-                                 AiChatService aiChatService,
-                                 ObjectMapper objectMapper,
                                  MemoryProfileBackfillService backfillService,
                                  MemoryRiskCorrelator memoryRiskCorrelator,
                                  MemoryRelevanceScorer memoryRelevanceScorer,
@@ -69,8 +64,6 @@ public class LongTermMemoryService {
                                  RiskEventMapper riskEventMapper,
                                  RiskNotifyOutboxService riskNotifyOutboxService) {
         this.memoryMapper = memoryMapper;
-        this.aiChatService = aiChatService;
-        this.objectMapper = objectMapper;
         this.backfillService = backfillService;
         this.memoryRiskCorrelator = memoryRiskCorrelator;
         this.memoryRelevanceScorer = memoryRelevanceScorer;
@@ -80,14 +73,13 @@ public class LongTermMemoryService {
     }
 
     /**
-     * 异步提取关键事件（会话结束后调用，不阻塞主流程）
+     * 异步存储关键事件（S1：LLM 提炼已上移，直接接收已解析事件节点）
      *
-     * @param conversationText 对话文本
-     * @param sessionSummary   结构化摘要（可为 null）
+     * @param events 已解析的 key_events 数组节点（或含 key_events 字段的根节点）
      */
     @Async
     public void extractAndStoreKeyEvents(UUID tenantId, UUID studentUserId, UUID sessionId,
-                                         String conversationText, String sessionSummary) {
+                                         JsonNode events) {
         try {
             // 幂等：同一会话不重复提取
             Long existing = memoryMapper.selectCount(
@@ -99,18 +91,13 @@ public class LongTermMemoryService {
                 return;
             }
 
-            // LLM 提取关键事件
-            String rawJson = aiChatService.extractKeyEvents(conversationText, sessionSummary);
-            if (rawJson == null || rawJson.isBlank()) return;
-
-            // 解析 JSON 数组
-            JsonNode root = objectMapper.readTree(rawJson);
-            JsonNode events = root.isArray() ? root : root.get("key_events");
-            if (events == null || !events.isArray() || events.isEmpty()) return;
+            // 兼容数组节点或含 key_events 字段的根节点
+            JsonNode eventArray = events != null && events.isArray() ? events : events.get("key_events");
+            if (eventArray == null || !eventArray.isArray() || eventArray.isEmpty()) return;
 
             int stored = 0;
             List<MemoryProfileBackfillService.MemoryEvent> backfillEvents = new ArrayList<>();
-            for (JsonNode event : events) {
+            for (JsonNode event : eventArray) {
                 String content = getTextSafe(event, "content");
                 if (content == null || content.isBlank()) continue;
 

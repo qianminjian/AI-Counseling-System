@@ -5,7 +5,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.mindsafe.ai.chat.AiChatService;
 import com.mindsafe.domain.entity.StudentProfile;
 import com.mindsafe.domain.mapper.StudentProfileMapper;
 import com.mindsafe.service.profile.ProfileMergeGate;
@@ -19,8 +18,9 @@ import java.util.UUID;
 /**
  * 画像提炼服务（PROF-003，P1：LLM 提炼）
  * <p>
- * 会话结束后异步调用：从会话摘要提炼沟通偏好 / 心理韧性 / 社交图谱三个维度的增量指标，
- * 增量合并进 {@code student_profiles}。仅处理结构化标签，不接触原始对话（隐私最小化）。
+ * O 专题 S1：LLM 提炼调用已上移至 MessageSummaryService 编排，本服务为纯合并职责——
+ * 接收已解析的 JsonNode patch，将沟通偏好 / 心理韧性 / 社交图谱 / 性格特征 / 成长轨迹增量
+ * 合并进 {@code student_profiles}。仅处理结构化标签，不接触原始对话（隐私最小化）。
  * <ul>
  *   <li>communication_pref：preferred_style / expression_depth 取最新值</li>
  *   <li>resilience：coping_skills 累加使用次数，self_efficacy 取最新值</li>
@@ -39,34 +39,26 @@ public class ProfileExtractorService {
     /** PROF-025：LLM 提炼来源标识 */
     private static final String PROVENANCE_LLM = "llm_extract";
 
-    private final AiChatService aiChatService;
     private final StudentProfileMapper profileMapper;
     private final ProfileMergeGate profileMergeGate;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    public ProfileExtractorService(AiChatService aiChatService, StudentProfileMapper profileMapper,
+    public ProfileExtractorService(StudentProfileMapper profileMapper,
                                    ProfileMergeGate profileMergeGate) {
-        this.aiChatService = aiChatService;
         this.profileMapper = profileMapper;
         this.profileMergeGate = profileMergeGate;
     }
 
     /**
-     * 提炼并合并画像增量（会话结束后异步调用）。
+     * 合并画像增量（S1：LLM 调用已上移，直接接收已解析 patch）。
      *
-     * @param tenantId         租户 ID
-     * @param userId           学生用户 ID
-     * @param conversationText 对话摘要文本
-     * @param sessionSummary   会话结构化摘要（JSON）
+     * @param tenantId 租户 ID
+     * @param userId   学生用户 ID
+     * @param patch    画像增量 JsonNode（profile_patch 节点，非对象时静默跳过）
      */
-    public void extractAndMerge(UUID tenantId, UUID userId, String conversationText, String sessionSummary) {
+    public void extractAndMerge(UUID tenantId, UUID userId, JsonNode patch) {
         try {
-            String patchJson = aiChatService.extractProfilePatch(conversationText, sessionSummary);
-            if (patchJson == null || patchJson.isBlank()) {
-                return;
-            }
-            JsonNode patch = objectMapper.readTree(stripCodeFence(patchJson));
-            if (patch == null || patch.isNull() || patch.isMissingNode()) {
+            if (patch == null || !patch.isObject()) {
                 return;
             }
 
@@ -302,18 +294,4 @@ public class ProfileExtractorService {
         return ProfileMetaStamper.parseObject(objectMapper, json);
     }
 
-    /** 去除 LLM 可能包裹的 ```json ... ``` 代码块标记 */
-    private String stripCodeFence(String raw) {
-        String s = raw.trim();
-        if (s.startsWith("```")) {
-            int firstNewline = s.indexOf('\n');
-            if (firstNewline > 0) {
-                s = s.substring(firstNewline + 1);
-            }
-            if (s.endsWith("```")) {
-                s = s.substring(0, s.length() - 3);
-            }
-        }
-        return s.trim();
-    }
 }

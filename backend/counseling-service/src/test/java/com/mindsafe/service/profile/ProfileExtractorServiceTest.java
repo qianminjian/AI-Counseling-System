@@ -2,7 +2,6 @@ package com.mindsafe.service.profile;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.mindsafe.ai.chat.AiChatService;
 import com.mindsafe.domain.entity.StudentProfile;
 import com.mindsafe.domain.mapper.StudentProfileMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -19,22 +18,21 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyDouble;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 /**
  * ProfileExtractorService 单测（PROF-003/PROF-025/PROF-023）。
  * <p>
- * 覆盖：LLM patch 解析（含 code fence）/ 三维度增量合并 / 置信门控接线 / 成长轨迹里程碑 / 失败静默降级。
+ * O 专题 S1 后：LLM 提炼调用已上移至 MessageSummaryService 编排，
+ * 本服务直接接收已解析的 JsonNode patch（纯合并职责）。
+ * 覆盖：null patch 短路 / 画像缺失跳过 / 五维增量合并 / 置信门控 / 成长轨迹里程碑 / 失败静默降级。
  */
 @ExtendWith(MockitoExtension.class)
 @DisplayName("画像提炼合并服务")
 class ProfileExtractorServiceTest {
 
-    @Mock private AiChatService aiChatService;
     @Mock private StudentProfileMapper profileMapper;
     @Mock private ProfileMergeGate profileMergeGate;
 
@@ -46,7 +44,7 @@ class ProfileExtractorServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new ProfileExtractorService(aiChatService, profileMapper, profileMergeGate);
+        service = new ProfileExtractorService(profileMapper, profileMergeGate);
     }
 
     private StudentProfile profile(String commPref, String resilience, String socialGraph,
@@ -65,16 +63,18 @@ class ProfileExtractorServiceTest {
         return p;
     }
 
+    private JsonNode patch(String json) throws Exception {
+        return om.readTree(json);
+    }
+
     @Nested
     @DisplayName("前置短路")
     class ShortCircuit {
 
         @Test
-        @DisplayName("LLM 返回空 patch → 不查画像不更新")
-        void blankPatch_noop() {
-            when(aiChatService.extractProfilePatch(anyString(), anyString())).thenReturn("  ");
-
-            service.extractAndMerge(tenantId, userId, "对话", "摘要");
+        @DisplayName("patch 为 null → 不查画像不更新")
+        void nullPatch_noop() {
+            service.extractAndMerge(tenantId, userId, null);
 
             verify(profileMapper, never()).selectOne(any());
             verify(profileMapper, never()).updateById(any(StudentProfile.class));
@@ -82,34 +82,21 @@ class ProfileExtractorServiceTest {
 
         @Test
         @DisplayName("画像不存在 → 跳过合并（等 P0 聚合先建画像）")
-        void missingProfile_skips() {
-            when(aiChatService.extractProfilePatch(anyString(), anyString()))
-                    .thenReturn("{\"communication_pref\":{\"preferred_style\":\"expressive\"}}");
+        void missingProfile_skips() throws Exception {
             when(profileMapper.selectOne(any())).thenReturn(null);
 
-            service.extractAndMerge(tenantId, userId, "对话", "摘要");
+            service.extractAndMerge(tenantId, userId,
+                    patch("{\"communication_pref\":{\"preferred_style\":\"expressive\"}}"));
 
             verify(profileMapper, never()).updateById(any(StudentProfile.class));
         }
 
         @Test
-        @DisplayName("LLM 调用异常 → 静默吞掉不影响主流程")
-        void llmFailure_swallowed() {
-            when(aiChatService.extractProfilePatch(anyString(), anyString()))
-                    .thenThrow(new RuntimeException("llm down"));
+        @DisplayName("patch 为 JSON 非对象值 → 静默降级不更新")
+        void nonObjectPatch_swallowed() throws Exception {
+            service.extractAndMerge(tenantId, userId, om.readTree("\"not-an-object\""));
 
-            service.extractAndMerge(tenantId, userId, "对话", "摘要");
-
-            verifyNoInteractions(profileMapper);
-        }
-
-        @Test
-        @DisplayName("patch 为非法 JSON → 静默降级")
-        void invalidPatchJson_swallowed() {
-            when(aiChatService.extractProfilePatch(anyString(), anyString())).thenReturn("not-json");
-
-            service.extractAndMerge(tenantId, userId, "对话", "摘要");
-
+            verify(profileMapper, never()).selectOne(any());
             verify(profileMapper, never()).updateById(any(StudentProfile.class));
         }
     }
@@ -127,12 +114,11 @@ class ProfileExtractorServiceTest {
         @Test
         @DisplayName("沟通偏好：preferred_style/expression_depth 取最新值 + _meta 盖戳")
         void communicationPref_latestWinsAndMetaStamped() throws Exception {
-            when(aiChatService.extractProfilePatch(anyString(), anyString()))
-                    .thenReturn("{\"communication_pref\":{\"preferred_style\":\"expressive\",\"expression_depth\":0.8}}");
             when(profileMapper.selectOne(any()))
                     .thenReturn(profile("{\"preferred_style\":\"reserved\"}", null, null, null, null, 2));
 
-            service.extractAndMerge(tenantId, userId, "对话", "摘要");
+            service.extractAndMerge(tenantId, userId,
+                    patch("{\"communication_pref\":{\"preferred_style\":\"expressive\",\"expression_depth\":0.8}}"));
 
             JsonNode comm = om.readTree(capturedUpdate().getCommunicationPref());
             assertThat(comm.get("preferred_style").asText()).isEqualTo("expressive");
@@ -144,14 +130,13 @@ class ProfileExtractorServiceTest {
         @Test
         @DisplayName("韧性：coping_skills 按技能累加 uses（已有 2 次 + 本次 1 次 = 3）")
         void resilience_copingSkillsAccumulate() throws Exception {
-            when(aiChatService.extractProfilePatch(anyString(), anyString()))
-                    .thenReturn("{\"resilience\":{\"coping_skills_used\":[\"breathing\"],\"self_efficacy\":0.65}}");
             when(profileMapper.selectOne(any()))
                     .thenReturn(profile(null,
                             "{\"coping_skills\":{\"breathing\":{\"uses\":2,\"effective\":true}}}",
                             null, null, null, 2));
 
-            service.extractAndMerge(tenantId, userId, "对话", "摘要");
+            service.extractAndMerge(tenantId, userId,
+                    patch("{\"resilience\":{\"coping_skills_used\":[\"breathing\"],\"self_efficacy\":0.65}}"));
 
             JsonNode res = om.readTree(capturedUpdate().getResilience());
             assertThat(res.path("coping_skills").path("breathing").path("uses").asInt()).isEqualTo(3);
@@ -161,15 +146,14 @@ class ProfileExtractorServiceTest {
         @Test
         @DisplayName("社交图谱：key_persons 按 role 稳定键增量更新 sentiment")
         void socialGraph_roleKeyedMerge() throws Exception {
-            when(aiChatService.extractProfilePatch(anyString(), anyString()))
-                    .thenReturn("{\"social_graph\":{\"key_persons\":[{\"role\":\"妈妈\",\"sentiment\":0.6}],"
-                            + "\"help_seeking\":0.9}}");
             when(profileMapper.selectOne(any()))
                     .thenReturn(profile(null, null,
                             "{\"key_persons\":{\"妈妈\":{\"role\":\"妈妈\",\"sentiment\":0.2}}}",
                             null, null, 2));
 
-            service.extractAndMerge(tenantId, userId, "对话", "摘要");
+            service.extractAndMerge(tenantId, userId,
+                    patch("{\"social_graph\":{\"key_persons\":[{\"role\":\"妈妈\",\"sentiment\":0.6}],"
+                            + "\"help_seeking\":0.9}}"));
 
             JsonNode social = om.readTree(capturedUpdate().getSocialGraph());
             assertThat(social.path("key_persons").path("妈妈").path("sentiment").asDouble()).isEqualTo(0.6);
@@ -179,14 +163,13 @@ class ProfileExtractorServiceTest {
         @Test
         @DisplayName("人格特质：已有数值走置信门控（ProfileMergeGate），无值直接写入")
         void personalityTraits_gateForExisting_directForNew() throws Exception {
-            when(aiChatService.extractProfilePatch(anyString(), anyString()))
-                    .thenReturn("{\"personality_traits\":{\"introversion\":0.8,\"curiosity\":0.5}}");
             when(profileMapper.selectOne(any()))
                     .thenReturn(profile(null, null, null, null, "{\"introversion\":0.3}", 2));
             when(profileMergeGate.merge(anyDouble(), anyDouble(), anyDouble(), anyDouble()))
                     .thenReturn(new ProfileMergeGate.MergeDecision(0.42, 0.7, true, "WEIGHTED_MERGE"));
 
-            service.extractAndMerge(tenantId, userId, "对话", "摘要");
+            service.extractAndMerge(tenantId, userId,
+                    patch("{\"personality_traits\":{\"introversion\":0.8,\"curiosity\":0.5}}"));
 
             JsonNode traits = om.readTree(capturedUpdate().getPersonalityTraits());
             // introversion 已有 → 走门控结果 0.42
@@ -197,26 +180,12 @@ class ProfileExtractorServiceTest {
         }
 
         @Test
-        @DisplayName("code fence 包裹的 patch 可正常解析")
-        void codeFenceStripped() throws Exception {
-            when(aiChatService.extractProfilePatch(anyString(), anyString()))
-                    .thenReturn("```json\n{\"communication_pref\":{\"preferred_style\":\"narrative\"}}\n```");
-            when(profileMapper.selectOne(any())).thenReturn(profile(null, null, null, null, null, 1));
-
-            service.extractAndMerge(tenantId, userId, "对话", "摘要");
-
-            JsonNode comm = om.readTree(capturedUpdate().getCommunicationPref());
-            assertThat(comm.get("preferred_style").asText()).isEqualTo("narrative");
-        }
-
-        @Test
         @DisplayName("版本号递增 + lastUpdatedAt 刷新")
-        void versionIncremented() {
-            when(aiChatService.extractProfilePatch(anyString(), anyString()))
-                    .thenReturn("{\"communication_pref\":{\"preferred_style\":\"expressive\"}}");
+        void versionIncremented() throws Exception {
             when(profileMapper.selectOne(any())).thenReturn(profile(null, null, null, null, null, 1));
 
-            service.extractAndMerge(tenantId, userId, "对话", "摘要");
+            service.extractAndMerge(tenantId, userId,
+                    patch("{\"communication_pref\":{\"preferred_style\":\"expressive\"}}"));
 
             StudentProfile update = capturedUpdate();
             assertThat(update.getVersion()).isEqualTo(4);
@@ -231,10 +200,9 @@ class ProfileExtractorServiceTest {
         @Test
         @DisplayName("第 1 次会话 → first_session_completed 里程碑")
         void firstSessionMilestone() throws Exception {
-            when(aiChatService.extractProfilePatch(anyString(), anyString())).thenReturn("{}");
             when(profileMapper.selectOne(any())).thenReturn(profile(null, null, null, null, null, 0));
 
-            service.extractAndMerge(tenantId, userId, "对话", "摘要");
+            service.extractAndMerge(tenantId, userId, patch("{}"));
 
             ArgumentCaptor<StudentProfile> captor = ArgumentCaptor.forClass(StudentProfile.class);
             verify(profileMapper).updateById(captor.capture());
@@ -247,11 +215,10 @@ class ProfileExtractorServiceTest {
         @Test
         @DisplayName("第 5 次会话 → consistent_attendance；使用应对技能 → first_cbt_skill_use")
         void attendanceAndSkillMilestones() throws Exception {
-            when(aiChatService.extractProfilePatch(anyString(), anyString()))
-                    .thenReturn("{\"resilience\":{\"coping_skills_used\":[\"grounding\"]}}");
             when(profileMapper.selectOne(any())).thenReturn(profile(null, null, null, null, null, 4));
 
-            service.extractAndMerge(tenantId, userId, "对话", "摘要");
+            service.extractAndMerge(tenantId, userId,
+                    patch("{\"resilience\":{\"coping_skills_used\":[\"grounding\"]}}"));
 
             ArgumentCaptor<StudentProfile> captor = ArgumentCaptor.forClass(StudentProfile.class);
             verify(profileMapper).updateById(captor.capture());
@@ -265,11 +232,10 @@ class ProfileExtractorServiceTest {
         @Test
         @DisplayName("已有里程碑不重复添加（幂等）")
         void milestoneIdempotent() throws Exception {
-            when(aiChatService.extractProfilePatch(anyString(), anyString())).thenReturn("{}");
             when(profileMapper.selectOne(any())).thenReturn(profile(null, null, null,
                     "{\"milestones\":[{\"type\":\"first_session_completed\",\"period\":\"week_1\"}]}", null, 0));
 
-            service.extractAndMerge(tenantId, userId, "对话", "摘要");
+            service.extractAndMerge(tenantId, userId, patch("{}"));
 
             ArgumentCaptor<StudentProfile> captor = ArgumentCaptor.forClass(StudentProfile.class);
             verify(profileMapper).updateById(captor.capture());

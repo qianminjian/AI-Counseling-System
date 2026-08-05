@@ -37,7 +37,7 @@ import static org.mockito.Mockito.when;
 
 /**
  * AiChatServiceImpl 单元测试（13/20 篇审计补齐：chatWithPrompt + LLM 调用型方法 + 审计日志）
- * 覆盖：chatWithPrompt 成功/失败路径、clearMemory、摘要/画像/评估/关键事件/进展摘要的
+ * 覆盖：chatWithPrompt 成功/失败路径、clearMemory、摘要/合并提炼(画像+关键事件)/评估/进展摘要的
  * 空输入短路、成功返回、异常降级 null、ModelCallLog 错误消息截断
  */
 class AiChatServiceImplLlmCallTest {
@@ -172,17 +172,17 @@ class AiChatServiceImplLlmCallTest {
         }
 
         @Test
-        @DisplayName("extractProfilePatch：空输入短路 / sessionSummary 为 null 走缺省 / 成功 / 异常")
-        void extractProfilePatch() {
-            assertThat(service.extractProfilePatch(null, "s")).isNull();
-            assertThat(service.extractProfilePatch("", "s")).isNull();
+        @DisplayName("extractConversationInsights：空输入短路 / 双节点 JSON / 异常（S1 合并）")
+        void extractConversationInsights() {
+            assertThat(service.extractConversationInsights(null, "s")).isNull();
+            assertThat(service.extractConversationInsights("", "s")).isNull();
 
-            when(callSpec.content()).thenReturn("{\"resilience\":{}}");
-            assertThat(service.extractProfilePatch("对话文本", null)).contains("resilience");
-            assertThat(service.extractProfilePatch("对话文本", "摘要")).contains("resilience");
+            when(callSpec.content()).thenReturn("{\"profile_patch\":{\"resilience\":{}},\"key_events\":[]}");
+            assertThat(service.extractConversationInsights("对话文本", null)).contains("profile_patch");
+            assertThat(service.extractConversationInsights("对话文本", "摘要")).contains("key_events");
 
             doThrow(new RuntimeException("boom")).when(callSpec).content();
-            assertThat(service.extractProfilePatch("对话文本", "摘要")).isNull();
+            assertThat(service.extractConversationInsights("对话文本", "摘要")).isNull();
         }
 
         @Test
@@ -195,18 +195,6 @@ class AiChatServiceImplLlmCallTest {
 
             doThrow(new RuntimeException("boom")).when(callSpec).content();
             assertThat(service.evaluateConversationQuality("完整对话")).isNull();
-        }
-
-        @Test
-        @DisplayName("extractKeyEvents：空输入短路 / 成功 / 异常")
-        void extractKeyEvents() {
-            assertThat(service.extractKeyEvents("  ", null)).isNull();
-
-            when(callSpec.content()).thenReturn("{\"key_events\":[]}");
-            assertThat(service.extractKeyEvents("对话", null)).contains("key_events");
-
-            doThrow(new RuntimeException("boom")).when(callSpec).content();
-            assertThat(service.extractKeyEvents("对话", "摘要")).isNull();
         }
 
         @Test
