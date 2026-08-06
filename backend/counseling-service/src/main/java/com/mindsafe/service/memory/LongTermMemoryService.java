@@ -3,6 +3,7 @@ package com.mindsafe.service.memory;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.mindsafe.ai.risk.EmotionVocabulary;
 import com.mindsafe.common.enums.RiskLevel;
 import com.mindsafe.domain.entity.LongTermMemory;
 import com.mindsafe.domain.entity.RiskEvent;
@@ -10,6 +11,8 @@ import com.mindsafe.domain.mapper.LongTermMemoryMapper;
 import com.mindsafe.domain.mapper.RiskEventMapper;
 import com.mindsafe.service.notification.RiskNotifyOutboxService;
 import com.mindsafe.service.profile.MemoryProfileBackfillService;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Async;
@@ -55,6 +58,8 @@ public class LongTermMemoryService {
     private final ThemeEvolutionEngine themeEvolutionEngine;
     private final RiskEventMapper riskEventMapper;
     private final RiskNotifyOutboxService riskNotifyOutboxService;
+    // ARCH-010 P2-5：记忆写入失败 metrics（失败率告警依据）
+    private final Counter memoryFailureCounter;
 
     public LongTermMemoryService(LongTermMemoryMapper memoryMapper,
                                  MemoryProfileBackfillService backfillService,
@@ -62,7 +67,8 @@ public class LongTermMemoryService {
                                  MemoryRelevanceScorer memoryRelevanceScorer,
                                  ThemeEvolutionEngine themeEvolutionEngine,
                                  RiskEventMapper riskEventMapper,
-                                 RiskNotifyOutboxService riskNotifyOutboxService) {
+                                 RiskNotifyOutboxService riskNotifyOutboxService,
+                                 MeterRegistry meterRegistry) {
         this.memoryMapper = memoryMapper;
         this.backfillService = backfillService;
         this.memoryRiskCorrelator = memoryRiskCorrelator;
@@ -70,6 +76,9 @@ public class LongTermMemoryService {
         this.themeEvolutionEngine = themeEvolutionEngine;
         this.riskEventMapper = riskEventMapper;
         this.riskNotifyOutboxService = riskNotifyOutboxService;
+        this.memoryFailureCounter = Counter.builder("mindsafe.pipeline.failure")
+                .tag("stage", "memory")
+                .register(meterRegistry);
     }
 
     /**
@@ -129,7 +138,8 @@ public class LongTermMemoryService {
                 evolveThemes(tenantId, studentUserId);
             }
         } catch (Exception e) {
-            log.warn("关键事件提取失败（不影响业务）: sessionId={}, error={}", sessionId, e.getMessage());
+            memoryFailureCounter.increment();
+            log.warn("关键事件提取失败（不影响业务）: sessionId={}, stage=memory", sessionId, e);
         }
     }
 
@@ -203,8 +213,10 @@ public class LongTermMemoryService {
     /**
      * 多维遗忘策略淘汰记忆（MEM-103 接线）。
      * <p>
-     * 优先使用 {@link MemoryRiskCorrelator#evaluateForget} 多维策略：
-     * 学生意愿 > 敏感度分级 > 时效衰减 > 数量淘汰。
+     * 使用 {@link MemoryRiskCorrelator#evaluateForget} 多维策略（实际接线 3 维）：
+     * 敏感度分级 > 时效衰减 > 数量淘汰。
+     * 学生意愿（被遗忘权，PIPL）维度恒 false 未接线——无 forget 请求入口，P2 升级
+     * （ARCH-004 台账核对，见 doing/64 §8 与 TASK-TRACKER MEM-103 标注）。
      * 超出 MAX_MEMORIES_PER_STUDENT 时仍做数量兜底。
      */
     private void evictOldMemories(UUID tenantId, UUID studentUserId) {
@@ -388,12 +400,8 @@ public class LongTermMemoryService {
     }
 
     private boolean isNegativeEmotion(String emotion) {
-        if (emotion == null || emotion.isBlank()) return false;
-        String lower = emotion.toLowerCase();
-        return lower.contains("sad") || lower.contains("angry") || lower.contains("fear")
-                || lower.contains("anxious") || lower.contains("lonely") || lower.contains("crisis")
-                || lower.contains("悲") || lower.contains("怒") || lower.contains("惧")
-                || lower.contains("焦") || lower.contains("孤");
+        // ARCH-003：内嵌 contains 子串语义 → EmotionVocabulary 统一判定（原语义已全收编，行为零变更）
+        return EmotionVocabulary.isNegative(emotion);
     }
 
     private boolean isSensitiveEmotion(String emotion) {

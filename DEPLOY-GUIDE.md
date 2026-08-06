@@ -339,6 +339,22 @@ sudo systemctl restart docker
 | ASR 引擎切换 | `.env` 的 `ASR_ENGINE` | 改 .env + `docker compose up -d voice-service` |
 | 前端运行时配置 | 自动从 `GET /api/v1/system/config` 拉取 | 后端配置变更后前端自动生效（5min 缓存） |
 
+### 数据库迁移与回滚（ARCH-009 E-4，2026-08-06）
+
+> 迁移位于 `backend/counseling-app/src/main/resources/db/migration/`（Flyway V1~V33）；回滚脚本位于同级 `rollback/`。
+
+| 版本范围 | 回滚策略 | 说明 |
+|---------|---------|------|
+| V1~V27 | **不补 down 脚本，由 `deploy/restore.sh` 备份恢复承担** | 逐迁移 DDL 类型核验完成（见 design/doing/69 §3.4 完整清单）：纯结构 15 个（早期架构根基）、数据类不可逆 10 个（V3/V4/V5/V6/V8/V14/V17/V25/V26/V27：INSERT/UPDATE 改写）、扩展类 2 个（V15 pgcrypto / V24 vector，生产库删除风险高）。显式接受「不可逆迁移清单」 |
+| V28~V33 | 已有 down 脚本（`rollback/` 6 个） | 维持现状，按现有 E2 演练体系执行 |
+| **V34+（强制）** | **必须带 down 脚本 + 演练记录** | 发布检查项：新迁移 PR 未附 `rollback/Vxx__*.rollback.sql` 或未登记演练记录 → 禁止合并 |
+
+**发布检查项（V34+ 迁移）**：
+1. 迁移文件：`migration/Vxx__xxx.sql`
+2. 回滚脚本：`rollback/Vxx__xxx.rollback.sql`（同 PR 提交）
+3. 演练记录：scripts/ E2 体系登记回滚演练结果
+4. 三项齐全方可合并发布；缺任一 → CI 人工门禁拦截
+
 ---
 
 ## 十、监控与告警

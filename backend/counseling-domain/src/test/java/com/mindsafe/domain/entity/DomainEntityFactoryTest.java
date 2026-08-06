@@ -1,5 +1,6 @@
 package com.mindsafe.domain.entity;
 
+import com.mindsafe.domain.util.MessageSummarySummarizer;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -103,14 +104,36 @@ class DomainEntityFactoryTest {
     }
 
     @Test
-    @DisplayName("studentMessage 超长内容截断至 1024，null 内容保留")
+    @DisplayName("studentMessage 常规消息（risk<2）语义提炼至 ≤200 字，null 内容保留")
     void studentMessage_truncatesLongContent() {
+        // D-7 路径 C：GREEN/YELLOW 消息走 MessageSummarySummarizer 语义提炼（≤200 字），非原文切片
         String longText = "x".repeat(2000);
         MessageSummary m = MessageSummary.studentMessage(tenantId, UUID.randomUUID(), userId, 1, longText, null, 0);
-        assertEquals(1024, m.getContentSummary().length());
+        assertEquals(MessageSummarySummarizer.MAX_SUMMARY_LENGTH, m.getContentSummary().length());
         assertEquals("[]", m.getEmotionTags());
         MessageSummary n = MessageSummary.studentMessage(tenantId, UUID.randomUUID(), userId, 1, null, null, 0);
         assertNull(n.getContentSummary());
+    }
+
+    @Test
+    @DisplayName("studentMessage 风险消息（risk≥2 ORANGE/RED）原文保真，超长截断至 1024")
+    void studentMessage_highRiskKeepsFullText() {
+        // D-7 路径 C：安全证据 > 数据最小化，L3+ 消息不提炼
+        String longText = "a".repeat(2000);
+        MessageSummary m = MessageSummary.studentMessage(tenantId, UUID.randomUUID(), userId, 1, longText, "害怕", 2);
+        assertEquals(1024, m.getContentSummary().length());
+        MessageSummary n = MessageSummary.studentMessage(tenantId, UUID.randomUUID(), userId, 1, longText, null, 3);
+        assertEquals(1024, n.getContentSummary().length());
+    }
+
+    @Test
+    @DisplayName("studentMessage 常规消息去噪提炼（去除句尾语气词）")
+    void studentMessage_normalRiskSummarized() {
+        String text = "嗯嗯。我今天考试没考好呀。好烦啊。";
+        MessageSummary m = MessageSummary.studentMessage(tenantId, UUID.randomUUID(), userId, 1, text, null, 1);
+        assertTrue(m.getContentSummary().contains("我今天考试没考好"));
+        assertFalse(m.getContentSummary().contains("嗯嗯"));
+        assertFalse(m.getContentSummary().contains("啊"));
     }
 
     @Test

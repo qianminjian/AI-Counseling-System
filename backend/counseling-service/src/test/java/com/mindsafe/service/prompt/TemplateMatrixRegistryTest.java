@@ -30,10 +30,10 @@ class TemplateMatrixRegistryTest {
                 .collect(Collectors.toSet());
 
         Set<String> expected = Set.of(
-                "SYS-001", "SAF-001", "SAF-002",
-                "LANG-001", "LANG-002", "LANG-003",
-                "EMO-001", "SKL-001", "SKL-002", "SKL-003",
-                "TSK-001", "TSK-002", "TSK-003", "TSK-004");
+                "SYS_001", "SAF_001", "SAF_002",
+                "LANG_001", "LANG_002", "LANG_003",
+                "EMO_001", "SKL_001", "SKL_002", "SKL_003",
+                "TSK_001", "TSK_002", "TSK_003", "TSK_004");
         assertEquals(expected, keys);
     }
 
@@ -47,7 +47,7 @@ class TemplateMatrixRegistryTest {
 
     @Test
     void findActive返回生效条目_未知返回null() {
-        assertNotNull(registry.findActive("SYS-001"));
+        assertNotNull(registry.findActive("SYS_001"));
         assertNull(registry.findActive("NOT-EXIST"));
     }
 
@@ -55,11 +55,12 @@ class TemplateMatrixRegistryTest {
 
     @Test
     void 版本命名规范_正反例() {
-        assertTrue(registry.isValidVersion("SYS-001_zh-CN_v1.0.0"));
-        assertTrue(registry.isValidVersion("EMO-001_zh-CN_v1.2.3"));
-        assertFalse(registry.isValidVersion("sys-001_zh-CN_v1.0.0"));   // 小写 key
-        assertFalse(registry.isValidVersion("SYS-001_v1.0.0"));          // 缺语言段
-        assertFalse(registry.isValidVersion("SYS-001_zh-CN_v1.0"));      // semver 不完整
+        assertTrue(registry.isValidVersion("SYS_001_zh-CN_v1.0.0"));
+        assertTrue(registry.isValidVersion("EMO_001_zh-CN_v1.2.3"));
+        assertFalse(registry.isValidVersion("sys_001_zh-CN_v1.0.0"));   // 小写 key
+        assertFalse(registry.isValidVersion("SYS_001_v1.0.0"));          // 缺语言段
+        assertFalse(registry.isValidVersion("SYS_001_zh-CN_v1.0"));      // semver 不完整
+        assertFalse(registry.isValidVersion("SYS-001_zh-CN_v1.0.0"));    // 连字符 key 不再合法（ARCH-010 D4）
         assertFalse(registry.isValidVersion(null));
         assertFalse(registry.isValidVersion(""));
     }

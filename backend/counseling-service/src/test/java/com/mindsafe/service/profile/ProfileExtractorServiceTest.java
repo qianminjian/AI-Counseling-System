@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mindsafe.domain.entity.StudentProfile;
 import com.mindsafe.domain.mapper.StudentProfileMapper;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -16,6 +17,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyDouble;
 import static org.mockito.Mockito.never;
@@ -38,13 +40,14 @@ class ProfileExtractorServiceTest {
 
     private ProfileExtractorService service;
     private final ObjectMapper om = new ObjectMapper();
+    private final SimpleMeterRegistry registry = new SimpleMeterRegistry();
 
     private final UUID tenantId = UUID.randomUUID();
     private final UUID userId = UUID.randomUUID();
 
     @BeforeEach
     void setUp() {
-        service = new ProfileExtractorService(profileMapper, profileMergeGate);
+        service = new ProfileExtractorService(profileMapper, profileMergeGate, om, registry);
     }
 
     private StudentProfile profile(String commPref, String resilience, String socialGraph,
@@ -70,6 +73,19 @@ class ProfileExtractorServiceTest {
     @Nested
     @DisplayName("前置短路")
     class ShortCircuit {
+
+        @Test
+        @DisplayName("ARCH-010 P2-5：画像合并失败必须产生 metrics 计数（stage=profile）且不上抛")
+        void mergeFailure_incrementsMetric() {
+            when(profileMapper.selectOne(any())).thenReturn(profile("x", "x", "x", "x", "x", 1));
+            when(profileMapper.updateById(any(StudentProfile.class))).thenThrow(new RuntimeException("db down"));
+
+            assertThatCode(() -> service.extractAndMerge(tenantId, userId,
+                    om.createObjectNode().put("communication_pref", "")))
+                    .doesNotThrowAnyException();
+            assertThat(registry.counter("mindsafe.pipeline.failure", "stage", "profile").count())
+                    .isEqualTo(1);
+        }
 
         @Test
         @DisplayName("patch 为 null → 不查画像不更新")

@@ -34,9 +34,27 @@ public class ThemeEvolutionEngine {
             Map.entry("peer_conflict", List.of("同桌", "同学", "朋友", "吵架", "打架", "孤立", "排挤", "霸凌")),
             Map.entry("academic_pressure", List.of("考试", "成绩", "作业", "分数", "不及格", "补课", "排名")),
             Map.entry("family_tension", List.of("爸妈", "父母", "家里", "离婚", "吵架", "挨打", "骂")),
-            Map.entry("self_worth", List.of("笨", "没用", "讨厌自己", "不如", "差劲", "失败")),
+            Map.entry("self_worth", List.of("笨", "没用", "讨厌自己", "不如", " 差劲", "失败")),
             Map.entry("separation_anxiety", List.of("分离", "不想上学", "害怕", "一个人", "丢下")),
             Map.entry("sleep_issue", List.of("睡不着", "噩梦", "失眠", "害怕黑", "半夜"))
+    );
+    
+    /** 单轮话题关键词注册表（CTX-Agent Phase 5，ARCH-001 C1 收敛单一源） */
+    public record TopicPattern(String keyword, String label) {
+    }
+    
+    /** 话题关键词表（表序即优先级，每轮最多命中 1 个；自 ConversationServiceImpl.extractTopicHint 原样迁移） */
+    public static final List<TopicPattern> TOPIC_PATTERNS = List.of(
+            new TopicPattern("同学", "同学关系"), new TopicPattern("朋友", "友谊"),
+            new TopicPattern("妈妈", "和妈妈的关系"), new TopicPattern("爸爸", "和爸爸的关系"),
+            new TopicPattern("老师", "和老师的关系"),
+            new TopicPattern("考试", "考试压力"), new TopicPattern("成绩", "学习压力"), new TopicPattern("作业", "学习压力"),
+            new TopicPattern("欺负", "被欺负"), new TopicPattern("打我", "被欺负"), new TopicPattern("骂我", "被欺负"),
+            new TopicPattern("不想活", "自伤倾向"), new TopicPattern("死", "自伤倾向"),
+            new TopicPattern("孤独", "孤独感"), new TopicPattern("没人", "孤独感"),
+            new TopicPattern("害怕", "恐惧"), new TopicPattern("担心", "焦虑"),
+            new TopicPattern("生气", "愤怒"), new TopicPattern("讨厌", "厌恶"),
+            new TopicPattern("弟弟", "兄弟姐妹关系"), new TopicPattern("妹妹", "兄弟姐妹关系")
     );
 
     /** 主题识别结果 */
@@ -59,6 +77,26 @@ public class ThemeEvolutionEngine {
 
     /** 输入事件（从 key_event 提取的简化视图） */
     public record EventSnippet(String content, String emotion, Instant occurredAt) {
+    }
+
+    /**
+     * 单条消息话题提取（CTX-Agent Phase 5，ARCH-001 C1 收敛单一源）。
+     * <p>
+     * 行为基线：自 ConversationServiceImpl.extractTopicHint 关键词表原样迁移——
+     * 内容 null 或 <4 字符返回 null；按表序扫描，每轮最多返回 1 个主题标签；
+     * 风险类别主题不在此处（调用方由 RiskDetectionResult.category 直接处理）。
+     *
+     * @param content 学生本轮消息原文
+     * @return 命中主题标签（如"同学关系"），无命中返回 null
+     */
+    public String findTopicHint(String content) {
+        if (content == null || content.length() < 4) return null;
+        for (TopicPattern pattern : TOPIC_PATTERNS) {
+            if (content.contains(pattern.keyword())) {
+                return pattern.label();
+            }
+        }
+        return null;
     }
 
     /**

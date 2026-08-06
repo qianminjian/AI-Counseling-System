@@ -115,13 +115,13 @@ class SessionSummaryUpdaterTest {
             when(aiChatService.summarizeSessionProgress(anyString()))
                     .thenReturn("  学生表达了难过情绪，AI 引导其展开叙述  ");
             SessionState session = newState(8, 4);
-            when(sessionStateStore.get(sessionId)).thenReturn(session);
+            when(sessionStateStore.get(tenantId, sessionId)).thenReturn(session);
 
             updater.updateSummaryAsync(tenantId, sessionId, studentUserId, 8);
 
             assertThat(session.getSessionSummary()).isEqualTo("学生表达了难过情绪，AI 引导其展开叙述");
             assertThat(session.getLastSummaryTurn()).isEqualTo(8);
-            verify(sessionStateStore).save(eq(sessionId), eq(session));
+            verify(sessionStateStore).save(eq(tenantId), eq(sessionId), eq(session));
             // 拼接文本包含学生与波波角色标签
             org.mockito.ArgumentCaptor<String> captor = org.mockito.ArgumentCaptor.forClass(String.class);
             verify(aiChatService).summarizeSessionProgress(captor.capture());
@@ -136,7 +136,7 @@ class SessionSummaryUpdaterTest {
             updater.updateSummaryAsync(tenantId, sessionId, studentUserId, 8);
 
             verify(aiChatService, never()).summarizeSessionProgress(anyString());
-            verify(sessionStateStore, never()).save(any(), any());
+            verify(sessionStateStore, never()).save(any(), any(), any());
         }
 
         @Test
@@ -159,7 +159,7 @@ class SessionSummaryUpdaterTest {
             updater.updateSummaryAsync(tenantId, sessionId, studentUserId, 8);
 
             verify(aiChatService, never()).summarizeSessionProgress(anyString());
-            verify(sessionStateStore, never()).save(any(), any());
+            verify(sessionStateStore, never()).save(any(), any(), any());
         }
 
         @Test
@@ -172,8 +172,8 @@ class SessionSummaryUpdaterTest {
 
             updater.updateSummaryAsync(tenantId, sessionId, studentUserId, 8);
 
-            verify(sessionStateStore, never()).get(any());
-            verify(sessionStateStore, never()).save(any(), any());
+            verify(sessionStateStore, never()).get(any(), any());
+            verify(sessionStateStore, never()).save(any(), any(), any());
         }
 
         @Test
@@ -183,11 +183,11 @@ class SessionSummaryUpdaterTest {
                     .thenReturn(List.of(newMessage("student", "enc-1")));
             when(fieldEncryptionService.decrypt("enc-1")).thenReturn("内容");
             when(aiChatService.summarizeSessionProgress(anyString())).thenReturn("摘要内容");
-            when(sessionStateStore.get(sessionId)).thenReturn(null);
+            when(sessionStateStore.get(tenantId, sessionId)).thenReturn(null);
 
             updater.updateSummaryAsync(tenantId, sessionId, studentUserId, 8);
 
-            verify(sessionStateStore, never()).save(any(), any());
+            verify(sessionStateStore, never()).save(any(), any(), any());
         }
 
         @Test
@@ -198,7 +198,7 @@ class SessionSummaryUpdaterTest {
             // 不应抛出异常
             updater.updateSummaryAsync(tenantId, sessionId, studentUserId, 8);
 
-            verify(sessionStateStore, never()).save(any(), any());
+            verify(sessionStateStore, never()).save(any(), any(), any());
         }
     }
 }

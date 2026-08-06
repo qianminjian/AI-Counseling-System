@@ -47,13 +47,6 @@ public class PromptOrchestrationService {
     }
 
     /**
-     * 计算本轮策略档案（向后兼容，不返回状态转移）
-     */
-    public StrategyProfile resolve(OrchestrationContext ctx) {
-        return resolveWithTransition(ctx).profile();
-    }
-    
-    /**
      * 计算本轮策略档案 + 状态机转移（ORCH-003）
      */
     public Result resolveWithTransition(OrchestrationContext ctx) {
@@ -113,28 +106,6 @@ public class PromptOrchestrationService {
                         signals.dominantInterests().stream().limit(3).toList()) + "」，镜映比喻可优先从这些主题取材";
                 mirrorHint = mirrorHint.isBlank() ? material : mirrorHint + "；" + material;
             }
-            // ORCH-006：高敏感→更温柔慢，追问强度降低
-            if (signals.sensitivityUsable() && signals.sensitivity() >= 0.7
-                    && effectiveState == StrategyProfile.EmotionState.STABLE) {
-                pace = StrategyProfile.Pace.SLOW;
-                mirrorHint = mirrorHint.isBlank()
-                        ? "孩子较敏感，镜映话术要更温柔、不评判"
-                        : mirrorHint + "；孩子较敏感，话术温度要更高";
-            }
-            // ORCH-006：高好奇→可用探索式引导（不直接给答案）
-            if (signals.curiosityUsable() && signals.curiosity() >= 0.7
-                    && effectiveState == StrategyProfile.EmotionState.STABLE && allowCbt) {
-                mirrorHint = mirrorHint.isBlank()
-                        ? "孩子好奇心强，可用探索式提问引导自己发现（而非直接告知）"
-                        : mirrorHint + "；可用探索式提问引导";
-            }
-            // ORCH-006：已掌握技巧→可主动唤起复用
-            if (signals.copingSkillsUsable() && effectiveState != StrategyProfile.EmotionState.CRISIS) {
-                String skills = String.join("、", signals.copingSkills().stream().limit(3).toList());
-                mirrorHint = mirrorHint.isBlank()
-                        ? "孩子已掌握「" + skills + "」，情绪波动时可温和唤起复用"
-                        : mirrorHint + "；已掌握技巧：" + skills + "，可唤起复用";
-            }
         }
     
         // 6. 冷场协同（ORCH-005，design/44 §7.3）：nudge 触发时偏向留白低压
@@ -169,7 +140,7 @@ public class PromptOrchestrationService {
     /**
      * VCL-001：语音 SER 标签 → 规范集情绪（委托 {@link EntryMoodStrategyResolver#mapVoiceEmotion}）。
      * 调用方拿映射结果填 {@link OrchestrationContext#currentEmotion()}；null 表示信号不可用，
-     * resolve() 会自然回退 entryMood。
+     * resolveWithTransition() 会自然回退 entryMood。
      */
     public String mapVoiceEmotion(String serLabel) {
         return moodResolver.mapVoiceEmotion(serLabel);

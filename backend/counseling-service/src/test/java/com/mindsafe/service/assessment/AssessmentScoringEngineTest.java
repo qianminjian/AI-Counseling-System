@@ -1,5 +1,6 @@
 package com.mindsafe.service.assessment;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -24,7 +25,7 @@ class AssessmentScoringEngineTest {
 
     @BeforeEach
     void setUp() {
-        engine = new AssessmentScoringEngine();
+        engine = new AssessmentScoringEngine(new ObjectMapper());
     }
 
     /** 构造 PHQ-A 9 题作答（每题 0-3） */

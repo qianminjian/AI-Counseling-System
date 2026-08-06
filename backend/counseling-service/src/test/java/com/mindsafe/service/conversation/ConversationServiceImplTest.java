@@ -24,11 +24,13 @@ import com.mindsafe.domain.mapper.UserMapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mindsafe.service.knowledge.RagAdvisorService;
 import com.mindsafe.service.memory.LongTermMemoryService;
+import com.mindsafe.service.memory.ThemeEvolutionEngine;
 import com.mindsafe.service.profile.ProfileExtractorService;
 import com.mindsafe.service.profile.StudentProfileService;
 import com.mindsafe.service.prompt.PromptVersionService;
 import com.mindsafe.service.quality.ConversationQualityService;
 import com.mindsafe.service.usage.UsageTimeLimitService;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -47,6 +49,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -63,7 +66,6 @@ import static org.mockito.Mockito.when;
 class ConversationServiceImplTest {
 
     private AiChatService aiChatService;
-    private PromptTemplateService promptTemplateService;
     private ConversationRiskProcessor riskProcessor;
     private PiiDesensitizer piiDesensitizer;
     private CounselingSessionMapper sessionMapper;
@@ -84,6 +86,11 @@ class ConversationServiceImplTest {
     private ConversationContextAgent contextAgent;
     private SessionSummaryUpdater sessionSummaryUpdater;
 
+    // ARCH-001 C1：新拆分组件（个人信息提取/提示词组装/主题关键词），真实实例走真实接线
+    private PersonalInfoExtractor personalInfoExtractor;
+    private PromptAssemblyService promptAssemblyService;
+    private ThemeEvolutionEngine themeEvolutionEngine;
+
     /** 测试用内存模拟 Redis 存储 */
     private final Map<UUID, SessionState> testSessionStore = new HashMap<>();
 
@@ -96,7 +103,6 @@ class ConversationServiceImplTest {
     @BeforeEach
     void setUp() {
         aiChatService = mock(AiChatService.class);
-        promptTemplateService = mock(PromptTemplateService.class);
         riskProcessor = mock(ConversationRiskProcessor.class);
         piiDesensitizer = mock(PiiDesensitizer.class);
         sessionMapper = mock(CounselingSessionMapper.class);
@@ -117,19 +123,24 @@ class ConversationServiceImplTest {
         sessionStateStore = mock(RedisSessionStateStore.class);
         contextAgent = mock(ConversationContextAgent.class);
         sessionSummaryUpdater = mock(SessionSummaryUpdater.class);
+        // ARCH-001 C1：真实实例走真实接线（纯规则/组装无副作用）
+        personalInfoExtractor = new PersonalInfoExtractor();
+        themeEvolutionEngine = new ThemeEvolutionEngine();
+        promptAssemblyService = new PromptAssemblyService(promptVersionService, cbtStageRouter);
         // CTX-Agent: 默认返回空简报（不阻塞 sendMessageStream 测试）
         when(contextAgent.buildContextBrief(any(), any(), any(), any(), anyInt())).thenReturn("");
 
         // 用内存 Map 模拟 Redis 存储行为
         org.mockito.Mockito.doAnswer(inv -> {
-            testSessionStore.put(inv.getArgument(0), inv.getArgument(1));
+            testSessionStore.put(inv.getArgument(1), inv.getArgument(2));
             return null;
-        }).when(sessionStateStore).save(any(UUID.class), any(SessionState.class));
-        when(sessionStateStore.get(any(UUID.class))).thenAnswer(inv -> testSessionStore.get(inv.getArgument(0)));
+        }).when(sessionStateStore).save(any(UUID.class), any(UUID.class), any(SessionState.class));
+        when(sessionStateStore.get(any(UUID.class), any(UUID.class)))
+                .thenAnswer(inv -> testSessionStore.get(inv.getArgument(1)));
         org.mockito.Mockito.doAnswer(inv -> {
-            testSessionStore.remove(inv.getArgument(0));
+            testSessionStore.remove(inv.getArgument(1));
             return null;
-        }).when(sessionStateStore).remove(any(UUID.class));
+        }).when(sessionStateStore).remove(any(UUID.class), any(UUID.class));
 
         // P0-2: ConversationRiskProcessor 默认行为（无风险正常流程）
         when(riskProcessor.detectKeywordRisk(anyString())).thenReturn(RiskDetectionResult.safe());
@@ -157,12 +168,12 @@ class ConversationServiceImplTest {
                         "", 1, "", new org.springframework.core.env.StandardEnvironment());
         messageSummaryService = new MessageSummaryService(messageSummaryMapper, sessionMapper,
                 aiChatService, plainEnc, conversationQualityService, profileExtractorService, longTermMemoryService,
-                new ObjectMapper());
+                new ObjectMapper(), new SimpleMeterRegistry());
 
-        service = new ConversationServiceImpl(aiChatService, promptTemplateService,
+        service = new ConversationServiceImpl(aiChatService,
                 riskProcessor, piiDesensitizer, sessionMapper, messageSummaryMapper,
                 userMapper, profileService,
-                usageTimeLimitService, longTermMemoryService, promptVersionService,
+                usageTimeLimitService, longTermMemoryService,
                 ragAdvisorService,
                 // ORCH-001/003：编排引擎+情绪状态机纯规则无依赖，直接用真实实例
                 new PromptOrchestrationService(new EntryMoodStrategyResolver(), new EmotionStateMachine()),
@@ -171,7 +182,8 @@ class ConversationServiceImplTest {
                 crisisResourceProvider,
                 allianceEnhancer, cbtStageRouter,
                 sessionEndAnalyticsService, sessionStateStore,
-                contextAgent, sessionSummaryUpdater);
+                contextAgent, sessionSummaryUpdater, new ObjectMapper(),
+                personalInfoExtractor, promptAssemblyService, themeEvolutionEngine);
     }
 
     /** createSession 并捕获内部生成的 sessionId */
@@ -347,20 +359,21 @@ class ConversationServiceImplTest {
             com.mindsafe.service.security.FieldEncryptionService keyedEnc =
                     new com.mindsafe.service.security.FieldEncryptionService(
                             TEST_KEY, 1, "", new org.springframework.core.env.StandardEnvironment());
-            ConversationServiceImpl keyedService = new ConversationServiceImpl(aiChatService, promptTemplateService,
+            ConversationServiceImpl keyedService = new ConversationServiceImpl(aiChatService,
                     riskProcessor, piiDesensitizer, sessionMapper, messageSummaryMapper,
                     userMapper, profileService,
-                    usageTimeLimitService, longTermMemoryService, promptVersionService,
+                    usageTimeLimitService, longTermMemoryService,
                     ragAdvisorService,
                     new PromptOrchestrationService(new EntryMoodStrategyResolver(), new EmotionStateMachine()),
                     new MessageSummaryService(messageSummaryMapper, sessionMapper,
                             aiChatService, keyedEnc, conversationQualityService, profileExtractorService, longTermMemoryService,
-                            new ObjectMapper()),
+                            new ObjectMapper(), new SimpleMeterRegistry()),
                     keyedEnc,
                     crisisResourceProvider,
                     allianceEnhancer, cbtStageRouter,
-                    sessionEndAnalyticsService, sessionStateStore,
-                    contextAgent, sessionSummaryUpdater);
+                sessionEndAnalyticsService, sessionStateStore,
+                contextAgent, sessionSummaryUpdater, new ObjectMapper(),
+                personalInfoExtractor, promptAssemblyService, themeEvolutionEngine);
 
             User user = new User();
             user.setPseudonym("小明");
@@ -370,11 +383,12 @@ class ConversationServiceImplTest {
             UUID sessionId = keyedService.createSession(tenantId, studentId, "happy", "web").sessionId();
 
             mockSessionActive(sessionId);
-            when(promptTemplateService.render(eq(PromptTemplateService.TSK_004), anyMap()))
-                    .thenReturn("【暖场指令】强度=2");
+            // ARCH-010 D4：TSK_004 走版本路由（specific mock 优先于 setUp generic）
+            when(promptVersionService.resolve(eq(tenantId), eq("TSK_004"), eq(studentId), anyMap()))
+                    .thenReturn(new PromptVersionService.ResolvedPrompt("【暖场指令】强度=2", "TSK_004:v0:classpath", "control"));
             when(profileService.buildProfilePrompt(eq(tenantId), eq(studentId), any(Integer.class), any()))
                     .thenReturn(null);
-            when(aiChatService.chatProactive(eq(sessionId), eq("happy"), eq("male"), any(), eq("【暖场指令】强度=2"), any(Integer.class)))
+            when(aiChatService.chatProactive(eq(sessionId), eq("happy"), eq("male"), any(), contains("【暖场指令】强度=2"), any(Integer.class)))
                     .thenReturn(Flux.just(StreamMessageEvent.token("波波在呢"), StreamMessageEvent.token("～")));
 
             keyedService.sendNudgeStream(tenantId, studentId, sessionId, 30).collectList().block();
@@ -436,15 +450,16 @@ class ConversationServiceImplTest {
         }
 
         @Test
-        @DisplayName("决策=暖场 → TSK-004 渲染 + chatProactive + 回复落库 + done 事件")
+        @DisplayName("决策=暖场 → TSK_004 版本路由 + chatProactive + 回复落库 + done 事件")
         void decisionWarm_streamsProactiveReply() {
             UUID sessionId = createSession("happy");
             mockSessionActive(sessionId);
-            when(promptTemplateService.render(eq(PromptTemplateService.TSK_004), anyMap()))
-                    .thenReturn("【暖场指令】强度=2");
+            // ARCH-010 D4：TSK_004 走版本路由（specific mock 优先于 setUp generic）
+            when(promptVersionService.resolve(eq(tenantId), eq("TSK_004"), eq(studentId), anyMap()))
+                    .thenReturn(new PromptVersionService.ResolvedPrompt("【暖场指令】强度=2", "TSK_004:v0:classpath", "control"));
             when(profileService.buildProfilePrompt(eq(tenantId), eq(studentId), any(Integer.class), any()))
                     .thenReturn(null);
-            when(aiChatService.chatProactive(eq(sessionId), eq("happy"), eq("male"), any(), eq("【暖场指令】强度=2"), any(Integer.class)))
+            when(aiChatService.chatProactive(eq(sessionId), eq("happy"), eq("male"), any(), contains("【暖场指令】强度=2"), any(Integer.class)))
                     .thenReturn(Flux.just(StreamMessageEvent.token("波波在呢"), StreamMessageEvent.token("～")));
 
             // happy(+1) + 30s(B+1) + 前期(D+1) = 3 → 引导破冰
@@ -457,10 +472,10 @@ class ConversationServiceImplTest {
             assertThat(events.get(0).content()).isEqualTo("波波在呢");
             assertThat(events.get(2).type()).isEqualTo("done");
 
-            // 走 chatProactive（不污染记忆）
-            verify(aiChatService).chatProactive(eq(sessionId), eq("happy"), eq("male"), any(), eq("【暖场指令】强度=2"), any(Integer.class));
-            // TSK-004 渲染含决策参数
-            verify(promptTemplateService).render(eq(PromptTemplateService.TSK_004), anyMap());
+            // 走 chatProactive（不污染记忆）；systemPromptContent 含版本路由渲染的暖场指令
+            verify(aiChatService).chatProactive(eq(sessionId), eq("happy"), eq("male"), any(), contains("【暖场指令】强度=2"), any(Integer.class));
+            // TSK_004 走版本路由（ARCH-001 C1：路由收敛 PromptAssemblyService 内部）
+            verify(promptVersionService).resolve(eq(tenantId), eq("TSK_004"), eq(studentId), anyMap());
             // AI 暖场回复落库（孩子看到的连续性保留）
             verify(messageSummaryMapper).insert(any(com.mindsafe.domain.entity.MessageSummary.class));
         }
@@ -470,7 +485,6 @@ class ConversationServiceImplTest {
         void intervalGuard_empty() {
             UUID sessionId = createSession("happy");
             mockSessionActive(sessionId);
-            when(promptTemplateService.render(anyString(), anyMap())).thenReturn("指令");
             when(aiChatService.chatProactive(any(), any(), any(), any(), any(), any(Integer.class)))
                     .thenReturn(Flux.just(StreamMessageEvent.token("在呢")));
 
@@ -515,7 +529,7 @@ class ConversationServiceImplTest {
             when(usageTimeLimitService.isExceeded(any(), any())).thenReturn(false);
             when(profileService.buildProfilePrompt(eq(tenantId), eq(studentId), any(Integer.class), any()))
                     .thenReturn(null);
-            when(aiChatService.chatWithPrompt(any(), any(), any(), any(), any(), anyInt(), anyString()))
+            when(aiChatService.chatWithPrompt(any(), any(), any(), any(), anyInt(), anyString()))
                     .thenReturn(Flux.just(StreamMessageEvent.token("你好呀")));
 
             List<StreamMessageEvent> chatEvents = service
@@ -524,7 +538,6 @@ class ConversationServiceImplTest {
             assertThat(chatEvents).isNotEmpty();
 
             // 计数已清零 + 间隔足够 → 暖场恢复
-            when(promptTemplateService.render(anyString(), anyMap())).thenReturn("指令");
             when(aiChatService.chatProactive(any(), any(), any(), any(), any(), any(Integer.class)))
                     .thenReturn(Flux.just(StreamMessageEvent.token("在呢")));
             List<StreamMessageEvent> nudgeEvents = service
@@ -540,7 +553,6 @@ class ConversationServiceImplTest {
         void proactiveError_silentEmpty() {
             UUID sessionId = createSession("happy");
             mockSessionActive(sessionId);
-            when(promptTemplateService.render(anyString(), anyMap())).thenReturn("指令");
             when(profileService.buildProfilePrompt(eq(tenantId), eq(studentId), any(Integer.class), any()))
                     .thenReturn(null);
             when(aiChatService.chatProactive(any(), any(), any(), any(), any(), any(Integer.class)))
@@ -591,7 +603,7 @@ class ConversationServiceImplTest {
             assertThat(events.get(2).type()).isEqualTo("done");
 
             // 硬短路：绝不调用 LLM 自由生成
-            verify(aiChatService, never()).chatWithPrompt(any(), any(), any(), any(), any(), anyInt(), anyString());
+            verify(aiChatService, never()).chatWithPrompt(any(), any(), any(), any(), anyInt(), anyString());
         }
 
         @Test
@@ -649,7 +661,7 @@ class ConversationServiceImplTest {
             assertThat(events.get(0).type()).isEqualTo("token");
             assertThat(events.get(0).content()).isEqualTo(CrisisResources.SAFETY_MODE_COMPANION_REPLY);
             assertThat(events.get(1).type()).isEqualTo("done");
-            verify(aiChatService, never()).chatWithPrompt(any(), any(), any(), any(), any(), anyInt(), anyString());
+            verify(aiChatService, never()).chatWithPrompt(any(), any(), any(), any(), anyInt(), anyString());
         }
 
         @Test
@@ -665,14 +677,14 @@ class ConversationServiceImplTest {
             when(usageTimeLimitService.isExceeded(any(), any())).thenReturn(false);
             when(profileService.buildProfilePrompt(eq(tenantId), eq(studentId), any(Integer.class), any()))
                     .thenReturn(null);
-            when(aiChatService.chatWithPrompt(any(), any(), any(), any(), any(), anyInt(), anyString()))
+            when(aiChatService.chatWithPrompt(any(), any(), any(), any(), anyInt(), anyString()))
                     .thenReturn(Flux.just(StreamMessageEvent.token("我在听")));
 
             List<StreamMessageEvent> events = service
                     .sendMessageStream(tenantId, studentId, sessionId, "我在学校被打了")
                     .collectList().block();
 
-            verify(aiChatService).chatWithPrompt(any(), any(), any(), any(), any(), anyInt(), anyString());
+            verify(aiChatService).chatWithPrompt(any(), any(), any(), any(), anyInt(), anyString());
             assertThat(events).anyMatch(e -> "risk".equals(e.type()));
             assertThat(events).anyMatch(e -> "token".equals(e.type()) && "我在听".equals(e.content()));
         }
@@ -701,7 +713,7 @@ class ConversationServiceImplTest {
         private void mockLlmReply() {
             when(profileService.buildProfilePrompt(eq(tenantId), eq(studentId), any(Integer.class), any()))
                     .thenReturn(null);
-            when(aiChatService.chatWithPrompt(any(), any(), any(), any(), any(), anyInt(), anyString()))
+            when(aiChatService.chatWithPrompt(any(), any(), any(), any(), anyInt(), anyString()))
                     .thenReturn(Flux.just(StreamMessageEvent.token("我在听")));
         }
 
@@ -726,7 +738,7 @@ class ConversationServiceImplTest {
             assertThat(events.get(0).type()).isEqualTo("risk");
             assertThat(events.get(1).content()).isEqualTo(CrisisResources.RED_SAFETY_REPLY);
             assertThat(events.get(2).type()).isEqualTo("done");
-            verify(aiChatService, never()).chatWithPrompt(any(), any(), any(), any(), any(), anyInt(), anyString());
+            verify(aiChatService, never()).chatWithPrompt(any(), any(), any(), any(), anyInt(), anyString());
             verify(riskProcessor).persistRiskEvent(any(SessionState.class), any(RiskDetectionResult.class));
         }
 
@@ -743,7 +755,7 @@ class ConversationServiceImplTest {
                     .collectList().block();
 
             verify(riskProcessor).applySemanticRisk(any(RiskDetectionResult.class), anyString(), anyInt());
-            verify(aiChatService).chatWithPrompt(any(), any(), any(), any(), any(), anyInt(), anyString());
+            verify(aiChatService).chatWithPrompt(any(), any(), any(), any(), anyInt(), anyString());
             assertThat(events).noneMatch(e -> "risk".equals(e.type()));
         }
 
@@ -782,7 +794,7 @@ class ConversationServiceImplTest {
                     .collectList().block();
 
             assertThat(events).anyMatch(e -> "risk".equals(e.type()));
-            verify(aiChatService).chatWithPrompt(any(), any(), any(), any(), any(), anyInt(), anyString());
+            verify(aiChatService).chatWithPrompt(any(), any(), any(), any(), anyInt(), anyString());
             verify(riskProcessor).persistRiskEvent(any(SessionState.class), any(RiskDetectionResult.class));
         }
 
@@ -809,7 +821,7 @@ class ConversationServiceImplTest {
             when(usageTimeLimitService.isExceeded(any(), any())).thenReturn(false);
             when(profileService.buildProfilePrompt(eq(tenantId), eq(studentId), any(Integer.class), any()))
                     .thenReturn(null);
-            when(aiChatService.chatWithPrompt(any(), any(), any(), any(), any(), anyInt(), anyString()))
+            when(aiChatService.chatWithPrompt(any(), any(), any(), any(), anyInt(), anyString()))
                     .thenReturn(Flux.just(StreamMessageEvent.token("我在听")));
         }
 
@@ -825,7 +837,7 @@ class ConversationServiceImplTest {
             service.sendMessageStream(tenantId, studentId, sessionId, "我考试考砸了很难过").collectList().block();
 
             ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
-            verify(aiChatService).chatWithPrompt(any(), any(), any(), any(), any(), anyInt(), promptCaptor.capture());
+            verify(aiChatService).chatWithPrompt(any(), any(), any(), any(), anyInt(), promptCaptor.capture());
             // Fix 3: RAG 拼在系统 Prompt 之后，ContextBrief 追加在最尾部（recency bias）
             assertThat(promptCaptor.getValue())
                     .startsWith("mock-system-prompt")
@@ -842,7 +854,7 @@ class ConversationServiceImplTest {
             service.sendMessageStream(tenantId, studentId, sessionId, "波波你在吗").collectList().block();
 
             ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
-            verify(aiChatService).chatWithPrompt(any(), any(), any(), any(), any(), anyInt(), promptCaptor.capture());
+            verify(aiChatService).chatWithPrompt(any(), any(), any(), any(), anyInt(), promptCaptor.capture());
             // ORCH-002：组装链 SYS → LANG → EMO + Fix 3: ContextBrief 追加在尾部
             assertThat(promptCaptor.getValue())
                     .startsWith("mock-system-prompt\n\nmock-lang-rules\n\nmock-system-prompt")
@@ -932,7 +944,7 @@ class ConversationServiceImplTest {
             when(usageTimeLimitService.isExceeded(any(), any())).thenReturn(false);
             when(profileService.buildProfilePrompt(eq(tenantId), eq(studentId), any(Integer.class), any()))
                     .thenReturn(null);
-            when(aiChatService.chatWithPrompt(any(), any(), any(), any(), any(), anyInt(), anyString()))
+            when(aiChatService.chatWithPrompt(any(), any(), any(), any(), anyInt(), anyString()))
                     .thenReturn(Flux.just(StreamMessageEvent.token("我在听")));
         }
 

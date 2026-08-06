@@ -28,9 +28,9 @@ vi.mock('../utils/audioUnlock', () => ({
   unlockAudio: vi.fn(),
 }))
 
-const mockAuthFetch = vi.fn()
+const mockFetchTtsSynthesize = vi.fn()
 vi.mock('../api', () => ({
-  authFetch: (...args: any[]) => mockAuthFetch(...args),
+  fetchTtsSynthesize: (...args: any[]) => mockFetchTtsSynthesize(...args),
 }))
 
 import { useTtsPlayer } from '../hooks/useTtsPlayer'
@@ -56,7 +56,7 @@ describe('hooks/useTtsPlayer', () => {
     vi.stubGlobal('SpeechSynthesisUtterance', vi.fn(() => ({
       lang: '', rate: 1, pitch: 1, voice: null, onend: null, onerror: null,
     })))
-    mockAuthFetch.mockReset()
+    mockFetchTtsSynthesize.mockReset()
   })
 
   afterEach(() => {
@@ -98,14 +98,14 @@ describe('hooks/useTtsPlayer', () => {
       const { result } = renderHook(() => useTtsPlayer())
       act(() => { result.current.setMuted(true) })
       await act(async () => { await result.current.speak('你好') })
-      expect(mockAuthFetch).not.toHaveBeenCalled()
+      expect(mockFetchTtsSynthesize).not.toHaveBeenCalled()
     })
   })
 
   describe('speak（后端成功）', () => {
     it('后端合成成功时播放并复位', async () => {
       const mockBlob = new Blob(['audio'], { type: 'audio/mp3' })
-      mockAuthFetch.mockResolvedValue({
+      mockFetchTtsSynthesize.mockResolvedValue({
         ok: true,
         status: 200,
         blob: () => Promise.resolve(mockBlob),
@@ -119,13 +119,13 @@ describe('hooks/useTtsPlayer', () => {
       })
       expect(result.current.playing).toBe(false)
       expect(result.current.currentSentenceIdx).toBe(-1)
-      expect(mockAuthFetch).toHaveBeenCalled()
+      expect(mockFetchTtsSynthesize).toHaveBeenCalled()
     })
   })
 
   describe('speak（后端失败降级）', () => {
     it('后端失败后降级为浏览器 TTS', async () => {
-      mockAuthFetch.mockRejectedValue(new Error('network'))
+      mockFetchTtsSynthesize.mockRejectedValue(new Error('network'))
       // 让 browserSpeak 的 onend 立即触发
       const mockSpeak = window.speechSynthesis.speak as any
       mockSpeak.mockImplementation((utter: any) => {
@@ -144,7 +144,7 @@ describe('hooks/useTtsPlayer', () => {
   describe('speakSentence', () => {
     it('单句播放后状态复位', async () => {
       const mockBlob = new Blob(['audio'], { type: 'audio/mp3' })
-      mockAuthFetch.mockResolvedValue({
+      mockFetchTtsSynthesize.mockResolvedValue({
         ok: true,
         status: 200,
         blob: () => Promise.resolve(mockBlob),
@@ -172,7 +172,7 @@ describe('hooks/useTtsPlayer', () => {
   describe('自定义参数', () => {
     it('传入 persona/emotion/speed 影响请求体', async () => {
       const mockBlob = new Blob(['audio'], { type: 'audio/mp3' })
-      mockAuthFetch.mockResolvedValue({
+      mockFetchTtsSynthesize.mockResolvedValue({
         ok: true,
         status: 200,
         blob: () => Promise.resolve(mockBlob),
@@ -183,17 +183,14 @@ describe('hooks/useTtsPlayer', () => {
         await result.current.speakSentence('你好')
         await new Promise(r => setTimeout(r, 50))
       })
-      expect(mockAuthFetch).toHaveBeenCalledWith(
-        '/api/v1/tts/synthesize',
-        expect.objectContaining({
-          body: JSON.stringify({ text: '你好', persona: 'qiqiu', emotion: 'happy', speed: 1.2 }),
-        })
+      expect(mockFetchTtsSynthesize).toHaveBeenCalledWith(
+        { text: '你好', persona: 'qiqiu', emotion: 'happy', speed: 1.2 }
       )
     })
 
     it('传入 dialect 时请求体包含 dialect 字段', async () => {
       const mockBlob = new Blob(['audio'], { type: 'audio/mp3' })
-      mockAuthFetch.mockResolvedValue({
+      mockFetchTtsSynthesize.mockResolvedValue({
         ok: true,
         status: 200,
         blob: () => Promise.resolve(mockBlob),
@@ -204,13 +201,14 @@ describe('hooks/useTtsPlayer', () => {
         await result.current.speakSentence('你好')
         await new Promise(r => setTimeout(r, 50))
       })
-      const callBody = JSON.parse(mockAuthFetch.mock.calls[0][1].body)
-      expect(callBody.dialect).toBe('sichuan')
+      // F-2 接缝：fetchTtsSynthesize(payload) 单参（ARCH-005），直接断言 payload 对象
+      const callPayload = mockFetchTtsSynthesize.mock.calls[0][0]
+      expect(callPayload.dialect).toBe('sichuan')
     })
 
     it('dialect 为 null 时请求体不包含 dialect 字段', async () => {
       const mockBlob = new Blob(['audio'], { type: 'audio/mp3' })
-      mockAuthFetch.mockResolvedValue({
+      mockFetchTtsSynthesize.mockResolvedValue({
         ok: true,
         status: 200,
         blob: () => Promise.resolve(mockBlob),
@@ -221,8 +219,9 @@ describe('hooks/useTtsPlayer', () => {
         await result.current.speakSentence('你好')
         await new Promise(r => setTimeout(r, 50))
       })
-      const callBody = JSON.parse(mockAuthFetch.mock.calls[0][1].body)
-      expect(callBody).not.toHaveProperty('dialect')
+      // F-2 接缝：fetchTtsSynthesize(payload) 单参（ARCH-005），直接断言 payload 对象
+      const callPayload = mockFetchTtsSynthesize.mock.calls[0][0]
+      expect(callPayload).not.toHaveProperty('dialect')
     })
   })
 
@@ -231,7 +230,7 @@ describe('hooks/useTtsPlayer', () => {
       // 让 audio.play 挂起（模拟正在播放）
       mockAudioInstance.play = vi.fn(() => new Promise(() => {}))
       const mockBlob = new Blob(['audio'], { type: 'audio/mp3' })
-      mockAuthFetch.mockResolvedValue({
+      mockFetchTtsSynthesize.mockResolvedValue({
         ok: true,
         status: 200,
         blob: () => Promise.resolve(mockBlob),
@@ -257,7 +256,7 @@ describe('hooks/useTtsPlayer', () => {
   describe('浏览器 TTS 降级引擎', () => {
     it('后端不可用时降级为 speechSynthesis 播放', async () => {
       // 后端返回非 ok → synthesizeSentence 返回 null → 触发 browserSpeak
-      mockAuthFetch.mockResolvedValue({ ok: false, status: 500 })
+      mockFetchTtsSynthesize.mockResolvedValue({ ok: false, status: 500 })
       const mockSpeak = window.speechSynthesis.speak as any
       mockSpeak.mockImplementation((utter: any) => {
         setTimeout(() => utter.onend?.(), 5)
@@ -274,7 +273,7 @@ describe('hooks/useTtsPlayer', () => {
     })
 
     it('speechSynthesis 也不可用时不崩溃', async () => {
-      mockAuthFetch.mockResolvedValue({ ok: false, status: 500 })
+      mockFetchTtsSynthesize.mockResolvedValue({ ok: false, status: 500 })
       // speechSynthesis.speak 抛异常模拟不可用
       const mockSpeak = window.speechSynthesis.speak as any
       mockSpeak.mockImplementation(() => { throw new Error('not available') })
@@ -294,7 +293,7 @@ describe('hooks/useTtsPlayer', () => {
       // 让 audio.play 挂起以保持播放状态
       mockAudioInstance.play = vi.fn(() => new Promise(() => {}))
       const mockBlob = new Blob(['audio'], { type: 'audio/mp3' })
-      mockAuthFetch.mockResolvedValue({
+      mockFetchTtsSynthesize.mockResolvedValue({
         ok: true,
         status: 200,
         blob: () => Promise.resolve(mockBlob),
@@ -319,7 +318,7 @@ describe('hooks/useTtsPlayer', () => {
         return Promise.resolve()
       })
       const mockBlob = new Blob(['bad'], { type: 'audio/mp3' })
-      mockAuthFetch.mockResolvedValue({
+      mockFetchTtsSynthesize.mockResolvedValue({
         ok: true,
         status: 200,
         blob: () => Promise.resolve(mockBlob),
@@ -336,7 +335,7 @@ describe('hooks/useTtsPlayer', () => {
     it('audio.play() 被拒绝时正常结束', async () => {
       mockAudioInstance.play = vi.fn(() => Promise.reject(new DOMException('NotAllowedError')))
       const mockBlob = new Blob(['audio'], { type: 'audio/mp3' })
-      mockAuthFetch.mockResolvedValue({
+      mockFetchTtsSynthesize.mockResolvedValue({
         ok: true,
         status: 200,
         blob: () => Promise.resolve(mockBlob),
@@ -353,7 +352,7 @@ describe('hooks/useTtsPlayer', () => {
 
   describe('speakSentence 浏览器降级', () => {
     it('后端不可用时单句降级为 speechSynthesis', async () => {
-      mockAuthFetch.mockResolvedValue({ ok: false, status: 500 })
+      mockFetchTtsSynthesize.mockResolvedValue({ ok: false, status: 500 })
       const mockSpeak = window.speechSynthesis.speak as any
       mockSpeak.mockImplementation((utter: any) => {
         setTimeout(() => utter.onend?.(), 5)
@@ -369,7 +368,7 @@ describe('hooks/useTtsPlayer', () => {
     })
 
     it('speakSentence 浏览器 TTS 也不可用时不崩溃', async () => {
-      mockAuthFetch.mockResolvedValue({ ok: false, status: 500 })
+      mockFetchTtsSynthesize.mockResolvedValue({ ok: false, status: 500 })
       const mockSpeak = window.speechSynthesis.speak as any
       mockSpeak.mockImplementation(() => { throw new Error('no tts') })
 
@@ -385,7 +384,7 @@ describe('hooks/useTtsPlayer', () => {
   describe('backendFailCount 连续失败降级', () => {
     it('连续失败 2 次后 synthesizeSentence 直接返回 null（不再请求后端）', async () => {
       // 前两次失败
-      mockAuthFetch.mockResolvedValue({ ok: false, status: 500 })
+      mockFetchTtsSynthesize.mockResolvedValue({ ok: false, status: 500 })
       const mockSpeak = window.speechSynthesis.speak as any
       mockSpeak.mockImplementation((utter: any) => { setTimeout(() => utter.onend?.(), 5) })
 
@@ -400,16 +399,16 @@ describe('hooks/useTtsPlayer', () => {
         await result.current.speak('句二。')
         await new Promise(r => setTimeout(r, 50))
       })
-      expect(mockAuthFetch).toHaveBeenCalledTimes(2)
+      expect(mockFetchTtsSynthesize).toHaveBeenCalledTimes(2)
 
       // 第 3 次 speak：backendFailCount >= 2，不再调用后端
-      mockAuthFetch.mockClear()
+      mockFetchTtsSynthesize.mockClear()
       await act(async () => {
         await result.current.speak('句三。')
         await new Promise(r => setTimeout(r, 50))
       })
       // 不再请求后端，直接浏览器降级
-      expect(mockAuthFetch).not.toHaveBeenCalled()
+      expect(mockFetchTtsSynthesize).not.toHaveBeenCalled()
       expect(mockSpeak).toHaveBeenCalled()
       expect(result.current.playing).toBe(false)
     })

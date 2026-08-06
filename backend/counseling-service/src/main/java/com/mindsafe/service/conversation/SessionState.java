@@ -2,6 +2,7 @@ package com.mindsafe.service.conversation;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.mindsafe.ai.orchestrator.StrategyProfile;
+import com.mindsafe.ai.risk.EmotionVocabulary;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -122,7 +123,8 @@ public class SessionState {
         int count = 0;
         for (int i = emotionHistory.size() - 1; i >= 0; i--) {
             String e = emotionHistory.get(i).emotion();
-            if ("sad".equals(e) || "fearful".equals(e) || "angry".equals(e) || "disgusted".equals(e)) {
+            // ARCH-003：内嵌情绪集合 → EmotionVocabulary 统一判定（anxious 等全管线一致）
+            if (EmotionVocabulary.isNegative(e)) {
                 count++;
             } else {
                 break;

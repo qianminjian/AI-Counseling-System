@@ -7,6 +7,8 @@ import com.mindsafe.ai.chat.AiChatService;
 import com.mindsafe.domain.entity.QualityScore;
 import com.mindsafe.domain.mapper.CounselingSessionMapper;
 import com.mindsafe.domain.mapper.QualityScoreMapper;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Async;
@@ -46,16 +48,25 @@ public class ConversationQualityService {
     private final QualityScoreMapper qualityScoreMapper;
     private final CounselingSessionMapper sessionMapper;
     private final EmpathyStructureEvaluator empathyStructureEvaluator;
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    // ARCH-010 P2-2：注入唯一 ObjectMapper（此前 new，配置不统一）
+    private final ObjectMapper objectMapper;
+    // ARCH-010 P2-5：评估失败 metrics（失败率告警依据）
+    private final Counter evaluationFailureCounter;
 
     public ConversationQualityService(AiChatService aiChatService,
                                       QualityScoreMapper qualityScoreMapper,
                                       CounselingSessionMapper sessionMapper,
-                                      EmpathyStructureEvaluator empathyStructureEvaluator) {
+                                      EmpathyStructureEvaluator empathyStructureEvaluator,
+                                      ObjectMapper objectMapper,
+                                      MeterRegistry meterRegistry) {
         this.aiChatService = aiChatService;
         this.qualityScoreMapper = qualityScoreMapper;
         this.sessionMapper = sessionMapper;
         this.empathyStructureEvaluator = empathyStructureEvaluator;
+        this.objectMapper = objectMapper;
+        this.evaluationFailureCounter = Counter.builder("mindsafe.pipeline.failure")
+                .tag("stage", "evaluation")
+                .register(meterRegistry);
     }
 
     /**
@@ -65,15 +76,21 @@ public class ConversationQualityService {
     @Async
     public void evaluateSessionAsync(UUID tenantId, UUID sessionId, String conversationText) {
         try {
-            // 抽样决策
-            if (Math.random() > SAMPLE_RATE) {
+            // 抽样决策（独立方法便于测试覆写，默认 Math.random 不可控）
+            if (!shouldEvaluate()) {
                 log.debug("质量评估抽样跳过: sessionId={}", sessionId);
                 return;
             }
             evaluateSession(tenantId, sessionId, conversationText);
         } catch (Exception e) {
-            log.warn("质量评估失败（不影响主流程）: sessionId={}, error={}", sessionId, e.getMessage());
+            evaluationFailureCounter.increment();
+            log.warn("质量评估失败（不影响主流程）: sessionId={}, stage=evaluation", sessionId, e);
         }
+    }
+
+    /** 抽样判定：按抽样率决定是否评估（包级可见，测试子类覆写强制选中） */
+    boolean shouldEvaluate() {
+        return Math.random() <= SAMPLE_RATE;
     }
 
     /**

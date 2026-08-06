@@ -2,6 +2,7 @@ package com.mindsafe.domain.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
 import com.mindsafe.domain.typehandler.JsonbTypeHandler;
+import com.mindsafe.domain.util.MessageSummarySummarizer;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -9,8 +10,13 @@ import java.util.UUID;
 /**
  * 消息摘要实体（对应 tenant_template.message_summaries）
  * <p>
- * 设计原则：不存原始消息明文，仅存结构化摘要（情绪标签、风险信号、CBT 关键节点）。
- * 对齐 design/08 §5.1 "message_summaries 只存结构化摘要"。
+ * 设计原则（D-7 路径 C，2026-07-28 两级摘要）：
+ * <ul>
+ *   <li>常规消息（riskLevel &lt; 2，GREEN/YELLOW）：文本内容为语义提炼物（≤200 字，MessageSummarySummarizer 规则抽取），非原文切片；</li>
+ *   <li>风险消息（riskLevel ≥ 2，ORANGE/RED）：原文保真（安全证据 &gt; 数据最小化，截断至 1024 字符）；</li>
+ *   <li>原始消息不落库，文本 AES-256-GCM 加密后存储；结构化字段（情绪标签/风险信号/CBT 关键节点）随行保存。</li>
+ * </ul>
+ * 对齐 design/08 §5.1 "message_summaries 只存结构化摘要" 与 design/09 §3.3 L 分级接线表（L3→ORANGE）。
  */
 @TableName(value = "message_summaries", schema = "tenant_template", autoResultMap = true)
 public class MessageSummary {
@@ -38,9 +44,6 @@ public class MessageSummary {
     /** 建议下一步行动 */
     private String suggestedNextAction;
 
-    /** 内容哈希（SHA-256，用于审计追溯） */
-    private String contentHash;
-
     // ===== V7 扩展字段（per-message 粒度） =====
 
     /** 消息发送者类型：student / ai */
@@ -52,8 +55,14 @@ public class MessageSummary {
     /** 单条消息风险等级（0=无风险） */
     private Integer riskLevel;
 
-    /** 消息内容摘要（语义截断至 1024 字符；AES-256-GCM 加密后落库，V32 起列类型 TEXT 容纳密文膨胀，AUDIT-P0-3） */
+    /**
+     * 消息内容摘要（D-7 两级策略：riskLevel &lt; 2 语义提炼 ≤200 字；riskLevel ≥ 2 原文保真截断至 1024 字符。
+     * AES-256-GCM 加密后落库，V32 起列类型 TEXT 容纳密文膨胀，AUDIT-P0-3）
+     */
     private String contentSummary;
+
+    /** 原文保真风险阈值：riskLevel ≥ 2（ORANGE/RED）不提炼（design/09 §3.3 接线表） */
+    private static final int FULL_FIDELITY_RISK_LEVEL = 2;
 
     /** CBT 结构化字段 JSON */
     @TableField(typeHandler = JsonbTypeHandler.class)
@@ -65,7 +74,7 @@ public class MessageSummary {
     }
 
     /**
-     * 创建学生消息摘要
+     * 创建学生消息摘要（D-7 两级：risk ≥ 2 原文保真截断 1024；risk &lt; 2 语义提炼 ≤200 字）
      */
     public static MessageSummary studentMessage(UUID tenantId, UUID sessionId, UUID studentUserId,
                                                  int turnCount, String contentSummary,
@@ -77,7 +86,9 @@ public class MessageSummary {
         m.studentUserId = studentUserId;
         m.turnCount = turnCount;
         m.senderType = "student";
-        m.contentSummary = truncate(contentSummary, 1024);
+        m.contentSummary = (riskLevel >= FULL_FIDELITY_RISK_LEVEL)
+                ? truncate(contentSummary, 1024)
+                : truncate(MessageSummarySummarizer.summarize(contentSummary), 1024);
         m.emotionLabel = emotionLabel;
         m.riskLevel = riskLevel;
         m.emotionTags = emotionLabel != null ? "[\"" + emotionLabel + "\"]" : "[]";
@@ -141,9 +152,6 @@ public class MessageSummary {
 
     public String getSuggestedNextAction() { return suggestedNextAction; }
     public void setSuggestedNextAction(String suggestedNextAction) { this.suggestedNextAction = suggestedNextAction; }
-
-    public String getContentHash() { return contentHash; }
-    public void setContentHash(String contentHash) { this.contentHash = contentHash; }
 
     public String getSenderType() { return senderType; }
     public void setSenderType(String senderType) { this.senderType = senderType; }

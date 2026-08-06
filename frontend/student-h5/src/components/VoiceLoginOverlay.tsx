@@ -16,7 +16,7 @@ import { useVoiceprint } from '../hooks/useVoiceprint'
 import { unlockAudio, getGlobalAudioElement } from '../utils/audioUnlock'
 import { createPcmCapture, type PcmCaptureHandle } from '../utils/createPcmCapture'
 import { getVoiceprint } from '../utils/voiceprintStore'
-import { voiceLogin, remoteVoiceprintVerify, getVoiceprintConfig, setToken, setRefreshToken, setUser } from '../api'
+import { voiceLogin, remoteVoiceprintVerify, getVoiceprintConfig, setToken, setRefreshToken, setUser, fetchLoginPrompt } from '../api'
 
 /** 主题 → 音色映射（登录页未登录，读 localStorage 主题） */
 const THEME_PERSONA_MAP: Record<string, string> = {
@@ -79,11 +79,8 @@ export default function VoiceLoginOverlay({ mode = 'verify', onComplete, onCance
       // 1. 尝试后端 TTS（CosyVoice 音色）
       try {
         const persona = getLoginPersona()
-        const res = await fetch('/api/v1/tts/login-prompt', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text, persona }),
-        })
+        // F-2 端点收敛：具名 authFetch 接缝（ARCH-005），401 自动刷新+重放
+        const res = await fetchLoginPrompt(text, persona)
         if (res.ok) {
           const blob = await res.blob()
           if (blob.size > 0) {
@@ -141,7 +138,6 @@ export default function VoiceLoginOverlay({ mode = 'verify', onComplete, onCance
         setVolume(Math.min(1, Math.sqrt(sum / pcm.length) * 10))
       })
       captureRef.current = handle
-      console.info('[VoiceLogin] 音频引擎:', handle.engine)
       return true
     } catch (err) {
       console.warn('[VoiceLogin] 麦克风初始化失败:', (err as Error)?.message)

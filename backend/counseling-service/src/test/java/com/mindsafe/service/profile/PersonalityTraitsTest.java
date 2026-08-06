@@ -47,8 +47,9 @@ class PersonalityTraitsTest {
 
     @BeforeEach
     void setUp() {
-        studentProfileService = new StudentProfileService(profileMapper, sessionMapper, riskEventMapper);
-        profileExtractorService = new ProfileExtractorService(profileMapper, profileMergeGate);
+        studentProfileService = new StudentProfileService(profileMapper, sessionMapper, riskEventMapper, om);
+        profileExtractorService = new ProfileExtractorService(profileMapper, profileMergeGate, om,
+                new io.micrometer.core.instrument.simple.SimpleMeterRegistry());
     }
 
     @Nested

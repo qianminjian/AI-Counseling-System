@@ -49,17 +49,20 @@ public class OutputReviewService {
     private final ChatClient reviewClient;
     private final Executor outputReviewExecutor;
     private final OutputSafetyReporter reporter;
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    // ARCH-010 P2-2：注入唯一 ObjectMapper（此前 new，配置不统一）
+    private final ObjectMapper objectMapper;
 
     private String promptTemplate = "";
 
     public OutputReviewService(ChatClient.Builder chatClientBuilder,
                                @Qualifier("outputReviewExecutor") Executor outputReviewExecutor,
-                               OutputSafetyReporter reporter) {
+                               OutputSafetyReporter reporter,
+                               ObjectMapper objectMapper) {
         // 独立 ChatClient 实例：审查调用与主对话互不干扰
         this.reviewClient = chatClientBuilder.build();
         this.outputReviewExecutor = outputReviewExecutor;
         this.reporter = reporter;
+        this.objectMapper = objectMapper;
     }
 
     @PostConstruct

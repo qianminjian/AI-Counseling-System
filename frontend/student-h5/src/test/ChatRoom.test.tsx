@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
+import { ThemeProvider } from '../theme/ThemeProvider'
 
-// ===== mock 所有 hooks =====
+// ===== mock 1: useTtsPlayer =====
 const mockTts = {
   speak: vi.fn().mockResolvedValue(undefined),
   speakSentence: vi.fn().mockResolvedValue(undefined),
@@ -20,192 +21,178 @@ const mockTts = {
 vi.mock('../hooks/useTtsPlayer', () => ({
   useTtsPlayer: () => mockTts,
 }))
-vi.mock('../hooks/useVoicePersona', () => ({
-  useVoicePersona: () => ({ personaId: 'bobo' }),
-}))
+
+// ===== mock 2: useVoiceCallMode（唤醒状态机，与 ChatRoom 解耦） =====
+const mockVoiceCallState = { mode: 'off', wakeSupported: false, wakeStatus: 'idle' }
 vi.mock('../hooks/useVoiceCallMode', () => ({
   useVoiceCallMode: () => mockVoiceCallState,
 }))
+
+// ===== mock 3: useSilenceNudge =====
 vi.mock('../hooks/useSilenceNudge', () => ({
   useSilenceNudge: () => ({ recordInteraction: vi.fn(), resetSilenceBase: vi.fn() }),
 }))
+
+// ===== mock 4: useWakeWord（预加载模型） =====
 vi.mock('../hooks/useWakeWord', () => ({
   preloadWakeModel: vi.fn(),
   useWakeWord: () => ({ supported: false, wakeStatus: 'idle' }),
   __resetWakeWordForTest: vi.fn(),
 }))
 
-const mockRecorder = {
-  recording: false,
-  analyzing: false,
+// ===== mock 5: useVoiceInputPipeline（ARCH-006：语音编排链已抽离，ChatRoom 只装配不实现） =====
+const mockPipeline = {
+  isRecording: false,
+  isAnalyzing: false,
+  isSending: false,
   supported: true,
-  startRecording: vi.fn(),
-  stopRecording: vi.fn(),
-  cancelRecording: vi.fn(),
+  error: null,
+  liveTranscript: '',
   warmUp: vi.fn(),
   releaseStream: vi.fn(),
+  start: vi.fn(),
+  stop: vi.fn(),
+  cancel: vi.fn(),
 }
-let capturedRecordingCallback: ((blob: any) => void) | null = null
-vi.mock('../hooks/useAudioRecorder', () => ({
-  useAudioRecorder: (cb: any) => { capturedRecordingCallback = cb; return mockRecorder },
+let capturedOnTranscription: ((text: string, emotion: any) => void) | null = null
+vi.mock('../hooks/useVoiceInputPipeline', () => ({
+  useVoiceInputPipeline: ({ onTranscription }: any) => {
+    capturedOnTranscription = onTranscription
+    return mockPipeline
+  },
 }))
 
-// ===== mock 子组件 =====
-const mockConsentState = { showDialog: false }
-const mockWakeConsentState = { showDialog: false }
-const mockVoiceCallState = { mode: 'off', wakeSupported: false, wakeStatus: 'idle' }
-vi.mock('../components/VoiceConsentDialog', () => ({
-  default: ({ onGrant, onDeny }: any) => (
-    <div data-testid="voice-consent">
-      <button onClick={onGrant}>允许</button>
-      <button onClick={onDeny}>拒绝</button>
-    </div>
-  ),
-  useVoiceConsent: () => ({
-    showDialog: mockConsentState.showDialog,
-    hasConsent: () => !mockConsentState.showDialog,
-    requestConsent: () => true,
-    grantConsent: vi.fn(),
-    denyConsent: vi.fn(),
-  }),
-}))
-vi.mock('../components/VoiceCallConsentDialog', () => ({
-  default: ({ onGrant, onDeny }: any) => (
-    <div data-testid="wake-consent">
-      <button onClick={onGrant}>允许唤醒</button>
-      <button onClick={onDeny}>拒绝唤醒</button>
-    </div>
-  ),
-  useVoiceCallConsent: () => ({
-    showDialog: mockWakeConsentState.showDialog,
-    hasConsent: () => !mockWakeConsentState.showDialog,
-    requestConsent: () => true,
-    grantConsent: vi.fn(),
-    denyConsent: vi.fn(),
-  }),
-}))
-vi.mock('../components/SatisfactionDialog', () => ({
-  default: ({ onSubmit, onSkip, onResume }: any) => (
-    <div data-testid="satisfaction-dialog">
-      <button onClick={() => onSubmit(5, '很好')}>评价</button>
-      <button onClick={onSkip}>跳过</button>
-      <button onClick={onResume}>继续聊</button>
-    </div>
-  ),
-}))
-vi.mock('../components/SettingsPanel', () => ({
-  default: ({ open, onClose }: any) => open ? <div data-testid="settings-panel"><button onClick={onClose}>关闭设置</button></div> : null,
-}))
-vi.mock('../components/ConfirmDialog', () => ({
-  default: ({ open, title, onConfirm, onCancel }: any) => open ? (
-    <div data-testid="confirm-dialog">
-      <span>{title}</span>
-      <button onClick={onConfirm}>确认</button>
-      <button onClick={onCancel}>取消</button>
-    </div>
-  ) : null,
-}))
-vi.mock('../components/BoBoPet', () => ({
-  default: (props: any) => <div data-testid="bobo-pet" data-state={props.state} />,
-}))
-vi.mock('../components/DraggableVoiceButton', () => ({
-  default: ({ children }: any) => <div data-testid="voice-btn">{children?.('right')}</div>,
-}))
-vi.mock('../components/MessageBubble', () => ({
-  default: ({ msg }: any) => <div data-testid="msg-bubble">{msg.content}</div>,
-  EMOTION_EMOJI: { happy: '😊', sad: '😢' },
-}))
-vi.mock('../components/ToolboxPanel', () => ({
-  default: ({ onBack }: any) => <div data-testid="toolbox-panel"><button onClick={onBack}>关闭百宝箱</button></div>,
-}))
-vi.mock('../components/SosPanel', () => ({
-  default: ({ onBack }: any) => <div data-testid="sos-panel"><button onClick={onBack}>关闭SOS</button></div>,
-}))
-vi.mock('../theme/ThemeProvider', () => ({
-  useTheme: () => ({
-    theme: {
-      companion: '🐬',
-      companionName: '波波',
-      bobo: { body: '#4fc3f7', belly: '#e1f5fe' },
-    },
-  }),
-}))
-
+// ===== mock 6: api（fetchVoiceAnalyze 已由 pipeline 接管；ConsentKeys 供真实授权弹窗引用） =====
 const mockAuthFetch = vi.fn()
 const mockApi = vi.fn()
+const mockFetchToolboxTools = vi.fn()
 vi.mock('../api', () => ({
   authFetch: (...args: any[]) => mockAuthFetch(...args),
   api: (...args: any[]) => mockApi(...args),
   getUser: () => ({ gender: 'male', pseudonym: '小明' }),
+  fetchToolboxTools: (...args: any[]) => mockFetchToolboxTools(...args),
+  reportSosEvent: () => Promise.resolve(undefined),
+  ConsentKeys: {
+    NOTICE: 'mindsafe_consent_v1',
+    VOICE: 'mindsafe_voice_consent_v1',
+    VOICE_CALL: 'mindsafe_voicecall_consent_v1',
+  },
 }))
+
+// ===== mock 7: BoBoPet（保留 mock：无外层 data-testid 且需断言 data-state；透传指针事件供装配测试） =====
+vi.mock('../components/BoBoPet', () => ({
+  default: (props: any) => (
+    <div
+      data-testid="bobo-pet"
+      data-state={props.state}
+      onPointerDown={props.onPointerDown}
+      onPointerMove={props.onPointerMove}
+      onPointerUp={props.onPointerUp}
+      onPointerCancel={props.onPointerCancel}
+    />
+  ),
+}))
+
+// ===== mock 8: SettingsPanel（真实组件含 IndexedDB 声纹检查，保留 mock） =====
+vi.mock('../components/SettingsPanel', () => ({
+  default: ({ open, onClose }: any) => open ? <div data-testid="settings-panel"><button onClick={onClose}>关闭设置</button></div> : null,
+}))
+
+// 真实化组件（ARCH-006 §3.2）：useVoicePersona / VoiceConsentDialog / VoiceCallConsentDialog /
+// SatisfactionDialog / ConfirmDialog / DraggableVoiceButton / MessageBubble / ToolboxPanel / SosPanel / ThemeProvider
 
 import ChatRoom from '../components/ChatRoom'
 
 const SESSION = { sessionId: 'sess-1', greeting: '你好呀！今天想聊什么？', emotionTag: 'neutral' }
 
+const renderChatRoom = (props: Record<string, unknown> = {}) => {
+  const utils = render(
+    <ThemeProvider>
+      <ChatRoom session={SESSION} onEnd={vi.fn()} {...props} />
+    </ThemeProvider>
+  )
+  return {
+    ...utils,
+    rerenderChatRoom: (nextProps: Record<string, unknown> = {}) =>
+      utils.rerender(
+        <ThemeProvider>
+          <ChatRoom session={SESSION} onEnd={vi.fn()} {...nextProps} />
+        </ThemeProvider>
+      ),
+  }
+}
+
 describe('ChatRoom', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    // jsdom 不支持 scrollIntoView
+    localStorage.clear()
+    // jsdom 不支持 scrollIntoView / setPointerCapture
     Element.prototype.scrollIntoView = vi.fn()
+    Element.prototype.setPointerCapture = vi.fn()
     mockTts.muted = false
     mockTts.playing = false
-    mockRecorder.recording = false
-    mockRecorder.analyzing = false
-    mockRecorder.supported = true
-    mockConsentState.showDialog = false
-    mockWakeConsentState.showDialog = false
+    mockPipeline.isRecording = false
+    mockPipeline.isAnalyzing = false
+    mockPipeline.isSending = false
+    mockPipeline.supported = true
+    mockPipeline.error = null
+    mockPipeline.liveTranscript = ''
+    capturedOnTranscription = null
     mockVoiceCallState.mode = 'off'
     mockVoiceCallState.wakeSupported = false
     mockVoiceCallState.wakeStatus = 'idle'
+    mockFetchToolboxTools.mockResolvedValue([])
+    mockApi.mockResolvedValue({})
+    // 唤醒默认开启 + 默认已授权（避免 800ms 自动授权弹窗干扰；授权弹窗用例自行 removeItem）
     localStorage.setItem('mindsafe_wake_enabled', '1')
+    localStorage.setItem('mindsafe_voicecall_consent_v1', 'granted')
   })
 
   it('渲染 header（伙伴名 + 结束按钮）', () => {
-    render(<ChatRoom session={SESSION} onEnd={vi.fn()} />)
+    renderChatRoom()
     expect(screen.getByText('波波')).toBeTruthy()
     expect(screen.getByText('结束')).toBeTruthy()
   })
 
   // ===== F-2 工具箱/SOS 入口（design/36 §3.4：SOS 全局常驻，非埋藏在菜单里）=====
   it('header 常驻百宝箱与 SOS 入口', () => {
-    render(<ChatRoom session={SESSION} onEnd={vi.fn()} />)
+    renderChatRoom()
     expect(screen.getByTitle('百宝箱')).toBeTruthy()
     expect(screen.getByTitle('SOS 帮助')).toBeTruthy()
   })
 
   it('点击百宝箱打开工具箱面板，可关闭', () => {
-    render(<ChatRoom session={SESSION} onEnd={vi.fn()} />)
-    expect(screen.queryByTestId('toolbox-panel')).toBeNull()
+    renderChatRoom()
+    expect(screen.queryByText('百宝箱 🧰')).toBeNull()
     fireEvent.click(screen.getByTitle('百宝箱'))
-    expect(screen.getByTestId('toolbox-panel')).toBeTruthy()
-    fireEvent.click(screen.getByText('关闭百宝箱'))
-    expect(screen.queryByTestId('toolbox-panel')).toBeNull()
+    expect(screen.getByText('百宝箱 🧰')).toBeTruthy()
+    fireEvent.click(screen.getAllByText('← 返回')[0])
+    expect(screen.queryByText('百宝箱 🧰')).toBeNull()
   })
 
   it('点击 SOS 打开 SOS 面板，可关闭', () => {
-    render(<ChatRoom session={SESSION} onEnd={vi.fn()} />)
-    expect(screen.queryByTestId('sos-panel')).toBeNull()
+    renderChatRoom()
+    expect(screen.queryByText('波波在这里陪你 💙')).toBeNull()
     fireEvent.click(screen.getByTitle('SOS 帮助'))
-    expect(screen.getByTestId('sos-panel')).toBeTruthy()
-    fireEvent.click(screen.getByText('关闭SOS'))
-    expect(screen.queryByTestId('sos-panel')).toBeNull()
+    expect(screen.getByText('波波在这里陪你 💙')).toBeTruthy()
+    fireEvent.click(screen.getAllByText('← 返回')[0])
+    expect(screen.queryByText('波波在这里陪你 💙')).toBeNull()
   })
 
   it('初始显示打招呼消息', () => {
-    render(<ChatRoom session={SESSION} onEnd={vi.fn()} />)
+    renderChatRoom()
     expect(screen.getByText('你好呀！今天想聊什么？')).toBeTruthy()
   })
 
   it('进入时自动朗读问候语', () => {
-    render(<ChatRoom session={SESSION} onEnd={vi.fn()} />)
+    renderChatRoom()
     expect(mockTts.unlock).toHaveBeenCalled()
     expect(mockTts.speak).toHaveBeenCalledWith('你好呀！今天想聊什么？')
   })
 
   it('静音时不朗读问候语', () => {
     mockTts.muted = true
-    render(<ChatRoom session={SESSION} onEnd={vi.fn()} />)
+    renderChatRoom()
     expect(mockTts.speak).not.toHaveBeenCalled()
   })
 
@@ -229,7 +216,7 @@ describe('ChatRoom', () => {
       },
     })
 
-    render(<ChatRoom session={SESSION} onEnd={vi.fn()} />)
+    renderChatRoom()
     const input = screen.getByPlaceholderText('也可以打字告诉我')
     fireEvent.change(input, { target: { value: '我今天很开心' } })
     fireEvent.click(screen.getByText('发送'))
@@ -245,7 +232,7 @@ describe('ChatRoom', () => {
 
   it('发送失败显示错误消息', async () => {
     mockAuthFetch.mockRejectedValue(new Error('network'))
-    render(<ChatRoom session={SESSION} onEnd={vi.fn()} />)
+    renderChatRoom()
     const input = screen.getByPlaceholderText('也可以打字告诉我')
     fireEvent.change(input, { target: { value: '测试' } })
     fireEvent.click(screen.getByText('发送'))
@@ -255,38 +242,39 @@ describe('ChatRoom', () => {
   })
 
   it('点击结束弹出满意度评价', () => {
-    render(<ChatRoom session={SESSION} onEnd={vi.fn()} />)
+    renderChatRoom()
     fireEvent.click(screen.getByText('结束'))
-    expect(screen.getByTestId('satisfaction-dialog')).toBeTruthy()
+    expect(screen.getByText('今天的聊天对你有帮助吗？')).toBeTruthy()
   })
 
   it('满意度评价后关闭会话', async () => {
     mockApi.mockResolvedValue({})
     const onEnd = vi.fn()
-    render(<ChatRoom session={SESSION} onEnd={onEnd} />)
+    renderChatRoom({ onEnd })
     fireEvent.click(screen.getByText('结束'))
-    fireEvent.click(screen.getByText('评价'))
+    fireEvent.click(screen.getByText('🥰'))
+    fireEvent.click(screen.getByText('提交'))
     await waitFor(() => expect(onEnd).toHaveBeenCalled())
   })
 
   it('跳过评价关闭会话', async () => {
     mockApi.mockResolvedValue({})
     const onEnd = vi.fn()
-    render(<ChatRoom session={SESSION} onEnd={onEnd} />)
+    renderChatRoom({ onEnd })
     fireEvent.click(screen.getByText('结束'))
     fireEvent.click(screen.getByText('跳过'))
     await waitFor(() => expect(onEnd).toHaveBeenCalled())
   })
 
   it('继续聊关闭满意度弹窗', () => {
-    render(<ChatRoom session={SESSION} onEnd={vi.fn()} />)
+    renderChatRoom()
     fireEvent.click(screen.getByText('结束'))
-    fireEvent.click(screen.getByText('继续聊'))
-    expect(screen.queryByTestId('satisfaction-dialog')).toBeNull()
+    fireEvent.click(screen.getByText(/再聊一会儿/))
+    expect(screen.queryByText('今天的聊天对你有帮助吗？')).toBeNull()
   })
 
   it('设置面板打开关闭', () => {
-    render(<ChatRoom session={SESSION} onEnd={vi.fn()} />)
+    renderChatRoom()
     fireEvent.click(screen.getByTitle('设置'))
     expect(screen.getByTestId('settings-panel')).toBeTruthy()
     fireEvent.click(screen.getByText('关闭设置'))
@@ -295,22 +283,22 @@ describe('ChatRoom', () => {
 
   it('切换同学确认弹窗', () => {
     const onSwitchUser = vi.fn()
-    render(<ChatRoom session={SESSION} onEnd={vi.fn()} onSwitchUser={onSwitchUser} />)
+    renderChatRoom({ onSwitchUser })
     fireEvent.click(screen.getByText('换人'))
-    expect(screen.getByTestId('confirm-dialog')).toBeTruthy()
-    fireEvent.click(screen.getByText('确认'))
+    expect(screen.getByText('要退出让别的同学用吗？')).toBeTruthy()
+    fireEvent.click(screen.getByText('确认退出'))
     expect(onSwitchUser).toHaveBeenCalled()
   })
 
   it('切换同学取消', () => {
-    render(<ChatRoom session={SESSION} onEnd={vi.fn()} onSwitchUser={vi.fn()} />)
+    renderChatRoom({ onSwitchUser: vi.fn() })
     fireEvent.click(screen.getByText('换人'))
-    fireEvent.click(screen.getByText('取消'))
-    expect(screen.queryByTestId('confirm-dialog')).toBeNull()
+    fireEvent.click(screen.getByText('我点错了'))
+    expect(screen.queryByText('要退出让别的同学用吗？')).toBeNull()
   })
 
   it('TTS 静音切换按钮', () => {
-    render(<ChatRoom session={SESSION} onEnd={vi.fn()} />)
+    renderChatRoom()
     const muteBtn = screen.getByTitle('关闭语音')
     fireEvent.click(muteBtn)
     expect(mockTts.toggleMute).toHaveBeenCalled()
@@ -318,17 +306,17 @@ describe('ChatRoom', () => {
 
   it('TTS 引擎不可用显示提示', () => {
     mockTts.engine = 'none'
-    render(<ChatRoom session={SESSION} onEnd={vi.fn()} />)
+    renderChatRoom()
     expect(screen.getByText(/当前浏览器不支持语音播放/)).toBeTruthy()
   })
 
   it('无 onSwitchUser 不显示换人按钮', () => {
-    render(<ChatRoom session={SESSION} onEnd={vi.fn()} />)
+    renderChatRoom()
     expect(screen.queryByText('换人')).toBeNull()
   })
 
   it('空输入不能发送', () => {
-    render(<ChatRoom session={SESSION} onEnd={vi.fn()} />)
+    renderChatRoom()
     const sendBtn = screen.getByText('发送') as HTMLButtonElement
     expect(sendBtn.disabled).toBe(true)
   })
@@ -338,7 +326,7 @@ describe('ChatRoom', () => {
       ok: true,
       body: { getReader: () => ({ read: () => Promise.resolve({ done: true }), cancel: vi.fn() }) },
     })
-    render(<ChatRoom session={SESSION} onEnd={vi.fn()} />)
+    renderChatRoom()
     const input = screen.getByPlaceholderText('也可以打字告诉我')
     fireEvent.change(input, { target: { value: '你好' } })
     fireEvent.keyDown(input, { key: 'Enter', shiftKey: false })
@@ -349,7 +337,7 @@ describe('ChatRoom', () => {
     // 让 authFetch 挂起以维持 streaming 状态
     let resolvePromise: any
     mockAuthFetch.mockReturnValue(new Promise((r) => { resolvePromise = r }))
-    render(<ChatRoom session={SESSION} onEnd={vi.fn()} />)
+    renderChatRoom()
     const input = screen.getByPlaceholderText('也可以打字告诉我')
     fireEvent.change(input, { target: { value: '测试' } })
     fireEvent.click(screen.getByText('发送'))
@@ -361,56 +349,82 @@ describe('ChatRoom', () => {
     resolvePromise({ ok: true, body: { getReader: () => ({ read: () => Promise.resolve({ done: true }), cancel: vi.fn() }) } })
   })
 
-  it('handleRecordingComplete：无录音 + 有浏览器转写 → 自动发送', async () => {
+  // ===== ARCH-006：语音编排黑盒化——错误提示 / 自动发送 / 装配绑定 =====
+
+  it('pipeline error（无转写）→ 显示"没有听清"提示', () => {
+    mockPipeline.error = '没有听清，请再说一次或打字告诉我 ✏️'
+    renderChatRoom()
+    expect(screen.getByText(/没有听清/)).toBeTruthy()
+  })
+
+  it('pipeline error（分析失败无转写）→ 显示语音识别不可用提示', () => {
+    mockPipeline.error = '语音识别暂不可用，请打字告诉我吧 ✏️'
+    renderChatRoom()
+    expect(screen.getByText(/语音识别暂不可用/)).toBeTruthy()
+  })
+
+  it('pipeline error（降级浏览器识别）→ 显示降级提示', () => {
+    mockPipeline.error = '已用浏览器识别（语音情绪分析暂不可用）'
+    renderChatRoom()
+    expect(screen.getByText(/已用浏览器识别/)).toBeTruthy()
+  })
+
+  it('pipeline onTranscription（分析成功）→ 自动发送', async () => {
     mockAuthFetch.mockResolvedValue({
       ok: true,
       body: { getReader: () => ({ read: () => Promise.resolve({ done: true }), cancel: vi.fn() }) },
     })
-    render(<ChatRoom session={SESSION} onEnd={vi.fn()} />)
-    // 模拟浏览器转写有值
-    ;(window as any).SpeechRecognition = undefined
-    // 直接调用 capturedRecordingCallback(null) 模拟无录音
-    await act(async () => { capturedRecordingCallback?.(null) })
-    // 无转写时显示提示
-    expect(screen.getByText(/没有听清/)).toBeTruthy()
-  })
-
-  it('handleRecordingComplete：有录音 → 上传分析成功 → 自动发送', async () => {
-    mockAuthFetch
-      .mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve({ success: true, data: { text: '我很开心', emotion: { labelEn: 'happy', label: '开心', confidence: 0.9 } } }),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        body: { getReader: () => ({ read: () => Promise.resolve({ done: true }), cancel: vi.fn() }) },
-      })
-    render(<ChatRoom session={SESSION} onEnd={vi.fn()} />)
-    const blob = new Blob(['audio'], { type: 'audio/webm' })
-    await act(async () => { capturedRecordingCallback?.(blob) })
+    renderChatRoom()
+    await act(async () => {
+      capturedOnTranscription?.('我很开心', { labelEn: 'happy', label: '开心', confidence: 0.9 })
+    })
     await waitFor(() => {
-      expect(mockAuthFetch).toHaveBeenCalledWith('/api/v1/voice/analyze', expect.objectContaining({ method: 'POST' }))
+      expect(mockAuthFetch).toHaveBeenCalledWith(
+        '/api/v1/chat/sessions/sess-1/messages',
+        expect.objectContaining({ method: 'POST' })
+      )
     })
   })
 
-  it('handleRecordingComplete：上传失败 → 降级浏览器识别', async () => {
-    mockAuthFetch.mockRejectedValueOnce(new Error('server down'))
-    render(<ChatRoom session={SESSION} onEnd={vi.fn()} />)
-    const blob = new Blob(['audio'], { type: 'audio/webm' })
-    await act(async () => { capturedRecordingCallback?.(blob) })
-    // 无浏览器转写 → 显示不可用提示
-    expect(screen.getByText(/语音识别暂不可用/)).toBeTruthy()
-  })
-
-  it('handleRecordingComplete：上传返回无文字 → 降级', async () => {
-    mockAuthFetch.mockResolvedValueOnce({
+  it('语音情绪预览：onTranscription 带 emotion → 用户消息显示情绪 emoji', async () => {
+    mockAuthFetch.mockResolvedValue({
       ok: true,
-      json: () => Promise.resolve({ success: false }),
+      body: { getReader: () => ({ read: () => Promise.resolve({ done: true }), cancel: vi.fn() }) },
     })
-    render(<ChatRoom session={SESSION} onEnd={vi.fn()} />)
-    const blob = new Blob(['audio'], { type: 'audio/webm' })
-    await act(async () => { capturedRecordingCallback?.(blob) })
-    expect(screen.getByText(/语音识别暂不可用/)).toBeTruthy()
+    renderChatRoom()
+    await act(async () => {
+      capturedOnTranscription?.('开心', { labelEn: 'happy', label: '开心', confidence: 0.85 })
+    })
+    await waitFor(() => {
+      // 真实 MessageBubble：user 消息带 happy 情绪 → 气泡前显示 😊
+      expect(screen.getByText('😊')).toBeTruthy()
+    })
+  })
+
+  it('按住说话：按下 start / 正常松手 stop', () => {
+    localStorage.setItem('mindsafe_voice_consent_v1', 'granted')
+    const { rerenderChatRoom } = renderChatRoom()
+    const bobo = screen.getAllByTestId('bobo-pet')[0]
+    fireEvent.pointerDown(bobo, { pointerId: 1, clientY: 200 })
+    expect(mockPipeline.start).toHaveBeenCalledTimes(1)
+    mockPipeline.isRecording = true // 模拟录音开始
+    rerenderChatRoom()
+    fireEvent.pointerUp(bobo, { pointerId: 1, clientY: 200 })
+    expect(mockPipeline.stop).toHaveBeenCalledTimes(1)
+  })
+
+  it('按住说话：上滑取消 → cancel + "已取消"提示', () => {
+    localStorage.setItem('mindsafe_voice_consent_v1', 'granted')
+    const { rerenderChatRoom } = renderChatRoom()
+    const bobo = screen.getAllByTestId('bobo-pet')[0]
+    fireEvent.pointerDown(bobo, { pointerId: 1, clientY: 200 })
+    mockPipeline.isRecording = true // 模拟录音开始
+    rerenderChatRoom()
+    fireEvent.pointerMove(bobo, { pointerId: 1, clientY: 100 }) // 上滑 100px > 60 阈值
+    fireEvent.pointerUp(bobo, { pointerId: 1, clientY: 100 })
+    expect(mockPipeline.cancel).toHaveBeenCalledTimes(1)
+    expect(mockPipeline.stop).not.toHaveBeenCalled()
+    expect(screen.getByText('已取消')).toBeTruthy()
   })
 
   it('SSE 流式回复含 risk 事件：不渲染到界面', async () => {
@@ -432,7 +446,7 @@ describe('ChatRoom', () => {
         }),
       },
     })
-    render(<ChatRoom session={SESSION} onEnd={vi.fn()} />)
+    renderChatRoom()
     const input = screen.getByPlaceholderText('也可以打字告诉我')
     fireEvent.change(input, { target: { value: '我有点难过' } })
     fireEvent.click(screen.getByText('发送'))
@@ -461,7 +475,7 @@ describe('ChatRoom', () => {
         }),
       },
     })
-    render(<ChatRoom session={SESSION} onEnd={vi.fn()} />)
+    renderChatRoom()
     const input = screen.getByPlaceholderText('也可以打字告诉我')
     fireEvent.change(input, { target: { value: '测试' } })
     fireEvent.click(screen.getByText('发送'))
@@ -472,76 +486,75 @@ describe('ChatRoom', () => {
     expect(screen.queryByText(/网络出了点问题/)).toBeNull()
   })
 
-  it('closeSession 主接口失败时走 fallback 接口', async () => {
-    mockApi.mockRejectedValueOnce(new Error('not found')).mockResolvedValueOnce({})
+  it('closeSession 主接口失败 → 不回退旧接口，UI 关闭流程照常（ARCH-010 D5）', async () => {
+    mockApi.mockRejectedValue(new Error('not found'))
     const onEnd = vi.fn()
-    render(<ChatRoom session={SESSION} onEnd={onEnd} />)
+    renderChatRoom({ onEnd })
     fireEvent.click(screen.getByText('结束'))
     fireEvent.click(screen.getByText('跳过'))
     await waitFor(() => expect(onEnd).toHaveBeenCalled())
-    expect(mockApi).toHaveBeenCalledTimes(2)
+    expect(mockApi).toHaveBeenCalledTimes(1)
   })
 
-  it('语音情绪预览：发送含 emotion 的消息后显示', async () => {
-    const encoder = new TextEncoder()
-    mockAuthFetch.mockResolvedValue({
-      ok: true,
-      body: { getReader: () => ({ read: () => Promise.resolve({ done: true }), cancel: vi.fn() }) },
-    })
-    render(<ChatRoom session={SESSION} onEnd={vi.fn()} />)
-    // 通过 handleRecordingComplete 发送含 emotion 的消息
-    mockAuthFetch
-      .mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve({ success: true, data: { text: '开心', emotion: { labelEn: 'happy', label: '开心', confidence: 0.85 } } }),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        body: { getReader: () => ({ read: () => Promise.resolve({ done: true }), cancel: vi.fn() }) },
-      })
-    const blob = new Blob(['audio'], { type: 'audio/webm' })
-    await act(async () => { capturedRecordingCallback?.(blob) })
-    await waitFor(() => {
-      expect(mockAuthFetch).toHaveBeenCalledWith('/api/v1/voice/analyze', expect.anything())
-    })
+  // ===== 授权弹窗（真实组件，操作 localStorage） =====
+
+  it('语音授权弹窗：未授权按下 → 弹出，同意后授权写入可直录', () => {
+    renderChatRoom()
+    const bobo = screen.getAllByTestId('bobo-pet')[0]
+    fireEvent.pointerDown(bobo, { pointerId: 1, clientY: 200 })
+    expect(screen.getByText('语音功能说明')).toBeTruthy()
+    expect(mockPipeline.start).not.toHaveBeenCalled() // 未授权不录音
+    fireEvent.click(screen.getByText('我知道了，同意使用'))
+    expect(screen.queryByText('语音功能说明')).toBeNull()
+    // 授权已写入 → 再按下直接录音
+    fireEvent.pointerDown(bobo, { pointerId: 2, clientY: 200 })
+    expect(mockPipeline.start).toHaveBeenCalledTimes(1)
   })
 
-  it('语音授权弹窗显示时可交互', () => {
-    mockConsentState.showDialog = true
-    render(<ChatRoom session={SESSION} onEnd={vi.fn()} />)
-    expect(screen.getByTestId('voice-consent')).toBeTruthy()
-    // 点击允许/拒绝不崩溃
-    fireEvent.click(screen.getByText('允许'))
-    fireEvent.click(screen.getByText('拒绝'))
+  it('语音授权弹窗：暂不使用关闭弹窗', () => {
+    renderChatRoom()
+    const bobo = screen.getAllByTestId('bobo-pet')[0]
+    fireEvent.pointerDown(bobo, { pointerId: 1, clientY: 200 })
+    expect(screen.getByText('语音功能说明')).toBeTruthy()
+    fireEvent.click(screen.getByText('暂不使用'))
+    expect(screen.queryByText('语音功能说明')).toBeNull()
   })
 
-  it('语音唤醒授权弹窗显示时可交互', () => {
-    mockWakeConsentState.showDialog = true
-    render(<ChatRoom session={SESSION} onEnd={vi.fn()} />)
-    expect(screen.getByTestId('wake-consent')).toBeTruthy()
-    fireEvent.click(screen.getByText('允许唤醒'))
-    fireEvent.click(screen.getByText('拒绝唤醒'))
+  it('语音唤醒授权弹窗：默认开启未授权 → 自动弹出，可开启', async () => {
+    localStorage.removeItem('mindsafe_voicecall_consent_v1')
+    renderChatRoom()
+    await waitFor(() => expect(screen.getByText('语音唤醒说明')).toBeTruthy())
+    fireEvent.click(screen.getByText('我知道了，开启'))
+    await waitFor(() => expect(screen.queryByText('语音唤醒说明')).toBeNull())
+  })
+
+  it('语音唤醒授权弹窗：暂不使用关闭', async () => {
+    localStorage.removeItem('mindsafe_voicecall_consent_v1')
+    renderChatRoom()
+    await waitFor(() => expect(screen.getByText('语音唤醒说明')).toBeTruthy())
+    fireEvent.click(screen.getByText('暂不使用'))
+    expect(screen.queryByText('语音唤醒说明')).toBeNull()
   })
 
   it('standby 模式下显示唤醒状态提示（loading/listening/error）', () => {
     mockVoiceCallState.mode = 'standby'
     mockVoiceCallState.wakeSupported = true
     mockVoiceCallState.wakeStatus = 'loading'
-    const { rerender } = render(<ChatRoom session={SESSION} onEnd={vi.fn()} />)
+    const { rerenderChatRoom } = renderChatRoom()
     expect(screen.getByText('正在加载语音引擎...')).toBeTruthy()
 
     mockVoiceCallState.wakeStatus = 'listening'
-    rerender(<ChatRoom session={SESSION} onEnd={vi.fn()} />)
+    rerenderChatRoom()
     expect(screen.getByText('我在这里安静地等你叫我')).toBeTruthy()
 
     mockVoiceCallState.wakeStatus = 'error'
-    rerender(<ChatRoom session={SESSION} onEnd={vi.fn()} />)
+    rerenderChatRoom()
     expect(screen.getByText('语音引擎加载失败，请关闭再开启')).toBeTruthy()
   })
 
   it('analyzing 状态显示识别中提示', () => {
-    mockRecorder.analyzing = true
-    render(<ChatRoom session={SESSION} onEnd={vi.fn()} />)
+    mockPipeline.isAnalyzing = true
+    renderChatRoom()
     expect(screen.getByText('正在识别，马上发送...')).toBeTruthy()
   })
 })

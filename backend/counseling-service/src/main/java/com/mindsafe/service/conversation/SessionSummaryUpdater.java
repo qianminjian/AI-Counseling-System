@@ -99,11 +99,11 @@ public class SessionSummaryUpdater {
             }
 
             // 4. 更新 SessionState（Redis）
-            SessionState session = sessionStateStore.get(sessionId);
+            SessionState session = sessionStateStore.get(tenantId, sessionId);
             if (session != null) {
                 session.setSessionSummary(summary.trim());
                 session.setLastSummaryTurn(currentTurn);
-                sessionStateStore.save(sessionId, session);
+                sessionStateStore.save(tenantId, sessionId, session);
                 log.info("CTX-Agent 滚动摘要已更新: sessionId={}, turn={}, summaryLen={}",
                         sessionId, currentTurn, summary.length());
             }

@@ -10,6 +10,7 @@ import com.mindsafe.service.memory.LongTermMemoryService;
 import com.mindsafe.service.profile.ProfileExtractorService;
 import com.mindsafe.service.quality.ConversationQualityService;
 import com.mindsafe.service.security.FieldEncryptionService;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -22,6 +23,8 @@ import org.mockito.quality.Strictness;
 import java.util.List;
 import java.util.UUID;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -51,6 +54,8 @@ class MessageSummaryServiceTest {
 
     private MessageSummaryService service;
 
+    private final SimpleMeterRegistry registry = new SimpleMeterRegistry();
+
     private final UUID tenantId = UUID.randomUUID();
     private final UUID sessionId = UUID.randomUUID();
     private final UUID studentUserId = UUID.randomUUID();
@@ -59,7 +64,7 @@ class MessageSummaryServiceTest {
     void setUp() {
         service = new MessageSummaryService(messageSummaryMapper, sessionMapper, aiChatService,
                 fieldEncryptionService, conversationQualityService, profileExtractorService,
-                longTermMemoryService, new ObjectMapper());
+                longTermMemoryService, new ObjectMapper(), registry);
 
         MessageSummary student = MessageSummary.studentMessage(
                 tenantId, sessionId, studentUserId, 1, "我考试前特别紧张", "anxious", 1);
@@ -68,6 +73,18 @@ class MessageSummaryServiceTest {
         when(messageSummaryMapper.selectList(any())).thenReturn(List.of(student, ai));
         when(fieldEncryptionService.decrypt(anyString())).thenAnswer(inv -> inv.getArgument(0));
         when(aiChatService.generateSessionSummary(anyString())).thenReturn("{\"mainTopic\":\"考试焦虑\"}");
+    }
+
+    @Test
+    @DisplayName("ARCH-010 P2-5：摘要 LLM 失败必须产生 metrics 计数（stage=summary）且不上抛")
+    void summaryFailure_incrementsMetric() {
+        when(aiChatService.generateSessionSummary(anyString()))
+                .thenThrow(new RuntimeException("llm down"));
+
+        assertThatCode(() -> service.generateSummaryAsync(tenantId, sessionId, studentUserId))
+                .doesNotThrowAnyException();
+        assertThat(registry.counter("mindsafe.pipeline.failure", "stage", "summary").count())
+                .isEqualTo(1);
     }
 
     @Test

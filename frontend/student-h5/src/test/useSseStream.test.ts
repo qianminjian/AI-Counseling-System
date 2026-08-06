@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
-import { useSseStream } from '../hooks/useSseStream'
+import { useSseStream, consumeSseStream } from '../hooks/useSseStream'
 
 // ===== mock api（authFetch 是 SSE 唯一网络入口）=====
 const mockAuthFetch = vi.fn()
@@ -26,6 +26,77 @@ function sseReader(chunks: Uint8Array[], onRead?: (signal: AbortSignal | undefin
     }),
   }
 }
+
+describe('consumeSseStream（纯函数 SSE 解析单点，ARCH-005 F-1）', () => {
+  const noopHandlers = () => ({ onToken: vi.fn(), onEmotion: vi.fn(), onRisk: vi.fn() })
+
+  function readerOf(chunks: Uint8Array[]) {
+    let readIdx = 0
+    return {
+      getReader: () => ({
+        read: () => {
+          if (readIdx < chunks.length) return Promise.resolve({ done: false, value: chunks[readIdx++] })
+          return Promise.resolve({ done: true, value: undefined })
+        },
+        cancel: vi.fn(),
+      }),
+    }
+  }
+
+  it('token 事件累积返回完整文本（不依赖 hook 状态）', async () => {
+    const handlers = noopHandlers()
+    const fullText = await consumeSseStream(readerOf([
+      encoder.encode('data:{"type":"token","content":"你好"}\n\n'),
+      encoder.encode('data:{"type":"token","content":"呀"}\n\n'),
+    ]).getReader(), handlers)
+
+    expect(fullText).toBe('你好呀')
+    expect(handlers.onToken).toHaveBeenCalledTimes(2)
+    expect(handlers.onToken).toHaveBeenNthCalledWith(1, '你好')
+    expect(handlers.onToken).toHaveBeenNthCalledWith(2, '呀')
+  })
+
+  it('emotion / risk 事件独立回调', async () => {
+    const handlers = noopHandlers()
+    await consumeSseStream(readerOf([
+      encoder.encode('data:{"type":"emotion","content":"happy"}\n\n'),
+      encoder.encode('data:{"type":"risk","content":"观察","metadata":{"riskLevel":2}}\n\n'),
+    ]).getReader(), handlers)
+
+    expect(handlers.onEmotion).toHaveBeenCalledWith('happy')
+    expect(handlers.onRisk).toHaveBeenCalledWith(2, '观察')
+  })
+
+  it('非 data: 行与坏 JSON 静默忽略，不中断后续 token', async () => {
+    const handlers = noopHandlers()
+    const fullText = await consumeSseStream(readerOf([
+      encoder.encode('event: foo\ndata:{"type":"token","content":"A"}\n\n'),
+      encoder.encode('data:not-json\n\n'),
+      encoder.encode('data:{"type":"token","content":"B"}\n\n'),
+    ]).getReader(), handlers)
+
+    expect(fullText).toBe('AB')
+    expect(handlers.onToken).toHaveBeenCalledTimes(2)
+  })
+
+  it('跨 chunk 半行缓冲：split 边界事件正确拼接', async () => {
+    const full = encoder.encode('data:{"type":"token","content":"跨块"}\n\n')
+    const handlers = noopHandlers()
+    const fullText = await consumeSseStream(readerOf([full.slice(0, 12), full.slice(12)]).getReader(), handlers)
+
+    expect(fullText).toBe('跨块')
+    expect(handlers.onToken).toHaveBeenCalledWith('跨块')
+  })
+
+  it('流中途 reject → 错误向上传播', async () => {
+    const handlers = noopHandlers()
+    const reader = {
+      read: () => Promise.reject(new Error('stream broken')),
+      cancel: vi.fn(),
+    }
+    await expect(consumeSseStream(reader, handlers)).rejects.toThrow('stream broken')
+  })
+})
 
 describe('useSseStream（UX-006，design/17 §chat/hooks）', () => {
   beforeEach(() => {

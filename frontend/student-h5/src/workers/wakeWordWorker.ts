@@ -9,7 +9,6 @@
  */
 
 const TAG = '[WakeWordWorker]'
-console.info(TAG, '脚本已加载, self=', typeof self, 'SAB=', typeof SharedArrayBuffer)
 
 // 捕获所有未处理错误（诊断用）
 self.onerror = (e: any) => {
@@ -28,18 +27,13 @@ async function ensureModel(config) {
 
   initPromise = (async () => {
     self.postMessage({ type: 'status', status: 'loading' })
-    console.info(TAG, '① 开始模型初始化, config=', JSON.stringify(config))
 
     // ━━ 环境前置检查：SharedArrayBuffer 是 ORT WASM 的硬性依赖 ━━
     if (typeof SharedArrayBuffer === 'undefined') {
       console.error(TAG, '❌ SharedArrayBuffer 不可用')
-      throw new Error('浏览器不支持 SharedArrayBuffer（需要 COOP/COEP 响应头）')
+      throw new Error('浏览器不支持 SharedArrayBuffer（需要 COOP/COEP 响应头 ）')
     }
-    console.info(TAG, '② SharedArrayBuffer ✓, WebAssembly=', typeof WebAssembly)
-
-    console.info(TAG, '③ 开始 import transformers...')
     const { pipeline, env } = await import('@huggingface/transformers')
-    console.info(TAG, '④ transformers 导入成功, pipeline=', typeof pipeline)
 
     // 同源部署配置（与主线程 getTranscriber 保持一致）
     // 关键：remoteHost 必须是绝对 URL，否则 get_file_metadata 内的 new URL() 会失败，
@@ -59,9 +53,7 @@ async function ensureModel(config) {
 
     // ONNX WASM 路径
     env.backends.onnx.wasm.wasmPaths = config.wasmPaths
-    console.info(TAG, '⑤ env 配置完成: remoteHost=', config.remoteHost, 'wasmPaths=', JSON.stringify(config.wasmPaths))
 
-    console.info(TAG, '⑥ 开始 pipeline() 创建（含模型下载 + ORT session 初始化）...')
     const t = await pipeline('automatic-speech-recognition', config.modelId, {
       // 禁用高级图优化：ORT 1.26.0 TransposeDQWeightsForMatMulNBits bug
       session_options: { graphOptimizationLevel: 'basic' },
@@ -71,7 +63,6 @@ async function ensureModel(config) {
         }
       },
     })
-    console.info(TAG, '⑦ ✅ pipeline 创建成功，模型就绪')
 
     transcriberInstance = t
     self.postMessage({ type: 'status', status: 'ready' })

@@ -1,0 +1,43 @@
+# MindSafe 模型投放与校验（ARCH-009 E-5）
+# 用途：手动触发——从 HF 镜像下载端侧模型（whisper-tiny + wespeaker）到
+#       frontend/student-h5/public/models/，生成 MANIFEST.sha256 并做完整性冒烟。
+#       任何步骤失败即红色门禁。
+# 说明：
+# - models/ 已 gitignore 不入仓，发布链路由 cd.yml deploy-frontend 的
+#   prepare-models 步骤每次发布自动投放（本 workflow 供人工先行投放/巡检）
+# - 下载走 actions/cache 缓存（脚本未变更则命中，prepare-models.sh 幂等跳过）
+name: Prepare Models
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  prepare-models:
+    name: Download & Verify Models
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache model files
+        uses: actions/cache@v4
+        with:
+          path: frontend/student-h5/public/models
+          key: mindsafe-models-${{ hashFiles('deploy/scripts/prepare-models.sh') }}
+          restore-keys: |
+            mindsafe-models-
+
+      - name: Prepare models (download missing + generate manifest)
+        run: bash deploy/scripts/prepare-models.sh
+
+      - name: Verify models (checksum + smoke, fail-closed)
+        run: bash deploy/scripts/prepare-models.sh --verify
+
+      - name: Model inventory
+        run: |
+          echo "已投放文件数（不含 manifest）: $(find frontend/student-h5/public/models -type f ! -name MANIFEST.sha256 | wc -l | tr -d ' ')"
+          echo "总体积: $(du -sh frontend/student-h5/public/models | cut -f1)"
+          echo "--- manifest 前 5 行 ---"
+          head -5 frontend/student-h5/public/models/MANIFEST.sha256

@@ -147,7 +147,7 @@ DOC-054 深度审计将"过度设计（含质疑）"登记为 O1-O5：
 | OD-010 TTS 矩阵 | ✅ 维持 | `tts-service/config.yaml` 7 音色仅 1 emotion_capable + 1 dialect_capable | CFG-004 配置化产物=**声明式能力文档**，运行时按 capable 分支消费无死代码；裁剪失扩展性（同 O5-4 逻辑） |
 | OD-011 init-school 三重保险 | ✅ 维持 | `init-school.sh` L45 随机密码+must_change_password、L81-124 ON CONFLICT ×4 | 随机密码+强制改密=弱口令安全基线（同 R-04）；脚本面向学校现场重复执行，幂等有价值；成本几行参数 |
 | OD-012 tts wheels | ✅ 已解决 | `tts-service/Dockerfile` L12-17 已改 requirements-lite.txt 在线安装（fix-13 bd9d215） | 登记快照过期：wheels 已降级为可选方案（refresh-wheels.sh + 手动 --no-index） |
-| OD-013 Grafana 面板 | ✅ 已解决 | `deploy/monitoring/grafana/provisioning/dashboards/` 仅 `llm-performance.json` | 空 TTS 面板已删（P1-7）；登记快照过期 |
+| OD-013 Grafana 面板 | ✅ 已解决 | `deploy/monitoring/grafana/provisioning/dashboards/` 仅 `llm-performance.json` | ARCH-009（2026-08-06）修正登记：llm-performance.json 的 2 个 TTS 面板（mindsafe_tts_* 未埋点）已删，标题改“MindSafe LLM 性能监控”；TTS 可观测性为已知缺口（指标未埋点），埋点立项后恢复面板为纯增量 |
 | OD-014 声纹阈值双源 | 🟩 并入 S4-1 | `application.yml` verify-threshold=0.55（remote 权威）+ system-config 0.70（local 前端）+ `config/remote.ts` fallback 0.55 | 0.55/0.70 为**两模式各自实测值（有意不同）**；真重复仅为后端 0.55 与前端 fallback 0.55 → S4-1 占位符派生收敛 |
 
 ---

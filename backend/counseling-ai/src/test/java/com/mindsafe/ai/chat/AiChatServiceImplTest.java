@@ -1,5 +1,6 @@
 package com.mindsafe.ai.chat;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mindsafe.ai.prompt.PromptTemplateService;
 import com.mindsafe.ai.safety.OutputContentFilter;
 import com.mindsafe.ai.safety.OutputReviewService;
@@ -60,7 +61,7 @@ class AiChatServiceImplTest {
         promptTemplateService = mock(PromptTemplateService.class);
 
         // Layer1 用真实过滤器（词库未加载=空规则，正常文本纯透传，同 OutputContentFilter 行为）
-        SafetyKeywordLibrary library = new SafetyKeywordLibrary();
+        SafetyKeywordLibrary library = new SafetyKeywordLibrary(new ObjectMapper());
         OutputContentFilter outputContentFilter =
                 new OutputContentFilter(library, mock(OutputSafetyReporter.class));
 
@@ -74,7 +75,7 @@ class AiChatServiceImplTest {
         when(requestSpec.messages(anyList())).thenReturn(requestSpec);
         when(requestSpec.stream()).thenReturn(streamSpec);
 
-        when(promptTemplateService.render(eq(PromptTemplateService.SYS_001), anyMap())).thenReturn("SYS-001 系统提示");
+        when(promptTemplateService.render(eq(PromptTemplateService.SYS_001), anyMap())).thenReturn("SYS_001 系统提示");
         when(promptTemplateService.getTemplate(anyString())).thenReturn("# 语言规则（测试）");
 
         service = new AiChatServiceImpl(builder, chatMemory, outputContentFilter,
@@ -94,7 +95,7 @@ class AiChatServiceImplTest {
         when(streamSpec.content()).thenReturn(Flux.just("波波在呢", "～"));
 
         List<StreamMessageEvent> events = service
-                .chatProactive(sessionId, "sad", "female", null, "【暖场指令】强度=1，方向=共情陪伴", 4)
+                .chatProactive(sessionId, "sad", "female", null, "【预渲染】SYS_001+语言模板+暖场指令", 4)
                 .collectList().block();
 
         assertThat(events).hasSize(2);
@@ -114,19 +115,25 @@ class AiChatServiceImplTest {
     }
 
     @Test
-    @DisplayName("chatProactive 把 nudge 指令追加到 system 层（含画像）")
-    void chatProactive_appendsNudgeInstructionToSystem() {
+    @DisplayName("chatProactive 使用预解析 systemPromptContent（版本路由）+ 性别风格 + contextBrief 尾部追加")
+    void chatProactive_usesPreRenderedSystemPrompt() {
         when(chatMemory.get(conversationId)).thenReturn(List.of());
         when(streamSpec.content()).thenReturn(Flux.just("在呢"));
 
-        service.chatProactive(sessionId, "happy", "male", "【学生画像】偏沉默", "【暖场指令】强度=2", 3)
+        service.chatProactive(sessionId, "happy", "male", "【上下文简报】偏沉默",
+                        "【预渲染】SYS_001+语言模板+TSK_004暖场指令", 3)
                 .collectList().block();
 
         ArgumentCaptor<String> sysCaptor = ArgumentCaptor.forClass(String.class);
         verify(requestSpec).system(sysCaptor.capture());
         String system = sysCaptor.getValue();
-        assertThat(system).contains("SYS-001 系统提示");
-        assertThat(system).contains("【学生画像】偏沉默");
-        assertThat(system).contains("【暖场指令】强度=2");
+        // 预渲染内容原样透传（不再内部渲染 classpath 模板）
+        assertThat(system).contains("【预渲染】SYS_001+语言模板+TSK_004暖场指令");
+        // 性别风格由服务内部追加（与主链路 chatWithPrompt 一致）
+        assertThat(system).contains("男生·中年级");
+        // contextBrief 追加到 system 层尾部（recency bias）
+        assertThat(system).contains("【上下文简报】偏沉默");
+        assertThat(system.indexOf("【上下文简报】偏沉默"))
+                .isGreaterThan(system.indexOf("【预渲染】SYS_001+语言模板+TSK_004暖场指令"));
     }
 }

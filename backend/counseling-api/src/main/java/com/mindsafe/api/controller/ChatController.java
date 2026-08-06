@@ -10,11 +10,16 @@ import com.mindsafe.common.exception.BizException;
 import com.mindsafe.service.consent.GuardianConsentService;
 import com.mindsafe.service.conversation.ConversationService;
 import jakarta.validation.Valid;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Flux;
 
+import java.time.Instant;
+import java.time.format.DateTimeParseException;
 import java.util.UUID;
 
 /**
@@ -27,13 +32,19 @@ import java.util.UUID;
 @RequestMapping("/api/v1/chat")
 public class ChatController {
 
+    private static final Logger log = LoggerFactory.getLogger(ChatController.class);
+
     private final ConversationService conversationService;
     private final GuardianConsentService guardianConsentService;
+    /** ARCH-010 D5（OVD-4）：旧关闭接口 TTL 到期时间（ISO-8601）；空 = 未设置（TTL 窗口内） */
+    private final String endSessionExpiresAt;
 
     public ChatController(ConversationService conversationService,
-                          GuardianConsentService guardianConsentService) {
+                          GuardianConsentService guardianConsentService,
+                          @Value("${mindsafe.deprecated.end-session.expires-at:}") String endSessionExpiresAt) {
         this.conversationService = conversationService;
         this.guardianConsentService = guardianConsentService;
+        this.endSessionExpiresAt = endSessionExpiresAt;
     }
 
     /**
@@ -93,14 +104,35 @@ public class ChatController {
     }
 
     /**
-     * 结束会话
+     * 结束会话（旧关闭接口，ARCH-010 D5：TTL 到期后下线）
+     * <p>
+     * 新接口：POST /api/v1/sessions/{id}/close（支持满意度评价）。
+     * 90 天 TTL 窗口（2026-08-06 起）内保留并记录调用日志供灰度观测；
+     * 到期（配置 mindsafe.deprecated.end-session.expires-at）后返回 410。
      */
     @PostMapping("/sessions/{sessionId}/end")
     public ApiResponse<Void> endSession(@PathVariable UUID sessionId,
                                         Authentication authentication) {
+        ensureEndSessionAlive();
         TenantContext ctx = extractContext(authentication);
+        log.warn("DEPRECATED-API（TTL 窗口内，到期下线）: POST /api/v1/chat/sessions/{}/end, tenantId={}",
+                sessionId, ctx.tenantId());
         conversationService.endSession(ctx.tenantId(), ctx.userId(), sessionId);
         return ApiResponse.ok();
+    }
+
+    /** 旧关闭接口 TTL：超过 expires-at 即下线（410）；配置非法时防御降级为未到期 */
+    private void ensureEndSessionAlive() {
+        if (endSessionExpiresAt == null || endSessionExpiresAt.isBlank()) {
+            return;
+        }
+        try {
+            if (Instant.parse(endSessionExpiresAt).isBefore(Instant.now())) {
+                throw new BizException(ErrorCode.API_GONE, "旧关闭接口已下线，请使用 POST /api/v1/sessions/{id}/close");
+            }
+        } catch (DateTimeParseException e) {
+            log.error("mindsafe.deprecated.end-session.expires-at 配置非法，视为未到期: {}", endSessionExpiresAt, e);
+        }
     }
 
     /** 从 Authentication 提取租户上下文 */

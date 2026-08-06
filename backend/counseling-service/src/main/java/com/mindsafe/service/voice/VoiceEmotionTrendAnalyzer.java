@@ -1,5 +1,6 @@
 package com.mindsafe.service.voice;
 
+import com.mindsafe.ai.risk.EmotionVocabulary;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -42,11 +43,6 @@ public class VoiceEmotionTrendAnalyzer {
             int sessionCount            // 参与分析的会话数
     ) {
     }
-
-    /** 负面情绪标签集 */
-    private static final List<String> NEGATIVE_EMOTIONS = List.of(
-            "sad", "angry", "anxious", "fearful", "disgusted", "crisis"
-    );
 
     /**
      * 分析跨会话语音情绪趋势。
@@ -123,7 +119,8 @@ public class VoiceEmotionTrendAnalyzer {
     }
 
     private boolean isNegative(String emotion) {
-        return NEGATIVE_EMOTIONS.contains(emotion.toLowerCase());
+        // ARCH-003：内嵌 NEGATIVE_EMOTIONS → EmotionVocabulary 统一判定（anxious/crisis 等全管线一致）
+        return EmotionVocabulary.isNegative(emotion);
     }
 
     private double negativeRatio(List<String> emotions) {

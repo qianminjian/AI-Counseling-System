@@ -1,6 +1,8 @@
 package com.mindsafe.service.profile;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mindsafe.ai.orchestrator.ProfileSignals;
 import com.mindsafe.domain.entity.CounselingSession;
 import com.mindsafe.domain.entity.RiskEvent;
@@ -33,13 +35,17 @@ public class StudentProfileService {
     private final StudentProfileMapper profileMapper;
     private final CounselingSessionMapper sessionMapper;
     private final RiskEventMapper riskEventMapper;
+    // ARCH-010 P2-2：注入 Spring 唯一 ObjectMapper bean（此前手写 toJson 无转义 + parseJson 每轮 new）
+    private final ObjectMapper objectMapper;
 
     public StudentProfileService(StudentProfileMapper profileMapper,
                                  CounselingSessionMapper sessionMapper,
-                                 RiskEventMapper riskEventMapper) {
+                                 RiskEventMapper riskEventMapper,
+                                 ObjectMapper objectMapper) {
         this.profileMapper = profileMapper;
         this.sessionMapper = sessionMapper;
         this.riskEventMapper = riskEventMapper;
+        this.objectMapper = objectMapper;
     }
 
     /**
@@ -498,34 +504,22 @@ public class StudentProfileService {
     }
 
     private String toJson(Map<String, Object> map) {
-        // 简单 JSON 序列化（避免引入额外依赖，P0 阶段够用）
+        // ARCH-010 P2-2：统一走注入的 ObjectMapper（Jackson 转义引号/反斜杠等特殊字符；
+        // 此前手写拼接值含引号即产出非法 JSON，真实 bug 温床）
         if (map == null || map.isEmpty()) return "{}";
-        StringBuilder sb = new StringBuilder("{");
-        boolean first = true;
-        for (Map.Entry<String, Object> entry : map.entrySet()) {
-            if (!first) sb.append(",");
-            sb.append("\"").append(entry.getKey()).append("\":");
-            Object val = entry.getValue();
-            if (val instanceof String) {
-                sb.append("\"").append(val).append("\"");
-            } else if (val instanceof Map) {
-                sb.append(toJson((Map<String, Object>) val));
-            } else {
-                sb.append(val);
-            }
-            first = false;
+        try {
+            return objectMapper.writeValueAsString(map);
+        } catch (JsonProcessingException e) {
+            log.warn("画像 JSON 序列化失败（降级为空对象）: {}", e.getMessage());
+            return "{}";
         }
-        sb.append("}");
-        return sb.toString();
     }
 
     @SuppressWarnings("unchecked")
     private Map<String, Object> parseJson(String json) {
         if (json == null || json.isBlank() || "{}".equals(json)) return null;
         try {
-            // 使用 Jackson（Spring Boot 已包含）
-            com.fasterxml.jackson.databind.ObjectMapper om = new com.fasterxml.jackson.databind.ObjectMapper();
-            return om.readValue(json, Map.class);
+            return objectMapper.readValue(json, Map.class);
         } catch (Exception e) {
             return null;
         }

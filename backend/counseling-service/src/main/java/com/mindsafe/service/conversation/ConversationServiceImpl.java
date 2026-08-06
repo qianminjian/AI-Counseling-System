@@ -11,7 +11,6 @@ import com.mindsafe.ai.orchestrator.ProfileSignals;
 import com.mindsafe.ai.orchestrator.PromptOrchestrationService;
 import com.mindsafe.ai.orchestrator.ReplyEmotionResolver;
 import com.mindsafe.ai.orchestrator.StrategyProfile;
-import com.mindsafe.ai.prompt.PromptTemplateService;
 import com.mindsafe.ai.safety.ConfidentialityNotice;
 import com.mindsafe.ai.safety.CrisisResourceProvider;
 import com.mindsafe.ai.safety.CrisisResources;
@@ -31,8 +30,8 @@ import com.mindsafe.domain.mapper.MessageSummaryMapper;
 import com.mindsafe.domain.mapper.UserMapper;
 import com.mindsafe.service.knowledge.RagAdvisorService;
 import com.mindsafe.service.memory.LongTermMemoryService;
+import com.mindsafe.service.memory.ThemeEvolutionEngine;
 import com.mindsafe.service.profile.StudentProfileService;
-import com.mindsafe.service.prompt.PromptVersionService;
 import com.mindsafe.service.security.FieldEncryptionService;
 import com.mindsafe.service.usage.UsageTimeLimitService;
 import org.slf4j.Logger;
@@ -47,8 +46,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 /**
  * 对话服务实现（M1 核心闭环 + 风险识别 + DB 持久化）
@@ -59,7 +56,6 @@ public class ConversationServiceImpl implements ConversationService {
     private static final Logger log = LoggerFactory.getLogger(ConversationServiceImpl.class);
 
     private final AiChatService aiChatService;
-    private final PromptTemplateService promptTemplateService;
     private final ConversationRiskProcessor riskProcessor;
     private final PiiDesensitizer piiDesensitizer;
     private final CounselingSessionMapper sessionMapper;
@@ -67,7 +63,6 @@ public class ConversationServiceImpl implements ConversationService {
     private final UserMapper userMapper;
     private final StudentProfileService profileService;
     private final LongTermMemoryService longTermMemoryService;
-    private final PromptVersionService promptVersionService;
     private final UsageTimeLimitService usageTimeLimitService;
     private final RagAdvisorService ragAdvisorService;
     private final PromptOrchestrationService promptOrchestrationService;
@@ -81,17 +76,25 @@ public class ConversationServiceImpl implements ConversationService {
     private final ConversationContextAgent contextAgent;
     private final SessionSummaryUpdater sessionSummaryUpdater;
 
+    /** 会话级个人信息提取器（纯正则，ARCH-001 C1 拆分） */
+    private final PersonalInfoExtractor personalInfoExtractor;
+
+    /** Prompt 组装服务（版本路由 + 固定顺序拼接，ARCH-001 C1 拆分） */
+    private final PromptAssemblyService promptAssemblyService;
+
+    /** 主题演化引擎（话题关键词表单一源，ARCH-001 C1 收敛） */
+    private final ThemeEvolutionEngine themeEvolutionEngine;
+
     /** 冷场决策模型（无状态纯计算，design/28 §三） */
     private final NudgeDecisionModel nudgeDecisionModel = new NudgeDecisionModel();
 
     /** 回复情绪推导器（TTSFX-004，design/37 §三.1）：纯规则零依赖，同 NudgeDecisionModel 内联实例化 */
     private final ReplyEmotionResolver replyEmotionResolver = new ReplyEmotionResolver();
 
-    /** CBT state_path JSON 序列化工具（CBT-201） */
-    private static final ObjectMapper STATE_PATH_MAPPER = new ObjectMapper();
+    /** CBT state_path JSON 序列化工具（CBT-201）；ARCH-010 P2-2：注入唯一 ObjectMapper（此前 static new） */
+    private final ObjectMapper objectMapper;
 
     public ConversationServiceImpl(AiChatService aiChatService,
-                                   PromptTemplateService promptTemplateService,
                                    ConversationRiskProcessor riskProcessor,
                                    PiiDesensitizer piiDesensitizer,
                                    CounselingSessionMapper sessionMapper,
@@ -100,7 +103,6 @@ public class ConversationServiceImpl implements ConversationService {
                                    StudentProfileService profileService,
                                    UsageTimeLimitService usageTimeLimitService,
                                    LongTermMemoryService longTermMemoryService,
-                                   PromptVersionService promptVersionService,
                                    RagAdvisorService ragAdvisorService,
                                    PromptOrchestrationService promptOrchestrationService,
                                    MessageSummaryService messageSummaryService,
@@ -111,9 +113,12 @@ public class ConversationServiceImpl implements ConversationService {
                                    SessionEndAnalyticsService sessionEndAnalyticsService,
                                    RedisSessionStateStore sessionStateStore,
                                    ConversationContextAgent contextAgent,
-                                   SessionSummaryUpdater sessionSummaryUpdater) {
+                                   SessionSummaryUpdater sessionSummaryUpdater,
+                                   ObjectMapper objectMapper,
+                                   PersonalInfoExtractor personalInfoExtractor,
+                                   PromptAssemblyService promptAssemblyService,
+                                   ThemeEvolutionEngine themeEvolutionEngine) {
         this.aiChatService = aiChatService;
-        this.promptTemplateService = promptTemplateService;
         this.riskProcessor = riskProcessor;
         this.piiDesensitizer = piiDesensitizer;
         this.sessionMapper = sessionMapper;
@@ -122,7 +127,6 @@ public class ConversationServiceImpl implements ConversationService {
         this.profileService = profileService;
         this.usageTimeLimitService = usageTimeLimitService;
         this.longTermMemoryService = longTermMemoryService;
-        this.promptVersionService = promptVersionService;
         this.ragAdvisorService = ragAdvisorService;
         this.promptOrchestrationService = promptOrchestrationService;
         this.messageSummaryService = messageSummaryService;
@@ -134,6 +138,10 @@ public class ConversationServiceImpl implements ConversationService {
         this.sessionStateStore = sessionStateStore;
         this.contextAgent = contextAgent;
         this.sessionSummaryUpdater = sessionSummaryUpdater;
+        this.objectMapper = objectMapper;
+        this.personalInfoExtractor = personalInfoExtractor;
+        this.promptAssemblyService = promptAssemblyService;
+        this.themeEvolutionEngine = themeEvolutionEngine;
     }
 
     @Transactional
@@ -170,7 +178,7 @@ public class ConversationServiceImpl implements ConversationService {
         SessionState newState = new SessionState(
                 sessionId, tenantId, studentUserId, emotionTag, channel, gender, expressionDepth, grade);
         newState.setPseudonym(pseudonym);  // CTX-Agent：身份简报用
-        sessionStateStore.save(sessionId, newState);
+        sessionStateStore.save(tenantId, sessionId, newState);
         log.info("会话创建: sessionId={}, student={}, emotion={}, grade={}, expressionDepth={}",
                 sessionId, studentUserId, emotionTag, grade, expressionDepth);
 
@@ -196,7 +204,7 @@ public class ConversationServiceImpl implements ConversationService {
     @Override
     public Flux<StreamMessageEvent> sendMessageStream(UUID tenantId, UUID studentUserId, UUID sessionId, String content,
                                                       String voiceEmotion, Double voiceEmotionConfidence) {
-        SessionState session = sessionStateStore.get(sessionId);
+        SessionState session = sessionStateStore.get(tenantId, sessionId);
         if (session == null) {
             return Flux.just(StreamMessageEvent.error("会话不存在"));
         }
@@ -300,11 +308,17 @@ public class ConversationServiceImpl implements ConversationService {
         // 4.1b CTX-Agent Phase 5：主题线索提取（轻量规则，零 LLM）
         extractTopicHint(session, content, riskResult, turn);
 
-        // 4.1c CTX-Agent：会话级个人信息提取（轻量规则，零 LLM，会话结束即销毁）
-        extractPersonalInfo(session, content);
+        // 4.1c CTX-Agent：会话级个人信息提取（轻量规则，零 LLM，会话结束即销毁；ARCH-001 C1 收敛 PersonalInfoExtractor）
+        PersonalInfoExtractor.ExtractedInfo extracted = personalInfoExtractor.extract(content);
+        if (extracted != null) {
+            if (extracted.realName() != null) session.updatePersonalInfo("realName", extracted.realName());
+            if (extracted.age() != null) session.updatePersonalInfo("age", extracted.age());
+            if (extracted.grade() != null) session.updatePersonalInfo("grade", extracted.grade());
+            if (extracted.className() != null) session.updatePersonalInfo("class", extracted.className());
+        }
 
         // 持久化本轮状态变更（覆盖 RED 短路 / 时长超限等提前返回路径）
-        sessionStateStore.save(sessionId, session);
+        sessionStateStore.save(tenantId, sessionId, session);
 
         // 4.2 RISK-201：RED 硬短路——跳过 LLM 自由生成，返回预审核安全文案（design/04 §18.2）。
         //     短路不可被否定/引用降噪覆盖（fusedLevel 已经硬规则融合）；教师告警已在上方照发。
@@ -315,7 +329,7 @@ public class ConversationServiceImpl implements ConversationService {
                     : CrisisResources.SAFETY_MODE_COMPANION_REPLY;
             messageSummaryService.persistAiMessageSummary(session, turn, safetyReply);
             session.recordAiReply(safetyReply);
-            sessionStateStore.save(sessionId, session);
+            sessionStateStore.save(tenantId, sessionId, session);
             log.warn("RED 安全响应模式：跳过 LLM 自由生成: sessionId={}, turn={}, freshRed={}",
                     sessionId, turn, fusedLevel == RiskLevel.RED);
             return riskEvents.concatWith(Flux.just(
@@ -351,20 +365,6 @@ public class ConversationServiceImpl implements ConversationService {
         int totalSessions = profileService.getSessionCount(session.getTenantId(), session.getStudentUserId());
         String contextBrief = contextAgent.buildContextBrief(session, profilePrompt, memoryPrompt, alliancePrompt, totalSessions);
 
-        // AI-005：Prompt 版本 A/B 路由（DB 优先，classpath 降级）
-        String gradeLevel = effectiveGrade <= 2 ? "1-2" : effectiveGrade <= 4 ? "3-4" : "5-6";
-        PromptVersionService.ResolvedPrompt sysResolved = promptVersionService.resolve(
-                session.getTenantId(), "SYS_001", session.getStudentUserId(), Map.of(
-                        "grade_level", gradeLevel,
-                        "emotion_tag", session.getEmotionTag() != null ? session.getEmotionTag() : "",
-                        "school_policy", "默认：发现高风险立即通知心理老师。",
-                        "session_mode", "normal_counseling"
-                ));
-        String langKey = effectiveGrade <= 2 ? "LANG_001" : effectiveGrade <= 4 ? "LANG_002" : "LANG_003";
-        PromptVersionService.ResolvedPrompt langResolved = promptVersionService.resolveRaw(
-                session.getTenantId(), langKey, session.getStudentUserId());
-        String systemPromptContent = sysResolved.content() + "\n\n" + langResolved.content();
-
         // ORCH-001/002/003/005：编排引擎——先算策略、再拼提示词（design/44 §四/§七）。
         // VCL-001：轮级 currentEmotion 由语音 SER 映射驱动（置信门控 >0.6），
         // ORCH-003：状态机输入上一轮 state/reliefCount，输出转移结果存回 session。
@@ -381,16 +381,24 @@ public class ConversationServiceImpl implements ConversationService {
         // 状态机转移结果存回会话（下一轮输入）
         session.setEmotionState(orchResult.transition().state());
         session.setReliefCount(orchResult.transition().reliefCount());
-        PromptVersionService.ResolvedPrompt emoResolved = promptVersionService.resolve(
-                session.getTenantId(), "EMO_001", session.getStudentUserId(),
-                promptOrchestrationService.toTemplateVariables(strategy));
-        systemPromptContent = systemPromptContent + "\n\n" + emoResolved.content();
 
+        // AI-005 + ARCH-010 D4：Prompt 版本路由与固定顺序组装，收敛 PromptAssemblyService（ARCH-001 C1）
         // CBT-201/202 + WIRE-002：阶段推断 + 年龄分层标记 → 指令注入 + state_path 落库（design/03 §11.3/11.4）
         CbtStageRouter.CbtStage cbtStage = cbtStageRouter.inferStage(turn, session.getEmotionState());
         boolean allowCbt = session.getEmotionState() == StrategyProfile.EmotionState.STABLE;
         CbtStageRouter.StageMark stageMark = cbtStageRouter.mark(cbtStage, effectiveGrade, allowCbt);
-        systemPromptContent = systemPromptContent + "\n\n" + cbtStageRouter.stageDirective(stageMark);
+
+        // KB-101b：RAG 参考知识注入（design/49 §六）——场景触发才检索，寒暄闲聊不检索；
+        // RED 危机场景已在 4.2 硬短路，不会走到此处；检索异常返回空串不影响主线。
+        String ragContext = ragAdvisorService.buildRagContext(session.getTenantId(), safeContent, effectiveGrade);
+        if (!ragContext.isEmpty()) {
+            log.info("RAG 参考知识已注入: sessionId={}, contextLen={}", sessionId, ragContext.length());
+        }
+        PromptAssemblyService.AssembledPrompt assembled = promptAssemblyService.assembleMainPrompt(
+                session.getTenantId(), session.getStudentUserId(), effectiveGrade, session.getEmotionTag(),
+                promptOrchestrationService.toTemplateVariables(strategy), stageMark, ragContext);
+        String systemPromptContent = assembled.content();
+
         CounselingSession dbSession = sessionMapper.selectById(sessionId);
         String statePath = appendStatePath(dbSession != null ? dbSession.getStatePath() : null, turn, stageMark);
         log.debug("CBT 阶段标记: sessionId={}, turn={}, stage={}, strategy={}, allowCbt={}",
@@ -398,16 +406,8 @@ public class ConversationServiceImpl implements ConversationService {
 
         // ALLY 连续性开场 / 回归照护已纳入 CTX-Agent contextBrief，不再单独注入
 
-        // KB-101b：RAG 参考知识注入（design/49 §六）——场景触发才检索，寒暄闲聊不检索；
-        // RED 危机场景已在 4.2 硬短路，不会走到此处；检索异常返回空串不影响主线。
-        String ragContext = ragAdvisorService.buildRagContext(session.getTenantId(), safeContent, effectiveGrade);
-        if (!ragContext.isEmpty()) {
-            systemPromptContent = systemPromptContent + "\n\n" + ragContext;
-            log.info("RAG 参考知识已注入: sessionId={}, contextLen={}", sessionId, ragContext.length());
-        }
-
         // 记录 Prompt 版本与 CBT state_path 到会话（A/B 对比 + design/45 评估闭环数据源）
-        String versionTag = sysResolved.versionTag();
+        String versionTag = assembled.versionTag();
         CounselingSession versionUpdate = new CounselingSession();
         versionUpdate.setSessionId(sessionId);
         versionUpdate.setPromptVersion(versionTag);
@@ -419,7 +419,7 @@ public class ConversationServiceImpl implements ConversationService {
         String finalSystemPrompt = systemPromptContent + "\n\n" + contextBrief;
 
         StringBuilder aiResponseCollector = new StringBuilder();
-        Flux<StreamMessageEvent> aiStream = aiChatService.chatWithPrompt(sessionId, session.getEmotionTag(), safeContent, session.getGender(), null, effectiveGrade, finalSystemPrompt)
+        Flux<StreamMessageEvent> aiStream = aiChatService.chatWithPrompt(sessionId, session.getEmotionTag(), safeContent, session.getGender(), effectiveGrade, finalSystemPrompt)
                 .doOnNext(event -> {
                     if (event.type() != null && event.type().equals("token") && event.content() != null) {
                         aiResponseCollector.append(event.content());
@@ -431,7 +431,7 @@ public class ConversationServiceImpl implements ConversationService {
                     messageSummaryService.persistAiMessageSummary(session, turn, fullReply);
                     // 冷场决策模型信号：AI 是否刚问了思考型问题
                     session.recordAiReply(fullReply);
-                    sessionStateStore.save(sessionId, session);
+                    sessionStateStore.save(tenantId, sessionId, session);
 
                     // CTX-Agent Phase 3：每 4 轮异步更新滚动摘要（不阻塞当前轮响应）
                     if (sessionSummaryUpdater.shouldUpdate(session)) {
@@ -455,7 +455,7 @@ public class ConversationServiceImpl implements ConversationService {
 
     @Override
     public Flux<StreamMessageEvent> sendNudgeStream(UUID tenantId, UUID studentUserId, UUID sessionId, int silenceSeconds) {
-        SessionState session = sessionStateStore.get(sessionId);
+        SessionState session = sessionStateStore.get(tenantId, sessionId);
         if (session == null) {
             log.debug("nudge: 会话不存在，返回空流: sessionId={}", sessionId);
             return Flux.empty();
@@ -509,13 +509,8 @@ public class ConversationServiceImpl implements ConversationService {
             return Flux.empty();
         }
 
-        // 暖场：渲染 TSK-004 指令（追加到 system 层，不向记忆写伪造学生消息）
-        String nudgeInstruction = promptTemplateService.render(PromptTemplateService.TSK_004, Map.of(
-                "silence_seconds", String.valueOf(silenceSeconds),
-                "warmth_level", String.valueOf(decision.warmthLevel()),
-                "direction", decision.direction()
-        ));
-        // Fix 1: 暖场接入 CTX-Agent（统一上下文简报，让暖场也知道昵称/情绪/进展）
+        // 暖场：TSK_004 指令路由与组装收敛 PromptAssemblyService（ARCH-010 D4 + ARCH-001 C1，与主链路同一加载路径）
+        // 暖场上下文简报（CTX-Agent 统一上下文，同主链路组装）
         String profilePrompt = profileService.buildProfilePrompt(session.getTenantId(), session.getStudentUserId(), session.getGrade(), session.getGender());
         String nudgeMemoryPrompt = longTermMemoryService.buildMemoryPrompt(session.getTenantId(), session.getStudentUserId());
         String nudgeAlliancePrompt = buildAlliancePrompt(session, nudgeMemoryPrompt);
@@ -526,12 +521,22 @@ public class ConversationServiceImpl implements ConversationService {
         int turn = session.getTurnCount();
         StringBuilder aiResponseCollector = new StringBuilder();
 
+        // ARCH-010 D4：SYS_001 + 语言模板 + TSK_004 与主链路同一版本路由，组装收敛 PromptAssemblyService（ARCH-001 C1）；
+        // contextBrief 由 chatProactive 追加到 system 层尾部（recency bias），此处不拼入
+        String systemPromptContent = promptAssemblyService.assembleNudgePrompt(
+                session.getTenantId(), session.getStudentUserId(), effectiveGrade,
+                session.getEmotionTag(), Map.of(
+                        "silence_seconds", String.valueOf(silenceSeconds),
+                        "warmth_level", String.valueOf(decision.warmthLevel()),
+                        "direction", decision.direction()
+                ));
+
         session.markNudged();
-        sessionStateStore.save(sessionId, session);
+        sessionStateStore.save(tenantId, sessionId, session);
         log.info("nudge: 决策=暖场: sessionId={}, warmthLevel={}, direction={}, silenceSeconds={}",
                 sessionId, decision.warmthLevel(), decision.direction(), silenceSeconds);
 
-        return aiChatService.chatProactive(sessionId, session.getEmotionTag(), session.getGender(), nudgeContextBrief, nudgeInstruction, effectiveGrade)
+        return aiChatService.chatProactive(sessionId, session.getEmotionTag(), session.getGender(), nudgeContextBrief, systemPromptContent, effectiveGrade)
                 .doOnNext(event -> {
                     if (event.type() != null && event.type().equals("token") && event.content() != null) {
                         aiResponseCollector.append(event.content());
@@ -541,7 +546,7 @@ public class ConversationServiceImpl implements ConversationService {
                     String fullReply = aiResponseCollector.toString();
                     messageSummaryService.persistAiMessageSummary(session, turn, fullReply);
                     session.recordAiReply(fullReply);
-                    sessionStateStore.save(sessionId, session);
+                    sessionStateStore.save(tenantId, sessionId, session);
                     return Flux.just(StreamMessageEvent.done(""));
                 }))
                 .onErrorResume(e -> {
@@ -564,7 +569,7 @@ public class ConversationServiceImpl implements ConversationService {
 
     @Override
     public void updateClientSettings(UUID tenantId, UUID studentUserId, UUID sessionId, Boolean ttsMuted, Boolean wakeEnabled) {
-        SessionState session = sessionStateStore.get(sessionId);
+        SessionState session = sessionStateStore.get(tenantId, sessionId);
         if (session == null) return;
         // SEC-001：会话归属校验（非持有人静默忽略，不泄漏会话存在性）
         if (!isSessionOwner(session, tenantId, studentUserId)) {
@@ -573,7 +578,7 @@ public class ConversationServiceImpl implements ConversationService {
         }
         if (ttsMuted != null) session.setTtsMuted(ttsMuted);
         if (wakeEnabled != null) session.setWakeEnabled(wakeEnabled);
-        sessionStateStore.save(sessionId, session);
+        sessionStateStore.save(tenantId, sessionId, session);
     }
 
     /**
@@ -588,7 +593,7 @@ public class ConversationServiceImpl implements ConversationService {
     @Transactional
     @Override
     public void endSession(UUID tenantId, UUID studentUserId, UUID sessionId) {
-        SessionState session = sessionStateStore.get(sessionId);
+        SessionState session = sessionStateStore.get(tenantId, sessionId);
         if (session != null) {
             // SEC-001：非持有人拒绝结束他人会话
             if (!isSessionOwner(session, tenantId, studentUserId)) {
@@ -605,7 +610,7 @@ public class ConversationServiceImpl implements ConversationService {
             update.setUpdatedAt(Instant.now());
             sessionMapper.updateById(update);
 
-            sessionStateStore.remove(sessionId);
+            sessionStateStore.remove(tenantId, sessionId);
 
             // 清除 AI 对话记忆
             aiChatService.clearMemory(sessionId);
@@ -707,85 +712,13 @@ public class ConversationServiceImpl implements ConversationService {
                 session.addTopicHint(riskResult.category(), turn);
             }
 
-            // 2. 简单关键词提取（小学生高频话题）
-            if (content == null || content.length() < 4) return;
-            String[][] topicPatterns = {
-                    {"同学", "同学关系"}, {"朋友", "友谊"}, {"妈妈", "和妈妈的关系"},
-                    {"爸爸", "和爸爸的关系"}, {"老师", "和老师的关系"},
-                    {"考试", "考试压力"}, {"成绩", "学习压力"}, {"作业", "学习压力"},
-                    {"欺负", "被欺负"}, {"打我", "被欺负"}, {"骂我", "被欺负"},
-                    {"不想活", "自伤倾向"}, {"死", "自伤倾向"},
-                    {"孤独", "孤独感"}, {"没人", "孤独感"},
-                    {"害怕", "恐惧"}, {"担心", "焦虑"},
-                    {"生气", "愤怒"}, {"讨厌", "厌恶"},
-                    {"弟弟", "兄弟姐妹关系"}, {"妹妹", "兄弟姐妹关系"},
-            };
-            for (String[] pattern : topicPatterns) {
-                if (content.contains(pattern[0])) {
-                    session.addTopicHint(pattern[1], turn);
-                    break; // 每轮最多提取 1 个关键词主题（避免噪音）
-                }
+            // 2. 简单关键词提取（关键词表收敛 ThemeEvolutionEngine 单一源，ARCH-001 C1；每轮最多 1 个）
+            String topic = themeEvolutionEngine.findTopicHint(content);
+            if (topic != null) {
+                session.addTopicHint(topic, turn);
             }
         } catch (Exception e) {
             log.debug("CTX-Agent 主题提取失败（不影响对话）: {}", e.getMessage());
-        }
-    }
-
-    // ===== 会话级个人信息提取（轻量规则，零 LLM） =====
-
-    /** 名字提取：我叫XX / 我的名字是XX / 你可以叫我XX */
-    private static final Pattern NAME_PATTERN = Pattern.compile(
-            "(?:我叫|我的名字是?|你可以叫我|我名字是|叫我)([\\u4e00-\\u9fa5a-zA-Z]{1,6})");
-    /** 年龄提取：我X岁 / 我今年X岁 */
-    private static final Pattern AGE_PATTERN = Pattern.compile(
-            "我(?:今年)?(\\d{1,2})\\s*岁");
-    /** 年级提取：我在X年级 / 我上X年级 / 我读X年级 */
-    private static final Pattern GRADE_PATTERN = Pattern.compile(
-            "我(?:在|上|读|是)([一二三四五六1-6])\\s*年级");
-    /** 班级提取：我在X班 / 我是X班的 */
-    private static final Pattern CLASS_PATTERN = Pattern.compile(
-            "我(?:在|是)([\\u4e00-\\u9fa5a-zA-Z0-9]{1,6}班)");
-
-    /**
-     * 从学生消息中提取个人信息（真实名字/年龄/年级/班级）。
-     * 存入 SessionState.personalInfo，注入 CTX-Agent 身份简报，会话结束即销毁。
-     * 零 LLM 调用，纯正则匹配。
-     */
-    private void extractPersonalInfo(SessionState session, String content) {
-        try {
-            if (content == null || content.length() < 2) return;
-
-            Matcher m;
-
-            // 名字
-            m = NAME_PATTERN.matcher(content);
-            if (m.find()) {
-                String name = m.group(1);
-                // 过滤常见误匹配（语气词/动词）
-                if (!name.matches("(?:是|的|了|吗|呢|吧|啊|哦|哈|嗯|不|没|在|有|要|会|能|可以|知道)")) {
-                    session.updatePersonalInfo("realName", name);
-                }
-            }
-
-            // 年龄
-            m = AGE_PATTERN.matcher(content);
-            if (m.find()) {
-                session.updatePersonalInfo("age", m.group(1) + "岁");
-            }
-
-            // 年级
-            m = GRADE_PATTERN.matcher(content);
-            if (m.find()) {
-                session.updatePersonalInfo("grade", m.group(1) + "年级");
-            }
-
-            // 班级
-            m = CLASS_PATTERN.matcher(content);
-            if (m.find()) {
-                session.updatePersonalInfo("class", m.group(1));
-            }
-        } catch (Exception e) {
-            log.debug("个人信息提取失败（不影响对话）: {}", e.getMessage());
         }
     }
 
@@ -798,7 +731,7 @@ public class ConversationServiceImpl implements ConversationService {
      */
     private String appendStatePath(String existingJson, int turn, CbtStageRouter.StageMark mark) {
         try {
-            ObjectNode record = STATE_PATH_MAPPER.createObjectNode();
+            ObjectNode record = objectMapper.createObjectNode();
             record.put("turn", turn);
             record.put("stage", mark.stage().name());
             record.put("age_strategy", mark.ageStrategy().name());
@@ -808,13 +741,13 @@ public class ConversationServiceImpl implements ConversationService {
 
             ArrayNode arr;
             if (existingJson == null || existingJson.isBlank()) {
-                arr = STATE_PATH_MAPPER.createArrayNode();
+                arr = objectMapper.createArrayNode();
             } else {
-                var parsed = STATE_PATH_MAPPER.readTree(existingJson);
-                arr = parsed.isArray() ? (ArrayNode) parsed : STATE_PATH_MAPPER.createArrayNode();
+                var parsed = objectMapper.readTree(existingJson);
+                arr = parsed.isArray() ? (ArrayNode) parsed : objectMapper.createArrayNode();
             }
             arr.add(record);
-            return STATE_PATH_MAPPER.writeValueAsString(arr);
+            return objectMapper.writeValueAsString(arr);
         } catch (Exception e) {
             log.warn("state_path 序列化失败，降级为本轮单条记录: {}", e.getMessage());
             return String.format(

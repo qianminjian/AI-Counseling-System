@@ -189,7 +189,10 @@ export default function VerifyPage() {
         </button>
       </form>
 
-      <p className="tip-text">如有问题请联系学校心理老师</p>
+      <p className="tip-text">
+        如有问题请联系学校心理老师 ·{' '}
+        <a href="/parent/privacy">个人信息保护告知</a>
+      </p>
     </div>
   )
 }

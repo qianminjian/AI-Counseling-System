@@ -1,6 +1,7 @@
 package com.mindsafe.service.conversation;
 
 import com.mindsafe.ai.orchestrator.StrategyProfile;
+import com.mindsafe.ai.risk.EmotionVocabulary;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -88,8 +89,14 @@ public class ConversationContextAgent {
         boolean isPlaceholder = isPlaceholderName(pseudonym);
 
         if (realName != null && !realName.isBlank()) {
-            // 孩子在对话中告诉过真实名字 → 最高优先级
-            sb.append("- 孩子的名字：").append(realName).append("（孩子亲口告诉你的，必须用这个名字称呼，不可遗忘）\n");
+            // D-8（2026-07-28，PII 脱敏注入）：孩子告诉过真实名字，但真实姓名绝不进入 LLM 上下文。
+            // 有效昵称存在 → 昵称置换；否则中性称呼（LLM 上下文 PII 脱敏注入规则，审计日志留存原名）。
+            if (!isPlaceholder && pseudonym != null && !pseudonym.isBlank()) {
+                sb.append("- 孩子的名字：").append(pseudonym)
+                        .append("（用这个昵称称呼孩子；孩子曾告诉过你名字，但出于隐私保护不在提示中出现）\n");
+            } else {
+                sb.append("- 孩子的名字：小朋友（孩子曾告诉你名字，但出于隐私保护不在此展示；请用\"小朋友\"等中性称呼）\n");
+            }
         } else if (!isPlaceholder && pseudonym != null && !pseudonym.isBlank()) {
             // 注册时填了有意义的昵称
             sb.append("- 昵称：").append(pseudonym).append("（请自然地称呼").append(pseudonym).append("）\n");
@@ -98,12 +105,9 @@ public class ConversationContextAgent {
             sb.append("- 名字：还不知道（孩子还没有告诉你名字。请在合适时机温和地问一次“你叫什么名字呀？”，得到回答后记住并在后续对话中使用）\n");
         }
 
-        // 其余个人信息
+        // 其余个人信息（D-8：真实姓名不注入；班级组合标识脱敏为"我们班"；age/grade 低敏感保留用于年龄适配）
         if (personalInfo != null && !personalInfo.isEmpty()) {
             sb.append("- 孩子告诉你的个人信息（必须记住，不可遗忘）：\n");
-            if (realName != null) {
-                sb.append("  - 真实名字：").append(realName).append("\n");
-            }
             String age = personalInfo.get("age");
             if (age != null) {
                 sb.append("  - 年龄：").append(age).append("\n");
@@ -114,7 +118,8 @@ public class ConversationContextAgent {
             }
             String clazz = personalInfo.get("class");
             if (clazz != null) {
-                sb.append("  - 班级：").append(clazz).append("\n");
+                // D-8：不注入具体班级（与姓名/学校组合可形成唯一标识）
+                sb.append("  - 班级：我们班（出于隐私保护不显示具体班级）\n");
             }
         }
 
@@ -283,10 +288,8 @@ public class ConversationContextAgent {
     }
 
     private boolean isNegative(String emotion) {
-        if (emotion == null) return false;
-        String lower = emotion.toLowerCase();
-        return "sad".equals(lower) || "angry".equals(lower) || "fearful".equals(lower)
-                || "anxious".equals(lower) || "withdrawn".equals(lower) || "disgusted".equals(lower);
+        // ARCH-003：内嵌情绪集合 → EmotionVocabulary 统一判定（anxious/withdrawn 等全管线一致）
+        return EmotionVocabulary.isNegative(emotion);
     }
 
     /**

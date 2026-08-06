@@ -1,5 +1,6 @@
 package com.mindsafe.ai.safety;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mindsafe.common.tenant.TenantContextHolder;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -48,7 +49,7 @@ class OutputReviewServiceTest {
         reviewClient = mock(ChatClient.class, Answers.RETURNS_DEEP_STUBS);
         reporter = mock(OutputSafetyReporter.class);
         when(builder.build()).thenReturn(reviewClient);
-        service = new OutputReviewService(builder, Runnable::run, reporter);
+        service = new OutputReviewService(builder, Runnable::run, reporter, new ObjectMapper());
     }
 
     /** 设置已加载模板 + 打桩 LLM 审查返回 */
@@ -248,7 +249,7 @@ class OutputReviewServiceTest {
                 return t;
             });
             try {
-                service = new OutputReviewService(builder, executor, reporter);
+                service = new OutputReviewService(builder, executor, reporter, new ObjectMapper());
                 ReflectionTestUtils.setField(service, "promptTemplate", "审查：{candidate_reply} / {context}");
                 when(reviewClient.prompt().user(anyString()).call().content())
                         .thenReturn("{\"decision\":\"block\"}");

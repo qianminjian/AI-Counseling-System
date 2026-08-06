@@ -1,5 +1,6 @@
 import { useRef, useEffect, useCallback } from 'react'
-import { getToken } from '../api'
+import { fetchWarmPrompt } from '../api'
+import { consumeSseStream } from './useSseStream'
 
 /** 触发冷场检测的最小沉默秒数（design/28 §2.3） */
 const SILENCE_TRIGGER_SECONDS = 25
@@ -69,37 +70,16 @@ export function useSilenceNudge({ sessionId, idle, onNudge }) {
 
       inFlightRef.current = true
       try {
-        const res = await fetch(`/api/v1/chat/sessions/${sessionId}/nudge`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}),
-          },
-          body: JSON.stringify({ silenceSeconds: silenceSec }),
-        })
+        // P0-1：走 authFetch 统一认证接缝（401 自动刷新+重放），不裸 fetch
+        const res = await fetchWarmPrompt(sessionId, silenceSec)
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
 
-        // 解析 SSE（与 sendMessage 相同协议）：累积 token
-        let fullText = ''
-        const reader = res.body.getReader()
-        const decoder = new TextDecoder()
-        let buffer = ''
-        while (true) {
-          const { done, value } = await reader.read()
-          if (done) break
-          buffer += decoder.decode(value, { stream: true })
-          const lines = buffer.split('\n')
-          buffer = lines.pop() || ''
-          for (const line of lines) {
-            if (!line.startsWith('data:')) continue
-            try {
-              const event = JSON.parse(line.slice(5))
-              if (event.type === 'token' && event.content) {
-                fullText += event.content
-              }
-            } catch { /* ignore parse errors */ }
-          }
-        }
+        // SSE 解析统一走 consumeSseStream（F-1 单点）：只累积 token 文本，emotion/risk 静默丢弃
+        const fullText = await consumeSseStream(res.body.getReader(), {
+          onToken: () => {},
+          onEmotion: () => {},
+          onRisk: () => {},
+        })
 
         if (fullText) {
           // 暖场成功：计数 + 回调（追加消息 + TTS 朗读）

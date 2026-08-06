@@ -12,18 +12,21 @@ public interface AiChatService {
 
     /**
      * 流式对话（AI-005：接受预解析的 System Prompt，支持 A/B 版本路由）
+     * <p>
+     * ARCH-004：profilePrompt 参数已删除——生产恒传 null 的僵尸参数，画像 Prompt 由调用方
+     * 直接拼入 systemPromptContent（见 ConversationServiceImpl 组装链）；chatProactive 的
+     * 上下文简报由 contextBrief 参数独立承载（ARCH-010 D4 后与主链路同一版本路由加载路径）。
      *
      * @param sessionId           会话 ID
      * @param emotionTag          当前情绪标签
      * @param message             学生消息
      * @param gender              学生性别
-     * @param profilePrompt       学生画像 Prompt 片段（可为 null）
      * @param grade               学生年级
      * @param systemPromptContent 预解析的 System Prompt 全文（已渲染变量，含语言模板）
      * @return 流式事件
      */
     Flux<StreamMessageEvent> chatWithPrompt(UUID sessionId, String emotionTag, String message,
-                                            String gender, String profilePrompt, int grade,
+                                            String gender, int grade,
                                             String systemPromptContent);
 
     /**
@@ -32,21 +35,24 @@ public interface AiChatService {
      * 关键差异（与 {@link #chatWithPrompt} 相比）：
      * <ul>
      *   <li><b>不向 ChatMemory 写入伪造的学生消息</b>（不污染对话记忆）；</li>
-     *   <li>nudge 指令（TSK-004 渲染后，含 warmthLevel/direction）追加到 system 层；</li>
+     *   <li>nudge 指令（TSK_004 渲染后，含 warmthLevel/direction）由调用方拼入 systemPromptContent；</li>
      *   <li>AI 回复正常写入记忆（孩子看到的连续性保留）；</li>
      *   <li>复用 Layer1 流式硬过滤 + Layer2 异步语义审查安全管线。</li>
      * </ul>
+     * <p>
+     * ARCH-010 D4：systemPromptContent 由调用方经 PromptVersionService 版本路由预渲染
+     * （SYS_001 + LANG + TSK_004，DB 优先 + A/B 灰度），与主链路同一加载路径。
      *
-     * @param sessionId        会话 ID
-     * @param emotionTag       当前情绪标签
-     * @param gender           学生性别（male/female，可为 null）
-     * @param profilePrompt    学生画像 Prompt 片段（可为 null）
-     * @param nudgeInstruction 暖场指令（TSK-004 渲染后，追加到 system 层）
-     * @param grade            学生年级（1-6，解析失败默认 4）
+     * @param sessionId           会话 ID
+     * @param emotionTag          当前情绪标签
+     * @param gender              学生性别（male/female，可为 null）
+     * @param contextBrief        CTX-Agent 上下文简报（追加到 system 层尾部，recency bias）
+     * @param systemPromptContent 预解析的 System Prompt 全文（含暖场指令，已走版本路由）
+     * @param grade               学生年级（1-6，解析失败默认 4）
      * @return 流式事件
      */
     Flux<StreamMessageEvent> chatProactive(UUID sessionId, String emotionTag, String gender,
-                                           String profilePrompt, String nudgeInstruction, int grade);
+                                           String contextBrief, String systemPromptContent, int grade);
 
     /**
      * 清除会话记忆（会话结束时调用）

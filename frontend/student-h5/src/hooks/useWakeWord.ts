@@ -22,7 +22,7 @@
  * - 串行识别：上一窗未识别完不提交新窗，识别慢时丢弃过老的积压音频（保最新 2.5s）；
  * - VAD 预过滤：静音窗直接跳过转写，省 CPU 并抑制 Whisper 静音幻觉。
  */
-import { useState, useEffect, useRef, useSyncExternalStore } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import {
   WAKE_MODEL_ID,
   WAKE_MODEL_REMOTE_HOST,
@@ -33,6 +33,7 @@ import {
   isHallucination,
 } from '../config/wakeWord'
 import { createPcmCapture, type PcmCaptureHandle } from '../utils/createPcmCapture'
+import { createModelStatusStore, type ModelStatus } from '../utils/modelStatusStore'
 
 /** Whisper 要求的采样率 */
 const TARGET_SAMPLE_RATE = 16000
@@ -78,43 +79,23 @@ function rms(f32) {
   return Math.sqrt(sum / (f32.length || 1))
 }
 
-/* ===== 全局模型加载状态（跨组件共享，EmotionSelect / ChatRoom / 设置面板均可订阅） ===== */
-type ModelStatus = 'idle' | 'loading' | 'ready' | 'error' | 'unsupported'
-let _modelStatus: ModelStatus = 'idle'
-let _modelProgress = 0 // 0-100 下载进度
-let _modelError = '' // 详细错误信息
-const _modelSubscribers = new Set<() => void>()
+/* ===== 全局模型加载状态（ARCH-006 收敛 A：复用 createModelStatusStore 基座） ===== */
+const wakeModelStore = createModelStatusStore()
 
 function setModelStatus(s: ModelStatus, progress?: number, error?: string) {
-  if (progress !== undefined) _modelProgress = progress
-  if (error !== undefined) _modelError = error
-  if (_modelStatus === s && progress === undefined && error === undefined) return
-  _modelStatus = s
-  // 更新缓存快照（保证引用稳定，避免 useSyncExternalStore 无限循环）
-  _modelSnapshot = { status: _modelStatus, progress: _modelProgress, error: _modelError }
-  _modelSubscribers.forEach((fn) => fn())
+  wakeModelStore.setStatus(s, progress, error)
 }
-
-let _modelSnapshot: { status: ModelStatus; progress: number; error: string } = { status: _modelStatus, progress: _modelProgress, error: _modelError }
 
 /** 订阅唤醒模型加载状态（React Hook，任意组件可调用） */
-export function useWakeModelStatus(): { status: ModelStatus; progress: number; error: string } {
-  return useSyncExternalStore(
-    (cb) => { _modelSubscribers.add(cb); return () => { _modelSubscribers.delete(cb) } },
-    () => _modelSnapshot,
-  )
-}
+export const useWakeModelStatus = wakeModelStore.useStatus
 
 /** 非 React 环境读取当前状态（如 console 调试） */
-export function getWakeModelStatus(): ModelStatus { return _modelStatus }
+export const getWakeModelStatus = wakeModelStore.getStatus
 
 /** @internal 测试专用：重置模块级单例状态，避免跨测试污染 */
 export function __resetWakeWordForTest() {
   transcriberPromise = null
-  _modelStatus = 'idle'
-  _modelProgress = 0
-  _modelError = ''
-  _modelSnapshot = { status: 'idle', progress: 0, error: '' }
+  wakeModelStore.reset()
 }
 
 /**
@@ -288,7 +269,6 @@ export function useWakeWord({ active, paused, onDetected }) {
         // 降级为 debug：正常运行时不刷屏，需要诊断时开 DevTools verbose 级别即可
         console.debug('[WakeWord] 转写结果:', JSON.stringify(text), '幻觉:', hallucinated, '匹配:', matched)
         if (matched) {
-          console.info('[WakeWord] 🎉 检测到唤醒词:', text)
           setWakeStatus('detected')
           setTimeout(() => onDetectedRef.current?.({ label: 'halou-bobo', text }), 300)
         }
@@ -358,7 +338,6 @@ export function useWakeWord({ active, paused, onDetected }) {
         if (t && !cancelled) {
           setModelStatus('ready')
           setWakeStatus('listening')
-          console.info('[WakeWord] ✅ 主线程模型就绪')
           // 如果缓冲区已有足够音频，立即分析
           maybeAnalyze()
         }
@@ -393,11 +372,10 @@ export function useWakeWord({ active, paused, onDetected }) {
         if (type === 'status') {
           const { status } = event.data
           if (status === 'loading') {
-            if (_modelStatus !== 'ready') setWakeStatus('loading')
+            if (wakeModelStore.getStatus() !== 'ready') setWakeStatus('loading')
           } else if (status === 'ready') {
             clearTimeout(workerTimeout)
             setModelStatus('ready')
-            console.info('[WakeWord] ✅ Worker 模型加载完成')
           } else if (status === 'error') {
             clearTimeout(workerTimeout)
             fallbackToMainThread(event.data.message || 'Worker 模型加载失败')
@@ -464,10 +442,8 @@ export function useWakeWord({ active, paused, onDetected }) {
           }
           maybeAnalyze()
         })
-        console.info('[WakeWord] 音频引擎:', captureHandle.engine, '采样率:', inputRate)
 
         setWakeStatus('listening')
-        console.info('[WakeWord] 🎤 麦克风已启动，等待唤醒词...')
       } catch (err) {
         console.warn('[WakeWord] 麦克风初始化失败:', err?.message || err)
         setWakeStatus('error')

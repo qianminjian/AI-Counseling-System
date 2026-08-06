@@ -253,12 +253,12 @@ class P2BatchTest {
         @DisplayName("模板矩阵包含 14 个生效模板（与 design/18 §0 + prompts/ 文件对齐）")
         void matrix() {
             assertThat(registry.getMatrix()).hasSize(14);
-            assertThat(registry.findActive("EMO-001")).isNotNull();
-            assertThat(registry.findActive("EMO-001").status())
+            assertThat(registry.findActive("EMO_001")).isNotNull();
+            assertThat(registry.findActive("EMO_001").status())
                     .isEqualTo(TemplateMatrixRegistry.TemplateStatus.ACTIVE);
-            assertThat(registry.findActive("SAF-002")).isNotNull();
-            assertThat(registry.findActive("LANG-001").audience()).isEqualTo("grade_1_2");
-            assertThat(registry.findActive("SKL-001")).isNotNull();
+            assertThat(registry.findActive("SAF_002")).isNotNull();
+            assertThat(registry.findActive("LANG_001").audience()).isEqualTo("grade_1_2");
+            assertThat(registry.findActive("SKL_001")).isNotNull();
         }
 
         @Test
@@ -294,10 +294,10 @@ class P2BatchTest {
         }
 
         @Test
-        @DisplayName("版本命名规范")
+        @DisplayName("版本命名规范（ARCH-010 D4：下划线 key 单一源）")
         void versionFormat() {
-            assertThat(registry.isValidVersion("SYS-001_zh-CN_v1.2.0")).isTrue();
-            assertThat(registry.isValidVersion("EMO-001_zh-CN_v1.0.0")).isTrue();
+            assertThat(registry.isValidVersion("SYS_001_zh-CN_v1.2.0")).isTrue();
+            assertThat(registry.isValidVersion("EMO_001_zh-CN_v1.0.0")).isTrue();
             assertThat(registry.isValidVersion("bad-version")).isFalse();
             assertThat(registry.isValidVersion(null)).isFalse();
         }

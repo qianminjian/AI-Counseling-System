@@ -79,19 +79,6 @@ public class CounselingSession {
         return s;
     }
 
-    public void end() {
-        this.endedAt = Instant.now();
-        this.sessionStatus = "completed";
-        this.updatedAt = Instant.now();
-    }
-
-    public void upgradeRiskLevel(int level) {
-        if (level > (this.riskLevelSnapshot == null ? 0 : this.riskLevelSnapshot)) {
-            this.riskLevelSnapshot = level;
-            this.updatedAt = Instant.now();
-        }
-    }
-
     // ===== Getters & Setters =====
 
     public UUID getSessionId() { return sessionId; }

@@ -2,8 +2,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
   getToken, setToken, getRefreshToken, setRefreshToken,
   clearToken, getUser, setUser,
-  isConsentDone, markConsentDone,
-  isAuthenticated, authFetch, tryRefresh, api,
+  isConsentDone, markConsentDone, ConsentKeys,
+  isAuthenticated, authFetch, tryRefresh, api, fetchWarmPrompt,
+  fetchSystemConfig, fetchLoginPrompt, fetchTtsSynthesize, fetchVoiceAnalyze,
   trialRegister, pinLogin, setPin, issueVoiceCredential,
   voiceLogin, requestGuardianConsent, confirmGuardianConsent,
 } from '../api'
@@ -76,6 +77,31 @@ describe('api.ts', () => {
     })
   })
 
+  describe('ConsentKeys（F-9 同意键单点收敛，ARCH-005）', () => {
+    it('枚举值对齐设计（_v1 语义键）', () => {
+      expect(ConsentKeys.NOTICE).toBe('mindsafe_consent_v1')
+      expect(ConsentKeys.VOICE).toBe('mindsafe_voice_consent_v1')
+      expect(ConsentKeys.VOICE_CALL).toBe('mindsafe_voicecall_consent_v1')
+    })
+
+    it('markConsentDone 写入新键 mindsafe_consent_v1', () => {
+      markConsentDone()
+      expect(localStorage.getItem(ConsentKeys.NOTICE)).toBe('1')
+      expect(isConsentDone()).toBe(true)
+    })
+
+    it('旧键 mindsafe_consent_done=1 → 迁移兼容返回 true 并写入新键', () => {
+      localStorage.setItem('mindsafe_consent_done', '1')
+      expect(isConsentDone()).toBe(true)
+      expect(localStorage.getItem(ConsentKeys.NOTICE)).toBe('1')
+    })
+
+    it('无任何键时返回 false 且不写入新键', () => {
+      expect(isConsentDone()).toBe(false)
+      expect(localStorage.getItem(ConsentKeys.NOTICE)).toBeNull()
+    })
+  })
+
   describe('isAuthenticated', () => {
     it('无 token 返回 false', () => {
       expect(isAuthenticated()).toBe(false)
@@ -136,6 +162,112 @@ describe('api.ts', () => {
         method: 'POST',
         body: 'data',
       }))
+    })
+  })
+
+  describe('fetchWarmPrompt（暖场请求，P0-1 统一认证接缝）', () => {
+    it('POST 到 nudge 端点并携带 silenceSeconds 与 Authorization', async () => {
+      setToken('tk')
+      const res = { status: 200, ok: true }
+      mockFetch.mockResolvedValue(res)
+      const result = await fetchWarmPrompt('s1', 30)
+      expect(result).toBe(res)
+      expect(mockFetch).toHaveBeenCalledWith(
+        '/api/v1/chat/sessions/s1/nudge',
+        expect.objectContaining({
+          method: 'POST',
+          headers: expect.objectContaining({ Authorization: 'Bearer tk' }),
+          body: JSON.stringify({ silenceSeconds: 30 }),
+        })
+      )
+    })
+
+    it('401 时自动刷新并重放（不静默失败）', async () => {
+      setToken('expired')
+      setRefreshToken('valid_rt')
+      mockFetch
+        .mockResolvedValueOnce({ status: 401 })
+        .mockResolvedValueOnce({ json: () => Promise.resolve({ success: true, data: { token: 'new_t', refreshToken: 'new_r' } }) })
+        .mockResolvedValueOnce({ status: 200, ok: true })
+      const res = await fetchWarmPrompt('s1', 25)
+      expect(res.status).toBe(200)
+      expect(getToken()).toBe('new_t')
+    })
+
+    it('返回原始 Response 供调用方解析 SSE', async () => {
+      setToken('tk')
+      const sseBody = { getReader: () => ({}) }
+      const res = { status: 200, ok: true, body: sseBody }
+      mockFetch.mockResolvedValue(res)
+      const result = await fetchWarmPrompt('s1', 25)
+      expect(result.body).toBe(sseBody)
+    })
+  })
+
+  describe('端点收敛函数（F-2/F-3 具名 authFetch 接缝，ARCH-005）', () => {
+    it('fetchSystemConfig：GET /api/v1/system/config 携带 signal 与 Accept', async () => {
+      const controller = new AbortController()
+      const res = { status: 200, ok: true, json: () => Promise.resolve({ success: true, data: {} }) }
+      mockFetch.mockResolvedValue(res)
+      const result = await fetchSystemConfig(controller.signal)
+      expect(result).toBe(res)
+      expect(mockFetch).toHaveBeenCalledWith(
+        '/api/v1/system/config',
+        expect.objectContaining({
+          headers: expect.objectContaining({ Accept: 'application/json' }),
+          signal: controller.signal,
+        })
+      )
+    })
+
+    it('fetchLoginPrompt：POST /api/v1/tts/login-prompt JSON { text, persona }', async () => {
+      setToken('tk')
+      const res = { status: 200, ok: true, blob: () => Promise.resolve(new Blob()) }
+      mockFetch.mockResolvedValue(res)
+      const result = await fetchLoginPrompt('你好呀', 'BOBO')
+      expect(result).toBe(res)
+      expect(mockFetch).toHaveBeenCalledWith(
+        '/api/v1/tts/login-prompt',
+        expect.objectContaining({
+          method: 'POST',
+          headers: expect.objectContaining({
+            'Content-Type': 'application/json',
+            Authorization: 'Bearer tk',
+          }),
+          body: JSON.stringify({ text: '你好呀', persona: 'BOBO' }),
+        })
+      )
+    })
+
+    it('fetchTtsSynthesize：POST /api/v1/tts/synthesize 透传 payload', async () => {
+      setToken('tk')
+      const payload = { text: '你好', persona: 'BOBO', emotion: 'happy', speed: 1.0, dialect: 'MANDARIN' }
+      mockFetch.mockResolvedValue({ status: 200, ok: true, blob: () => Promise.resolve(new Blob()) })
+      await fetchTtsSynthesize(payload)
+      expect(mockFetch).toHaveBeenCalledWith(
+        '/api/v1/tts/synthesize',
+        expect.objectContaining({
+          method: 'POST',
+          headers: expect.objectContaining({ 'Content-Type': 'application/json' }),
+          body: JSON.stringify(payload),
+        })
+      )
+    })
+
+    it('fetchVoiceAnalyze：POST /api/v1/voice/analyze 透传 multipart formData（不覆盖 Content-Type）', async () => {
+      setToken('tk')
+      const formData = new FormData()
+      formData.append('file', new Blob(['audio']), 'a.webm')
+      mockFetch.mockResolvedValue({ status: 200, ok: true })
+      await fetchVoiceAnalyze(formData)
+      expect(mockFetch).toHaveBeenCalledWith(
+        '/api/v1/voice/analyze',
+        expect.objectContaining({
+          method: 'POST',
+          body: formData,
+          headers: expect.objectContaining({ Authorization: 'Bearer tk' }),
+        })
+      )
     })
   })
 

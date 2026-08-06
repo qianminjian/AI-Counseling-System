@@ -35,10 +35,13 @@ public class MemoryProfileBackfillService {
     private static final String PROVENANCE_MEMORY = "memory";
 
     private final StudentProfileMapper profileMapper;
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    // ARCH-010 P2-2：注入唯一 ObjectMapper（此前 new，配置不统一）
+    private final ObjectMapper objectMapper;
 
-    public MemoryProfileBackfillService(StudentProfileMapper profileMapper) {
+    public MemoryProfileBackfillService(StudentProfileMapper profileMapper,
+                                        ObjectMapper objectMapper) {
         this.profileMapper = profileMapper;
+        this.objectMapper = objectMapper;
     }
 
     /**

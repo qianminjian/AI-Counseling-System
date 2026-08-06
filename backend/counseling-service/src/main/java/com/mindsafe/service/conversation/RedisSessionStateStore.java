@@ -15,10 +15,12 @@ import java.util.UUID;
  * <p>
  * 设计要点：
  * <ul>
- *   <li>Key 格式：{@code session:state:{sessionId}}</li>
+ *   <li>Key 格式：{@code session:state:{tenantId}:{sessionId}}（ARCH-010 P2-4：结构防跨租户越权）</li>
  *   <li>Value：Jackson JSON 序列化的 {@link SessionState}</li>
  *   <li>TTL：2 小时（覆盖单次会话最大时长，超时自动清理）</li>
  *   <li>每次 save 刷新 TTL（活跃会话不过期）</li>
+ *   <li>兼容迁移：读取先查新格式，未命中回查旧格式（session:state:{sessionId}）并双写迁移，
+ *       旧键留 TTL 自然过期清理；remove 双删新旧 key</li>
  * </ul>
  * <p>
  * 降级策略：Redis 不可用时 log.error 并返回 null（会话中断但不 NPE），
@@ -40,12 +42,19 @@ public class RedisSessionStateStore {
     }
 
     /**
+     * 租户隔离 key（ARCH-010 P2-4）：结构上杜绝跨租户 key 碰撞/越权。
+     */
+    private static String key(UUID tenantId, UUID sessionId) {
+        return KEY_PREFIX + tenantId + ":" + sessionId;
+    }
+
+    /**
      * 保存会话状态（创建或更新），刷新 TTL。
      */
-    public void save(UUID sessionId, SessionState state) {
+    public void save(UUID tenantId, UUID sessionId, SessionState state) {
         try {
             String json = objectMapper.writeValueAsString(state);
-            redisTemplate.opsForValue().set(KEY_PREFIX + sessionId, json, SESSION_TTL);
+            redisTemplate.opsForValue().set(key(tenantId, sessionId), json, SESSION_TTL);
         } catch (JsonProcessingException e) {
             log.error("会话状态序列化失败: sessionId={}", sessionId, e);
         } catch (Exception e) {
@@ -55,12 +64,29 @@ public class RedisSessionStateStore {
 
     /**
      * 获取会话状态；不存在或 Redis 异常返回 null。
+     * <p>
+     * ARCH-010 P2-4 兼容迁移：先查新格式；未命中回查旧格式（session:state:{sessionId}），
+     * 命中后双写新 key（同 TTL），旧键留 TTL 自然过期，无需后台清理任务。
      */
-    public SessionState get(UUID sessionId) {
+    public SessionState get(UUID tenantId, UUID sessionId) {
         try {
-            String json = redisTemplate.opsForValue().get(KEY_PREFIX + sessionId);
-            if (json == null) return null;
-            return objectMapper.readValue(json, SessionState.class);
+            String json = redisTemplate.opsForValue().get(key(tenantId, sessionId));
+            if (json != null) {
+                return objectMapper.readValue(json, SessionState.class);
+            }
+            // 回查旧格式（存量会话，无租户段）
+            String legacyJson = redisTemplate.opsForValue().get(KEY_PREFIX + sessionId);
+            if (legacyJson == null) {
+                return null;
+            }
+            SessionState state = objectMapper.readValue(legacyJson, SessionState.class);
+            // 双写迁移：新 key 落地后后续读取走新格式；迁移失败不影响本次读取（降级警告）
+            try {
+                redisTemplate.opsForValue().set(key(tenantId, sessionId), legacyJson, SESSION_TTL);
+            } catch (Exception e) {
+                log.warn("会话状态双写迁移失败（不影响本次读取）: sessionId={}", sessionId, e);
+            }
+            return state;
         } catch (Exception e) {
             log.error("Redis 读取失败: sessionId={}", sessionId, e);
             return null;
@@ -68,10 +94,11 @@ public class RedisSessionStateStore {
     }
 
     /**
-     * 删除会话状态（会话结束时调用）。
+     * 删除会话状态（会话结束时调用）；新旧 key 双删（旧格式无租户段无法按租户定位）。
      */
-    public void remove(UUID sessionId) {
+    public void remove(UUID tenantId, UUID sessionId) {
         try {
+            redisTemplate.delete(key(tenantId, sessionId));
             redisTemplate.delete(KEY_PREFIX + sessionId);
         } catch (Exception e) {
             log.error("Redis 删除失败: sessionId={}", sessionId, e);
@@ -79,11 +106,11 @@ public class RedisSessionStateStore {
     }
 
     /**
-     * 判断会话是否存在。
+     * 判断会话是否存在（新格式）。
      */
-    public boolean exists(UUID sessionId) {
+    public boolean exists(UUID tenantId, UUID sessionId) {
         try {
-            return Boolean.TRUE.equals(redisTemplate.hasKey(KEY_PREFIX + sessionId));
+            return Boolean.TRUE.equals(redisTemplate.hasKey(key(tenantId, sessionId)));
         } catch (Exception e) {
             log.error("Redis exists 查询失败: sessionId={}", sessionId, e);
             return false;

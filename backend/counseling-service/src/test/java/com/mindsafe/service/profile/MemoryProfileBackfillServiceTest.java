@@ -45,7 +45,7 @@ class MemoryProfileBackfillServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new MemoryProfileBackfillService(profileMapper);
+        service = new MemoryProfileBackfillService(profileMapper, om);
     }
 
     private StudentProfile baseProfile(String growthTrack, String socialGraph) {

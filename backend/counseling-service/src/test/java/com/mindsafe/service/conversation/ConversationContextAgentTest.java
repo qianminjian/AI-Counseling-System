@@ -38,7 +38,7 @@ class ConversationContextAgentTest {
     class IdentityBrief {
 
         @Test
-        @DisplayName("realName 最高优先级 + 个人信息全量注入")
+        @DisplayName("realName 存在但占位符昵称 → 中性称呼，真实姓名/班级不注入 LLM（D-8 脱敏）")
         void realNamePriorityWithFullInfo() {
             SessionState s = newState("sad", "male", 3);
             s.setPseudonym("某人");
@@ -49,15 +49,33 @@ class ConversationContextAgentTest {
 
             String brief = agent.buildContextBrief(s, null, null, null, 3);
 
-            assertThat(brief).contains("孩子的名字：小明");
-            assertThat(brief).contains("真实名字：小明");
+            // D-8：真实姓名与具体班级不注入 LLM（PII 脱敏注入规则）
+            assertThat(brief).doesNotContain("小明");
+            assertThat(brief).doesNotContain("真实名字");
+            assertThat(brief).doesNotContain("1班");
+            assertThat(brief).contains("小朋友");
             assertThat(brief).contains("年龄：9");
             assertThat(brief).contains("年级：三年级");
-            assertThat(brief).contains("班级：1班");
             assertThat(brief).contains("性别：男");
             assertThat(brief).contains("3 年级（约 8-9 岁）");
             assertThat(brief).contains("第 3 次对话（你们是老朋友了）");
             assertThat(brief).contains("进入心情：难过");
+        }
+
+        @Test
+        @DisplayName("realName + 有效昵称 → 昵称置换进入 LLM，真实姓名不出现（D-8 脱敏）")
+        void realNameReplacedByPseudonym() {
+            SessionState s = newState(null, null, 3);
+            s.setPseudonym("小星星");
+            s.updatePersonalInfo("realName", "张小凡");
+            s.updatePersonalInfo("class", "3班");
+
+            String brief = agent.buildContextBrief(s, null, null, null, 1);
+
+            assertThat(brief).contains("小星星");
+            assertThat(brief).doesNotContain("张小凡");
+            assertThat(brief).doesNotContain("真实名字");
+            assertThat(brief).doesNotContain("3班");
         }
 
         @Test
