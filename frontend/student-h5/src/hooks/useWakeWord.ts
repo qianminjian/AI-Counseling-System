@@ -199,6 +199,38 @@ export function preloadWakeModel() {
 }
 
 /**
+ * 等待主线程预加载结束（下载的文件已写入 Cache API），供 Worker 复用缓存，避免双下载。
+ *
+ * 背景：Worker 是独立线程，主线程的 transcriberPromise 单例在 Worker 内不存在；
+ * Transformers.js 的文件缓存是下载完成后才写入 Cache API——若主线程还在下载（loading），
+ * Worker 立即 pipeline() 会从网络重新下载同一批文件，两路 fetch 并行抢带宽（下载量翻倍 + 速度减半）。
+ *
+ * - idle（从未加载）→ 直接返回 true：Worker 自行下载，是唯一下载者
+ * - loading → 轮询直到 ready/error/unsupported（error 时 Worker 自行重试）
+ * - 超时（60s）→ 返回 false：调用方应降级主线程，复用同一路下载而非另开一路
+ */
+function waitForMainThreadModel(timeoutMs = 60000): Promise<boolean> {
+  return new Promise((resolve) => {
+    const st = wakeModelStore.getStatus()
+    if (st !== 'loading') {
+      resolve(true)
+      return
+    }
+    const start = Date.now()
+    const timer = setInterval(() => {
+      const s = wakeModelStore.getStatus()
+      if (s !== 'loading') {
+        clearInterval(timer)
+        resolve(true)
+      } else if (Date.now() - start >= timeoutMs) {
+        clearInterval(timer)
+        resolve(false)
+      }
+    }, 300)
+  })
+}
+
+/**
  * @param {object} opts
  * @param {boolean} opts.active      是否启动引擎（加载模型 + 启动麦克风）——仅对话内且处于待唤醒态时为 true
  * @param {boolean} opts.paused      暂停检测（AI 忙碌时防自听回声，但保持模型 + 麦克风就绪，忙碌结束立即恢复检测）
@@ -360,12 +392,7 @@ export function useWakeWord({ active, paused, onDetected }) {
     }
 
     if (worker) {
-      // Worker 超时保护：15s 内未收到 ready/result → 降级主线程
-      const workerTimeout = setTimeout(() => {
-        if (!useMainThread && !cancelled) {
-          fallbackToMainThread('Worker 15s 无响应')
-        }
-      }, 15000)
+      let workerTimeout: ReturnType<typeof setTimeout> | null = null
 
       worker.onmessage = (event) => {
         const { type } = event.data
@@ -374,14 +401,14 @@ export function useWakeWord({ active, paused, onDetected }) {
           if (status === 'loading') {
             if (wakeModelStore.getStatus() !== 'ready') setWakeStatus('loading')
           } else if (status === 'ready') {
-            clearTimeout(workerTimeout)
+            if (workerTimeout) clearTimeout(workerTimeout)
             setModelStatus('ready')
           } else if (status === 'error') {
-            clearTimeout(workerTimeout)
+            if (workerTimeout) clearTimeout(workerTimeout)
             fallbackToMainThread(event.data.message || 'Worker 模型加载失败')
           }
         } else if (type === 'result') {
-          clearTimeout(workerTimeout)
+          if (workerTimeout) clearTimeout(workerTimeout)
           handleTranscribeResult(event.data.text)
         } else if (type === 'error') {
           console.warn('[WakeWord] 转写失败（忽略，下窗重试）:', event.data.message)
@@ -399,7 +426,27 @@ export function useWakeWord({ active, paused, onDetected }) {
 
       // 发送初始化消息（触发模型加载，若已在情绪页预加载则从 Cache API 秒开）
       setModelStatus('loading')
-      worker.postMessage({ type: 'init', config: workerConfig })
+      ;(async () => {
+        // 关键：主线程预加载进行中时先等它结束（文件进 Cache API 后 Worker 可复用），
+        // 避免主线程与 Worker 并行下载同一模型 → 流量翻倍 + 进度反复（用户反馈“下载 2 次、50% 又重来”）
+        if (wakeModelStore.getStatus() === 'loading') {
+          const preloadDone = await waitForMainThreadModel()
+          if (cancelled || useMainThread) return
+          if (!preloadDone) {
+            // 主线程 60s 未完成：不再另开一路，降级主线程复用同一路下载
+            fallbackToMainThread('主线程预加载超时（60s），复用其下载避免重复')
+            return
+          }
+        }
+        if (cancelled || useMainThread) return
+        worker.postMessage({ type: 'init', config: workerConfig })
+        // Worker 超时保护：15s 内未收到 ready/result → 降级主线程
+        workerTimeout = setTimeout(() => {
+          if (!useMainThread && !cancelled) {
+            fallbackToMainThread('Worker 15s 无响应')
+          }
+        }, 15000)
+      })()
     }
 
     // 启动麦克风

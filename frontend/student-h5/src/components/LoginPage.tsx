@@ -28,10 +28,12 @@ export default function LoginPage({ onLogin, onRegister, onNeedConsent, initialT
     hasAnyVoiceprint().then((has) => setHasVoiceprint(has))
   }, [])
 
-  // 预加载声纹模型 + 唤醒词模型：登录页一打开就开始下载
+  // 预加载语音模型：登录页一打开就开始下载（唤醒引擎优先，声纹延后 2s 启动，
+  // 避免两个大模型首屏并行抢带宽 → 各自都慢）
   useEffect(() => {
-    preloadVoiceprintModel()
     preloadWakeModel()
+    const t = setTimeout(() => preloadVoiceprintModel(), 2000)
+    return () => clearTimeout(t)
   }, [])
 
   // 浏览器是否支持麦克风 + WASM SIMD（决定是否显示声音进入按钮）
