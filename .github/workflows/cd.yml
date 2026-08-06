@@ -26,8 +26,9 @@ jobs:
   build-and-push:
     name: Build & Push Docker Images
     runs-on: ubuntu-latest
-    # P1-DEP：CI 三个 job 全绿才允许发版（此前 CD 与 CI 无依赖，测试失败也可发布）
-    needs: [backend-build-test, dependency-scan, frontend-build]
+    # P1-DEP：CI 四个 job 全绿才允许发版（此前测试失败也可发布）
+    # ARCH-009 E-1：+python-services-test（Python 服务测试门禁）
+    needs: [backend-build-test, dependency-scan, frontend-build, python-services-test]
     permissions:
       contents: read
       packages: write
@@ -203,10 +204,27 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # ARCH-009 E-5：模型不入仓（.gitignore），发布前必须投放；缓存加速（脚本未变更则命中）
+      - name: Cache model files
+        uses: actions/cache@v4
+        with:
+          path: frontend/student-h5/public/models
+          key: mindsafe-models-${{ hashFiles('deploy/scripts/prepare-models.sh') }}
+          restore-keys: |
+            mindsafe-models-
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+
+      # ARCH-009 E-5：端侧模型投放 + 校验和门禁（此前发布链路不投放模型，
+      # checkout 后 models/ 为空 → dist 无模型 → 生产 SAME_ORIGIN 404 无拦截；
+      # 现任何失败即红，阻断发布）
+      - name: Prepare & verify edge models
+        run: |
+          bash deploy/scripts/prepare-models.sh
+          bash deploy/scripts/prepare-models.sh --verify
 
       - name: Build student-h5
         working-directory: frontend/student-h5

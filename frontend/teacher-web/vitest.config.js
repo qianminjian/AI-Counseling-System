@@ -19,13 +19,14 @@ export default defineConfig({
         'vitest.config.js',
         'vite.config.js',
       ],
-      // 审计 P1-11：覆盖率门禁（CI 构建强制）
-      // 阈值基于 2026-08 实测（lines 21.48）留余量——此前 30% 为拍脑袋值从未达标
+      // 审计 P1-11 + ARCH-009 E-2：覆盖率门禁（CI test:coverage 强制）
+      // 2026-08 补测后实测：lines 89.99 / branches 82.24 / functions 66.48 / statements 89.99
+      // functions 偏低系 api.ts 被 vi.mock 替换致 v8 统计失真（契约由 authFetch/apiContract 测试覆盖），余量 6%
       thresholds: {
-        lines: 20,
-        branches: 15,
-        functions: 20,
-        statements: 20,
+        lines: 80,
+        branches: 75,
+        functions: 60,
+        statements: 80,
       },
     },
   },

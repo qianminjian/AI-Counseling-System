@@ -137,6 +137,38 @@ jobs:
           path: backend/counseling-app/target/site/jacoco-aggregate/
           retention-days: 7
 
+  python-services-test:
+    # ARCH-009 E-1：tts/voice-service pytest 入 CI（此前 Python 服务无测试门禁）
+    # 失败即阻断合并（与 backend-build-test 同级门禁）
+    name: Python Services Test (tts/voice)
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: [tts-service, voice-service]
+    defaults:
+      run:
+        working-directory: backend/${{ matrix.service }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        # tts：requirements-lite.txt（轻量，含 fastapi/httpx/edge-tts）；
+        # voice：当前测试仅需 pytest+pyyaml（避免 torch 2.6 大依赖拖慢 CI，未来测试新增依赖时在此补充）
+        run: |
+          if [ -f requirements-lite.txt ]; then
+            pip install -r requirements-lite.txt
+          fi
+          pip install pytest pyyaml
+
+      - name: Run pytest
+        run: python -m pytest -q
+
   dependency-scan:
     name: Dependency Vulnerability Scan
     runs-on: ubuntu-latest
@@ -196,7 +228,8 @@ jobs:
           npm ci
           npm run build
 
-      # lint/test 按需执行（parent-h5 暂无 lint，仅 student-h5 有 vitest）
+      # lint/test 按需执行（ARCH-009 E-5：parent-h5 已补 .oxlintrc.json，三端均接 lint；
+      # 三端均有 vitest：student-h5/teacher-web 用 vitest.config.js，parent-h5 在 vite.config.js 内）
       - name: Lint
         run: npm run lint --if-present
 
