@@ -1,6 +1,7 @@
 package com.mindsafe.service.conversation;
 
 import com.mindsafe.ai.orchestrator.EmotionOrchestrationEvaluator;
+import com.mindsafe.ai.risk.EmotionVocabulary;
 import com.mindsafe.common.enums.RiskLevel;
 import com.mindsafe.domain.entity.RiskEvent;
 import com.mindsafe.domain.mapper.RiskEventMapper;
@@ -122,13 +123,6 @@ public class SessionEndAnalyticsService {
         return new AnalyticsResult(trendResult, signal, recoveryResult, depth);
     }
 
-    /**
-     * 文本×语音融合检测（单会话内，由 chat 流程调用）。
-     */
-    public VoiceEmotionTrendAnalyzer.FusionResult fuseEmotions(String textEmotion, String voiceEmotion) {
-        return trendAnalyzer.fuse(textEmotion, voiceEmotion);
-    }
-
     private int countWorsening(List<String> emotions) {
         if (emotions == null || emotions.size() < 2) return 0;
         // 简化：从尾部向前数连续负面数量
@@ -144,8 +138,8 @@ public class SessionEndAnalyticsService {
     }
 
     private boolean isNegative(String emotion) {
-        return emotion != null && List.of("sad", "angry", "anxious", "fearful", "disgusted", "crisis")
-                .contains(emotion.toLowerCase());
+        // ARCH-003：内嵌情绪集合 → EmotionVocabulary 统一判定（anxious/crisis 等全管线一致）
+        return EmotionVocabulary.isNegative(emotion);
     }
 
     /**

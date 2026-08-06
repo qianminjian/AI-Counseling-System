@@ -34,7 +34,7 @@ import static org.mockito.Mockito.when;
  * SessionEndAnalyticsService 单测（RISK-204 / ORCH-008 / VCL-002~003，BL-08 通道）。
  * <p>
  * 覆盖：趋势分析编排、关注信号生成与 BL-08 持久化（source_type=attention / YELLOW）、
- * countWorsening 尾部连续负面计数、失败静默降级、fuseEmotions 委托。
+ * countWorsening 尾部连续负面计数、失败静默降级。
  */
 @ExtendWith(MockitoExtension.class)
 @DisplayName("会话结束分析聚合服务")
@@ -171,15 +171,5 @@ class SessionEndAnalyticsServiceTest {
                     tenantId, studentId, List.of("sad"), List.of(), List.of(), "neutral"))
                     .doesNotThrowAnyException();
         }
-    }
-
-    @Test
-    @DisplayName("fuseEmotions 委托给 VoiceEmotionTrendAnalyzer")
-    void fuseDelegates() {
-        VoiceEmotionTrendAnalyzer.FusionResult fusion =
-                new VoiceEmotionTrendAnalyzer.FusionResult("sad", true, "MASKING", 0.7);
-        when(trendAnalyzer.fuse("happy", "sad")).thenReturn(fusion);
-
-        assertThat(service.fuseEmotions("happy", "sad")).isEqualTo(fusion);
     }
 }

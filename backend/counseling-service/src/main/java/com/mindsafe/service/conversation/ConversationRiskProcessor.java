@@ -1,7 +1,9 @@
 package com.mindsafe.service.conversation;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.mindsafe.ai.risk.EmotionVocabulary;
 import com.mindsafe.ai.risk.RiskDetectorService;
+import com.mindsafe.ai.risk.RiskKeywordRegistry;
 import com.mindsafe.ai.risk.RiskScoreCalculator;
 import com.mindsafe.ai.risk.SemanticRiskClassifier;
 import com.mindsafe.common.dto.risk.RiskDetectionResult;
@@ -82,7 +84,9 @@ public class ConversationRiskProcessor {
             return keywordResult; // 无语义风险或未超过关键词档位（只升不降）
         }
         log.warn("语义分类升级风险等级: keyword={}, semantic={}", keywordResult.level(), semanticLevel);
-        int score = semanticLevel == RiskLevel.RED ? 85 : semanticLevel == RiskLevel.ORANGE ? 60 : 40;
+        int score = semanticLevel == RiskLevel.RED ? RiskKeywordRegistry.SCORE_HARD
+                : semanticLevel == RiskLevel.ORANGE ? RiskKeywordRegistry.SCORE_ORANGE
+                : RiskKeywordRegistry.SCORE_SEMANTIC_YELLOW;
         return new RiskDetectionResult(semanticLevel, "llm_semantic", List.of(), score, false,
                 "语义分析识别到隐性风险表达（隐喻/暗示），请结合原文人工复核");
     }
@@ -102,7 +106,7 @@ public class ConversationRiskProcessor {
                                      Double voiceConfidence, int consecutiveNegativeCount) {
         boolean hasNegativeVoice = voiceEmotion != null && voiceConfidence != null
                 && voiceConfidence > 0.6
-                && isNegativeEmotion(voiceEmotion);
+                && EmotionVocabulary.isNegative(voiceEmotion);
 
         // 规则 1：文本红色不可降级
         if (textRisk.isRisky() && textRisk.level() == RiskLevel.RED) {
@@ -158,17 +162,18 @@ public class ConversationRiskProcessor {
 
             // RISK-203：结构化风险评分（C-SSRS 儿童适配，可解释 reason_codes 供教师复核）
             // P1 修复：从命中关键词抽取意图/计划/C-SSRS 因子，不再恒 0（审计 7/11 维度恒 0）
+            // ARCH-003：评分因子权重与词典统一引用 RiskKeywordRegistry（单一规则源）
             ScoreFactors factors = extractScoreFactors(riskResult.matchedKeywords());
             RiskScoreCalculator.ScoreInput scoreInput = new RiskScoreCalculator.ScoreInput(
-                    riskResult.score(),           // categoryBaseScore
-                    factors.intentWeight(),       // intentWeight（明确+15/含混+8）
-                    factors.planWeight(),         // planWeight（方法类每+5 上限 20）
-                    10,                           // recencyWeight（当前会话=今天）
-                    0,                            // actionWeight
-                    0,                            // repetitionWeight
-                    0,                            // protectiveWeight
-                    0,                            // falsePositivePenalty
-                    0.8,                          // confidenceAdjustment（硬规则默认 0.8）
+                    riskResult.score(),               // categoryBaseScore
+                    factors.intentWeight(),           // intentWeight（明确+15/含混+8）
+                    factors.planWeight(),             // planWeight（方法类每+5 上限 20）
+                    RiskKeywordRegistry.WEIGHT_RECENCY,      // recencyWeight（当前会话=今天）
+                    RiskKeywordRegistry.WEIGHT_ACTION,       // actionWeight
+                    RiskKeywordRegistry.WEIGHT_REPETITION,   // repetitionWeight
+                    RiskKeywordRegistry.WEIGHT_PROTECTIVE,   // protectiveWeight
+                    0,                                // falsePositivePenalty
+                    RiskKeywordRegistry.WEIGHT_CONFIDENCE,   // confidenceAdjustment（硬规则默认 0.8）
                     riskResult.level().severity() >= RiskLevel.RED.severity() ? riskResult.level() : null,
                     factors.cssrsIdeation(),      // C-SSRS 意念强度轴（被动抽取）
                     factors.cssrsBehavior()       // C-SSRS 行为轴（被动抽取）
@@ -219,25 +224,12 @@ public class ConversationRiskProcessor {
         }
     }
 
-    // ===== 评分因子关键词映射（design/04 §十权重表 + 现有风险词典） =====
+    // ===== 评分因子关键词映射（ARCH-003：词典统一收编至 RiskKeywordRegistry，design/04 §十权重表） =====
 
-    /** 明确自伤意图（I=+15）："我不想活了" 等直接表达 */
-    private static final Set<String> EXPLICIT_INTENT_KEYWORDS = Set.of(
-            "想死", "自杀", "去死", "杀了自己", "结束生命", "不想活", "不想活了", "死了算了"
-    );
-
-    /** 含混死亡愿望（I=+8）："活着没意思" 等间接表达 */
-    private static final Set<String> VAGUE_INTENT_KEYWORDS = Set.of(
-            "活着没意思", "活着很累", "没希望", "什么都没意思", "我是累赘", "把东西送人", "告别"
-    );
-
-    /** 自伤方法/工具关键词（P 每类 +5，上限 20） */
-    private static final Set<String> SELF_HARM_METHOD_KEYWORDS = Set.of(
-            "跳楼", "上吊", "割腕", "吃药", "带刀"
-    );
-
-    /** 准备行为关键词（C-SSRS 行为轴 PREPARATORY） */
-    private static final Set<String> PREPARATORY_KEYWORDS = Set.of("遗书");
+    /** 明确自伤意图（I=+15）："我不想活了" 等直接表达 → RiskKeywordRegistry.EXPLICIT_INTENT_KEYWORDS */
+    /** 含混死亡愿望（I=+8）："活着没意思" 等间接表达 → RiskKeywordRegistry.VAGUE_INTENT_KEYWORDS */
+    /** 自伤方法/工具关键词（P 每类 +5，上限 20） → RiskKeywordRegistry.SELF_HARM_METHOD_KEYWORDS */
+    /** 准备行为关键词（C-SSRS 行为轴 PREPARATORY） → RiskKeywordRegistry.PREPARATORY_KEYWORDS */
 
     /**
      * RISK-203 审计修复：从命中的风险关键词抽取评分因子，替代恒 0/恒 null。
@@ -251,22 +243,23 @@ public class ConversationRiskProcessor {
         }
 
         // 意图权重：明确 > 含混（只取最高一档，不叠加）
-        boolean explicitIntent = containsAny(matchedKeywords, EXPLICIT_INTENT_KEYWORDS);
-        boolean vagueIntent = containsAny(matchedKeywords, VAGUE_INTENT_KEYWORDS);
-        int intentWeight = explicitIntent ? 15 : vagueIntent ? 8 : 0;
+        boolean explicitIntent = containsAny(matchedKeywords, RiskKeywordRegistry.EXPLICIT_INTENT_KEYWORDS);
+        boolean vagueIntent = containsAny(matchedKeywords, RiskKeywordRegistry.VAGUE_INTENT_KEYWORDS);
+        int intentWeight = explicitIntent ? RiskKeywordRegistry.INTENT_EXPLICIT_WEIGHT
+                : vagueIntent ? RiskKeywordRegistry.INTENT_VAGUE_WEIGHT : 0;
 
         // 计划权重：方法类关键词每个 +5，上限 20
         int planWeight = matchedKeywords.stream()
-                .filter(SELF_HARM_METHOD_KEYWORDS::contains)
-                .limit(4) // 5*4=20 封顶
-                .mapToInt(kw -> 5)
+                .filter(RiskKeywordRegistry.SELF_HARM_METHOD_KEYWORDS::contains)
+                .limit(RiskKeywordRegistry.PLAN_WEIGHT_CAP / RiskKeywordRegistry.PLAN_WEIGHT_PER_KEYWORD) // 5*4=20 封顶
+                .mapToInt(kw -> RiskKeywordRegistry.PLAN_WEIGHT_PER_KEYWORD)
                 .sum();
 
         // C-SSRS 意念强度轴：取最高档（计划 > 方法 > 主动 > 死亡愿望）
         RiskScoreCalculator.CssrsIdeation ideation = null;
-        if (containsAny(matchedKeywords, PREPARATORY_KEYWORDS)) {
+        if (containsAny(matchedKeywords, RiskKeywordRegistry.PREPARATORY_KEYWORDS)) {
             ideation = RiskScoreCalculator.CssrsIdeation.WITH_PLAN_INTENT;
-        } else if (containsAny(matchedKeywords, SELF_HARM_METHOD_KEYWORDS)) {
+        } else if (containsAny(matchedKeywords, RiskKeywordRegistry.SELF_HARM_METHOD_KEYWORDS)) {
             ideation = RiskScoreCalculator.CssrsIdeation.WITH_METHOD;
         } else if (explicitIntent) {
             ideation = RiskScoreCalculator.CssrsIdeation.ACTIVE_IDEATION;
@@ -275,7 +268,7 @@ public class ConversationRiskProcessor {
         }
 
         // C-SSRS 行为轴：准备行为（写遗书）
-        RiskScoreCalculator.CssrsBehavior behavior = containsAny(matchedKeywords, PREPARATORY_KEYWORDS)
+        RiskScoreCalculator.CssrsBehavior behavior = containsAny(matchedKeywords, RiskKeywordRegistry.PREPARATORY_KEYWORDS)
                 ? RiskScoreCalculator.CssrsBehavior.PREPARATORY
                 : null;
 
@@ -285,7 +278,6 @@ public class ConversationRiskProcessor {
     private static boolean containsAny(List<String> keywords, Set<String> candidates) {
         return keywords.stream().anyMatch(candidates::contains);
     }
-
     /**
      * 构建语音情绪风险建议文案。
      */
@@ -299,9 +291,6 @@ public class ConversationRiskProcessor {
     }
 
     private boolean isNegativeEmotion(String emotion) {
-        return switch (emotion) {
-            case "sad", "fearful", "angry", "disgusted" -> true;
-            default -> false;
-        };
+        return EmotionVocabulary.isNegative(emotion);
     }
 }

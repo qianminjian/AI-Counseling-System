@@ -7,10 +7,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
-import java.util.regex.Pattern;
+import java.util.Set;
 
 /**
  * 风险识别服务实现（M1 关键词硬规则版本）
@@ -21,101 +19,15 @@ import java.util.regex.Pattern;
  * - 强制升级条件（红色硬规则）
  * - 基础否定/误报控制
  * <p>
+ * ARCH-003（2026-08-06）：风险词典已收敛至 {@link RiskKeywordRegistry}（单一规则源），
+ * 本类只保留判定逻辑，不再内嵌词表。
+ * <p>
  * M2+ 迭代方向：语义分类、上下文评分、LLM 辅助判断、趋势跟踪。
  */
 @Service
 public class RiskDetectorServiceImpl implements RiskDetectorService {
 
     private static final Logger log = LoggerFactory.getLogger(RiskDetectorServiceImpl.class);
-
-    /**
-     * 风险规则定义：类别 → 关键词列表
-     * 来源：design/04 第五节「风险信号分类与规则」
-     */
-    private static final Map<String, List<String>> RISK_KEYWORDS = new LinkedHashMap<>();
-
-    /** 红色硬规则关键词（命中即强制升级为红色） */
-    private static final List<String> RED_HARD_KEYWORDS = List.of(
-            "想死", "跳楼", "割腕", "上吊", "遗书", "活着没意思",
-            "不想活", "去死", "自杀", "杀了自己", "结束生命",
-            "带刀", "放火", "炸",
-            "摸隐私部位", "隐私部位", "脱衣服", "发裸照"
-    );
-
-    /** 橙色关键词（命中升级为橙色，需人工核验） */
-    private static final List<String> ORANGE_KEYWORDS = List.of(
-            "不想活了", "死了算了", "活着很累", "没希望",
-            "杀了他", "打死", "报复", "砸学校",
-            "被打", "被围", "被孤立", "勒索",
-            "被欺负", "欺负我", "霸凌", "威胁我", "抢我东西", "堵我",
-            "赶出家门", "锁屋里", "不给饭",
-            "打我", "揍我", "扇我", "家暴", "用皮带抽",
-            "离家出走", "不回家", "见网友",
-            "喘不过气", "要崩溃", "不能上学"
-    );
-
-    /** 黄色关键词（命中为黄色，需关注） */
-    private static final List<String> YELLOW_KEYWORDS = List.of(
-            "很难过", "每天哭", "睡不着", "吃不下",
-            "被骂", "被嘲笑", "没朋友", "不想上学",
-            "头痛", "肚子痛", "恶心", "胸闷",
-            "停不下来", "通宵游戏", "偷钱"
-    );
-
-    /** 否定词列表（仅保留明确的多字否定词，避免单字误匹配） */
-    private static final List<String> NEGATION_WORDS = List.of(
-            "不想", "不会", "没有", "不是", "不能", "以前", "曾经", "别想", "别要"
-    );
-
-    /** 引用/假设语境（降低误报） */
-    private static final Pattern CONTEXT_PATTERN = Pattern.compile(
-            "(故事里|新闻|游戏|电影|电视|书上|假设|如果|假如|老师说的|健康课)"
-    );
-
-    static {
-        RISK_KEYWORDS.put("自伤/自杀", List.of(
-                "想死", "跳楼", "割腕", "吃药", "上吊", "遗书", "活着没意思",
-                "不想活", "去死", "自杀", "杀了自己", "结束生命", "不想活了",
-                "死了算了", "活着很累", "没希望", "把东西送人", "告别"
-        ));
-        RISK_KEYWORDS.put("他伤/暴力", List.of(
-                "杀了他", "打死", "报复", "带刀", "砸学校", "放火", "炸",
-                "列名单", "跟踪", "埋伏"
-        ));
-        RISK_KEYWORDS.put("霸凌/网络欺凌", List.of(
-                "被打", "被围", "被孤立", "被拍视频", "群里骂", "勒索",
-                "被欺负", "欺负我", "霸凌", "威胁我", "抢我东西", "堵我",
-                "让我下跪", "不敢去学校", "发照片", "发视频", "谣言"
-        ));
-        RISK_KEYWORDS.put("家庭虐待/忽视", List.of(
-                "赶出家门", "锁屋里", "不给饭", "皮带", "酒后打我",
-                "打我", "揍我", "扇我", "家暴", "用皮带抽",
-                "害怕回家", "受伤不能说"
-        ));
-        RISK_KEYWORDS.put("性侵/性骚扰", List.of(
-                "摸隐私部位", "脱衣服", "发裸照", "让我保密", "恶心的事情",
-                "不敢拒绝"
-        ));
-        RISK_KEYWORDS.put("离家/失联", List.of(
-                "离家出走", "不回家", "去车站", "睡桥洞", "见网友",
-                "在路上", "带行李"
-        ));
-        RISK_KEYWORDS.put("严重焦虑/恐慌", List.of(
-                "喘不过气", "心跳快", "要崩溃", "手抖", "不能上学",
-                "惊恐", "晕倒"
-        ));
-        RISK_KEYWORDS.put("严重抑郁/绝望", List.of(
-                "什么都没意思", "我是累赘", "每天哭", "活着很累", "没希望",
-                "把东西送人"
-        ));
-        RISK_KEYWORDS.put("躯体化/进食睡眠", List.of(
-                "吃不下", "暴食", "噩梦", "睡不着", "头痛", "肚子痛",
-                "恶心", "胸闷"
-        ));
-        RISK_KEYWORDS.put("成瘾/网络沉迷", List.of(
-                "停不下来", "通宵游戏", "偷钱充值", "烟", "酒", "药片"
-        ));
-    }
 
     @Override
     public RiskDetectionResult detect(String message) {
@@ -126,24 +38,24 @@ public class RiskDetectorServiceImpl implements RiskDetectorService {
         String normalized = message.toLowerCase().trim();
 
         // 1. 检查引用/假设语境
-        boolean hasContext = CONTEXT_PATTERN.matcher(normalized).find();
+        boolean hasContext = RiskKeywordRegistry.CONTEXT_PATTERN.matcher(normalized).find();
 
         // 2. 红色硬规则检测（不可被引用语境降级，但排除直接否定前缀）
-        List<String> redMatches = matchRedKeywords(normalized);
+        List<String> redMatches = matchKeywords(normalized, RiskKeywordRegistry.RED_HARD);
         if (!redMatches.isEmpty()) {
             log.warn("🚨 红色硬规则命中: keywords={}", redMatches);
             return new RiskDetectionResult(
                     RiskLevel.RED,
-                    findCategory(redMatches),
+                    RiskKeywordRegistry.findCategory(redMatches),
                     redMatches,
-                    85,
+                    RiskKeywordRegistry.SCORE_HARD,
                     true,
                     "立即中断普通对话，进入安全响应，通知心理老师"
             );
         }
 
         // 3. 橙色关键词检测
-        List<String> orangeMatches = matchKeywords(normalized, ORANGE_KEYWORDS);
+        List<String> orangeMatches = matchKeywords(normalized, RiskKeywordRegistry.ORANGE);
         if (!orangeMatches.isEmpty()) {
             // 检查每个命中关键词是否有否定前缀
             boolean allNegated = orangeMatches.stream().allMatch(kw -> hasNegationPrefix(normalized, kw));
@@ -151,9 +63,9 @@ public class RiskDetectorServiceImpl implements RiskDetectorService {
                 log.info("橙色关键词命中但含否定/引用语境，降为黄色: keywords={}", orangeMatches);
                 return new RiskDetectionResult(
                         RiskLevel.YELLOW,
-                        findCategory(orangeMatches),
+                        RiskKeywordRegistry.findCategory(orangeMatches),
                         orangeMatches,
-                        35,
+                        RiskKeywordRegistry.SCORE_YELLOW,
                         false,
                         "标记关注，允许继续对话，生成摘要给心理老师"
                 );
@@ -161,16 +73,16 @@ public class RiskDetectorServiceImpl implements RiskDetectorService {
             log.warn("⚠️ 橙色风险命中: keywords={}", orangeMatches);
             return new RiskDetectionResult(
                     RiskLevel.ORANGE,
-                    findCategory(orangeMatches),
+                    RiskKeywordRegistry.findCategory(orangeMatches),
                     orangeMatches,
-                    60,
+                    RiskKeywordRegistry.SCORE_ORANGE,
                     false,
                     "转人工队列，AI 只做稳定和求助引导"
             );
         }
 
         // 4. 黄色关键词检测
-        List<String> yellowMatches = matchKeywords(normalized, YELLOW_KEYWORDS);
+        List<String> yellowMatches = matchKeywords(normalized, RiskKeywordRegistry.YELLOW);
         if (!yellowMatches.isEmpty()) {
             boolean allNegated = yellowMatches.stream().allMatch(kw -> hasNegationPrefix(normalized, kw));
             if (allNegated || hasContext) {
@@ -179,9 +91,9 @@ public class RiskDetectorServiceImpl implements RiskDetectorService {
             log.debug("黄色风险命中: keywords={}", yellowMatches);
             return new RiskDetectionResult(
                     RiskLevel.YELLOW,
-                    findCategory(yellowMatches),
+                    RiskKeywordRegistry.findCategory(yellowMatches),
                     yellowMatches,
-                    30,
+                    RiskKeywordRegistry.SCORE_ORANGE_MIN,
                     false,
                     "允许继续 CBT 微干预，趋势观察"
             );
@@ -198,9 +110,9 @@ public class RiskDetectorServiceImpl implements RiskDetectorService {
         // 取关键词前 6 个字符
         String before = text.substring(Math.max(0, idx - 6), idx);
         // 检查 before 是否以否定词结尾（如「我没有」+「离家出走」）
-        if (NEGATION_WORDS.stream().anyMatch(before::endsWith)) return true;
+        if (RiskKeywordRegistry.NEGATION_WORDS.stream().anyMatch(before::endsWith)) return true;
         // 检查否定词是否与关键词开头重叠（如「不想」+「想死」，「不」在 before 中，「想」在 keyword 中）
-        for (String neg : NEGATION_WORDS) {
+        for (String neg : RiskKeywordRegistry.NEGATION_WORDS) {
             for (int i = 1; i < neg.length(); i++) {
                 if (before.endsWith(neg.substring(0, i)) && keyword.startsWith(neg.substring(i))) {
                     return true;
@@ -210,10 +122,13 @@ public class RiskDetectorServiceImpl implements RiskDetectorService {
         return false;
     }
 
-    /** 红色关键词匹配（design/04 §九铁律：RED 不可被否定/引用降级，仅允许人工核验回收误报） */
-    private List<String> matchRedKeywords(String text) {
+    /**
+     * 关键词匹配（design/04 §九铁律：RED 不可被否定/引用降级，仅允许人工核验回收误报）。
+     * 词典来源：{@link RiskKeywordRegistry}（ARCH-003 单一规则源）。
+     */
+    private List<String> matchKeywords(String text, Set<String> keywords) {
         List<String> matches = new ArrayList<>();
-        for (String keyword : RED_HARD_KEYWORDS) {
+        for (String keyword : keywords) {
             if (text.contains(keyword)) {
                 // 设计铁律："我不想死""我不会自杀"等否定表达本身即高风险信号，
                 // 命中即 RED；否定降噪仅适用于橙/黄档，误报由教师人工核验回收
@@ -223,32 +138,9 @@ public class RiskDetectorServiceImpl implements RiskDetectorService {
         return matches;
     }
 
-    /** 匹配关键词列表 */
-    private List<String> matchKeywords(String text, List<String> keywords) {
-        List<String> matches = new ArrayList<>();
-        for (String keyword : keywords) {
-            if (text.contains(keyword)) {
-                matches.add(keyword);
-            }
-        }
-        return matches;
-    }
-
-    /** 根据命中关键词查找所属风险类别 */
-    private String findCategory(List<String> matchedKeywords) {
-        for (Map.Entry<String, List<String>> entry : RISK_KEYWORDS.entrySet()) {
-            for (String keyword : matchedKeywords) {
-                if (entry.getValue().contains(keyword)) {
-                    return entry.getKey();
-                }
-            }
-        }
-        return "未分类";
-    }
-
     /** 判断是否为不可降级的敏感类别（性侵/虐待） */
     private boolean isSensitiveCategory(List<String> matchedKeywords) {
-        String category = findCategory(matchedKeywords);
+        String category = RiskKeywordRegistry.findCategory(matchedKeywords);
         return category.contains("性侵") || category.contains("虐待");
     }
 }
