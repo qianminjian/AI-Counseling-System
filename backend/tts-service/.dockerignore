@@ -1,0 +1,9 @@
+# AUD-028：tts-service 构建上下文排除（此前无 .dockerignore）
+__pycache__/
+**/__pycache__/
+.pytest_cache/
+*.pyc
+wheels/
+.venv/
+.git/
+.DS_Store

@@ -1,0 +1,7 @@
+# AUD-028：frontend 构建上下文排除（此前无 .dockerignore，node_modules/ dist/ 数 GB 进上下文）
+**/node_modules/
+**/dist/
+.git/
+.gitignore
+.DS_Store
+*.log

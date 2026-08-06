@@ -1,0 +1,8 @@
+# AUD-028：voice-service 构建上下文排除（此前无 .dockerignore）
+__pycache__/
+**/__pycache__/
+.pytest_cache/
+*.pyc
+.venv/
+.git/
+.DS_Store
