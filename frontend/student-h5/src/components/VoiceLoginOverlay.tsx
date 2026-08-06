@@ -15,8 +15,9 @@ import { getConfigValue } from '../config/remote'
 import { useVoiceprint } from '../hooks/useVoiceprint'
 import { unlockAudio, getGlobalAudioElement } from '../utils/audioUnlock'
 import { createPcmCapture, type PcmCaptureHandle } from '../utils/createPcmCapture'
-import { getVoiceprint } from '../utils/voiceprintStore'
+import { getVoiceprint, getRemoteVoiceprintTenantId } from '../utils/voiceprintStore'
 import { voiceLogin, remoteVoiceprintVerify, getVoiceprintConfig, setToken, setRefreshToken, setUser, fetchLoginPrompt } from '../api'
+import { readLocalStorageSafe } from '../utils/storage'
 
 /** 主题 → 音色映射（登录页未登录，读 localStorage 主题） */
 const THEME_PERSONA_MAP: Record<string, string> = {
@@ -25,7 +26,8 @@ const THEME_PERSONA_MAP: Record<string, string> = {
   rainbow: 'yueliang',  // 彩虹紫 → 月亮（温柔讲故事）
 }
 function getLoginPersona(): string {
-  const themeId = localStorage.getItem('mindsafe_theme_v1') || 'ocean'
+  // AUD-065：裸 localStorage 改安全封装（隐私模式/存储禁用下不抛 SecurityError）
+  const themeId = readLocalStorageSafe<string>('mindsafe_theme_v1', 'ocean')
   return THEME_PERSONA_MAP[themeId] || 'xiaoxing'
 }
 
@@ -211,18 +213,41 @@ export default function VoiceLoginOverlay({ mode = 'verify', onComplete, onCance
         collectedEmbeddings.current.push(embedding)
         modelRetryCount = 0 // 成功则重置
       } else if (modelErrorRef.current) {
-        // 模型加载失败：最多重试 2 次，避免死循环“准备中”
+        // 模型加载失败：轮询重试（AUD-025：绑定真实加载耗时，替代固定假等 3s——
+        // 每次轮询真实发起一次模型加载/推理，弱网下下载多久就等多久，最长 60s；
+        // 模型已就绪但音频静音时交外层“没有听清”分支）
         modelRetryCount++
-        if (modelRetryCount > 2) {
+        if (modelRetryCount > 3) {
           setFailKind('mic')
           setPhase('fail')
           setStatusText('语音引擎加载失败，请先用秘密数字登录，稍后再试')
           return
         }
         setStatusText('语音引擎准备中，请稍候...')
-        await new Promise((r) => setTimeout(r, 3000))
-        i-- // 重试当前轮
-        continue
+        const retryDeadline = Date.now() + 60000
+        let retried: number[] | null = null
+        while (Date.now() < retryDeadline) {
+          if (cancelledRef.current) return
+          await new Promise((r) => setTimeout(r, 800))
+          retried = await extractEmbedding(audio, sampleRate)
+          if (retried) break
+          if (!modelErrorRef.current) break // 模型已就绪 → 本次为静音/音频问题，交外层处理
+        }
+        if (retried) {
+          collectedEmbeddings.current.push(retried)
+          modelRetryCount = 0 // 成功则重置
+        } else if (!modelErrorRef.current) {
+          // 静音或提取失败：提示重试（不计入失败次数）
+          setStatusText('没有听清，再说一次吧~')
+          await new Promise((r) => setTimeout(r, 1500))
+          i-- // 重试当前轮
+          continue
+        } else {
+          setFailKind('mic')
+          setPhase('fail')
+          setStatusText('语音引擎加载失败，请先用秘密数字登录，稍后再试')
+          return
+        }
       } else {
         // 静音或提取失败：提示重试（不计入失败次数）
         setStatusText('没有听清，再说一次吧~')
@@ -241,8 +266,17 @@ export default function VoiceLoginOverlay({ mode = 'verify', onComplete, onCance
     if (mode === 'verify') {
       if (vpModeRef.current === 'remote') {
         // remote 模式：embedding 传服务端比对，服务端直接签发 token
+        // AUD-001：verify 必须携带租户维度（比对范围收窄至本租户）；
+        // 租户来自录入时后端签发，缺失说明旧版本录入或存储被清 → 引导重录
+        const tenantId = getRemoteVoiceprintTenantId()
+        if (!tenantId) {
+          setFailKind('credential')
+          setPhase('fail')
+          setStatusText('这台设备的登录钥匙还没办好，先用秘密数字进入，再到「设置」里重录一次声音吧')
+          return
+        }
         try {
-          const data = await remoteVoiceprintVerify(collectedEmbeddings.current)
+          const data = await remoteVoiceprintVerify(collectedEmbeddings.current, tenantId)
           if (data.matched) {
             setToken(data.token)
             if (data.refreshToken) setRefreshToken(data.refreshToken)

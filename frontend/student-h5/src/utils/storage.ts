@@ -7,10 +7,11 @@
  */
 
 /** 读取 localStorage，存储不可用/异常时返回 fallback（不抛出） */
-export function readLocalStorageSafe<T>(key: string, fallback: T): T {
+// AUD-065：返回类型固定 string（避免 fallback 字面量推断导致调用处 TS2367 误报）
+export function readLocalStorageSafe<T extends string = string>(key: string, fallback: T): string {
   try {
     const value = localStorage.getItem(key)
-    return value === null ? fallback : (value as unknown as T)
+    return value === null ? fallback : value
   } catch {
     return fallback
   }

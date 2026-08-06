@@ -16,11 +16,11 @@ export const WAKE_MODEL_ID = 'onnx-community/whisper-tiny'
 
 /**
  * 模型下载源
- * - 默认使用 hf-mirror.com（国内可访问的 HuggingFace 镜像）
- * - 生产部署：将模型文件放到服务器 /mindsafe/models/ 目录后，改为 'SAME_ORIGIN'
- *   此时 Transformers.js 从同源加载，配合 Nginx immutable 缓存头实现零延迟
+ * - 当前固定 SAME_ORIGIN：模型文件部署在服务器 /mindsafe/models/，
+ *   与 Transformers.js 同源加载，配合 Nginx immutable 缓存头实现零延迟
  * - 注意：SAME_ORIGIN 模式下必须确保模型文件已部署，否则 404 导致加载失败
- * - 历史：曾用 hf-mirror.com，后改 SAME_ORIGIN 但未部署文件导致加载失败，现回退
+ * - 历史：曾用 hf-mirror.com（国内镜像），2026-08 模型入服务器后改 SAME_ORIGIN 并保持——
+ *   AUD-067：旧注释误写「现回退 hf-mirror」与代码值矛盾，已更正；排障时勿再改回镜像源
  */
 export const WAKE_MODEL_REMOTE_HOST: string = 'SAME_ORIGIN'
 

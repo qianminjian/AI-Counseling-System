@@ -4,6 +4,9 @@
  * 共享设备策略：token/user 存 sessionStorage（关闭 tab 自动清除 = 下次必须登录）
  * 设备级标记（如 consent）存 localStorage（跨会话保持）
  */
+// AUD-065：consent 读写接入 localStorage 安全封装（隐私模式/存储禁用下不抛 SecurityError）
+import { readLocalStorageSafe, writeLocalStorageSafe } from './utils/storage'
+
 const TOKEN_KEY = 'mindsafe_student_token'
 const REFRESH_KEY = 'mindsafe_student_refresh'
 const USER_KEY = 'mindsafe_student_user'
@@ -58,16 +61,17 @@ const LEGACY_NOTICE_KEY = 'mindsafe_consent_done'
 
 /** 设备是否已完成告知同意（跨 tab 保持；旧键存在时自动迁移到新键） */
 export function isConsentDone() {
-  if (localStorage.getItem(ConsentKeys.NOTICE) === '1') return true
-  if (localStorage.getItem(LEGACY_NOTICE_KEY) === '1') {
-    localStorage.setItem(ConsentKeys.NOTICE, '1')
+  // AUD-065：裸 localStorage 改安全封装（隐私模式/存储禁用下不抛 SecurityError → 白屏）
+  if (readLocalStorageSafe(ConsentKeys.NOTICE, '') === '1') return true
+  if (readLocalStorageSafe(LEGACY_NOTICE_KEY, '') === '1') {
+    writeLocalStorageSafe(ConsentKeys.NOTICE, '1')
     return true
   }
   return false
 }
 
 export function markConsentDone() {
-  localStorage.setItem(ConsentKeys.NOTICE, '1')
+  writeLocalStorageSafe(ConsentKeys.NOTICE, '1')
 }
 
 /** 是否已登录（有有效 token） */
@@ -370,12 +374,15 @@ export async function getVoiceprintConfig(): Promise<VoiceprintConfig> {
 /**
  * 声纹远程验证登录（remote 模式，公开端点）
  * 前端提取 embedding 后传服务端比对，通过则直接签发双 token
+ * <p>
+ * AUD-001：必须携带 tenantId——服务端仅在该租户内比对，跨租户模板不可达；
+ * tenantId 来源于录入时后端签发（remoteVoiceprintEnroll 响应），本地暂存后在此回传
  */
-export async function remoteVoiceprintVerify(embeddings: number[][]): Promise<AuthResult & { matched: boolean }> {
+export async function remoteVoiceprintVerify(embeddings: number[][], tenantId: string): Promise<AuthResult & { matched: boolean }> {
   const res = await fetch('/api/v1/voiceprint/verify', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ embeddings }),
+    body: JSON.stringify({ tenantId, embeddings }),
   })
   const json = await res.json()
   if (!json.success) throw new Error(json.message || '声纹验证失败')
@@ -385,8 +392,9 @@ export async function remoteVoiceprintVerify(embeddings: number[][]): Promise<Au
 /**
  * 声纹远程录入（remote 模式，需已登录）
  * 前端提取 embedding 后传服务端存储
+ * 响应携带服务端签发的 tenantId（AUD-001：verify 时需回传租户维度）
  */
-export async function remoteVoiceprintEnroll(embeddings: number[][]): Promise<{ enrolled: number }> {
+export async function remoteVoiceprintEnroll(embeddings: number[][]): Promise<{ enrolled: number; tenantId: string }> {
   return api('/voiceprint/enroll', {
     method: 'POST',
     body: JSON.stringify({ embeddings }),

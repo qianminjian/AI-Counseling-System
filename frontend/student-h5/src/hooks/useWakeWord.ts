@@ -38,6 +38,14 @@ import { createModelStatusStore, type ModelStatus } from '../utils/modelStatusSt
 /** Whisper 要求的采样率 */
 const TARGET_SAMPLE_RATE = 16000
 
+/**
+ * AUD-027：调试日志 DEV 条件包裹（生产零噪音；诊断时 DEV 模式/本地开发可见）。
+ * 运行时降级/失败信号仍走 console.warn（运维可观测），不受此开关影响。
+ */
+const dbg = (...args: unknown[]) => {
+  if (import.meta.env.DEV) console.debug('[WakeWord]', ...args)
+}
+
 /** 滑窗/重叠/积压上限（样本数 @16kHz） */
 const WINDOW_SAMPLES = Math.round(WAKE_WINDOW_SECONDS * TARGET_SAMPLE_RATE)
 const KEEP_SAMPLES = Math.round(WAKE_KEEP_SECONDS * TARGET_SAMPLE_RATE)
@@ -113,7 +121,7 @@ function getTranscriber() {
     transcriberPromise = (async () => {
       // ━━ 环境前置检查：SharedArrayBuffer + SIMD 是 ORT WASM 的硬性依赖 ━━
       if (typeof SharedArrayBuffer === 'undefined') {
-        console.warn('[WakeWord] SharedArrayBuffer不可用，语音功能降级')
+        if (import.meta.env.DEV) console.warn('[WakeWord] SharedArrayBuffer不可用，语音功能降级')
         throw Object.assign(new Error('ENV_UNSUPPORTED'), { _unsupported: true })
       }
       let hasSimd = false
@@ -121,7 +129,7 @@ function getTranscriber() {
         hasSimd = WebAssembly.validate(new Uint8Array([0,97,115,109,1,0,0,0,1,5,1,96,0,1,123,3,2,1,0,10,8,1,6,0,65,0,253,15,11]))
       } catch { /* ignore */ }
       if (!hasSimd) {
-        console.warn('[WakeWord] 浏览器不支持WebAssembly SIMD，语音功能降级')
+        if (import.meta.env.DEV) console.warn('[WakeWord] 浏览器不支持WebAssembly SIMD，语音功能降级')
         throw Object.assign(new Error('ENV_UNSUPPORTED'), { _unsupported: true })
       }
 
@@ -163,10 +171,10 @@ function getTranscriber() {
         progress_callback: (p) => {
           if (p.status === 'progress_total' && typeof p.progress === 'number') {
             // 聚合进度（跨所有文件的总百分比）
-            console.debug(`[WakeWord] 模型总进度 ${p.progress.toFixed(0)}%`)
+            dbg(`模型总进度 ${p.progress.toFixed(0)}%`)
             setModelStatus('loading', Math.round(p.progress))
           } else if (p.status === 'progress' && p.file && typeof p.progress === 'number') {
-            console.debug(`[WakeWord] ${p.file} ${p.progress.toFixed(0)}%`)
+            dbg(`${p.file} ${p.progress.toFixed(0)}%`)
           }
         },
       })
@@ -246,9 +254,9 @@ export function useWakeWord({ active, paused, onDetected }) {
   useEffect(() => {
     pausedRef.current = paused
     if (paused) {
-      console.debug('[WakeWord] 检测暂停（AI 忙碌，防自听回声）')
+      dbg('检测暂停（AI 忙碌，防自听回声）')
     } else {
-      console.debug('[WakeWord] 检测恢复（AI 空闲，继续监听唤醒词）')
+      dbg('检测恢复（AI 空闲，继续监听唤醒词）')
     }
   }, [paused])
 
@@ -299,7 +307,7 @@ export function useWakeWord({ active, paused, onDetected }) {
         const hallucinated = isHallucination(text)
         const matched = matchesWakeWord(text)
         // 降级为 debug：正常运行时不刷屏，需要诊断时开 DevTools verbose 级别即可
-        console.debug('[WakeWord] 转写结果:', JSON.stringify(text), '幻觉:', hallucinated, '匹配:', matched)
+        dbg('转写结果:', JSON.stringify(text), '幻觉:', hallucinated, '匹配:', matched)
         if (matched) {
           setWakeStatus('detected')
           setTimeout(() => onDetectedRef.current?.({ label: 'halou-bobo', text }), 300)
@@ -328,7 +336,7 @@ export function useWakeWord({ active, paused, onDetected }) {
     const analyzeWindow = (audio: Float32Array) => {
       analyzing = true
       // 降级为 debug：正常不刷屏
-      console.debug(`[WakeWord] 📨 提交音频窗分析 (useMainThread=${useMainThread}, 长度=${audio.length}, rms=${rms(audio).toFixed(5)})`)
+      dbg(`📨 提交音频窗分析 (useMainThread=${useMainThread}, 长度=${audio.length}, rms=${rms(audio).toFixed(5)})`)
       if (useMainThread) {
         analyzeOnMainThread(audio)
         return
@@ -415,7 +423,7 @@ export function useWakeWord({ active, paused, onDetected }) {
           analyzing = false
           maybeAnalyze()
         } else if (type === 'progress') {
-          console.debug(`[WakeWord] 模型加载 ${event.data.file} ${event.data.progress.toFixed(0)}%`)
+          dbg(`模型加载 ${event.data.file} ${event.data.progress.toFixed(0)}%`)
         }
       }
 
@@ -479,7 +487,7 @@ export function useWakeWord({ active, paused, onDetected }) {
           chunkCount++
           // 每 50 个 chunk 打一次诊断日志（约 4s@48kHz/4096）
           if (chunkCount % 50 === 1) {
-            console.debug(`[WakeWord] 音频流入: chunks=${chunkCount}, totalSamples=${totalSamples}/${WINDOW_SAMPLES}, paused=${pausedRef.current}, analyzing=${analyzing}, useMainThread=${useMainThread}`)
+            dbg(`音频流入: chunks=${chunkCount}, totalSamples=${totalSamples}/${WINDOW_SAMPLES}, paused=${pausedRef.current}, analyzing=${analyzing}, useMainThread=${useMainThread}`)
           }
           if (totalSamples > MAX_BUFFER_SAMPLES) {
             const mergedAll = concatChunks(chunks, totalSamples)

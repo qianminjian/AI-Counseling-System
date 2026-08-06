@@ -101,7 +101,9 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: Se
   useEffect(() => {
     if (tts.engine === 'none') {
       setVoiceNotice('当前浏览器不支持语音播放，可阅读文字内容 📖')
-      setTimeout(() => setVoiceNotice(''), 6000)
+      // AUD-017：定时器挂 cleanup，卸载/引擎变化时清除避免 setState-after-unmount
+      const t = setTimeout(() => setVoiceNotice(''), 6000)
+      return () => clearTimeout(t)
     }
   }, [tts.engine])
 

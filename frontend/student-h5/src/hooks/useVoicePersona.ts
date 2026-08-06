@@ -8,6 +8,7 @@
  */
 import { useState, useCallback } from 'react'
 import { getUser } from '../api'
+import { readLocalStorageSafe, writeLocalStorageSafe } from '../utils/storage'
 
 export const VOICE_PERSONAS = {
   xiaoxing: {
@@ -95,7 +96,7 @@ const DIALECT_KEY = 'mindsafe_dialect_v1'
 
 /** 根据用户性别获取默认音色 */
 function getDefaultPersona() {
-  const saved = localStorage.getItem(PERSONA_KEY)
+  const saved = readLocalStorageSafe(PERSONA_KEY, '')
   if (saved && VOICE_PERSONAS[saved]) return saved
   // 未手动选择过，根据性别自动匹配
   const user = getUser()
@@ -106,7 +107,7 @@ function getDefaultPersona() {
 export function useVoicePersona() {
   const [personaId, setPersonaId] = useState(getDefaultPersona)
   const [selectedDialect, setSelectedDialect] = useState<string | null>(() => {
-    const saved = localStorage.getItem(DIALECT_KEY)
+    const saved = readLocalStorageSafe(DIALECT_KEY, '')
     if (saved && SUPPORTED_DIALECTS[saved]) return saved
     // 默认取学生配置的 dialect
     const user = getUser()
@@ -121,7 +122,7 @@ export function useVoicePersona() {
   const changePersona = useCallback((id) => {
     if (VOICE_PERSONAS[id]) {
       setPersonaId(id)
-      localStorage.setItem(PERSONA_KEY, id)
+      writeLocalStorageSafe(PERSONA_KEY, id)
     }
   }, [])
 
@@ -129,7 +130,7 @@ export function useVoicePersona() {
   const changeDialect = useCallback((dialectId) => {
     if (SUPPORTED_DIALECTS[dialectId]) {
       setSelectedDialect(dialectId)
-      localStorage.setItem(DIALECT_KEY, dialectId)
+      writeLocalStorageSafe(DIALECT_KEY, dialectId)
     }
   }, [])
 

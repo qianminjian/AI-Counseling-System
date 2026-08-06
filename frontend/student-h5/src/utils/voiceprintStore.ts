@@ -23,6 +23,9 @@ import { getConfigValue } from '../config/remote'
 /** remote 模式声纹已录入标记（localStorage key） */
 const REMOTE_VP_ENROLLED_KEY = 'mindsafe_remote_vp_enrolled'
 
+/** AUD-001：remote 模式声纹所属租户（verify 时回传服务端做租户维度过滤） */
+const REMOTE_VP_TENANT_KEY = 'mindsafe_remote_vp_tenant'
+
 /** 声纹记录数据结构 */
 export interface VoiceprintRecord {
   userId: string
@@ -216,14 +219,29 @@ export async function hasAnyVoiceprint(): Promise<boolean> {
   return hasRemoteVoiceprintMark()
 }
 
-/** remote 模式录入成功后标记 */
-export function markRemoteVoiceprintEnrolled() {
-  try { localStorage.setItem(REMOTE_VP_ENROLLED_KEY, '1') } catch { /* ignore */ }
+/**
+ * remote 模式录入成功后标记（AUD-001：同时暂存服务端签发的 tenantId，
+ * 声纹登录 verify 时需携带租户维度，比对范围收窄至本租户）
+ * @param {string} [tenantId] - 后端 /voiceprint/enroll 响应签发的租户 ID
+ */
+export function markRemoteVoiceprintEnrolled(tenantId?: string) {
+  try {
+    localStorage.setItem(REMOTE_VP_ENROLLED_KEY, '1')
+    if (tenantId) localStorage.setItem(REMOTE_VP_TENANT_KEY, tenantId)
+  } catch { /* ignore */ }
+}
+
+/** 读取 remote 模式声纹所属租户（verify 时回传；缺失说明旧版本录入或存储被清，需重录） */
+export function getRemoteVoiceprintTenantId(): string | null {
+  try { return localStorage.getItem(REMOTE_VP_TENANT_KEY) } catch { return null }
 }
 
 /** 清除 remote 模式标记（删除声纹时调用） */
 export function clearRemoteVoiceprintMark() {
-  try { localStorage.removeItem(REMOTE_VP_ENROLLED_KEY) } catch { /* ignore */ }
+  try {
+    localStorage.removeItem(REMOTE_VP_ENROLLED_KEY)
+    localStorage.removeItem(REMOTE_VP_TENANT_KEY)
+  } catch { /* ignore */ }
 }
 
 /** 检查 remote 模式标记是否存在 */

@@ -1,9 +1,11 @@
 import { useState } from 'react'
 import { ConsentKeys } from '../api'
+import { readLocalStorageSafe, writeLocalStorageSafe } from '../utils/storage'
 
 /** 语音唤醒授权状态（与按住说话授权分离，单独告知单独同意） */
 // F-9 同意键单点：引用 ConsentKeys 枚举（ARCH-005），不再本地定义字符串
 const VOICE_CALL_CONSENT_KEY = ConsentKeys.VOICE_CALL
+// AUD-065：授权读写经 storage.ts 安全封装（隐私模式/存储禁用不抛 SecurityError）
 
 /**
  * 语音唤醒单独授权 Hook（design/28 §1.4 合规与授权）
@@ -14,7 +16,7 @@ const VOICE_CALL_CONSENT_KEY = ConsentKeys.VOICE_CALL
 export function useVoiceCallConsent() {
   const [showDialog, setShowDialog] = useState(false)
 
-  const hasConsent = () => localStorage.getItem(VOICE_CALL_CONSENT_KEY) === 'granted'
+  const hasConsent = () => readLocalStorageSafe(VOICE_CALL_CONSENT_KEY, '') === 'granted'
 
   /** 请求授权：已授权返回 true；未授权弹出说明弹窗并返回 false */
   const requestConsent = () => {
@@ -24,7 +26,7 @@ export function useVoiceCallConsent() {
   }
 
   const grantConsent = () => {
-    localStorage.setItem(VOICE_CALL_CONSENT_KEY, 'granted')
+    writeLocalStorageSafe(VOICE_CALL_CONSENT_KEY, 'granted')
     setShowDialog(false)
   }
 
