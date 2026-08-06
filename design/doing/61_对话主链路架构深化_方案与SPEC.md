@@ -1,7 +1,7 @@
 # 61 对话主链路架构深化（ARCH-001）方案与 SPEC
 
-> 关联任务：ARCH-001（对话主链路架构深化，C1~C5 候选，待登记 TASK-TRACKER）
-> 状态：📝 方案定稿 → 待决策（架构审查 2026-08-05，选候选后进入决策循环）
+> 关联任务：ARCH-001（对话主链路架构深化，C1~C5 候选，已登记 TASK-TRACKER §二十八）
+> 状态：✅ C1 已实施（2026-07-28，TDD：PersonalInfoExtractor 18 例 + PromptAssemblyService 5 例 + ThemeEvolutionEngine 9 例；主类 844→758 行、僵尸依赖清零；counseling-service 全量 792 用例全绿）；C2~C5 分别由 ARCH-003/004/005/006 承接（均已落地，见 doing/63~66）
 > 依据：improve-codebase-architecture 第 2 轮审查报告（tmp/architecture-review-20260805-232048.html，git 忽略不落库）、git 热点分析（近 50 提交）、后端/前端只读代码扫描
 > 审计修正（2026-08-05 深度审计）：C4 裸 fetch 实为 5 处（非 4 处，含 useSilenceNudge 且 2 处实走 authFetch）；C5 测试 mock 实为 18 个（非 15 个）；toolboxApi.test.ts 非空壳（不删除）。详见 §7/§8 修订文字。
 > 词汇：模块 / 接口 / 深度 / 接缝 / 局域性 / 删除测试——见 [13 领域词汇表](../13_领域词汇表.md) 架构词汇表
@@ -55,6 +55,13 @@
 **收益**：局域性（Prompt 组装与风险判定独立演化）；杠杆（22 依赖 → ~12）；测试（私有正则与关键词表变为公有接口）。不新增转发层，是「把目前不集中的逻辑集中到正确的模块」。
 
 **风险**：拆分涉及 826 行核心路径，需全量回归（当前 1529 用例基线）+ SSE 集成验证；建议按「先抽纯函数模块（PersonalInfoExtractor）→ 再抽 PromptAssemblyService → 最后瘦身编排类」渐进。
+
+**实施结果（2026-07-28，TDD 红→绿）**：
+- `PersonalInfoExtractor` 落地：4 组正则 + 语气词过滤，`ExtractedInfo(realName/age/grade/className)` 纯函数（18 例）
+- `PromptAssemblyService` 落地：SYS_001→LANG→EMO→CBT→RAG 固定顺序拼接 + 版本路由（`AssembledPrompt(content/versionTag)`），暖场 TSK_004 路由内聚（5 例）
+- 主题关键词收敛 `ThemeEvolutionEngine.TOPIC_PATTERNS` 单一源（21 组，表序即优先级），`extractTopicHint` 改为委托（9 例）
+- 主类 844→758 行；`PromptTemplateService` 僵尸依赖删除、`PromptVersionService` 引用归零；依赖数 22→23（删 2 加 3，不硬拆——KISS，完整收敛列入后续候选）
+- 全量回归：counseling-service 792 用例全绿
 
 ## 5. C2 · 风险领域知识单一规则源
 

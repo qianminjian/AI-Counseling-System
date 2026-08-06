@@ -24,6 +24,7 @@ import com.mindsafe.domain.mapper.UserMapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mindsafe.service.knowledge.RagAdvisorService;
 import com.mindsafe.service.memory.LongTermMemoryService;
+import com.mindsafe.service.memory.ThemeEvolutionEngine;
 import com.mindsafe.service.profile.ProfileExtractorService;
 import com.mindsafe.service.profile.StudentProfileService;
 import com.mindsafe.service.prompt.PromptVersionService;
@@ -65,7 +66,6 @@ import static org.mockito.Mockito.when;
 class ConversationServiceImplTest {
 
     private AiChatService aiChatService;
-    private PromptTemplateService promptTemplateService;
     private ConversationRiskProcessor riskProcessor;
     private PiiDesensitizer piiDesensitizer;
     private CounselingSessionMapper sessionMapper;
@@ -86,6 +86,11 @@ class ConversationServiceImplTest {
     private ConversationContextAgent contextAgent;
     private SessionSummaryUpdater sessionSummaryUpdater;
 
+    // ARCH-001 C1：新拆分组件（个人信息提取/提示词组装/主题关键词），真实实例走真实接线
+    private PersonalInfoExtractor personalInfoExtractor;
+    private PromptAssemblyService promptAssemblyService;
+    private ThemeEvolutionEngine themeEvolutionEngine;
+
     /** 测试用内存模拟 Redis 存储 */
     private final Map<UUID, SessionState> testSessionStore = new HashMap<>();
 
@@ -98,7 +103,6 @@ class ConversationServiceImplTest {
     @BeforeEach
     void setUp() {
         aiChatService = mock(AiChatService.class);
-        promptTemplateService = mock(PromptTemplateService.class);
         riskProcessor = mock(ConversationRiskProcessor.class);
         piiDesensitizer = mock(PiiDesensitizer.class);
         sessionMapper = mock(CounselingSessionMapper.class);
@@ -119,6 +123,10 @@ class ConversationServiceImplTest {
         sessionStateStore = mock(RedisSessionStateStore.class);
         contextAgent = mock(ConversationContextAgent.class);
         sessionSummaryUpdater = mock(SessionSummaryUpdater.class);
+        // ARCH-001 C1：真实实例走真实接线（纯规则/组装无副作用）
+        personalInfoExtractor = new PersonalInfoExtractor();
+        themeEvolutionEngine = new ThemeEvolutionEngine();
+        promptAssemblyService = new PromptAssemblyService(promptVersionService, cbtStageRouter);
         // CTX-Agent: 默认返回空简报（不阻塞 sendMessageStream 测试）
         when(contextAgent.buildContextBrief(any(), any(), any(), any(), anyInt())).thenReturn("");
 
@@ -162,10 +170,10 @@ class ConversationServiceImplTest {
                 aiChatService, plainEnc, conversationQualityService, profileExtractorService, longTermMemoryService,
                 new ObjectMapper(), new SimpleMeterRegistry());
 
-        service = new ConversationServiceImpl(aiChatService, promptTemplateService,
+        service = new ConversationServiceImpl(aiChatService,
                 riskProcessor, piiDesensitizer, sessionMapper, messageSummaryMapper,
                 userMapper, profileService,
-                usageTimeLimitService, longTermMemoryService, promptVersionService,
+                usageTimeLimitService, longTermMemoryService,
                 ragAdvisorService,
                 // ORCH-001/003：编排引擎+情绪状态机纯规则无依赖，直接用真实实例
                 new PromptOrchestrationService(new EntryMoodStrategyResolver(), new EmotionStateMachine()),
@@ -174,7 +182,8 @@ class ConversationServiceImplTest {
                 crisisResourceProvider,
                 allianceEnhancer, cbtStageRouter,
                 sessionEndAnalyticsService, sessionStateStore,
-                contextAgent, sessionSummaryUpdater, new ObjectMapper());
+                contextAgent, sessionSummaryUpdater, new ObjectMapper(),
+                personalInfoExtractor, promptAssemblyService, themeEvolutionEngine);
     }
 
     /** createSession 并捕获内部生成的 sessionId */
@@ -350,10 +359,10 @@ class ConversationServiceImplTest {
             com.mindsafe.service.security.FieldEncryptionService keyedEnc =
                     new com.mindsafe.service.security.FieldEncryptionService(
                             TEST_KEY, 1, "", new org.springframework.core.env.StandardEnvironment());
-            ConversationServiceImpl keyedService = new ConversationServiceImpl(aiChatService, promptTemplateService,
+            ConversationServiceImpl keyedService = new ConversationServiceImpl(aiChatService,
                     riskProcessor, piiDesensitizer, sessionMapper, messageSummaryMapper,
                     userMapper, profileService,
-                    usageTimeLimitService, longTermMemoryService, promptVersionService,
+                    usageTimeLimitService, longTermMemoryService,
                     ragAdvisorService,
                     new PromptOrchestrationService(new EntryMoodStrategyResolver(), new EmotionStateMachine()),
                     new MessageSummaryService(messageSummaryMapper, sessionMapper,
@@ -362,8 +371,9 @@ class ConversationServiceImplTest {
                     keyedEnc,
                     crisisResourceProvider,
                     allianceEnhancer, cbtStageRouter,
-                    sessionEndAnalyticsService, sessionStateStore,
-                    contextAgent, sessionSummaryUpdater, new ObjectMapper());
+                sessionEndAnalyticsService, sessionStateStore,
+                contextAgent, sessionSummaryUpdater, new ObjectMapper(),
+                personalInfoExtractor, promptAssemblyService, themeEvolutionEngine);
 
             User user = new User();
             user.setPseudonym("小明");
@@ -464,9 +474,8 @@ class ConversationServiceImplTest {
 
             // 走 chatProactive（不污染记忆）；systemPromptContent 含版本路由渲染的暖场指令
             verify(aiChatService).chatProactive(eq(sessionId), eq("happy"), eq("male"), any(), contains("【暖场指令】强度=2"), any(Integer.class));
-            // TSK_004 走版本路由（不再走 promptTemplateService 直接渲染）
+            // TSK_004 走版本路由（ARCH-001 C1：路由收敛 PromptAssemblyService 内部）
             verify(promptVersionService).resolve(eq(tenantId), eq("TSK_004"), eq(studentId), anyMap());
-            verify(promptTemplateService, never()).render(eq(PromptTemplateService.TSK_004), anyMap());
             // AI 暖场回复落库（孩子看到的连续性保留）
             verify(messageSummaryMapper).insert(any(com.mindsafe.domain.entity.MessageSummary.class));
         }
@@ -476,7 +485,6 @@ class ConversationServiceImplTest {
         void intervalGuard_empty() {
             UUID sessionId = createSession("happy");
             mockSessionActive(sessionId);
-            when(promptTemplateService.render(anyString(), anyMap())).thenReturn("指令");
             when(aiChatService.chatProactive(any(), any(), any(), any(), any(), any(Integer.class)))
                     .thenReturn(Flux.just(StreamMessageEvent.token("在呢")));
 
@@ -530,7 +538,6 @@ class ConversationServiceImplTest {
             assertThat(chatEvents).isNotEmpty();
 
             // 计数已清零 + 间隔足够 → 暖场恢复
-            when(promptTemplateService.render(anyString(), anyMap())).thenReturn("指令");
             when(aiChatService.chatProactive(any(), any(), any(), any(), any(), any(Integer.class)))
                     .thenReturn(Flux.just(StreamMessageEvent.token("在呢")));
             List<StreamMessageEvent> nudgeEvents = service
@@ -546,7 +553,6 @@ class ConversationServiceImplTest {
         void proactiveError_silentEmpty() {
             UUID sessionId = createSession("happy");
             mockSessionActive(sessionId);
-            when(promptTemplateService.render(anyString(), anyMap())).thenReturn("指令");
             when(profileService.buildProfilePrompt(eq(tenantId), eq(studentId), any(Integer.class), any()))
                     .thenReturn(null);
             when(aiChatService.chatProactive(any(), any(), any(), any(), any(), any(Integer.class)))

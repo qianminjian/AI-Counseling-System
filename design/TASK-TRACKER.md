@@ -880,18 +880,19 @@ _本表由 Agent 维护，每次任务变更时更新。_
 
 | 任务ID | 阶段任务 | 优先级 | 来源审计项 | 方案与SPEC | 依赖 | 状态 |
 |--------|----------|--------|-----------|-----------|------|------|
-| ARCH-002 | P0 前端缺陷修复（useSilenceNudge 401 刷新 + EmotionSelect localStorage 失败安全） | P0 | P0-1/P0-2 | doing/62 | 无 | ⏳ 待实施 |
-| ARCH-007 | 合规与数据安全修复（MessageSummary 两级摘要 + PII 昵称置换 + PIPL 告知链接） | P0 | B-2/B-5/F-5 | doing/67 | 无 | ⏳ 待实施（决策已闭环） |
-| ARCH-003 | 风险知识单一规则源（RiskKeywordRegistry + EmotionVocabulary + 一致性断言） | P0 安全 | B-3 | doing/63 | 无 | ⏳ 待实施 |
-| ARCH-004 | 假功能与死代码清理（ORCH-006 路径 B + 7 处僵尸 API + 台账对齐） | P1 | B-1/B-6/B-7 + P2-1 + OVD-1/3 | doing/64 | 无 | ⏳ 待实施（决策已闭环） |
-| ARCH-005 | 前端 API/SSE 接缝收敛（SSE 单点 + 5 端点收口 + 契约 23+ + 同意 key 统一） | P1 | F-1/F-2/F-3/F-9 | doing/65 | ARCH-002 | ⏳ 待实施 |
-| ARCH-006 | ChatRoom 语音编排抽取（useVoiceInputPipeline + 单例/去重收敛 + 测试黑盒化） | P1 | F-4 + P2-6/7/8 + OVD-5 | doing/66 | ARCH-005 | ⏳ 待实施 |
+| ARCH-001 | 对话主链路架构深化（C1 编排拆分：PersonalInfoExtractor + PromptAssemblyService + 主题词单一源） | - | 架构审查第 2 轮（improve-codebase-architecture） | doing/61 | 无 | ✅ C1 已实施（2026-07-28，TDD：3 组件 32 例；主类 844→758 行、僵尸依赖清零；counseling-service 792 绿）；C2~C5 由 ARCH-003/004/005/006 承接 |
+| ARCH-002 | P0 前端缺陷修复（useSilenceNudge 401 刷新 + EmotionSelect localStorage 失败安全） | P0 | P0-1/P0-2 | doing/62 | 无 | ✅ 已实施（2026-07-28，TDD 落地，见 doing/62） |
+| ARCH-007 | 合规与数据安全修复（MessageSummary 两级摘要 + PII 昵称置换 + PIPL 告知链接） | P0 | B-2/B-5/F-5 | doing/67 | 无 | ✅ 已实施（2026-07-28，TDD 落地，见 doing/67） |
+| ARCH-003 | 风险知识单一规则源（RiskKeywordRegistry + EmotionVocabulary + 一致性断言） | P0 安全 | B-3 | doing/63 | 无 | ✅ 已实施（TDD 全绿，见 doing/63） |
+| ARCH-004 | 假功能与死代码清理（ORCH-006 路径 B + 7 处僵尸 API + 台账对齐） | P1 | B-1/B-6/B-7 + P2-1 + OVD-1/3 | doing/64 | 无 | ✅ 实施完成（2026-08-06，见 doing/64 §8） |
+| ARCH-005 | 前端 API/SSE 接缝收敛（SSE 单点 + 5 端点收口 + 契约 23+ + 同意 key 统一） | P1 | F-1/F-2/F-3/F-9 | doing/65 | ARCH-002 | ✅ 实施完成（2026-08-06，见 doing/65 §8） |
+| ARCH-006 | ChatRoom 语音编排抽取（useVoiceInputPipeline + 单例/去重收敛 + 测试黑盒化） | P1 | F-4 + P2-6/7/8 + OVD-5 | doing/66 | ARCH-005 | ✅ 已完成（2026-07-28 07:10，全量回归 788 例，见 doing/66） |
 | ARCH-008 | 教师端/家长端加固（authFetch 统一 + 契约防线 + CSP + token 策略） | P1 | F-6/F-7/F-8 + P2-9/10/12/13 + OVD-6 | doing/68 | 无 | ✅ 已完成（2026-08）：authFetch 移植（9 例）+ teacher-web api.ts 6 处改造 / 契约防线清单测试（teacher 38 + parent 9）/ CSP 配置断言 + token 策略文档化 / console.info 归零 + BigScreen 错误态 + 设计 token 对齐（OVD-6 评估） |
 | ARCH-009 | 工程化与发布门禁（pytest 入 CI + 覆盖率 80% + 面板台账 + 回滚演练 + 模型自动化 + parent-h5 lint） | P1 | E-1~E-5 + lint | doing/69 | 无（CI/CD 改动须授权） | ✅ 已完成（2026-08-06）：E-1 pytest 入 CI / E-2 teacher-web 覆盖率 89.99% + 阈值 80 / E-3 TTS 面板已删 + OD-013 修正 / E-4 V01~V27 清单 + V34+ 强制 down（DEPLOY-GUIDE §九）/ E-5 模型投放自动化（manifest 校验和 + --verify 门禁 + 修复发布缺模型缺陷）/ parent-h5 补 oxlint（存量 2 warning 待分批清理） |
 | ARCH-010 | 后端代码质量清理（JSON 统一 + Redis key 租户前缀 + 异常可观测 + 模板路由 + closeSession 下线） | P2 | P2-2/4/5 + B-4 + OVD-2/4 | doing/70 | ARCH-003（魔法数引用） | ✅ 已完成（2026-08-06，TDD）：D1 JSON 统一（ObjectMapper 单例 + AliyunSmsService 报文改造）/ D2 Redis key 租户前缀双写迁移 / D3 四路失败 counter（补 memory/evaluation）/ D4 chatProactive 走版本路由 + key 单一源（SYS_001 统一，双表 14 key 一致）/ D5 closeSession 旧接口 TTL 到期下线（API_GONE 410）+ 前端 fallback 删除；后端 1577 用例 + student-h5 787 用例全绿 |
 
 > 说明：
-> 1. 本表仅登记与排序，**未进行任何开发、未做 git 提交**；实施顺序建议：ARCH-002 → ARCH-007 → ARCH-003/004（可并行）→ ARCH-005 → ARCH-006 → ARCH-008/009（可并行）→ ARCH-010。
+> 1. 本表任务已全部实施完成（2026-07-28 ~ 2026-08-06，各任务状态列见上；ARCH-001 C1 于 2026-07-28 落地，C2~C5 随对应 ARCH 任务承接）；实施顺序：ARCH-002 → ARCH-007 → ARCH-003/004（可并行）→ ARCH-005 → ARCH-006 → ARCH-008/009（可并行）→ ARCH-010，另 ARCH-001 C1 独立完成。
 > 2. OD-013（§二十七）「TTS 空面板已删」登记与 llm-performance.json 现状矛盾（仍有 2 个 TTS 面板查不存在的 mindsafe_tts_* 指标），已由 ARCH-009 修复（面板删除 + 台账修正，2026-08-06）；TTS 可观测性缺口登记已知项。
 > 3. 审计结论（综合 5.9/10 悲观口径）：**骨架健康、安全扎实、注释诚实，但「设计先行、实现脱节」系统性惯性仍在**——虚化面（ORCH-006/MEM-103/7 处僵尸 API）与前端接缝（SSE/契约/401）是发布就绪最大真实风险；P0 两项 + B-1/B-5 + F-1/F-3 为下一迭代强制回填项。
 > 4. 审计全文为会话内交付（未落库）；证据链与逐项评分见深度审计报告（2026-08-05，doing/62~70 各文档头部引用对应审计项）。
