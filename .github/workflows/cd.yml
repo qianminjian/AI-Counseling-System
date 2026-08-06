@@ -55,13 +55,15 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # OPS-006：deploy/rollback 用 ${SHA:0:7} 拉取镜像，tag 必须为 7 位短 SHA
+      # （type=sha 默认完整 40 位，不匹配会导致 pull 404）
       - name: Extract metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/backend
           tags: |
-            type=sha,prefix=
+            type=sha,prefix=,format=short
             type=ref,event=tag
             type=raw,value=latest,enable={{is_default_branch}}
 
@@ -85,7 +87,7 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/frontend
           tags: |
-            type=sha,prefix=
+            type=sha,prefix=,format=short
             type=ref,event=tag
             type=raw,value=latest,enable={{is_default_branch}}
 
@@ -106,7 +108,7 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/voice-service
           tags: |
-            type=sha,prefix=
+            type=sha,prefix=,format=short
             type=ref,event=tag
             type=raw,value=latest,enable={{is_default_branch}}
 
@@ -127,7 +129,7 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/tts-service
           tags: |
-            type=sha,prefix=
+            type=sha,prefix=,format=short
             type=ref,event=tag
             type=raw,value=latest,enable={{is_default_branch}}
 
