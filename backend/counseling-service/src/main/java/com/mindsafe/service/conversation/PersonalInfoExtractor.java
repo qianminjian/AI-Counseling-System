@@ -1,5 +1,7 @@
 package com.mindsafe.service.conversation;
 
+import org.springframework.stereotype.Component;
+
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -10,6 +12,7 @@ import java.util.regex.Pattern;
  * 原实现为 ConversationServiceImpl 私有方法不可独立测试，本类收敛后获得完整测试面。
  * 提取结果由调用方写入 SessionState.personalInfo（会话结束即销毁）。
  */
+@Component
 public class PersonalInfoExtractor {
 
     /** 名字提取：我叫XX / 我的名字是XX / 你可以叫我XX */

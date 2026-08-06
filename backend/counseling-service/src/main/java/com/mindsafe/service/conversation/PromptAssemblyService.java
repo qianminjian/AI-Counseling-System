@@ -2,6 +2,7 @@ package com.mindsafe.service.conversation;
 
 import com.mindsafe.ai.cbt.CbtStageRouter;
 import com.mindsafe.service.prompt.PromptVersionService;
+import org.springframework.stereotype.Service;
 
 import java.util.Map;
 import java.util.UUID;
@@ -16,6 +17,7 @@ import java.util.UUID;
  * 收敛后消除两处重复的 gradeLevel/langKey 计算（DRY），拼接顺序获得完整测试面；
  * 行为与原 ConversationServiceImpl 私有内联逻辑一致，仅收敛位置不调整语义。
  */
+@Service
 public class PromptAssemblyService {
 
     private static final String DEFAULT_SCHOOL_POLICY = "默认：发现高风险立即通知心理老师。";
