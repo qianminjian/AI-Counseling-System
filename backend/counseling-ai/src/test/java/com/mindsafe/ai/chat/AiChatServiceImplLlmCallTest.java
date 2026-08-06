@@ -87,7 +87,8 @@ class AiChatServiceImplLlmCallTest {
 
         service = new AiChatServiceImpl(builder, chatMemory, outputContentFilter,
                 outputReviewService, promptTemplateService,
-                new LlmStreamEnhancer(3000, 60000, 1, 10, new SimpleMeterRegistry()), modelCallLogMapper);
+                new LlmStreamEnhancer(3000, 60000, 1, 10, new SimpleMeterRegistry()),
+                modelCallLogMapper, new SimpleMeterRegistry());
     }
 
     // ===== chatWithPrompt（AI-005：预解析 prompt 入口） =====

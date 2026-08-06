@@ -4,6 +4,7 @@ import com.mindsafe.ai.prompt.PromptTemplateService;
 import com.mindsafe.ai.safety.OutputContentFilter;
 import com.mindsafe.ai.safety.OutputReviewService;
 import com.mindsafe.domain.mapper.ModelCallLogMapper;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -44,7 +45,8 @@ class AiChatServiceImplGenderStyleTest {
     void setUp() {
         when(chatClientBuilder.build()).thenReturn(mock(ChatClient.class));
         service = new AiChatServiceImpl(chatClientBuilder, chatMemory, outputContentFilter,
-                outputReviewService, promptTemplateService, llmStreamEnhancer, modelCallLogMapper);
+                outputReviewService, promptTemplateService, llmStreamEnhancer, modelCallLogMapper,
+                new SimpleMeterRegistry());
     }
 
     private String buildGenderStyle(String gender, int grade) {

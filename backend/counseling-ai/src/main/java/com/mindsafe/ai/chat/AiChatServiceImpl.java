@@ -7,6 +7,7 @@ import com.mindsafe.common.dto.chat.StreamMessageEvent;
 import com.mindsafe.common.tenant.TenantContextHolder;
 import com.mindsafe.domain.entity.ModelCallLog;
 import com.mindsafe.domain.mapper.ModelCallLogMapper;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
@@ -40,11 +41,12 @@ public class AiChatServiceImpl implements AiChatService {
     private final PromptTemplateService promptTemplateService;
     private final LlmStreamEnhancer llmStreamEnhancer;
     private final ModelCallLogMapper modelCallLogMapper;
+    private final MeterRegistry meterRegistry;
 
     public AiChatServiceImpl(ChatClient.Builder chatClientBuilder, ChatMemory chatMemory,
                              OutputContentFilter outputContentFilter, OutputReviewService outputReviewService,
                              PromptTemplateService promptTemplateService, LlmStreamEnhancer llmStreamEnhancer,
-                             ModelCallLogMapper modelCallLogMapper) {
+                             ModelCallLogMapper modelCallLogMapper, MeterRegistry meterRegistry) {
         this.chatClient = chatClientBuilder.build();
         this.chatMemory = chatMemory;
         this.outputContentFilter = outputContentFilter;
@@ -52,6 +54,15 @@ public class AiChatServiceImpl implements AiChatService {
         this.promptTemplateService = promptTemplateService;
         this.llmStreamEnhancer = llmStreamEnhancer;
         this.modelCallLogMapper = modelCallLogMapper;
+        this.meterRegistry = meterRegistry;
+    }
+
+    /**
+     * AUD-014：LLM 辅助方法失败计数（fail-open 保留 return null，Prometheus 计数供告警；
+     * 裁决：不改为 Optional——接口签名与全部调用方改动面大且无行为收益，计数+告警等价满足可观测目标）
+     */
+    private void recordLlmAuxFailure(String method) {
+        meterRegistry.counter("mindsafe_llm_aux_failure_total", "method", method).increment();
     }
 
     @Override
@@ -184,6 +195,7 @@ public class AiChatServiceImpl implements AiChatService {
             return result;
         } catch (Exception e) {
             log.error("会话摘要生成失败", e);
+            recordLlmAuxFailure("session_summary"); // AUD-014
             logModelCall(null, "session_summary", System.currentTimeMillis() - start, "error", e.getMessage());
             return null;
         }
@@ -280,6 +292,7 @@ public class AiChatServiceImpl implements AiChatService {
             return result;
         } catch (Exception e) {
             log.error("会话提炼失败", e);
+            recordLlmAuxFailure("conversation_insights"); // AUD-014
             logModelCall(null, "conversation_insights", System.currentTimeMillis() - start, "error", e.getMessage());
             return null;
         }
@@ -334,6 +347,7 @@ public class AiChatServiceImpl implements AiChatService {
             return result;
         } catch (Exception e) {
             log.error("质量评估 LLM 调用失败", e);
+            recordLlmAuxFailure("quality_judge"); // AUD-014
             logModelCall(null, "quality_judge", System.currentTimeMillis() - start, "error", e.getMessage());
             return null;
         }
@@ -368,6 +382,7 @@ public class AiChatServiceImpl implements AiChatService {
             return result;
         } catch (Exception e) {
             log.error("会话进展摘要 LLM 调用失败", e);
+            recordLlmAuxFailure("session_progress_summary"); // AUD-014
             logModelCall(null, "session_progress_summary", System.currentTimeMillis() - start, "error", e.getMessage());
             return null;
         }
