@@ -1,5 +1,8 @@
 #!/bin/bash
-# MindSafe 增量部署脚本（本地执行）
+# MindSafe 手动部署脚本（本地执行）
+# ⚠️ 发布通道议决（AUD-060，2026-08-06）：**默认发布走 CD**——git push main 后由
+#    GitHub Actions 自动构建镜像（GHCR）并 SSH 部署 + 冒烟验证（见 DEPLOY-GUIDE.md §二）。
+#    本脚本仅用于【开发者主动调用】的紧急热修/绕过 CD 的源码重建场景（CD 不可用时）。
 # 用法：
 #   ./deploy.sh              自动检测变更组件，只部署受影响的服务
 #   ./deploy.sh --all        强制全量部署
@@ -11,7 +14,7 @@
 #   ./deploy.sh --tts        强制部署 TTS 服务
 #   ./deploy.sh --voice      强制部署 Voice 服务（ASR+SER）
 #   ./deploy.sh --rollback backend   回滚后端到上一版本
-# 前置条件：已 commit + push，CI 通过
+# 前置条件：已 commit + push，CI 通过（与 CD 相同的门禁）
 set -eo pipefail
 
 # macOS openrsync (/usr/bin/rsync) 仅实现 rsync 协议 29 子集，与服务器 rsync 3.x 不兼容；

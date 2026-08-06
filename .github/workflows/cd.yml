@@ -1,13 +1,19 @@
 # MindSafe CD Pipeline
 # OPS-001: CI → 镜像 → Registry → 部署触发
 # OPS-002: Docker 镜像版本化（Git SHA tag + semver）
-# OPS-003: CI 全绿门禁（needs）→ 镜像 → 真实 SSH 部署 → 冒烟验证（P1-DEP）
+# OPS-003: CI 全绿门禁 → 镜像 → 真实 SSH 部署 → 冒烟验证（P1-DEP）
 name: CD
 
+# OPS-005 修复（2026-08-07）：GitHub Actions 的 needs 不能跨 workflow 引用——原 cd.yml
+# 的 build-and-push 用 needs 引用 ci.yml 的 job，导致本 workflow 校验失败
+# （"depends on unknown job"），CD（含手动回滚入口）从未运行过。
+# 现改用 workflow_run：CI 在 main 分支 push 完成且全部成功（conclusion == success）
+# 后自动触发发布，CI 全绿门禁天然成立。
 on:
-  push:
+  workflow_run:
+    workflows: [CI]
     branches: [main]
-    tags: ['v*']
+    types: [completed]
   # P1-9 修复：CD 手动回滚入口（GitHub 页面 Run workflow → 填旧镜像 tag）
   workflow_dispatch:
     inputs:
@@ -26,15 +32,18 @@ jobs:
   build-and-push:
     name: Build & Push Docker Images
     runs-on: ubuntu-latest
-    # P1-DEP：CI 四个 job 全绿才允许发版（此前测试失败也可发布）
-    # ARCH-009 E-1：+python-services-test（Python 服务测试门禁）
-    needs: [backend-build-test, dependency-scan, frontend-build, python-services-test]
+    # P1-DEP：CI 四个 job 全绿（workflow_run conclusion == success）才允许发版；
+    # 显式校验触发源为 main 分支的 push（排除 PR 触发的 CI 运行）
+    if: github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main'
     permissions:
       contents: read
       packages: write
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          # workflow_run 触发时默认 checkout default branch，必须精确到触发 commit（镜像 tag 依据）
+          ref: ${{ github.event.workflow_run.head_sha }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -142,10 +151,11 @@ jobs:
       - name: Notify deployment ready
         run: |
           echo "✅ Images pushed to GHCR"
-          echo "Backend: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/backend:${GITHUB_SHA::7}"
-          echo "Frontend: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/frontend:${GITHUB_SHA::7}（生产不消费镜像，以 dist 直传发布，见 deploy-frontend job）"
-          echo "voice-service: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/voice-service:${GITHUB_SHA::7}"
-          echo "tts-service: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/tts-service:${GITHUB_SHA::7}"
+          SHA=${{ github.event.workflow_run.head_sha }}
+          echo "Backend: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/backend:${SHA:0:7}"
+          echo "Frontend: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/frontend:${SHA:0:7}（生产不消费镜像，以 dist 直传发布，见 deploy-frontend job）"
+          echo "voice-service: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/voice-service:${SHA:0:7}"
+          echo "tts-service: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/tts-service:${SHA:0:7}"
 
   # P1-DEP：真实 SSH 部署（此前仅 echo 通知，无实际发布动作）
   # 前置：服务器已首次手动部署（/guju/mindsafe/deploy 含 .env），本 job 只做镜像切换 + 拉起
@@ -155,7 +165,7 @@ jobs:
     name: SSH Deploy to Production
     runs-on: ubuntu-latest
     needs: build-and-push
-    if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: success() && github.event_name == 'workflow_run' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main'
     concurrency:
       group: mindsafe-deploy
       cancel-in-progress: false
@@ -172,7 +182,7 @@ jobs:
         run: |
           set -euo pipefail
           REMOTE_DIR=/guju/mindsafe
-          SHA=${{ github.sha }}
+          SHA=${{ github.event.workflow_run.head_sha }}
           IMAGE_TAG=${SHA:0:7}
           # AUD-035：剔除 frontend——prod compose 无 frontend 服务（前端 dist 直传服务器，见 deploy-frontend job），
           # 此前 sed 循环死写入 FRONTEND_IMAGE 到 .env；frontend 镜像是否继续构建见 build-and-push job 注释
@@ -181,8 +191,11 @@ jobs:
           # 1. 在服务器 .env 中把各服务镜像指向本次构建 tag（幂等替换）
           for svc in $IMAGES; do
             VAR=$(echo "${svc^^}-IMAGE" | tr '-' '_')
+            LINE="${VAR}=${REGISTRY}/${IMAGE_PREFIX}/${svc}:${IMAGE_TAG}"
+            # 幂等：有行则替换、无行则追加——服务器 .env 按 .env.example 初始化时没有
+            # IMAGE 系列变量行，仅 sed 替换会静默不生效，compose 回退本地 tag 导致 pull 失败
             ssh "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
-              "cd $REMOTE_DIR/deploy && sed -i \"s|^${VAR}=.*|${VAR}=${REGISTRY}/${IMAGE_PREFIX}/${svc}:${IMAGE_TAG}|\" .env"
+              "cd $REMOTE_DIR/deploy && (grep -q \"^${VAR}=\" .env && sed -i \"s|^${VAR}=.*|${LINE}|\" .env || echo \"${LINE}\" >> .env)"
           done
 
           # 2. AUD-003：幂等清理可能残留的 test 环境同名容器（docker-compose.test.yml 与 prod.yml
@@ -219,7 +232,7 @@ jobs:
     name: Rsync Frontend Dist
     runs-on: ubuntu-latest
     needs: build-and-push
-    if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: success() && github.event_name == 'workflow_run' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main'
     concurrency:
       group: mindsafe-deploy
       cancel-in-progress: false
@@ -227,6 +240,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
 
       # ARCH-009 E-5：模型不入仓（.gitignore），发布前必须投放；缓存加速（脚本未变更则命中）
       - name: Cache model files
@@ -338,7 +353,9 @@ jobs:
           if [ -n "$SERVICES" ]; then
             for svc in $SERVICES; do
               VAR=$(echo "${svc^^}-IMAGE" | tr '-' '_')
-              ssh "$HOST" "cd $REMOTE_DIR/deploy && sed -i \"s|^${VAR}=.*|${VAR}=${REGISTRY}/${IMAGE_PREFIX}/${svc}:${IMAGE_TAG}|\" .env"
+              LINE="${VAR}=${REGISTRY}/${IMAGE_PREFIX}/${svc}:${IMAGE_TAG}"
+              # 幂等：与 deploy job 一致（有行替换、无行追加）
+              ssh "$HOST" "cd $REMOTE_DIR/deploy && (grep -q \"^${VAR}=\" .env && sed -i \"s|^${VAR}=.*|${LINE}|\" .env || echo \"${LINE}\" >> .env)"
             done
             # AUD-003：幂等清理同名容器（test 残留兜底，与 deploy job 一致）
             ssh "$HOST" "docker rm -f mindsafe-backend mindsafe-voice mindsafe-tts mindsafe-nginx 2>/dev/null || true"
@@ -376,10 +393,12 @@ jobs:
     name: E2E Smoke Test
     runs-on: ubuntu-latest
     needs: [deploy, deploy-frontend]
-    if: success() && github.event_name == 'push'
+    if: success() && github.event_name == 'workflow_run'
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
 
       - name: Install SSH key
         uses: shimataro/ssh-key-action@v2

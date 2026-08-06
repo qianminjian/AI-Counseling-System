@@ -86,6 +86,11 @@
 └─────────────────────────┘
 ```
 
+> ⚠️ 发布通道议决（AUD-060，2026-08-06）：**默认发布走 CD，deploy.sh 仅限紧急热修**（开发者主动调用）。
+> 触发链路（OPS-005 修复，2026-08-07）：`git push main` → CI 四个 job 全绿 → `workflow_run` 触发 CD
+> （cd.yml 不再使用跨 workflow needs——GitHub Actions 不支持，原配置导致 CD 从未运行）→
+> 构建推送 GHCR 镜像 → SSH 部署后端/微服务 + rsync 前端 dist → E2E 冒烟验证。CI 失败则 CD 不触发。
+
 > 镜像仓库说明：默认使用 GHCR（免费、与 GitHub Actions 集成最简）。
 > 若国内拉取 GHCR 慢，可换用阿里云容器镜像服务 ACR（个人版免费），见第七节。
 
