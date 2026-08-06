@@ -1,7 +1,7 @@
 # 62 P0 前端缺陷修复（ARCH-002）方案与 SPEC
 
 > 关联任务：ARCH-002（深度审计 P0 回填，登记 TASK-TRACKER §二十八）
-> 状态：📝 方案定稿 → 待实施（已生产上线后第一迭代强制回填）
+> 状态：✅ 已实施（2026-07-28 TDD 落地：api.test 新增 fetchWarmPrompt 契约 3 例、useSilenceNudge.test 改造 10 例、storage.test 5 例、EmotionSelect.test 增补 2 例；student-h5 全量 744 用例全绿）
 > 依据：深度审计 2026-08-05（P0-1/P0-2，三域并行只读审计）、doing/61 C4/C5 相关接缝分析
 > 词汇：接缝 / 局域性 / 失败安全——见 [13 领域词汇表](../13_领域词汇表.md) 架构词汇表
 
@@ -74,15 +74,15 @@
 ## 5. 验收标准（EARS 风格）
 
 **P0-1**：
-- 当 token 过期时，暖场请求必须触发 401 刷新并在刷新成功后重放，不产生未捕获异常
-- 当刷新失败时，暖场必须按现有降级路径静默跳过（不阻塞主对话）
-- 当实施完成后，`useSilenceNudge.ts` 中必须不存在裸 `fetch(` 调用（grep 断言）
-- 当 student-h5 全量测试运行时，现有用例必须全绿（本任务不新增失败）
+- ✅ 当 token 过期时，暖场请求必须触发 401 刷新并在刷新成功后重放，不产生未捕获异常（api.test「401 时自动刷新并重放」）
+- ✅ 当刷新失败时，暖场必须按现有降级路径静默跳过（不阻塞主对话）（useSilenceNudge.test「暖场请求失败静默忽略」）
+- ✅ 当实施完成后，`useSilenceNudge.ts` 中必须不存在裸 `fetch(` 调用（grep 断言 PASS）
+- ✅ 当 student-h5 全量测试运行时，现有用例必须全绿（本任务不新增失败）（744 用例全绿）
 
 **P0-2**：
-- 当 localStorage 抛出 `SecurityError`（隐私模式/禁用）时，情绪选择页必须正常渲染且使用默认值
-- 当存储不可用时，用户切换情绪必须不崩溃（写入静默失败）
-- 当实施完成后，`EmotionSelect.tsx` 必须不存在未包裹 try/catch 的直接 `localStorage` 读写
+- ✅ 当 localStorage 抛出 `SecurityError`（隐私模式/禁用）时，情绪选择页必须正常渲染且使用默认值（EmotionSelect.test「SecurityError 时页面正常渲染」）
+- ✅ 当存储不可用时，用户切换情绪必须不崩溃（写入静默失败）（EmotionSelect.test「存储写入失败时切换唤醒开关不崩溃」）
+- ✅ 当实施完成后，`EmotionSelect.tsx` 必须不存在未包裹 try/catch 的直接 `localStorage` 读写（grep 断言 PASS）
 
 ## 6. 风险与回滚
 

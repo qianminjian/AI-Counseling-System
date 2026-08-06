@@ -1,11 +1,52 @@
 # 63 风险知识单一规则源（ARCH-003）方案与 SPEC
 
 > 关联任务：ARCH-003（深度审计 B-3 回填，doing/61 C2 深化为可实施 SPEC，登记 TASK-TRACKER §二十八）
-> 状态：📝 方案定稿 → 待实施（儿童安全红线，Top 优先）
+> 状态：✅ 已实施（TDD 全绿）
 > 依据：深度审计 2026-08-05（B-3：风险词典 ≥5 处、负面情绪集合 6 处口径不一）、doing/61 §5 C2、design/04 风险识别规则库（单一事实源）
 > 词汇：接缝 / 局域性 / 深模块 / 删除测试——见 [13 领域词汇表](../13_领域词汇表.md) 架构词汇表
 
 ---
+
+## 8. 实施记录（2026-08-06）
+
+### 8.1 调研结论：7 个消费点 + 2 个例外（引用分析，§6 风险第一步）
+
+**实际消费点清单（较 §3.2 新增 1 处）**：
+
+| # | 文件 | 收编内容 | 替换结果 |
+|---|------|----------|----------|
+| 1 | RiskDetectorServiceImpl | RED 18 词/ORANGE 32 词/YELLOW 15 词/否定词 9/类别表 10 类/魔法数 85·60·35·30 | Registry 引用，-133 行 |
+| 2 | ConversationRiskProcessor | 意图 8+含混 7+方法 5+准备 1 词；L85 语义升级 85/60/40；ScoreInput 权重 10,0,0,0,0.8；意图 15/8；计划 5 上限 20；情绪集 | Registry/Vocabulary 引用 |
+| 3 | SessionState L125 | 情绪集 sad/fearful/angry/disgusted | Vocabulary 引用 |
+| 4 | SessionEndAnalyticsService L146 | 情绪集 +anxious/crisis | Vocabulary 引用 |
+| 5 | ConversationContextAgent L289 | 情绪集 +anxious/withdrawn | Vocabulary 引用 |
+| 6 | LongTermMemoryService L390 | contains 子串 + 中文悲怒惧焦孤 | Vocabulary 引用 |
+| 7 | VoiceEmotionTrendAnalyzer L47（调研新发现） | NEGATIVE_EMOTIONS 集 +anxious/crisis | Vocabulary 引用 |
+
+**2 个例外不收编（§3.1 收编范围核对结论）**：
+- `TemplateMatrixRegistry.GUARDRAIL_CASES`：红队测试资产（REJECT/REWRITE/PASS 三元组），语义为模板自检，非运行时风险判定词表 → 不收编
+- `SafetyKeywordLibrary`：AI 输出过滤词库（block/flag 两级），与输入侧风险判定词表语义不同 → 不收编
+
+**额外收编（实现时发现）**：否定词 9 词 + 引用语境 Pattern（故事里/新闻/游戏/假设…）收编为 `NEGATION_WORDS` / `CONTEXT_PATTERN`（原散落于 RiskDetectorServiceImpl）。
+
+### 8.2 方案调整记录（代码一致性）
+
+1. **`NEGATIVE_SUBSTRINGS` 补全**：消费点 6（LongTermMemoryService）原 contains 子串为 sad/angry/fear/anxious/lonely/crisis 六词，初版只收编 fear/lonely/crisis → 直接替换会漏判 "feels sad today" 类组合文本。**TDD 红→绿补全**（先加 4 个失败用例再改实现），保持原语义行为零变更。
+2. **`scoreFor` 不含降级逻辑**：降级（否定/引用语境）是消费点 1 的判定顺序职责，注册表只映射档位→分数，避免规则源侵入流程逻辑。
+3. **测试选词修正 3 次（非实现 bug）**："不想活了"含 RED 子串"不想活"实为 RED（原行为）；"被老师骂了"的"被骂"不连续；`allFieldsFinal`/`methodWordsAreAlsoGradeWords` 断言按设计放宽（public 常量供引用所需、"吃药"为含混工具词例外）。
+4. **anxious 统一是核心修复点**：权威表含 anxious，原 SessionState/ConversationRiskProcessor 不含 → 行为调整点（判定更严），现有测试无 anxious 用例无冲突，一致性测试覆盖。
+
+### 8.3 验收结果（§5 逐条）
+
+| 验收项 | 结果 |
+|--------|------|
+| grep 断言内嵌词表为零 | ✅ 生产代码零内嵌（仅测试数据与注释） |
+| 集合一致断言测试 | ✅ RiskKeywordRegistryTest 37 + EmotionVocabularyTest 54 + RiskRegistryConsistencyTest 20 = 111 例全绿 |
+| 消费点相关单测 | ✅ RiskDetector 58 + ConversationRiskProcessor 30 + 消费点 3~7 共 65 例全绿 |
+| 全量回归 | ✅ 1641 例全绿（基线 1529 + 新增 112），零新增失败 |
+| scoreFor 行为零变更 | ✅ 既有分级测试期望值不变 |
+
+⏱️ 时间戳 2026-08-06 01:13:06
 
 ## 1. 背景与问题
 

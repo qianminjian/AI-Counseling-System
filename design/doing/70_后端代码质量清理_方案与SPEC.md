@@ -1,7 +1,7 @@
 # 70 后端代码质量清理（ARCH-010）方案与 SPEC
 
 > 关联任务：ARCH-010（深度审计 P2-2/3/4/5 + B-4 + OVD-2/4 回填，登记 TASK-TRACKER §二十八）
-> 状态：📝 方案定稿 → 待实施（P2 级，可排 ARCH-003 之后）
+> 状态：✅ 已实施（2026-08-06，TDD 全绿：后端 1577 用例 + 前端 student-h5 787 用例）
 > 依据：深度审计 2026-08-05（P2-2 手写 JSON 无转义 / P2-3 魔法数散落 / P2-4 Redis key 无租户前缀 / P2-5 异常静默面；B-4 暖场链路绕过版本路由 + 模板 key 双命名；OVD-2 模板双加载路径 / OVD-4 closeSession 双接口）
 > 词汇：单一事实源 / 可观测性 / 删除测试——见 [13 领域词汇表](../13_领域词汇表.md)
 
@@ -95,3 +95,13 @@ closeSession：旧路径 TTL 90 天 → 调用量归零后下线；前端 fallba
 - 关联设计：design/12 技术架构（Redis 会话）、design/02 Prompt 体系（模板 key 权威源）、design/44（版本路由）
 - 词汇表：[13 领域词汇表](../13_领域词汇表.md)
 - 登记：TASK-TRACKER §二十八 ARCH-010
+
+## 8. 实施记录（2026-08-06 TDD）
+
+| 子项 | 关键改动 | 验收证据 |
+|------|---------|---------|
+| D1 JSON 统一 | StudentProfileService.toJson 改注入 ObjectMapper 单例；AliyunSmsService 手写报文改 ObjectNode；三风格归并 | grep 无手写 JSON 拼接；回归 1577 用例全绿 |
+| D2 Redis key 租户前缀 | RedisSessionStateStore key 改 `session:state:{tenantId}:{sessionId}` + 读回查旧格式双写迁移 | RedisSessionStateStoreTest 迁移/前缀断言绿 |
+| D3 异常可观测 | ConversationQualityService 补 stage=evaluation counter；LongTermMemoryService 补 stage=memory counter；AlertWebSocketHandler 空 catch 注释清零 | 四路 counter 断言测试绿（profile/summary/memory/evaluation） |
+| D4 模板路由统一 | chatProactive 调用方（sendNudgeStream）经 PromptVersionService 预渲染 SYS_001/LANG/TSK_004；AiChatServiceImpl 只做 genderStyle+contextBrief 组装；TemplateMatrixRegistry/RedTeamRegressionRunner 全部下划线化；isValidVersion 正则对齐 | grep 无 SYS-001 残留（仅反例断言）；双表 14 key 完全一致 |
+| D5 closeSession 旧路径下线 | ChatController.endSession 加 TTL 到期检查（mindsafe.deprecated.end-session.expires-at，到期 410 API_GONE）+ WARN 灰度日志；前端 useChatSession fallback 删除；契约清单删旧端点 | ChatControllerTest 9 用例绿（含到期拒绝/非法配置降级）；前端 787 用例绿；grep 无旧接口调用 |

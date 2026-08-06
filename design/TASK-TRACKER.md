@@ -676,7 +676,7 @@
 | KB-103 | 混合检索（向量+关键词双路 RRF 融合，实际为 RRF 排序而非加权求和）+ groundedness 回收+未命中查询补全 + 语义分块优化 | P2/远期 | design/49 P2/P3 | AI-006 | ✅ 已完成（2026-07-28；审计发现 fuseRRF 仅测试调用未接主线，已于后续审计修复接入 RagAdvisorService.buildRagContext：向量路+关键词路各 top5 → RRF 融合 → 危机隔离/年级段过滤 → top3，关键词路异常降级纯向量，17 用例绿） |
 | MEM-101 | **更正 AI-008 状态**（已在十七完成）+ 记忆→画像回注（growthTrack/socialGraph，provenance=memory） | P0 近期 | design/50 P0 | AI-008 | ✅ 已完成（2026-07-28） |
 | MEM-102 | recurring_theme 主题演化（聚类+反思）+ 相关性召回升级（向量+重要性+时效+recurring）+ MEM-CTX+continuity 接 45 | P1 近期 | design/50 P1 | AI-008 | ✅ 已完成（2026-07-28，MemoryRelevanceScorer+ThemeEvolutionEngine） |
-| MEM-103 | 记忆与风险纵向关联（负面主题→关注信号，非实时报警）+ 遗忘策略升级（时效/敏感/被遗忘权）+ 双向互哺权重调优 | P2/远期 | design/50 P2/P3 | AI-008 | ✅ 已完成（2026-07-28） |
+| MEM-103 | 记忆与风险纵向关联（负面主题→关注信号，非实时报警）+ 遗忘策略升级（时效/敏感/被遗忘权）+ 双向互哺权重调优 | P2/远期 | design/50 P2/P3 | AI-008 | ✅ 已完成（2026-07-28）；ARCH-004 台账核对（2026-08-06）：遗忘策略实际接线 3 维（敏感度>时效衰减>数量淘汰），学生意愿（被遗忘权）恒 false 未接线——无 forget 请求入口，P2 升级，LongTermMemoryService 注释已同步标注 |
 
 ### design/51~53 分析文档衍生（2026-07-28 新增，✅ 钱敏健 2026-07-28 全部确认）
 
@@ -861,7 +861,7 @@ _本表由 Agent 维护，每次任务变更时更新。_
 | OD-010 | **TTS 音色×方言×情感矩阵收敛** | 7 音色 × 8 方言 × 10 情感，但仅 1 emotion_capable + 1 dialect_capable | 矩阵 90% 死配置；persona_gender 恒传 female | 按实际能力裁剪矩阵，死配置清理 | 🟡 待议（与 design/56 对齐） | ✅ 维持：CFG-004 声明式能力文档，运行时按 capable 分支消费无死代码；裁剪失扩展性 |
 | OD-011 | **init-school.sh 三重保险** | ON CONFLICT 幂等 + 随机密码 + must_change_password | 一次性运维脚本过度防御 | 简化保留幂等即可 | 🟡 待议 | ✅ 维持：随机密码 + 强制改密 = 弱口令安全基线（同 R-04）；幂等面向学校现场重复执行 |
 | OD-012 | **tts 离线 wheels 强绑定 --no-index** | 新增依赖忘记 refresh-wheels.sh 构建即失败 | 单点人工流程无兜底提示 | 构建失败时给出明确提示或 fallback 源 | 🟡 待议 | ✅ 已解决：fix-13 bd9d215 改 requirements-lite.txt 在线安装，wheels 降级为可选方案 |
-| OD-013 | **Grafana 面板先建后补** | LLM 面板有真实指标，TTS 面板无指标即上线（空面板） | 指标缺失补丁未闭环 | 删空面板或补指标（P1-7 已另行处理） | 🟡 待议 | ✅ 已解决：P1-7 已删空 TTS 面板（仅剩 llm-performance.json），登记快照过期 |
+| OD-013 | **Grafana 面板先建后补** | LLM 面板有真实指标，TTS 面板无指标即上线（空面板） | 指标缺失补丁未闭环 | 删空面板或补指标（P1-7 已另行处理） | 🟡 待议 | ✅ 已解决（ARCH-009 2026-08-06 修正）：llm-performance.json 的 2 个 TTS 面板（mindsafe_tts_* 未埋点）已删，标题改“MindSafe LLM 性能监控”；TTS 可观测性为已知缺口（指标未埋点），埋点立项后恢复面板为纯增量 |
 | OD-014 | **声纹阈值 0.55 双源**（局部关联 OD-001） | 后端 0.55 与前端 0.70 两套参数 | 同一决策两处定义 | 随 OD-001 一并收敛 | ✅ 已实施（S4-1，2026-08-05） | 🟩 并入 O 专题 S4-1：占位符派生收敛双源（0.55/0.70 为两模式实测值，真重复仅后端 0.55 与前端 fallback） |
 
 > 说明：
@@ -886,12 +886,12 @@ _本表由 Agent 维护，每次任务变更时更新。_
 | ARCH-004 | 假功能与死代码清理（ORCH-006 路径 B + 7 处僵尸 API + 台账对齐） | P1 | B-1/B-6/B-7 + P2-1 + OVD-1/3 | doing/64 | 无 | ⏳ 待实施（决策已闭环） |
 | ARCH-005 | 前端 API/SSE 接缝收敛（SSE 单点 + 5 端点收口 + 契约 23+ + 同意 key 统一） | P1 | F-1/F-2/F-3/F-9 | doing/65 | ARCH-002 | ⏳ 待实施 |
 | ARCH-006 | ChatRoom 语音编排抽取（useVoiceInputPipeline + 单例/去重收敛 + 测试黑盒化） | P1 | F-4 + P2-6/7/8 + OVD-5 | doing/66 | ARCH-005 | ⏳ 待实施 |
-| ARCH-008 | 教师端/家长端加固（authFetch 统一 + 契约防线 + CSP + token 策略） | P1 | F-6/F-7/F-8 + P2-9/10/12/13 + OVD-6 | doing/68 | 无 | ⏳ 待实施 |
-| ARCH-009 | 工程化与发布门禁（pytest 入 CI + 覆盖率 80% + 面板台账 + 回滚演练 + 模型自动化 + parent-h5 lint） | P1 | E-1~E-5 + lint | doing/69 | 无（CI/CD 改动须授权） | ⏳ 待实施 |
-| ARCH-010 | 后端代码质量清理（JSON 统一 + Redis key 租户前缀 + 异常可观测 + 模板路由 + closeSession 下线） | P2 | P2-2/4/5 + B-4 + OVD-2/4 | doing/70 | ARCH-003（魔法数引用） | ⏳ 待实施 |
+| ARCH-008 | 教师端/家长端加固（authFetch 统一 + 契约防线 + CSP + token 策略） | P1 | F-6/F-7/F-8 + P2-9/10/12/13 + OVD-6 | doing/68 | 无 | ✅ 已完成（2026-08）：authFetch 移植（9 例）+ teacher-web api.ts 6 处改造 / 契约防线清单测试（teacher 38 + parent 9）/ CSP 配置断言 + token 策略文档化 / console.info 归零 + BigScreen 错误态 + 设计 token 对齐（OVD-6 评估） |
+| ARCH-009 | 工程化与发布门禁（pytest 入 CI + 覆盖率 80% + 面板台账 + 回滚演练 + 模型自动化 + parent-h5 lint） | P1 | E-1~E-5 + lint | doing/69 | 无（CI/CD 改动须授权） | ✅ 已完成（2026-08-06）：E-1 pytest 入 CI / E-2 teacher-web 覆盖率 89.99% + 阈值 80 / E-3 TTS 面板已删 + OD-013 修正 / E-4 V01~V27 清单 + V34+ 强制 down（DEPLOY-GUIDE §九）/ E-5 模型投放自动化（manifest 校验和 + --verify 门禁 + 修复发布缺模型缺陷）/ parent-h5 补 oxlint（存量 2 warning 待分批清理） |
+| ARCH-010 | 后端代码质量清理（JSON 统一 + Redis key 租户前缀 + 异常可观测 + 模板路由 + closeSession 下线） | P2 | P2-2/4/5 + B-4 + OVD-2/4 | doing/70 | ARCH-003（魔法数引用） | ✅ 已完成（2026-08-06，TDD）：D1 JSON 统一（ObjectMapper 单例 + AliyunSmsService 报文改造）/ D2 Redis key 租户前缀双写迁移 / D3 四路失败 counter（补 memory/evaluation）/ D4 chatProactive 走版本路由 + key 单一源（SYS_001 统一，双表 14 key 一致）/ D5 closeSession 旧接口 TTL 到期下线（API_GONE 410）+ 前端 fallback 删除；后端 1577 用例 + student-h5 787 用例全绿 |
 
 > 说明：
 > 1. 本表仅登记与排序，**未进行任何开发、未做 git 提交**；实施顺序建议：ARCH-002 → ARCH-007 → ARCH-003/004（可并行）→ ARCH-005 → ARCH-006 → ARCH-008/009（可并行）→ ARCH-010。
-> 2. OD-013（§二十七）「TTS 空面板已删」登记与 llm-performance.json 现状矛盾（仍有 2 个 TTS 面板查不存在的 mindsafe_tts_* 指标），由 ARCH-009 修复后联动修正 §二十七 状态列。
+> 2. OD-013（§二十七）「TTS 空面板已删」登记与 llm-performance.json 现状矛盾（仍有 2 个 TTS 面板查不存在的 mindsafe_tts_* 指标），已由 ARCH-009 修复（面板删除 + 台账修正，2026-08-06）；TTS 可观测性缺口登记已知项。
 > 3. 审计结论（综合 5.9/10 悲观口径）：**骨架健康、安全扎实、注释诚实，但「设计先行、实现脱节」系统性惯性仍在**——虚化面（ORCH-006/MEM-103/7 处僵尸 API）与前端接缝（SSE/契约/401）是发布就绪最大真实风险；P0 两项 + B-1/B-5 + F-1/F-3 为下一迭代强制回填项。
 > 4. 审计全文为会话内交付（未落库）；证据链与逐项评分见深度审计报告（2026-08-05，doing/62~70 各文档头部引用对应审计项）。

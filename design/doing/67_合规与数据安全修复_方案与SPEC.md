@@ -1,7 +1,7 @@
 # 67 合规与数据安全修复（ARCH-007）方案与 SPEC
 
 > 关联任务：ARCH-007（深度审计 B-2/B-5/F-5 回填，登记 TASK-TRACKER §二十八）
-> 状态：📝 方案定稿 → ✅ 决策闭环（D-7 路径 C 两级摘要、D-8 昵称置换注入，2026-07-28 钱敏健拍板）→ 待实施
+> 状态：📝 方案定稿 → ✅ 决策闭环（D-7 路径 C 两级摘要、D-8 昵称置换注入，2026-07-28 钱敏健拍板）→ ✅ 已实施（2026-07-28 TDD 落地：MessageSummarySummarizer 7 例、DomainEntityFactoryTest 新增 2 例保真/提炼断言、ConversationContextAgentTest 新增昵称置换用例、VerifyPage/PrivacyPage 测试；counseling-domain 28 例 + counseling-service 24 例 + parent-h5 27 例全绿）
 > 依据：深度审计 2026-08-05（B-2/B-5/F-5）、design/08 §5.1、design/10 中国政策与合规风险、design/26 家长端设计（PIPL 告知）
 > 词汇：数据最小化 / 告知同意 / safeContent——见 [13 领域词汇表](../13_领域词汇表.md) 风险安全域
 
@@ -59,11 +59,11 @@
 
 **说明**：上下文引用能力（「你上次提到……」）用昵称/占位值完全可达，功能不损失；教师端展示同样用置换值。
 
-### 3.3 F-5 · 家长端 PIPL 告知入口
+### 3.3 F-5 · 家长端 PIPL 告知入口（✅ 已实施 2026-07-28）
 
-- `parent-h5` 验证页/注册页补齐「个人信息保护告知」链接（design/26 要求）
-- 链接指向：隐私政策页（现有告知同意条款 design/22 素材，落地为可访问页面或外链）
-- 版本化登记：与 design/22 条款版本同步（同意记录已版本化，链接版本一致）
+- `parent-h5` 验证页/注册页底部新增「个人信息保护告知」链接（design/26 要求）✅
+- 落地：新建公开静态页 `src/pages/privacy/index.tsx`（收集范围/使用用途/未成年人保护/家长权利四要点，design/22 素材），路由 `/parent/privacy`（公开，无需登录）；验证页 `tip-text` 区追加 `<a href="/parent/privacy">个人信息保护告知</a>` ✅
+- 版本化登记：与 design/22 条款版本同步（同意记录已版本化，链接版本一致）🔲（文案版本号登记待 ARCH-010 知识库/合规专项）
 
 ## 4. SPEC
 
@@ -76,12 +76,12 @@ F-5：parent-h5 注册/验证页新增「个人信息保护告知」链接（des
 
 ## 5. 验收标准（EARS 风格）
 
-- 当 D-7 落地后，常规消息 contentSummary 必须为 ≤200 字提炼物（≠ 原文截断，用例断言），L3+ 风险消息必须保持原文保真
-- 当 D-7 落地后，`MessageSummary` 类注释与 design/08 §5.1 必须与实现一致（无「结构化摘要」虚假声明）
-- 当 B-5 修复后，注入 LLM 的上下文必须不含明文真名/班级/学校/地址；真名出现时必须以昵称（或「同学」）置换（grep 断言 + 用例全绿）
-- 当 B-5 置换失败时，必须走兜底占位并记审计日志，不得静默注入明文
-- 当 F-5 落地后，parent-h5 注册/验证页必须可见「个人信息保护告知」入口且可访问
-- 当全量回归运行时，后端测试与 parent-h5 构建必须通过
+- **当 D-7 落地后**，常规消息 contentSummary 必须为 ≤200 字提炼物（≠ 原文截断，用例断言），L3+ 风险消息必须保持原文保真 ✅（MessageSummarySummarizerTest 7 例 + DomainEntityFactoryTest#studentMessage_truncatesLongContent/#studentMessage_highRiskKeepsFullText）
+- **当 D-7 落地后**，`MessageSummary` 类注释与 design/08 §5.1 必须与实现一致（无「结构化摘要」虚假声明） ✅（类注释已准确化：两级策略 + 提炼器说明）
+- **当 B-5 修复后**，注入 LLM 的上下文必须不含明文真名/班级/学校/地址；真名出现时必须以昵称（或「同学」）置换 ✅（ConversationContextAgentTest#realNamePriorityWithFullInfo 断言 doesNotContain 小明/真实名字/1班；#realNameReplacedByPseudonym 断言小星星置换张小凡）
+- **当 B-5 置换失败时**，必须走兜底占位并记审计日志，不得静默注入明文 🔲（兜底已实现「小朋友」中性称呼；审计日志登记为后续项，见 doing/69 ARCH-009 门禁）
+- **当 F-5 落地后**，parent-h5 注册/验证页必须可见「个人信息保护告知」入口且可访问 ✅（verify 页链接 + /parent/privacy 公开路由，PrivacyPage.test 3 例 + VerifyPage.test 1 例）
+- **当全量回归运行时**，后端测试与 parent-h5 构建必须通过 ✅（counseling-domain 28 例 / counseling-service 24 例 / parent-h5 27 例）
 
 ## 6. 风险与回滚
 

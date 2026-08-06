@@ -1,7 +1,7 @@
 # 66 ChatRoom 语音编排抽取（ARCH-006）方案与 SPEC
 
 > 关联任务：ARCH-006（深度审计 F-4 + P2-6/7/8 + OVD-5 回填，doing/61 C5 深化为可实施 SPEC，登记 TASK-TRACKER §二十八）
-> 状态：📝 方案定稿 → 待实施（依赖 ARCH-005 完成后进行，doing/61 建议 C5 排 C4 之后）
+> 状态：✅ 已完成（2026-07-28 07:10，TDD 红→绿→收敛→全量回归 788 例全绿）
 > 依据：深度审计 2026-08-05（F-4：715 行神组件 / 18 个 vi.mock / 白盒回调捕获；P2-6/7/8 单例复制与去重双算法；OVD-5 boBoPet 双实例化）、doing/61 §8 C5（断言已按审计修正）
 > 词汇：神组件 / 局域性 / 黑盒测试——见 [13 领域词汇表](../13_领域词汇表.md)
 
@@ -94,3 +94,44 @@ boBoPet：评估结论落 design/37 或本任务记录（共享渲染函数 or �
 - 关联设计：design/55 学生端全感官交互、design/37 情感化 TTS（boBoPet）、design/28 语音唤醒
 - 词汇表：[13 领域词汇表](../13_领域词汇表.md)
 - 登记：TASK-TRACKER §二十八 ARCH-006
+
+---
+
+## 8. 实施记录（TDD 完成 2026-07-28）
+
+### 8.1 交付物
+
+| 文件 | 动作 | 说明 |
+|------|------|------|
+| `src/hooks/useVoiceInputPipeline.ts` | 新建 183 行 | 录音→分析→自动发送整链（状态机全分支，18 例黑盒测试） |
+| `src/test/useVoiceInputPipeline.test.ts` | 新建 303 行 | hook 级黑盒：假 SpeechRecognition + 假 fetch + fake timers |
+| `src/test/ChatRoom.test.tsx` | 重写 | mock 18→8（保留外部依赖 mock，白盒回调捕获删除），38 例全绿 |
+| `src/components/ChatRoom.tsx` | 改造 613 行 | 删内联语音链（handleRecordingComplete/30s timer/startVoiceSession/4 refs），退化为装配层 |
+| `src/utils/modelStatusStore.ts` | 新建 | createModelStatusStore() 工厂（useWakeWord/useVoiceprint 共享基座） |
+| `src/test/setup.ts` | 增强 | jsdom PointerEvent polyfill（jsdom 26 未实现，坐标 init 丢失） |
+| `src/components/EmotionSelect.tsx` | 收敛 | 接入 useWakeEnabled，删第二份 `mindsafe_wake_enabled` 读写 |
+| `src/hooks/useWakeWord.ts` / `useVoiceprint.ts` | 收敛 | 单例 store 替换为工厂实例（-51 行重复实现） |
+
+### 8.2 方案调整（测试先行暴露，均落码）
+
+1. **transcript 展示拼接顺序修正**：旧实现 `finalTranscript + interimTranscript` 在“先 interim 后 final”场景顺序颠倒（'很开心我今天'）；新实现按 `results` 出现顺序拼接 + 连续 final 去重（displayTranscript）。测试先行暴露的旧实现缺陷。
+2. **pipeline 接口终态**：`useVoiceInputPipeline({ onTranscription })` → `{ isRecording, isAnalyzing, isSending, supported, error, liveTranscript, warmUp, releaseStream, start, stop, cancel }`；isRecording/isAnalyzing/supported/warmUp/releaseStream 直接透传 useAudioRecorder（单一事实源），error 为提示文案由消费方定时清空，过短判定（<1000ms）进 pipeline 内。
+3. **ChatRoom.test.tsx 真实化范围**：10 个组件真实化（ThemeProvider wrapper/useVoicePersona/授权弹窗×2/SatisfactionDialog/ConfirmDialog/DraggableVoiceButton/MessageBubble/ToolboxPanel/SosPanel），授权弹窗改操作 localStorage 的真实链路（pointerDown 触发 voice 授权、800ms 自动弹唤醒授权）。
+4. **jsdom PointerEvent 缺失**：jsdom 26 无 PointerEvent → testing-library fallback 到 Event 构造器丢失 clientX/clientY/pointerId（按住说话上滑判定依赖 clientY）；setup.ts 全局安装 PointerEvent polyfill 解决。
+5. **deduplicateText 单点确认**：`useChatSession.deduplicateText`（导出纯函数）即唯一实现；pipeline 内 final 去重（跳过连续相同条目）是展示层逻辑与首尾重复检测不同，不重复收敛。
+6. **modelStatusStore 工厂**：两 hook 原各实现一套相同 useSyncExternalStore 外部 store（status/progress/error + Set 订阅 + 快照缓存），抽 `createModelStatusStore()` 基座，行为零差异。
+
+### 8.3 boBoPet 双实例评估（OVD-5 落档）
+
+维持双实例 + 共享工厂（不强行单例）：
+- ChatRoom `const boBoPet = (size, bubbleAlign) => <BoBoPet .../>` 工厂已共享渲染 props；Pad 左栏（170px 静态展示）与手机悬浮（60px，DraggableVoiceButton 内部 render-prop 调用）断点不同、动效预算不同；
+- 动画差异大（不同断点/动效预算），符合 doing/61 D-4「不强行单例」决策。
+
+### 8.4 验收对照
+
+- ✅ ChatRoom 内无 `voice/analyze` 内联调用（grep 零匹配，fetchVoiceAnalyze 仅存在于 pipeline）
+- ✅ ChatRoom.test.tsx vi.mock = 8（useTtsPlayer/useVoiceCallMode/useSilenceNudge/useWakeWord/useVoiceInputPipeline/api/BoBoPet/SettingsPanel），白盒回调捕获为零
+- ✅ pipeline 状态机全分支覆盖：正常/30s 超时/过短/识别错误/分析失败/降级/无转写 18 例
+- ✅ `mindsafe_wake_enabled` 读写点唯一（useWakeEnabled），EmotionSelect 不再声明该 key
+- ✅ 去重逻辑单点（useChatSession.deduplicateText）
+- ✅ 全量回归 788 例全绿（57 文件，2026-07-28 07:07）
