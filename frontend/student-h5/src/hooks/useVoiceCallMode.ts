@@ -120,11 +120,9 @@ export function useVoiceCallMode({ enabled, tts, busy, onFinalTranscript }) {
             const segments = text.split(/[。.！!？?，,、\s]+/).filter(Boolean)
             const wakeRatio = segments.filter(s => matchesWakeWord(s)).length / Math.max(segments.length, 1)
             if (wakeRatio > 0.5) {
-              console.info('[VoiceCall] 首轮结果过滤（唤醒词残留）:', text)
               return
             }
           }
-          console.info('[VoiceCall] 语音识别结果:', text)
           // 发送后停止当前识别实例，等 busy 状态变化后自动重启新一轮
           const rec = recRef.current
           if (rec) {
@@ -168,7 +166,6 @@ export function useVoiceCallMode({ enabled, tts, busy, onFinalTranscript }) {
       if (modeRef.current !== 'standby' || detectingRef.current) return
       detectingRef.current = true
       firstRoundRef.current = true // 标记首轮，用于过滤唤醒词残留
-      console.info('[VoiceCall] 状态转换: standby → active（检测到唤醒词，播放确认句）')
       setMode('active')
       // 唤醒确认：TTS"我在呢！"播完（busy 转 false）后，下方捕捉 effect 自动开始聆听
       ttsRef.current.unlock?.()
@@ -196,7 +193,6 @@ export function useVoiceCallMode({ enabled, tts, busy, onFinalTranscript }) {
       await ttsRef.current.speak(COOLDOWN_CLOSE_TEXT)
       // 收尾句播完，恢复唤醒词监听（需再说“哈喽波波”开启新会话窗）
       if (modeRef.current === 'active' && enabledRef.current) {
-        console.info('[VoiceCall] 状态转换: active → standby（冷却期满，恢复待唤醒）')
         setMode('standby')
       }
     }, COOLDOWN_SECONDS * 1000)
@@ -207,11 +203,9 @@ export function useVoiceCallMode({ enabled, tts, busy, onFinalTranscript }) {
   useEffect(() => {
     if (enabled) {
       if (modeRef.current === 'off') {
-        console.info('[VoiceCall] 状态转换: off → standby（唤醒引擎启动中）')
         setMode('standby')
       }
     } else if (modeRef.current !== 'off') {
-      console.info('[VoiceCall] 状态转换:', modeRef.current, '→ off（关闭/撤销授权）')
       stopListening()
       setMode('off')
     }
