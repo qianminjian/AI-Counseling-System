@@ -10,6 +10,8 @@ export default function BigScreen({ onExit }: { onExit?: () => void }) {
   const [dashboard, setDashboard] = useState(null)
   const [satisfaction, setSatisfaction] = useState(null)
   const [time, setTime] = useState(new Date())
+  // P2-13：加载失败不静默——错误提示 + 重试入口
+  const [error, setError] = useState<string | null>(null)
 
   const fetchData = useCallback(async () => {
     try {
@@ -17,7 +19,10 @@ export default function BigScreen({ onExit }: { onExit?: () => void }) {
       setStats(s)
       setDashboard(d)
       setSatisfaction(sat)
-    } catch { /* silent */ }
+      setError(null)
+    } catch {
+      setError('数据加载失败，请检查网络后重试')
+    }
   }, [])
 
   useEffect(() => {
@@ -48,6 +53,14 @@ export default function BigScreen({ onExit }: { onExit?: () => void }) {
           <span style={styles.clock}>{time.toLocaleTimeString('zh-CN')}</span>
         </div>
       </header>
+
+      {/* P2-13：加载失败错误条（不静默） */}
+      {error && (
+        <div style={styles.errorBar} role="alert">
+          <span>⚠️ {error}</span>
+          <button onClick={fetchData} style={styles.retryButton} aria-label="重试">重试</button>
+        </div>
+      )}
 
       {/* 核心指标 */}
       <div style={styles.metricsRow}>
@@ -195,6 +208,15 @@ const styles: Record<string, React.CSSProperties> = {
   exitButton: {
     background: 'rgba(79,195,247,0.12)', color: '#4fc3f7', border: '1px solid rgba(79,195,247,0.4)',
     borderRadius: 6, padding: '4px 12px', fontSize: 12, cursor: 'pointer',
+  },
+  errorBar: {
+    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12,
+    background: 'rgba(244,67,54,0.12)', border: '1px solid rgba(244,67,54,0.4)',
+    color: '#ff8a80', borderRadius: 8, padding: '8px 16px', fontSize: 13,
+  },
+  retryButton: {
+    background: 'rgba(244,67,54,0.2)', color: '#ff8a80', border: '1px solid rgba(244,67,54,0.5)',
+    borderRadius: 6, padding: '2px 12px', fontSize: 12, cursor: 'pointer',
   },
   clock: { fontSize: 18, color: '#4fc3f7', fontWeight: 600 },
   metricsRow: { display: 'flex', gap: 16 },

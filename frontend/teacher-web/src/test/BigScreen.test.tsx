@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 
 /**
  * 数据大屏测试（P1-FE-2：大屏恒 0 根因修复）
@@ -91,5 +92,35 @@ describe('BigScreen 数据大屏', () => {
     // 空数据 → 4 个指标卡兜底 0，满意度兜底 '-'
     expect(await screen.findAllByText('0')).not.toHaveLength(0);
     expect(screen.getByText('-')).toBeInTheDocument();
+  });
+
+  it('接口全部失败时显示错误提示与重试按钮（P2-13 不静默）', async () => {
+    mockGetStats.mockRejectedValue(new Error('网络错误'));
+    mockGetDashboard.mockRejectedValue(new Error('网络错误'));
+    mockGetSatisfaction.mockRejectedValue(new Error('网络错误'));
+    render(<BigScreen />);
+
+    // 错误条 + 重试入口（不静默）
+    expect(await screen.findByText(/数据加载失败/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /重试/ })).toBeInTheDocument();
+  });
+
+  it('点击重试 → 数据恢复 → 错误提示消失', async () => {
+    mockGetStats.mockRejectedValueOnce(new Error('网络错误'));
+    mockGetDashboard.mockRejectedValueOnce(new Error('网络错误'));
+    mockGetSatisfaction.mockRejectedValueOnce(new Error('网络错误'));
+    render(<BigScreen />);
+
+    expect(await screen.findByText(/数据加载失败/)).toBeInTheDocument();
+
+    // 恢复后点击重试
+    mockGetStats.mockResolvedValue(statsMock);
+    mockGetDashboard.mockResolvedValue(dashboardMock);
+    mockGetSatisfaction.mockResolvedValue({ totalRated: 3, avgRating: 4.5, distribution: [], recentCount: 2, recentAvg: 4.0 });
+    await userEvent.click(screen.getByRole('button', { name: /重试/ }));
+
+    // 错误消失 + 数据出现
+    expect(screen.queryByText(/数据加载失败/)).not.toBeInTheDocument();
+    expect(await screen.findByText('8')).toBeInTheDocument();
   });
 });

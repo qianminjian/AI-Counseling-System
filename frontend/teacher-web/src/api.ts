@@ -42,6 +42,35 @@ async function tryRefresh() {
   return false
 }
 
+/**
+ * 带 JWT 认证的 fetch（自动携带 token + 401 刷新重放，ARCH-008 F-6）
+ *
+ * 适用于 blob 下载 / multipart 上传等不解析 JSON 的场景；
+ * 返回原始 Response，成功/失败由调用方处理。
+ * 401 语义：内部尝试刷新并重放一次；仍 401 则原样返回（登出决策交调用方）。
+ */
+export async function authFetch(url: string, init?: RequestInit): Promise<Response> {
+  const doFetch = () => {
+    const token = getToken()
+    return fetch(url, {
+      ...init,
+      headers: {
+        ...(init?.headers instanceof Headers
+          ? Object.fromEntries((init.headers as Headers).entries())
+          : init?.headers || {}),
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+    })
+  }
+  let res = await doFetch()
+  if (res.status === 401) {
+    if (await tryRefresh()) {
+      res = await doFetch()
+    }
+  }
+  return res
+}
+
 // ===== DTO 类型（与后端 TeacherService VO record 一一对齐） =====
 
 /** 预警状态 */
@@ -162,36 +191,21 @@ export interface FollowUpItem {
 export interface SessionAiSummary { summary: string; status: 'ready' | 'pending' | 'not_found' }
 
 export async function api<T = any>(path: string, options: RequestInit & { headers?: Record<string, string> } = {}): Promise<T> {
-  const token = getToken()
   let res: Response
   try {
-    res = await fetch(`/api/v1${path}`, {
+    res = await authFetch(`/api/v1${path}`, {
       ...options,
       headers: {
         'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...options.headers,
       },
     })
-  } catch (e) {
+  } catch {
     // 网络层失败（后端未启动 / 代理不可达）
     throw new Error('后端服务不可达，请确认服务已启动')
   }
   if (res.status === 401) {
-    if (await tryRefresh()) {
-      const newToken = getToken()
-      const retry = await fetch(`/api/v1${path}`, {
-        ...options,
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${newToken}`,
-          ...options.headers,
-        },
-      })
-      const json = await retry.json()
-      if (!json.success) throw new Error(json.message || '请求失败')
-      return json.data
-    }
+    // authFetch 已尝试刷新+重放；仍 401 → 刷新失败 → 登出
     clearToken()
     window.location.reload()
     throw new Error('登录已过期')
@@ -215,14 +229,12 @@ export const getPlatformTenants = () => api('/platform/tenants')
 // ===== 质量监控 =====
 export const getQualityStats = () => api('/teacher/quality/stats')
 export const getFlaggedSessions = () => api('/teacher/quality/flagged')
-export const exportSessionPdf = (sessionId: string) => {
-  const token = getToken()
-  return fetch(`/api/v1/teacher/sessions/${sessionId}/export`, {
-    headers: { Authorization: `Bearer ${token}` },
-  }).then(r => r.blob()).then(blob => {
-    const url = URL.createObjectURL(blob)
-    window.open(url, '_blank')
-  })
+export const exportSessionPdf = async (sessionId: string) => {
+  const res = await authFetch(`/api/v1/teacher/sessions/${sessionId}/export`)
+  if (res.status === 401) { clearToken(); window.location.reload(); return }
+  const blob = await res.blob()
+  const url = URL.createObjectURL(blob)
+  window.open(url, '_blank')
 }
 
 // ===== 预警队列 =====
@@ -279,66 +291,57 @@ export const deleteInviteCode = (codeId: string) =>
   api(`/admin/invite-codes/${codeId}`, { method: 'DELETE' })
 
 // ===== 数据导出（CSV 下载） =====
-export function openWeeklyReport() {
-  const token = getToken()
-  fetch('/api/v1/teacher/report/weekly', {
-    headers: { Authorization: `Bearer ${token}` },
-  }).then(r => r.blob()).then(blob => {
-    const url = URL.createObjectURL(blob)
-    window.open(url, '_blank')
-  })
+export async function openWeeklyReport() {
+  const res = await authFetch('/api/v1/teacher/report/weekly')
+  if (res.status === 401) { clearToken(); window.location.reload(); return }
+  const blob = await res.blob()
+  const url = URL.createObjectURL(blob)
+  window.open(url, '_blank')
 }
 
-export function exportAlertsCsv() {
-  const token = getToken()
+export async function exportAlertsCsv() {
+  const res = await authFetch('/api/v1/teacher/export/alerts')
+  if (res.status === 401) { clearToken(); window.location.reload(); return }
+  const blob = await res.blob()
   const a = document.createElement('a')
-  fetch('/api/v1/teacher/export/alerts', {
-    headers: { Authorization: `Bearer ${token}` },
-  }).then(r => r.blob()).then(blob => {
-    const url = URL.createObjectURL(blob)
-    a.href = url
-    a.download = 'alerts_export.csv'
-    a.click()
-    URL.revokeObjectURL(url)
-  })
+  const url = URL.createObjectURL(blob)
+  a.href = url
+  a.download = 'alerts_export.csv'
+  a.click()
+  URL.revokeObjectURL(url)
 }
 
-export function exportStudentsCsv() {
-  const token = getToken()
+export async function exportStudentsCsv() {
+  const res = await authFetch('/api/v1/teacher/export/students')
+  if (res.status === 401) { clearToken(); window.location.reload(); return }
+  const blob = await res.blob()
   const a = document.createElement('a')
-  fetch('/api/v1/teacher/export/students', {
-    headers: { Authorization: `Bearer ${token}` },
-  }).then(r => r.blob()).then(blob => {
-    const url = URL.createObjectURL(blob)
-    a.href = url
-    a.download = 'students_export.csv'
-    a.click()
-    URL.revokeObjectURL(url)
-  })
+  const url = URL.createObjectURL(blob)
+  a.href = url
+  a.download = 'students_export.csv'
+  a.click()
+  URL.revokeObjectURL(url)
 }
 
 // ===== 批量导入（admin） =====
-export function downloadImportTemplate() {
-  const token = getToken()
+export async function downloadImportTemplate() {
+  const res = await authFetch('/api/v1/admin/invite-codes/import-template')
+  if (res.status === 401) { clearToken(); window.location.reload(); return }
+  const blob = await res.blob()
   const a = document.createElement('a')
-  fetch('/api/v1/admin/invite-codes/import-template', {
-    headers: { Authorization: `Bearer ${token}` },
-  }).then(r => r.blob()).then(blob => {
-    const url = URL.createObjectURL(blob)
-    a.href = url
-    a.download = 'student_import_template.csv'
-    a.click()
-    URL.revokeObjectURL(url)
-  })
+  const url = URL.createObjectURL(blob)
+  a.href = url
+  a.download = 'student_import_template.csv'
+  a.click()
+  URL.revokeObjectURL(url)
 }
 
 export async function importStudentsCsv(file: File) {
-  const token = getToken()
   const formData = new FormData()
   formData.append('file', file)
-  const res = await fetch('/api/v1/admin/invite-codes/import-students', {
+  // authFetch 已内置 401 刷新+重放；仍 401 → 刷新失败 → 登出
+  const res = await authFetch('/api/v1/admin/invite-codes/import-students', {
     method: 'POST',
-    headers: { Authorization: `Bearer ${token}` },
     body: formData,
   })
   if (res.status === 401) {
