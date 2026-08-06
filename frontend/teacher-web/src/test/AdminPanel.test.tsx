@@ -62,6 +62,8 @@ describe('AdminPanel 管理面板', () => {
     expect(screen.getByText('永久')).toBeInTheDocument(); // c-2 无过期时间
   });
 
+  // 超时放宽至 10s：全量 + coverage（v8）模式下资源竞争，Modal 渲染 + antd 动画
+  // 在慢环境（CI）可能超过默认 5s（本地单跑约 1-2s，偶发 5.8s 超时）
   it('生成邀请码弹窗流程', async () => {
     render(<AdminPanel />);
     await screen.findByText('试用邀请码管理');
@@ -72,7 +74,7 @@ describe('AdminPanel 管理面板', () => {
     await waitFor(() => expect(mockCreateInviteCode).toHaveBeenCalledWith(10, 30));
     // 成功后刷新列表
     await waitFor(() => expect(mockGetInviteCodes.mock.calls.length).toBeGreaterThanOrEqual(2));
-  });
+  }, 10000);
 
   it('停用邀请码（Popconfirm 确认）', async () => {
     render(<AdminPanel />);

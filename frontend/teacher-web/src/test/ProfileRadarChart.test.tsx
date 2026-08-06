@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 
 /**
  * 心理画像雷达图测试（PROF-004，ARCH-009 E-2 补测）
@@ -60,9 +60,11 @@ describe('ProfileRadarChart 心理画像', () => {
     expect(await screen.findByText('累计 12 次会话')).toBeInTheDocument();
     expect(screen.getByText('🏆 成长里程碑')).toBeInTheDocument();
     expect(screen.getByText('完成第一次倾诉')).toBeInTheDocument();
-    expect(mockSetOption).toHaveBeenCalledWith(expect.objectContaining({
+    // React 18 passive effect（useEffect）经 scheduler 异步执行：findByText 返回时
+    // setOption 可能尚未运行（慢环境更明显），必须 waitFor 轮询断言
+    await waitFor(() => expect(mockSetOption).toHaveBeenCalledWith(expect.objectContaining({
       series: [expect.objectContaining({ type: 'radar' })],
-    }));
+    })));
   });
 
   it('接口失败时降级为空态', async () => {
