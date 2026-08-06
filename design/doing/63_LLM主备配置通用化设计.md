@@ -2,7 +2,9 @@
 
 > ⚠️ **doing 子文档（开发期）**：本文件为进行中的子设计文档，未完成合并前不构成正式设计约束。完成后并入主文档（06_系统配置与外部服务依赖设计 §LLM 章节）并归档 `design/his/`。
 >
-> 状态：🟧 设计定稿待实施 ｜ 编号：doing/63（接续 doing/59 后独立编号）｜ 创建：2026-08-06
+> 状态：🟩 已实施（代码+测试+配置，2026-08-06 13:35）｜ 编号：doing/63（接续 doing/59 后独立编号）｜ 创建：2026-08-06
+>
+> 实施记录：counseling-ai 全量 65 用例绿（AiConfigTest 2 + LlmExtraBodyConfigTest 8）；counseling-domain 59 / counseling-service 314 / counseling-app 9 全绿；3 份 compose `config` 校验通过；`DeepSeekThinkingConfig` 已删除（LLM-GEN-009）；DEP-001 修复随同落地（见 doing/65）。运行时冒烟（§6.2-2~4）待部署环境执行。
 
 ---
 
@@ -278,14 +280,14 @@ LLM_PRIMARY_EXTRA_BODY={"enable_thinking":false}
 
 ---
 
-## 7. 待确认决策点（实施前）
+## 7. 决策记录（实施时已全部定案）
 
-| # | 决策 | 选项 | 建议 |
-|---|------|------|------|
-| D1 | 备模型命名 `BACKUP` vs `SECONDARY` | BACKUP（降级语义）/ SECONDARY（并列语义） | **BACKUP**：贴合降级场景，避免与数据库主从（primary/secondary）混淆 |
-| D2 | DeepSeek 自动注入 enable_thinking 是否保留 | 保留（base-url 含 deepseek 时自动注入）/ 删除（全部显式配置 EXTRA_BODY） | **保留**：行为兼容，免配置回归 |
-| D3 | 旧变量名兼容期 | 无限期保留回退 / 仅保留一个发布周期 | **无限期保留回退**（yml 嵌套回退零成本），.env.example 标注 deprecated |
-| D4 | 主模型是否彻底脱离 spring.ai.openai 自动配置 | 彻底（手动构建主备对称）/ 保留自动配置作默认 | **彻底**：单一事实源，避免双份配置歧义；embedding 仍走自动配置（独立） |
+| # | 决策 | 选项 | 实施结论 |
+|---|------|------|---------|
+| D1 | 备模型命名 `BACKUP` vs `SECONDARY` | BACKUP（降级语义）/ SECONDARY（并列语义） | **BACKUP** ✅：贴合降级场景，避免与数据库主从（primary/secondary）混淆 |
+| D2 | DeepSeek 自动注入 enable_thinking 是否保留 | 保留（base-url 含 deepseek 时自动注入）/ 删除（全部显式配置 EXTRA_BODY） | **保留** ✅：行为兼容，免配置回归；已由 LlmExtraBodyConfig 按 base-url 匹配实现（LLM-GEN-005） |
+| D3 | 旧变量名兼容期 | 无限期保留回退 / 仅保留一个发布周期 | **无限期保留回退** ✅（yml 嵌套回退零成本），.env.example 标注 deprecated |
+| D4 | 主模型是否彻底脱离 spring.ai.openai 自动配置 | 彻底（手动构建主备对称）/ 保留自动配置作默认 | **彻底** ✅：单一事实源，避免双份配置歧义；embedding 仍走自动配置（独立） |
 
 ---
 

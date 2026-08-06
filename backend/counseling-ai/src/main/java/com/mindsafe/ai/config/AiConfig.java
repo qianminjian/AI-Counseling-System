@@ -34,24 +34,10 @@ public class AiConfig {
     /** 上下文窗口大小：保留最近 N 条消息 */
     private static final int MEMORY_WINDOW = 20;
 
-    // ==================== 备用模型配置（AI-004） ====================
-    @Value("${mindsafe.ai.fallback.enabled:false}")
-    private boolean fallbackEnabled;
-
-    @Value("${mindsafe.ai.fallback.base-url:https://dashscope.aliyuncs.com/compatible-mode/v1}")
-    private String fallbackBaseUrl;
-
-    @Value("${mindsafe.ai.fallback.api-key:}")
-    private String fallbackApiKey;
-
-    @Value("${mindsafe.ai.fallback.model:qwen-plus}")
-    private String fallbackModel;
-
-    @Value("${mindsafe.ai.fallback.temperature:0.7}")
-    private double fallbackTemperature;
-
-    @Value("${mindsafe.ai.fallback.max-tokens:2048}")
-    private int fallbackMaxTokens;
+    // ==================== 主模型配置（doing/63：供应商无关，key 主） ====================
+    // 环境变量回退链在 application.yml 处理（LLM_PRIMARY_* → LLM_* → DEEPSEEK_* → 占位），此处读最终值
+    @Value("${spring.ai.openai.api-key:sk-placeholder}")
+    private String primaryApiKey;
 
     @Value("${spring.ai.openai.base-url:https://api.deepseek.com}")
     private String primaryBaseUrl;
@@ -59,41 +45,74 @@ public class AiConfig {
     @Value("${spring.ai.openai.chat.options.model:deepseek-v4-flash}")
     private String primaryModel;
 
+    @Value("${spring.ai.openai.chat.options.temperature:0.7}")
+    private double primaryTemperature;
+
+    @Value("${spring.ai.openai.chat.options.max-tokens:2048}")
+    private int primaryMaxTokens;
+
+    // ==================== 备份模型配置（doing/63：key 备；原 mindsafe.ai.fallback 段改名 mindsafe.llm.backup） ====================
+    @Value("${mindsafe.llm.backup.base-url:https://dashscope.aliyuncs.com/compatible-mode/v1}")
+    private String backupBaseUrl;
+
+    @Value("${mindsafe.llm.backup.api-key:}")
+    private String backupApiKey;
+
+    @Value("${mindsafe.llm.backup.model:qwen-plus}")
+    private String backupModel;
+
+    @Value("${mindsafe.llm.backup.temperature:0.7}")
+    private double backupTemperature;
+
+    @Value("${mindsafe.llm.backup.max-tokens:2048}")
+    private int backupMaxTokens;
+
     /**
-     * 弹性 ChatModel：主模型（DeepSeek）+ 备用模型（通义千问/GLM）自动降级。
+     * 弹性 ChatModel：主模型 + 备份模型自动降级（doing/63：主/备均为手动构建，任意双 OpenAI 兼容供应商）。
      * <p>
-     * 当 mindsafe.ai.fallback.enabled=true 且配置了备用 API Key 时启用。
-     * 否则直接返回 Spring AI 自动配置的原始 ChatModel。
+     * 启用条件：LLM_BACKUP_API_KEY 非空即双模型；为空返回主模型单例（行为兼容）。
      */
     @Bean
     @Primary
-    public ChatModel resilientChatModel(ChatModel autoConfiguredChatModel, MeterRegistry meterRegistry) {
-        if (!fallbackEnabled || fallbackApiKey.isBlank()) {
-            log.info("LLM 备用模型未启用（fallback.enabled={}），使用单模型模式", fallbackEnabled);
-            return autoConfiguredChatModel;
+    public ChatModel resilientChatModel(MeterRegistry meterRegistry) {
+        OpenAiChatModel primaryChatModel = buildChatModel(
+                primaryApiKey, primaryBaseUrl, primaryModel, primaryTemperature, primaryMaxTokens);
+
+        if (backupApiKey.isBlank()) {
+            log.info("LLM 备份模型未配置（LLM_BACKUP_API_KEY 为空），使用单模型模式: 主=[{}]", primaryModel);
+            return primaryChatModel;
         }
 
-        log.info("LLM 多模型降级已启用: 主=[{}] 备=[{}]", primaryModel, fallbackModel);
+        log.info("LLM 多模型降级已启用: 主=[{}] 备=[{}]", primaryModel, backupModel);
 
-        OpenAiApi fallbackApi = OpenAiApi.builder()
-                .baseUrl(fallbackBaseUrl)
-                .apiKey(fallbackApiKey)
-                .build();
-
-        OpenAiChatOptions fallbackOptions = OpenAiChatOptions.builder()
-                .model(fallbackModel)
-                .temperature(fallbackTemperature)
-                .maxTokens(fallbackMaxTokens)
-                .build();
-
-        OpenAiChatModel fallbackChatModel = OpenAiChatModel.builder()
-                .openAiApi(fallbackApi)
-                .defaultOptions(fallbackOptions)
-                .build();
+        OpenAiChatModel backupChatModel = buildChatModel(
+                backupApiKey, backupBaseUrl, backupModel, backupTemperature, backupMaxTokens);
 
         return new ResilientChatModel(
-                autoConfiguredChatModel, fallbackChatModel,
-                primaryModel, fallbackModel, meterRegistry);
+                primaryChatModel, backupChatModel,
+                primaryModel, backupModel, meterRegistry);
+    }
+
+    /**
+     * 构建单个供应商的 ChatModel（主/备对称，OpenAI 兼容协议）
+     */
+    private OpenAiChatModel buildChatModel(String apiKey, String baseUrl, String model,
+                                           double temperature, int maxTokens) {
+        OpenAiApi api = OpenAiApi.builder()
+                .baseUrl(baseUrl)
+                .apiKey(apiKey)
+                .build();
+
+        OpenAiChatOptions options = OpenAiChatOptions.builder()
+                .model(model)
+                .temperature(temperature)
+                .maxTokens(maxTokens)
+                .build();
+
+        return OpenAiChatModel.builder()
+                .openAiApi(api)
+                .defaultOptions(options)
+                .build();
     }
 
     @Bean

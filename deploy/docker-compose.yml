@@ -77,11 +77,17 @@ services:
       SPRING_DATASOURCE_USERNAME: mindsafe
       SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:-mindsafe2026}
       SPRING_DATA_REDIS_HOST: redis
-      # 变量名必须与 application.yml 占位符 ${LLM_API_KEY}/${LLM_BASE_URL} 一致；
+      # 变量名必须与 application.yml 占位符 ${LLM_PRIMARY_*} 一致（doing/63：key 主命名，旧名 LLM_* 由 compose 层迁移）；
       # 写成 SPRING_AI_DEEPSEEK_* 时 Spring 不会绑定，LLM 调用将用 sk-placeholder 失败
-      LLM_API_KEY: ${LLM_API_KEY:-sk-placeholder}
-      LLM_BASE_URL: ${LLM_BASE_URL:-https://api.deepseek.com}
-      LLM_MODEL: ${LLM_MODEL:-deepseek-v4-flash}
+      LLM_PRIMARY_API_KEY: ${LLM_PRIMARY_API_KEY:-${LLM_API_KEY:-sk-placeholder}}
+      LLM_PRIMARY_BASE_URL: ${LLM_PRIMARY_BASE_URL:-${LLM_BASE_URL:-https://api.deepseek.com}}
+      LLM_PRIMARY_MODEL: ${LLM_PRIMARY_MODEL:-${LLM_MODEL:-deepseek-v4-flash}}
+      LLM_PRIMARY_TEMPERATURE: ${LLM_PRIMARY_TEMPERATURE:-0.7}
+      LLM_PRIMARY_MAX_TOKENS: ${LLM_PRIMARY_MAX_TOKENS:-2048}
+      # LLM 备份模型（可选：为空 = 单模型模式）
+      LLM_BACKUP_API_KEY: ${LLM_BACKUP_API_KEY:-${LLM_FALLBACK_API_KEY:-}}
+      LLM_BACKUP_BASE_URL: ${LLM_BACKUP_BASE_URL:-${LLM_FALLBACK_BASE_URL:-https://dashscope.aliyuncs.com/compatible-mode/v1}}
+      LLM_BACKUP_MODEL: ${LLM_BACKUP_MODEL:-${LLM_FALLBACK_MODEL:-qwen-plus}}
       # application.yml 读取 ${MINDSAFE_JWT_SECRET}，裸 JWT_SECRET 不会被使用
       MINDSAFE_JWT_SECRET: ${JWT_SECRET:-mindsafe-jwt-secret-change-in-production}
       # 变量名必须与 application.yml 占位符 ${TTS_SERVICE_URL} 一致；

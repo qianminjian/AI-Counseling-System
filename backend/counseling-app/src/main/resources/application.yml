@@ -43,23 +43,24 @@ spring:
       password: ${REDIS_PASSWORD:}
       timeout: 3000ms
 
-  # Spring AI - LLM 配置（供应商无关，OpenAI 兼容协议）
+  # Spring AI - LLM 配置（供应商无关，OpenAI 兼容协议；doing/63：key 主命名 LLM_PRIMARY_*）
   ai:
     openai:
-      # 嵌套默认：env 优先 LLM_API_KEY，否则取 DEEPSEEK_API_KEY（试点期与 DEEPSEEK_API_KEY 同值），
-      # 最后回落到 sk-placeholder。修复：避免 .env 仅设 DEEPSEEK_API_KEY 时 api-key=空字符串触发 Assert.hasText
-      api-key: ${LLM_API_KEY:${DEEPSEEK_API_KEY:sk-placeholder}}
-      base-url: ${LLM_BASE_URL:https://api.deepseek.com}
+      # 主模型（供应商无关）：嵌套回退链 LLM_PRIMARY_* → LLM_* → DEEPSEEK_* → 占位
+      # 避免 .env 仅设旧名（LLM_API_KEY/DEEPSEEK_API_KEY）时 api-key=空字符串触发 Assert.hasText
+      api-key: ${LLM_PRIMARY_API_KEY:${LLM_API_KEY:${DEEPSEEK_API_KEY:sk-placeholder}}}
+      base-url: ${LLM_PRIMARY_BASE_URL:${LLM_BASE_URL:https://api.deepseek.com}}
       chat:
         options:
-          model: ${LLM_MODEL:deepseek-v4-flash}
-          temperature: 0.7
-          max-tokens: 2048
+          model: ${LLM_PRIMARY_MODEL:${LLM_MODEL:deepseek-v4-flash}}
+          temperature: ${LLM_PRIMARY_TEMPERATURE:0.7}
+          max-tokens: ${LLM_PRIMARY_MAX_TOKENS:2048}
       # Embedding 配置（RAG 向量检索 KB-101）：主对话供应商未必提供 embeddings 端点，base-url/api-key 独立配置
+      # 回退链含主模型二级别名（LLM_PRIMARY_BASE_URL → LLM_BASE_URL），旧名部署（仅配 LLM_*）embedding 不破
       # 模型维度必须与 knowledge_chunks.embedding vector(1536)（V24）一致；换模型需重新摄入全部知识库
       embedding:
-        base-url: ${EMBEDDING_BASE_URL:${LLM_BASE_URL:https://api.deepseek.com}}
-        api-key: ${EMBEDDING_API_KEY:${LLM_API_KEY:sk-placeholder}}
+        base-url: ${EMBEDDING_BASE_URL:${LLM_PRIMARY_BASE_URL:${LLM_BASE_URL:https://api.deepseek.com}}}
+        api-key: ${EMBEDDING_API_KEY:${LLM_PRIMARY_API_KEY:${LLM_API_KEY:sk-placeholder}}}
         options:
           model: ${EMBEDDING_MODEL:text-embedding-ada-002}
 
@@ -113,16 +114,23 @@ mindsafe:
     overall-timeout-ms: 60000
     retry-max: 1
     retry-backoff-ms: 2000
-  # AI 多模型降级配置（AI-004）
+    # 备份模型（doing/63：key 备命名 LLM_BACKUP_*，旧名 LLM_FALLBACK_* 回退；enabled 由 LLM_BACKUP_API_KEY 非空派生，AiConfig 判定）
+    backup:
+      enabled: true
+      base-url: ${LLM_BACKUP_BASE_URL:${LLM_FALLBACK_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode/v1}}
+      api-key: ${LLM_BACKUP_API_KEY:${LLM_FALLBACK_API_KEY:}}
+      model: ${LLM_BACKUP_MODEL:${LLM_FALLBACK_MODEL:qwen-plus}}
+      temperature: ${LLM_BACKUP_TEMPERATURE:0.7}
+      max-tokens: ${LLM_BACKUP_MAX_TOKENS:2048}
+  # AI 多模型降级配置旧键别名（doing/63：外部配置可能仍引用 mindsafe.ai.fallback.*，保留兼容）
   ai:
     fallback:
-      enabled: ${LLM_FALLBACK_ENABLED:false}
-      base-url: ${LLM_FALLBACK_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode/v1}
-      api-key: ${LLM_FALLBACK_API_KEY:}
-      model: ${LLM_FALLBACK_MODEL:qwen-plus}
-      # S4-2：单一事实源 = spring.ai.openai.chat.options.*（主/备供应商同步，防漂移）
-      temperature: ${spring.ai.openai.chat.options.temperature}
-      max-tokens: ${spring.ai.openai.chat.options.max-tokens}
+      enabled: ${mindsafe.llm.backup.enabled}
+      base-url: ${mindsafe.llm.backup.base-url}
+      api-key: ${mindsafe.llm.backup.api-key}
+      model: ${mindsafe.llm.backup.model}
+      temperature: ${mindsafe.llm.backup.temperature}
+      max-tokens: ${mindsafe.llm.backup.max-tokens}
   # JWT 认证（生产必须配置 secret）
   jwt:
     secret: ${MINDSAFE_JWT_SECRET:}  # 空 = 开发默认（生产 fail-fast）
@@ -209,8 +217,9 @@ mindsafe:
     wecom:
       webhook-url: ${MINDSAFE_ALERT_WECOM_WEBHOOK_URL:}  # 空 = 降级为日志告警
       mentioned-list: ${MINDSAFE_ALERT_WECOM_MENTIONED:}  # @指定人手机号，逗号分隔
-  # 字段加密（COMP-005：AES-256-GCM）
+  # 字段加密（COMP-005：AES-256-GCM + ENCRYPTION_ENABLED 系统级开关，默认关闭）
   encryption:
-    key: ${MINDSAFE_ENCRYPTION_KEY:}  # Base64 编码的 32 字节密钥，空 = 降级为明文
-    key-version: ${MINDSAFE_ENCRYPTION_KEY_VERSION:1}
-    previous-keys: ${MINDSAFE_ENCRYPTION_PREVIOUS_KEYS:}  # 历史密钥，格式: version:base64key,version:base64key
+    enabled: ${ENCRYPTION_ENABLED:false}  # 系统级开关：false=明文透传（默认，可不配密钥）；true=启动必须配置合法密钥并执行加解密
+    key: ${MINDSAFE_ENCRYPTION_KEY:}  # 启用时必填：Base64 编码的 32 字节密钥
+    key-version: ${MINDSAFE_ENCRYPTION_KEY_VERSION:1}  # 仅 enabled=true 时生效（V1：关闭态忽略）
+    previous-keys: ${MINDSAFE_ENCRYPTION_PREVIOUS_KEYS:}  # 历史密钥，格式: version:base64key,version:base64key；仅 enabled=true 时生效

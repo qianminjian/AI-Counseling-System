@@ -56,9 +56,16 @@ services:
       MINDSAFE_ENCRYPTION_KEY: ${ENCRYPTION_KEY:-}
       MINDSAFE_ENCRYPTION_KEY_VERSION: ${ENCRYPTION_KEY_VERSION:-1}
       MINDSAFE_ENCRYPTION_PREVIOUS_KEYS: ${ENCRYPTION_PREVIOUS_KEYS:-}
-      LLM_API_KEY: ${LLM_API_KEY}
-      LLM_BASE_URL: ${LLM_BASE_URL:-https://api.deepseek.com}
-      LLM_MODEL: ${LLM_MODEL:-deepseek-chat}
+      # LLM 主模型（doing/63：key 主命名；旧名 LLM_* 由 compose 层迁移，测试环境独立模型值 deepseek-chat 属有意差异）
+      LLM_PRIMARY_API_KEY: ${LLM_PRIMARY_API_KEY:-${LLM_API_KEY:-}}
+      LLM_PRIMARY_BASE_URL: ${LLM_PRIMARY_BASE_URL:-${LLM_BASE_URL:-https://api.deepseek.com}}
+      LLM_PRIMARY_MODEL: ${LLM_PRIMARY_MODEL:-${LLM_MODEL:-deepseek-chat}}
+      LLM_PRIMARY_TEMPERATURE: ${LLM_PRIMARY_TEMPERATURE:-0.7}
+      LLM_PRIMARY_MAX_TOKENS: ${LLM_PRIMARY_MAX_TOKENS:-2048}
+      # LLM 备份模型（可选：为空 = 单模型模式）
+      LLM_BACKUP_API_KEY: ${LLM_BACKUP_API_KEY:-${LLM_FALLBACK_API_KEY:-}}
+      LLM_BACKUP_BASE_URL: ${LLM_BACKUP_BASE_URL:-${LLM_FALLBACK_BASE_URL:-https://dashscope.aliyuncs.com/compatible-mode/v1}}
+      LLM_BACKUP_MODEL: ${LLM_BACKUP_MODEL:-${LLM_FALLBACK_MODEL:-qwen-plus}}
       # 短信（测试用 logging，不消费短信额度）
       MINDSAFE_SMS_PROVIDER: ${SMS_PROVIDER:-logging}
       MINDSAFE_CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost}
