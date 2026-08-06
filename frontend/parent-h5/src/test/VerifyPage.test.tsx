@@ -33,4 +33,15 @@ describe('VerifyPage', () => {
     const pwdInput = screen.getByPlaceholderText(/密码/)
     expect(pwdInput).toBeInTheDocument()
   })
+
+  it('F-5：登录/注册页展示个人信息保护告知链接（PIPL 合规）', () => {
+    render(
+      <MemoryRouter>
+        <VerifyPage />
+      </MemoryRouter>
+    )
+    const link = screen.getByRole('link', { name: /个人信息保护告知/ })
+    expect(link).toBeInTheDocument()
+    expect(link).toHaveAttribute('href', '/parent/privacy')
+  })
 })
