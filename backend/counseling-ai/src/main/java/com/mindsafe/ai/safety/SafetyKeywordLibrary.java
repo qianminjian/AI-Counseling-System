@@ -33,6 +33,13 @@ public class SafetyKeywordLibrary {
     private static final String RESOURCE_PATH = "/safety/output-sensitive-keywords.json";
     private static final String LEVEL_BLOCK = "block";
 
+    // ARCH-010 P2-2：注入唯一 ObjectMapper（此前 load() 内每调用 new，配置不统一）
+    private final ObjectMapper objectMapper;
+
+    public SafetyKeywordLibrary(ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
+    }
+
     /** block 级规则（参与 Layer1 实时拦截） */
     private final List<CategoryRule> blockRules = new ArrayList<>();
 
@@ -55,7 +62,7 @@ public class SafetyKeywordLibrary {
                 log.error("输出敏感词库资源不存在: {}，Layer1 过滤将不生效", RESOURCE_PATH);
                 return;
             }
-            JsonNode root = new ObjectMapper().readTree(in);
+            JsonNode root = objectMapper.readTree(in);
             JsonNode categories = root.get("categories");
             if (categories == null || !categories.isArray()) {
                 log.error("输出敏感词库格式错误（缺少 categories 数组）: {}", RESOURCE_PATH);

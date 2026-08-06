@@ -87,8 +87,8 @@ public class ConversationServiceImpl implements ConversationService {
     /** 回复情绪推导器（TTSFX-004，design/37 §三.1）：纯规则零依赖，同 NudgeDecisionModel 内联实例化 */
     private final ReplyEmotionResolver replyEmotionResolver = new ReplyEmotionResolver();
 
-    /** CBT state_path JSON 序列化工具（CBT-201） */
-    private static final ObjectMapper STATE_PATH_MAPPER = new ObjectMapper();
+    /** CBT state_path JSON 序列化工具（CBT-201）；ARCH-010 P2-2：注入唯一 ObjectMapper（此前 static new） */
+    private final ObjectMapper objectMapper;
 
     public ConversationServiceImpl(AiChatService aiChatService,
                                    PromptTemplateService promptTemplateService,
@@ -111,7 +111,8 @@ public class ConversationServiceImpl implements ConversationService {
                                    SessionEndAnalyticsService sessionEndAnalyticsService,
                                    RedisSessionStateStore sessionStateStore,
                                    ConversationContextAgent contextAgent,
-                                   SessionSummaryUpdater sessionSummaryUpdater) {
+                                   SessionSummaryUpdater sessionSummaryUpdater,
+                                   ObjectMapper objectMapper) {
         this.aiChatService = aiChatService;
         this.promptTemplateService = promptTemplateService;
         this.riskProcessor = riskProcessor;
@@ -134,6 +135,7 @@ public class ConversationServiceImpl implements ConversationService {
         this.sessionStateStore = sessionStateStore;
         this.contextAgent = contextAgent;
         this.sessionSummaryUpdater = sessionSummaryUpdater;
+        this.objectMapper = objectMapper;
     }
 
     @Transactional
@@ -170,7 +172,7 @@ public class ConversationServiceImpl implements ConversationService {
         SessionState newState = new SessionState(
                 sessionId, tenantId, studentUserId, emotionTag, channel, gender, expressionDepth, grade);
         newState.setPseudonym(pseudonym);  // CTX-Agent：身份简报用
-        sessionStateStore.save(sessionId, newState);
+        sessionStateStore.save(tenantId, sessionId, newState);
         log.info("会话创建: sessionId={}, student={}, emotion={}, grade={}, expressionDepth={}",
                 sessionId, studentUserId, emotionTag, grade, expressionDepth);
 
@@ -196,7 +198,7 @@ public class ConversationServiceImpl implements ConversationService {
     @Override
     public Flux<StreamMessageEvent> sendMessageStream(UUID tenantId, UUID studentUserId, UUID sessionId, String content,
                                                       String voiceEmotion, Double voiceEmotionConfidence) {
-        SessionState session = sessionStateStore.get(sessionId);
+        SessionState session = sessionStateStore.get(tenantId, sessionId);
         if (session == null) {
             return Flux.just(StreamMessageEvent.error("会话不存在"));
         }
@@ -304,7 +306,7 @@ public class ConversationServiceImpl implements ConversationService {
         extractPersonalInfo(session, content);
 
         // 持久化本轮状态变更（覆盖 RED 短路 / 时长超限等提前返回路径）
-        sessionStateStore.save(sessionId, session);
+        sessionStateStore.save(tenantId, sessionId, session);
 
         // 4.2 RISK-201：RED 硬短路——跳过 LLM 自由生成，返回预审核安全文案（design/04 §18.2）。
         //     短路不可被否定/引用降噪覆盖（fusedLevel 已经硬规则融合）；教师告警已在上方照发。
@@ -315,7 +317,7 @@ public class ConversationServiceImpl implements ConversationService {
                     : CrisisResources.SAFETY_MODE_COMPANION_REPLY;
             messageSummaryService.persistAiMessageSummary(session, turn, safetyReply);
             session.recordAiReply(safetyReply);
-            sessionStateStore.save(sessionId, session);
+            sessionStateStore.save(tenantId, sessionId, session);
             log.warn("RED 安全响应模式：跳过 LLM 自由生成: sessionId={}, turn={}, freshRed={}",
                     sessionId, turn, fusedLevel == RiskLevel.RED);
             return riskEvents.concatWith(Flux.just(
@@ -419,7 +421,7 @@ public class ConversationServiceImpl implements ConversationService {
         String finalSystemPrompt = systemPromptContent + "\n\n" + contextBrief;
 
         StringBuilder aiResponseCollector = new StringBuilder();
-        Flux<StreamMessageEvent> aiStream = aiChatService.chatWithPrompt(sessionId, session.getEmotionTag(), safeContent, session.getGender(), null, effectiveGrade, finalSystemPrompt)
+        Flux<StreamMessageEvent> aiStream = aiChatService.chatWithPrompt(sessionId, session.getEmotionTag(), safeContent, session.getGender(), effectiveGrade, finalSystemPrompt)
                 .doOnNext(event -> {
                     if (event.type() != null && event.type().equals("token") && event.content() != null) {
                         aiResponseCollector.append(event.content());
@@ -431,7 +433,7 @@ public class ConversationServiceImpl implements ConversationService {
                     messageSummaryService.persistAiMessageSummary(session, turn, fullReply);
                     // 冷场决策模型信号：AI 是否刚问了思考型问题
                     session.recordAiReply(fullReply);
-                    sessionStateStore.save(sessionId, session);
+                    sessionStateStore.save(tenantId, sessionId, session);
 
                     // CTX-Agent Phase 3：每 4 轮异步更新滚动摘要（不阻塞当前轮响应）
                     if (sessionSummaryUpdater.shouldUpdate(session)) {
@@ -455,7 +457,7 @@ public class ConversationServiceImpl implements ConversationService {
 
     @Override
     public Flux<StreamMessageEvent> sendNudgeStream(UUID tenantId, UUID studentUserId, UUID sessionId, int silenceSeconds) {
-        SessionState session = sessionStateStore.get(sessionId);
+        SessionState session = sessionStateStore.get(tenantId, sessionId);
         if (session == null) {
             log.debug("nudge: 会话不存在，返回空流: sessionId={}", sessionId);
             return Flux.empty();
@@ -798,7 +800,7 @@ public class ConversationServiceImpl implements ConversationService {
      */
     private String appendStatePath(String existingJson, int turn, CbtStageRouter.StageMark mark) {
         try {
-            ObjectNode record = STATE_PATH_MAPPER.createObjectNode();
+            ObjectNode record = objectMapper.createObjectNode();
             record.put("turn", turn);
             record.put("stage", mark.stage().name());
             record.put("age_strategy", mark.ageStrategy().name());
@@ -808,13 +810,13 @@ public class ConversationServiceImpl implements ConversationService {
 
             ArrayNode arr;
             if (existingJson == null || existingJson.isBlank()) {
-                arr = STATE_PATH_MAPPER.createArrayNode();
+                arr = objectMapper.createArrayNode();
             } else {
-                var parsed = STATE_PATH_MAPPER.readTree(existingJson);
-                arr = parsed.isArray() ? (ArrayNode) parsed : STATE_PATH_MAPPER.createArrayNode();
+                var parsed = objectMapper.readTree(existingJson);
+                arr = parsed.isArray() ? (ArrayNode) parsed : objectMapper.createArrayNode();
             }
             arr.add(record);
-            return STATE_PATH_MAPPER.writeValueAsString(arr);
+            return objectMapper.writeValueAsString(arr);
         } catch (Exception e) {
             log.warn("state_path 序列化失败，降级为本轮单条记录: {}", e.getMessage());
             return String.format(

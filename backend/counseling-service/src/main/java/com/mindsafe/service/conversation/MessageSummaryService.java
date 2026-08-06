@@ -12,6 +12,8 @@ import com.mindsafe.service.memory.LongTermMemoryService;
 import com.mindsafe.service.profile.ProfileExtractorService;
 import com.mindsafe.service.quality.ConversationQualityService;
 import com.mindsafe.service.security.FieldEncryptionService;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Async;
@@ -44,6 +46,8 @@ public class MessageSummaryService {
     private final ProfileExtractorService profileExtractorService;
     private final LongTermMemoryService longTermMemoryService;
     private final ObjectMapper objectMapper;
+    // ARCH-010 P2-5：会话摘要失败 metrics（失败率告警依据）
+    private final Counter summaryFailureCounter;
 
     public MessageSummaryService(MessageSummaryMapper messageSummaryMapper,
                                  CounselingSessionMapper sessionMapper,
@@ -52,7 +56,8 @@ public class MessageSummaryService {
                                  ConversationQualityService conversationQualityService,
                                  ProfileExtractorService profileExtractorService,
                                  LongTermMemoryService longTermMemoryService,
-                                 ObjectMapper objectMapper) {
+                                 ObjectMapper objectMapper,
+                                 MeterRegistry meterRegistry) {
         this.messageSummaryMapper = messageSummaryMapper;
         this.sessionMapper = sessionMapper;
         this.aiChatService = aiChatService;
@@ -61,6 +66,9 @@ public class MessageSummaryService {
         this.profileExtractorService = profileExtractorService;
         this.longTermMemoryService = longTermMemoryService;
         this.objectMapper = objectMapper;
+        this.summaryFailureCounter = Counter.builder("mindsafe.pipeline.failure")
+                .tag("stage", "summary")
+                .register(meterRegistry);
     }
 
     /** 异步生成会话摘要（不阻塞主流程），摘要完成后触发画像 LLM 提炼（PROF-003） */
@@ -104,6 +112,7 @@ public class MessageSummaryService {
                 dispatchInsights(tenantId, sessionId, studentUserId, summary, conversationText);
             }
         } catch (Exception e) {
+            summaryFailureCounter.increment();
             log.warn("会话摘要生成失败（不影响业务）: sessionId={}", sessionId, e);
         }
     }
@@ -164,7 +173,7 @@ public class MessageSummaryService {
                     session.getTenantId(), session.getSessionId(), session.getStudentUserId(),
                     turn, content, emotionLabel, riskLevel
             );
-            // R-01：学生消息内容字段级加密后落库（工厂已截断至 1024，再对截断后明文加密）
+            // R-01：学生消息内容字段级加密后落库（D-7 两级：risk≥2 原文保真截断 1024 / risk<2 语义提炼 ≤200 字，再对结果明文加密）
             summary.setContentSummary(fieldEncryptionService.encrypt(summary.getContentSummary()));
             messageSummaryMapper.insert(summary);
         } catch (Exception e) {

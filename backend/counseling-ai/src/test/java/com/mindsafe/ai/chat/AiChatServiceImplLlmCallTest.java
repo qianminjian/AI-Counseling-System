@@ -1,5 +1,6 @@
 package com.mindsafe.ai.chat;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mindsafe.ai.prompt.PromptTemplateService;
 import com.mindsafe.ai.safety.OutputContentFilter;
 import com.mindsafe.ai.safety.OutputReviewService;
@@ -62,7 +63,7 @@ class AiChatServiceImplLlmCallTest {
         outputReviewService = mock(OutputReviewService.class);
         modelCallLogMapper = mock(ModelCallLogMapper.class);
 
-        SafetyKeywordLibrary library = new SafetyKeywordLibrary();
+        SafetyKeywordLibrary library = new SafetyKeywordLibrary(new ObjectMapper());
         OutputContentFilter outputContentFilter =
                 new OutputContentFilter(library, mock(OutputSafetyReporter.class));
 

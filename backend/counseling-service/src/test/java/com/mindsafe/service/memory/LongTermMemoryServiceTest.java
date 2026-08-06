@@ -7,6 +7,7 @@ import com.mindsafe.domain.mapper.LongTermMemoryMapper;
 import com.mindsafe.service.profile.MemoryProfileBackfillService;
 import com.mindsafe.service.profile.MemoryProfileBackfillService.MemoryEvent;
 import com.mindsafe.service.notification.RiskNotifyOutboxService;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -25,6 +26,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyDouble;
 import static org.mockito.ArgumentMatchers.anyFloat;
@@ -72,6 +74,7 @@ class LongTermMemoryServiceTest {
     private LongTermMemoryService service;
 
     private final ObjectMapper om = new ObjectMapper();
+    private final SimpleMeterRegistry registry = new SimpleMeterRegistry();
     private final UUID tenantId = UUID.randomUUID();
     private final UUID studentUserId = UUID.randomUUID();
     private final UUID sessionId = UUID.randomUUID();
@@ -81,13 +84,29 @@ class LongTermMemoryServiceTest {
         service = new LongTermMemoryService(
                 memoryMapper, backfillService,
                 memoryRiskCorrelator, memoryRelevanceScorer, themeEvolutionEngine, riskEventMapper,
-                riskNotifyOutboxService);
+                riskNotifyOutboxService, registry);
         // selectCount 两处调用（幂等检查 + evict），返回 0 同时满足
         when(memoryMapper.selectCount(any())).thenReturn(0L);
     }
 
     private JsonNode events(String json) throws Exception {
         return om.readTree(json);
+    }
+
+    @Test
+    @DisplayName("ARCH-010 P2-5：记忆写入失败必须产生 metrics 计数（stage=memory）且不上抛")
+    void storeFailure_incrementsMetric() throws Exception {
+        when(memoryMapper.insert(any(LongTermMemory.class))).thenThrow(new RuntimeException("db down"));
+
+        assertThatCode(() -> service.extractAndStoreKeyEvents(tenantId, studentUserId, sessionId,
+                events("""
+                {"key_events":[
+                  {"content":"第一次主动分享","emotion_context":"委屈","importance":0.8}
+                ]}
+                """)))
+                .doesNotThrowAnyException();
+        assertThat(registry.counter("mindsafe.pipeline.failure", "stage", "memory").count())
+                .isEqualTo(1);
     }
 
     @Test

@@ -108,9 +108,9 @@ public class AlertWebSocketHandler extends TextWebSocketHandler implements SubPr
 
     @Override
     protected void handleTextMessage(WebSocketSession session, TextMessage message) {
-        // 心跳 pong 响应
+        // 心跳 pong 响应（ARCH-010 P2-5 审计：session 已断连时忽略，属合理吞没）
         if ("ping".equals(message.getPayload())) {
-            try { session.sendMessage(new TextMessage("pong")); } catch (IOException ignored) {}
+            try { session.sendMessage(new TextMessage("pong")); } catch (IOException ignored) { /* 对端已断开，忽略心跳响应 */ }
         }
     }
 
@@ -151,6 +151,7 @@ public class AlertWebSocketHandler extends TextWebSocketHandler implements SubPr
     }
 
     private void closeQuietly(WebSocketSession session) {
-        try { session.close(CloseStatus.POLICY_VIOLATION); } catch (IOException ignored) {}
+        // ARCH-010 P2-5 审计：主动关闭时的 IOException 无可恢复路径，忽略（session 即将销毁）
+        try { session.close(CloseStatus.POLICY_VIOLATION); } catch (IOException ignored) { /* 关闭失败无恢复路径，忽略 */ }
     }
 }
