@@ -1,5 +1,6 @@
 package com.mindsafe.ai.safety;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mindsafe.common.dto.chat.StreamMessageEvent;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -35,7 +36,7 @@ class OutputContentFilterTest {
 
     @BeforeEach
     void setUp() {
-        library = new SafetyKeywordLibrary();
+        library = new SafetyKeywordLibrary(new ObjectMapper());
         library.load();
         reporter = mock(OutputSafetyReporter.class);
         filter = new OutputContentFilter(library, reporter);

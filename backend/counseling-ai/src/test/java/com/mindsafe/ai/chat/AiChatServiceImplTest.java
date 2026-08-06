@@ -1,5 +1,6 @@
 package com.mindsafe.ai.chat;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mindsafe.ai.prompt.PromptTemplateService;
 import com.mindsafe.ai.safety.OutputContentFilter;
 import com.mindsafe.ai.safety.OutputReviewService;
@@ -60,7 +61,7 @@ class AiChatServiceImplTest {
         promptTemplateService = mock(PromptTemplateService.class);
 
         // Layer1 用真实过滤器（词库未加载=空规则，正常文本纯透传，同 OutputContentFilter 行为）
-        SafetyKeywordLibrary library = new SafetyKeywordLibrary();
+        SafetyKeywordLibrary library = new SafetyKeywordLibrary(new ObjectMapper());
         OutputContentFilter outputContentFilter =
                 new OutputContentFilter(library, mock(OutputSafetyReporter.class));
 
