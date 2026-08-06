@@ -30,12 +30,4 @@ public record OrchestrationContext(
         boolean coldStartNudge,
         boolean highSensitivity
 ) {
-
-    /** 向后兼容构造（无状态机输入，首轮默认） */
-    public OrchestrationContext(int grade, int effectiveGrade, String entryMood,
-                                String currentEmotion, RiskLevel riskLevel,
-                                ProfileSignals profileSignals) {
-        this(grade, effectiveGrade, entryMood, currentEmotion, riskLevel,
-                profileSignals, StrategyProfile.EmotionState.STABLE, 0, false, false);
-    }
 }

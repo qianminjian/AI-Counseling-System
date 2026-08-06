@@ -12,18 +12,21 @@ public interface AiChatService {
 
     /**
      * 流式对话（AI-005：接受预解析的 System Prompt，支持 A/B 版本路由）
+     * <p>
+     * ARCH-004：profilePrompt 参数已删除——生产恒传 null 的僵尸参数，画像 Prompt 由调用方
+     * 直接拼入 systemPromptContent（见 ConversationServiceImpl 组装链）；chatProactive 的
+     * 上下文简报由 contextBrief 参数独立承载（ARCH-010 D4 后与主链路同一版本路由加载路径）。
      *
      * @param sessionId           会话 ID
      * @param emotionTag          当前情绪标签
      * @param message             学生消息
      * @param gender              学生性别
-     * @param profilePrompt       学生画像 Prompt 片段（可为 null）
      * @param grade               学生年级
      * @param systemPromptContent 预解析的 System Prompt 全文（已渲染变量，含语言模板）
      * @return 流式事件
      */
     Flux<StreamMessageEvent> chatWithPrompt(UUID sessionId, String emotionTag, String message,
-                                            String gender, String profilePrompt, int grade,
+                                            String gender, int grade,
                                             String systemPromptContent);
 
     /**

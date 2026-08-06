@@ -56,7 +56,7 @@ public class AiChatServiceImpl implements AiChatService {
 
     @Override
     public Flux<StreamMessageEvent> chatWithPrompt(UUID sessionId, String emotionTag, String message,
-                                                   String gender, String profilePrompt, int grade,
+                                                   String gender, int grade,
                                                    String systemPromptContent) {
         String conversationId = sessionId.toString();
         log.debug("AI 对话请求(AI-005): sessionId={}, emotion={}, grade={}, msgLength={}", sessionId, emotionTag, grade, message.length());
@@ -69,9 +69,6 @@ public class AiChatServiceImpl implements AiChatService {
 
         // 3. 使用预解析的 System Prompt（SYS_001 + 语言模板）+ 性别风格
         String fullSystem = systemPromptContent + "\n\n" + buildGenderStyle(gender, grade);
-        if (profilePrompt != null && !profilePrompt.isBlank()) {
-            fullSystem = fullSystem + "\n\n" + profilePrompt;
-        }
         final String sysPrompt = fullSystem;
 
         // 4. 流式调用 LLM
