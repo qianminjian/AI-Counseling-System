@@ -8,6 +8,8 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.mindsafe.domain.entity.StudentProfile;
 import com.mindsafe.domain.mapper.StudentProfileMapper;
 import com.mindsafe.service.profile.ProfileMergeGate;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -41,12 +43,21 @@ public class ProfileExtractorService {
 
     private final StudentProfileMapper profileMapper;
     private final ProfileMergeGate profileMergeGate;
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    // ARCH-010 P2-2：注入唯一 ObjectMapper（此前 new，配置不统一）
+    private final ObjectMapper objectMapper;
+    // ARCH-010 P2-5：画像提炼失败 metrics
+    private final Counter profileFailureCounter;
 
     public ProfileExtractorService(StudentProfileMapper profileMapper,
-                                   ProfileMergeGate profileMergeGate) {
+                                   ProfileMergeGate profileMergeGate,
+                                   ObjectMapper objectMapper,
+                                   MeterRegistry meterRegistry) {
         this.profileMapper = profileMapper;
         this.profileMergeGate = profileMergeGate;
+        this.objectMapper = objectMapper;
+        this.profileFailureCounter = Counter.builder("mindsafe.pipeline.failure")
+                .tag("stage", "profile")
+                .register(meterRegistry);
     }
 
     /**
@@ -93,6 +104,7 @@ public class ProfileExtractorService {
 
             log.info("画像 LLM 提炼合并完成: userId={}", userId);
         } catch (Exception e) {
+            profileFailureCounter.increment();
             log.warn("画像 LLM 提炼失败（不影响主流程）: userId={}, error={}", userId, e.getMessage());
         }
     }

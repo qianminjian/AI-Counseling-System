@@ -33,7 +33,12 @@ import java.util.Set;
 public class AssessmentScoringEngine {
 
     private static final Logger log = LoggerFactory.getLogger(AssessmentScoringEngine.class);
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    // ARCH-010 P2-2：注入唯一 ObjectMapper（此前 static new，配置不统一）
+    private final ObjectMapper mapper;
+
+    public AssessmentScoringEngine(ObjectMapper mapper) {
+        this.mapper = mapper;
+    }
 
     /**
      * 对一份作答执行计分。
@@ -102,7 +107,7 @@ public class AssessmentScoringEngine {
 
     private JsonNode parseRules(String json) {
         try {
-            JsonNode node = MAPPER.readTree(json);
+            JsonNode node = mapper.readTree(json);
             if (!node.has("bands") || !node.get("bands").isArray()) {
                 throw new IllegalArgumentException("scoring_rules 缺少 bands 数组");
             }

@@ -1,5 +1,6 @@
 package com.mindsafe.service.profile;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mindsafe.domain.entity.StudentProfile;
 import com.mindsafe.domain.mapper.StudentProfileMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -37,7 +38,7 @@ class ProfileRadarServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new ProfileRadarService(profileMapper);
+        service = new ProfileRadarService(profileMapper, new ObjectMapper());
     }
 
     @SuppressWarnings("unchecked")

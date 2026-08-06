@@ -23,15 +23,18 @@ import java.util.*;
 public class ProfileRadarService {
 
     private static final Logger log = LoggerFactory.getLogger(ProfileRadarService.class);
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    // ARCH-010 P2-2：注入唯一 ObjectMapper（此前 static new，配置不统一）
+    private final ObjectMapper objectMapper;
 
     /** 默认中间分（数据不足时） */
     private static final int DEFAULT_SCORE = 50;
 
     private final StudentProfileMapper profileMapper;
 
-    public ProfileRadarService(StudentProfileMapper profileMapper) {
+    public ProfileRadarService(StudentProfileMapper profileMapper,
+                               ObjectMapper objectMapper) {
         this.profileMapper = profileMapper;
+        this.objectMapper = objectMapper;
     }
 
     /**
@@ -327,7 +330,7 @@ public class ProfileRadarService {
     private JsonNode parse(String json) {
         if (json == null || json.isBlank()) return null;
         try {
-            return MAPPER.readTree(json);
+            return objectMapper.readTree(json);
         } catch (Exception e) {
             log.debug("画像 JSON 解析失败: {}", e.getMessage());
             return null;

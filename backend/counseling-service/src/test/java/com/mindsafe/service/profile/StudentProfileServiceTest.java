@@ -52,7 +52,7 @@ class StudentProfileServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new StudentProfileService(profileMapper, sessionMapper, riskEventMapper);
+        service = new StudentProfileService(profileMapper, sessionMapper, riskEventMapper, objectMapper);
         when(sessionMapper.selectList(any())).thenReturn(List.of(sessionWithEmotion("sad")));
         when(riskEventMapper.selectList(any())).thenReturn(List.of());
     }
@@ -86,6 +86,22 @@ class StudentProfileServiceTest {
         Map<String, Object> meta = (Map<String, Object>) voice.get("_meta");
         assertThat(meta.get("provenance")).isEqualTo("voice_ser");
         assertThat(meta.get("evidence_count")).isEqualTo(3);
+    }
+
+    @Test
+    @DisplayName("P2-2：情绪标签含引号/反斜杠时序列化 JSON 必须合法（手写 toJson 曾产出非法 JSON）")
+    void voiceLabel_withQuotes_producesValidJson() throws Exception {
+        when(profileMapper.selectOne(any())).thenReturn(null);
+
+        service.updateProfile(tenantId, userId, List.of("sad\"x", "calm\\y"));
+
+        ArgumentCaptor<StudentProfile> captor = ArgumentCaptor.forClass(StudentProfile.class);
+        verify(profileMapper).insert(captor.capture());
+        // 手写 toJson 直接拼接 → 含引号即非法 JSON，readValue 抛异常（红）；注入 ObjectMapper 后转义正确（绿）
+        Map<String, Object> baseline = parseBaseline(captor.getValue().getEmotionBaseline());
+        Map<String, Object> voice = (Map<String, Object>) baseline.get("voice");
+        assertThat((Map<String, Object>) voice.get("counts"))
+                .containsEntry("sad\"x", 1).containsEntry("calm\\y", 1);
     }
 
     @Test

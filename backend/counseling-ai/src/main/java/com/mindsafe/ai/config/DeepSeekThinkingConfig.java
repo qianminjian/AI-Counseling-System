@@ -28,12 +28,18 @@ import java.io.IOException;
 public class DeepSeekThinkingConfig {
 
     private static final Logger log = LoggerFactory.getLogger(DeepSeekThinkingConfig.class);
-    private static final ObjectMapper MAPPER = new ObjectMapper();
 
     /**
      * HTTP 拦截器：为 DeepSeek chat/completions 请求注入 enable_thinking=false
+     * ARCH-010 P2-2：注入唯一 ObjectMapper（此前 static new，配置不统一）
      */
     static class DisableThinkingInterceptor implements ClientHttpRequestInterceptor {
+
+        private final ObjectMapper objectMapper;
+
+        DisableThinkingInterceptor(ObjectMapper objectMapper) {
+            this.objectMapper = objectMapper;
+        }
 
         @Override
         public ClientHttpResponse intercept(HttpRequest request, byte[] body,
@@ -41,11 +47,11 @@ public class DeepSeekThinkingConfig {
             String path = request.getURI().getPath();
             if (path != null && path.contains("/chat/completions") && body != null && body.length > 0) {
                 try {
-                    JsonNode node = MAPPER.readTree(body);
+                    JsonNode node = objectMapper.readTree(body);
                     if (node.isObject() && !node.has("enable_thinking")) {
                         ObjectNode obj = (ObjectNode) node;
                         obj.put("enable_thinking", false);
-                        body = MAPPER.writeValueAsBytes(obj);
+                        body = objectMapper.writeValueAsBytes(obj);
                         request.getHeaders().setContentLength(body.length);
                     }
                 } catch (Exception e) {
@@ -61,8 +67,8 @@ public class DeepSeekThinkingConfig {
      * 注册 RestClient 拦截器（Spring AI 的 OpenAiApi 使用 RestClient.Builder 构建）
      */
     @Bean
-    public RestClientCustomizer deepSeekThinkingCustomizer() {
+    public RestClientCustomizer deepSeekThinkingCustomizer(ObjectMapper objectMapper) {
         log.info("DeepSeek V4 思考模式已关闭（enable_thinking=false），首 token 延迟优化");
-        return builder -> builder.requestInterceptor(new DisableThinkingInterceptor());
+        return builder -> builder.requestInterceptor(new DisableThinkingInterceptor(objectMapper));
     }
 }
