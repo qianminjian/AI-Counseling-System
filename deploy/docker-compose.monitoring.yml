@@ -3,7 +3,8 @@
 
 services:
   prometheus:
-    image: prom/prometheus:latest
+    # AUD-029：镜像固定版本（此前 :latest 漂移导致升级不可控）
+    image: prom/prometheus:v2.53.1
     container_name: mindsafe-prometheus
     restart: unless-stopped
     # P1-DEP：不再公网暴露 9090（此前裸奔可任意访问 UI 与查询）；
@@ -36,7 +37,8 @@ services:
   # P1-10：告警接收与推送（企业微信应用消息）
   # 未配置 WECOM_* 时注入哨兵值 → 运行时推送失败仅留日志，不阻塞监控栈启动
   alertmanager:
-    image: prom/alertmanager:latest
+    # AUD-029：镜像固定版本
+    image: prom/alertmanager:v0.27.0
     container_name: mindsafe-alertmanager
     restart: unless-stopped
     # 不公网暴露 9093（与 Prometheus 同策略：仅 internal 网络可达）
@@ -60,11 +62,14 @@ services:
       - internal
 
   grafana:
-    image: grafana/grafana:latest
+    # AUD-029：镜像固定版本
+    image: grafana/grafana:11.2.2
     container_name: mindsafe-grafana
     restart: unless-stopped
+    # AUD-031：不再公网暴露 3002（HTTP 明文 + 仅密码保护不满足等保二级传输加密）——
+    # 仅绑定 127.0.0.1，运维访问用 ssh 隧道：ssh -L 3002:127.0.0.1:3002 user@host 后浏览器开 http://localhost:3002
     ports:
-      - "3002:3000"
+      - "127.0.0.1:3002:3000"
     environment:
       GF_SECURITY_ADMIN_USER: admin
       # P1-DEP：强制必填（:? 语法缺省 fail-fast），禁止弱默认密码 mindsafe

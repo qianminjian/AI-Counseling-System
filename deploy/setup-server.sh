@@ -1,7 +1,9 @@
 #!/bin/bash
 # MindSafe 服务器初始化脚本
 # 适用于阿里云 ECS / 腾讯云轻量（Ubuntu 22.04/24.04 x86_64）
-# 用法：ssh root@<your-ip> < setup-server.sh
+# 用法：cd deploy && ./setup-server.sh
+# AUD-033：stdin 管道方式（ssh root@ip < setup-server.sh）已废弃——$0=bash 导致 SCRIPT_DIR
+#          解析错误、配置复制被静默跳过；现改为 fail-fast 阻断 + 用法提示
 
 set -e
 
@@ -62,25 +64,51 @@ else
     echo "  Swap already exists ✓"
 fi
 
-# 4. 创建部署目录（P1-DEP：与 deploy.sh / service-manager.sh 的 REMOTE_DIR=/guju/mindsafe 对齐）
-echo "[4/6] Creating /guju/mindsafe..."
-mkdir -p /guju/mindsafe
-chown $USER:$USER /guju/mindsafe 2>/dev/null || true
+# 4. 创建部署目录（AUD-002：与 deploy.sh / service-manager.sh / cd.yml 的 $REMOTE_DIR/deploy 路径对齐）
+echo "[4/6] Creating /guju/mindsafe/deploy..."
+mkdir -p /guju/mindsafe/deploy
+mkdir -p /guju/mindsafe/frontend
+chown -R $USER:$USER /guju/mindsafe 2>/dev/null || true
 
-# 5. 复制部署文件（假设从 git clone 或 scp 过来）
-echo "[5/6] Copying deploy configs..."
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-if [ -f "$SCRIPT_DIR/docker-compose.test.yml" ]; then
-    cp "$SCRIPT_DIR/docker-compose.test.yml" /guju/mindsafe/
-    cp -r "$SCRIPT_DIR/nginx" /guju/mindsafe/ 2>/dev/null || true
-    cp "$SCRIPT_DIR/.env.example" /guju/mindsafe/.env 2>/dev/null || true
-    echo "  Configs copied. Edit /guju/mindsafe/.env with your secrets!"
+# 5. 同步部署文件（AUD-002：完整同步 deploy/ 目录，而非仅 test.yml）
+#    服务器约定（与 deploy.sh rsync / cd.yml SSH / service-manager.sh 一致）：
+#      compose 文件在 /guju/mindsafe/deploy/，.env 在 /guju/mindsafe/deploy/.env
+#      CD 部署执行 cd $REMOTE_DIR/deploy && docker compose -f docker-compose.prod.yml ...
+echo "[5/7] Syncing deploy configs..."
+# AUD-033：BASH_SOURCE 仅直接执行时可靠（stdin 管道 $0=bash）；
+# 找不到 compose 文件即 fail-fast，不再静默跳过
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ ! -f "$SCRIPT_DIR/docker-compose.prod.yml" ]; then
+    echo "❌ 未找到 $SCRIPT_DIR/docker-compose.prod.yml——脚本必须从 deploy/ 目录执行：cd deploy && ./setup-server.sh"
+    echo "   （不要使用 ssh < setup-server.sh 管道方式，AUD-033 已废弃）"
+    exit 1
+fi
+cp "$SCRIPT_DIR"/docker-compose*.yml /guju/mindsafe/deploy/
+cp -r "$SCRIPT_DIR/nginx" "$SCRIPT_DIR/init" "$SCRIPT_DIR/monitoring" "$SCRIPT_DIR/scripts" /guju/mindsafe/deploy/ 2>/dev/null || true
+cp "$SCRIPT_DIR/backup.sh" "$SCRIPT_DIR/restore.sh" /guju/mindsafe/deploy/ 2>/dev/null || true
+chmod +x /guju/mindsafe/deploy/*.sh 2>/dev/null || true
+if [ ! -f /guju/mindsafe/deploy/.env ]; then
+    cp "$SCRIPT_DIR/.env.example" /guju/mindsafe/deploy/.env
+    echo "  .env created from .env.example. Edit /guju/mindsafe/deploy/.env with your secrets!"
 else
-    echo "  ⚠️  Run this script from the deploy/ directory"
+    echo "  .env already exists, skipped"
+fi
+echo "  Configs synced to /guju/mindsafe/deploy/"
+
+# 6. 备份 cron 自动接线（AUD-032：此前手册称 02:00 daily/weekly/monthly 分层备份，
+#    但 setup-server.sh 从不配置 cron——现已幂等写入；backup.sh 内部按日/周/月分层保留，
+#    cron 仅需每天 02:00 触发一次；恢复演练指引见 DEPLOY-GUIDE.md「备份与恢复」）
+echo "[6/7] Configuring backup cron..."
+CRON_LINE="0 2 * * * /guju/mindsafe/backup.sh >> /guju/mindsafe/logs/backup.log 2>&1"
+if crontab -l 2>/dev/null | grep -q 'backup.sh'; then
+    echo "  backup cron 已存在，跳过（幂等）"
+else
+    ( crontab -l 2>/dev/null; echo "$CRON_LINE" ) | crontab -
+    echo "  backup cron 已写入: $CRON_LINE"
 fi
 
-# 6. GHCR 登录提示
-echo "[6/6] Docker GHCR login..."
+# 7. GHCR 登录提示
+echo "[7/7] Docker GHCR login..."
 echo "  Run manually: docker login ghcr.io -u <your-github-username>"
 echo "  Use a GitHub Personal Access Token (read:packages) as password"
 
@@ -88,10 +116,10 @@ echo ""
 echo "===== Setup Complete ====="
 echo ""
 echo "Next steps:"
-echo "  1. Edit /guju/mindsafe/.env (DB_PASSWORD, REDIS_PASSWORD, LLM_API_KEY)"
+echo "  1. Edit /guju/mindsafe/deploy/.env (DB_PASSWORD, REDIS_PASSWORD, LLM_API_KEY, JWT_SECRET)"
 echo "  2. docker login ghcr.io -u <github-username>"
-echo "  3. cd /guju/mindsafe && docker compose -f docker-compose.test.yml up -d"
-echo "  4. Configure GitHub Secrets: DEPLOY_HOST, DEPLOY_USER, DEPLOY_SSH_KEY, DEPLOY_KNOWN_HOSTS"
+echo "  3. cd /guju/mindsafe/deploy && docker compose -f docker-compose.prod.yml up -d"
+echo "  4. Configure GitHub Secrets: DEPLOY_HOST, DEPLOY_USER, DEPLOY_SSH_KEY, DEPLOY_KNOWN_HOSTS, SMOKE_URL"
 echo ""
 echo "阿里云注意事项:"
 echo "  - 安全组需开放 80/443 端口（ECS → 安全组 → 配置规则）"

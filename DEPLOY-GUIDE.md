@@ -185,11 +185,11 @@ docker login ghcr.io -u <your-github-username>
 
 | Secret 名称 | 值 |
 |-------------|-----|
-| `DEPLOY_HOST` | 阿里云 ECS 公网 IP |
+| `DEPLOY_HOST` | 阿里云 ECS 公网 IP 或域名（AUD-004：CD 健康检查已加 `-k` 容忍 IP+域名证书场景，两者皆可） |
 | `DEPLOY_USER` | `root`（或你创建的用户名） |
 | `DEPLOY_SSH_KEY` | SSH 私钥文件全部内容 |
 | `DEPLOY_KNOWN_HOSTS` | `ssh-keyscan <公网 IP>` 输出（ssh-key-action 校验主机指纹，防中间人） |
-| `SMOKE_URL` | 部署后的访问地址（如 `http://<公网 IP>`） |
+| `SMOKE_URL` | 部署后的访问地址（建议 `https://域名`；未设置时 CD 自动回退 `https://DEPLOY_HOST`） |
 | `TEACHER_USER` / `TEACHER_PASS` | 冒烟测试用的教师账号（tests/e2e/smoke-test.sh） |
 | `ADMIN_USER` / `ADMIN_PASS` | 冒烟测试用的管理员账号 |
 
@@ -198,17 +198,35 @@ docker login ghcr.io -u <your-github-username>
 ### Step 7：首次部署（生产）
 
 ```bash
-# 1. 初始化服务器环境（Docker、swap、目录结构）
+# 1. 初始化服务器环境（Docker、swap、目录结构；setup-server.sh 会完整同步 deploy/ 到 /guju/mindsafe/deploy/，AUD-002）
 cd deploy && bash setup-server.sh
 
 # 2. 配置 .env（见 Step 4）后启动生产栈（deploy/ 目录，compose 文件 docker-compose.prod.yml）
 cd /guju/mindsafe/deploy
+cp .env.example .env   # 首次执行 setup-server.sh 已自动生成，未生成时手动拷贝
+vim .env
 docker compose -f docker-compose.prod.yml up -d
 bash ../service-manager.sh status   # 全部服务健康检查
 
-# 3. 之后每次发版用仓库根目录的 deploy.sh（自动检测变更、选择性构建/上传/重启，含前端路径校验）
-#    export MINDSAFE_SERVER=root@<服务器IP> && ./deploy.sh
+# 3. 之后每次发版走 CD 主通道：git push main → GitHub Actions 自动构建镜像并 SSH 部署（见 §二）
+#    ⚠️ 双部署通道议决（AUD-060，2026-08-06）：**CD 为主，deploy.sh 仅限紧急热修**。
+#    仓库根目录的 deploy.sh（自动检测变更、选择性构建/上传/重启）仅在 CD 不可用
+#    或需要绕过镜像构建直接源码重建时使用：export MINDSAFE_SERVER=root@<服务器IP> && ./deploy.sh
 ```
+
+> ⚠️ **首次 prod 切换（AUD-003）**：若该服务器此前用 `docker-compose.test.yml` 启动过测试环境，
+> 必须先将 test 环境 down 掉（两个 compose 共用 `container_name` 与 `mindsafe-internal` 网络，残留会报
+> `container name already in use`）：
+>
+> ```bash
+> cd /guju/mindsafe/deploy
+> docker compose -f docker-compose.test.yml down
+> docker ps -a | grep mindsafe-   # 确认仅剩 postgres/redis（数据卷保留），backend/nginx 无残留
+> docker compose -f docker-compose.prod.yml up -d
+> ```
+>
+> CD 流水线侧已做兜底（deploy/rollback job 部署前幂等 `docker rm -f` 同名应用容器，不触碰数据库/Redis），
+> 但首次人工部署仍建议按上述步骤手动清理，避免 up 阶段报错。
 
 > 2026-08-06 切换后生产统一走 `/guju/mindsafe/deploy/`（prod profile）；`docker-compose.test.yml` 仅用于轻量测试环境（不含 voice/tts），nginx 配置以宿主 nginx 为准。
 > 部署完成后可手动跑冒烟（`tests/e2e/smoke-test.sh`，需教师/管理员账号）。
@@ -325,7 +343,7 @@ git push origin feature/xxx
 | `deploy/docker-compose.test.yml` | 轻量测试环境（不含 voice/tts） |
 | `deploy/docker-compose.prod.yml` | 完整生产环境（含 voice/tts） |
 | `deploy/nginx/default.conf` | Nginx 双域名反向代理 |
-| `deploy/setup-server.sh` | 服务器一键初始化（含 Docker 镜像加速） |
+| `deploy/setup-server.sh` | 服务器一键初始化（含 Docker 镜像加速；AUD-002 已对齐：完整同步 deploy/ 至 /guju/mindsafe/deploy/） |
 | `deploy/.env.example` | 环境变量模板 |
 | `deploy/scripts/prepare-models.sh` | 端侧 ONNX 模型投放（语音唤醒/声纹） |
 | `frontend/Dockerfile` | 前端打包镜像（CI 用） |
@@ -365,7 +383,7 @@ sudo systemctl restart docker
 1. **2C2G 内存紧张**：建议开启 swap（setup-server.sh 已自动配置 2GB swap）
 2. **GHCR 私有镜像**：需要在服务器上 `docker login` 才能 pull
 3. **x86_64 架构**：阿里云经济型为 x86，CI 构建无需指定 platform（默认 amd64）
-4. **数据备份**：备份统一走 `deploy/backup.sh`（宿主机 cron 02:00，daily/weekly/monthly 分层）+ `deploy/restore.sh` 恢复。OD-007（2026-08-05）已移除原 docker-compose.prod.yml 中的 `db-backup` 定时容器（与 backup.sh 双写同一 volume 为真冗余）
+4. **数据备份**：备份统一走 `deploy/backup.sh`（AUD-032：cron 已由 setup-server.sh 幂等接线 `0 2 * * * /guju/mindsafe/backup.sh >> /guju/mindsafe/logs/backup.log 2>&1`，脚本内部分层保留日 7/周 4/月 3）+ `deploy/restore.sh` 恢复。OD-007（2026-08-05）已移除原 docker-compose.prod.yml 中的 `db-backup` 定时容器（与 backup.sh 双写同一 volume 为真冗余）。**恢复演练**：在非生产库或低峰期执行 `./restore.sh daily/<备份名>.dump`（脚本会自动先打 safety snapshot，失败不覆盖原库），演练后核对 `pg_restore --list` 输出与关键表行数；每季度至少一次，演练记录追加到本文件「运维记录」节
 5. **HTTPS**：测试阶段（docker-compose.test.yml）用 HTTP 即可；生产（docker-compose.prod.yml）已强制 TLS，首次部署先按「HTTPS 证书」节签发证书
 6. **安全组**：SSH 端口建议限制来源 IP，避免暴力破解
 7. **续费**：经济型 e 实例首购 99元/年，续费同价（阿里云活动期）；关注续费提醒

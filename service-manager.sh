@@ -210,11 +210,35 @@ parse_services() {
   fi
 }
 
+# AUD-034：prod compose 的 nginx 服务挂载 ../frontend/*/dist（相对 $COMPOSE_DIR = /guju/mindsafe/frontend/*/dist），
+# 目录缺失时 docker 会静默创建空目录 → 前端空白无 fail-fast；启动 nginx 前显式检查
+check_frontend_dist() {
+  local missing=""
+  for app in student-h5 teacher-web parent-h5; do
+    if [ ! -d "/guju/mindsafe/frontend/$app/dist" ]; then
+      missing="$missing $app"
+    fi
+  done
+  if [ -n "$missing" ]; then
+    log_error "前端 dist 缺失（$missing）——nginx 会静默挂载空目录导致前端空白"
+    log_error "请先发布前端：deploy.sh（本地）或 GitHub Actions deploy-frontend job（CI）"
+    return 1
+  fi
+  return 0
+}
+
 # ===== 命令实现 =====
 cmd_start() {
   local services
   services=$(parse_services "${START_ORDER[@]}")
   local failed=0
+
+  # AUD-034：目标含 nginx 时先校验前端 dist（缺失即 fail-fast，不启动）
+  if echo "$services" | grep -q 'nginx'; then
+    if ! check_frontend_dist; then
+      return 1
+    fi
+  fi
 
   log_info "=== 启动服务（依赖顺序）==="
   for svc in $services; do
@@ -255,6 +279,13 @@ cmd_restart() {
   services_stop=$(parse_services "${STOP_ORDER[@]}")
   local services_start
   services_start=$(parse_services "${START_ORDER[@]}")
+
+  # AUD-034：重启目标含 nginx 时先校验前端 dist（缺失即 fail-fast，不重启）
+  if echo "$services_start" | grep -q 'nginx'; then
+    if ! check_frontend_dist; then
+      return 1
+    fi
+  fi
 
   log_info "=== 重启服务 ==="
   for svc in $services_stop; do

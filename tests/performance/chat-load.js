@@ -195,7 +195,7 @@ export function setup() {
   const regBody = JSON.stringify({
     inviteCode: INVITE_CODE,
     pseudonym: `压测${String(Date.now()).slice(-6)}`, // 2-12 字且唯一，避免昵称冲突
-    age: 14, // ≥14 免监护人同意 SMS 闭环（生产 CONSENT_TRIAL_AUTO_GRANT=false 时 age<14 会被拦截）
+    age: 14, // ≥14 免监护人同意 SMS 闭环（生产 MINDSAFE_CONSENT_TRIAL_AUTO_GRANT=false 时 age<14 会被拦截）
     consentVersion: CONSENT_VERSION,
     role: 'other',
     gender: 'male',

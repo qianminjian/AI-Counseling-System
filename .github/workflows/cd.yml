@@ -68,6 +68,8 @@ jobs:
           cache-to: type=gha,mode=max
 
       # 前端镜像
+      # AUD-035：镜像仍构建推送（保留 CD 产物一致性），但生产不消费——前端发布走 deploy-frontend
+      # job 的 dist 直传；是否停止构建后续另行决策
       - name: Extract frontend metadata
         id: meta-fe
         uses: docker/metadata-action@v5
@@ -146,12 +148,17 @@ jobs:
           echo "tts-service: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/tts-service:${GITHUB_SHA::7}"
 
   # P1-DEP：真实 SSH 部署（此前仅 echo 通知，无实际发布动作）
-  # 前置：服务器已首次手动部署（/guju/mindsafe 含 .env），本 job 只做镜像切换 + 拉起
+  # 前置：服务器已首次手动部署（/guju/mindsafe/deploy 含 .env），本 job 只做镜像切换 + 拉起
+  # AUD-009：deploy 与 rollback 共用 concurrency 组串行化（手动回滚与常规发布不可并发写 .env）；
+  #         事件收敛到 push main，workflow_dispatch 时不再误触发布
   deploy:
     name: SSH Deploy to Production
     runs-on: ubuntu-latest
     needs: build-and-push
-    if: success() && github.ref == 'refs/heads/main'
+    if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+    concurrency:
+      group: mindsafe-deploy
+      cancel-in-progress: false
     environment: production
 
     steps:
@@ -167,7 +174,9 @@ jobs:
           REMOTE_DIR=/guju/mindsafe
           SHA=${{ github.sha }}
           IMAGE_TAG=${SHA:0:7}
-          IMAGES="backend frontend voice-service tts-service"
+          # AUD-035：剔除 frontend——prod compose 无 frontend 服务（前端 dist 直传服务器，见 deploy-frontend job），
+          # 此前 sed 循环死写入 FRONTEND_IMAGE 到 .env；frontend 镜像是否继续构建见 build-and-push job 注释
+          IMAGES="backend voice-service tts-service"
 
           # 1. 在服务器 .env 中把各服务镜像指向本次构建 tag（幂等替换）
           for svc in $IMAGES; do
@@ -176,14 +185,26 @@ jobs:
               "cd $REMOTE_DIR/deploy && sed -i \"s|^${VAR}=.*|${VAR}=${REGISTRY}/${IMAGE_PREFIX}/${svc}:${IMAGE_TAG}|\" .env"
           done
 
-          # 2. 拉取新镜像并滚动重启（数据库/Redis 不动）
+          # 2. AUD-003：幂等清理可能残留的 test 环境同名容器（docker-compose.test.yml 与 prod.yml
+          #    共用 container_name/mindsafe-internal 网络；残留会报 container name already in use）。
+          #    不触碰 postgres/redis（数据在 volume 中，up 时复用同名容器）
+          ssh "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
+            "docker rm -f mindsafe-backend mindsafe-voice mindsafe-tts mindsafe-nginx 2>/dev/null || true"
+
+          # 3. 拉取新镜像并滚动重启（数据库/Redis 不动）
           ssh "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
             "cd $REMOTE_DIR/deploy && docker compose -f docker-compose.prod.yml pull backend voice-service tts-service nginx && docker compose -f docker-compose.prod.yml up -d --no-deps backend voice-service tts-service nginx"
 
       - name: Health check (backend)
         run: |
+          # AUD-004：健康检查 URL 用 SMOKE_URL（域名）优先，缺省回退 https://DEPLOY_HOST；
+          # 加 -k 容忍「DEPLOY_HOST=IP + 证书绑定域名」场景（内网信任域，证书校验交给浏览器层）
+          HEALTH_URL="${{ secrets.SMOKE_URL }}"
+          if [ -z "$HEALTH_URL" ]; then
+            HEALTH_URL="https://${{ secrets.DEPLOY_HOST }}"
+          fi
           for i in $(seq 1 30); do
-            code=$(curl -s -o /dev/null -w '%{http_code}' https://${{ secrets.DEPLOY_HOST }}/actuator/health || true)
+            code=$(curl -sk -o /dev/null -w '%{http_code}' "$HEALTH_URL/actuator/health" || true)
             if [ "$code" = "200" ]; then echo "✅ backend healthy"; exit 0; fi
             sleep 10
           done
@@ -198,7 +219,10 @@ jobs:
     name: Rsync Frontend Dist
     runs-on: ubuntu-latest
     needs: build-and-push
-    if: success() && github.ref == 'refs/heads/main'
+    if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+    concurrency:
+      group: mindsafe-deploy
+      cancel-in-progress: false
     environment: production
 
     steps:
@@ -265,8 +289,13 @@ jobs:
 
       - name: Health check (frontend)
         run: |
+          # AUD-004：与 deploy job 同策略——SMOKE_URL 优先 + -k（IP+域名证书场景）
+          HEALTH_URL="${{ secrets.SMOKE_URL }}"
+          if [ -z "$HEALTH_URL" ]; then
+            HEALTH_URL="https://${{ secrets.DEPLOY_HOST }}"
+          fi
           for i in $(seq 1 10); do
-            code=$(curl -s -o /dev/null -w '%{http_code}' https://${{ secrets.DEPLOY_HOST }}/ || true)
+            code=$(curl -sk -o /dev/null -w '%{http_code}' "$HEALTH_URL/" || true)
             if [ "$code" = "200" ] || [ "$code" = "302" ]; then echo "✅ frontend reachable ($code)"; exit 0; fi
             sleep 10
           done
@@ -280,6 +309,10 @@ jobs:
     name: Rollback Deployment
     runs-on: ubuntu-latest
     if: github.event_name == 'workflow_dispatch'
+    # AUD-009：与 deploy/deploy-frontend 同组串行，避免并发写 .env / dist 竞态
+    concurrency:
+      group: mindsafe-deploy
+      cancel-in-progress: false
     environment: production
 
     steps:
@@ -307,6 +340,8 @@ jobs:
               VAR=$(echo "${svc^^}-IMAGE" | tr '-' '_')
               ssh "$HOST" "cd $REMOTE_DIR/deploy && sed -i \"s|^${VAR}=.*|${VAR}=${REGISTRY}/${IMAGE_PREFIX}/${svc}:${IMAGE_TAG}|\" .env"
             done
+            # AUD-003：幂等清理同名容器（test 残留兜底，与 deploy job 一致）
+            ssh "$HOST" "docker rm -f mindsafe-backend mindsafe-voice mindsafe-tts mindsafe-nginx 2>/dev/null || true"
             ssh "$HOST" "cd $REMOTE_DIR/deploy && docker compose -f docker-compose.prod.yml pull $SERVICES && docker compose -f docker-compose.prod.yml up -d --no-deps $SERVICES"
             echo "✅ 镜像已回滚到 ${IMAGE_TAG}: ${SERVICES}"
           fi
@@ -321,8 +356,13 @@ jobs:
         run: |
           TARGETS=",${{ inputs.targets }},"
           if echo "$TARGETS" | grep -q ',backend,'; then
+            # AUD-004：与 deploy job 同策略——SMOKE_URL 优先 + -k
+            HEALTH_URL="${{ secrets.SMOKE_URL }}"
+            if [ -z "$HEALTH_URL" ]; then
+              HEALTH_URL="https://${{ secrets.DEPLOY_HOST }}"
+            fi
             for i in $(seq 1 30); do
-              code=$(curl -s -o /dev/null -w '%{http_code}' https://${{ secrets.DEPLOY_HOST }}/actuator/health || true)
+              code=$(curl -sk -o /dev/null -w '%{http_code}' "$HEALTH_URL/actuator/health" || true)
               if [ "$code" = "200" ]; then echo "✅ backend healthy after rollback"; exit 0; fi
               sleep 10
             done
@@ -336,7 +376,7 @@ jobs:
     name: E2E Smoke Test
     runs-on: ubuntu-latest
     needs: [deploy, deploy-frontend]
-    if: success()
+    if: success() && github.event_name == 'push'
 
     steps:
       - uses: actions/checkout@v4
