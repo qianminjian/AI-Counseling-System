@@ -18,7 +18,7 @@ vi.mock('../api', () => ({
 }));
 vi.mock('../utils/audioUnlock', () => ({ unlockAudio: vi.fn() }));
 vi.mock('../components/SceneDecor', () => ({ default: () => <div data-testid="scene-decor" /> }));
-vi.mock('../components/SettingsPanel', () => ({ default: ({ open, onClose }: any) => open ? <div data-testid="settings"><button onClick={onClose}>关闭设置</button></div> : null }));
+vi.mock('../components/SettingsPanel', () => ({ default: ({ open, onClose, onToggleWake }: any) => open ? <div data-testid="settings"><button onClick={onClose}>关闭设置</button><button onClick={onToggleWake}>切换唤醒</button></div> : null }));
 vi.mock('../components/ConfirmDialog', () => ({ default: ({ open, onConfirm, onCancel }: any) => open ? <div data-testid="confirm"><button onClick={onConfirm}>确认退出</button><button onClick={onCancel}>取消</button></div> : null }));
 vi.mock('../components/RelaxationExercises', () => ({ default: ({ onBack }) => <div data-testid="relaxation"><button onClick={onBack}>返回</button></div> }));
 vi.mock('../components/EmotionDiary', () => ({ default: ({ onBack }) => <div data-testid="diary"><button onClick={onBack}>返回</button></div> }));
@@ -161,6 +161,29 @@ describe('EmotionSelect', () => {
     expect(screen.getByTestId('settings')).toBeInTheDocument();
     fireEvent.click(screen.getByText('关闭设置'));
     expect(screen.queryByTestId('settings')).toBeNull();
+  });
+
+  it('localStorage 不可用（SecurityError）时页面正常渲染且不白屏（P0-2）', () => {
+    const spy = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new DOMException('denied', 'SecurityError');
+    });
+    render(<EmotionSelect {...defaultProps} />);
+    expect(screen.getByText(/嗨，小明！/)).toBeInTheDocument();
+    expect(screen.getByText('开心')).toBeInTheDocument();
+    spy.mockRestore();
+  });
+
+  it('存储写入失败时切换唤醒开关不崩溃（P0-2）', () => {
+    const spy = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('denied', 'SecurityError');
+    });
+    render(<EmotionSelect {...defaultProps} />);
+    fireEvent.click(screen.getByText('⚙️'));
+    expect(screen.getByTestId('settings')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('切换唤醒'));
+    // 设置面板仍可交互（未崩溃）
+    expect(screen.getByTestId('settings')).toBeInTheDocument();
+    spy.mockRestore();
   });
 
   it('放松练习页面返回', () => {

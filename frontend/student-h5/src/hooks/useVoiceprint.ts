@@ -11,7 +11,7 @@
  *
  * 降级：模型加载失败 → supported=false → UI 隐藏声纹入口，PIN 主路径不受影响。
  */
-import { useState, useRef, useCallback, useSyncExternalStore } from 'react'
+import { useState, useRef, useCallback } from 'react'
 import {
   VP_MODEL_ID,
   VP_MODEL_REMOTE_HOST,
@@ -22,33 +22,20 @@ import {
 } from '../config/voiceprint'
 import { getConfigValue } from '../config/remote'
 import { getAllVoiceprints } from '../utils/voiceprintStore'
+import { createModelStatusStore, type ModelStatus } from '../utils/modelStatusStore'
 
-// ===== 全局模型加载状态（跨组件共享，LoginPage / VoiceLoginOverlay 均可订阅） =====
+// ===== 全局模型加载状态（ARCH-006 收敛 A：复用 createModelStatusStore 基座） =====
 
-type VpModelStatus = 'idle' | 'loading' | 'ready' | 'error' | 'unsupported'
-let _vpStatus: VpModelStatus = 'idle'
-let _vpProgress = 0 // 0-100 下载进度
-let _vpError = '' // 详细错误信息（诊断用）
-const _vpSubscribers = new Set<() => void>()
+/** 声纹模型状态（类型复用 ModelStatus 基座） */
+export type VpModelStatus = ModelStatus
+const voiceprintModelStore = createModelStatusStore()
 
 function setVpModelStatus(s: VpModelStatus, progress?: number, error?: string) {
-  if (progress !== undefined) _vpProgress = progress
-  if (error !== undefined) _vpError = error
-  if (_vpStatus === s && progress === undefined && error === undefined) return
-  _vpStatus = s
-  _vpSnapshot = { status: _vpStatus, progress: _vpProgress, error: _vpError }
-  _vpSubscribers.forEach((fn) => fn())
+  voiceprintModelStore.setStatus(s, progress, error)
 }
-
-let _vpSnapshot: { status: VpModelStatus; progress: number; error: string } = { status: _vpStatus, progress: _vpProgress, error: _vpError }
 
 /** 订阅声纹模型加载状态（React Hook，任意组件可调用） */
-export function useVoiceprintModelStatus(): { status: VpModelStatus; progress: number; error: string } {
-  return useSyncExternalStore(
-    (cb) => { _vpSubscribers.add(cb); return () => { _vpSubscribers.delete(cb) } },
-    () => _vpSnapshot,
-  )
-}
+export const useVoiceprintModelStatus = voiceprintModelStore.useStatus
 
 // ===== 模型单例（模块级，懒加载） =====
 
@@ -83,7 +70,6 @@ function getModelBundle() {
       try {
         hasSimd = WebAssembly.validate(new Uint8Array([0,97,115,109,1,0,0,0,1,5,1,96,0,1,123,3,2,1,0,10,8,1,6,0,65,0,253,15,11]))
       } catch { /* ignore */ }
-      console.info('[Voiceprint] 环境诊断:', { hasSAB, isIsolated, hasSimd, ua: navigator.userAgent.slice(0, 100) })
       if (!hasSAB) {
         console.warn('[Voiceprint] SharedArrayBuffer不可用(isolated=%s)，声纹功能降级', isIsolated)
         throw Object.assign(new Error('ENV_UNSUPPORTED'), { _unsupported: true })

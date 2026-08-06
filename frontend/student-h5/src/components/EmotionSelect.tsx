@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect } from 'react'
 import { useTheme } from '../theme/ThemeProvider'
 import { api, isConsentRequired } from '../api'
 import { unlockAudio } from '../utils/audioUnlock'
+import { useWakeEnabled } from '../hooks/useWakeEnabled'
 import { preloadWakeModel, useWakeModelStatus } from '../hooks/useWakeWord'
 import SceneDecor from './SceneDecor'
 import RelaxationExercises from './RelaxationExercises'
@@ -18,8 +19,6 @@ const EMOTIONS = [
   { tag: 'nervous', emoji: '😰', label: '紧张', desc: '心跳加速', color: 'bg-orange-100 border-orange-400 text-orange-800' },
 ]
 
-const WAKE_PREF_KEY = 'mindsafe_wake_enabled'
-
 export default function EmotionSelect({ onStart, userName, onLogout, onConsentRequired }) {
   const [selected, setSelected] = useState(null)
   const [loading, setLoading] = useState(false)
@@ -29,7 +28,8 @@ export default function EmotionSelect({ onStart, userName, onLogout, onConsentRe
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [muted, setMuted] = useState(false)
   const [confirmSwitch, setConfirmSwitch] = useState(false)
-  const [wakeEnabled, setWakeEnabled] = useState(() => localStorage.getItem(WAKE_PREF_KEY) !== '0')
+  // A4 收敛（ARCH-006）：唤醒开关统一由 useWakeEnabled 管理（初始化 + 切换 + 持久化 + 失败安全）
+  const { enabled: wakeEnabled, setEnabled: setWakeEnabled } = useWakeEnabled()
   const { theme, themeId } = useTheme()
 
   // 麦克风环境检测（传给设置面板，避免误显"不支持"）
@@ -111,11 +111,7 @@ export default function EmotionSelect({ onStart, userName, onLogout, onConsentRe
         onToggleMute={() => setMuted(v => !v)}
         wakeSupported={micSupported}
         wakeOn={wakeEnabled}
-        onToggleWake={() => {
-          const next = !wakeEnabled
-          setWakeEnabled(next)
-          localStorage.setItem(WAKE_PREF_KEY, next ? '1' : '0')
-        }}
+        onToggleWake={() => setWakeEnabled(!wakeEnabled)}
       />
       {/* 切换同学二次确认 */}
       <ConfirmDialog

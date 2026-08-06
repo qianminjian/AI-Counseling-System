@@ -16,9 +16,9 @@ import { useVoiceCallMode } from '../hooks/useVoiceCallMode'
 import { preloadWakeModel } from '../hooks/useWakeWord'
 import { useWakeEnabled } from '../hooks/useWakeEnabled'
 import { useSilenceNudge } from '../hooks/useSilenceNudge'
-import { useAudioRecorder } from '../hooks/useAudioRecorder'
+import { useVoiceInputPipeline } from '../hooks/useVoiceInputPipeline'
 import { useChatSession } from '../hooks/useChatSession'
-import { authFetch, api, getUser } from '../api'
+import { api, getUser } from '../api'
 import { emotionBus } from '../utils/emotionBus'
 import { useBoboExpression } from '../hooks/useBoboExpression'
 import { useMotionPreference } from '../hooks/useMotionPreference'
@@ -37,14 +37,10 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: Se
   const [speakingMsgIdx, setSpeakingMsgIdx] = useState(-1)
   const [voiceNotice, setVoiceNotice] = useState('')
   const [cancelArmed, setCancelArmed] = useState(false) // 按住说话：上滑进入取消态
-  const [liveTranscript, setLiveTranscript] = useState('') // 录音中实时转写（浏览器识别，作反馈展示）
   const [confirmSwitch, setConfirmSwitch] = useState(false) // 切换同学确认弹窗
   const bottomRef = useRef(null)
-  const browserTranscriptRef = useRef('')
-  const speechRecRef = useRef(null)
   const greetingSpokenRef = useRef(false)
   const pointerStartYRef = useRef(0) // 按下时 Y 坐标（检测上滑取消）
-  const pointerDownTimeRef = useRef(0) // 按下时间戳（检测说话过短）
 
   // 主题 + 音色
   const { theme } = useTheme()
@@ -126,59 +122,25 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: Se
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  /** 录音完成 → 上传分析 → 自动发送（audioBlob 为 null 时直接用浏览器转写） */
-  const handleRecordingComplete = useCallback(async (audioBlob) => {
-    // 无录音（麦克风不可用）→ 直接用浏览器识别结果
-    if (!audioBlob) {
-      const text = browserTranscriptRef.current
-      if (text) {
-        setVoiceNotice('已用浏览器识别（语音情绪分析暂不可用）')
-        sendMessageRef.current?.(text, null).then((sent) => { if (!sent) setInput(text) })
-      } else {
-        setVoiceNotice('没有听清，请再说一次或打字告诉我 ✏️')
-      }
-      setTimeout(() => setVoiceNotice(''), 4000)
-      return
+
+
+  /** 语音输入流水线（ARCH-006 doing/66 §3.1：录音→分析→自动发送整链收敛，ChatRoom 只做装配） */
+  const pipeline = useVoiceInputPipeline({
+    onTranscription: (text, emotion) => {
+      // 自动发送：失败时回填输入框防丢字（与改造前 handleRecordingComplete 一致）
+      sendMessageRef.current?.(text, emotion).then((sent) => { if (!sent) setInput(text) })
+    },
+  })
+  const { isRecording: recording, isAnalyzing: analyzing, supported, liveTranscript, error: pipelineError, warmUp: warmUpMic, releaseStream } = pipeline
+
+  // pipeline 语音提示文案 → 顶部提示条（自动定时清空）
+  useEffect(() => {
+    if (pipelineError) {
+      setVoiceNotice(pipelineError)
+      const t = setTimeout(() => setVoiceNotice(''), 4000)
+      return () => clearTimeout(t)
     }
-
-    const formData = new FormData()
-    formData.append('file', audioBlob, 'recording.webm')
-
-    try {
-      // authFetch 统一处理 JWT 认证 + 401 自动刷新，避免 token 过期导致降级到不可靠的浏览器识别
-      const res = await authFetch('/api/v1/voice/analyze', {
-        method: 'POST',
-        body: formData,
-      })
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const json = await res.json()
-      if (json.success && json.data) {
-        const { text, emotion } = json.data
-        if (text) {
-          // 自动发送：emotion 直接传给 sendMessage（修复此前情绪从未存入 state、预览不显示的问题）
-          // 不 await，避免 analyzing 状态覆盖整个 AI 回复过程；极端被拦截时回填输入框防丢字
-          sendMessageRef.current?.(text, emotion).then((sent) => {
-            if (!sent) setInput(text)
-          })
-          return
-        }
-      }
-      throw new Error('服务端未返回文字')
-    } catch (err) {
-      console.warn('语音分析服务不可用，尝试浏览器识别', err.message)
-      // 降级：使用浏览器 Web Speech API 实时识别结果
-      const text = browserTranscriptRef.current
-      if (text) {
-        setVoiceNotice('已用浏览器识别（语音情绪分析暂不可用）')
-        sendMessageRef.current?.(text, null).then((sent) => { if (!sent) setInput(text) })
-      } else {
-        setVoiceNotice('语音识别暂不可用，请打字告诉我吧 ✏️')
-      }
-      setTimeout(() => setVoiceNotice(''), 4000)
-    }
-  }, [])
-
-  const { recording, analyzing, supported, startRecording, stopRecording, cancelRecording, warmUp: warmUpMic, releaseStream } = useAudioRecorder(handleRecordingComplete)
+  }, [pipelineError])
 
   /* ===== 语音唤醒状态机（design/28 §1.1）：off / standby（待唤醒）/ active（会话窗）
      监听严格限定在本次对话内：仅 ChatRoom 挂载期间由 enabled 控制，卸载即释放麦克风 ===== */
@@ -244,63 +206,7 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: Se
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tts.playing, wakeEnabled, userInteracted])
 
-  // 录音 30 秒上限：到时自动停止并发送（等价于松手），防止长时间占用麦克风
-  // 用 ref 持有最新 stopRecording，计时器只随 recording 变化重置，不被每次渲染重置
-  const stopRecordingRef = useRef(null)
-  useEffect(() => {
-    stopRecordingRef.current = stopRecording
-  })
-  useEffect(() => {
-    if (!recording) return
-    const timer = setTimeout(() => stopRecordingRef.current?.(), 30000)
-    return () => clearTimeout(timer)
-  }, [recording])
 
-  /** 启动一次语音会话：并行开启 MediaRecorder（上传情感分析）+ 浏览器 SpeechRecognition（降级转写 + 实时展示） */
-  const startVoiceSession = useCallback(() => {
-    // 并行启动浏览器 SpeechRecognition 作为降级转写 + 录音遮罩实时展示
-    browserTranscriptRef.current = ''
-    setLiveTranscript('')
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
-    if (SpeechRecognition) {
-      try {
-        const rec = new SpeechRecognition()
-        rec.lang = 'zh-CN'
-        rec.continuous = true
-        rec.interimResults = true
-        rec.onresult = (e) => {
-          // 根因修复：Android Chrome 中文识别 continuous 模式下，
-          // 语句结束后可能在 results 列表中产生内容相同的重复 final 条目。
-          // 修复策略：只拼接 final 结果 + 跳过连续相同文本；interim 仅用于实时展示。
-          let finalTranscript = ''
-          let interimTranscript = ''
-          let prevFinalText = ''
-          for (let i = 0; i < e.results.length; i++) {
-            const text = e.results[i][0].transcript
-            if (e.results[i].isFinal) {
-              // 跳过与前一个 final result 完全相同的条目（Android 重复 bug）
-              if (text !== prevFinalText) {
-                finalTranscript += text
-                prevFinalText = text
-              }
-            } else {
-              interimTranscript += text
-            }
-          }
-          // 发送用 final（去重后）；实时展示用 final + 当前 interim
-          browserTranscriptRef.current = finalTranscript || interimTranscript
-          setLiveTranscript(finalTranscript + interimTranscript)
-        }
-        rec.onerror = () => {}
-        rec.start()
-        speechRecRef.current = rec
-      } catch (err) {
-        console.warn('浏览器语音识别启动失败', err)
-      }
-    }
-    // 启动 MediaRecorder 录音
-    startRecording()
-  }, [startRecording])
 
   /* ===== 按住说话（微信同款）：按下录音、松开发送、上滑取消 ===== */
 
@@ -311,10 +217,9 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: Se
     tts.stop() // 打断播放：用户按住麦克风要说话时 AI 应立即停读（也避免录音期间 TTS 被路由到听筒）
     e.currentTarget.setPointerCapture(e.pointerId)
     pointerStartYRef.current = e.clientY
-    pointerDownTimeRef.current = Date.now()
     setCancelArmed(false)
-    startVoiceSession()
-  }, [streaming, analyzing, recording, requestConsent, startVoiceSession, tts.stop])
+    pipeline.start() // 并行启动录音 + 浏览器识别（降级转写）
+  }, [streaming, analyzing, recording, requestConsent, pipeline.start, tts.stop])
 
   /** 移动：上滑超过阈值进入取消态（松手即取消） */
   const handleVoicePointerMove = useCallback((e) => {
@@ -325,29 +230,22 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: Se
   /** 松开：三分支——上滑取消 / 说话过短 / 正常发送（识别后自动发出） */
   const handleVoicePointerUp = useCallback(() => {
     if (!recording) return
-    speechRecRef.current?.stop()
-    const tooShort = Date.now() - pointerDownTimeRef.current < 1000
     if (cancelArmed) {
-      cancelRecording()
+      pipeline.cancel()
       setVoiceNotice('已取消')
       setTimeout(() => setVoiceNotice(''), 2000)
-    } else if (tooShort) {
-      cancelRecording()
-      setVoiceNotice('说话时间太短，按住说久一点 🎤')
-      setTimeout(() => setVoiceNotice(''), 3000)
     } else {
-      stopRecording() // → 识别 → 自动发送
+      pipeline.stop() // 过短判定在 pipeline 内（<1000ms 自动取消 + 提示）
     }
     setCancelArmed(false)
-  }, [recording, cancelArmed, cancelRecording, stopRecording])
+  }, [recording, cancelArmed, pipeline.cancel, pipeline.stop])
 
   /** 系统打断 / 指针捕获丢失：安全取消本次录音，避免卡在录音态 */
   const handleVoicePointerCancel = useCallback(() => {
     if (!recording) return
-    speechRecRef.current?.stop()
-    cancelRecording()
+    pipeline.cancel()
     setCancelArmed(false)
-  }, [recording, cancelRecording])
+  }, [recording, pipeline.cancel])
 
   /** 授权通过：预热麦克风（下次按住秒开）；按住说话模式下不自动录音，需用户再次按住 */
   const handleConsentGrant = useCallback(async () => {
