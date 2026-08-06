@@ -1,5 +1,8 @@
 package com.mindsafe.service.sms;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -36,6 +39,13 @@ public class AliyunSmsService implements SmsService {
     private static final Logger log = LoggerFactory.getLogger(AliyunSmsService.class);
     private static final String ENDPOINT = "https://dysmsapi.aliyuncs.com";
     private static final DateTimeFormatter ISO8601 = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss'Z'");
+
+    /** ARCH-010 D1：统一 ObjectMapper 单例（Spring 容器，消除手写拼接的转义风险） */
+    private final ObjectMapper objectMapper;
+
+    public AliyunSmsService(ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
+    }
 
     @Value("${mindsafe.sms.aliyun.access-key-id}")
     private String accessKeyId;
@@ -125,12 +135,16 @@ public class AliyunSmsService implements SmsService {
         }
     }
 
-    private String buildRequestBody(String phone, String code) {
-        // 手动构建 JSON（避免引入额外依赖）
-        return "{\"PhoneNumbers\":\"" + phone + "\","
-                + "\"SignName\":\"" + signName + "\","
-                + "\"TemplateCode\":\"" + templateCode + "\","
-                + "\"TemplateParam\":\"{\\\"code\\\":\\\"" + code + "\\\"}\"}";
+    private String buildRequestBody(String phone, String code) throws JsonProcessingException {
+        // ARCH-010 D1：ObjectNode 构建（TemplateParam 为嵌套 JSON 字符串，序列化后作字段值）
+        ObjectNode templateParam = objectMapper.createObjectNode();
+        templateParam.put("code", code);
+        ObjectNode body = objectMapper.createObjectNode();
+        body.put("PhoneNumbers", phone);
+        body.put("SignName", signName);
+        body.put("TemplateCode", templateCode);
+        body.put("TemplateParam", objectMapper.writeValueAsString(templateParam));
+        return objectMapper.writeValueAsString(body);
     }
 
     private String sha256Hex(String data) throws Exception {

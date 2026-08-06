@@ -140,9 +140,8 @@ export function useChatSession(opts: ChatSessionOptions) {
           onRisk: (riskLevel, content) => {
             // 风险事件是系统/心理老师的内部处理指令（如"允许继续 CBT 微干预，趋势观察"），
             // 不能展示给学生：孩子看不懂临床术语，且会意识到"被监控"而破坏辅导信任。
-            // 风险数据由后端另行落库并推送教师后台；红色风险后端会单独下发孩子能懂的安抚语。
+            // 风险数据由后端另行落库并推送教师后台；红色风险后端会单独下发 孩子能懂的安抚语。
             // 这里仅记录日志便于调试，不渲染到聊天界面。
-            console.info('[risk]', riskLevel, content)
             // S0/S1 风险锁定波波 hug 安抚姿态（design/37 §4.1 安全红线，riskLevel≥2 锁定）
             bobo.dispatch({ type: 'risk', riskLevel })
           },
@@ -190,8 +189,7 @@ export function useChatSession(opts: ChatSessionOptions) {
         body: body ? JSON.stringify(body) : undefined,
       })
     } catch {
-      // fallback: 旧接口
-      try { await api(`/chat/sessions/${sessionId}/end`, { method: 'POST' }) } catch { /* ignore */ }
+      // ARCH-010 D5（OVD-4）：旧关闭接口已下线，主接口失败静默（不影响 UI 关闭流程）
     }
     onClosed?.()
   }

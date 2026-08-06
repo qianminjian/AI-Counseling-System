@@ -49,7 +49,8 @@ class ChatControllerTest {
     void setUp() {
         conversationService = mock(ConversationService.class);
         guardianConsentService = mock(GuardianConsentService.class);
-        controller = new ChatController(conversationService, guardianConsentService);
+        // ARCH-010 D5：旧关闭接口 TTL 默认空配置 = 未到期（保留可用）
+        controller = new ChatController(conversationService, guardianConsentService, "");
 
         authentication = mock(Authentication.class);
         when(authentication.getDetails()).thenReturn(new TenantContext(tenantId, studentId, "student"));
@@ -143,5 +144,29 @@ class ChatControllerTest {
 
         verify(conversationService).endSession(tenantId, studentId, sessionId);
         verify(guardianConsentService, never()).hasGuardianConsent(any(), any());
+    }
+
+    @Test
+    @DisplayName("ARCH-010 D5：旧关闭接口 TTL 到期 → 410 拒绝且不触达对话服务")
+    void endSessionTtlExpiredGone() {
+        ChatController expiredController = new ChatController(
+                conversationService, guardianConsentService, "2000-01-01T00:00:00Z");
+
+        assertThatThrownBy(() -> expiredController.endSession(sessionId, authentication))
+                .isInstanceOf(BizException.class)
+                .extracting("code").isEqualTo(ErrorCode.API_GONE.code());
+        verifyNoInteractions(conversationService);
+    }
+
+    @Test
+    @DisplayName("ARCH-010 D5：expires-at 配置非法 → 视为未到期（防御降级，不拒绝请求）")
+    void endSessionInvalidExpiresAtDegradesOpen() {
+        ChatController invalidController = new ChatController(
+                conversationService, guardianConsentService, "not-a-date");
+
+        controller = invalidController;
+        controller.endSession(sessionId, authentication);
+
+        verify(conversationService).endSession(tenantId, studentId, sessionId);
     }
 }

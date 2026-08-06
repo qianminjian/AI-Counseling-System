@@ -20,6 +20,7 @@ public enum ErrorCode {
     RESOURCE_NOT_FOUND(10003, "资源不存在"),
     RATE_LIMITED(10004, "请求过于频繁"),
     TENANT_NOT_FOUND(10005, "租户不存在或已停用"),
+    API_GONE(10006, "接口已下线"),
 
     // ===== 认证/授权 20xxx =====
     UNAUTHORIZED(20001, "未登录或 token 已过期"),

@@ -268,16 +268,16 @@ describe('useChatSession（UX-006，design/17 §chat/hooks）', () => {
     expect(onClosed).toHaveBeenCalled()
   })
 
-  it('closeSession：主接口失败 → fallback 旧接口', async () => {
-    mockApi.mockRejectedValueOnce(new Error('not found')).mockResolvedValueOnce({})
+  it('closeSession：主接口失败 → 不回退旧接口，onClosed 仍触发（ARCH-010 D5）', async () => {
+    mockApi.mockRejectedValue(new Error('not found'))
     const { result } = renderHook(() => useChatSession(opts))
 
     await act(async () => {
       await result.current.closeSession(null)
     })
 
-    expect(mockApi).toHaveBeenCalledTimes(2)
-    expect(mockApi).toHaveBeenLastCalledWith('/chat/sessions/sess-1/end', expect.objectContaining({ method: 'POST' }))
+    expect(mockApi).toHaveBeenCalledTimes(1)
+    expect(mockApi).toHaveBeenCalledWith('/sessions/sess-1/close', expect.objectContaining({ method: 'POST' }))
     expect(onClosed).toHaveBeenCalled()
   })
 })
