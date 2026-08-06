@@ -82,7 +82,7 @@ class AiChatServiceImplLlmCallTest {
 
         PromptTemplateService promptTemplateService = mock(PromptTemplateService.class);
         when(promptTemplateService.render(anyString(), org.mockito.ArgumentMatchers.anyMap()))
-                .thenReturn("SYS-001 系统提示");
+                .thenReturn("SYS_001 系统提示");
         when(promptTemplateService.getTemplate(anyString())).thenReturn("# 语言规则");
 
         service = new AiChatServiceImpl(builder, chatMemory, outputContentFilter,

@@ -24,7 +24,7 @@ import java.util.UUID;
 /**
  * AI 聊天服务实现（Spring AI ChatClient 流式调用 + 多轮对话记忆 + 双层输出安全审查）
  * <p>
- * System Prompt 从 classpath 模板文件加载（SYS-001），运行时注入 emotion_tag 等变量。
+ * System Prompt 从 classpath 模板文件加载（SYS_001），运行时注入 emotion_tag 等变量。
  * 输出安全：Layer1 {@link OutputContentFilter} 流式实时硬过滤（命中即中断+安全话术）；
  * Layer2 {@link OutputReviewService} 流结束后异步 SAF-002 语义审查（检测+留痕，不阻塞）。
  */
@@ -101,7 +101,7 @@ public class AiChatServiceImpl implements AiChatService {
 
     @Override
     public Flux<StreamMessageEvent> chatProactive(UUID sessionId, String emotionTag, String gender,
-                                                  String profilePrompt, String nudgeInstruction, int grade) {
+                                                  String contextBrief, String systemPromptContent, int grade) {
         String conversationId = sessionId.toString();
         log.debug("主动暖场请求: sessionId={}, emotion={}, gender={}, grade={}", sessionId, emotionTag, gender, grade);
 
@@ -109,21 +109,13 @@ public class AiChatServiceImpl implements AiChatService {
         //    仅读取历史作为上下文
         List<Message> history = chatMemory.get(conversationId);
 
-        // 2. SYS-001 + 语言模板 + 性别风格 + 画像 + nudge 指令（全部追加到 system 层）
-        String gradeLevel = grade <= 2 ? "1-2" : grade <= 4 ? "3-4" : "5-6";
-        String systemPrompt = promptTemplateService.render(PromptTemplateService.SYS_001, Map.of(
-                "grade_level", gradeLevel,
-                "emotion_tag", emotionTag,
-                "school_policy", "默认：发现高风险立即通知心理老师。",
-                "session_mode", "normal_counseling"
-        ));
-        String langTemplatePath = PromptTemplateService.languageTemplateForGrade(grade);
-        String langRules = promptTemplateService.getTemplate(langTemplatePath);
-        String fullSystem = systemPrompt + "\n\n" + langRules + "\n\n" + buildGenderStyle(gender, grade);
-        if (profilePrompt != null && !profilePrompt.isBlank()) {
-            fullSystem = fullSystem + "\n\n" + profilePrompt;
+        // 2. 预解析 System Prompt（ARCH-010 D4：调用方已走 PromptVersionService 版本路由，
+        //    含 SYS_001 + 语言模板 + TSK_004 暖场指令）；这里仅追加性别风格 + 上下文简报
+        //    （contextBrief 追加尾部，利用 recency bias，与主链路同一组装方式）
+        String fullSystem = systemPromptContent + "\n\n" + buildGenderStyle(gender, grade);
+        if (contextBrief != null && !contextBrief.isBlank()) {
+            fullSystem = fullSystem + "\n\n" + contextBrief;
         }
-        fullSystem = fullSystem + "\n\n" + nudgeInstruction;
         final String sysPrompt = fullSystem;
 
         // 3. 流式调用 LLM（带历史上下文，无新增 UserMessage）

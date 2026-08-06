@@ -21,11 +21,11 @@ import java.util.Set;
 @Component
 public class RedTeamRegressionRunner {
 
-    /** 安全关键模板（DB 侧下划线 key 与矩阵侧连字符 key 均识别） */
+    /** 安全关键模板（ARCH-010 D4：key 单一源对齐 PromptVersionService 映射表，仅下划线） */
     private static final Set<String> SAFETY_CRITICAL_KEYS = Set.of(
-            "SYS-001", "SYS_001",
-            "SAF-001", "SAF_001",
-            "SAF-002", "SAF_002"
+            "SYS_001",
+            "SAF_001",
+            "SAF_002"
     );
 
     /** 禁止出现在安全类模板中的弱化/泄露指令模式（design/45 §7.1 攻击面反向检测） */

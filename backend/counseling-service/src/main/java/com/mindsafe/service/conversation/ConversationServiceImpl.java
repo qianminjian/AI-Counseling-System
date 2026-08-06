@@ -511,13 +511,14 @@ public class ConversationServiceImpl implements ConversationService {
             return Flux.empty();
         }
 
-        // 暖场：渲染 TSK-004 指令（追加到 system 层，不向记忆写伪造学生消息）
-        String nudgeInstruction = promptTemplateService.render(PromptTemplateService.TSK_004, Map.of(
-                "silence_seconds", String.valueOf(silenceSeconds),
-                "warmth_level", String.valueOf(decision.warmthLevel()),
-                "direction", decision.direction()
-        ));
-        // Fix 1: 暖场接入 CTX-Agent（统一上下文简报，让暖场也知道昵称/情绪/进展）
+        // 暖场：TSK_004 指令走 PromptVersionService 版本路由（ARCH-010 D4，与主链路同一加载路径）
+        PromptVersionService.ResolvedPrompt nudgeResolved = promptVersionService.resolve(
+                session.getTenantId(), "TSK_004", session.getStudentUserId(), Map.of(
+                        "silence_seconds", String.valueOf(silenceSeconds),
+                        "warmth_level", String.valueOf(decision.warmthLevel()),
+                        "direction", decision.direction()
+                ));
+        // 暖场上下文简报（CTX-Agent 统一上下文，同主链路组装）
         String profilePrompt = profileService.buildProfilePrompt(session.getTenantId(), session.getStudentUserId(), session.getGrade(), session.getGender());
         String nudgeMemoryPrompt = longTermMemoryService.buildMemoryPrompt(session.getTenantId(), session.getStudentUserId());
         String nudgeAlliancePrompt = buildAlliancePrompt(session, nudgeMemoryPrompt);
@@ -528,12 +529,28 @@ public class ConversationServiceImpl implements ConversationService {
         int turn = session.getTurnCount();
         StringBuilder aiResponseCollector = new StringBuilder();
 
+        // ARCH-010 D4：SYS_001 + 语言模板与主链路同一版本路由；contextBrief 追加尾部（recency bias）
+        String gradeLevel = effectiveGrade <= 2 ? "1-2" : effectiveGrade <= 4 ? "3-4" : "5-6";
+        PromptVersionService.ResolvedPrompt sysResolved = promptVersionService.resolve(
+                session.getTenantId(), "SYS_001", session.getStudentUserId(), Map.of(
+                        "grade_level", gradeLevel,
+                        "emotion_tag", session.getEmotionTag() != null ? session.getEmotionTag() : "",
+                        "school_policy", "默认：发现高风险立即通知心理老师。",
+                        "session_mode", "normal_counseling"
+                ));
+        String langKey = effectiveGrade <= 2 ? "LANG_001" : effectiveGrade <= 4 ? "LANG_002" : "LANG_003";
+        PromptVersionService.ResolvedPrompt langResolved = promptVersionService.resolveRaw(
+                session.getTenantId(), langKey, session.getStudentUserId());
+        // contextBrief 由 chatProactive 追加到 system 层尾部（recency bias），此处不拼入
+        String systemPromptContent = sysResolved.content() + "\n\n" + langResolved.content()
+                + "\n\n" + nudgeResolved.content();
+
         session.markNudged();
-        sessionStateStore.save(sessionId, session);
+        sessionStateStore.save(tenantId, sessionId, session);
         log.info("nudge: 决策=暖场: sessionId={}, warmthLevel={}, direction={}, silenceSeconds={}",
                 sessionId, decision.warmthLevel(), decision.direction(), silenceSeconds);
 
-        return aiChatService.chatProactive(sessionId, session.getEmotionTag(), session.getGender(), nudgeContextBrief, nudgeInstruction, effectiveGrade)
+        return aiChatService.chatProactive(sessionId, session.getEmotionTag(), session.getGender(), nudgeContextBrief, systemPromptContent, effectiveGrade)
                 .doOnNext(event -> {
                     if (event.type() != null && event.type().equals("token") && event.content() != null) {
                         aiResponseCollector.append(event.content());
@@ -543,7 +560,7 @@ public class ConversationServiceImpl implements ConversationService {
                     String fullReply = aiResponseCollector.toString();
                     messageSummaryService.persistAiMessageSummary(session, turn, fullReply);
                     session.recordAiReply(fullReply);
-                    sessionStateStore.save(sessionId, session);
+                    sessionStateStore.save(tenantId, sessionId, session);
                     return Flux.just(StreamMessageEvent.done(""));
                 }))
                 .onErrorResume(e -> {
@@ -566,7 +583,7 @@ public class ConversationServiceImpl implements ConversationService {
 
     @Override
     public void updateClientSettings(UUID tenantId, UUID studentUserId, UUID sessionId, Boolean ttsMuted, Boolean wakeEnabled) {
-        SessionState session = sessionStateStore.get(sessionId);
+        SessionState session = sessionStateStore.get(tenantId, sessionId);
         if (session == null) return;
         // SEC-001：会话归属校验（非持有人静默忽略，不泄漏会话存在性）
         if (!isSessionOwner(session, tenantId, studentUserId)) {
@@ -575,7 +592,7 @@ public class ConversationServiceImpl implements ConversationService {
         }
         if (ttsMuted != null) session.setTtsMuted(ttsMuted);
         if (wakeEnabled != null) session.setWakeEnabled(wakeEnabled);
-        sessionStateStore.save(sessionId, session);
+        sessionStateStore.save(tenantId, sessionId, session);
     }
 
     /**
@@ -590,7 +607,7 @@ public class ConversationServiceImpl implements ConversationService {
     @Transactional
     @Override
     public void endSession(UUID tenantId, UUID studentUserId, UUID sessionId) {
-        SessionState session = sessionStateStore.get(sessionId);
+        SessionState session = sessionStateStore.get(tenantId, sessionId);
         if (session != null) {
             // SEC-001：非持有人拒绝结束他人会话
             if (!isSessionOwner(session, tenantId, studentUserId)) {
@@ -607,7 +624,7 @@ public class ConversationServiceImpl implements ConversationService {
             update.setUpdatedAt(Instant.now());
             sessionMapper.updateById(update);
 
-            sessionStateStore.remove(sessionId);
+            sessionStateStore.remove(tenantId, sessionId);
 
             // 清除 AI 对话记忆
             aiChatService.clearMemory(sessionId);

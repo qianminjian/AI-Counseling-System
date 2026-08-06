@@ -54,22 +54,23 @@ public class TemplateMatrixRegistry {
     ) {
     }
 
-    /** 模板矩阵（与 design/18 §0 总览表 + prompts/ 真实文件对齐，2026-07-28 审计修正；G-1：版本段补齐 KEY 前缀符合命名规范） */
+    /** 模板矩阵（与 design/18 §0 总览表 + prompts/ 真实文件对齐，2026-07-28 审计修正；G-1：版本段补齐 KEY 前缀符合命名规范）
+     *  ARCH-010 D4：key 命名对齐 PromptVersionService 映射表单一源（下划线，如 SYS_001） */
     private static final List<TemplateEntry> MATRIX = List.of(
-            new TemplateEntry("SYS-001", "SYS-001_zh-CN_v1.0.0", "all", TemplateStatus.ACTIVE, "系统身份与行为契约（L0/L1）"),
-            new TemplateEntry("SAF-001", "SAF-001_zh-CN_v1.0.0", "all", TemplateStatus.ACTIVE, "输入风险识别 JSON（L2）"),
-            new TemplateEntry("SAF-002", "SAF-002_zh-CN_v1.0.0", "all", TemplateStatus.ACTIVE, "输出审查（L6，Layer2 异步）"),
-            new TemplateEntry("LANG-001", "LANG-001_zh-CN_v1.0.0", "grade_1_2", TemplateStatus.ACTIVE, "1-2 年级儿童语言（L3）"),
-            new TemplateEntry("LANG-002", "LANG-002_zh-CN_v1.0.0", "grade_3_4", TemplateStatus.ACTIVE, "3-4 年级儿童语言（L3）"),
-            new TemplateEntry("LANG-003", "LANG-003_zh-CN_v1.0.0", "grade_5_6", TemplateStatus.ACTIVE, "5-6 年级儿童语言（L3）"),
-            new TemplateEntry("EMO-001", "EMO-001_zh-CN_v1.0.0", "all", TemplateStatus.ACTIVE, "情绪策略层（ORCH-001）"),
-            new TemplateEntry("SKL-001", "SKL-001_zh-CN_v1.0.0", "all", TemplateStatus.ACTIVE, "CBT 微技能（L4）"),
-            new TemplateEntry("SKL-002", "SKL-002_zh-CN_v1.0.0", "all", TemplateStatus.ACTIVE, "SEL 社会情感学习（L4）"),
-            new TemplateEntry("SKL-003", "SKL-003_zh-CN_v1.0.0", "all", TemplateStatus.ACTIVE, "PFA 心理急救（L4）"),
-            new TemplateEntry("TSK-001", "TSK-001_zh-CN_v1.0.0", "all", TemplateStatus.ACTIVE, "教师摘要生成（PEVAL-001）"),
-            new TemplateEntry("TSK-002", "TSK-002_zh-CN_v1.0.0", "all", TemplateStatus.ACTIVE, "RAG 查询改写（KB-101）"),
-            new TemplateEntry("TSK-003", "TSK-003_zh-CN_v1.0.0", "all", TemplateStatus.ACTIVE, "会话收束"),
-            new TemplateEntry("TSK-004", "TSK-004_zh-CN_v1.0.0", "all", TemplateStatus.ACTIVE, "主动暖场（冷场引导，design/28）")
+            new TemplateEntry("SYS_001", "SYS_001_zh-CN_v1.0.0", "all", TemplateStatus.ACTIVE, "系统身份与行为契约（L0/L1）"),
+            new TemplateEntry("SAF_001", "SAF_001_zh-CN_v1.0.0", "all", TemplateStatus.ACTIVE, "输入风险识别 JSON（L2）"),
+            new TemplateEntry("SAF_002", "SAF_002_zh-CN_v1.0.0", "all", TemplateStatus.ACTIVE, "输出审查（L6，Layer2 异步）"),
+            new TemplateEntry("LANG_001", "LANG_001_zh-CN_v1.0.0", "grade_1_2", TemplateStatus.ACTIVE, "1-2 年级儿童语言（L3）"),
+            new TemplateEntry("LANG_002", "LANG_002_zh-CN_v1.0.0", "grade_3_4", TemplateStatus.ACTIVE, "3-4 年级儿童语言（L3）"),
+            new TemplateEntry("LANG_003", "LANG_003_zh-CN_v1.0.0", "grade_5_6", TemplateStatus.ACTIVE, "5-6 年级儿童语言（L3）"),
+            new TemplateEntry("EMO_001", "EMO_001_zh-CN_v1.0.0", "all", TemplateStatus.ACTIVE, "情绪策略层（ORCH-001）"),
+            new TemplateEntry("SKL_001", "SKL_001_zh-CN_v1.0.0", "all", TemplateStatus.ACTIVE, "CBT 微技能（L4）"),
+            new TemplateEntry("SKL_002", "SKL_002_zh-CN_v1.0.0", "all", TemplateStatus.ACTIVE, "SEL 社会情感学习（L4）"),
+            new TemplateEntry("SKL_003", "SKL_003_zh-CN_v1.0.0", "all", TemplateStatus.ACTIVE, "PFA 心理急救（L4）"),
+            new TemplateEntry("TSK_001", "TSK_001_zh-CN_v1.0.0", "all", TemplateStatus.ACTIVE, "教师摘要生成（PEVAL-001）"),
+            new TemplateEntry("TSK_002", "TSK_002_zh-CN_v1.0.0", "all", TemplateStatus.ACTIVE, "RAG 查询改写（KB-101）"),
+            new TemplateEntry("TSK_003", "TSK_003_zh-CN_v1.0.0", "all", TemplateStatus.ACTIVE, "会话收束"),
+            new TemplateEntry("TSK_004", "TSK_004_zh-CN_v1.0.0", "all", TemplateStatus.ACTIVE, "主动暖场（冷场引导，design/28）")
     );
 
     /** 红队护栏用例集（design/45 §7.1 六类攻击面全覆盖，改版必过） */
@@ -156,8 +157,9 @@ public class TemplateMatrixRegistry {
 
     /**
      * 版本命名规范校验：{TEMPLATE_ID}_{lang}_v{major}.{minor}.{patch}
+     * ARCH-010 D4：TEMPLATE_ID 与 key 单一源对齐（下划线，如 SYS_001）
      */
     public boolean isValidVersion(String version) {
-        return version != null && version.matches("^[A-Z]{2,5}-\\d{3}_[a-z]{2}-[A-Z]{2}_v\\d+\\.\\d+\\.\\d+$");
+        return version != null && version.matches("^[A-Z]{2,5}_\\d{3}_[a-z]{2}-[A-Z]{2}_v\\d+\\.\\d+\\.\\d+$");
     }
 }
