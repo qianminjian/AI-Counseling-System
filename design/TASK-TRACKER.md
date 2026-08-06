@@ -1,6 +1,6 @@
 # AI 小学生心理辅导系统 - 任务跟踪表
 
-> 创建：2026-07-23 | 更新：2026-08-05（**TEST-006 完成登记（DOC-058）**：前后端契约测试三层防线落地——L1 ContractOpenApiIT 端点全量入文档、L2 gen-openapi-snapshot.sh 快照生成入库、L3 前端契约测试；修复 MoodCheckResult 契约漂移；**冻结专题登记：量表施测接线 frozen/59、商用发布合规与备案 frozen/60、外部服务接入与配置 frozen/61，DEC-006 并入 frozen/41**，相关任务行置 🔒 冻结；**2026-08-05 冻结范围扩展**：P2 商业化（BIZ-004/BIZ-006/BILL-002/BILL-003）归 frozen/38、部署升级（OPS-006/PERF-003/DEP-011~016）归 frozen/42、无状态化（PERF-005/STATE-001~005）归 frozen/40、信创（BIZ-005/DBAD-001~006/RISK-004）归 frozen/41、家长端小程序（AUTH-022/PARENT-WX-001~006）归 frozen/43、量表版权门禁（SCALE-003）归 frozen/34、效果量化 A/B（PROF-020/AB-003）归 frozen/39、design/32 商用发布前置归 frozen/60、M4 里程碑冻结跟踪（前置 frozen/60/61）；**远期规划冻结**：COMP-008（WebAuthn，**2026-08-06 起 AUTH-034 同事项一并冻结，远期再考虑**）、UX-003（多语言）、UX-004（无障碍）、PROF-022（初高中适配）纳入冻结规划；**AI-009（心理量表数字化）2026-08-06 纳入冻结专题管理**（施测接线 frozen/59、版权门禁 frozen/34，计分引擎已开发完成待解冻接线）；**作废登记**：DOC-051（QuickStart 指南）、DEC-004（3 版建设方案主版本确认，决策意义已消失）+ RISK-005 关闭；**状态确认**：AI-007/AI-008/PROF-021/UX-005/ORCH-008 核实完成（代码接线验证）、WAKE-012/33 标注完成、审计缺口统一 P2 级；历史：审计问题清单 A/C/D/E 修复闭环 DOC-055、独立 agent 深度审计 DOC-054、设计文档一致性全面核对 DOC-056（编号消歧，原 DOC-053）、设计文档全面更新 DOC-052、2026-07-28 设计文档整体规整 DOC-025、2026-08-01 §二十五 配置统一纳管、2026-07-29 独立审计校正）；**2026-07-28 DATA-005 方案冻结（frozen/62）**：研究数据脱敏导出（IRB 兼容）方案架构审查定稿并冻结归档——4 深化候选（导出管线/伪名化模块/加密接缝/保留豁免）+ 主 Seam（ExportRequest→ExportResult），DATA-005 两处登记置 🔒 冻结，解冻触发=启动学术合作/IRB 合规流程前；**2026-08-05 doing 子文档合并归档（DOC-059）**：doing/58（O 专题过度设计收敛）分主题并入主文档 03 §2.7/04 §6·§8/06 §3.3/10 §2.6·§2.12，doing/59（前后端契约测试 TEST-006）并入 05 §8.6，两文件归档 design/his/，DESIGN-OVERVIEW v5.2 新增 §2.3 已合并子文档对照、冻结区扩展至 12 份（+59/60/61/62）
+> 创建：2026-07-23 | 更新：2026-08-05（**TEST-006 完成登记（DOC-058）**：前后端契约测试三层防线落地——L1 ContractOpenApiIT 端点全量入文档、L2 gen-openapi-snapshot.sh 快照生成入库、L3 前端契约测试；修复 MoodCheckResult 契约漂移；**冻结专题登记：量表施测接线 frozen/59、商用发布合规与备案 frozen/60、外部服务接入与配置 frozen/61，DEC-006 并入 frozen/41**，相关任务行置 🔒 冻结；**2026-08-05 冻结范围扩展**：P2 商业化（BIZ-004/BIZ-006/BILL-002/BILL-003）归 frozen/38、部署升级（OPS-006/PERF-003/DEP-011~016）归 frozen/42、无状态化（PERF-005/STATE-001~005）归 frozen/40、信创（BIZ-005/DBAD-001~006/RISK-004）归 frozen/41、家长端小程序（AUTH-022/PARENT-WX-001~006）归 frozen/43、量表版权门禁（SCALE-003）归 frozen/34、效果量化 A/B（PROF-020/AB-003）归 frozen/39、design/32 商用发布前置归 frozen/60、M4 里程碑冻结跟踪（前置 frozen/60/61）；**远期规划冻结**：COMP-008（WebAuthn，**2026-08-06 起 AUTH-034 同事项一并冻结，远期再考虑**）、UX-003（多语言）、UX-004（无障碍）、PROF-022（初高中适配）纳入冻结规划；**AI-009（心理量表数字化）2026-08-06 纳入冻结专题管理**（施测接线 frozen/59、版权门禁 frozen/34，计分引擎已开发完成待解冻接线）；**作废登记**：DOC-051（QuickStart 指南）、DEC-004（3 版建设方案主版本确认，决策意义已消失）+ RISK-005 关闭；**状态确认**：AI-007/AI-008/PROF-021/UX-005/ORCH-008 核实完成（代码接线验证）、WAKE-012/33 标注完成、审计缺口统一 P2 级；历史：审计问题清单 A/C/D/E 修复闭环 DOC-055、独立 agent 深度审计 DOC-054、设计文档一致性全面核对 DOC-056（编号消歧，原 DOC-053）、设计文档全面更新 DOC-052、2026-07-28 设计文档整体规整 DOC-025、2026-08-01 §二十五 配置统一纳管、2026-07-29 独立审计校正）；**2026-07-28 DATA-005 方案冻结（frozen/62）**：研究数据脱敏导出（IRB 兼容）方案架构审查定稿并冻结归档——4 深化候选（导出管线/伪名化模块/加密接缝/保留豁免）+ 主 Seam（ExportRequest→ExportResult），DATA-005 两处登记置 🔒 冻结，解冻触发=启动学术合作/IRB 合规流程前；**2026-08-05 doing 子文档合并归档（DOC-059）**：doing/58（O 专题过度设计收敛）分主题并入主文档 03 §2.7/04 §6·§8/06 §3.3/10 §2.6·§2.12，doing/59（前后端契约测试 TEST-006）并入 05 §8.6，两文件归档 design/his/，DESIGN-OVERVIEW v5.2 新增 §2.3 已合并子文档对照、冻结区扩展至 12 份（+59/60/61/62）；**2026-08-06 doing 子文档合并归档（DOC-060）**：his/61~70（ARCH-001~010 深度审计治理系列）全部并入主文档 03/02/04/05/08/09/12（各节落点见 DESIGN-OVERVIEW §2.3），十文件归档 design/his/，doing 区清空仅剩 .gitkeep；主文档版本头同步（03/04 v3.2、02/05/08/09/12 v3.1），DESIGN-OVERVIEW v5.3
 > 
 > 本表用于跟踪项目各阶段任务的进度和责任人。
 
@@ -831,7 +831,7 @@
 | UX-006 | ChatRoom.tsx 拆分（827 行 → useSseStream / useChatSession hooks 抽离） | P2 | 全代码库对标审计 P2-3 | ✅ 已完成（2026-08-05） | ChatRoom 877→714 行，SSE 传输（useSseStream，10 用例）+ 会话编排（useChatSession，14 用例）抽离，行为等价由 ChatRoom.test.tsx 34 用例 + 新 hooks 24 用例保证，student-h5 全量 685 用例绿 + tsc 干净 |
 
 > 说明：
-> 1. 上一轮全代码库对标审计（"明天上线 1 所试点校"标准）其余 P1/P2 项已核实**均已修复**：ErrorBoundary 三端 ✅ / db-backup 定时容器 ✅ / api.ts 类型化（0 处 any）✅ / DEPLOY-GUIDE §十监控启动说明 ✅ / application.yml DEBUG→INFO ✅ / nginx client_max_body_size ✅ / parent-h5 vitest ✅ / ConversationServiceImpl 813→826 行（**2026-08-05 深度审计实测修正：初版记 777 行失实**；改善中，随迭代继续拆分，拆分任务见 ARCH-001 doing/61 与 ARCH-010 doing/70）。
+> 1. 上一轮全代码库对标审计（"明天上线 1 所试点校"标准）其余 P1/P2 项已核实**均已修复**：ErrorBoundary 三端 ✅ / db-backup 定时容器 ✅ / api.ts 类型化（0 处 any）✅ / DEPLOY-GUIDE §十监控启动说明 ✅ / application.yml DEBUG→INFO ✅ / nginx client_max_body_size ✅ / parent-h5 vitest ✅ / ConversationServiceImpl 813→826 行（**2026-08-05 深度审计实测修正：初版记 777 行失实**；改善中，随迭代继续拆分，拆分任务见 ARCH-001 his/61 与 ARCH-010 his/70）。
 > 2. 本次仅登记任务与排序，**未进行任何开发、未做 git 提交**。
 
 ---
@@ -873,26 +873,27 @@ _本表由 Agent 维护，每次任务变更时更新。_
 
 ## 二十八、深度审计回填任务总表（2026-08-05）
 
-> 背景：三域并行只读深度审计（2026-08-05，后端 6 模块 + 前端三端 + 工程化/部署/合规，对照 design/01-12 与台账逐项核验）产出 P0×2 / P1×21 / P2 精选问题清单。钱敏健 2026-08-05 指示：**全部纳入计划，每个任务先完善设计与 SPEC**。本表为审计回填任务的优先级排序单一视图，方案与 SPEC 见 doing/62~70。
+> 背景：三域并行只读深度审计（2026-08-05，后端 6 模块 + 前端三端 + 工程化/部署/合规，对照 design/01-12 与台账逐项核验）产出 P0×2 / P1×21 / P2 精选问题清单。钱敏健 2026-08-05 指示：**全部纳入计划，每个任务先完善设计与 SPEC**。本表为审计回填任务的优先级排序单一视图，方案与 SPEC 见 his/62~70。
 > 优先级判据同 §二十三：**安全/合规 > 对话产品力 > 教师效率 > 学生体验 > 商业化 > 规模化架构**。冻结项（frozen/34~43、58~62、COMP-007/AUTH-033 等）已按审计规则排除不扣分、不在本表。
-> 审计修正事实（2026-08-05 即日闭环）：doing/61 五处断言修正（风险词典 ≥5 份/情绪集合 6 处/裸 fetch 5 处/mock 18 个/toolboxApi 非空壳）；L834 行数失实修正（777→826 实测）。
-> **决策项（2026-07-28 全部闭环）**：D-1 ORCH-006 → 路径 B 删除 ✅；D-6 MEM-103 → 台账修正 3 维 + L207 注释同步 ✅；D-7 MessageSummary → 路径 C 两级摘要（常规 ≤200 字提炼 / L3+ 原文保真，无 schema 变更）✅；D-8 PII → 昵称置换注入（realName→pseudonym，明文不进上下文）✅。决策详情见 doing/64、doing/67。
+> 审计修正事实（2026-08-05 即日闭环）：his/61 五处断言修正（风险词典 ≥5 份/情绪集合 6 处/裸 fetch 5 处/mock 18 个/toolboxApi 非空壳）；L834 行数失实修正（777→826 实测）。
+> **决策项（2026-07-28 全部闭环）**：D-1 ORCH-006 → 路径 B 删除 ✅；D-6 MEM-103 → 台账修正 3 维 + L207 注释同步 ✅；D-7 MessageSummary → 路径 C 两级摘要（常规 ≤200 字提炼 / L3+ 原文保真，无 schema 变更）✅；D-8 PII → 昵称置换注入（realName→pseudonym，明文不进上下文）✅。决策详情见 his/64、his/67。
 
 | 任务ID | 阶段任务 | 优先级 | 来源审计项 | 方案与SPEC | 依赖 | 状态 |
 |--------|----------|--------|-----------|-----------|------|------|
-| ARCH-001 | 对话主链路架构深化（C1 编排拆分：PersonalInfoExtractor + PromptAssemblyService + 主题词单一源） | - | 架构审查第 2 轮（improve-codebase-architecture） | doing/61 | 无 | ✅ C1 已实施（2026-07-28，TDD：3 组件 32 例；主类 844→758 行、僵尸依赖清零；counseling-service 792 绿）；C2~C5 由 ARCH-003/004/005/006 承接 |
-| ARCH-002 | P0 前端缺陷修复（useSilenceNudge 401 刷新 + EmotionSelect localStorage 失败安全） | P0 | P0-1/P0-2 | doing/62 | 无 | ✅ 已实施（2026-07-28，TDD 落地，见 doing/62） |
-| ARCH-007 | 合规与数据安全修复（MessageSummary 两级摘要 + PII 昵称置换 + PIPL 告知链接） | P0 | B-2/B-5/F-5 | doing/67 | 无 | ✅ 已实施（2026-07-28，TDD 落地，见 doing/67） |
-| ARCH-003 | 风险知识单一规则源（RiskKeywordRegistry + EmotionVocabulary + 一致性断言） | P0 安全 | B-3 | doing/63 | 无 | ✅ 已实施（TDD 全绿，见 doing/63） |
-| ARCH-004 | 假功能与死代码清理（ORCH-006 路径 B + 7 处僵尸 API + 台账对齐） | P1 | B-1/B-6/B-7 + P2-1 + OVD-1/3 | doing/64 | 无 | ✅ 实施完成（2026-08-06，见 doing/64 §8） |
-| ARCH-005 | 前端 API/SSE 接缝收敛（SSE 单点 + 5 端点收口 + 契约 23+ + 同意 key 统一） | P1 | F-1/F-2/F-3/F-9 | doing/65 | ARCH-002 | ✅ 实施完成（2026-08-06，见 doing/65 §8） |
-| ARCH-006 | ChatRoom 语音编排抽取（useVoiceInputPipeline + 单例/去重收敛 + 测试黑盒化） | P1 | F-4 + P2-6/7/8 + OVD-5 | doing/66 | ARCH-005 | ✅ 已完成（2026-07-28 07:10，全量回归 788 例，见 doing/66） |
-| ARCH-008 | 教师端/家长端加固（authFetch 统一 + 契约防线 + CSP + token 策略） | P1 | F-6/F-7/F-8 + P2-9/10/12/13 + OVD-6 | doing/68 | 无 | ✅ 已完成（2026-08）：authFetch 移植（9 例）+ teacher-web api.ts 6 处改造 / 契约防线清单测试（teacher 38 + parent 9）/ CSP 配置断言 + token 策略文档化 / console.info 归零 + BigScreen 错误态 + 设计 token 对齐（OVD-6 评估） |
-| ARCH-009 | 工程化与发布门禁（pytest 入 CI + 覆盖率 80% + 面板台账 + 回滚演练 + 模型自动化 + parent-h5 lint） | P1 | E-1~E-5 + lint | doing/69 | 无（CI/CD 改动须授权） | ✅ 已完成（2026-08-06）：E-1 pytest 入 CI / E-2 teacher-web 覆盖率 89.99% + 阈值 80 / E-3 TTS 面板已删 + OD-013 修正 / E-4 V01~V27 清单 + V34+ 强制 down（DEPLOY-GUIDE §九）/ E-5 模型投放自动化（manifest 校验和 + --verify 门禁 + 修复发布缺模型缺陷）/ parent-h5 补 oxlint（存量 2 warning 待分批清理） |
-| ARCH-010 | 后端代码质量清理（JSON 统一 + Redis key 租户前缀 + 异常可观测 + 模板路由 + closeSession 下线） | P2 | P2-2/4/5 + B-4 + OVD-2/4 | doing/70 | ARCH-003（魔法数引用） | ✅ 已完成（2026-08-06，TDD）：D1 JSON 统一（ObjectMapper 单例 + AliyunSmsService 报文改造）/ D2 Redis key 租户前缀双写迁移 / D3 四路失败 counter（补 memory/evaluation）/ D4 chatProactive 走版本路由 + key 单一源（SYS_001 统一，双表 14 key 一致）/ D5 closeSession 旧接口 TTL 到期下线（API_GONE 410）+ 前端 fallback 删除；后端 1577 用例 + student-h5 787 用例全绿 |
+| ARCH-001 | 对话主链路架构深化（C1 编排拆分：PersonalInfoExtractor + PromptAssemblyService + 主题词单一源） | - | 架构审查第 2 轮（improve-codebase-architecture） | his/61 | 无 | ✅ C1 已实施（2026-07-28，TDD：3 组件 32 例；主类 844→758 行、僵尸依赖清零；counseling-service 792 绿）；C2~C5 由 ARCH-003/004/005/006 承接 |
+| ARCH-002 | P0 前端缺陷修复（useSilenceNudge 401 刷新 + EmotionSelect localStorage 失败安全） | P0 | P0-1/P0-2 | his/62 | 无 | ✅ 已实施（2026-07-28，TDD 落地，见 his/62） |
+| ARCH-007 | 合规与数据安全修复（MessageSummary 两级摘要 + PII 昵称置换 + PIPL 告知链接） | P0 | B-2/B-5/F-5 | his/67 | 无 | ✅ 已实施（2026-07-28，TDD 落地，见 his/67） |
+| ARCH-003 | 风险知识单一规则源（RiskKeywordRegistry + EmotionVocabulary + 一致性断言） | P0 安全 | B-3 | his/63 | 无 | ✅ 已实施（TDD 全绿，见 his/63） |
+| ARCH-004 | 假功能与死代码清理（ORCH-006 路径 B + 7 处僵尸 API + 台账对齐） | P1 | B-1/B-6/B-7 + P2-1 + OVD-1/3 | his/64 | 无 | ✅ 实施完成（2026-08-06，见 his/64 §8） |
+| ARCH-005 | 前端 API/SSE 接缝收敛（SSE 单点 + 5 端点收口 + 契约 23+ + 同意 key 统一） | P1 | F-1/F-2/F-3/F-9 | his/65 | ARCH-002 | ✅ 实施完成（2026-08-06，见 his/65 §8） |
+| ARCH-006 | ChatRoom 语音编排抽取（useVoiceInputPipeline + 单例/去重收敛 + 测试黑盒化） | P1 | F-4 + P2-6/7/8 + OVD-5 | his/66 | ARCH-005 | ✅ 已完成（2026-07-28 07:10，全量回归 788 例，见 his/66） |
+| ARCH-008 | 教师端/家长端加固（authFetch 统一 + 契约防线 + CSP + token 策略） | P1 | F-6/F-7/F-8 + P2-9/10/12/13 + OVD-6 | his/68 | 无 | ✅ 已完成（2026-08）：authFetch 移植（9 例）+ teacher-web api.ts 6 处改造 / 契约防线清单测试（teacher 38 + parent 9）/ CSP 配置断言 + token 策略文档化 / console.info 归零 + BigScreen 错误态 + 设计 token 对齐（OVD-6 评估） |
+| ARCH-009 | 工程化与发布门禁（pytest 入 CI + 覆盖率 80% + 面板台账 + 回滚演练 + 模型自动化 + parent-h5 lint） | P1 | E-1~E-5 + lint | his/69 | 无（CI/CD 改动须授权） | ✅ 已完成（2026-08-06）：E-1 pytest 入 CI / E-2 teacher-web 覆盖率 89.99% + 阈值 80 / E-3 TTS 面板已删 + OD-013 修正 / E-4 V01~V27 清单 + V34+ 强制 down（DEPLOY-GUIDE §九）/ E-5 模型投放自动化（manifest 校验和 + --verify 门禁 + 修复发布缺模型缺陷）/ parent-h5 补 oxlint（存量 2 warning 待分批清理） |
+| ARCH-010 | 后端代码质量清理（JSON 统一 + Redis key 租户前缀 + 异常可观测 + 模板路由 + closeSession 下线） | P2 | P2-2/4/5 + B-4 + OVD-2/4 | his/70 | ARCH-003（魔法数引用） | ✅ 已完成（2026-08-06，TDD）：D1 JSON 统一（ObjectMapper 单例 + AliyunSmsService 报文改造）/ D2 Redis key 租户前缀双写迁移 / D3 四路失败 counter（补 memory/evaluation）/ D4 chatProactive 走版本路由 + key 单一源（SYS_001 统一，双表 14 key 一致）/ D5 closeSession 旧接口 TTL 到期下线（API_GONE 410）+ 前端 fallback 删除；后端 1577 用例 + student-h5 787 用例全绿 |
 
 > 说明：
 > 1. 本表任务已全部实施完成（2026-07-28 ~ 2026-08-06，各任务状态列见上；ARCH-001 C1 于 2026-07-28 落地，C2~C5 随对应 ARCH 任务承接）；实施顺序：ARCH-002 → ARCH-007 → ARCH-003/004（可并行）→ ARCH-005 → ARCH-006 → ARCH-008/009（可并行）→ ARCH-010，另 ARCH-001 C1 独立完成。
 > 2. OD-013（§二十七）「TTS 空面板已删」登记与 llm-performance.json 现状矛盾（仍有 2 个 TTS 面板查不存在的 mindsafe_tts_* 指标），已由 ARCH-009 修复（面板删除 + 台账修正，2026-08-06）；TTS 可观测性缺口登记已知项。
 > 3. 审计结论（综合 5.9/10 悲观口径）：**骨架健康、安全扎实、注释诚实，但「设计先行、实现脱节」系统性惯性仍在**——虚化面（ORCH-006/MEM-103/7 处僵尸 API）与前端接缝（SSE/契约/401）是发布就绪最大真实风险；P0 两项 + B-1/B-5 + F-1/F-3 为下一迭代强制回填项。
-> 4. 审计全文为会话内交付（未落库）；证据链与逐项评分见深度审计报告（2026-08-05，doing/62~70 各文档头部引用对应审计项）。
+> 4. 审计全文为会话内交付（未落库）；证据链与逐项评分见深度审计报告（2026-08-05，his/62~70 各文档头部引用对应审计项）。
+> 5. **DOC-060 登记**（2026-08-06）：doing/61~70 ARCH-001~010 方案与 SPEC 全部并入主文档——03 §4.1.1（ARCH-001）/§2.7.1（ARCH-002/005）/§2.3.1（ARCH-006）/§2.5.1（ARCH-008）/§3.1·§4.2.1·§5.2.1（ARCH-004/010）、09 §5.5.1·§5.9·§3.12（ARCH-003/010）、05 §1.2·§8.6.1（ARCH-008/009/005）、08 §2.5·§4.1（ARCH-007/008）、02 §7.2.1（ARCH-007）、12 §八（ARCH-007）、04 §5.5（ARCH-009）；十文件归档 design/his/（只读溯源），doing 区清空；DESIGN-OVERVIEW v5.3 §2.3 对照表 +10 行；本表「方案与SPEC」列引用同步改为 his/6X。
