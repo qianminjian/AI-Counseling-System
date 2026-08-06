@@ -25,6 +25,9 @@ export default defineConfig({
         'dist/**',
         'vitest.config.js',
         'vite.config.js',
+        // api.ts 被所有组件测试 vi.mock 替换（vitest 4 起不再失真、直接计入统计），
+        // 其契约已由 src/test/apiContract.test.ts + authFetch 测试单独覆盖，排除避免双重口径
+        'src/api.ts',
       ],
       // 审计 P1-11 + ARCH-009 E-2：覆盖率门禁（CI test:coverage 强制）
       // 2026-08 补测后实测：lines 89.99 / branches 82.24 / functions 66.48 / statements 89.99
