@@ -4,7 +4,7 @@
 >
 > 状态：🟩 已实施（代码+测试+配置，2026-08-06 13:35）｜ 编号：doing/63（接续 doing/59 后独立编号）｜ 创建：2026-08-06
 >
-> 实施记录：counseling-ai 全量 65 用例绿（AiConfigTest 2 + LlmExtraBodyConfigTest 8）；counseling-domain 59 / counseling-service 314 / counseling-app 9 全绿；3 份 compose `config` 校验通过；`DeepSeekThinkingConfig` 已删除（LLM-GEN-009）；DEP-001 修复随同落地（见 doing/65）。运行时冒烟（§6.2-2~4）待部署环境执行。
+> 实施记录：counseling-ai 全量 65 用例绿（AiConfigTest 2 + LlmExtraBodyConfigTest 8）；counseling-domain 59 / counseling-service 314 / counseling-app 9 全绿；3 份 compose `config` 校验通过；`DeepSeekThinkingConfig` 已删除（LLM-GEN-009）；DEP-001 修复随同落地（见 doing/65）。运行时冒烟已随新老套切换完成（2026-08-06 生产验证）：新套 backend 日志确认「主=[deepseek-v4-pro] 备=[MiniMax-M3]」，SSE 对话流式回复真实调用主模型成功。
 
 ---
 
