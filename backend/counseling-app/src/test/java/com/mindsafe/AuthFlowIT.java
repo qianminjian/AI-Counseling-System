@@ -20,13 +20,13 @@ import static org.assertj.core.api.Assertions.assertThat;
  * <p>
  * 对齐当前 API（design/22 试用注册 + Spring Security JWT）：
  * 1. 试用注册（DEMO2026 邀请码 + 昵称 + 年龄 + 监护人手机号 + 同意版本 v0.1）→ 返回 JWT
- * 2. 无效邀请码 → 业务失败（HTTP 200 + success=false）
- * 3. 不满 14 周岁缺监护人手机号 → CONSENT_REQUIRED（HTTP 200 + success=false）
+ * 2. 无效邀请码 → 400 BAD_REQUEST（body.code=20004）
+ * 3. 不满 14 周岁缺监护人手机号 → 403 FORBIDDEN（body.code=20003 CONSENT_REQUIRED）
  * 4. 持 token 访问 /auth/me → 成功
  * 5. 未认证访问 /sessions → 4xx（无自定义 EntryPoint，默认 403）
  * 6. 学生访问 /admin/** → 403
  * <p>
- * 错误模型约定：业务异常 BizException → HTTP 200（错误在 body.success/code）；
+ * 错误模型约定（AUD-015）：业务异常 BizException → 按 ErrorCode 映射 4xx/5xx（错误在 body.code）；
  * 安全拦截（未认证/无权限）→ HTTP 状态码（403）。
  */
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
@@ -81,9 +81,10 @@ class AuthFlowIT extends AbstractIntegrationTest {
                 registerBody("INVALID999", "集成小红", "13800138001"),
                 String.class);
 
-        assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         JsonNode body = objectMapper.readTree(resp.getBody());
         assertThat(body.get("success").asBoolean()).isFalse();
+        assertThat(body.get("code").asInt()).isEqualTo(20004);
     }
 
     @Test
@@ -94,9 +95,10 @@ class AuthFlowIT extends AbstractIntegrationTest {
                 registerBody("DEMO2026", "集成小刚", null),
                 String.class);
 
-        assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
         JsonNode body = objectMapper.readTree(resp.getBody());
         assertThat(body.get("success").asBoolean()).isFalse();
+        assertThat(body.get("code").asInt()).isEqualTo(20003);
     }
 
     @Test
