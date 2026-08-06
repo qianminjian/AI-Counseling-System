@@ -97,6 +97,14 @@ class TestConfigStructure:
             for field in required:
                 assert field in persona, f"{key} 缺 {field}"
 
+    def test_persona_gender_valid(self, config):
+        """AUD-006：gender 字段存在时必须为 female/male（qiqiu 无明确性别可缺省）"""
+        for key, persona in config["voice_personas"].items():
+            if "gender" in persona:
+                assert persona["gender"] in ("female", "male"), f"{key} gender 非法"
+            else:
+                assert key == "qiqiu", f"{key} 缺 gender（仅 qiqiu 可缺省）"
+
     def test_eight_dialects(self, config):
         """默认配置包含 8 种方言"""
         assert len(config["dialects"]) == 8

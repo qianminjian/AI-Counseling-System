@@ -105,14 +105,14 @@ _DEFAULT_CONFIG = {
         "edge_fallback": True,
     },
     "voice_personas": {
-        "xiaoxing": {"name": "小星", "desc": "温暖的邻家姐姐", "speed": 1.0, "dashscope_voice": "longxing_v3", "edge_voice": "zh-CN-XiaoxiaoNeural", "dialect_capable": False, "emotion_capable": False},
-        "bobo": {"name": "波波老师", "desc": "温柔的女老师", "speed": 0.95, "dashscope_voice": "longyingling_v3", "edge_voice": "zh-CN-XiaohanNeural", "dialect_capable": False, "emotion_capable": False},
-        "yueliang": {"name": "月亮", "desc": "轻声讲故事", "speed": 0.92, "dashscope_voice": "longwan_v3", "edge_voice": "zh-CN-XiaohanNeural", "dialect_capable": False, "emotion_capable": False},
-        "xiaotaiyang": {"name": "小太阳", "desc": "阳光大哥哥", "speed": 1.05, "dashscope_voice": "longanyang", "edge_voice": "zh-CN-YunxiNeural", "dialect_capable": False, "emotion_capable": True},
-        "dashu": {"name": "大树", "desc": "暖心大叔", "speed": 0.95, "dashscope_voice": "longanyun_v3", "edge_voice": "zh-CN-YunyangNeural", "dialect_capable": False, "emotion_capable": False},
-        "doudou": {"name": "豆豆", "desc": "同龄小伙伴", "speed": 1.05, "dashscope_voice": "longjielidou_v3", "edge_voice": "zh-CN-YunxiaNeural", "dialect_capable": False, "emotion_capable": False},
+        "xiaoxing": {"name": "小星", "desc": "温暖的邻家姐姐", "gender": "female", "speed": 1.0, "dashscope_voice": "longxing_v3", "edge_voice": "zh-CN-XiaoxiaoNeural", "dialect_capable": False, "emotion_capable": False},
+        "bobo": {"name": "波波老师", "desc": "温柔的女老师", "gender": "female", "speed": 0.95, "dashscope_voice": "longyingling_v3", "edge_voice": "zh-CN-XiaohanNeural", "dialect_capable": False, "emotion_capable": False},
+        "yueliang": {"name": "月亮", "desc": "轻声讲故事", "gender": "female", "speed": 0.92, "dashscope_voice": "longwan_v3", "edge_voice": "zh-CN-XiaohanNeural", "dialect_capable": False, "emotion_capable": False},
+        "xiaotaiyang": {"name": "小太阳", "desc": "阳光大哥哥", "gender": "male", "speed": 1.05, "dashscope_voice": "longanyang", "edge_voice": "zh-CN-YunxiNeural", "dialect_capable": False, "emotion_capable": True},
+        "dashu": {"name": "大树", "desc": "暖心大叔", "gender": "male", "speed": 0.95, "dashscope_voice": "longanyun_v3", "edge_voice": "zh-CN-YunyangNeural", "dialect_capable": False, "emotion_capable": False},
+        "doudou": {"name": "豆豆", "desc": "同龄小伙伴", "gender": "male", "speed": 1.05, "dashscope_voice": "longjielidou_v3", "edge_voice": "zh-CN-YunxiaNeural", "dialect_capable": False, "emotion_capable": False},
         "qiqiu": {"name": "方言", "desc": "方言伙伴", "speed": 1.05, "dashscope_voice": "longanhuan_v3", "edge_voice": "zh-CN-XiaoyiNeural", "dialect_capable": True, "emotion_capable": False},
-    },
+    },  # AUD-006：gender 由 persona 配置推导（qiqiu 无明确性别可缺省）
     "dialects": {
         "cantonese": {"label": "粤语", "mode": "native", "edge_voice": None},
         "minnan": {"label": "闽南话", "mode": "native", "edge_voice": None},
@@ -227,7 +227,7 @@ EMOTION_INSTRUCT_MAP = _CONFIG["emotion_instruct_map"]
 
 
 def build_instruction(persona_cfg: dict, dialect: Optional[str], emotion: str,
-                      persona_gender: str = "female", **kwargs) -> tuple[Optional[str], Optional[str]]:
+                      persona_gender: Optional[str] = None, **kwargs) -> tuple[Optional[str], Optional[str]]:
     """
     构建 Instruct 指令 + 实际使用的 voice。
     返回 (instruction, override_voice)：
@@ -322,9 +322,11 @@ async def synthesize(req: TtsRequest):
     final_speed = persona_cfg["speed"] * req.speed
 
     # 构建 Instruct 指令 + 原生方言音色覆盖（v4：自动识别原生方言，无需 language_mode）
+    # AUD-006：persona_gender 由 persona 配置（config.yaml gender 字段）传入，不再硬编码女声；
+    # 无 gender 字段（如 qiqiu）时原生方言场景按 native_dialect_voices 首项兜底
     instruction, override_voice = build_instruction(
         persona_cfg, req.dialect, req.emotion,
-        persona_gender="female",  # qiqiu（方言载体）为女声
+        persona_gender=persona_cfg.get("gender"),
     )
     actual_voice = override_voice or persona_cfg["dashscope_voice"]
 

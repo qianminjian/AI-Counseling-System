@@ -18,6 +18,7 @@ import threading
 import os
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from contextlib import asynccontextmanager
 
 import numpy as np
 import soundfile as sf
@@ -50,7 +51,20 @@ if ASR_ENGINE not in ("funasr", "dashscope"):
 if ASR_ENGINE == "dashscope" and not DASHSCOPE_API_KEY:
     raise ValueError("ASR_ENGINE=dashscope 时 DASHSCOPE_API_KEY 不能为空")
 
-app = FastAPI(title="MindSafe Voice Analysis", version="2.1.0")
+# ===== 分析线程池（AUD-016：进程级单例，避免每请求新建/销毁线程；退出时由 lifespan 回收） =====
+# max_workers=4：ASR/SER 均以 CPU 推理为主（funasr/SER 本地模型），过多线程反而抢 CPU；
+# 单例池让并发请求共享线程，省去每请求创建/销毁开销
+_ANALYZE_EXECUTOR = ThreadPoolExecutor(max_workers=4, thread_name_prefix="voice-analyze")
+
+
+@asynccontextmanager
+async def _lifespan(_: FastAPI):
+    """AUD-016：应用退出时回收分析线程池（不再每请求 shutdown）"""
+    yield
+    _ANALYZE_EXECUTOR.shutdown(wait=False, cancel_futures=True)
+
+
+app = FastAPI(title="MindSafe Voice Analysis", version="2.1.0", lifespan=_lifespan)
 
 # ===== Prometheus 指标（P1-10：手写文本格式，零新增依赖，供监控栈 internal 网络抓取） =====
 _METRICS_LOCK = threading.Lock()
@@ -285,15 +299,18 @@ async def analyze_voice(file: UploadFile = File(...)):
 
         if emotion_model is not None:
             # ASR 和 SER 并行（ASR 可能是网络IO或CPU，SER 是CPU，并行提升响应速度）
-            # P1-DEP：result(timeout) 防挂死；显式 shutdown(wait=False) 避免 with 退出时 join 挂死线程
-            executor = ThreadPoolExecutor(max_workers=2)
+            # P1-DEP：result(timeout) 防挂死 → 外层 except TimeoutError 返回 504
+            # AUD-016：复用进程级单例线程池 _ANALYZE_EXECUTOR（不再每请求新建/销毁）；
+            # 超时后 future.cancel()（Python 线程不可强停，但可阻止排队任务启动并释放引用）
+            asr_future = _ANALYZE_EXECUTOR.submit(asr_fn, wav_path)
+            ser_future = _ANALYZE_EXECUTOR.submit(_funasr_ser, wav_path)
             try:
-                asr_future = executor.submit(asr_fn, wav_path)
-                ser_future = executor.submit(_funasr_ser, wav_path)
                 text = asr_future.result(timeout=VOICE_ANALYZE_TIMEOUT)
                 emotion = ser_future.result(timeout=VOICE_ANALYZE_TIMEOUT)
-            finally:
-                executor.shutdown(wait=False, cancel_futures=True)
+            except TimeoutError:
+                asr_future.cancel()
+                ser_future.cancel()
+                raise
         else:
             text = asr_fn(wav_path)
             emotion = EmotionResult(label="中性", label_en="neutral", confidence=0.0, scores=[0.0] * 9)

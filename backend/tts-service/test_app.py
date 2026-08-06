@@ -207,6 +207,27 @@ class TestBuildInstruction:
         assert instruction is None  # 原生音色无需 instruction
         assert voice == "longanyue_v3"  # 粤语男声
 
+    def test_persona_gender_default_none(self, mock_dashscope):
+        """AUD-006：persona_gender 默认值为 None（不硬编码女声）"""
+        cfg = mock_dashscope.VOICE_PERSONAS["qiqiu"]
+        # 不传 persona_gender → 按 native_dialect_voices 首项兜底（粤语 female=longjiayi_v3）
+        instruction, voice = mock_dashscope.build_instruction(cfg, "cantonese", "neutral")
+        assert instruction is None
+        assert voice == "longjiayi_v3"  # 兜底到首项，而非代码层默认女声
+
+    def test_synthesize_passes_persona_gender(self, client, mock_dashscope, monkeypatch):
+        """AUD-006：synthesize 按 persona 配置传 gender，不再硬编码 female"""
+        captured = {}
+
+        def fake_build_instruction(persona_cfg, dialect, emotion, **kwargs):
+            captured["persona_gender"] = kwargs.get("persona_gender")
+            return None, None
+
+        monkeypatch.setattr(mock_dashscope, "build_instruction", fake_build_instruction)
+        resp = client.post("/api/v1/tts/synthesize", json={"text": "你好", "persona": "dashu"})
+        assert captured.get("persona_gender") == "male"  # dashu 配置 gender=male
+        assert resp.status_code != 422
+
     def test_no_dialect_no_emotion(self, mock_dashscope):
         """无方言无情感 → 无指令"""
         cfg = mock_dashscope.VOICE_PERSONAS["xiaoxing"]

@@ -12,6 +12,7 @@ voice_personas:
   xiaoxing:
     name: "小星"
     desc: "温暖的邻家姐姐"
+    gender: female
     speed: 1.0
     dashscope_voice: "longxing_v3"
     edge_voice: "zh-CN-XiaoxiaoNeural"
@@ -20,6 +21,7 @@ voice_personas:
   bobo:
     name: "波波老师"
     desc: "温柔的女老师"
+    gender: female
     speed: 0.95
     dashscope_voice: "longyingling_v3"
     edge_voice: "zh-CN-XiaohanNeural"
@@ -28,6 +30,7 @@ voice_personas:
   yueliang:
     name: "月亮"
     desc: "轻声讲故事"
+    gender: female
     speed: 0.92
     dashscope_voice: "longwan_v3"
     edge_voice: "zh-CN-XiaohanNeural"
@@ -36,6 +39,7 @@ voice_personas:
   xiaotaiyang:
     name: "小太阳"
     desc: "阳光大哥哥"
+    gender: male
     speed: 1.05
     dashscope_voice: "longanyang"
     edge_voice: "zh-CN-YunxiNeural"
@@ -44,6 +48,7 @@ voice_personas:
   dashu:
     name: "大树"
     desc: "暖心大叔"
+    gender: male
     speed: 0.95
     dashscope_voice: "longanyun_v3"
     edge_voice: "zh-CN-YunyangNeural"
@@ -52,6 +57,7 @@ voice_personas:
   doudou:
     name: "豆豆"
     desc: "同龄小伙伴"
+    gender: male
     speed: 1.05
     dashscope_voice: "longjielidou_v3"
     edge_voice: "zh-CN-YunxiaNeural"
@@ -60,6 +66,7 @@ voice_personas:
   qiqiu:
     name: "方言"
     desc: "方言伙伴"
+    # 无明确性别：原生方言场景由 build_instruction 按 native_dialect_voices 首项兜底（AUD-006）
     speed: 1.05
     dashscope_voice: "longanhuan_v3"
     edge_voice: "zh-CN-XiaoyiNeural"
