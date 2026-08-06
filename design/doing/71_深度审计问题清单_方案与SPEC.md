@@ -1,6 +1,7 @@
 # doing/71 深度审计问题清单（方案与 SPEC）
 
 > 编号：DOC-061 | 创建：2026-08-06 | 状态：⏳ 待处理（问题清单已定稿，修复任务后续统一排期实施）
+> 进度：**批次 A/B/C ✅ 完成（2026-08-06）**；**批次 D ✅ 完成（2026-08-06，AUD-063~071 清理 + AUD-060~062 议决，见 §7/§8）**；剩余批次 E（AUD-041~059 P3 收尾）待排期
 > 来源：独立架构深度审计（4 路并行 agent 交叉印证：后端 / 前端三端 / 工程化部署 / 设计一致性）
 > 审计基线：develop @ 27ad409（design 合并归档完成后），工作区干净
 > 关联：ARCH-001~010 治理系列（his/61~70，本审计为其延续轮次）；frozen/38 计费套餐、frozen/62 数据脱敏导出
@@ -200,6 +201,13 @@
 ## §7 过度设计质疑（保留项，供后续统一议决）
 
 > 已移除：声纹免密登录系统（§2 裁决，非过度设计，后续默认本地模式）；EntitlementFilter 套餐矩阵（frozen/38 冻结，不纳入当前分析）。
+> **批次 D 议决记录（2026-08-06，钱敏健确认方向）**：
+
+| 项 | 议决 | 落点 |
+|---|---|---|
+| AUD-060 双部署通道 | **CD 为主，deploy.sh 仅限紧急热修**（CD 不可用或需绕过镜像构建直接源码重建时用）；不冻结 deploy.sh（紧急热修通道保留，2026-08-06 实战验证有效） | DEPLOY-GUIDE Step 7 第 3 点已改述 |
+| AUD-061 备份三层 | **保留不收敛**——儿童数据合规 + PIPL 合理成本；真正缺口 cron 接线已由 AUD-032 关闭（setup-server.sh 幂等写入 crontab，02:00 每日触发，backup.sh 内部分层保留） | setup-server.sh §6；恢复演练指引见 DEPLOY-GUIDE「备份与恢复」 |
+| AUD-062 声纹双模式 | **remote 链路保留（已加固）**——AUD-001 修复后不再有跨租户面（租户维度强制 + 阈值对齐 0.70 + 指纹限流）；local 为默认模式，双模式并存是特性非维护负担；后续若 remote 长期零用量再议收敛 | AUD-001 修复（VoiceprintController，工作区） |
 
 ### AUD-060【质疑】deploy.sh 与 cd.yml 双部署通道
 
@@ -218,17 +226,19 @@
 
 ## §8 僵死/僵尸代码清单（后续统一清理任务）
 
-| 编号 | 项 | 位置 | 判定 |
-|---|---|---|---|
-| AUD-063 | RecurrenceCalculator | counseling-service/.../assessment/ | **零生产调用且不在台账暂缓清单（台账失实项）**——补登记并移除或显式冻结 |
-| AUD-064 | assessment 包其余 3 类（AssessmentScoringEngine/BuiltinScales/ScoringResult） | 同上 | 零调用，已登记「保留·暂缓」属已知项（frozen/59 施测接线），与本表 063 区分 |
-| AUD-065 | storage.ts 安全封装（readLocalStorageSafe/writeLocalStorageSafe） | student-h5/src/utils/storage.ts | 建而未用（仅测试引用），ThemeProvider/ConsentKeys 仍裸用 localStorage——接入或删除 |
-| AUD-066 | LoginPage 动态 import 重复 | LoginPage.tsx L311/L357 | `await import('../api')` 与顶层静态 import 重复，无分 chunk 收益 |
-| AUD-067 | wakeWord.ts 过时注释 | student-h5/src/config/wakeWord.ts L22-24 | 「现回退 hf-mirror」与代码值 SAME_ORIGIN 矛盾，误导排障 |
-| AUD-068 | scripts/archive/ 空目录 | scripts/archive/ | DOC-055/04 §12.12 声称已删 7 个一次性脚本，空目录残留 |
-| AUD-069 | tts-service/wheels/（44 文件） | backend/tts-service/wheels/ | 已被 gitignore（不入库），OD-012 已裁决在线安装，工作区残留 |
-| AUD-070 | tmp/*.patch（14 个） | tmp/ | 历史修复补丁，gitignore 拦截不入库，可归档清理 |
-| AUD-071 | tests/e2e/node_modules、playwright-report/、test-results/ | tests/e2e/ | 本地运行残留（未跟踪），保持工作区干净 |
+> **批次 D 清理状态（2026-08-06）**：全部 9 项已闭环——代码类已处理（冻结登记/安全封装/注释修正），文件系统类已验证无残留。
+
+| 编号 | 项 | 位置 | 判定 | 批次 D 处置 |
+|---|---|---|---|---|
+| AUD-063 | RecurrenceCalculator | counseling-service/.../assessment/ | **零生产调用且不在台账暂缓清单（台账失实项）**——补登记并移除或显式冻结 | ✅ 显式冻结（类注释标注冻结期禁删禁加调用）+ 台账补登记（03 §4.2.1） |
+| AUD-064 | assessment 包其余 3 类（AssessmentScoringEngine/BuiltinScales/ScoringResult） | 同上 | 零调用，已登记「保留·暂缓」属已知项（frozen/59 施测接线），与本表 063 区分 | ✅ 确认已登记，无动作 |
+| AUD-065 | storage.ts 安全封装（readLocalStorageSafe/writeLocalStorageSafe） | student-h5/src/utils/storage.ts | 建而未用（仅测试引用），ThemeProvider/ConsentKeys 仍裸用 localStorage——接入或删除 | ✅ 全量接入：api.ts/ThemeProvider（批次前）+ VoiceConsentDialog/VoiceCallConsentDialog/WelcomeGuide/RelaxationExercises/useVoicePersona（本批）；生产代码裸 localStorage 清零（已有 try/catch 的 useWakeEnabled/voiceprintStore/DraggableVoiceButton 保持） |
+| AUD-066 | LoginPage 动态 import 重复 | LoginPage.tsx L311/L357 | `await import('../api')` 与顶层静态 import 重复，无分 chunk 收益 | ✅ 已删除（顶层静态 import 保留）；**回归修复**：删除时解构别名 st/srt/su 与 setPin 均被静态 import 或局部 useState setter 遮蔽——PIN 从未真正提交（tsc + 全量测试发现），已改 `setToken/setRefreshToken/setUser` + `setPin as apiSetPin` 别名，LoginPage 39 测试全绿 |
+| AUD-067 | wakeWord.ts 过时注释 | student-h5/src/config/wakeWord.ts L22-24 | 「现回退 hf-mirror」与代码值 SAME_ORIGIN 矛盾，误导排障 | ✅ 注释重写（当前固定 SAME_ORIGIN，勿回退镜像源） |
+| AUD-068 | scripts/archive/ 空目录 | scripts/archive/ | DOC-055/04 §12.12 声称已删 7 个一次性脚本，空目录残留 | ✅ 验证目录已不存在，无残留 |
+| AUD-069 | tts-service/wheels/（44 文件） | backend/tts-service/wheels/ | 已被 gitignore（不入库），OD-012 已裁决在线安装，工作区残留 | ✅ 验证目录已不存在，无残留 |
+| AUD-070 | tmp/*.patch（14 个） | tmp/ | 历史修复补丁，gitignore 拦截不入库，可归档清理 | ✅ 验证无 *.patch 残留 |
+| AUD-071 | tests/e2e/node_modules、playwright-report/、test-results/ | tests/e2e/ | 本地运行残留（未跟踪），保持工作区干净 | ✅ 验证不存在，无残留 |
 
 ---
 
