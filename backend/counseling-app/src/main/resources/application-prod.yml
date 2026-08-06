@@ -66,7 +66,9 @@ mindsafe:
     fallback:
       enabled: true
       base-url: https://dashscope.aliyuncs.com/compatible-mode/v1
-      api-key: ${DASHSCOPE_API_KEY}
+      # P2 拆分（2026-08-06）：fallback LLM 不再复用 DASHSCOPE_API_KEY（TTS/ASR 专用），
+      # 改读 LLM_FALLBACK_API_KEY 以满足最小权限（key 泄露面隔离 / 权限独立可吊销）
+      api-key: ${LLM_FALLBACK_API_KEY:}
       model: qwen-plus
   alert:
     wecom:

@@ -57,7 +57,9 @@ services:
       LLM_API_KEY: ${LLM_API_KEY}
       LLM_BASE_URL: ${LLM_BASE_URL:-https://api.deepseek.com}
       LLM_MODEL: ${LLM_MODEL:-deepseek-v4-flash}
-      DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:-}
+      # LLM 降级供应商 key（与 TTS/ASR 的 DASHSCOPE_API_KEY 拆分，P2 最小权限设计，2026-08-06）
+      LLM_FALLBACK_API_KEY: ${LLM_FALLBACK_API_KEY:-}
+      # DASHSCOPE_API_KEY 仅 TTS/ASR 消费，backend 容器不再传递（避免 key 复用面过大）
       MINDSAFE_JWT_SECRET: ${JWT_SECRET}
       MINDSAFE_ENCRYPTION_KEY: ${ENCRYPTION_KEY}
       MINDSAFE_ENCRYPTION_KEY_VERSION: ${ENCRYPTION_KEY_VERSION:-1}
