@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { FormEvent, ChangeEvent } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router'
 import { parentRegister, parentLogin } from '../../api/index'
 import type { AuthResult } from '../../api/index'
 import { setToken, setRefreshToken, setUser, isAuthenticated } from '../../utils/auth'

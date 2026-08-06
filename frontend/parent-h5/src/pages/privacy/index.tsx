@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom'
+import { Link } from 'react-router'
 
 /**
  * 个人信息保护告知页（F-5，2026-07-28）

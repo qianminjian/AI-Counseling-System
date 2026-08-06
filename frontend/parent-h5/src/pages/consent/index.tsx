@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router'
 import { withdrawConsent } from '../../api/index'
 import { getUser } from '../../utils/auth'
 import type { ChildInfo } from '../../utils/auth'

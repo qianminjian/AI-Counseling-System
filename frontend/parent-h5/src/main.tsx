@@ -1,5 +1,5 @@
 import { createRoot } from 'react-dom/client'
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router'
 import type { ReactNode } from 'react'
 import VerifyPage from './pages/verify/index'
 import ReportPage from './pages/report/index'
