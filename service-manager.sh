@@ -26,8 +26,9 @@ HEALTH_POLL_INTERVAL=5
 HEALTH_MAX_POLLS=12  # 每个服务最多等 60s
 
 # 健康检查需要的密钥变量（仅按需加载 REDIS_PASSWORD，其他变量不暴露给本脚本环境）
-if [ -f /guju/mindsafe/.env ]; then
-  REDIS_PASSWORD=$(grep '^REDIS_PASSWORD=' /guju/mindsafe/.env | head -1 | cut -d= -f2-)
+# 2026-08-06 切换后：生产 .env 位于 $COMPOSE_DIR/deploy/.env（老套 /guju/mindsafe/.env 已停用）
+if [ -f /guju/mindsafe/deploy/.env ]; then
+  REDIS_PASSWORD=$(grep '^REDIS_PASSWORD=' /guju/mindsafe/deploy/.env | head -1 | cut -d= -f2-)
   export REDIS_PASSWORD
 fi
 
@@ -56,6 +57,9 @@ declare -A COMPOSE_NAME=(
   [backend]="backend"
   [nginx]="nginx"
 )
+
+# ⚠️ 注意：nginx 为【宿主 nginx】（/etc/nginx/nginx.conf，443 主入口），compose 的 nginx 服务未启用（容器 Created）
+#   service-manager 的 nginx 健康检查（curl 127.0.0.1）实际探测的是宿主 nginx（2026-08-06 切换教训）
 
 # 容器名映射（与 compose container_name 一致，用于 status/残留检查）
 declare -A CONTAINER_NAME=(

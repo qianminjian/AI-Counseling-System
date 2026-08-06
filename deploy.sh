@@ -32,7 +32,9 @@ REMOTE_DIR="/guju/mindsafe"
 PROJECT_ROOT="$(cd "$(dirname "$0")" && pwd)"
 STATE_FILE="$PROJECT_ROOT/.deploy-state"
 # 服务器上 compose 位于 $REMOTE_DIR/deploy/，挂载/构建上下文为仓库镜像结构：
-#   ../frontend/<app>/dist（nginx 挂载）、../backend/<svc>（compose build context）
+#   ../frontend/<app>/dist、../backend/<svc>（compose build context）
+# ⚠️ 前端静态文件由【宿主 nginx 直接 alias】（/etc/nginx/nginx.conf，443 主入口）；
+#   compose 的 nginx 服务未启用（容器 Created），勿改其配置期望生效（2026-08-06 切换教训）
 # 与 service-manager.sh 的 COMPOSE_DIR 保持一致
 
 # ===== 参数解析 =====
@@ -288,7 +290,7 @@ RESTART_TARGETS=""
 $DEPLOY_BACKEND && RESTART_TARGETS="$RESTART_TARGETS backend"
 $DEPLOY_TTS && RESTART_TARGETS="$RESTART_TARGETS tts"
 $DEPLOY_VOICE && RESTART_TARGETS="$RESTART_TARGETS voice"
-# 前端 dist 由 nginx 容器挂载，静态文件更新后需重载 nginx 才生效
+# 前端 dist 由【宿主 nginx】直接 alias 提供（非 compose nginx 容器挂载）；静态文件更新后需 reload 宿主 nginx 才生效
 { $DEPLOY_STUDENT || $DEPLOY_TEACHER || $DEPLOY_PARENT; } && RESTART_TARGETS="$RESTART_TARGETS nginx"
 
 if [ -n "$RESTART_TARGETS" ]; then
@@ -306,6 +308,27 @@ fi
 # ===== 更新部署状态（仅在部署成功后） =====
 echo "LAST_DEPLOYED_COMMIT=$LOCAL" > "$STATE_FILE"
 echo "DEPLOYED_AT=$(date -Iseconds)" >> "$STATE_FILE"
+
+# ===== 前端路径校验（2026-08-06 切换教训固化）=====
+# 宿主 nginx 静态 location 必须指向 deploy.sh 的部署目标目录（*-h5/dist），否则新构建不被服务
+check_nginx_path() {
+  local app="$1" deploy_dir="$2"
+  if ! ssh "$SERVER" "grep -q '$deploy_dir' /etc/nginx/nginx.conf" 2>/dev/null; then
+    echo "⚠️  nginx 未指向 $app 部署目标 $deploy_dir——前端可能仍在服务旧目录！"
+    echo "   修复: ssh $SERVER 修改 /etc/nginx/nginx.conf 中 $app 相关 location 的 root/alias 为 $deploy_dir，然后 nginx -t && nginx -s reload"
+    return 1
+  fi
+  echo "✅ nginx $app 路径指向校验通过（$deploy_dir）"
+  return 0
+}
+NGINX_PATH_FAIL=false
+$DEPLOY_STUDENT && ! check_nginx_path "student" "/guju/mindsafe/frontend/student-h5/dist/" && NGINX_PATH_FAIL=true
+$DEPLOY_TEACHER && ! check_nginx_path "teacher" "/guju/mindsafe/frontend/teacher-web/dist/" && NGINX_PATH_FAIL=true
+$DEPLOY_PARENT && ! check_nginx_path "parent" "/guju/mindsafe/frontend/parent-h5/dist/" && NGINX_PATH_FAIL=true
+if [ "$NGINX_PATH_FAIL" = "true" ]; then
+  echo "❌ 前端已部署但 nginx 路径未对齐，部署状态已更新；请按上方提示修复后重试"
+  exit 1
+fi
 
 echo ""
 echo "🎉 部署完成！组件:$COMPONENTS"

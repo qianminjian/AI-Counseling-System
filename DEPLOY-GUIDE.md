@@ -27,18 +27,20 @@
 - 后续可平滑升级到 2C4G / 4C8G
 - Docker 镜像加速（阿里云 ACR）国内拉取秒级
 
-### 内存分配（测试环境，不含 voice/tts）
+### 内存分配（生产 voice/tts 全开版，2026-08-06 实测修正）
 
-| 服务 | 内存 |
-|------|------|
-| PostgreSQL 16 | ~512MB |
-| Redis 7 | ~128MB |
-| Spring Boot Backend | ~1GB |
-| Nginx | ~64MB |
-| 系统 + swap | ~300MB |
-| **合计** | **~2GB（2C2G 刚好，4G 宽裕）** |
+| 服务 | 内存 | 说明 |
+|------|------|------|
+| PostgreSQL 16 | ~512MB | |
+| Redis 7 | ~128MB | |
+| Spring Boot Backend | ~1GB | |
+| **Voice（ASR=dashscope + SER=on）** | **6G** | emotion2vec+ 加载峰值 >4.2GB，2G/4G 会 OOM；SER=off 时 512M 即可 |
+| TTS（CosyVoice 云端合成） | ~512MB | |
+| 宿主 Nginx | ~64MB | |
+| 系统 + swap | ~300MB | |
+| **合计（生产全开）** | **约 9G** | 测试环境（不含 voice/tts）约 2G |
 
-> 2C2G 建议开启 2GB swap 兜底；2C4G 无需 swap。
+> 2C2G 建议开启 2GB swap 兜底；2C4G 无需 swap。**含 voice 的生产环境需 6G+ 内存**（`VOICE_MEMORY_LIMIT=6G`，见 .env.example）。
 
 ### 备选：腾讯云轻量应用服务器
 
@@ -135,25 +137,38 @@ ssh root@<公网IP>
 ### Step 4：配置环境变量
 
 ```bash
-cd /guju/mindsafe
+cd /guju/mindsafe/deploy
+cp .env.example .env
 vim .env
 ```
 
-填入（完整模板见 `deploy/.env.example`）：
+必填项（完整模板见 `deploy/.env.example`，键名以 2026-08-06 切换后的新命名为准）：
 ```env
 DB_PASSWORD=<强密码>
 REDIS_PASSWORD=<强密码>
 # 必填：prod profile 下缺失会 fail-fast 拒绝启动
 JWT_SECRET=<openssl rand -base64 48 生成>
-ENCRYPTION_KEY=<openssl rand -base64 32 生成>
-LLM_API_KEY=sk-your-deepseek-key
-LLM_BASE_URL=https://api.deepseek.com
-LLM_MODEL=deepseek-chat
-GITHUB_OWNER=<your-github-username>
-HTTP_PORT=80
-# 监护人同意（AUTH-040）：生产保持 false（age<14 走 SMS 验证码闭环，需配 SMS_PROVIDER=aliyun）
-CONSENT_TRIAL_AUTO_GRANT=false
+# 字段加密开关：试运行期保持 false（不启用终态，见 doing/64），无需配 ENCRYPTION_KEY
+ENCRYPTION_ENABLED=false
+# LLM 主模型（新命名，旧 LLM_API_KEY 已废弃）
+LLM_PRIMARY_API_KEY=sk-your-deepseek-key
+LLM_PRIMARY_BASE_URL=https://api.deepseek.com
+LLM_PRIMARY_MODEL=deepseek-v4-pro
+# LLM 备份模型（可选，留空 = 单模型）
+LLM_BACKUP_API_KEY=
+LLM_BACKUP_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
+LLM_BACKUP_MODEL=qwen-plus
+# 语音合成（阿里云百炼 CosyVoice，ASR=dashscope 时也用它）
+DASHSCOPE_API_KEY=sk-ws-...
+# ASR/SER：dashscope + emotion2vec+ 需 6G 内存（加载峰值 >4.2GB，2G/4G 会 OOM）
+ASR_ENGINE=dashscope
+SER_ENABLED=true
+VOICE_MEMORY_LIMIT=6G
+# 监护人同意（AUTH-040，PIPL §31）：生产保持 false（age<14 走 SMS 验证码闭环）；变量名必须带 MINDSAFE_ 前缀
+MINDSAFE_CONSENT_TRIAL_AUTO_GRANT=false
 ```
+
+> ⚠️ 2026-08-06 切换教训：`CONSENT_TRIAL_AUTO_GRANT`（缺 MINDSAFE_ 前缀）、`VOICE_MEM_LIMIT`、`LLM_API_KEY` 等旧变量名已废弃，配置不生效且日志无告警——只认 `.env.example` 中的键名。
 
 ### Step 5：GHCR 登录（服务器上）
 
@@ -180,21 +195,23 @@ docker login ghcr.io -u <your-github-username>
 
 > 冒烟测试缺少教师/管理员账号时，相关用例将告警跳过（smoke-test.sh 对空账号有保护），建议用首次部署种子数据中的账号。
 
-### Step 7：首次部署
+### Step 7：首次部署（生产）
 
 ```bash
-cd /guju/mindsafe
-docker compose -f docker-compose.test.yml pull
-docker compose -f docker-compose.test.yml run --rm frontend-init
-docker compose -f docker-compose.test.yml up -d
+# 1. 初始化服务器环境（Docker、swap、目录结构）
+cd deploy && bash setup-server.sh
+
+# 2. 配置 .env（见 Step 4）后启动生产栈（deploy/ 目录，compose 文件 docker-compose.prod.yml）
+cd /guju/mindsafe/deploy
+docker compose -f docker-compose.prod.yml up -d
+bash ../service-manager.sh status   # 全部服务健康检查
+
+# 3. 之后每次发版用仓库根目录的 deploy.sh（自动检测变更、选择性构建/上传/重启，含前端路径校验）
+#    export MINDSAFE_SERVER=root@<服务器IP> && ./deploy.sh
 ```
 
-之后每次 `git push main` 自动触发部署。
-
-> 部署完成后工作流会自动运行冒烟测试（`tests/e2e/smoke-test.sh`），验证健康检查、试用注册、学生对话链路、教师端、安全拦截是否正常。也可本地手动运行：
-> ```bash
-> BASE_URL=http://<服务器IP> ./tests/e2e/smoke-test.sh
-> ```
+> 2026-08-06 切换后生产统一走 `/guju/mindsafe/deploy/`（prod profile）；`docker-compose.test.yml` 仅用于轻量测试环境（不含 voice/tts），nginx 配置以宿主 nginx 为准。
+> 部署完成后可手动跑冒烟（`tests/e2e/smoke-test.sh`，需教师/管理员账号）。
 
 ---
 
@@ -217,38 +234,67 @@ vim /guju/mindsafe/nginx/default.conf
 docker compose -f docker-compose.test.yml restart nginx
 ```
 
-### HTTPS 证书（生产必做，prod compose 默认启用 TLS）
+### HTTPS 证书（生产必做，宿主 nginx 承载 443）
 
-`docker-compose.prod.yml` 挂载的是 `nginx/default-ssl.conf`（443 承载全部流量，80 仅证书续期挑战 + 301 重定向），首次启动前必须先在宿主机签发证书，否则 nginx 启动失败：
+⚠️ **2026-08-06 切换后的架构事实**：80/443 由**宿主 nginx**（`/etc/nginx/nginx.conf`）直接监听，`deploy/docker-compose.prod.yml` 的 nginx 服务**未启用**（容器 Created）。所有 nginx 配置修改走宿主机文件 + `nginx -t && nginx -s reload`，不要改 compose nginx 配置期望生效。
+
+证书签发（certbot，证书目录 `/etc/nginx/ssl/`，nginx.conf 引用 `ssl_certificate`）：
 
 ```bash
 # 1. 安装 certbot（Ubuntu）
 apt install -y certbot
 
-# 2. 首次签发（standalone 模式，需要 80 端口空闲，在 compose 启动前执行）
-mkdir -p /var/www/certbot
+# 2. 首次签发（standalone 模式，需要 80 端口空闲）
+mkdir -p /etc/nginx/ssl
 certbot certonly --standalone -d yun.gxjugu.com --agree-tos -m <你的邮箱>
+# 将证书链拷贝到 nginx 读取路径（或同步修改 nginx.conf 的 ssl_certificate 路径）
+cp /etc/letsencrypt/live/yun.gxjugu.com/fullchain.pem /etc/nginx/ssl/yun.gxjugu.com.pem
+cp /etc/letsencrypt/live/yun.gxjugu.com/privkey.pem /etc/nginx/ssl/yun.gxjugu.com.key
+nginx -t && nginx -s reload
 
-# 3. 启动服务（nginx 容器只读挂载 /etc/letsencrypt 与 /var/www/certbot）
-cd /guju/mindsafe && docker compose -f docker-compose.prod.yml up -d
-
-# 4. 自动续期（续期走 webroot 挑战，无需停服；续期后 reload nginx）
-echo '0 3 * * 1 certbot renew --webroot -w /var/www/certbot --deploy-hook "docker exec mindsafe-nginx nginx -s reload" >> /var/log/certbot-renew.log 2>&1' | crontab -
+# 3. 自动续期（续期后拷贝 + reload）
+# 建议写 /etc/letsencrypt/renewal-hooks/deploy/copy-nginx-cert.sh 处理拷贝与 reload
 ```
 
-> 域名变更时同步修改 `deploy/nginx/default-ssl.conf` 中的 `server_name` 与证书路径，以及 `.env` 的 `CORS_ORIGINS`。
+> 域名变更时同步修改 `/etc/nginx/nginx.conf` 的 `server_name`/`ssl_certificate` 与 `.env` 的 `CORS_ORIGINS`。
 
 ### 端侧 ONNX 模型投放（语音唤醒/声纹，发布前端前必做）
 
-学生端语音唤醒（whisper-tiny）与声纹登录（wespeaker）均为浏览器内推理，前端配置为 `SAME_ORIGIN` 同源加载（`/mindsafe/models/`）。**模型文件不入仓**，发布 student-h5 前必须先投放：
+学生端语音唤醒（whisper-tiny）与声纹登录（wespeaker）均为浏览器内推理，前端配置为 `SAME_ORIGIN` 同源加载（`/mindsafe/models/`）。**模型文件不入仓、不随构建传输**（deploy.sh rsync 固定 `--exclude 'models/'` 保护），由服务器侧维护：
 
 ```bash
-# 下载 whisper-tiny + wespeaker 量化模型到 frontend/student-h5/public/models/（约 60MB）
-bash deploy/scripts/prepare-models.sh
-# 脚本自带投放自检：关键文件缺失时非零退出并告警，禁止带缺失发布
+# 方式一（推荐）：服务器上直接把模型放到部署目标目录
+#   /guju/mindsafe/frontend/student-h5/dist/models/onnx-community/{whisper-tiny,wespeaker-voxceleb-resnet34-LM}
+#   （模型目录与本地 frontend/student-h5/public/models 内容一致，约 50MB）
+# 方式二：本地运行投放脚本后手动 rsync 到服务器（注意 deploy.sh 会自动排除，需手动传输）
+bash deploy/scripts/prepare-models.sh   # 下载到 frontend/student-h5/public/models
+rsync -avz frontend/student-h5/public/models/ root@<服务器>:/guju/mindsafe/frontend/student-h5/dist/models/
+
+# 校验：模型文件经 /mindsafe/models/ 可 200 访问（浏览器 Network 面板逐请求确认）
 ```
 
-投放后 Vite 构建会把 `public/models/` 拷入 dist，随 CI 镜像发布；未执行脚本直接发布会导致模型 404，唤醒/声纹功能加载失败（对话主路径不受影响）。
+> 2026-08-06 切换事实：`dist/models` 从旧部署目录 `cp` 迁移（50MB），`--exclude 'models/'` 保证后续 deploy.sh 不回删。若未投放，唤醒/声纹功能 404 失效（对话主路径不受影响）。
+
+### 宿主 nginx 结构与前端路径（2026-08-06 切换教训固化）
+
+**流量入口**：`/etc/nginx/nginx.conf` 的 `yun.gxjugu.com` 443 server 是生产主入口（`/api/`、`/ws/` 反代到 `127.0.0.1:18082`）；80 端口仅由 `nginx.conf` 的 301 server 处理。**`/etc/nginx/conf.d/*.conf` 未被 include（nginx.conf 只 `include mime.types`），在其中加配置不生效**——不要往 conf.d 里放站点配置。
+
+**前端静态路径规则**（nginx.conf 443 server 内）：
+
+| 前端 | nginx root/alias 必须指向 | 说明 |
+|------|--------------------------|------|
+| 学生端 `/mindsafe/` | `/guju/mindsafe/frontend/student-h5/dist/` | 含 sw.js/index.html/ort/models 特殊 location |
+| 教师端 `/teacher/` | `/guju/mindsafe/frontend/teacher-web/dist/` | |
+| 家长端 `/parent/` | `/guju/mindsafe/frontend/parent-h5/dist/` | |
+
+> deploy.sh 已内置校验（部署后检查 nginx.conf 是否指向以上目录，未对齐会失败退出）。修改后必须 `nginx -t && nginx -s reload`；备份先 `cp nginx.conf nginx.conf.bak-$(date +%Y%m%d-%H%M)`。
+
+### 切换与回归验证要点（2026-08-06 经验）
+
+1. **切后端流量**：只改 `nginx.conf` 443 server 的 `proxy_pass`（18081→18082），两处（`/api/` 与 `/ws/`）；改完看 `nginx -t` + `tail /var/log/nginx/error.log` 的 `upstream` 字段确认真实落点
+2. **验证新套特征**（防“老套活着时正常响应”的假验证）：登录后核对 JWT 签名算法（新套 HS512+iss/aud vs 老套 HS384）；SSE 首个事件 `type:emotion` 为新套特征
+3. **curl 陷阱**：curl `127.0.0.1` 无 SNI/Host 头会落默认 server（假 404）——必须 `-H 'Host: yun.gxjugu.com' -k https://127.0.0.1/...` 或直连域名
+4. **回滚通道**（见 design/doing/65 §2.4）：老套容器 `docker compose start` 恢复 18081；nginx 备份 `nginx.conf.bak-switch-20260806-1505`；数据双备份保留
 
 ---
 
