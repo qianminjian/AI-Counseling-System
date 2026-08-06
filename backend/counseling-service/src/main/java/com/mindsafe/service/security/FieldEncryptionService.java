@@ -39,33 +39,45 @@ public class FieldEncryptionService {
     /** 当前活跃密钥版本 */
     private final int activeKeyVersion;
 
+    /** 系统级启用开关（ENCRYPTION_ENABLED，默认 false=明文透传） */
+    private final boolean enabled;
+
     /** 密钥版本 → SecretKeySpec 映射（支持轮换期间多版本解密） */
     private final Map<Integer, SecretKeySpec> keyRegistry = new ConcurrentHashMap<>();
 
     public FieldEncryptionService(
+            @Value("${mindsafe.encryption.enabled:false}") boolean enabled,
             @Value("${mindsafe.encryption.key:}") String currentKey,
             @Value("${mindsafe.encryption.key-version:1}") int keyVersion,
             @Value("${mindsafe.encryption.previous-keys:}") String previousKeys,
             Environment environment) {
 
+        this.enabled = enabled;
         this.activeKeyVersion = keyVersion;
 
-        // 注册当前密钥
-        if (currentKey != null && !currentKey.isBlank()) {
-            keyRegistry.put(keyVersion, buildKey(currentKey));
-            log.info("字段加密服务初始化: activeKeyVersion={}", keyVersion);
-        } else {
-            // 生产环境 fail-fast：密钥未配置时拒绝启动
-            boolean isProd = java.util.Arrays.asList(environment.getActiveProfiles()).contains("prod");
-            if (isProd) {
-                throw new IllegalStateException(
-                    "[FATAL] 生产环境必须配置 MINDSAFE_ENCRYPTION_KEY（mindsafe.encryption.key），" +
-                    "否则敏感字段将明文存储。请设置环境变量后重启。");
+        // 未启用：不校验密钥、不解析版本化变量，加解密纯透传（V1 语义：KEY_VERSION/PREVIOUS_KEYS 被忽略）
+        if (!enabled) {
+            // 防呆：密钥已配置但未启用 → 提示数据明文落库，防止误配后静默明文
+            if (currentKey != null && !currentKey.isBlank()) {
+                log.warn("加密未启用（ENCRYPTION_ENABLED=false）但检测到密钥已配置，数据将以明文落库。"
+                        + "如需加密请设置 ENCRYPTION_ENABLED=true（商业化阶段要求，见 frozen/60 COMP-008）");
             }
-            log.warn("字段加密密钥未配置（mindsafe.encryption.key），加密功能降级为明文透传（仅限开发环境）");
+            log.info("字段加密服务初始化: 未启用（明文模式）");
+            return;
         }
 
-        // 注册历史密钥（格式：version:base64key,version:base64key）
+        // 启用：fail-fast 校验密钥（替换原"prod profile 强制"语义，由显式开关裁决）
+        if (currentKey == null || currentKey.isBlank()) {
+            throw new IllegalStateException(
+                "[FATAL] 字段加密已启用（ENCRYPTION_ENABLED=true）但未配置 MINDSAFE_ENCRYPTION_KEY，"
+                + "敏感字段将明文存储。请配置 Base64 编码的 32 字节密钥后重启。");
+        }
+        keyRegistry.put(keyVersion, buildKey(currentKey));
+        log.info("字段加密服务初始化: 已启用, activeKeyVersion={}", keyVersion);
+
+        // 注册历史密钥（格式：version:base64key,version:base64key）—— 仅 enabled=true 时解析注册
+        // 注：非法条目（版本号非整数/密钥非 32 字节）保持 fail-fast 抛错；版本号与 activeKeyVersion 冲突时
+        // 后者覆盖前者（现状行为，轮换演练需避免相同版本号）
         if (previousKeys != null && !previousKeys.isBlank()) {
             for (String entry : previousKeys.split(",")) {
                 String[] parts = entry.trim().split(":", 2);
@@ -83,7 +95,7 @@ public class FieldEncryptionService {
      * 格式：v1:<base64(iv + ciphertext + tag)>
      */
     public String encrypt(String plaintext) {
-        if (plaintext == null || plaintext.isBlank()) return plaintext;
+        if (!enabled || plaintext == null || plaintext.isBlank()) return plaintext;
         SecretKeySpec key = keyRegistry.get(activeKeyVersion);
         if (key == null) return plaintext; // 降级：未配置密钥时透传
 
@@ -112,7 +124,7 @@ public class FieldEncryptionService {
      * 解密密文（自动识别密钥版本）
      */
     public String decrypt(String ciphertext) {
-        if (ciphertext == null || ciphertext.isBlank()) return ciphertext;
+        if (!enabled || ciphertext == null || ciphertext.isBlank()) return ciphertext;
         // 非加密格式（无版本前缀）→ 明文兼容
         if (!ciphertext.startsWith("v") || !ciphertext.contains(":")) return ciphertext;
 

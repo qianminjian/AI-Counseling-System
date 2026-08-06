@@ -165,7 +165,7 @@ class ConversationServiceImplTest {
         // 构建 MessageSummaryService（使用同一组 mock）
         com.mindsafe.service.security.FieldEncryptionService plainEnc =
                 new com.mindsafe.service.security.FieldEncryptionService(
-                        "", 1, "", new org.springframework.core.env.StandardEnvironment());
+                        false, "", 1, "", new org.springframework.core.env.StandardEnvironment());
         messageSummaryService = new MessageSummaryService(messageSummaryMapper, sessionMapper,
                 aiChatService, plainEnc, conversationQualityService, profileExtractorService, longTermMemoryService,
                 new ObjectMapper(), new SimpleMeterRegistry());
@@ -358,7 +358,7 @@ class ConversationServiceImplTest {
         void aiReplyPersistedEncrypted() {
             com.mindsafe.service.security.FieldEncryptionService keyedEnc =
                     new com.mindsafe.service.security.FieldEncryptionService(
-                            TEST_KEY, 1, "", new org.springframework.core.env.StandardEnvironment());
+                            true, TEST_KEY, 1, "", new org.springframework.core.env.StandardEnvironment());
             ConversationServiceImpl keyedService = new ConversationServiceImpl(aiChatService,
                     riskProcessor, piiDesensitizer, sessionMapper, messageSummaryMapper,
                     userMapper, profileService,

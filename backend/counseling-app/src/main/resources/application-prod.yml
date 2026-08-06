@@ -30,15 +30,15 @@ spring:
 
   ai:
     openai:
-      # 与 base 一致接 DeepSeek（OpenAI 兼容协议）；api-key 无默认值，未配置时 fail-fast
-      api-key: ${LLM_API_KEY}
-      base-url: ${LLM_BASE_URL:https://api.deepseek.com}
+      # 主模型（doing/63：key 主命名；回退旧名 LLM_API_KEY，均无默认值 → 未配置时 fail-fast）
+      api-key: ${LLM_PRIMARY_API_KEY:${LLM_API_KEY}}
+      base-url: ${LLM_PRIMARY_BASE_URL:${LLM_BASE_URL:https://api.deepseek.com}}
       # Embedding（RAG KB-101）：注意主对话供应商（如 DeepSeek）未必提供 embeddings 端点，
       # 生产应将 EMBEDDING_BASE_URL 指向支持 embeddings 的供应商；未配置时端点继承主配置，
       # 检索失败由 RagAdvisorService 失败安全降级（对话主线不受影响）。维度须匹配 vector(1536)（V24）
       embedding:
-        base-url: ${EMBEDDING_BASE_URL:${LLM_BASE_URL:https://api.deepseek.com}}
-        api-key: ${EMBEDDING_API_KEY:${LLM_API_KEY}}
+        base-url: ${EMBEDDING_BASE_URL:${LLM_PRIMARY_BASE_URL:${LLM_BASE_URL:https://api.deepseek.com}}}
+        api-key: ${EMBEDDING_API_KEY:${LLM_PRIMARY_API_KEY:${LLM_API_KEY}}}
         options:
           model: ${EMBEDDING_MODEL:text-embedding-ada-002}
 
@@ -54,6 +54,7 @@ springdoc:
 
 mindsafe:
   encryption:
+    enabled: ${ENCRYPTION_ENABLED:false}  # 系统级开关：默认关闭（试运行期明文）；商业化发布时开启（frozen/60 COMP-008）
     key: ${MINDSAFE_ENCRYPTION_KEY}
     key-version: ${MINDSAFE_ENCRYPTION_KEY_VERSION:1}
     previous-keys: ${MINDSAFE_ENCRYPTION_PREVIOUS_KEYS:}
@@ -62,14 +63,25 @@ mindsafe:
     overall-timeout-ms: 45000
     retry-max: 1
     retry-backoff-ms: 2000
+    # 备份模型（doing/63：key 备命名 LLM_BACKUP_*，旧名 LLM_FALLBACK_* 回退）
+    backup:
+      enabled: true
+      base-url: ${LLM_BACKUP_BASE_URL:${LLM_FALLBACK_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode/v1}}
+      # P2 拆分（2026-08-06）：备份 LLM 不再复用 DASHSCOPE_API_KEY（TTS/ASR 专用），
+      # 改读 LLM_BACKUP_API_KEY（旧名 LLM_FALLBACK_API_KEY 回退）以满足最小权限（key 泄露面隔离 / 权限独立可吊销）
+      api-key: ${LLM_BACKUP_API_KEY:${LLM_FALLBACK_API_KEY:}}
+      model: ${LLM_BACKUP_MODEL:${LLM_FALLBACK_MODEL:qwen-plus}}
+      temperature: ${LLM_BACKUP_TEMPERATURE:0.7}
+      max-tokens: ${LLM_BACKUP_MAX_TOKENS:2048}
+  # AI 多模型降级配置旧键别名（doing/63：外部配置可能仍引用 mindsafe.ai.fallback.*，保留兼容）
   ai:
     fallback:
-      enabled: true
-      base-url: https://dashscope.aliyuncs.com/compatible-mode/v1
-      # P2 拆分（2026-08-06）：fallback LLM 不再复用 DASHSCOPE_API_KEY（TTS/ASR 专用），
-      # 改读 LLM_FALLBACK_API_KEY 以满足最小权限（key 泄露面隔离 / 权限独立可吊销）
-      api-key: ${LLM_FALLBACK_API_KEY:}
-      model: qwen-plus
+      enabled: ${mindsafe.llm.backup.enabled}
+      base-url: ${mindsafe.llm.backup.base-url}
+      api-key: ${mindsafe.llm.backup.api-key}
+      model: ${mindsafe.llm.backup.model}
+      temperature: ${mindsafe.llm.backup.temperature}
+      max-tokens: ${mindsafe.llm.backup.max-tokens}
   alert:
     wecom:
       webhook-url: ${MINDSAFE_ALERT_WECOM_WEBHOOK_URL:}

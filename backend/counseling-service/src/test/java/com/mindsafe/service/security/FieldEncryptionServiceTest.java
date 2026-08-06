@@ -26,7 +26,7 @@ class FieldEncryptionServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new FieldEncryptionService(TEST_KEY_BASE64, 1, "", new StandardEnvironment());
+        service = new FieldEncryptionService(true, TEST_KEY_BASE64, 1, "", new StandardEnvironment());
     }
 
     @Test
@@ -81,7 +81,7 @@ class FieldEncryptionServiceTest {
         String key2Base64 = Base64.getEncoder().encodeToString(key2Bytes);
 
         FieldEncryptionService v2Service = new FieldEncryptionService(
-                key2Base64, 2, "1:" + TEST_KEY_BASE64, new StandardEnvironment());
+                true, key2Base64, 2, "1:" + TEST_KEY_BASE64, new StandardEnvironment());
 
         // reEncrypt: v1 密文 → v2 密文
         String v2Encrypted = v2Service.reEncrypt(v1Encrypted);
@@ -92,11 +92,48 @@ class FieldEncryptionServiceTest {
     }
 
     @Test
-    @DisplayName("未配置密钥时降级为明文透传")
-    void noKey_gracefulDegradation() {
-        FieldEncryptionService noKeyService = new FieldEncryptionService("", 1, "", new StandardEnvironment());
-        String plaintext = "无密钥降级测试";
-        assertEquals(plaintext, noKeyService.encrypt(plaintext));
+    @DisplayName("加密未启用（ENCRYPTION_ENABLED=false）时明文透传，不产生 v 前缀密文")
+    void disabled_plaintextPassthrough() {
+        FieldEncryptionService disabledService = new FieldEncryptionService(false, "", 1, "", new StandardEnvironment());
+        String plaintext = "未启用加密透传测试";
+        assertEquals(plaintext, disabledService.encrypt(plaintext));
+        assertEquals(plaintext, disabledService.decrypt(plaintext));
+        assertFalse(disabledService.isEncrypted(plaintext));
+    }
+
+    @Test
+    @DisplayName("加密未启用但密钥已配置：透传且不校验密钥格式（防呆 WARN）")
+    void disabled_withKey_passthrough() {
+        FieldEncryptionService disabledService = new FieldEncryptionService(
+                false, "非法密钥字符串-not-base64-32bytes", 1, "", new StandardEnvironment());
+        String plaintext = "防呆场景明文";
+        assertEquals(plaintext, disabledService.encrypt(plaintext));
+        assertEquals(plaintext, disabledService.decrypt(plaintext));
+    }
+
+    @Test
+    @DisplayName("加密未启用时 previous-keys 非法条目被忽略，不抛错不注册（V1/V2 语义）")
+    void disabled_ignoresInvalidPreviousKeys() {
+        // 非法格式（非 version:base64key）与非法长度 key 混入，enabled=false 下必须全部忽略
+        FieldEncryptionService disabledService = new FieldEncryptionService(
+                false, "", 1, "bad-format-entry,2:" + Base64.getEncoder().encodeToString(new byte[16]),
+                new StandardEnvironment());
+        String plaintext = "版本化变量忽略测试";
+        assertEquals(plaintext, disabledService.encrypt(plaintext));
+    }
+
+    @Test
+    @DisplayName("加密启用但密钥未配置：fail-fast 拒绝启动（ENC-002）")
+    void enabled_missingKey_failsFast() {
+        assertThrows(IllegalStateException.class,
+                () -> new FieldEncryptionService(true, "", 1, "", new StandardEnvironment()));
+    }
+
+    @Test
+    @DisplayName("加密启用且密钥为空白：fail-fast 拒绝启动（ENC-002）")
+    void enabled_blankKey_failsFast() {
+        assertThrows(IllegalStateException.class,
+                () -> new FieldEncryptionService(true, "   ", 1, "", new StandardEnvironment()));
     }
 
     @Test
@@ -111,10 +148,10 @@ class FieldEncryptionServiceTest {
     }
 
     @Test
-    @DisplayName("非法密钥长度应抛异常")
+    @DisplayName("加密启用且密钥非法长度应抛异常")
     void invalidKeyLength_throws() {
         String shortKey = Base64.getEncoder().encodeToString(new byte[16]); // 128-bit
         assertThrows(IllegalArgumentException.class,
-                () -> new FieldEncryptionService(shortKey, 1, "", new StandardEnvironment()));
+                () -> new FieldEncryptionService(true, shortKey, 1, "", new StandardEnvironment()));
     }
 }

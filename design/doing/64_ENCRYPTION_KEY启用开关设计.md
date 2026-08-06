@@ -1,8 +1,12 @@
 # 64 - ENCRYPTION_KEY 系统级启用开关设计
 
-> 文档状态：**doing（开发中）** | 创建：2026-08-06 | 关联：COMP-005（字段加密）、frozen/60（商用发布合规与备案）、design/07 §5（数据加密与等保）
+> 文档状态：**已实施（🟩 代码+测试+配置，2026-08-06）｜决策：不启用（2026-08-06）** | 创建：2026-08-06 | 关联：COMP-005（字段加密）、design/07 §5（数据加密与等保）
 >
-> 需求来源：ENCRYPTION_KEY 专题提升——增加系统级启用开关；**默认不启用加密**（不配置即可运行，不做加解密）；启用时服务启动必须配置密钥并执行加解密；启用加密与**商业化阶段**一并考虑。
+> 实施记录：FieldEncryptionService 构造器新增 `encryptionEnabled` 开关（默认 false）+ encrypt/decrypt 透传；FieldEncryptionServiceTest 适配新签名并新增开关用例（V1~V4 密钥矩阵）；application.yml/prod + 3 份 compose + .env.example 同步 `ENCRYPTION_ENABLED`；counseling-service 全量测试全绿（含 796 用例基线）。
+>
+> 需求来源：ENCRYPTION_KEY 专题提升——增加系统级启用开关；**默认不启用加密**（不配置即可运行，不做加解密）；启用时服务启动必须配置密钥并执行加解密。
+>
+> ⚠️ **决策（2026-08-06 钱敏健）：数据加密视为尚未接线，`ENCRYPTION_ENABLED=false` 为终态**。未主动提出该专题前，不再纳入任何分析、待办或迁移规划（含商业化阶段启用假设，与 frozen/60 的关联解除）。
 
 ---
 
