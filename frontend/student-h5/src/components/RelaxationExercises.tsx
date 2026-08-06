@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { api } from '../api'
 import { useTheme } from '../theme/ThemeProvider'
+import { readLocalStorageSafe, writeLocalStorageSafe } from '../utils/storage'
 import SceneDecor from './SceneDecor'
 
 const CATEGORY_EMOJI = {
@@ -152,7 +153,7 @@ function ExerciseRunner({ exercise, onComplete, onBack, ts }) {
   const [seconds, setSeconds] = useState(0)
   const [elapsed, setElapsed] = useState(0)
   const [done, setDone] = useState(false)
-  const [voiceOn, setVoiceOn] = useState(() => localStorage.getItem(VOICE_PREF_KEY) !== '0')
+  const [voiceOn, setVoiceOn] = useState(() => readLocalStorageSafe(VOICE_PREF_KEY, '') !== '0')
   const timerRef = useRef(null)
   const voiceOnRef = useRef(voiceOn)
   voiceOnRef.current = voiceOn
@@ -257,7 +258,7 @@ function ExerciseRunner({ exercise, onComplete, onBack, ts }) {
         onClick={() => {
           const next = !voiceOn
           setVoiceOn(next)
-          localStorage.setItem(VOICE_PREF_KEY, next ? '1' : '0')
+          writeLocalStorageSafe(VOICE_PREF_KEY, next ? '1' : '0')
           if (!next) stopGuide()
         }}
         className="text-xs px-4 py-1.5 rounded-full transition-all active:scale-95 backdrop-blur-sm"

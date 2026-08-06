@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react'
+import { readLocalStorageSafe, writeLocalStorageSafe } from '../utils/storage'
 
 const WELCOME_KEY = 'mindsafe_welcome_done'
 
@@ -11,14 +12,14 @@ const SLIDES = [
 
 /** 学生端首次使用引导（支持滑动手势 + CSS 动画） */
 export default function WelcomeGuide() {
-  const [visible, setVisible] = useState(() => !localStorage.getItem(WELCOME_KEY))
+  const [visible, setVisible] = useState(() => readLocalStorageSafe(WELCOME_KEY, '') !== 'true')
   const [step, setStep] = useState(0)
   const touchStartX = useRef(0)
 
   if (!visible) return null
 
   const finish = () => {
-    localStorage.setItem(WELCOME_KEY, 'true')
+    writeLocalStorageSafe(WELCOME_KEY, 'true')
     setVisible(false)
   }
 

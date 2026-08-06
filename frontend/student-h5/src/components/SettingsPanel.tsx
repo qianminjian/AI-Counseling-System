@@ -8,7 +8,7 @@
  * - 切换同学（退出当前用户，二次确认）
  * 适合儿童操作：大图标 + 简短文字
  */
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useTheme, THEMES } from '../theme/ThemeProvider'
 import { useVoicePersona, VOICE_PERSONAS, NATIVE_DIALECT_IDS } from '../hooks/useVoicePersona'
 import { api, getUser, issueVoiceCredential, getVoiceprintConfig, remoteVoiceprintEnroll } from '../api'
@@ -48,6 +48,9 @@ export default function SettingsPanel({ open, onClose, muted, onToggleMute, wake
   const dialectActive = personaId === 'qiqiu'
   const [familyCode, setFamilyCode] = useState<string>((getUser()?.familyCode as string) || '')
   const [copied, setCopied] = useState(false)
+  // AUD-017：copyCode 的“已复制”提示定时器挂 ref，卸载时清理避免 setState-after-unmount
+  const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => () => { if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current) }, [])
   const [hasVoiceprint, setHasVoiceprint] = useState(false)
   const [showEnroll, setShowEnroll] = useState(false)
   const [enrollError, setEnrollError] = useState('')
@@ -74,7 +77,8 @@ export default function SettingsPanel({ open, onClose, muted, onToggleMute, wake
   const copyCode = () => {
     navigator.clipboard?.writeText(familyCode).then(() => {
       setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
+      if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current)
+      copiedTimerRef.current = setTimeout(() => setCopied(false), 2000)
     })
   }
 
@@ -91,8 +95,9 @@ export default function SettingsPanel({ open, onClose, muted, onToggleMute, wake
             try {
               if (vpMode === 'remote') {
                 // remote 模式：embedding 传服务端存储
-                await remoteVoiceprintEnroll(result.embeddings)
-                markRemoteVoiceprintEnrolled()
+                const { tenantId } = await remoteVoiceprintEnroll(result.embeddings)
+                // AUD-001：暂存服务端签发的租户，声纹登录 verify 时需回传租户维度
+                markRemoteVoiceprintEnrolled(tenantId)
               } else {
                 // local 模式：存 IndexedDB + 签发设备凭证
                 await enrollVoiceprint(user.userId as string, (user.pseudonym || '') as string, result.embeddings)

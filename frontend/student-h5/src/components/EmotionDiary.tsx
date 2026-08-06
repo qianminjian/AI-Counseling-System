@@ -92,28 +92,48 @@ export default function EmotionDiary({ onBack }) {
   const [intensity, setIntensity] = useState(3)
   const [note, setNote] = useState('')
   const [submitted, setSubmitted] = useState(false)
+  const [submitting, setSubmitting] = useState(false) // AUD-020：打卡提交中防重复点击
+  const [loadError, setLoadError] = useState(false)   // AUD-020：初始数据加载失败（可重试）
+  const [submitError, setSubmitError] = useState('')  // AUD-020：打卡失败提示
   const { theme, themeId } = useTheme()
   const ts = THEME_STYLES[themeId] || THEME_STYLES.ocean
 
-  useEffect(() => {
+  // AUD-020：初始加载不再 .catch(() => {}) 静默吞错——today 失败置错误态供重试，
+  // history/streak 失败仅 warn（趋势图缺省不影响打卡主流程）
+  const loadData = () => {
+    setLoadError(false)
     api('/diary/today').then(d => {
       setToday(d)
       if (d.checkedIn) setSubmitted(true)
-    }).catch(() => {})
-    api('/diary/history?days=14').then(setHistory).catch(() => {})
-    api('/diary/streak').then(setStreak).catch(() => {})
+    }).catch((e) => { console.warn('[EmotionDiary] 加载今日状态失败:', e); setLoadError(true) })
+    api('/diary/history?days=14').then(setHistory).catch((e) => console.warn('[EmotionDiary] 加载趋势失败:', e))
+    api('/diary/streak').then(setStreak).catch((e) => console.warn('[EmotionDiary] 加载连续天数失败:', e))
+  }
+
+  useEffect(() => {
+    loadData()
   }, [])
 
+  // AUD-020：打卡失败不 unhandled rejection——try/catch + 错误提示 + loading
   const submit = async () => {
-    if (!selected) return
-    await api('/diary/checkin', {
-      method: 'POST',
-      body: JSON.stringify({ emotionLabel: selected, intensity, note: note || null }),
-    })
-    setSubmitted(true)
-    // 刷新数据
-    api('/diary/history?days=14').then(setHistory).catch(() => {})
-    api('/diary/streak').then(setStreak).catch(() => {})
+    if (!selected || submitting) return
+    setSubmitting(true)
+    setSubmitError('')
+    try {
+      await api('/diary/checkin', {
+        method: 'POST',
+        body: JSON.stringify({ emotionLabel: selected, intensity, note: note || null }),
+      })
+      setSubmitted(true)
+      // 刷新数据
+      api('/diary/history?days=14').then(setHistory).catch((e) => console.warn('[EmotionDiary] 刷新趋势失败:', e))
+      api('/diary/streak').then(setStreak).catch((e) => console.warn('[EmotionDiary] 刷新连续天数失败:', e))
+    } catch (e) {
+      console.error('[EmotionDiary] 打卡失败:', e)
+      setSubmitError('打卡没成功，请检查网络后再试一次')
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   return (
@@ -141,7 +161,17 @@ export default function EmotionDiary({ onBack }) {
         )}
 
         {/* 打卡区域 */}
-        {!submitted ? (
+        {loadError ? (
+          <div className="w-full rounded-3xl p-6 mb-6 text-center backdrop-blur-md"
+            style={{ background: ts.cardBg, border: ts.cardBorder, boxShadow: ts.cardShadow }}>
+            <p className="font-semibold mb-3" style={{ color: ts.title }}>今天的状态没能加载出来</p>
+            <button onClick={loadData}
+              className="px-5 py-2 rounded-full text-white text-sm font-semibold transition-all active:scale-95"
+              style={{ background: ts.btnBg }}>
+              再试一次
+            </button>
+          </div>
+        ) : !submitted ? (
           <div className="w-full rounded-3xl p-6 mb-6 backdrop-blur-md"
             style={{ background: ts.cardBg, border: ts.cardBorder, boxShadow: ts.cardShadow }}>
             <p className="text-sm font-semibold mb-4 text-center" style={{ color: ts.text }}>今天的心情是？</p>
@@ -185,11 +215,14 @@ export default function EmotionDiary({ onBack }) {
               onFocus={e => e.target.style.borderColor = ts.inputFocus}
               onBlur={e => e.target.style.borderColor = ts.inputBorder} />
 
-            <button onClick={submit} disabled={!selected}
+            <button onClick={submit} disabled={!selected || submitting}
               className="w-full mt-4 py-3.5 rounded-full text-white text-sm font-semibold transition-all active:scale-95 disabled:opacity-40 disabled:shadow-none"
               style={{ background: ts.btnBg, boxShadow: selected ? `0 10px 30px ${ts.glow}` : undefined }}>
-              记录今天 ✨
+              {submitting ? '正在记录…' : '记录今天 ✨'}
             </button>
+            {submitError && (
+              <p className="mt-3 text-xs text-center" style={{ color: ts.back }}>{submitError}</p>
+            )}
           </div>
         ) : (
           <div className="w-full rounded-3xl p-8 mb-6 text-center backdrop-blur-md"

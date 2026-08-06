@@ -364,7 +364,8 @@ describe('useWakeWord 模块级错误路径', () => {
       expect(['listening', 'error']).toContain(result.current.wakeStatus)
     })
     expect(capturedOpts).toBeTruthy()
-    expect(debugSpy).toHaveBeenCalledWith('[WakeWord] whisper.onnx 75%')
+    // AUD-027：dbg helper 前缀 + 可变参数（console.debug('[WakeWord]', ...args)）
+    expect(debugSpy).toHaveBeenCalledWith('[WakeWord]', 'whisper.onnx 75%')
     unmount()
     debugSpy.mockRestore()
     infoSpy.mockRestore()

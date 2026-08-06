@@ -1,10 +1,10 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { pinLogin, setToken, setRefreshToken, setUser, issueVoiceCredential, getVoiceprintConfig, remoteVoiceprintEnroll } from '../api'
+import { pinLogin, setToken, setRefreshToken, setUser, issueVoiceCredential, getVoiceprintConfig, remoteVoiceprintEnroll, trialRegister, markConsentDone, setPin as apiSetPin } from '../api'
 import { CONSENT_VERSION } from './ConsentGate'
 import { hasAnyVoiceprint, enrollVoiceprint, saveVoiceCredential, markRemoteVoiceprintEnrolled } from '../utils/voiceprintStore'
 import { useTheme, THEMES } from '../theme/ThemeProvider'
 import { preloadVoiceprintModel, useVoiceprintModelStatus } from '../hooks/useVoiceprint'
-import { preloadWakeModel, useWakeModelStatus } from '../hooks/useWakeWord'
+import { useWakeModelStatus } from '../hooks/useWakeWord'
 import VoiceLoginOverlay from './VoiceLoginOverlay'
 import SceneDecor from './SceneDecor'
 import ConfirmDialog from './ConfirmDialog'
@@ -23,17 +23,10 @@ export default function LoginPage({ onLogin, onRegister, onNeedConsent, initialT
   const [showVoiceOverlay, setShowVoiceOverlay] = useState(false)
   const [hasVoiceprint, setHasVoiceprint] = useState(false)
   const [showNoVpTip, setShowNoVpTip] = useState(false)
+  const [showModelConfirm, setShowModelConfirm] = useState(false) // AUD-008：首次声音进入的模型下载流量确认
 
   useEffect(() => {
     hasAnyVoiceprint().then((has) => setHasVoiceprint(has))
-  }, [])
-
-  // 预加载语音模型：登录页一打开就开始下载（唤醒引擎优先，声纹延后 2s 启动，
-  // 避免两个大模型首屏并行抢带宽 → 各自都慢）
-  useEffect(() => {
-    preloadWakeModel()
-    const t = setTimeout(() => preloadVoiceprintModel(), 2000)
-    return () => clearTimeout(t)
   }, [])
 
   // 浏览器是否支持麦克风 + WASM SIMD（决定是否显示声音进入按钮）
@@ -59,14 +52,29 @@ export default function LoginPage({ onLogin, onRegister, onNeedConsent, initialT
 
   const handleVoiceCancel = () => setShowVoiceOverlay(false)
 
-  /** 点击"声音进入"：有声纹进识别流程，没有给引导提示 */
+  /** 点击"声音进入"：有声纹进识别流程，没有给引导提示
+   *  AUD-008：模型不再挂载即预下载（约 40MB 流量）；首次使用且模型未就绪时
+   *  先弹流量确认 → 确认后才下载（底部进度提示），已就绪/下载中直接进入 */
   const handleVoiceClick = useCallback(() => {
-    if (hasVoiceprint) {
-      setShowVoiceOverlay(true)
-    } else {
+    if (!hasVoiceprint) {
       setShowNoVpTip(true)
+      return
     }
-  }, [hasVoiceprint])
+    const st = vpStatus.status
+    if (st === 'ready' || st === 'loading') {
+      setShowVoiceOverlay(true)
+      return
+    }
+    // 模型未就绪（idle/error/unsupported）：error 时也允许重试下载
+    setShowModelConfirm(true)
+  }, [hasVoiceprint, vpStatus.status])
+
+  /** AUD-008：用户确认下载后开始预加载声纹模型并进入识别 */
+  const handleModelConfirm = useCallback(() => {
+    setShowModelConfirm(false)
+    preloadVoiceprintModel()
+    setShowVoiceOverlay(true)
+  }, [])
 
   return (
     <div className={`login-scene login-scene--${themeId}`}>
@@ -168,6 +176,20 @@ export default function LoginPage({ onLogin, onRegister, onNeedConsent, initialT
       {/* 声纹识别覆盖层 */}
       {showVoiceOverlay && (
         <VoiceLoginOverlay mode="verify" onComplete={handleVoiceComplete} onCancel={handleVoiceCancel} />
+      )}
+
+      {/* AUD-008：首次声音进入的模型下载流量确认（约 20MB 声纹模型） */}
+      {showModelConfirm && (
+        <ConfirmDialog
+          open={showModelConfirm}
+          emoji="📦"
+          title="需要下载语音模型"
+          message="首次使用声音进入需下载约 20MB 语音模型（建议连接 WiFi），要继续吗？"
+          confirmText="继续下载"
+          cancelText="取消"
+          onConfirm={handleModelConfirm}
+          onCancel={() => setShowModelConfirm(false)}
+        />
       )}
 
       {/* 语音模型下载进度（底部微妙提示） */}
@@ -310,16 +332,16 @@ function RegisterForm({ themeId, onRegister }) {
     const age = parseInt(form.age, 10)
     setLoading(true); setError('')
     try {
-      const { trialRegister, setToken: st, setRefreshToken: srt, setUser: su, markConsentDone } = await import('../api')
+      // AUD-066：顶层已静态 import，去掉重复动态 import（无分 chunk 收益）
       const data = await trialRegister({
         inviteCode: form.inviteCode.trim(),
         pseudonym: form.pseudonym.trim(),
         age, role: 'student', gender: form.gender, consentVersion: CONSENT_VERSION,
         ...(age < 14 ? { guardianPhone: form.guardianPhone.trim() } : {}),
       })
-      st(data.token)
-      if (data.refreshToken) srt(data.refreshToken)
-      su({ userId: data.userId, userType: data.userType, pseudonym: data.pseudonym, gender: form.gender, familyCode: data.familyCode })
+      setToken(data.token)
+      if (data.refreshToken) setRefreshToken(data.refreshToken)
+      setUser({ userId: data.userId, userType: data.userType, pseudonym: data.pseudonym, gender: form.gender, familyCode: data.familyCode })
       markConsentDone()
       setRegUserId(data.userId)
       if (data.familyCode) setFamilyCode(data.familyCode)
@@ -356,8 +378,8 @@ function RegisterForm({ themeId, onRegister }) {
     }
     setLoading(true); setPinError('')
     try {
-      const { setPin: sp } = await import('../api')
-      await sp(pin)
+      // AUD-066：顶层已静态 import，去掉重复动态 import；apiSetPin 别名避免与 PIN 输入框 useState setter 重名遮蔽（回归修复）
+      await apiSetPin(pin)
       // PIN 设置成功：若用户同意了声纹采集，进入声纹选择步骤
       if (voiceConsent && regUserId) {
         setStep('voice-choice')
@@ -439,8 +461,9 @@ function RegisterForm({ themeId, onRegister }) {
             try {
               if (vpMode === 'remote') {
                 // remote 模式：embedding 传服务端存储
-                await remoteVoiceprintEnroll(result.embeddings)
-                markRemoteVoiceprintEnrolled()
+                const { tenantId } = await remoteVoiceprintEnroll(result.embeddings)
+                // AUD-001：暂存服务端签发的租户，声纹登录 verify 时需回传租户维度
+                markRemoteVoiceprintEnrolled(tenantId)
               } else {
                 // local 模式：存 IndexedDB + 签发设备凭证
                 await enrollVoiceprint(regUserId, form.pseudonym.trim(), result.embeddings)
@@ -660,15 +683,13 @@ function ModelDownloadProgress() {
   const hasError = items.some((i) => i.status === 'error')
   const allLoading = items.filter((i) => i.status === 'loading')
 
-  // 有失败：显示错误提示（含详细原因，方便诊断）
+  // 有失败：仅友好提示（AUD-024：不向儿童界面渲染错误堆栈/内部路径，诊断信息保留在 console）
   if (hasError) {
     const failedItems = items.filter((i) => i.status === 'error')
     const failedNames = failedItems.map((i) => i.label).join('、')
-    const detail = failedItems.find((i) => i.error)?.error || ''
     return (
       <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 px-4 py-1.5 rounded-full border text-xs font-medium bg-red-50 text-red-500 border-red-200 max-w-[90vw]">
         ⚠️ {failedNames}加载失败，不影响登录
-        {detail && <span className="block text-[10px] text-red-400 mt-0.5 break-all">{detail}</span>}
       </div>
     )
   }

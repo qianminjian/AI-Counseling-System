@@ -5,6 +5,7 @@
  * - localStorage 持久化
  */
 import { createContext, useContext, useState, useEffect, useCallback } from 'react'
+import { readLocalStorageSafe, writeLocalStorageSafe } from '../utils/storage'
 
 // ===== 主题定义 =====
 
@@ -81,7 +82,8 @@ const ThemeContext = createContext(null)
 
 export function ThemeProvider({ children }) {
   const [themeId, setThemeId] = useState(() => {
-    return localStorage.getItem(THEME_KEY) || 'ocean'
+    // AUD-065：裸 localStorage 改安全封装（隐私模式/存储禁用下不抛 SecurityError）
+    return readLocalStorageSafe<string>(THEME_KEY, 'ocean')
   })
 
   const theme = THEMES[themeId] || THEMES.ocean
@@ -97,7 +99,8 @@ export function ThemeProvider({ children }) {
   const changeTheme = useCallback((id) => {
     if (THEMES[id]) {
       setThemeId(id)
-      localStorage.setItem(THEME_KEY, id)
+      // AUD-065：安全封装（写入失败静默跳过，会话内主题仍生效）
+      writeLocalStorageSafe(THEME_KEY, id)
     }
   }, [])
 

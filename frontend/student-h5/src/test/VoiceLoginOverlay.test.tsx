@@ -5,6 +5,7 @@ import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 const {
   mockExtractEmbedding, mockVerify, mockGetVoiceprint, mockVoiceLogin,
   mockSetToken, mockSetRefreshToken, mockSetUser, mockCaptureCleanup,
+  mockGetVoiceprintConfig, mockGetRemoteTenantId, mockRemoteVerify,
 } = vi.hoisted(() => ({
   mockExtractEmbedding: vi.fn(),
   mockVerify: vi.fn(),
@@ -14,6 +15,9 @@ const {
   mockSetRefreshToken: vi.fn(),
   mockSetUser: vi.fn(),
   mockCaptureCleanup: vi.fn(),
+  mockGetVoiceprintConfig: vi.fn(),
+  mockGetRemoteTenantId: vi.fn(),
+  mockRemoteVerify: vi.fn(),
 }))
 
 vi.mock('../hooks/useVoiceprint', () => ({
@@ -35,14 +39,15 @@ vi.mock('../utils/createPcmCapture', () => ({
 }))
 vi.mock('../utils/voiceprintStore', () => ({
   getVoiceprint: (...args: any[]) => mockGetVoiceprint(...args),
+  getRemoteVoiceprintTenantId: (...args: any[]) => mockGetRemoteTenantId(...args),
 }))
 vi.mock('../api', () => ({
   voiceLogin: (...args: any[]) => mockVoiceLogin(...args),
   setToken: (...args: any[]) => mockSetToken(...args),
   setRefreshToken: (...args: any[]) => mockSetRefreshToken(...args),
   setUser: (...args: any[]) => mockSetUser(...args),
-  getVoiceprintConfig: vi.fn().mockResolvedValue({ mode: 'local', enabled: true }),
-  remoteVoiceprintVerify: vi.fn().mockResolvedValue({ matched: false }),
+  getVoiceprintConfig: (...args: any[]) => mockGetVoiceprintConfig(...args),
+  remoteVoiceprintVerify: (...args: any[]) => mockRemoteVerify(...args),
 }))
 
 import VoiceLoginOverlay from '../components/VoiceLoginOverlay'
@@ -56,6 +61,9 @@ describe('VoiceLoginOverlay', () => {
     mockVerify.mockResolvedValue({ matched: true, userId: 'u1', pseudonym: '小明', score: 0.9 })
     mockGetVoiceprint.mockResolvedValue({ userId: 'u1', pseudonym: '小明', voiceCredential: 'cred-123' })
     mockVoiceLogin.mockResolvedValue({ token: 'tk', refreshToken: 'rtk', userId: 'u1', userType: 'student', displayName: '小明' })
+    mockGetVoiceprintConfig.mockResolvedValue({ mode: 'local', enabled: true })
+    mockGetRemoteTenantId.mockReturnValue('tenant-t1')
+    mockRemoteVerify.mockResolvedValue({ matched: false })
     // mock SpeechSynthesisUtterance
     ;(window as any).SpeechSynthesisUtterance = vi.fn().mockImplementation((text: string) => ({
       text, lang: '', rate: 1, voice: null, onend: null, onerror: null,
@@ -162,6 +170,27 @@ describe('VoiceLoginOverlay', () => {
     render(<VoiceLoginOverlay mode="verify" onComplete={vi.fn()} onCancel={vi.fn()} />)
     await act(async () => { await vi.advanceTimersByTimeAsync(30000) })
     expect(screen.getByText(/登录钥匙过期啦/)).toBeTruthy()
+  })
+
+  it('remote 模式 verify：租户信息缺失 → 引导重录（AUD-001）', async () => {
+    mockGetVoiceprintConfig.mockResolvedValue({ mode: 'remote', enabled: true })
+    mockGetRemoteTenantId.mockReturnValue(null)
+    render(<VoiceLoginOverlay mode="verify" onComplete={vi.fn()} onCancel={vi.fn()} />)
+    await act(async () => { await vi.advanceTimersByTimeAsync(30000) })
+    expect(screen.getByText(/登录钥匙还没办好/)).toBeTruthy()
+    // 未携带租户维度时禁止发起服务端比对
+    expect(mockRemoteVerify).not.toHaveBeenCalled()
+  })
+
+  it('remote 模式 verify 成功：携带租户维度并签发 token（AUD-001）', async () => {
+    mockGetVoiceprintConfig.mockResolvedValue({ mode: 'remote', enabled: true })
+    mockRemoteVerify.mockResolvedValue({ matched: true, token: 'tk-r', refreshToken: 'rtk-r', userId: 'u1', userType: 'student', displayName: '小美' })
+    render(<VoiceLoginOverlay mode="verify" onComplete={vi.fn()} onCancel={vi.fn()} />)
+    await act(async () => { await vi.advanceTimersByTimeAsync(30000) })
+    // 请求必须携带 embeddings + 服务端签发的 tenantId
+    expect(mockRemoteVerify).toHaveBeenCalledWith(expect.any(Array), 'tenant-t1')
+    expect(mockSetToken).toHaveBeenCalledWith('tk-r')
+    expect(screen.getByText(/是小美呀！欢迎回来/)).toBeTruthy()
   })
 
   it('verify 声纹不匹配：显示重试按钮（第 1 次）', async () => {

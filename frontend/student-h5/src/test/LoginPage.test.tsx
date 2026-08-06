@@ -16,10 +16,16 @@ vi.mock('../api', () => ({
   remoteVoiceprintEnroll: vi.fn().mockResolvedValue({ success: true }),
 }))
 vi.mock('../utils/voiceprintStore', () => ({
-  hasAnyVoiceprint: vi.fn().mockResolvedValue(false),
+  hasAnyVoiceprint: vi.fn(), // AUD-008：动态 mock，beforeEach 默认 false，有声纹场景单独覆盖
   enrollVoiceprint: vi.fn().mockResolvedValue({}),
   saveVoiceCredential: vi.fn().mockResolvedValue({}),
   markRemoteVoiceprintEnrolled: vi.fn(),
+}))
+// AUD-008：mock 声纹模型状态（默认 idle=未下载），单独覆盖 ready 场景验证跳过流量确认
+let mockVpStatus = 'idle'
+vi.mock('../hooks/useVoiceprint', () => ({
+  preloadVoiceprintModel: vi.fn(),
+  useVoiceprintModelStatus: () => ({ status: mockVpStatus, progress: 0, error: undefined }),
 }))
 vi.mock('../theme/ThemeProvider', () => ({
   useTheme: () => ({ themeId: 'ocean', changeTheme: vi.fn() }),
@@ -43,22 +49,26 @@ vi.mock('../components/SceneDecor', () => ({
   default: () => <div data-testid="scene-decor" />,
 }))
 vi.mock('../components/ConfirmDialog', () => ({
-  default: ({ open, title, onConfirm, onCancel, children }: any) =>
+  default: ({ open, title, onConfirm, onCancel, confirmText = '没错，注册！', cancelText = '再改改', children }: any) =>
     open ? (
       <div data-testid="confirm-dialog">
         <span>{title}</span>
         {children}
-        <button onClick={onConfirm}>没错，注册！</button>
-        <button onClick={onCancel}>再改改</button>
+        <button onClick={onConfirm}>{confirmText}</button>
+        <button onClick={onCancel}>{cancelText}</button>
       </div>
     ) : null,
 }))
 
 import { pinLogin, setToken, setUser, trialRegister, setPin, markConsentDone } from '../api'
+import { hasAnyVoiceprint } from '../utils/voiceprintStore'
+import { preloadVoiceprintModel } from '../hooks/useVoiceprint'
 
 describe('LoginPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockVpStatus = 'idle'
+    ;(hasAnyVoiceprint as any).mockResolvedValue(false)
     Object.defineProperty(navigator, 'mediaDevices', {
       value: { getUserMedia: vi.fn() },
       writable: true,
@@ -186,6 +196,43 @@ describe('LoginPage', () => {
       await waitFor(() => expect(screen.getByText('知道啦')).toBeTruthy())
       fireEvent.click(screen.getByText('知道啦'))
       expect(screen.queryByText('还没录过你的声音哦')).toBeNull()
+    })
+
+    // ==== AUD-008：模型不再挂载即预下载，点击声音进入后按需下载 + 流量确认 ====
+    it('有声纹且模型未就绪：点击先弹流量确认，确认后下载并打开识别', async () => {
+      ;(hasAnyVoiceprint as any).mockResolvedValue(true)
+      render(<LoginPage onLogin={vi.fn()} onRegister={vi.fn()} onNeedConsent={vi.fn()} />)
+      await waitFor(() => expect(screen.getByText('🎤 声音进入')).toBeTruthy())
+      fireEvent.click(screen.getByText('🎤 声音进入'))
+      // 未直接打开识别，先弹流量确认
+      expect(screen.getByText('需要下载语音模型')).toBeTruthy()
+      expect(preloadVoiceprintModel).not.toHaveBeenCalled()
+      // 确认后开始下载并打开声纹识别
+      fireEvent.click(screen.getByText('继续下载'))
+      await waitFor(() => expect(preloadVoiceprintModel).toHaveBeenCalledTimes(1))
+      expect(screen.getByTestId('voice-overlay')).toBeTruthy()
+    })
+
+    it('有声纹且模型未就绪：取消流量确认则不下载不进入', async () => {
+      ;(hasAnyVoiceprint as any).mockResolvedValue(true)
+      render(<LoginPage onLogin={vi.fn()} onRegister={vi.fn()} onNeedConsent={vi.fn()} />)
+      await waitFor(() => expect(screen.getByText('🎤 声音进入')).toBeTruthy())
+      fireEvent.click(screen.getByText('🎤 声音进入'))
+      expect(screen.getByText('需要下载语音模型')).toBeTruthy()
+      fireEvent.click(screen.getByText('取消'))
+      expect(preloadVoiceprintModel).not.toHaveBeenCalled()
+      expect(screen.queryByTestId('voice-overlay')).toBeNull()
+    })
+
+    it('有声纹且模型已就绪：点击直接进入识别（不弹流量确认）', async () => {
+      ;(hasAnyVoiceprint as any).mockResolvedValue(true)
+      mockVpStatus = 'ready'
+      render(<LoginPage onLogin={vi.fn()} onRegister={vi.fn()} onNeedConsent={vi.fn()} />)
+      await waitFor(() => expect(screen.getByText('🎤 声音进入')).toBeTruthy())
+      fireEvent.click(screen.getByText('🎤 声音进入'))
+      expect(screen.queryByText('需要下载语音模型')).toBeNull()
+      expect(screen.getByTestId('voice-overlay')).toBeTruthy()
+      expect(preloadVoiceprintModel).not.toHaveBeenCalled()
     })
   })
 
@@ -511,6 +558,7 @@ describe('LoginPage', () => {
     it('有声纹时声音进入显示覆盖层，识别成功触发 onLogin', async () => {
       const { hasAnyVoiceprint } = await import('../utils/voiceprintStore')
       ;(hasAnyVoiceprint as any).mockResolvedValue(true)
+      mockVpStatus = 'ready' // AUD-008：模型已就绪 → 直接进入识别（不弹流量确认）
       const onLogin = vi.fn()
       render(<LoginPage onLogin={onLogin} onRegister={vi.fn()} onNeedConsent={vi.fn()} />)
       await waitFor(() => expect(screen.getByText('🎤 声音进入')).toBeTruthy())
@@ -523,6 +571,7 @@ describe('LoginPage', () => {
     it('有声纹时声音进入覆盖层取消关闭', async () => {
       const { hasAnyVoiceprint } = await import('../utils/voiceprintStore')
       ;(hasAnyVoiceprint as any).mockResolvedValue(true)
+      mockVpStatus = 'ready' // AUD-008：模型已就绪 → 直接进入识别（不弹流量确认）
       render(<LoginPage onLogin={vi.fn()} onRegister={vi.fn()} onNeedConsent={vi.fn()} />)
       await waitFor(() => expect(screen.getByText('🎤 声音进入')).toBeTruthy())
       fireEvent.click(screen.getByText('🎤 声音进入'))
