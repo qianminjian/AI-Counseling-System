@@ -45,6 +45,9 @@ services:
       dockerfile: Dockerfile
     container_name: mindsafe-backend
     restart: unless-stopped
+    ports:
+      # 宿主端口 18082（切换期：宿主 nginx proxy_pass → 127.0.0.1:18082；healthcheck 仍走容器内 8080）
+      - "18082:8080"
     environment:
       # 激活 prod profile：启用 fail-fast 守卫（JWT/加密密钥缺失拒绝启动）、禁用 Swagger
       SPRING_PROFILES_ACTIVE: prod
