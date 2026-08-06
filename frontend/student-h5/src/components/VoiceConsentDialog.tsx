@@ -1,6 +1,8 @@
 import { useState } from 'react'
+import { ConsentKeys } from '../api'
 
-const CONSENT_KEY = 'mindsafe_voice_consent_v1'
+// F-9 同意键单点：引用 ConsentKeys 枚举（ARCH-005），不再本地定义字符串
+const CONSENT_KEY = ConsentKeys.VOICE
 
 /**
  * 语音功能授权弹窗（合规：《未成年人网络保护条例》《个人信息保护法》）

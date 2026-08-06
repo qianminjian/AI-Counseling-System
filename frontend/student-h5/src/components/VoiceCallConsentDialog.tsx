@@ -1,7 +1,9 @@
 import { useState } from 'react'
+import { ConsentKeys } from '../api'
 
 /** 语音唤醒授权状态（与按住说话授权分离，单独告知单独同意） */
-const VOICE_CALL_CONSENT_KEY = 'mindsafe_voicecall_consent_v1'
+// F-9 同意键单点：引用 ConsentKeys 枚举（ARCH-005），不再本地定义字符串
+const VOICE_CALL_CONSENT_KEY = ConsentKeys.VOICE_CALL
 
 /**
  * 语音唤醒单独授权 Hook（design/28 §1.4 合规与授权）

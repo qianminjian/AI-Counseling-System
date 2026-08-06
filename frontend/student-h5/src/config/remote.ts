@@ -13,6 +13,8 @@
  *   远程有值 → 用远程；远程无值 / 未加载 → 用 fallback（本地默认值）
  */
 
+import { fetchSystemConfig } from '../api'
+
 /** 远程配置结构（对应后端 SystemConfigProperties） */
 export interface RemoteConfig {
   voiceprint?: {
@@ -51,10 +53,8 @@ export async function initRemoteConfig(): Promise<boolean> {
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
 
-    const res = await fetch('/api/v1/system/config', {
-      signal: controller.signal,
-      headers: { 'Accept': 'application/json' },
-    })
+    // F-2 端点收敛：具名 authFetch 接缝（ARCH-005），外部注入 3s 超时 signal
+    const res = await fetchSystemConfig(controller.signal)
 
     clearTimeout(timer)
 

@@ -43,15 +43,31 @@ export function setUser(user: Record<string, unknown>) {
 }
 
 // ===== 设备级存储（跨会话保持） =====
-const CONSENT_KEY = 'mindsafe_consent_done'
+/**
+ * 同意键单点（F-9，ARCH-005）：告知同意 / 语音授权 / 语音通话授权
+ * 各组件（App/ConsentDialog/VoiceConsentDialog/VoiceCallConsentDialog）只引用枚举，不再各自定义字符串。
+ */
+export const ConsentKeys = {
+  NOTICE: 'mindsafe_consent_v1',
+  VOICE: 'mindsafe_voice_consent_v1',
+  VOICE_CALL: 'mindsafe_voicecall_consent_v1',
+} as const
 
-/** 设备是否已完成告知同意（跨 tab 保持） */
+/** 旧版告知同意键（mindsafe_consent_done），一次性迁移兼容读取 */
+const LEGACY_NOTICE_KEY = 'mindsafe_consent_done'
+
+/** 设备是否已完成告知同意（跨 tab 保持；旧键存在时自动迁移到新键） */
 export function isConsentDone() {
-  return localStorage.getItem(CONSENT_KEY) === '1'
+  if (localStorage.getItem(ConsentKeys.NOTICE) === '1') return true
+  if (localStorage.getItem(LEGACY_NOTICE_KEY) === '1') {
+    localStorage.setItem(ConsentKeys.NOTICE, '1')
+    return true
+  }
+  return false
 }
 
 export function markConsentDone() {
-  localStorage.setItem(CONSENT_KEY, '1')
+  localStorage.setItem(ConsentKeys.NOTICE, '1')
 }
 
 /** 是否已登录（有有效 token） */
@@ -85,6 +101,57 @@ export async function authFetch(url: string, init?: RequestInit): Promise<Respon
     }
   }
   return res
+}
+
+/**
+ * 暖场（冷场引导）请求（design/28 §2.3，P0-1）
+ *
+ * 走 authFetch 统一认证接缝：401 自动刷新并重放，不静默失败。
+ * 返回原始 Response（SSE 流由调用方解析，不在此解析 JSON）。
+ */
+export function fetchWarmPrompt(sessionId: string, silenceSeconds: number): Promise<Response> {
+  return authFetch(`/api/v1/chat/sessions/${sessionId}/nudge`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ silenceSeconds }),
+  })
+}
+
+/**
+ * 系统配置（F-2/F-3，ARCH-005 端点收敛）
+ * GET /api/v1/system/config，支持外部 AbortSignal（remote.ts 启动 3s 超时）。
+ */
+export function fetchSystemConfig(signal?: AbortSignal): Promise<Response> {
+  return authFetch('/api/v1/system/config', {
+    headers: { Accept: 'application/json' },
+    signal,
+  })
+}
+
+/** 登录页语音问候语合成（F-2，VoiceLoginOverlay） */
+export function fetchLoginPrompt(text: string, persona: string): Promise<Response> {
+  return authFetch('/api/v1/tts/login-prompt', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text, persona }),
+  })
+}
+
+/** TTS 语音合成（F-2，useTtsPlayer 音频流） */
+export function fetchTtsSynthesize(payload: Record<string, unknown>): Promise<Response> {
+  return authFetch('/api/v1/tts/synthesize', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+}
+
+/** 语音情感分析（F-2，ChatRoom multipart 上传；不设 Content-Type 由浏览器生成 boundary） */
+export function fetchVoiceAnalyze(formData: FormData): Promise<Response> {
+  return authFetch('/api/v1/voice/analyze', {
+    method: 'POST',
+    body: formData,
+  })
 }
 
 /** 尝试刷新 Token，成功返回 true */

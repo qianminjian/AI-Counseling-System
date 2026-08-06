@@ -8,7 +8,7 @@
  */
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { getGlobalAudioElement, getGlobalAudioContext, unlockAudio } from '../utils/audioUnlock'
-import { authFetch } from '../api'
+import { fetchTtsSynthesize } from '../api'
 
 /** 去除 emoji 和特殊符号（TTS 不需要朗读） */
 function stripEmoji(text) {
@@ -163,13 +163,10 @@ export function useTtsPlayer({ persona = 'xiaoxing', emotion = 'neutral', speed 
       backendFailCount.current = 0
     }
     try {
-      const res = await authFetch('/api/v1/tts/synthesize', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          text, persona, emotion, speed,
-          ...(dialect ? { dialect } : {}),
-        }),
+      // F-2 端点收敛：具名 authFetch 接缝（ARCH-005），payload 透传
+      const res = await fetchTtsSynthesize({
+        text, persona, emotion, speed,
+        ...(dialect ? { dialect } : {}),
       })
       if (!res.ok || res.status === 204) {
         backendFailCount.current++

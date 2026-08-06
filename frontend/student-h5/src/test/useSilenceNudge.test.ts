@@ -2,20 +2,22 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 import { useSilenceNudge } from '../hooks/useSilenceNudge'
 
-// mock api.getToken
+// P0-1：hook 走统一认证接缝 fetchWarmPrompt（api.ts），不再裸 fetch
+const { mockFetchWarmPrompt } = vi.hoisted(() => ({
+  mockFetchWarmPrompt: vi.fn(),
+}))
 vi.mock('../api', () => ({
-  getToken: vi.fn(() => 'mock-token'),
+  fetchWarmPrompt: mockFetchWarmPrompt,
 }))
 
 describe('useSilenceNudge', () => {
   beforeEach(() => {
     vi.useFakeTimers()
-    vi.stubGlobal('fetch', vi.fn())
+    mockFetchWarmPrompt.mockReset()
   })
 
   afterEach(() => {
     vi.useRealTimers()
-    vi.unstubAllGlobals()
   })
 
   it('返回 recordInteraction 和 resetSilenceBase 函数', () => {
@@ -31,7 +33,7 @@ describe('useSilenceNudge', () => {
       useSilenceNudge({ sessionId: 's1', idle: false, onNudge: vi.fn() })
     )
     act(() => { vi.advanceTimersByTime(60000) })
-    expect(fetch).not.toHaveBeenCalled()
+    expect(mockFetchWarmPrompt).not.toHaveBeenCalled()
   })
 
   it('未互动时（interactedRef=false）不触发 nudge', async () => {
@@ -40,10 +42,10 @@ describe('useSilenceNudge', () => {
     )
     // 超过 25s 沉默 + 多个检测周期
     act(() => { vi.advanceTimersByTime(35000) })
-    expect(fetch).not.toHaveBeenCalled()
+    expect(mockFetchWarmPrompt).not.toHaveBeenCalled()
   })
 
-  it('recordInteraction 后沉默 >=25s 触发 nudge 请求', async () => {
+  it('recordInteraction 后沉默 >=25s 触发暖场请求（走 authFetch 接缝）', async () => {
     const mockReader = {
       read: vi.fn()
         .mockResolvedValueOnce({
@@ -52,7 +54,7 @@ describe('useSilenceNudge', () => {
         })
         .mockResolvedValueOnce({ done: true, value: undefined }),
     }
-    ;(fetch as any).mockResolvedValue({
+    mockFetchWarmPrompt.mockResolvedValue({
       ok: true,
       body: { getReader: () => mockReader },
     })
@@ -68,10 +70,7 @@ describe('useSilenceNudge', () => {
     // 推进 25s+ 沉默（检测间隔 5s）
     await act(async () => { vi.advanceTimersByTime(30000) })
 
-    expect(fetch).toHaveBeenCalledWith(
-      '/api/v1/chat/sessions/s1/nudge',
-      expect.objectContaining({ method: 'POST' })
-    )
+    expect(mockFetchWarmPrompt).toHaveBeenCalledWith('s1', expect.any(Number))
     expect(onNudge).toHaveBeenCalledWith('你好呀')
   })
 
@@ -79,7 +78,7 @@ describe('useSilenceNudge', () => {
     const mockReader = {
       read: vi.fn().mockResolvedValueOnce({ done: true, value: undefined }),
     }
-    ;(fetch as any).mockResolvedValue({
+    mockFetchWarmPrompt.mockResolvedValue({
       ok: true,
       body: { getReader: () => mockReader },
     })
@@ -91,7 +90,7 @@ describe('useSilenceNudge', () => {
     act(() => { result.current.recordInteraction() })
     await act(async () => { vi.advanceTimersByTime(30000) })
 
-    expect(fetch).toHaveBeenCalled()
+    expect(mockFetchWarmPrompt).toHaveBeenCalled()
     expect(onNudge).not.toHaveBeenCalled()
   })
 
@@ -104,7 +103,7 @@ describe('useSilenceNudge', () => {
         })
         .mockResolvedValueOnce({ done: true, value: undefined }),
     })
-    ;(fetch as any).mockResolvedValue({
+    mockFetchWarmPrompt.mockResolvedValue({
       ok: true,
       body: { getReader: () => mockReader() },
     })
@@ -134,7 +133,7 @@ describe('useSilenceNudge', () => {
         })
         .mockResolvedValueOnce({ done: true, value: undefined }),
     })
-    ;(fetch as any).mockResolvedValue({
+    mockFetchWarmPrompt.mockResolvedValue({
       ok: true,
       body: { getReader: () => mockReader() },
     })
@@ -154,8 +153,19 @@ describe('useSilenceNudge', () => {
     expect(onNudge).toHaveBeenCalledTimes(3)
   })
 
-  it('fetch 失败静默忽略', async () => {
-    ;(fetch as any).mockRejectedValue(new Error('network'))
+  it('暖场请求失败静默忽略（不打断对话）', async () => {
+    mockFetchWarmPrompt.mockRejectedValue(new Error('network'))
+    const onNudge = vi.fn()
+    const { result } = renderHook(() =>
+      useSilenceNudge({ sessionId: 's1', idle: true, onNudge })
+    )
+    act(() => { result.current.recordInteraction() })
+    await act(async () => { vi.advanceTimersByTime(30000) })
+    expect(onNudge).not.toHaveBeenCalled()
+  })
+
+  it('HTTP 非 2xx 静默忽略', async () => {
+    mockFetchWarmPrompt.mockResolvedValue({ ok: false, status: 500 })
     const onNudge = vi.fn()
     const { result } = renderHook(() =>
       useSilenceNudge({ sessionId: 's1', idle: true, onNudge })
@@ -175,6 +185,6 @@ describe('useSilenceNudge', () => {
     act(() => { result.current.resetSilenceBase() })
     // 再推进 10s（总 30s 但重置后只有 10s < 25s）
     act(() => { vi.advanceTimersByTime(10000) })
-    expect(fetch).not.toHaveBeenCalled()
+    expect(mockFetchWarmPrompt).not.toHaveBeenCalled()
   })
 })
