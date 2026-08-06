@@ -93,7 +93,8 @@ check_health() {
       docker exec "${CONTAINER_NAME[backend]}" wget -qO- http://localhost:8080/actuator/health >/dev/null 2>&1
       ;;
     nginx)
-      curl -sf -o /dev/null http://127.0.0.1/ 2>/dev/null
+      # 宿主 nginx：443 主入口探测（2026-08-06 修复：curl 必须带 Host 头，否则落默认 server 返回假 502）
+      curl -sfk -o /dev/null -H 'Host: yun.gxjugu.com' https://127.0.0.1/mindsafe/ 2>/dev/null
       ;;
     *)
       return 1
