@@ -28,6 +28,7 @@ import org.springframework.web.bind.annotation.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.security.MessageDigest;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
@@ -37,9 +38,12 @@ import java.util.*;
  * <p>
  * - GET  /config  — 公开：返回当前声纹模式（前端据此切换 local/remote 流程）
  * - POST /enroll  — 需登录：存储 embedding 向量到服务端（remote 模式录入）
- * - POST /verify  — 公开：接收 embedding 向量，服务端比对，通过则签发双 token（remote 模式登录）
+ * - POST /verify  — 公开：接收 embedding 向量 + 必填 tenantId，服务端在<b>该租户内</b>比对，通过则签发双 token（remote 模式登录）
  * <p>
  * 隐私：仅存 256-dim 特征向量（不可逆向还原音频），不存原始声音。
+ * <p>
+ * AUD-001（2026-08-06）：verify 强制携带租户维度并按 tenant_id 过滤，禁止系统作用域全表 1:N 比对
+ * （原实现跨租户越权面）；阈值对齐 local 端 0.70；新增 embedding 指纹级限流防抓包重放。
  */
 @RestController
 @RequestMapping("/api/v1/voiceprint")
@@ -58,10 +62,13 @@ public class VoiceprintController {
     /** 公开端点按 IP 限流：每分钟最多 10 次声纹验证尝试（防暴力探测） */
     private static final int VERIFY_MAX_PER_MINUTE = 10;
 
+    /** AUD-001：同一 embedding 指纹每分钟最多 5 次（防抓包重放；换 IP 无法绕过） */
+    private static final int VERIFY_FP_MAX_PER_MINUTE = 5;
+
     @Value("${mindsafe.voiceprint.mode:local}")
     private String voiceprintMode;
 
-    @Value("${mindsafe.voiceprint.verify-threshold:0.55}")
+    @Value("${mindsafe.voiceprint.verify-threshold:0.70}")
     private double verifyThreshold;
 
     @Value("${mindsafe.voiceprint.max-templates:8}")
@@ -130,12 +137,18 @@ public class VoiceprintController {
 
         auditLogService.log(tenantId, userId, "VOICEPRINT_ENROLL_REMOTE", "user", userId, null);
 
-        return ApiResponse.ok(Map.of("enrolled", count, "mode", "remote"));
+        // AUD-001：响应携带 tenantId——前端 verify 需携带租户维度（比对范围收窄至本租户），
+        // 由服务端签发避免前端自行猜测/伪造租户归属
+        return ApiResponse.ok(Map.of("enrolled", count, "mode", "remote",
+                "tenantId", tenantId.toString()));
     }
 
     /**
      * 声纹验证登录（remote 模式，公开端点）
      * 前端提取 embedding 后传到服务端比对，通过则直接签发双 token
+     * <p>
+     * AUD-001：请求必须携带 tenantId——比对范围收窄至该租户，跨租户模板不可达；
+     * 即使攻击者枚举 tenantId（UUID 不可枚举），也需先持有目标用户真实 embedding。
      */
     @PostMapping("/verify")
     public ApiResponse<Map<String, Object>> verify(@Valid @RequestBody VerifyRequest request,
@@ -152,29 +165,44 @@ public class VoiceprintController {
             throw new BizException(ErrorCode.RATE_LIMITED, "尝试太频繁了，请稍等一下再试");
         }
 
+        // AUD-001：embedding 指纹级限流（SHA-256(embeddings) 作 key）——抓包重放同一请求
+        // 换 IP 也无法绕过；正常用户每次录音重新提取的 embedding 不同，不受影响
+        String fingerprint = fingerprint(inputEmbeddings);
+        if (!rateLimiter.tryAcquire(fingerprint, "voiceprint_verify_fp",
+                VERIFY_FP_MAX_PER_MINUTE, Duration.ofMinutes(1))) {
+            throw new BizException(ErrorCode.RATE_LIMITED, "尝试太频繁了，请稍等一下再试");
+        }
+
         // 声纹验证是公开端点（permitAll），无 JWT → 无租户上下文
-        // 跨用户 1:N 比对需系统作用域（M1-003）
-        return TenantContextHolder.callAsSystem(() -> doVerify(inputEmbeddings));
+        // 多租户拦截器要求显式作用域（M1-003）：系统作用域 + 显式 tenant_id 条件（AUD-001）
+        // ——租户隔离由查询条件保证，而非依赖 JWT 上下文
+        return TenantContextHolder.callAsSystem(() -> doVerify(request.tenantId(), inputEmbeddings));
     }
 
-    private ApiResponse<Map<String, Object>> doVerify(List<List<Double>> inputEmbeddings) {
-        // 查询所有已注册声纹（跨用户 1:N 比对）
-        List<VoiceprintEmbedding> allRecords = embeddingMapper.selectList(
-                new LambdaQueryWrapper<VoiceprintEmbedding>());
+    private ApiResponse<Map<String, Object>> doVerify(UUID tenantId, List<List<Double>> inputEmbeddings) {
+        // AUD-001：查询仅限请求租户的声纹模板（禁止系统作用域全表加载后 1:N 比对）
+        // 复制为可变列表以支持防御性过滤（selectList 可能返回不可变集合）
+        List<VoiceprintEmbedding> tenantRecords = new ArrayList<>(embeddingMapper.selectList(
+                new LambdaQueryWrapper<VoiceprintEmbedding>()
+                        .eq(VoiceprintEmbedding::getTenantId, tenantId)));
 
-        if (allRecords.isEmpty()) {
+        // AUD-001 双层防护：即使查询层条件失效（未来重构/换 ORM 等），
+        // 比对前仍按请求租户过滤——跨租户模板在任何路径下都不可达
+        tenantRecords.removeIf(rec -> !tenantId.equals(rec.getTenantId()));
+
+        if (tenantRecords.isEmpty()) {
             // 不回显相似度分数，防止阈值探测（SEC-007）
             return ApiResponse.ok(Map.of("matched", false));
         }
 
-        // 按 userId 分组
+        // 按 userId 分组（租户内）
         Map<UUID, List<VoiceprintEmbedding>> byUser = new LinkedHashMap<>();
-        for (VoiceprintEmbedding rec : allRecords) {
+        for (VoiceprintEmbedding rec : tenantRecords) {
             byUser.computeIfAbsent(rec.getUserId(), k -> new ArrayList<>()).add(rec);
         }
 
-        log.info("[声纹验证] 输入 {} 段 embedding, 库中 {} 条记录, {} 个用户, 阈值={}",
-                inputEmbeddings.size(), allRecords.size(), byUser.size(), verifyThreshold);
+        log.info("[声纹验证] 输入 {} 段 embedding, 租户 {} 内 {} 条记录, {} 个用户, 阈值={}",
+                inputEmbeddings.size(), tenantId, tenantRecords.size(), byUser.size(), verifyThreshold);
 
         double bestScore = 0;
         UUID bestUserId = null;
@@ -275,6 +303,25 @@ public class VoiceprintController {
         return denom == 0 ? 0 : dot / denom;
     }
 
+    /**
+     * AUD-001：embedding 指纹（SHA-256），作重放限流 key。
+     * 序列化后摘要，同一请求重放 key 一致；浮点噪声使正常重录不受影响。
+     */
+    private String fingerprint(List<List<Double>> embeddings) {
+        try {
+            byte[] json = objectMapper.writeValueAsBytes(embeddings);
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(json);
+            StringBuilder hex = new StringBuilder("fp:");
+            for (byte b : digest) {
+                hex.append(String.format("%02x", b));
+            }
+            return hex.toString();
+        } catch (Exception e) {
+            // 指纹计算失败不阻断流程：退化为按请求体 hashCode（同一对象引用重放仍可命中）
+            return "fp:fallback:" + embeddings.hashCode();
+        }
+    }
+
     private String toJson(List<Double> embedding) {
         try {
             return objectMapper.writeValueAsString(embedding);
@@ -299,6 +346,8 @@ public class VoiceprintController {
     ) {}
 
     public record VerifyRequest(
+            @NotNull(message = "tenantId 不能为空")
+            UUID tenantId,
             @NotEmpty(message = "embeddings 不能为空")
             List<List<Double>> embeddings
     ) {}

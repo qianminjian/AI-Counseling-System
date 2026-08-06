@@ -3,6 +3,7 @@ package com.mindsafe.api.controller;
 import com.mindsafe.api.security.JwtAuthenticationFilter.TenantContext;
 import com.mindsafe.common.dto.ApiResponse;
 import com.mindsafe.service.analytics.DataAnalyticsService;
+import com.mindsafe.service.audit.AuditLogService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -32,7 +33,7 @@ class DataAnalyticsControllerTest {
     @BeforeEach
     void setUp() {
         analyticsService = mock(DataAnalyticsService.class);
-        controller = new DataAnalyticsController(analyticsService);
+        controller = new DataAnalyticsController(analyticsService, mock(AuditLogService.class));
     }
 
     private Authentication teacherAuth() {

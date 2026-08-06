@@ -13,7 +13,7 @@ import java.util.Date;
 import java.util.UUID;
 
 /**
- * JWT 令牌工具（双 Token 模式：access 2h + refresh 7d；另有声纹设备凭证 90d）
+ * JWT 令牌工具（双 Token 模式：access 2h + refresh 7d；另有声纹设备凭证 7d）
  * <p>
  * 生产环境必须配置 mindsafe.jwt.secret（≥ 32 字符），否则启动失败。
  * <p>
@@ -37,7 +37,7 @@ public class JwtTokenProvider {
             @Value("${mindsafe.jwt.secret:}") String secret,
             @Value("${mindsafe.jwt.access-expiration-ms:7200000}") long accessExpirationMs,
             @Value("${mindsafe.jwt.refresh-expiration-ms:604800000}") long refreshExpirationMs,
-            @Value("${mindsafe.jwt.voice-credential-expiration-ms:7776000000}") long voiceCredentialExpirationMs,
+            @Value("${mindsafe.jwt.voice-credential-expiration-ms:604800000}") long voiceCredentialExpirationMs,
             @Value("${mindsafe.jwt.parent-report-expiration-ms:604800000}") long parentReportExpirationMs,
             @Value("${spring.profiles.active:dev}") String activeProfile,
             @Value("${mindsafe.jwt.dev-secret:}") String devSecret,
@@ -81,7 +81,7 @@ public class JwtTokenProvider {
         return buildToken(userId, userType, tenantId, "refresh", refreshExpirationMs);
     }
 
-    /** 生成声纹设备凭证（90d）：声纹录入时签发，存学生设备本地，声纹登录时凭其换取正式双 token */
+    /** 生成声纹设备凭证（7d，AUD-001：90d → 7d 缩小攻击窗口）：声纹录入时签发，存学生设备本地，声纹登录时凭其换取正式双 token */
     public String generateVoiceCredential(UUID userId, String userType, UUID tenantId) {
         return buildToken(userId, userType, tenantId, "voice_credential", voiceCredentialExpirationMs);
     }

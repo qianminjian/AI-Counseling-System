@@ -31,6 +31,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -41,9 +42,11 @@ import static org.mockito.Mockito.when;
  * <p>
  * 覆盖：
  * - IP 解析：X-Forwarded-For 取最右条目（nginx $proxy_add_x_forwarded_for 追加的真实 IP，客户端伪造不可达）
- * - 限流：基于解析后 IP 作为 key，伪造 XFF 不改变限流身份
+ * - 限流：基于解析后 IP 作为 key，伪造 XFF 不改变限流身份；同一 embedding 指纹级限流（AUD-001 防抓包重放）
  * - 失败审计：verify 不匹配时记录 VOICEPRINT_VERIFY_FAILED（暴力探测可追踪）
- * - 成功路径：1:N 匹配后签发双 token（产品设计：声纹即身份）
+ * - 租户隔离（AUD-001）：verify 强制携带 tenantId，查询仅限该租户模板，跨租户记录不可达
+ * - 阈值回归（AUD-001）：相似度 ∈ (0.55, 0.70) 必须拒绝（对齐 local 端 0.70）
+ * - 成功路径：租户内 1:N 匹配后签发双 token（产品设计：声纹即身份）
  */
 class VoiceprintControllerTest {
 
@@ -65,8 +68,8 @@ class VoiceprintControllerTest {
         tenantAccessGuard = mock(TenantAccessGuard.class);
         controller = new VoiceprintController(embeddingMapper, userMapper, jwtTokenProvider,
                 auditLogService, new ObjectMapper(), rateLimiter, tenantAccessGuard);
-        // @Value 字段在纯单元测试中不注入，显式设置（生产默认 0.55）
-        ReflectionTestUtils.setField(controller, "verifyThreshold", 0.55);
+        // @Value 字段在纯单元测试中不注入，显式设置（AUD-001：与 local 端对齐 0.70）
+        ReflectionTestUtils.setField(controller, "verifyThreshold", 0.70);
         ReflectionTestUtils.setField(controller, "maxTemplates", 8);
         when(rateLimiter.tryAcquire(anyString(), anyString(), anyInt(), any())).thenReturn(true);
     }
@@ -100,11 +103,12 @@ class VoiceprintControllerTest {
 
             // 通过限流 key 验证解析结果：伪造前缀（1.2.3.4）不参与限流身份
             controller.verify(new VoiceprintController.VerifyRequest(
-                    List.of(List.of(1.0, 1.0))), req);
+                    UUID.randomUUID(), List.of(List.of(1.0, 1.0))), req);
 
             ArgumentCaptor<String> keyCaptor = ArgumentCaptor.forClass(String.class);
-            verify(rateLimiter).tryAcquire(keyCaptor.capture(), anyString(), anyInt(), any());
-            assertThat(keyCaptor.getValue()).isEqualTo("5.6.7.8");
+            // 两次限流调用：IP 级 + 指纹级；IP 级 key 应为解析后的真实 IP
+            verify(rateLimiter, atLeastOnce()).tryAcquire(keyCaptor.capture(), eq("voiceprint_verify"), anyInt(), any());
+            assertThat(keyCaptor.getAllValues()).contains("5.6.7.8");
         }
 
         @Test
@@ -114,11 +118,11 @@ class VoiceprintControllerTest {
             req.setRemoteAddr("10.0.0.9");
 
             controller.verify(new VoiceprintController.VerifyRequest(
-                    List.of(List.of(1.0, 1.0))), req);
+                    UUID.randomUUID(), List.of(List.of(1.0, 1.0))), req);
 
             ArgumentCaptor<String> keyCaptor = ArgumentCaptor.forClass(String.class);
-            verify(rateLimiter).tryAcquire(keyCaptor.capture(), anyString(), anyInt(), any());
-            assertThat(keyCaptor.getValue()).isEqualTo("10.0.0.9");
+            verify(rateLimiter, atLeastOnce()).tryAcquire(keyCaptor.capture(), eq("voiceprint_verify"), anyInt(), any());
+            assertThat(keyCaptor.getAllValues()).contains("10.0.0.9");
         }
 
         @Test
@@ -127,10 +131,40 @@ class VoiceprintControllerTest {
             when(rateLimiter.tryAcquire(anyString(), anyString(), anyInt(), any())).thenReturn(false);
 
             assertThatThrownBy(() -> controller.verify(
-                    new VoiceprintController.VerifyRequest(List.of(List.of(1.0, 1.0))), request()))
+                    new VoiceprintController.VerifyRequest(UUID.randomUUID(), List.of(List.of(1.0, 1.0))), request()))
                     .isInstanceOf(BizException.class)
                     .extracting("code")
                     .isEqualTo(ErrorCode.RATE_LIMITED.code());
+        }
+    }
+
+    @Nested
+    @DisplayName("指纹级限流（AUD-001：同一 embedding 重放防护）")
+    class FingerprintRateLimit {
+
+        @Test
+        @DisplayName("同一 embedding 指纹超过上限 → RATE_LIMITED（换 IP 也无法绕过）")
+        void identicalEmbeddingReplayRejected() {
+            // 指纹限流 key 拒绝，IP 限流 key 放行：证明指纹维度独立生效
+            when(rateLimiter.tryAcquire(anyString(), eq("voiceprint_verify_fp"), anyInt(), any()))
+                    .thenReturn(false);
+
+            assertThatThrownBy(() -> controller.verify(
+                    new VoiceprintController.VerifyRequest(UUID.randomUUID(), List.of(List.of(1.0, 1.0))), request()))
+                    .isInstanceOf(BizException.class)
+                    .extracting("code")
+                    .isEqualTo(ErrorCode.RATE_LIMITED.code());
+        }
+
+        @Test
+        @DisplayName("指纹 key 由 embeddings 内容派生（同请求两次 key 一致）")
+        void fingerprintKeyDerivedFromEmbeddings() {
+            controller.verify(new VoiceprintController.VerifyRequest(
+                    UUID.randomUUID(), List.of(List.of(1.0, 1.0))), request());
+
+            ArgumentCaptor<String> keyCaptor = ArgumentCaptor.forClass(String.class);
+            verify(rateLimiter).tryAcquire(keyCaptor.capture(), eq("voiceprint_verify_fp"), anyInt(), any());
+            assertThat(keyCaptor.getValue()).startsWith("fp:");
         }
     }
 
@@ -148,7 +182,7 @@ class VoiceprintControllerTest {
                     List.of(record(userId, tenantId, 0.5)));
 
             ApiResponse<Map<String, Object>> resp = controller.verify(
-                    new VoiceprintController.VerifyRequest(List.of(List.of(0.4, -0.2))), request());
+                    new VoiceprintController.VerifyRequest(tenantId, List.of(List.of(0.4, -0.2))), request());
 
             assertThat(resp.data().get("matched")).isEqualTo(false);
             verify(auditLogService).log(eq(tenantId), eq(userId),
@@ -159,13 +193,71 @@ class VoiceprintControllerTest {
         @Test
         @DisplayName("库为空：返回未匹配且不记失败审计（无对象可审计）")
         void emptyLibraryNotAuditedAsFailure() {
+            UUID tenantId = UUID.randomUUID();
             when(embeddingMapper.selectList(any())).thenReturn(List.of());
 
             ApiResponse<Map<String, Object>> resp = controller.verify(
-                    new VoiceprintController.VerifyRequest(List.of(List.of(1.0, 1.0))), request());
+                    new VoiceprintController.VerifyRequest(tenantId, List.of(List.of(1.0, 1.0))), request());
 
             assertThat(resp.data().get("matched")).isEqualTo(false);
             verify(auditLogService, never()).log(any(), any(), any(), any(), any(), any());
+        }
+    }
+
+    @Nested
+    @DisplayName("租户隔离（AUD-001：禁止系统作用域全表比对）")
+    class TenantIsolation {
+
+        @Test
+        @DisplayName("请求租户 A，库中存在租户 B 完整可用模板 → 不匹配不签发（跨租户双层防护）")
+        void crossTenantTemplateUnreachable() {
+            UUID tenantA = UUID.randomUUID();
+            UUID tenantB = UUID.randomUUID();
+            UUID userB = UUID.randomUUID();
+            // 模拟最坏情况：mock 的 selectList 不过滤（返回租户 B 的模板），
+            // 且租户 B 用户完整可用——若实现缺失租户过滤，此场景会误签发 token
+            when(embeddingMapper.selectList(any())).thenReturn(
+                    List.of(record(userB, tenantB, 1.0)));
+            User userBEntity = new User();
+            userBEntity.setUserId(userB);
+            userBEntity.setTenantId(tenantB);
+            userBEntity.setStatus("active");
+            userBEntity.setPseudonym("隔壁班小明");
+            userBEntity.setUserType("student");
+            when(userMapper.selectById(userB)).thenReturn(userBEntity);
+            when(tenantAccessGuard.isLoginAllowed(tenantB)).thenReturn(true);
+
+            ApiResponse<Map<String, Object>> resp = controller.verify(
+                    new VoiceprintController.VerifyRequest(tenantA, List.of(List.of(1.0, 1.0))), request());
+
+            assertThat(resp.data().get("matched")).isEqualTo(false);
+            verify(jwtTokenProvider, never()).generateToken(any(), any(), any());
+        }
+    }
+
+    @Nested
+    @DisplayName("阈值对齐（AUD-001：0.55 → 0.70 回归）")
+    class ThresholdAlignment {
+
+        @Test
+        @DisplayName("相似度 ∈ (0.55, 0.70) → 拒绝（旧阈值 0.55 会误判为命中）")
+        void scoreBetweenOldAndNewThresholdRejected() {
+            UUID userId = UUID.randomUUID();
+            UUID tenantId = UUID.randomUUID();
+            // 存储 [1.0, 0.0]，输入 [0.6, 0.8]：余弦相似度 = 0.6 ∈ (0.55, 0.70)
+            VoiceprintEmbedding rec = new VoiceprintEmbedding();
+            rec.setUserId(userId);
+            rec.setTenantId(tenantId);
+            rec.setEmbedding("[1.0, 0.0]");
+            rec.setSampleIndex(0);
+            rec.setCreatedAt(Instant.now());
+            when(embeddingMapper.selectList(any())).thenReturn(List.of(rec));
+
+            ApiResponse<Map<String, Object>> resp = controller.verify(
+                    new VoiceprintController.VerifyRequest(tenantId, List.of(List.of(0.6, 0.8))), request());
+
+            assertThat(resp.data().get("matched")).isEqualTo(false);
+            verify(jwtTokenProvider, never()).generateToken(any(), any(), any());
         }
     }
 
@@ -192,7 +284,7 @@ class VoiceprintControllerTest {
             when(jwtTokenProvider.generateRefreshToken(userId, "student", tenantId)).thenReturn("rtok");
 
             ApiResponse<Map<String, Object>> resp = controller.verify(
-                    new VoiceprintController.VerifyRequest(List.of(List.of(1.0, 1.0))), request());
+                    new VoiceprintController.VerifyRequest(tenantId, List.of(List.of(1.0, 1.0))), request());
 
             assertThat(resp.data().get("matched")).isEqualTo(true);
             assertThat(resp.data().get("token")).isEqualTo("tok");
@@ -219,7 +311,7 @@ class VoiceprintControllerTest {
             when(tenantAccessGuard.isLoginAllowed(tenantId)).thenReturn(false);
 
             ApiResponse<Map<String, Object>> resp = controller.verify(
-                    new VoiceprintController.VerifyRequest(List.of(List.of(1.0, 1.0))), request());
+                    new VoiceprintController.VerifyRequest(tenantId, List.of(List.of(1.0, 1.0))), request());
 
             assertThat(resp.data().get("matched")).isEqualTo(false);
             verify(jwtTokenProvider, never()).generateToken(any(), any(), any());
@@ -255,7 +347,7 @@ class VoiceprintControllerTest {
             when(jwtTokenProvider.generateRefreshToken(goodUserId, "student", tenantId)).thenReturn("rtok");
 
             ApiResponse<Map<String, Object>> resp = controller.verify(
-                    new VoiceprintController.VerifyRequest(List.of(List.of(1.0, 1.0))), request());
+                    new VoiceprintController.VerifyRequest(tenantId, List.of(List.of(1.0, 1.0))), request());
 
             // 损坏记录被跳过且不抛异常：验证流程不因单条脏数据中断，也不误匹配
             assertThat(resp.data().get("matched")).isEqualTo(true);
@@ -275,7 +367,7 @@ class VoiceprintControllerTest {
             when(embeddingMapper.selectList(any())).thenReturn(List.of(corrupted));
 
             ApiResponse<Map<String, Object>> resp = controller.verify(
-                    new VoiceprintController.VerifyRequest(List.of(List.of(1.0, 1.0))), request());
+                    new VoiceprintController.VerifyRequest(tenantId, List.of(List.of(1.0, 1.0))), request());
 
             assertThat(resp.data().get("matched")).isEqualTo(false);
             verify(jwtTokenProvider, never()).generateToken(any(), any(), any());

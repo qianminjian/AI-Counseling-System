@@ -78,8 +78,8 @@ public class SecurityConfig {
                         .requestMatchers("/api/v1/auth/refresh").permitAll()
                         // 企微 OAuth 回调（无 JWT，靠 code 换 token）
                         .requestMatchers("/api/v1/auth/wecom/**").permitAll()
-                        // 监护人同意确认（SMS 链接触发，无 JWT，靠 confirmToken 校验）
-                        .requestMatchers("/api/v1/auth/guardian-consent/confirm").permitAll()
+                        // 监护人同意确认：要求学生已登录会话内确认（GuardianConsentGate 流程），
+                        // AUD-005 校正：原注释声称 confirmToken 免登录流程从未实现，confirm 端点依赖 JWT 身份解包，permitAll 已删除
                         // 家长端 API（内部 parentToken 验证，不走 Spring Security 角色）
                         .requestMatchers("/api/v1/parent/**").permitAll()
                         // 健康检查（Docker/Nginx 探针）

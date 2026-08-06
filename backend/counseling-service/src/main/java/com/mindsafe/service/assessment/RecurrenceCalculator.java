@@ -16,6 +16,10 @@ import java.time.temporal.ChronoUnit;
  * </ul>
  * <p>
  * 纯函数实现，不依赖 DB/调度框架。接线时由 Spring @Scheduled 或 Quartz 驱动。
+ * <p>
+ * AUD-063（2026-08-06）：显式冻结——当前零生产调用（仅测试引用），
+ * 待量表施测接线（frozen/59）时恢复；与同包 AssessmentScoringEngine/BuiltinScales/
+ * ScoringResult 同属「保留·暂缓」登记项，冻结期间禁止删除或新增调用。
  */
 @Component
 public class RecurrenceCalculator {

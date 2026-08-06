@@ -20,7 +20,7 @@ class JwtTokenProviderTest {
     private static final UUID TENANT_ID = UUID.randomUUID();
 
     private final JwtTokenProvider provider = new JwtTokenProvider(
-            SECRET, 7200000L, 604800000L, 7776000000L, 604800000L, "dev", DEV_SECRET, "mindsafe-test");
+            SECRET, 7200000L, 604800000L, 604800000L, 604800000L, "dev", DEV_SECRET, "mindsafe-test");
 
     // ===== Token 类型隔离（防 refresh token 调 API / 学生 token 调家长接口） =====
 
@@ -94,7 +94,7 @@ class JwtTokenProviderTest {
     @DisplayName("过期 token 校验失败")
     void expiredTokenRejected() throws InterruptedException {
         JwtTokenProvider shortLivedProvider = new JwtTokenProvider(
-                SECRET, 50L, 604800000L, 7776000000L, 604800000L, "dev", DEV_SECRET, "mindsafe-test");
+                SECRET, 50L, 604800000L, 604800000L, 604800000L, "dev", DEV_SECRET, "mindsafe-test");
         String token = shortLivedProvider.generateToken(USER_ID, "student", TENANT_ID);
         Thread.sleep(100);
         assertFalse(shortLivedProvider.validateToken(token));
@@ -106,7 +106,7 @@ class JwtTokenProviderTest {
     void foreignSignedTokenRejected() {
         JwtTokenProvider other = new JwtTokenProvider(
                 "another-secret-key-at-least-32-characters-long-xyz",
-                7200000L, 604800000L, 7776000000L, 604800000L, "dev", DEV_SECRET, "mindsafe-test");
+                7200000L, 604800000L, 604800000L, 604800000L, "dev", DEV_SECRET, "mindsafe-test");
         String token = other.generateToken(USER_ID, "student", TENANT_ID);
         assertFalse(provider.validateToken(token));
     }
@@ -115,7 +115,7 @@ class JwtTokenProviderTest {
     @DisplayName("其他 issuer 签发的 token 校验失败（AUDIT-P1-13）")
     void foreignIssuerRejected() {
         JwtTokenProvider foreignIssuer = new JwtTokenProvider(
-                SECRET, 7200000L, 604800000L, 7776000000L, 604800000L, "dev", DEV_SECRET, "evil-issuer");
+                SECRET, 7200000L, 604800000L, 604800000L, 604800000L, "dev", DEV_SECRET, "evil-issuer");
         String token = foreignIssuer.generateToken(USER_ID, "student", TENANT_ID);
         assertFalse(provider.validateToken(token));
     }
@@ -133,21 +133,21 @@ class JwtTokenProviderTest {
     @DisplayName("密钥不足 32 字符 → 启动失败")
     void shortSecretRejected() {
         assertThrows(IllegalStateException.class, () -> new JwtTokenProvider(
-                "too-short", 7200000L, 604800000L, 7776000000L, 604800000L, "dev", DEV_SECRET, "mindsafe-test"));
+                "too-short", 7200000L, 604800000L, 604800000L, 604800000L, "dev", DEV_SECRET, "mindsafe-test"));
     }
 
     @Test
     @DisplayName("生产环境未配置密钥 → 启动失败")
     void prodWithoutSecretRejected() {
         assertThrows(IllegalStateException.class, () -> new JwtTokenProvider(
-                "", 7200000L, 604800000L, 7776000000L, 604800000L, "prod", DEV_SECRET, "mindsafe-test"));
+                "", 7200000L, 604800000L, 604800000L, 604800000L, "prod", DEV_SECRET, "mindsafe-test"));
     }
 
     @Test
     @DisplayName("开发环境未配置密钥 → 回退 dev-secret 可用（AUDIT-P3-28）")
     void devWithoutSecretFallsBack() {
         JwtTokenProvider devProvider = new JwtTokenProvider(
-                "", 7200000L, 604800000L, 7776000000L, 604800000L, "dev", DEV_SECRET, "mindsafe-test");
+                "", 7200000L, 604800000L, 604800000L, 604800000L, "dev", DEV_SECRET, "mindsafe-test");
         String token = devProvider.generateToken(USER_ID, "student", TENANT_ID);
         assertTrue(devProvider.validateToken(token));
     }
@@ -156,8 +156,8 @@ class JwtTokenProviderTest {
     @DisplayName("开发环境 dev-secret 缺失 → 启动失败（AUDIT-P3-28）")
     void devWithoutDevSecretRejected() {
         assertThrows(IllegalStateException.class, () -> new JwtTokenProvider(
-                "", 7200000L, 604800000L, 7776000000L, 604800000L, "dev", "", "mindsafe-test"));
+                "", 7200000L, 604800000L, 604800000L, 604800000L, "dev", "", "mindsafe-test"));
         assertThrows(IllegalStateException.class, () -> new JwtTokenProvider(
-                "", 7200000L, 604800000L, 7776000000L, 604800000L, "dev", "too-short", "mindsafe-test"));
+                "", 7200000L, 604800000L, 604800000L, 604800000L, "dev", "too-short", "mindsafe-test"));
     }
 }

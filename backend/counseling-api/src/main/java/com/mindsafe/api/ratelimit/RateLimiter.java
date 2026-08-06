@@ -1,5 +1,6 @@
 package com.mindsafe.api.ratelimit;
 
+import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -27,9 +28,18 @@ public class RateLimiter {
     private static final Duration WINDOW = Duration.ofMinutes(1);
 
     private final StringRedisTemplate redisTemplate;
+    private final MeterRegistry meterRegistry;
 
-    public RateLimiter(StringRedisTemplate redisTemplate) {
+    public RateLimiter(StringRedisTemplate redisTemplate, MeterRegistry meterRegistry) {
         this.redisTemplate = redisTemplate;
+        this.meterRegistry = meterRegistry;
+    }
+
+    /**
+     * AUD-014：Redis 故障时 fail-open（可用性优先），但记录 Prometheus 计数供告警。
+     */
+    private void recordFailOpen(String action) {
+        meterRegistry.counter("mindsafe_ratelimit_failopen_total", "action", action).increment();
     }
 
     /**
@@ -41,9 +51,19 @@ public class RateLimiter {
      */
     public boolean tryAcquire(UUID userId, String action) {
         String key = KEY_PREFIX + action + ":" + userId;
-        Long count = redisTemplate.opsForValue().increment(key);
+        Long count;
+        try {
+            count = redisTemplate.opsForValue().increment(key);
+        } catch (Exception e) {
+            // AUD-014：Redis 故障 fail-open 放行（可用性优先），计数供 Prometheus 告警
+            recordFailOpen(action);
+            log.error("Redis 限流异常，fail-open 放行: key={}, action={}", key, action, e);
+            return true;
+        }
         if (count == null) {
-            return true; // Redis 异常时放行
+            recordFailOpen(action);
+            log.warn("Redis 限流返回 null，fail-open 放行: key={}, action={}", key, action);
+            return true;
         }
         if (count == 1) {
             // 首次请求，设置过期时间
@@ -67,9 +87,19 @@ public class RateLimiter {
      */
     public boolean tryAcquire(String key, String action, int maxInWindow, Duration window) {
         String redisKey = KEY_PREFIX + action + ":" + key;
-        Long count = redisTemplate.opsForValue().increment(redisKey);
+        Long count;
+        try {
+            count = redisTemplate.opsForValue().increment(redisKey);
+        } catch (Exception e) {
+            // AUD-014：Redis 故障 fail-open 放行（可用性优先），计数供 Prometheus 告警
+            recordFailOpen(action);
+            log.error("Redis 限流异常，fail-open 放行: redisKey={}, action={}", redisKey, action, e);
+            return true;
+        }
         if (count == null) {
-            return true; // Redis 异常时放行
+            recordFailOpen(action);
+            log.warn("Redis 限流返回 null，fail-open 放行: redisKey={}, action={}", redisKey, action);
+            return true;
         }
         if (count == 1) {
             redisTemplate.expire(redisKey, window);

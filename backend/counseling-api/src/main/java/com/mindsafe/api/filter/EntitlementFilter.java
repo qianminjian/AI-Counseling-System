@@ -4,6 +4,7 @@ import com.mindsafe.common.tenant.TenantContextHolder;
 import com.mindsafe.domain.entity.Tenant;
 import com.mindsafe.domain.mapper.TenantMapper;
 import com.mindsafe.service.billing.EntitlementChecker;
+import io.micrometer.core.instrument.MeterRegistry;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -39,10 +40,12 @@ public class EntitlementFilter extends OncePerRequestFilter {
 
     private final EntitlementChecker entitlementChecker;
     private final TenantMapper tenantMapper;
+    private final MeterRegistry meterRegistry;
 
-    public EntitlementFilter(EntitlementChecker entitlementChecker, TenantMapper tenantMapper) {
+    public EntitlementFilter(EntitlementChecker entitlementChecker, TenantMapper tenantMapper, MeterRegistry meterRegistry) {
         this.entitlementChecker = entitlementChecker;
         this.tenantMapper = tenantMapper;
+        this.meterRegistry = meterRegistry;
     }
 
     @Override
@@ -129,6 +132,8 @@ public class EntitlementFilter extends OncePerRequestFilter {
             return mapStatusToPlan(tenant.getStatus());
         } catch (Exception e) {
             // 查库异常降级为 STANDARD，避免阻断核心业务
+            // AUD-014：fail-open 保留但记录 Prometheus 计数，供告警发现权益静默失效
+            meterRegistry.counter("mindsafe_entitlement_failopen_total").increment();
             log.error("解析租户计划异常，降级为 STANDARD: tenantId={}", tenantId, e);
             return EntitlementChecker.Plan.STANDARD;
         }

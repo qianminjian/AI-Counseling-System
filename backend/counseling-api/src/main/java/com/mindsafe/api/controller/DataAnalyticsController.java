@@ -3,6 +3,7 @@ package com.mindsafe.api.controller;
 import com.mindsafe.api.security.JwtAuthenticationFilter.TenantContext;
 import com.mindsafe.common.dto.ApiResponse;
 import com.mindsafe.service.analytics.DataAnalyticsService;
+import com.mindsafe.service.audit.AuditLogService;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
@@ -18,15 +19,20 @@ import java.util.UUID;
  * DATA-003: 校级报告数据聚合（月度/学期统计）
  * <p>
  * 权限：教师/管理员可访问
+ * <p>
+ * AUD-013：三端点输出个人级数据（studentUserId/里程碑/风险时间线），必须留审计日志；
+ * 前端当前未接线（仅 OpenAPI 快照登记），保留服务端能力供后续接入。
  */
 @RestController
 @RequestMapping("/api/v1/analytics")
 public class DataAnalyticsController {
 
     private final DataAnalyticsService analyticsService;
+    private final AuditLogService auditLogService;
 
-    public DataAnalyticsController(DataAnalyticsService analyticsService) {
+    public DataAnalyticsController(DataAnalyticsService analyticsService, AuditLogService auditLogService) {
         this.analyticsService = analyticsService;
+        this.auditLogService = auditLogService;
     }
 
     /**
@@ -41,6 +47,9 @@ public class DataAnalyticsController {
             @RequestParam(defaultValue = "30") int windowDays) {
         TenantContext ctx = (TenantContext) auth.getDetails();
         LocalDate date = LocalDate.parse(interventionDate);
+        // AUD-013：个人级数据访问留痕
+        auditLogService.log(ctx.tenantId(), ctx.userId(), "analytics.intervention-effect",
+                "student", studentUserId, "windowDays=" + windowDays + ", interventionDate=" + interventionDate);
         return ApiResponse.ok(analyticsService.interventionEffect(ctx.tenantId(), studentUserId, date, windowDays));
     }
 
@@ -55,6 +64,9 @@ public class DataAnalyticsController {
             @RequestParam String semesterStart,
             @RequestParam String semesterEnd) {
         TenantContext ctx = (TenantContext) auth.getDetails();
+        // AUD-013：个人级数据访问留痕
+        auditLogService.log(ctx.tenantId(), ctx.userId(), "analytics.growth-trajectory",
+                "student", studentUserId, "semester=" + semesterStart + "~" + semesterEnd);
         return ApiResponse.ok(analyticsService.growthTrajectory(
                 ctx.tenantId(), studentUserId,
                 LocalDate.parse(semesterStart), LocalDate.parse(semesterEnd)));
@@ -70,6 +82,9 @@ public class DataAnalyticsController {
             @RequestParam String periodStart,
             @RequestParam String periodEnd) {
         TenantContext ctx = (TenantContext) auth.getDetails();
+        // AUD-013：校级聚合数据访问留痕（含风险分布等敏感聚合）
+        auditLogService.log(ctx.tenantId(), ctx.userId(), "analytics.school-report",
+                "tenant", null, "period=" + periodStart + "~" + periodEnd);
         return ApiResponse.ok(analyticsService.schoolReport(
                 ctx.tenantId(), LocalDate.parse(periodStart), LocalDate.parse(periodEnd)));
     }
