@@ -12,8 +12,8 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 const mockApi = vi.fn();
 vi.mock('../api', () => ({
   api: (path: string, options?: unknown) => mockApi(path, options),
-  setToken: (t: string) => { localStorage.setItem('mindsafe_token', t); },
-  setRefreshToken: (t: string) => { localStorage.setItem('mindsafe_refresh', t); },
+  setToken: (t: string) => { sessionStorage.setItem('mindsafe_token', t); },
+  setRefreshToken: (t: string) => { sessionStorage.setItem('mindsafe_refresh', t); },
 }));
 
 import Login from '../pages/Login';
@@ -26,7 +26,7 @@ const wecomBtn = () => screen.queryByText('企业微信登录');
 describe('Login 登录页', () => {
   beforeEach(() => {
     mockApi.mockReset();
-    localStorage.clear();
+    sessionStorage.clear();
   });
 
   it('渲染登录表单与标题', () => {
@@ -76,8 +76,8 @@ describe('Login 登录页', () => {
     await waitFor(() => expect(onLogin).toHaveBeenCalledWith({
       userId: 'u-1', userType: 'psych_teacher', displayName: '李老师', mustChangePassword: false,
     }));
-    expect(localStorage.getItem('mindsafe_token')).toBe('tk-1');
-    expect(localStorage.getItem('mindsafe_refresh')).toBe('rt-1');
+    expect(sessionStorage.getItem('mindsafe_token')).toBe('tk-1');
+    expect(sessionStorage.getItem('mindsafe_refresh')).toBe('rt-1');
     expect(mockApi).toHaveBeenCalledWith('/auth/login', expect.objectContaining({ method: 'POST' }));
   });
 
@@ -94,6 +94,6 @@ describe('Login 登录页', () => {
     fireEvent.click(loginBtn());
 
     await waitFor(() => expect(onLogin).not.toHaveBeenCalled());
-    expect(localStorage.getItem('mindsafe_token')).toBeNull();
+    expect(sessionStorage.getItem('mindsafe_token')).toBeNull();
   });
 });

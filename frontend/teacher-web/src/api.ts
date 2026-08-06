@@ -1,25 +1,27 @@
+// AUD-007：双 token 移出 localStorage，改存 sessionStorage（会话级，关闭浏览器自动清除）
+// 与 student-h5 策略对齐：XSS 单点突破不再获得持久凭证；刷新页面仍保持登录（同 tab 会话）
 const TOKEN_KEY = 'mindsafe_token'
 const REFRESH_KEY = 'mindsafe_refresh'
 
 export function getToken() {
-  return localStorage.getItem(TOKEN_KEY)
+  return sessionStorage.getItem(TOKEN_KEY)
 }
 
 export function setToken(token: string) {
-  localStorage.setItem(TOKEN_KEY, token)
+  sessionStorage.setItem(TOKEN_KEY, token)
 }
 
 export function getRefreshToken() {
-  return localStorage.getItem(REFRESH_KEY)
+  return sessionStorage.getItem(REFRESH_KEY)
 }
 
 export function setRefreshToken(token: string) {
-  localStorage.setItem(REFRESH_KEY, token)
+  sessionStorage.setItem(REFRESH_KEY, token)
 }
 
 export function clearToken() {
-  localStorage.removeItem(TOKEN_KEY)
-  localStorage.removeItem(REFRESH_KEY)
+  sessionStorage.removeItem(TOKEN_KEY)
+  sessionStorage.removeItem(REFRESH_KEY)
 }
 
 /** 尝试刷新 Token */
@@ -229,13 +231,26 @@ export const getPlatformTenants = () => api('/platform/tenants')
 // ===== 质量监控 =====
 export const getQualityStats = () => api('/teacher/quality/stats')
 export const getFlaggedSessions = () => api('/teacher/quality/flagged')
-export const exportSessionPdf = async (sessionId: string) => {
-  const res = await authFetch(`/api/v1/teacher/sessions/${sessionId}/export`)
+
+/**
+ * AUD-018：blob 下载统一封装（收敛 5 处重复的 401 处理 + 下载逻辑）
+ * - 401 → 清理 token + 整页刷新（与 authFetch 语义一致）
+ * - 统一 <a download> 触发下载：window.open 在 async 之后调用会失去用户激活被弹窗拦截
+ */
+async function downloadBlob(path: string, filename: string) {
+  const res = await authFetch(`/api/v1${path}`)
   if (res.status === 401) { clearToken(); window.location.reload(); return }
   const blob = await res.blob()
+  const a = document.createElement('a')
   const url = URL.createObjectURL(blob)
-  window.open(url, '_blank')
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
 }
+
+export const exportSessionPdf = (sessionId: string) =>
+  downloadBlob(`/teacher/sessions/${sessionId}/export`, `session_${sessionId.slice(0, 8)}.pdf`)
 
 // ===== 预警队列 =====
 export const getAlerts = (params: { status?: AlertStatus; minLevel?: number; limit?: number } = {}): Promise<AlertVO[]> => {
@@ -290,51 +305,14 @@ export const deactivateInviteCode = (codeId: string) =>
 export const deleteInviteCode = (codeId: string) =>
   api(`/admin/invite-codes/${codeId}`, { method: 'DELETE' })
 
-// ===== 数据导出（CSV 下载） =====
-export async function openWeeklyReport() {
-  const res = await authFetch('/api/v1/teacher/report/weekly')
-  if (res.status === 401) { clearToken(); window.location.reload(); return }
-  const blob = await res.blob()
-  const url = URL.createObjectURL(blob)
-  window.open(url, '_blank')
-}
-
-export async function exportAlertsCsv() {
-  const res = await authFetch('/api/v1/teacher/export/alerts')
-  if (res.status === 401) { clearToken(); window.location.reload(); return }
-  const blob = await res.blob()
-  const a = document.createElement('a')
-  const url = URL.createObjectURL(blob)
-  a.href = url
-  a.download = 'alerts_export.csv'
-  a.click()
-  URL.revokeObjectURL(url)
-}
-
-export async function exportStudentsCsv() {
-  const res = await authFetch('/api/v1/teacher/export/students')
-  if (res.status === 401) { clearToken(); window.location.reload(); return }
-  const blob = await res.blob()
-  const a = document.createElement('a')
-  const url = URL.createObjectURL(blob)
-  a.href = url
-  a.download = 'students_export.csv'
-  a.click()
-  URL.revokeObjectURL(url)
-}
+// ===== 数据导出（CSV/PDF 下载，AUD-018 收敛至 downloadBlob） =====
+export const openWeeklyReport = () => downloadBlob('/teacher/report/weekly', 'weekly_report.pdf')
+export const exportAlertsCsv = () => downloadBlob('/teacher/export/alerts', 'alerts_export.csv')
+export const exportStudentsCsv = () => downloadBlob('/teacher/export/students', 'students_export.csv')
 
 // ===== 批量导入（admin） =====
-export async function downloadImportTemplate() {
-  const res = await authFetch('/api/v1/admin/invite-codes/import-template')
-  if (res.status === 401) { clearToken(); window.location.reload(); return }
-  const blob = await res.blob()
-  const a = document.createElement('a')
-  const url = URL.createObjectURL(blob)
-  a.href = url
-  a.download = 'student_import_template.csv'
-  a.click()
-  URL.revokeObjectURL(url)
-}
+export const downloadImportTemplate = () =>
+  downloadBlob('/admin/invite-codes/import-template', 'student_import_template.csv')
 
 export async function importStudentsCsv(file: File) {
   const formData = new FormData()

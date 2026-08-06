@@ -117,11 +117,14 @@ describe('OverviewPanel 工作台总览', () => {
     expect(screen.queryByText('学生满意度')).not.toBeInTheDocument();
   });
 
-  it('接口失败时结束加载不崩溃', async () => {
+  it('接口失败时显示错误态并结束加载（AUD-019）', async () => {
     mockGetDashboard.mockRejectedValue(new Error('network'));
     mockGetStats.mockRejectedValue(new Error('network'));
     render(<OverviewPanel onNavigate={vi.fn()} />);
-    await waitFor(() => expect(screen.getByText('今日待办桩')).toBeInTheDocument());
-    expect(screen.getByText('导出周报（可打印 PDF）')).toBeInTheDocument();
+    // AUD-019：失败渲染错误 Alert + 重试按钮，而非静默 fail-open
+    expect(await screen.findByRole('alert')).toBeInTheDocument();
+    expect(screen.getByText('工作台数据加载失败')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /重新加载/ })).toBeInTheDocument();
+    expect(screen.queryByText('今日待办桩')).not.toBeInTheDocument();
   });
 });

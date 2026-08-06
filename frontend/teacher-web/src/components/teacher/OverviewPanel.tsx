@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
-import { Card, Row, Col, Statistic, Spin, Tag, Button } from 'antd'
+import { useState, useEffect, useCallback } from 'react'
+import { Card, Row, Col, Statistic, Spin, Tag, Button, Alert } from 'antd'
 import {
   AlertOutlined, ClockCircleOutlined, MessageOutlined, RiseOutlined, SmileOutlined, FileTextOutlined,
 } from '@ant-design/icons'
@@ -36,13 +36,31 @@ function WeeklyChart({ data }) {
 
 export default function OverviewPanel({ onNavigate }) {
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState(false)
   const [dashboard, setDashboard] = useState(null)
   const [highRisk, setHighRisk] = useState([])
   const [stats, setStats] = useState(null)
 
+  // AUD-019：加载失败不再静默留白——置错误态 + 重试（与 BigScreen 错误态一致）
+  const load = useCallback(async () => {
+    setLoading(true)
+    setLoadError(false)
+    try {
+      const [dash, hr, st] = await Promise.all([getDashboard(), getHighRiskStudents(), getStats()])
+      setDashboard(dash)
+      setHighRisk(hr)
+      setStats(st)
+    } catch (e) {
+      console.error('加载工作台数据失败', e)
+      setLoadError(true)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
   useEffect(() => {
     let cancelled = false
-    async function load() {
+    async function loadOnce() {
       try {
         const [dash, hr, st] = await Promise.all([getDashboard(), getHighRiskStudents(), getStats()])
         if (!cancelled) {
@@ -52,16 +70,31 @@ export default function OverviewPanel({ onNavigate }) {
         }
       } catch (e) {
         console.error('加载工作台数据失败', e)
+        if (!cancelled) setLoadError(true)
       } finally {
         if (!cancelled) setLoading(false)
       }
     }
-    load()
+    loadOnce()
     return () => { cancelled = true }
   }, [])
 
   if (loading) {
     return <div style={{ textAlign: 'center', padding: 80 }}><Spin size="large" /></div>
+  }
+
+  if (loadError) {
+    return (
+      <div style={{ padding: 80 }}>
+        <Alert
+          type="error"
+          showIcon
+          message="工作台数据加载失败"
+          description="网络异常或服务暂不可用，请检查后重试。"
+          action={<Button onClick={load}>重新加载</Button>}
+        />
+      </div>
+    )
   }
 
   const RISK_COLORS = { 3: 'red', 2: 'orange', 1: 'gold' }

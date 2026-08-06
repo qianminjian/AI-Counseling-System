@@ -29,11 +29,14 @@ export default defineConfig({
         'dist/**',
         'vite.config.js',
       ],
+      // AUD-022：门禁提升（原 30/20/25/30 形同虚设 → teacher 同规格 + 实测余量）
+      // 2026-08-06 实测：lines 73.62 / branches 72.72 / functions 54.76 / statements 73.62
+      // functions 偏低系 src/api.ts 被 vi.mock 替换致 v8 统计失真（契约由 apiContract.test 覆盖，与 teacher 同因）
       thresholds: {
-        lines: 30,
-        branches: 20,
-        functions: 25,
-        statements: 30,
+        lines: 70,
+        branches: 65,
+        functions: 50,
+        statements: 70,
       },
     },
   },

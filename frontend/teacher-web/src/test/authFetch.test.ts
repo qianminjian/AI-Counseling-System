@@ -21,7 +21,7 @@ function jsonResponse(status: number, body: unknown): Response {
 }
 
 beforeEach(() => {
-  localStorage.clear()
+  sessionStorage.clear()
   vi.unstubAllGlobals()
 })
 
@@ -42,7 +42,7 @@ describe('authFetch：token 携带', () => {
   })
 
   it('有 token 时携带 Authorization: Bearer', async () => {
-    localStorage.setItem(TOKEN_KEY, 'access-1')
+    sessionStorage.setItem(TOKEN_KEY, 'access-1')
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { success: true }))
     vi.stubGlobal('fetch', fetchMock)
 
@@ -55,7 +55,7 @@ describe('authFetch：token 携带', () => {
   })
 
   it('headers 为 Headers 实例时（FormData 场景）合并保留既有头', async () => {
-    localStorage.setItem(TOKEN_KEY, 'access-1')
+    sessionStorage.setItem(TOKEN_KEY, 'access-1')
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { success: true }))
     vi.stubGlobal('fetch', fetchMock)
 
@@ -73,8 +73,8 @@ describe('authFetch：token 携带', () => {
 
 describe('authFetch：401 刷新与重放', () => {
   it('401 → 刷新成功 → 用新 token 重放原请求并返回成功响应', async () => {
-    localStorage.setItem(TOKEN_KEY, 'access-1')
-    localStorage.setItem(REFRESH_KEY, 'refresh-1')
+    sessionStorage.setItem(TOKEN_KEY, 'access-1')
+    sessionStorage.setItem(REFRESH_KEY, 'refresh-1')
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(jsonResponse(401, { success: false }))
@@ -94,12 +94,12 @@ describe('authFetch：401 刷新与重放', () => {
       expect.objectContaining({ Authorization: 'Bearer access-2' })
     )
     // 新 token 已持久化
-    expect(localStorage.getItem(TOKEN_KEY)).toBe('access-2')
+    expect(sessionStorage.getItem(TOKEN_KEY)).toBe('access-2')
   })
 
   it('401 → 刷新失败 → 返回 401 Response 且不清 token（登出决策交调用方）', async () => {
-    localStorage.setItem(TOKEN_KEY, 'access-1')
-    localStorage.setItem(REFRESH_KEY, 'refresh-expired')
+    sessionStorage.setItem(TOKEN_KEY, 'access-1')
+    sessionStorage.setItem(REFRESH_KEY, 'refresh-expired')
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(jsonResponse(401, { success: false }))
@@ -110,13 +110,13 @@ describe('authFetch：401 刷新与重放', () => {
 
     expect(res.status).toBe(401)
     expect(fetchMock).toHaveBeenCalledTimes(2) // 原请求 + refresh，无重放
-    // token 保留：未越权清 localStorage
-    expect(localStorage.getItem(TOKEN_KEY)).toBe('access-1')
-    expect(localStorage.getItem(REFRESH_KEY)).toBe('refresh-expired')
+    // token 保留：未越权清 sessionStorage
+    expect(sessionStorage.getItem(TOKEN_KEY)).toBe('access-1')
+    expect(sessionStorage.getItem(REFRESH_KEY)).toBe('refresh-expired')
   })
 
   it('无 refresh token 时 401 → 直接返回 401（不发起 refresh）', async () => {
-    localStorage.setItem(TOKEN_KEY, 'access-1')
+    sessionStorage.setItem(TOKEN_KEY, 'access-1')
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(401, { success: false }))
     vi.stubGlobal('fetch', fetchMock)
 
@@ -127,8 +127,8 @@ describe('authFetch：401 刷新与重放', () => {
   })
 
   it('401 → 刷新成功但重放仍 401 → 返回 401（不无限循环）', async () => {
-    localStorage.setItem(TOKEN_KEY, 'access-1')
-    localStorage.setItem(REFRESH_KEY, 'refresh-1')
+    sessionStorage.setItem(TOKEN_KEY, 'access-1')
+    sessionStorage.setItem(REFRESH_KEY, 'refresh-1')
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(jsonResponse(401, { success: false }))
@@ -143,8 +143,8 @@ describe('authFetch：401 刷新与重放', () => {
   })
 
   it('刷新响应非 success（业务拒绝）→ 视为刷新失败，返回 401', async () => {
-    localStorage.setItem(TOKEN_KEY, 'access-1')
-    localStorage.setItem(REFRESH_KEY, 'refresh-1')
+    sessionStorage.setItem(TOKEN_KEY, 'access-1')
+    sessionStorage.setItem(REFRESH_KEY, 'refresh-1')
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(jsonResponse(401, { success: false }))
@@ -154,11 +154,11 @@ describe('authFetch：401 刷新与重放', () => {
     const res = await authFetch('/api/v1/teacher/dashboard')
 
     expect(res.status).toBe(401)
-    expect(localStorage.getItem(TOKEN_KEY)).toBe('access-1')
+    expect(sessionStorage.getItem(TOKEN_KEY)).toBe('access-1')
   })
 
   it('非 401 响应直接透传（不触发刷新）', async () => {
-    localStorage.setItem(TOKEN_KEY, 'access-1')
+    sessionStorage.setItem(TOKEN_KEY, 'access-1')
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(500, { success: false }))
     vi.stubGlobal('fetch', fetchMock)
 
