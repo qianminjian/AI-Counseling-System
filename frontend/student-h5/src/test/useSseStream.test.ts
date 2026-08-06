@@ -289,10 +289,13 @@ describe('useSseStream（UX-006，design/17 §chat/hooks）', () => {
     const { result } = renderHook(() => useSseStream())
 
     const promise = result.current.streamMessage('/u', {}, { onToken: vi.fn(), onEmotion: vi.fn(), onRisk: vi.fn() })
+    // 先附加 rejection 断言再推进定时器：abort 会在 tick 内同步触发 read() reject，
+    // 若后附加 handler 会跨宏任务边界，Node 判定为 unhandled rejection（vitest 报错）
+    const assertion = expect(promise).rejects.toThrow()
     // 30s 超时判定为 >30000ms，interval 每 5s tick → 第 7 次 tick（35s）触发 abort
     await act(async () => { await vi.advanceTimersByTimeAsync(40000) })
 
-    await expect(promise).rejects.toThrow()
+    await assertion
     expect(result.current.streaming).toBe(false)
   })
 
@@ -318,10 +321,12 @@ describe('useSseStream（UX-006，design/17 §chat/hooks）', () => {
     await act(async () => {
       promise = result.current.streamMessage('/u', {}, { onToken: vi.fn(), onEmotion: vi.fn(), onRisk: vi.fn() })
     })
+    // 先附加 rejection 断言再 abort（stopStream 同步触发 read() reject，避免 unhandled rejection）
+    const assertion = expect(promise).rejects.toThrow()
     await act(async () => {
       result.current.stopStream()
     })
 
-    await expect(promise).rejects.toThrow()
+    await assertion
   })
 })
