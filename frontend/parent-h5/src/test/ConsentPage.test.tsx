@@ -22,9 +22,10 @@ vi.mock('../utils/auth', () => ({
 
 import Taro from '@tarojs/taro'
 import { withdrawConsent } from '../services/index'
-import { getUser } from '../utils/auth'
+import { getUser, isAuthenticated } from '../utils/auth'
 
 const mockedTaro = vi.mocked(Taro)
+const mockedIsAuth = vi.mocked(isAuthenticated)
 
 const mockUser = {
   parentId: 'p1',
@@ -45,6 +46,12 @@ describe('ConsentPage', () => {
   it('渲染页面标题', () => {
     render(<ConsentPage />)
     expect(screen.getByText('数据授权管理')).toBeInTheDocument()
+  })
+
+  it('未登录时守卫重定向到登录页', () => {
+    mockedIsAuth.mockReturnValueOnce(false)
+    render(<ConsentPage />)
+    expect(mockedTaro.redirectTo).toHaveBeenCalledWith({ url: '/' })
   })
 
   it('渲染授权说明', () => {
@@ -111,6 +118,52 @@ describe('ConsentPage', () => {
     await user.click(screen.getByText('取消'))
     // 取消后确认区域消失，撤回按钮重新显示
     expect(screen.getByText(/撤回「小明」的授权/)).toBeInTheDocument()
+  })
+
+  it('孩子无年级/班级时省略括号内文案', () => {
+    vi.mocked(getUser).mockReturnValue({
+      parentId: 'p1',
+      displayName: '测试家长',
+      children: [{ userId: 'c2', nickname: '小红' }]
+    })
+    render(<ConsentPage />)
+    expect(screen.getByText('小红（）')).toBeInTheDocument()
+  })
+
+  it('撤回返回无 data 形态时兼容（message 兜底）', async () => {
+    vi.mocked(withdrawConsent).mockResolvedValue({ message: '兜底成功' })
+    const user = userEvent.setup()
+    render(<ConsentPage />)
+    await user.click(screen.getByText(/小明/))
+    await user.click(screen.getByText(/撤回「小明」的授权/))
+    await user.click(screen.getByText('确认撤回'))
+    await waitFor(() => {
+      expect(screen.getByText(/兜底成功/)).toBeInTheDocument()
+    })
+  })
+
+  it('撤回异常为非 Error 对象时显示通用错误', async () => {
+    vi.mocked(withdrawConsent).mockRejectedValue('boom')
+    const user = userEvent.setup()
+    render(<ConsentPage />)
+    await user.click(screen.getByText(/小明/))
+    await user.click(screen.getByText(/撤回「小明」的授权/))
+    await user.click(screen.getByText('确认撤回'))
+    await waitFor(() => {
+      expect(screen.getByText('操作失败')).toBeInTheDocument()
+    })
+  })
+
+  it('撤回成功无 message 时显示默认文案', async () => {
+    vi.mocked(withdrawConsent).mockResolvedValue({ data: {} })
+    const user = userEvent.setup()
+    render(<ConsentPage />)
+    await user.click(screen.getByText(/小明/))
+    await user.click(screen.getByText(/撤回「小明」的授权/))
+    await user.click(screen.getByText('确认撤回'))
+    await waitFor(() => {
+      expect(screen.getByText(/已撤回授权/)).toBeInTheDocument()
+    })
   })
 
   it('返回按钮跳转周报页', async () => {

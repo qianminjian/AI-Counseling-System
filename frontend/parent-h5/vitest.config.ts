@@ -41,17 +41,21 @@ export default defineConfig({
     coverage: {
       exclude: [
         'src/app.tsx',
+        'src/app.config.ts',
         'src/vite-env.d.ts',
+        // Taro CLI 构建配置（config/ 与 babel 配置，非可测业务代码）
+        'config/**',
+        'babel.config.cjs',
         'dist/**',
         'vitest.config.ts',
       ],
-      // 审计 P1-11：覆盖率门禁（CI 构建强制，与 student-h5/teacher-web 对齐）
-      // 阈值基于 2026-08 实测（lines 61.77 / branches 68.83 / functions 39.02）留余量
+      // doing/73 AC-12（用户指令）：覆盖率门禁提升至 80/80/80/80（四维度均 ≥80%）
+      // 阈值基于 2026-08-07 T3 后实测（排除 CLI 配置后 statements 80+ / lines 80+）
       thresholds: {
-        lines: 50,
-        branches: 50,
-        functions: 30,
-        statements: 50,
+        lines: 80,
+        branches: 80,
+        functions: 80,
+        statements: 80,
       },
     },
   },
