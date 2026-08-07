@@ -302,6 +302,8 @@ public class ConversationServiceImpl implements ConversationService {
 
         // 4.1 冷场决策模型信号更新：学生消息类型 + 风险快照（孩子说话即清零暖场计数）
         session.recordStudentMessage(ConversationUtils.classifyStudentMessage(content, fusedLevel != null, session.getEmotionTag()));
+        // T5：nudge 计数原子清零（真值在 Redis 独立键，防与暖场定时路径并发写丢失更新）
+        sessionStateStore.resetNudgeCounter(tenantId, sessionId);
         if (fusedLevel != null) {
             session.updateMaxRiskSeverity(fusedLevel.severity());
         }
@@ -524,6 +526,11 @@ public class ConversationServiceImpl implements ConversationService {
                         "direction", decision.direction()
                 ));
 
+        // T5：原子护栏放行 + 计数（Redis 独立键 Lua；并发下防双发/丢失更新，真值以 Lua 判定为准）
+        if (!sessionStateStore.tryNudge(tenantId, sessionId)) {
+            log.debug("nudge: 原子护栏拦截（并发暖场/计数超限），放弃本次: sessionId={}", sessionId);
+            return Flux.empty();
+        }
         session.markNudged();
         sessionStateStore.save(tenantId, sessionId, session);
         log.info("nudge: 决策=暖场: sessionId={}, warmthLevel={}, direction={}, silenceSeconds={}",
@@ -632,6 +639,42 @@ public class ConversationServiceImpl implements ConversationService {
                 log.debug("会话结束分析降级: {}", e.getMessage());
             }
         }
+    }
+
+    @Override
+    public List<CounselingSession> getSessionHistory(UUID tenantId, UUID studentUserId, int limit) {
+        // T4 批次C：租户+学生双重条件内置（原 SessionController 直查 selectPage 下沉）
+        com.baomidou.mybatisplus.extension.plugins.pagination.Page<CounselingSession> pageResult =
+                sessionMapper.selectPage(
+                        new com.baomidou.mybatisplus.extension.plugins.pagination.Page<>(1, Math.min(limit, 50), false),
+                        new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<CounselingSession>()
+                                .eq(CounselingSession::getTenantId, tenantId)
+                                .eq(CounselingSession::getStudentUserId, studentUserId)
+                                .orderByDesc(CounselingSession::getStartedAt)
+                );
+        return pageResult.getRecords();
+    }
+
+    @Transactional
+    @Override
+    public void rateSession(UUID tenantId, UUID studentUserId, UUID sessionId, int rating, String comment) {
+        // SEC-001：归属校验（租户+学生双重条件，非持有人拒绝评价）——T4 批次B 下沉
+        CounselingSession existing = sessionMapper.selectOne(
+                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<CounselingSession>()
+                        .eq(CounselingSession::getTenantId, tenantId)
+                        .eq(CounselingSession::getStudentUserId, studentUserId)
+                        .eq(CounselingSession::getSessionId, sessionId)
+        );
+        if (existing == null) {
+            log.warn("rateSession: 会话归属校验失败，拒绝: sessionId={}, tenantId={}, userId={}", sessionId, tenantId, studentUserId);
+            throw new BizException(ErrorCode.FORBIDDEN);
+        }
+        CounselingSession update = new CounselingSession();
+        update.setSessionId(sessionId);
+        update.setSatisfactionRating(rating);
+        update.setSatisfactionComment(comment);
+        update.setUpdatedAt(Instant.now());
+        sessionMapper.updateById(update);
     }
 
     /**

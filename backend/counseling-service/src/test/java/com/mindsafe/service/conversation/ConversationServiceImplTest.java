@@ -143,6 +143,9 @@ class ConversationServiceImplTest {
             return null;
         }).when(sessionStateStore).remove(any(UUID.class), any(UUID.class));
 
+        // T5：原子护栏默认放行（并发/计数兑底由 RedisSessionStateStoreTest 覆盖；本测试验证编排透传）
+        when(sessionStateStore.tryNudge(any(UUID.class), any(UUID.class))).thenReturn(true);
+
         // P0-2: ConversationRiskProcessor 默认行为（无风险正常流程）
         when(riskProcessor.detectKeywordRisk(anyString())).thenReturn(RiskDetectionResult.safe());
         when(riskProcessor.applySemanticRisk(any(RiskDetectionResult.class), anyString(), anyInt()))

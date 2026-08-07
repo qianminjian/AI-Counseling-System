@@ -19,8 +19,9 @@ import java.util.UUID;
  * 重启即丢失、无法水平扩展。迁移至 Redis 后具备持久化 + 多实例共享能力。
  * <p>
  * 序列化方式：Jackson JSON（由 RedisSessionStateStore 负责）。
- * 线程安全说明：同一会话同一时刻仅一个 SSE 流写入（学生端单连接），
- * nudge 与 message 互斥（前端保证），无需分布式锁。
+ * 线程安全说明：nudgeCount/lastNudgeAt 真值已原子化至 Redis 独立计数器键
+ * （RedisSessionStateStore.tryNudge/resetNudgeCounter，Lua 原子，T5 整改），本类字段为读取快照；
+ * 其余复合字段保留整对象读写（同一会话单写入路径的既有语义）。
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class SessionState {

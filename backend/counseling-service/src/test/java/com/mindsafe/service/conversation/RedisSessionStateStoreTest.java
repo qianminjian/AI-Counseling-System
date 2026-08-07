@@ -24,6 +24,7 @@ import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.anyList;
 
 /**
  * RedisSessionStateStore 单元测试（P0-1 审计修复：会话状态 Redis 持久化）
@@ -215,5 +216,48 @@ class RedisSessionStateStoreTest {
         when(redisTemplate.hasKey(anyString())).thenThrow(new RuntimeException("redis down"));
 
         assertThat(store.exists(tenantId, sessionId)).isFalse();
+    }
+
+    @Test
+    @DisplayName("tryNudge：Lua 返回 1 → 放行（已原子计数+时间戳）")
+    void tryNudgeAllowsWhenScriptReturnsOne() {
+        when(redisTemplate.execute(any(), anyList(), any(Object[].class))).thenReturn(1L);
+
+        assertThat(store.tryNudge(tenantId, sessionId)).isTrue();
+    }
+
+    @Test
+    @DisplayName("tryNudge：Lua 返回 0 → 拦截（护栏：次数超限/间隔不足）")
+    void tryNudgeBlocksWhenScriptReturnsZero() {
+        when(redisTemplate.execute(any(), anyList(), any(Object[].class))).thenReturn(0L);
+
+        assertThat(store.tryNudge(tenantId, sessionId)).isFalse();
+    }
+
+    @Test
+    @DisplayName("tryNudge：Redis 异常 → 保守拦截 false（不双发暖场）")
+    void tryNudgeFailureConservativelyBlocks() {
+        when(redisTemplate.execute(any(), anyList(), any(Object[].class)))
+                .thenThrow(new RuntimeException("redis down"));
+
+        assertThat(store.tryNudge(tenantId, sessionId)).isFalse();
+    }
+
+    @Test
+    @DisplayName("resetNudgeCounter：删除计数键（保留 :at 时间戳键）")
+    void resetNudgeCounterDeletesCountKey() {
+        when(redisTemplate.delete("session:nudge:" + tenantId + ":" + sessionId)).thenReturn(true);
+
+        store.resetNudgeCounter(tenantId, sessionId);
+
+        verify(redisTemplate).delete("session:nudge:" + tenantId + ":" + sessionId);
+    }
+
+    @Test
+    @DisplayName("resetNudgeCounter：Redis 异常 → 记日志不抛出")
+    void resetNudgeCounterFailureSwallowed() {
+        when(redisTemplate.delete(anyString())).thenThrow(new RuntimeException("redis down"));
+
+        assertThatCode(() -> store.resetNudgeCounter(tenantId, sessionId)).doesNotThrowAnyException();
     }
 }

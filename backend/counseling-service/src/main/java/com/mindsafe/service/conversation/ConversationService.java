@@ -2,8 +2,10 @@ package com.mindsafe.service.conversation;
 
 import com.mindsafe.common.dto.chat.SessionInfo;
 import com.mindsafe.common.dto.chat.StreamMessageEvent;
+import com.mindsafe.domain.entity.CounselingSession;
 import reactor.core.publisher.Flux;
 
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -58,4 +60,14 @@ public interface ConversationService {
      * @param studentUserId  调用方身份（会话归属校验）
      */
     Flux<StreamMessageEvent> sendNudgeStream(UUID tenantId, UUID studentUserId, UUID sessionId, int silenceSeconds);
+
+    /**
+     * 会话历史列表（T4 批次C 下沉：租户+学生双重条件内置，分页上限 50）。
+     */
+    List<CounselingSession> getSessionHistory(UUID tenantId, UUID studentUserId, int limit);
+
+    /**
+     * 满意度评价（T4 批次B 下沉：先归属校验再更新，非持有人拒绝）。
+     */
+    void rateSession(UUID tenantId, UUID studentUserId, UUID sessionId, int rating, String comment);
 }
