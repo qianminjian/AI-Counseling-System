@@ -85,7 +85,7 @@ if [ ! -f "$SCRIPT_DIR/docker-compose.prod.yml" ]; then
 fi
 cp "$SCRIPT_DIR"/docker-compose*.yml /guju/mindsafe/deploy/
 cp -r "$SCRIPT_DIR/nginx" "$SCRIPT_DIR/init" "$SCRIPT_DIR/monitoring" "$SCRIPT_DIR/scripts" /guju/mindsafe/deploy/ 2>/dev/null || true
-cp "$SCRIPT_DIR/backup.sh" "$SCRIPT_DIR/restore.sh" /guju/mindsafe/deploy/ 2>/dev/null || true
+cp "$SCRIPT_DIR/backup.sh" "$SCRIPT_DIR/restore.sh" "$SCRIPT_DIR/backup-common.sh" /guju/mindsafe/deploy/ 2>/dev/null || true
 chmod +x /guju/mindsafe/deploy/*.sh 2>/dev/null || true
 if [ ! -f /guju/mindsafe/deploy/.env ]; then
     cp "$SCRIPT_DIR/.env.example" /guju/mindsafe/deploy/.env
@@ -98,8 +98,13 @@ echo "  Configs synced to /guju/mindsafe/deploy/"
 # 6. 备份 cron 自动接线（AUD-032：此前手册称 02:00 daily/weekly/monthly 分层备份，
 #    但 setup-server.sh 从不配置 cron——现已幂等写入；backup.sh 内部按日/周/月分层保留，
 #    cron 仅需每天 02:00 触发一次；恢复演练指引见 DEPLOY-GUIDE.md「备份与恢复」）
+#    DC-002：cron 必须指向 deploy/ 整目录内的 backup.sh（该目录由本脚本第 5 步完整同步，
+#    恒存在）；历史故障是 cron 指向 deploy/ 目录之外的备份脚本路径——该路径从不被
+#    任何脚本创建，导致每日备份静默失败；写入前 fail-fast 校验脚本文件存在。
 echo "[6/7] Configuring backup cron..."
-CRON_LINE="0 2 * * * /guju/mindsafe/backup.sh >> /guju/mindsafe/logs/backup.log 2>&1"
+# DC-002 fail-fast：备份脚本缺失时拒绝写入 cron，避免 cron 指向不存在的文件（历史故障）
+[ -f "$SCRIPT_DIR/backup.sh" ] || { echo "❌ 未找到 $SCRIPT_DIR/backup.sh——备份脚本缺失，拒绝写入 cron"; exit 1; }
+CRON_LINE="0 2 * * * /guju/mindsafe/deploy/backup.sh >> /guju/mindsafe/logs/backup.log 2>&1"
 if crontab -l 2>/dev/null | grep -q 'backup.sh'; then
     echo "  backup cron 已存在，跳过（幂等）"
 else

@@ -46,6 +46,9 @@ services:
       DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:-}
       # TTS 模型名（CFG-004：运行时切换模型无需改代码，默认 cosyvoice-v3-flash）
       DASHSCOPE_TTS_MODEL: ${DASHSCOPE_TTS_MODEL:-cosyvoice-v3-flash}
+      # DC-003：TTS 运行时参数透传（与 .env.example 声明、tts-service 消费对齐）
+      TTS_SYNTHESIZE_TIMEOUT: ${TTS_SYNTHESIZE_TIMEOUT:-30}
+      TTS_CORS_ORIGINS: ${TTS_CORS_ORIGINS:-}
 
   # ===== 语音识别与情绪分析微服务（ASR + SER 解耦） =====
   voice-service:

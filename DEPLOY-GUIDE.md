@@ -398,7 +398,7 @@ sudo systemctl restart docker
 | 密钥/凭证 | `deploy/.env` | 改 .env + `docker compose up -d` 重启 |
 | 声纹阈值/引导脚本/唤醒参数 | `backend/counseling-app/src/main/resources/application.yml` 的 `mindsafe.system-config` | 改 yml + 重新构建后端镜像 + 重启 |
 | TTS 音色/方言/情感 | `backend/tts-service/config.yaml` | 改 yaml + 重新构建 tts-service 镜像 + 重启 |
-| TTS 模型名 | `.env` 的 `DASHSCOPE_TTS_MODEL` | 改 .env + `docker compose up -d tts-service` |
+| TTS 模型名 | `.env` 的 `DASHSCOPE_TTS_MODEL` | 改 .env + `docker compose -f docker-compose.prod.yml up -d tts-service`（DC-003：非 prod 与 prod compose 均已透传，改 .env 对两通道均生效） |
 | ASR/SER 模型名/情绪标签 | `backend/voice-service/config.yaml` | 改 yaml + 重新构建 voice-service 镜像 + 重启 |
 | ASR 引擎切换 | `.env` 的 `ASR_ENGINE` | 改 .env + `docker compose up -d voice-service` |
 | 前端运行时配置 | 自动从 `GET /api/v1/system/config` 拉取 | 后端配置变更后前端自动生效（5min 缓存） |

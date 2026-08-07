@@ -157,6 +157,10 @@ services:
     restart: unless-stopped
     environment:
       DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:-}
+      # DC-003：TTS 运行时参数透传（与 .env.example 声明、tts-service 消费对齐）
+      DASHSCOPE_TTS_MODEL: ${DASHSCOPE_TTS_MODEL:-cosyvoice-v3-flash}
+      TTS_SYNTHESIZE_TIMEOUT: ${TTS_SYNTHESIZE_TIMEOUT:-30}
+      TTS_CORS_ORIGINS: ${TTS_CORS_ORIGINS:-}
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:10096/health')"]
       interval: 30s

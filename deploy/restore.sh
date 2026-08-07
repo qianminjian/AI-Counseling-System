@@ -11,21 +11,9 @@
 
 set -euo pipefail
 
-CONTAINER_NAME="mindsafe-pg"
-DB_NAME="mindsafe"
-DB_USER="mindsafe"
-# compose 命名卷实际带项目名前缀（如 deploy_dbbackups），硬编码 dbbackups 会挂到另一个空卷。
-# 优先用环境变量 BACKUP_VOLUME 覆盖，否则自动探测。
-BACKUP_VOLUME="${BACKUP_VOLUME:-$(docker volume ls --format '{{.Name}}' | grep -E '(^|_)dbbackups$' | head -1)}"
-if [ -z "${BACKUP_VOLUME}" ]; then
-    echo "ERROR: 未找到 dbbackups 卷（请先启动 docker-compose.prod.yml，或设 BACKUP_VOLUME=<卷名>）"
-    exit 1
-fi
-PG_IMAGE="pgvector/pgvector:pg16"
-
-log() {
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"
-}
+# DB 连接事实 / dbbackups 卷探测 / log() 来自 backup-common.sh（DC-002：单一事实源，与 backup.sh 共享）
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/backup-common.sh"
 
 usage() {
     echo "用法: $0 <备份路径> [--force]"

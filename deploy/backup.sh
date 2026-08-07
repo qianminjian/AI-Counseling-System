@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # MindSafe 数据库备份脚本（宿主机手动/cron 触发）
-# 部署位置：服务器 /guju/mindsafe/backup.sh
-# 定时任务：crontab -e → 0 2 * * * /guju/mindsafe/backup.sh >> /guju/mindsafe/logs/backup.log 2>&1
+# 部署位置：服务器 /guju/mindsafe/deploy/backup.sh（setup-server.sh 复制的 deploy/ 整目录，DC-002）
+# 定时任务：crontab -e → 0 2 * * * /guju/mindsafe/deploy/backup.sh >> /guju/mindsafe/logs/backup.log 2>&1
 #
 # 链路对齐（OPS）：
 #   - 备份统一写入 dbbackups volume（backup.sh 为唯一备份入口，db-backup 容器已于 OD-007 移除），
@@ -17,16 +17,9 @@
 set -euo pipefail
 
 # ===== 配置 =====
-CONTAINER_NAME="mindsafe-pg"
-# compose 命名卷实际带项目名前缀（如 deploy_dbbackups），硬编码 dbbackups 会挂到另一个空卷。
-# 优先用环境变量 BACKUP_VOLUME 覆盖，否则自动探测宿主机上匹配 *_dbbackups 的卷。
-BACKUP_VOLUME="${BACKUP_VOLUME:-$(docker volume ls --format '{{.Name}}' | grep -E '(^|_)dbbackups$' | head -1)}"
-if [ -z "${BACKUP_VOLUME}" ]; then
-    echo "ERROR: 未找到 dbbackups 卷（请先 docker compose -f docker-compose.prod.yml up -d，或设 BACKUP_VOLUME=<卷名>）"
-    exit 1
-fi
-DB_NAME="mindsafe"
-DB_USER="mindsafe"
+# DB 连接事实 / dbbackups 卷探测 / log() 来自 backup-common.sh（DC-002：单一事实源，与 restore.sh 共享）
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/backup-common.sh"
 RETAIN_DAILY=7
 RETAIN_WEEKLY=4
 RETAIN_MONTHLY=3
@@ -45,10 +38,6 @@ mkdir -p "${STAGING_DIR}/daily" "${STAGING_DIR}/weekly" "${STAGING_DIR}/monthly"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 DAY_OF_WEEK=$(date +%u)  # 1=Monday, 7=Sunday
 DAY_OF_MONTH=$(date +%d)
-
-log() {
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"
-}
 
 # ===== 执行备份（直写 dbbackups volume，唯一备份链路） =====
 BACKUP_NAME="mindsafe_${TIMESTAMP}.dump"
