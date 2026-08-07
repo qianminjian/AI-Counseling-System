@@ -174,11 +174,20 @@ jobs:
     environment: production
 
     steps:
+      # ssh-key-action 在 runner 上安装的 key 未被后续 ssh 使用（实测 Permission denied），
+      # 改用手写 ssh-agent 脚本：写 id_ed25519（ssh 默认查找）+ known_hosts + ssh-add，确定性可控
       - name: Install SSH key
-        uses: shimataro/ssh-key-action@v2
-        with:
-          key: ${{ secrets.DEPLOY_SSH_KEY }}
-          known_hosts: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+          eval "$(ssh-agent -s)" >/dev/null
+          ssh-add ~/.ssh/id_ed25519
 
       - name: Deploy via SSH
         run: |
@@ -285,11 +294,20 @@ jobs:
           npm ci
           npm run build
 
+      # ssh-key-action 在 runner 上安装的 key 未被后续 ssh 使用（实测 Permission denied），
+      # 改用手写 ssh-agent 脚本：写 id_ed25519（ssh 默认查找）+ known_hosts + ssh-add，确定性可控
       - name: Install SSH key
-        uses: shimataro/ssh-key-action@v2
-        with:
-          key: ${{ secrets.DEPLOY_SSH_KEY }}
-          known_hosts: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+          eval "$(ssh-agent -s)" >/dev/null
+          ssh-add ~/.ssh/id_ed25519
 
       - name: Rsync dist & keep previous for rollback
         run: |
@@ -333,11 +351,20 @@ jobs:
     environment: production
 
     steps:
+      # ssh-key-action 在 runner 上安装的 key 未被后续 ssh 使用（实测 Permission denied），
+      # 改用手写 ssh-agent 脚本：写 id_ed25519（ssh 默认查找）+ known_hosts + ssh-add，确定性可控
       - name: Install SSH key
-        uses: shimataro/ssh-key-action@v2
-        with:
-          key: ${{ secrets.DEPLOY_SSH_KEY }}
-          known_hosts: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+          eval "$(ssh-agent -s)" >/dev/null
+          ssh-add ~/.ssh/id_ed25519
 
       - name: Rollback images & frontend
         run: |
@@ -402,11 +429,20 @@ jobs:
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
 
+      # ssh-key-action 在 runner 上安装的 key 未被后续 ssh 使用（实测 Permission denied），
+      # 改用手写 ssh-agent 脚本：写 id_ed25519（ssh 默认查找）+ known_hosts + ssh-add，确定性可控
       - name: Install SSH key
-        uses: shimataro/ssh-key-action@v2
-        with:
-          key: ${{ secrets.DEPLOY_SSH_KEY }}
-          known_hosts: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+          eval "$(ssh-agent -s)" >/dev/null
+          ssh-add ~/.ssh/id_ed25519
 
       - name: Run smoke tests on server
         run: |
