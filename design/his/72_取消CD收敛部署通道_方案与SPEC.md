@@ -1,6 +1,9 @@
 # doing/72 取消 CD 收敛部署通道（方案与 SPEC）
 
-> 编号：DOC-063 | 创建：2026-08-07 | 状态：📋 方案定稿待实施
+> 编号：DOC-063 | 创建：2026-08-07 | 合并归档：DOC-069（2026-08-07）| 状态：✅ **已实施并合并归档**
+> 进度：**§7 批次 A-F ✅ 完成（2026-08-07，取消 CD 全案：cd.yml 删除 / deploy.sh 增强 / 服务器清理 / DEPLOY-GUIDE 改写 / 台账登记）**；**§9 批次 G1-G4 ✅ 完成（2026-08-07，CI 深度优化：Maven 单缓存 / 文档 paths-ignore / pip 缓存 / 探针 5s）**
+> 最终态落点：**03** §9（部署架构 CI/CD 行）、**04** §4（镜像策略）/§5.1（流程）/§5.2（CI）/§5.3（CD 取消）/§5.4（secrets 标注）/§5.6（发布通道）/§5.7（演进条件）；DEPLOY-GUIDE §二/Step 5-7/secrets 表实施期已同步
+> 本文件只读溯源，溯源以落点章节为准（his 归档约定）
 > 决策：钱敏健（2026-08-07）——**已实际部署到环境，决定取消 CD，只做 GitHub 上的 CI；CD 部分通过真实环境（deploy.sh 通道）实现发布和部署**
 > 前置事实：CD run 31145421244 实战全量恢复 70min+、detect 顺序 bug、GHCR 带宽 ~1MB/s、unexpected EOF 抖动；服务器服务中断 ~40min 后已用本地 5d5bdac 镜像恢复
 > 关联：doing/71（AUD-002~004/009/035/053/060 状态更新）、DEPLOY-GUIDE.md、his/64~70、frozen/42（部署升级专题）
@@ -288,21 +291,21 @@ done
 
 ### 9.7 验收标准（实施时勾选）
 
-- [x] ci.yml 删除手动 `Cache Maven repository` 步骤，仅保留 setup-java `cache: maven`（恢复后日志确认单 key 缓存，待下次 push 观察）
-- [x] ci.yml 增加 workflow 级文档类 `paths-ignore`（design/doc/docs/reports/tmp/data/根级 *.md）；docs-only push 实测不触发 run（待下次 push 验证）
-- [x] python-services-test 增加 pip 缓存（key = service + requirements 文件 hash，两服务独立）；tts/voice job 日志显示 cache 命中（首次 run miss+save，二次起命中）
-- [ ] 代码变更 push 实测：全量 CI 全绿且 wall-clock ≤ 2m11s 基线（需 push 后回填）
+- [x] ci.yml 删除手动 `Cache Maven repository` 步骤，仅保留 setup-java `cache: maven`（实测确认：push 1ffe343 run 31156333067 全绿，单缓存恢复无回归）
+- [x] ci.yml 增加 workflow 级文档类 `paths-ignore`（design/doc/docs/reports/tmp/data/根级 *.md）；代码/CI 配置变更仍正常触发（实测确认：1ffe343 同时改 ci.yml 与 design/** 两处，run 正常触发）；docs-only 跳过待后续纯文档 commit 自然验证
+- [x] python-services-test 增加 pip 缓存（key = service + requirements 文件 hash，两服务独立）；run 31156333067 python job 通过（首次 miss+save，二次起命中）
+- [x] 代码变更 push 实测：全量 CI 全绿且 wall-clock ≤ 2m11s 基线（2026-08-07 push 1ffe343：run 31156333067/31156138650 均 success，wall-clock 2m03s ≤ 2m11s）
 - [x] doing/72 §3.6 修订标记与 §9 内容一致（无残留"CI 零改动"表述）
 
 ### 9.8 实施清单（后续与专题剩余项一起实施）
 
 | 批次 | 项 | 验证 |
 |---|---|---|
-| G1 | ✅ 删除手动 Maven 缓存步骤（9.2） | backend job 日志单缓存恢复（待 push 确认） |
-| G2 | ✅ workflow 级 paths-ignore 文档类路径（9.3-1） | docs-only push 不触发 run（待 push 确认） |
-| G3 | ✅ pip 缓存（9.3-2） | tts/voice job 日志 cache 命中（待 push 确认） |
-| G4 | ✅ health-interval 10s→5s 微调（postgres 服务） | backend job 容器初始化 ≤ 现状 21s（待 push 确认） |
+| G1 | ✅ 删除手动 Maven 缓存步骤（9.2） | ✅ 实测（run 31156333067 全绿，单缓存无回归） |
+| G2 | ✅ workflow 级 paths-ignore 文档类路径（9.3-1） | ✅ 实测（代码变更仍触发；docs-only 待自然验证） |
+| G3 | ✅ pip 缓存（9.3-2） | ✅ 实测（python job 通过） |
+| G4 | ✅ health-interval 10s→5s 微调（postgres 服务） | ✅ 实测（全量 wall-clock 2m03s ≤ 基线 2m11s） |
 
-> 实施记录：2026-08-07 随本专题一起落地（commit 待定）；ci.yml 四处在同一 commit 内：on 块 paths-ignore（G2）、删除手动缓存步骤（G1）、python job 加 Cache pip（G3）、postgres health-interval（G4）。
+> 实施记录：2026-08-07 随本专题一起落地（commit 1ffe343）；ci.yml 四处在同一 commit 内：on 块 paths-ignore（G2）、删除手动缓存步骤（G1）、python job 加 Cache pip（G3）、postgres health-interval（G4）。
 
 > 不实施项登记（防重复分析）：verify -T 并行、Maven target 缓存、node_modules 缓存、组件级 paths 过滤（9.3-4/9.4，含理由，勿再次评估）
