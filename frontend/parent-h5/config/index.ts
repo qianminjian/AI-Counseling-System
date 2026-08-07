@@ -28,6 +28,10 @@ export default defineConfig<'webpack5'>(async (merge) => {
       type: 'webpack5',
       prebundle: { enable: false },
     },
+    // DC-005：共享认证传输模块源码位于 src 外（../../shared，config/ 相对两层），纳入 babel 编译范围
+    compile: {
+      include: [path.resolve(__dirname, '../../shared/src')],
+    },
     cache: {
       enable: false,
     },
@@ -44,6 +48,17 @@ export default defineConfig<'webpack5'>(async (merge) => {
     h5: {
       publicPath: '/parent/',
       staticDirectory: 'static',
+      // DC-005：shared 源码（src 外）babel 编译（Taro 4.2.1 实测 compile.include 未生效，webpackChain 显式规则可行）
+      webpackChain(chain) {
+        chain.module
+          .rule('shared-babel')
+          .test(/\.(js|jsx|ts|tsx)$/)
+          .include.add(path.resolve(__dirname, '../../shared/src'))
+          .end()
+          .use('babel-loader')
+          .loader('babel-loader')
+          .options({ compact: false })
+      },
       // doing/73 C1：URL 与部署完全兼容（/parent/、/parent/privacy、/parent/report、/parent/consent）
       router: {
         mode: 'browser',
