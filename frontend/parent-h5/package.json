@@ -23,6 +23,7 @@
   },
   "devDependencies": {
     "@babel/preset-react": "^7.29.7",
+    "@pmmmwh/react-refresh-webpack-plugin": "^0.6.2",
     "@tarojs/cli": "^4.2.1",
     "@tarojs/plugin-framework-react": "^4.2.1",
     "@tarojs/plugin-platform-h5": "^4.2.1",
@@ -38,6 +39,7 @@
     "babel-preset-taro": "^4.2.1",
     "jsdom": "^26.1.0",
     "oxlint": "^1.71.0",
+    "react-refresh": "^0.18.0",
     "sass": "^1.77.0",
     "typescript": "^5.9.3",
     "vite": "^8.1.1",
