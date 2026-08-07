@@ -6,8 +6,25 @@ name: CI
 on:
   push:
     branches: [main, develop]
+    # G2（doing/72 §9.3-1）：文档类变更不触发 CI；代码/CI 配置路径永不忽略
+    paths-ignore:
+      - 'design/**'
+      - 'doc/**'
+      - 'docs/**'
+      - 'reports/**'
+      - 'tmp/**'
+      - 'data/**'
+      - '*.md'
   pull_request:
     branches: [main, develop]
+    paths-ignore:
+      - 'design/**'
+      - 'doc/**'
+      - 'docs/**'
+      - 'reports/**'
+      - 'tmp/**'
+      - 'data/**'
+      - '*.md'
 
 # AUD-052：显式收敛最小权限（contents 只读；CD 发布写权限由 cd.yml 按 job 单独授予）
 permissions:
@@ -27,6 +44,7 @@ jobs:
 
     # GitHub Actions 原生 services（替代 Testcontainers，避免 Docker 网络不稳定）
     services:
+      # G4（doing/72 §9.3-3）：探测间隔 10s→5s，容器就绪后提前被发现（收益约 5s，零风险）
       postgres:
         image: pgvector/pgvector:pg16
         env:
@@ -37,7 +55,7 @@ jobs:
           - 5432:5432
         options: >-
           --health-cmd "pg_isready -U test -d mindsafe_test"
-          --health-interval 10s
+          --health-interval 5s
           --health-timeout 5s
           --health-retries 10
           --health-start-period 30s
@@ -62,21 +80,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # G1（doing/72 §9.2）：删除手动缓存步骤，仅保留 setup-java cache: maven（官方推荐，key 粒度更细，避免双缓存冗余）
       - name: Set up JDK ${{ env.JAVA_VERSION }}
         uses: actions/setup-java@v4
         with:
           java-version: ${{ env.JAVA_VERSION }}
           distribution: temurin
           cache: maven
-
-      # Maven 依赖缓存（加速重复构建）
-      - name: Cache Maven repository
-        uses: actions/cache@v4
-        with:
-          path: ~/.m2/repository
-          key: ${{ runner.os }}-maven-${{ hashFiles('backend/**/pom.xml') }}
-          restore-keys: |
-            ${{ runner.os }}-maven-
 
       - name: Compile
         run: mvn compile -B -q
@@ -182,6 +192,16 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+
+      # G3（doing/72 §9.3-2）：pip wheel 缓存——key 按服务 requirements 文件 hash，两服务独立；
+      # 首次 run miss+save，二次起命中，消除每次全量下载（实测 tts 8s / voice 2s）
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ matrix.service }}-${{ hashFiles(format('backend/{0}/requirements*.txt', matrix.service)) }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
 
       - name: Install dependencies
         # tts：requirements-lite.txt（轻量，含 fastapi/httpx/edge-tts）；
