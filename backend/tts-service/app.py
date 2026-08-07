@@ -17,6 +17,7 @@ from typing import Optional
 
 import httpx
 import yaml
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response, StreamingResponse
@@ -28,7 +29,21 @@ from tts_policy import DegradationPolicy, TTSSynthesisFailed
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("tts-service")
 
-app = FastAPI(title="MindSafe TTS Service", version="4.0.0")
+# 全局复用 httpx 客户端（edge-tts 降级时用）
+http_client: httpx.AsyncClient = None
+
+
+@asynccontextmanager
+async def _lifespan(_: FastAPI):
+    """AUD-042：用 lifespan 替代弃用的 @app.on_event（FastAPI 推荐生命周期管理，退出时确保 http_client 回收）"""
+    global http_client
+    http_client = httpx.AsyncClient(timeout=20.0, limits=httpx.Limits(max_connections=20))
+    yield
+    if http_client:
+        await http_client.aclose()
+
+
+app = FastAPI(title="MindSafe TTS Service", version="4.0.0", lifespan=_lifespan)
 
 # ===== Prometheus 指标（P1-10：手写文本格式，零新增依赖，供监控栈 internal 网络抓取） =====
 _METRICS_LOCK = threading.Lock()
@@ -70,23 +85,8 @@ def metrics():
     ]
     return Response(content="\n".join(out) + "\n", media_type="text/plain; version=0.0.4; charset=utf-8")
 
-# 全局复用 httpx 客户端（edge-tts 降级时用）
-http_client: httpx.AsyncClient = None
-
 # 单次合成超时（P1-DEP：SDK 线程挂死/网络黑洞时避免请求永久挂起；超时后自动降级或 503）
 TTS_SYNTHESIZE_TIMEOUT = float(os.environ.get("TTS_SYNTHESIZE_TIMEOUT", "30"))
-
-
-@app.on_event("startup")
-async def _startup():
-    global http_client
-    http_client = httpx.AsyncClient(timeout=20.0, limits=httpx.Limits(max_connections=20))
-
-
-@app.on_event("shutdown")
-async def _shutdown():
-    if http_client:
-        await http_client.aclose()
 
 # CORS 白名单（安全收敛）：默认拒绝跨域（本服务仅由同网络后端调用）；
 # 确需前端直连时用 TTS_CORS_ORIGINS="https://a.com,https://b.com" 显式声明，禁止 *

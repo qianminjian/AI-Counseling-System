@@ -1,6 +1,7 @@
 package com.mindsafe.service.notification;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.mindsafe.domain.entity.Notification;
 import com.mindsafe.domain.entity.RiskEvent;
 import com.mindsafe.domain.entity.User;
@@ -90,12 +91,14 @@ public class NotificationServiceImpl implements NotificationService {
 
     @Override
     public List<Notification> getNotifications(UUID recipientUserId, int limit) {
-        return notificationMapper.selectList(
+        // AUD-043：分页插件安全化，替代 .last("LIMIT ...") 字符串拼接
+        Page<Notification> pageResult = notificationMapper.selectPage(
+                new Page<>(1, Math.min(limit, 100), false),
                 new LambdaQueryWrapper<Notification>()
                         .eq(Notification::getRecipientUserId, recipientUserId)
                         .orderByDesc(Notification::getCreatedAt)
-                        .last("LIMIT " + Math.min(limit, 100))
         );
+        return pageResult.getRecords();
     }
 
     @Override

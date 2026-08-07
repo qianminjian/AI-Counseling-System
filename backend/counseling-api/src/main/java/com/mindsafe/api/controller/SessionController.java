@@ -1,6 +1,7 @@
 package com.mindsafe.api.controller;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.mindsafe.api.security.JwtAuthenticationFilter.TenantContext;
 import com.mindsafe.common.dto.ApiResponse;
 import com.mindsafe.common.dto.ErrorCode;
@@ -40,13 +41,15 @@ public class SessionController {
             Authentication auth,
             @RequestParam(defaultValue = "20") int limit) {
         TenantContext ctx = extractContext(auth);
-        List<CounselingSession> sessions = sessionMapper.selectList(
+        // AUD-043：分页插件安全化，替代 .last("LIMIT ...") 字符串拼接
+        Page<CounselingSession> pageResult = sessionMapper.selectPage(
+                new Page<>(1, Math.min(limit, 50), false),
                 new LambdaQueryWrapper<CounselingSession>()
                         .eq(CounselingSession::getTenantId, ctx.tenantId())
                         .eq(CounselingSession::getStudentUserId, ctx.userId())
                         .orderByDesc(CounselingSession::getStartedAt)
-                        .last("LIMIT " + Math.min(limit, 50))
         );
+        List<CounselingSession> sessions = pageResult.getRecords();
         List<SessionHistoryVO> voList = sessions.stream()
                 .map(s -> new SessionHistoryVO(
                         s.getSessionId(), s.getStartedAt(), s.getEndedAt(),

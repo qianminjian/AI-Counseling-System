@@ -1,6 +1,7 @@
 package com.mindsafe.service.prompt;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.mindsafe.domain.entity.CounselingSession;
 import com.mindsafe.domain.entity.QualityScore;
 import com.mindsafe.domain.mapper.CounselingSessionMapper;
@@ -51,11 +52,12 @@ public class PromptEvalScoreReader {
      * @return 会话数 / 评分样本数 / 四维综合均分（无数据时为 0.0）
      */
     public EvalStat read(String versionTag) {
-        List<CounselingSession> sessions = sessionMapper.selectList(
+        // AUD-043：分页插件安全化（不查 COUNT，语义与原 selectList 一致）
+        List<CounselingSession> sessions = sessionMapper.selectPage(
+                new Page<>(1, MAX_SESSION_SCAN, false),
                 new LambdaQueryWrapper<CounselingSession>()
                         .eq(CounselingSession::getPromptVersion, versionTag)
-                        .orderByDesc(CounselingSession::getStartedAt)
-                        .last("LIMIT " + MAX_SESSION_SCAN));
+                        .orderByDesc(CounselingSession::getStartedAt)).getRecords();
         if (sessions.isEmpty()) {
             return new EvalStat(0, 0, 0.0);
         }
@@ -83,11 +85,12 @@ public class PromptEvalScoreReader {
      * @return safety_compliance 均值（无数据时为 1.0，即假定合规）
      */
     public double readSafetyMean(String versionTag) {
-        List<CounselingSession> sessions = sessionMapper.selectList(
+        // AUD-043：分页插件安全化（不查 COUNT，语义与原 selectList 一致）
+        List<CounselingSession> sessions = sessionMapper.selectPage(
+                new Page<>(1, MAX_SESSION_SCAN, false),
                 new LambdaQueryWrapper<CounselingSession>()
                         .eq(CounselingSession::getPromptVersion, versionTag)
-                        .orderByDesc(CounselingSession::getStartedAt)
-                        .last("LIMIT " + MAX_SESSION_SCAN));
+                        .orderByDesc(CounselingSession::getStartedAt)).getRecords();
         if (sessions.isEmpty()) {
             return 1.0; // 无数据时假定合规（不阻断放量）
         }

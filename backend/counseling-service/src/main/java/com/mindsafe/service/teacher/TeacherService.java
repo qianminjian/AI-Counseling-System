@@ -1,6 +1,7 @@
 package com.mindsafe.service.teacher;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.mindsafe.domain.entity.*;
@@ -199,10 +200,11 @@ public class TeacherService {
             wrapper.ge(RiskEvent::getRiskLevel, minLevel);
         }
         wrapper.orderByDesc(RiskEvent::getRiskLevel)
-                .orderByDesc(RiskEvent::getDetectedAt)
-                .last("LIMIT " + Math.min(limit, 100));
+                .orderByDesc(RiskEvent::getDetectedAt);
 
-        List<RiskEvent> events = riskEventMapper.selectList(wrapper);
+        // AUD-043：分页插件安全化，替代 .last("LIMIT ...") 字符串拼接
+        Page<RiskEvent> pageResult = riskEventMapper.selectPage(new Page<>(1, Math.min(limit, 100), false), wrapper);
+        List<RiskEvent> events = pageResult.getRecords();
         // 班级过滤（内存过滤，与 getHighRiskStudents 同模式，避免 inSql 注入面）
         if (classStudentIds != null) {
             Set<UUID> finalIds = classStudentIds;

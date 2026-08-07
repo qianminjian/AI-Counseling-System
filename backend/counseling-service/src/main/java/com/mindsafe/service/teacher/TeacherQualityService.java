@@ -1,6 +1,7 @@
 package com.mindsafe.service.teacher;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.mindsafe.domain.entity.CounselingSession;
 import com.mindsafe.domain.entity.MessageSummary;
 import com.mindsafe.domain.entity.QualityScore;
@@ -92,9 +93,10 @@ public class TeacherQualityService {
         }
         wrapper.orderByDesc(QualityScore::getEvaluatedAt);
 
-        long total = qualityScoreMapper.selectCount(wrapper);
-        wrapper.last("LIMIT " + size + " OFFSET " + (long) (page - 1) * size);
-        List<QualityScore> items = qualityScoreMapper.selectList(wrapper);
+        // AUD-043：分页插件安全化，selectPage 取代 .last("LIMIT ... OFFSET ...") 拼接（total 由插件统计）
+        Page<QualityScore> pageResult = qualityScoreMapper.selectPage(new Page<>(page, size), wrapper);
+        long total = pageResult.getTotal();
+        List<QualityScore> items = pageResult.getRecords();
 
         List<Map<String, Object>> enriched = new java.util.ArrayList<>();
         // C1: 批量 enrich——selectBatchIds 批量查会话与学生，替代逐条 selectById（N+1 消除）

@@ -177,6 +177,10 @@ class VoiceAnalysisResponse(BaseModel):
     duration_seconds: float     # 音频时长（秒）
 
 
+# AUD-042：上传文件后缀白名单（防任意后缀写入临时目录）
+_ALLOWED_AUDIO_SUFFIXES = {".webm", ".wav", ".mp3", ".m4a", ".ogg", ".opus", ".aac", ".flac"}
+
+
 # ===== 情绪映射（从 config.yaml 加载） =====
 
 EMOTION_LABELS = [tuple(item) for item in _CONFIG["emotion_labels"]]
@@ -273,8 +277,10 @@ async def analyze_voice(file: UploadFile = File(...)):
     tmp_path = None
     wav_path = None
     try:
-        # 写入原始格式临时文件
-        suffix = os.path.splitext(file.filename or "audio.webm")[1] or ".webm"
+        # 写入原始格式临时文件（AUD-042：后缀白名单，拒绝任意后缀写入临时目录）
+        suffix = os.path.splitext(file.filename or "audio.webm")[1].lower() or ".webm"
+        if suffix not in _ALLOWED_AUDIO_SUFFIXES:
+            raise HTTPException(status_code=400, detail="不支持的音频格式")
         with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
             tmp.write(audio_bytes)
             tmp_path = tmp.name

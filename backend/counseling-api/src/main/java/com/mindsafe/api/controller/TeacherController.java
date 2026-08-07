@@ -1,6 +1,7 @@
 package com.mindsafe.api.controller;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.mindsafe.api.security.JwtAuthenticationFilter.TenantContext;
 import com.mindsafe.api.security.JwtTokenProvider;
 import com.mindsafe.common.dto.ApiResponse;
@@ -285,13 +286,14 @@ public class TeacherController {
             Authentication auth,
             @RequestParam(defaultValue = "50") int limit) {
         TenantContext ctx = (TenantContext) auth.getDetails();
-        List<RiskEvent> events = riskEventMapper.selectList(
+        // AUD-043：分页插件安全化，替代 .last("LIMIT ...") 字符串拼接
+        Page<RiskEvent> pageResult = riskEventMapper.selectPage(
+                new Page<>(1, Math.min(limit, 100), false),
                 new LambdaQueryWrapper<RiskEvent>()
                         .eq(RiskEvent::getTenantId, ctx.tenantId())
                         .orderByDesc(RiskEvent::getDetectedAt)
-                        .last("LIMIT " + Math.min(limit, 100))
         );
-        return ApiResponse.ok(events);
+        return ApiResponse.ok(pageResult.getRecords());
     }
 
     // ===== 数据导出 =====
