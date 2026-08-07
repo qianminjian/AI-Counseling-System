@@ -159,6 +159,9 @@ mindsafe:
       enabled: true                     # 风险预警 SLA 超时兜底扫描（P-05）
       scan-cron: "0 * * * * ?"           # 扫描 cron（每分钟）
       re-alert-cooldown-minutes: 30     # 同一事件重复告警冷却期（分钟，防告警风暴）
+  # 输出安全（Layer1 内容过滤参数，SAFE-203 第一阶段：全局配置化；缺省回退全国心理援助热线，租户级待租户配置体系）
+  safety:
+    crisis-hotline: ${MINDSAFE_CRISIS_HOTLINE:400-161-9995}  # 危机热线（危机干预资源不交给 LLM，白名单演进见 SAFE-203）
   # 声纹识别模式（local=浏览器端比对，声纹不出设备；remote=embedding传服务端比对）
   # 2026-07-28 审计裁决：默认 local（儿童生物数据最小化），remote 仅按需开启（需家长单独同意）
   voiceprint:

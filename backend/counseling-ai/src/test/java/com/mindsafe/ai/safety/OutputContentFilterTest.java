@@ -114,6 +114,25 @@ class OutputContentFilterTest {
         }
 
         @Test
+        @DisplayName("配置注入自定义热线 → 安全模板使用配置值（SAFE-203）")
+        void should_use_configured_hotline() {
+            OutputContentFilter configured = new OutputContentFilter(library, reporter, "12345");
+            String template = configured.safeTemplate(
+                    new SafetyKeywordLibrary.KeywordHit("self_harm_method", "自伤/伤人方法", "怎么割腕", "block"));
+
+            assertThat(template).contains("12345").doesNotContain(OutputContentFilter.CRISIS_HOTLINE);
+        }
+
+        @Test
+        @DisplayName("配置缺失时缺省回退常量热线（安全组件不允许 fail-fast）")
+        void should_fallback_to_constant_when_config_missing() {
+            // 2 参构造器 = 无配置注入路径，等价 @Value 默认值场景
+            assertThat(filter.safeTemplate(
+                    new SafetyKeywordLibrary.KeywordHit("self_harm_method", "自伤/伤人方法", "怎么割腕", "block")))
+                    .contains(OutputContentFilter.CRISIS_HOTLINE);
+        }
+
+        @Test
         @DisplayName("非自伤类（依赖诱导）→ 温和转移话题，不含热线")
         void should_use_topic_shift_for_other_categories() {
             StepVerifier.create(filter.apply(Flux.just("放心，只有我能帮你"), sessionId))
