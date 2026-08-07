@@ -1,3 +1,5 @@
+import BoBoAvatar from './BoBoAvatar'
+
 /**
  * 无操作超时警告卡（共享 Pad 隐私保护）
  * 5 分钟无操作后全屏弹出，60 秒倒计时；
@@ -7,7 +9,7 @@ export default function IdleWarning({ secondsLeft, onStay }: { secondsLeft: numb
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-6">
       <div className="w-full max-w-xs rounded-3xl bg-white p-7 text-center shadow-2xl animate-slide-up">
-        <span className="inline-block text-6xl float-companion">🐬</span>
+        <span className="inline-block float-companion"><BoBoAvatar size={60} /></span>
         <h3 className="mt-3 text-xl font-bold text-gray-800">你还在吗？</h3>
         <p className="mt-2 text-sm leading-relaxed text-gray-500">
           波波等你哦～<br />

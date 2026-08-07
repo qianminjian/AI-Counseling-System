@@ -19,7 +19,7 @@ function SlaBadge({ riskLevel, status, detectedAt }) {
 
   if (sla.breached) {
     return (
-      <Tag color="red" style={{ margin: 0, fontWeight: 600 }}>
+      <Tag color="red" className="ms-tag-strong">
         <FieldTimeOutlined /> 逾期 {sla.overdueMin}min{sla.escalate ? ' · 已升级' : ''}
       </Tag>
     )
@@ -30,7 +30,7 @@ function SlaBadge({ riskLevel, status, detectedAt }) {
       // 紧急（≤5min）保持语义橙；非紧急用青屿主色软底（替换 antd 默认蓝）
       <Tag
         color={urgent ? 'orange' : undefined}
-        style={urgent ? { margin: 0 } : { margin: 0, color: 'var(--ms-primary)', background: 'var(--ms-primary-soft)', borderColor: 'var(--ms-primary-soft)' }}
+        className={urgent ? 'ms-m-0' : 'ms-tag-claim'}
       >
         <ClockCircleOutlined /> 剩 {sla.remainingMin}min
       </Tag>
@@ -115,7 +115,7 @@ export default function TodayTodoPanel({ onNavigate }) {
           size="small"
           title={
             <span>
-              <AlertOutlined style={{ color: 'var(--ms-danger)' }} /> 今日待办
+              <AlertOutlined className="ms-text-danger" /> 今日待办
               {overdueCount > 0 && (
                 <Tag color="red" style={{ marginLeft: 8 }}>{overdueCount} 项逾期</Tag>
               )}
@@ -145,11 +145,11 @@ export default function TodayTodoPanel({ onNavigate }) {
                     }} />
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                        <Tag color={RISK_COLORS[a.riskLevel]} style={{ margin: 0 }}>{RISK_LABELS[a.riskLevel]}</Tag>
+                        <Tag color={RISK_COLORS[a.riskLevel]} className="ms-m-0">{RISK_LABELS[a.riskLevel]}</Tag>
                         <span style={{ fontWeight: 500 }}>{a.studentName}</span>
-                        <span style={{ fontSize: 12, color: 'var(--ms-text-muted)' }}>{a.riskType}</span>
+                        <span className="ms-hint">{a.riskType}</span>
                       </div>
-                      <div style={{ fontSize: 12, color: 'var(--ms-text-muted)', marginTop: 2 }}>
+                      <div className="ms-hint" style={{ marginTop: 2 }}>
                         {dayjs(a.detectedAt).format('HH:mm')} · {a.status === 'claimed' ? '已认领' : '待认领'}
                       </div>
                     </div>
@@ -174,10 +174,10 @@ export default function TodayTodoPanel({ onNavigate }) {
                   display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px',
                   borderRadius: 8, background: 'var(--ms-success-soft)', border: '1px solid var(--ms-success-soft)',
                 }}>
-                  <CheckCircleOutlined style={{ color: 'var(--ms-success)' }} />
+                  <CheckCircleOutlined className="ms-text-success" />
                   <div style={{ flex: 1 }}>
                     <span style={{ fontWeight: 500 }}>回访待完成</span>
-                    <span style={{ fontSize: 12, color: 'var(--ms-text-muted)', marginLeft: 8 }}>
+                    <span className="ms-hint" style={{ marginLeft: 8 }}>
                       {f.riskType} · 计划 {f.followUpAt ? dayjs(f.followUpAt).format('MM-DD HH:mm') : '尽快'}
                     </span>
                   </div>
@@ -201,11 +201,11 @@ export default function TodayTodoPanel({ onNavigate }) {
                 children: (
                   <div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <span style={{ fontSize: 12, color: 'var(--ms-text-muted)' }}>{dayjs(a.detectedAt).format('MM-DD HH:mm')}</span>
-                      <Tag color={RISK_COLORS[a.riskLevel]} style={{ margin: 0, fontSize: 11 }}>{RISK_LABELS[a.riskLevel]}</Tag>
-                      <span style={{ fontSize: 13 }}>{a.studentName}</span>
+                      <span className="ms-hint">{dayjs(a.detectedAt).format('MM-DD HH:mm')}</span>
+                      <Tag color={RISK_COLORS[a.riskLevel]} className="ms-tag-sm">{RISK_LABELS[a.riskLevel]}</Tag>
+                      <span className="ms-text-sm">{a.studentName}</span>
                     </div>
-                    <div style={{ fontSize: 12, color: 'var(--ms-text-muted)', marginTop: 2 }}>
+                    <div className="ms-hint" style={{ marginTop: 2 }}>
                       {a.riskType} · {a.status === 'resolved' ? '已处理 ✓' : a.status === 'claimed' ? '处理中' : '待处理'}
                     </div>
                   </div>

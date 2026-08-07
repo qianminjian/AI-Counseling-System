@@ -33,7 +33,7 @@ export default function QualityPanel() {
     setReplayLoading(false)
   }
 
-  if (loading) return <div style={{ textAlign: 'center', padding: 80 }}><Spin size="large" /></div>
+  if (loading) return <div className="ms-empty-lg"><Spin size="large" /></div>
 
   const columns = [
     { title: '评分', dataIndex: 'rating', key: 'rating', width: 80, align: 'center' as const,
@@ -72,7 +72,7 @@ export default function QualityPanel() {
       </Row>
 
       {/* 低分会话列表 */}
-      <Card title={<span><WarningOutlined style={{ color: 'var(--ms-danger)' }} /> 待抽检会话（评分 ≤ 2★）</span>} size="small">
+      <Card title={<span><WarningOutlined className="ms-text-danger" /> 待抽检会话（评分 ≤ 2★）</span>} size="small">
         {flagged.length === 0 ? (
           <Empty description="暂无低分会话，AI 对话质量良好 🎉" />
         ) : (
@@ -97,7 +97,7 @@ export default function QualityPanel() {
                 <div style={{ fontSize: 11, color: 'var(--ms-text-muted)', marginBottom: 4 }}>
                   {msg.senderType === 'student' ? '🧒 学生' : '🤖 AI'} · {emotionLabel(msg.emotionLabel)}
                 </div>
-                <div style={{ fontSize: 13 }}>{msg.contentSummary || msg.messageContent || ''}</div>
+                <div className="ms-text-sm">{msg.contentSummary || msg.messageContent || ''}</div>
               </div>
             ))}
             {messages.length === 0 && <Empty description="无消息记录" />}

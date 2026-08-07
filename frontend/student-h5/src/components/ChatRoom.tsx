@@ -7,6 +7,7 @@ import ConfirmDialog from './ConfirmDialog'
 import ToolboxPanel from './ToolboxPanel'
 import SosPanel from './SosPanel'
 import BoBoPet from './BoBoPet'
+import BoBoAvatar from './BoBoAvatar'
 import DraggableVoiceButton from './DraggableVoiceButton'
 import MessageBubble from './MessageBubble'
 import { useTheme } from '../theme/ThemeProvider'
@@ -310,7 +311,7 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: Se
       {/* ===== Header ===== */}
       <header className="flex items-center justify-between px-4 lg:px-8 py-3 lg:py-4 bg-white/80 backdrop-blur border-b border-gray-100 shadow-sm">
         <div className="flex items-center gap-2 lg:gap-3">
-          <span className="text-2xl lg:text-3xl">{theme.companion}</span>
+          <BoBoAvatar size={24} colors={theme.bobo} />
           <span className="font-medium text-gray-800 lg:text-xl">{theme.companionName}</span>
         </div>
         <div className="flex items-center gap-2">

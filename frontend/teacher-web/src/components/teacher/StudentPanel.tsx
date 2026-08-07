@@ -40,7 +40,7 @@ function SessionMessagesDrawer({ sessionId, onClose }) {
       </div>
 
       {loading ? (
-        <div style={{ textAlign: 'center', padding: 40 }}><Spin /></div>
+        <div className="ms-empty"><Spin /></div>
       ) : messages.length === 0 ? (
         <Empty description="暂无对话摘要记录" />
       ) : (
@@ -52,20 +52,20 @@ function SessionMessagesDrawer({ sessionId, onClose }) {
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
                 {/* 学生：青屿主色软底（替换 antd 默认蓝）；AI：语义绿 */}
                 <Tag
-                  style={msg.senderType === 'student' ? { margin: 0, color: 'var(--ms-primary)', background: 'var(--ms-primary-soft)', borderColor: 'var(--ms-primary-soft)' } : { margin: 0 }}
+                  className={msg.senderType === 'student' ? 'ms-tag-claim' : 'ms-m-0'}
                   color={msg.senderType === 'student' ? undefined : 'green'}
                 >
                   {msg.senderType === 'student' ? '学生' : 'AI'}
                 </Tag>
                 <span style={{ fontSize: 11, color: 'var(--ms-text-muted)' }}>第 {msg.turnCount} 轮</span>
-                {msg.emotionLabel && <Tag style={{ margin: 0, fontSize: 11 }}>{emotionLabel(msg.emotionLabel)}</Tag>}
+                {msg.emotionLabel && <Tag className="ms-tag-sm">{emotionLabel(msg.emotionLabel)}</Tag>}
                 {msg.riskLevel > 0 && (
-                  <Tag color={RISK_COLORS[msg.riskLevel]} style={{ margin: 0, fontSize: 11 }}>
+                  <Tag color={RISK_COLORS[msg.riskLevel]} className="ms-tag-sm">
                     {RISK_LABELS[msg.riskLevel]}
                   </Tag>
                 )}
               </div>
-              <div style={{ fontSize: 13, color: 'var(--ms-text)', lineHeight: 1.5 }}>{msg.contentSummary}</div>
+              <div className="ms-text-sm" style={{ color: 'var(--ms-text)', lineHeight: 1.5 }}>{msg.contentSummary}</div>
             </List.Item>
           )}
         />
@@ -116,12 +116,12 @@ function StudentProfile({ studentId, onBack }) {
 
   return (
     <div>
-      <Button icon={<ArrowLeftOutlined />} onClick={onBack} style={{ marginBottom: 16 }}>
+      <Button icon={<ArrowLeftOutlined />} onClick={onBack} className="ms-mb-16">
         返回列表
       </Button>
 
       {/* 基本信息 */}
-      <Card size="small" style={{ marginBottom: 16 }}>
+      <Card size="small" className="ms-mb-16">
         <Descriptions column={{ xs: 1, sm: 3 }} size="small">
           <Descriptions.Item label="姓名">{profile.displayName}</Descriptions.Item>
           <Descriptions.Item label="年级">{profile.gradeCode || '-'}</Descriptions.Item>
@@ -138,7 +138,7 @@ function StudentProfile({ studentId, onBack }) {
       </Card>
 
       {/* 心理画像雷达图（PROF-004） */}
-      <div style={{ marginBottom: 16 }}>
+      <div className="ms-mb-16">
         <ProfileRadarChart studentId={studentId} />
       </div>
 
@@ -163,7 +163,7 @@ function StudentProfile({ studentId, onBack }) {
                         对话摘要
                       </Button>
                     </div>
-                    <div style={{ fontSize: 12, color: 'var(--ms-text-muted)' }}>
+                    <div className="ms-hint">
                       状态: {s.status} | 风险: {RISK_LABELS[s.riskLevel] || '无'}
                       {s.satisfactionRating && (
                         <span style={{ marginLeft: 8, color: s.satisfactionRating >= 4 ? 'var(--ms-success)' : 'var(--ms-warning)' }}>
@@ -189,7 +189,7 @@ function StudentProfile({ studentId, onBack }) {
                   <Space>
                     <Tag color={RISK_COLORS[item.riskLevel]}>{RISK_LABELS[item.riskLevel]}</Tag>
                     <span>{item.riskType}</span>
-                    <span style={{ fontSize: 12, color: 'var(--ms-text-muted)' }}>
+                    <span className="ms-hint">
                       {dayjs(item.detectedAt).format('MM-DD')}
                     </span>
                   </Space>
@@ -201,7 +201,7 @@ function StudentProfile({ studentId, onBack }) {
       </div>
 
       {/* 教师备注 */}
-      <Card title="教师备注" size="small" style={{ marginTop: 16 }}>
+      <Card title="教师备注" size="small" className="ms-mt-16">
         <div style={{ marginBottom: 12, display: 'flex', gap: 8 }}>
           <Input.TextArea
             value={noteText}
@@ -300,9 +300,9 @@ export default function StudentPanel() {
     <div>
       {/* 高风险提醒 */}
       {highRisk.length > 0 && (
-        <Card size="small" style={{ marginBottom: 16, borderColor: 'var(--ms-danger-soft)' }}>
+        <Card size="small" className="ms-mb-16" style={{ borderColor: 'var(--ms-danger-soft)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-            <span style={{ fontWeight: 500, color: 'var(--ms-danger)' }}>⚠️ 高风险学生：</span>
+            <span className="ms-text-danger" style={{ fontWeight: 500 }}>⚠️ 高风险学生：</span>
             {highRisk.map((s) => (
               <Tag
                 key={s.studentUserId}

@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect } from 'react'
 import { useTheme } from '../theme/ThemeProvider'
+import BoBoAvatar from './BoBoAvatar'
 import { api, isConsentRequired } from '../api'
 import { unlockAudio } from '../utils/audioUnlock'
 import { useWakeEnabled } from '../hooks/useWakeEnabled'
@@ -126,7 +127,7 @@ export default function EmotionSelect({ onStart, userName, onLogout, onConsentRe
       />
 
       {/* 标题区：儿童化圆体标题 + 伙伴漂浮动画 */}
-      <div className="relative z-10 text-6xl lg:text-8xl mb-4 lg:mb-6 float-companion">{theme.companion}</div>
+      <div className="relative z-10 mb-4 lg:mb-6 float-companion"><BoBoAvatar size={72} colors={theme.bobo} /></div>
       <h1 className={`relative z-10 kid-title text-2xl lg:text-4xl mb-2 emotion-title--${themeId}`}>
         嗨，{userName || '同学'}！
       </h1>

@@ -76,7 +76,7 @@ export default function ProfileRadarChart({ studentId }) {
   if (loading) {
     return (
       <Card title="心理画像" size="small">
-        <div style={{ textAlign: 'center', padding: 40 }}><Spin /></div>
+        <div className="ms-empty"><Spin /></div>
       </Card>
     )
   }
@@ -93,7 +93,7 @@ export default function ProfileRadarChart({ studentId }) {
     <Card
       title="心理画像"
       size="small"
-      extra={<span style={{ fontSize: 12, color: 'var(--ms-text-muted)' }}>累计 {data.totalSessions} 次会话</span>}
+      extra={<span className="ms-hint">累计 {data.totalSessions} 次会话</span>}
     >
       {/* 雷达图 */}
       <div ref={chartRef} style={{ width: '100%', height: 280 }} />
@@ -106,8 +106,8 @@ export default function ProfileRadarChart({ studentId }) {
             items={data.milestones.map((m) => ({
               color: 'green',
               children: (
-                <span style={{ fontSize: 13 }}>
-                  <Tag color="green" style={{ margin: 0 }}>{m.label}</Tag>
+                <span className="ms-text-sm">
+                  <Tag color="green" className="ms-m-0">{m.label}</Tag>
                   {m.period && <span style={{ marginLeft: 8, color: 'var(--ms-text-muted)', fontSize: 12 }}>{m.period}</span>}
                 </span>
               ),

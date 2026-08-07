@@ -8,27 +8,27 @@ const ONBOARDING_KEY = 'mindsafe_onboarding_done'
 
 const STEPS = [
   {
-    icon: <DashboardOutlined style={{ fontSize: 32, color: 'var(--ms-primary)' }} />,
+    icon: <DashboardOutlined className="ms-step-icon ms-text-primary" />,
     title: '工作台',
     desc: '这里是你的工作首页，展示今日会话、预警概览、高风险学生和满意度数据。每天打开先看这里。',
   },
   {
-    icon: <AlertOutlined style={{ fontSize: 32, color: 'var(--ms-danger)' }} />,
+    icon: <AlertOutlined className="ms-step-icon ms-text-danger" />,
     title: '预警队列',
     desc: 'AI 检测到学生风险信号时会自动生成预警。红色预警需要立即处理，点击"接管"进行线下干预。',
   },
   {
-    icon: <TeamOutlined style={{ fontSize: 32, color: 'var(--ms-success)' }} />,
+    icon: <TeamOutlined className="ms-step-icon ms-text-success" />,
     title: '学生管理',
     desc: '查看每位学生的心理档案、历史会话和 AI 摘要。支持批量导入学生、添加教师备注。',
   },
   {
-    icon: <BellOutlined style={{ fontSize: 32, color: 'var(--ms-warning)' }} />,
+    icon: <BellOutlined className="ms-step-icon ms-text-warning" />,
     title: '实时通知',
     desc: '风险预警会通过浏览器弹窗 + 声音实时推送。红色预警弹窗不会自动关闭，确保你不会错过。',
   },
   {
-    icon: <SettingOutlined style={{ fontSize: 32, color: 'var(--ms-primary)' }} />,
+    icon: <SettingOutlined className="ms-step-icon ms-text-primary" />,
     title: '管理控制台',
     desc: '管理员可以导入学生、查看审计日志、下载模板。平台总览提供跨学校的全局数据。',
   },
@@ -51,7 +51,7 @@ export default function OnboardingGuide() {
   return (
     <Modal open={visible} footer={null} onCancel={finish} width={440} centered>
       <div style={{ textAlign: 'center', padding: '16px 0' }}>
-        <div style={{ marginBottom: 16 }}>{step.icon}</div>
+        <div className="ms-mb-16">{step.icon}</div>
         <h3 style={{ fontSize: 18, marginBottom: 8 }}>{step.title}</h3>
         <p style={{ color: 'var(--ms-text-secondary)', fontSize: 14, lineHeight: 1.7, minHeight: 60 }}>{step.desc}</p>
 

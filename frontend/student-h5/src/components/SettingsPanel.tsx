@@ -17,6 +17,7 @@ import { hasAnyVoiceprint, deleteVoiceprint, clearRemoteVoiceprintMark } from '.
 import { useVoiceEnrollment } from '../hooks/useVoiceEnrollment'
 import { useMotionPreference } from '../hooks/useMotionPreference'
 import VoiceLoginOverlay from './VoiceLoginOverlay'
+import BoBoAvatar from './BoBoAvatar'
 import ConfirmDialog from './ConfirmDialog'
 
 export default function SettingsPanel({ open, onClose, muted, onToggleMute, wakeSupported = false, wakeOn = false, onToggleWake, personaId: externalPersonaId, onPersonaChange, selectedDialect, onDialectChange, supportedDialects, hasNativeVoice }: {
@@ -146,7 +147,7 @@ export default function SettingsPanel({ open, onClose, muted, onToggleMute, wake
               >
                 <span className="text-3xl">{t.emoji}</span>
                 <span className="text-xs font-medium text-gray-700">{t.name}</span>
-                <span className="text-2xl">{t.companion}</span>
+                <BoBoAvatar size={24} colors={t.bobo} />
               </button>
             ))}
           </div>

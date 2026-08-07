@@ -57,7 +57,7 @@ export default function NotificationPanel() {
             <div>
               <Text strong>{item.title}</Text>
               <br />
-              <Text type="secondary" style={{ fontSize: 13 }}>{item.bodySummary}</Text>
+              <Text type="secondary" className="ms-text-sm">{item.bodySummary}</Text>
               <br />
               <Text type="secondary" style={{ fontSize: 12 }}>
                 {dayjs(item.createdAt).format('YYYY-MM-DD HH:mm:ss')}
