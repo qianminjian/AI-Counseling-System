@@ -246,4 +246,6 @@ _文档编号 DOC-072（接续 DOC-071/frozen74）| 审计落档：2026-08-07 | 
 | T4c 查询分页下沉 + 新端点纪律 | ✅ | grep 验收为 0（ObjectMapper 例外）；code-engineering.md §3.5；commit-msg hook 正/反向验证通过 |
 | T5 SessionState 原子化 | ✅ | Lua INCR 原子计数 + RedisSessionStateStoreTest 18 个通过；ConversationServiceImplTest 补 tryNudge stub |
 | 全量单测回归 | ✅ | 6 模块 1783 个单测全绿（`mvn test` EXIT=0；Controller 层 282 个全绿） |
-| 待办 | ⏳ | git commit / push 等待用户指令（红线） |
+| git 提交 | ✅ | 9 个原子提交（bb8d16c..cf4d203，按 T1/T3/T4×5/T5/文档拆分，全部 ≤15 文件） |
+| git push | ✅ | origin/main 已同步（cf4d203，2026-08-08） |
+| 纪律钩子自检 | ✅ | commit-msg hook 拦截生效；--staged 三处 bug（缺 shift 死循环/位置参数误判/哨兵值双冒号）已修复并正反向验证 |
