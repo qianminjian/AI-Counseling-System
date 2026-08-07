@@ -20,6 +20,12 @@
   --ms-warning-soft: #FDF1E3;
   --ms-warning-border: #F2DCC0;
   --ms-danger: #D9534F;
+  // 形态 token（doing/75 方案 A）
+  --ms-radius-card: 16px;         // 卡片圆角
+  --ms-radius-control: 12px;      // 输入框/选择控件圆角
+  --ms-radius-pill: 24px;         // 胶囊按钮圆角
+  --ms-shadow-card: 0 4px 16px rgba(43, 168, 160, 0.08);  // 卡片阴影（青绿调）
+  --ms-shadow-tab: 0 2px 6px rgba(43, 168, 160, 0.12);    // 激活 tab 阴影（青绿调）
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -43,10 +49,10 @@ body {
 // 通用卡片
 .card {
   background: var(--ms-card);
-  border-radius: 12px;
+  border-radius: var(--ms-radius-card);
   padding: 20px;
   margin-bottom: 16px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  box-shadow: var(--ms-shadow-card);
 }
 
 // 主按钮
@@ -63,8 +69,10 @@ body {
   margin-top: 24px;
   cursor: pointer;
 
-  &:disabled { opacity: 0.5; cursor: not-allowed; }
-  &:active:not(:disabled) { transform: scale(0.98); }
+  // 覆盖 Taro 默认 disabled 文字 60% 透明（避免叠加发灰）
+  // 注：taro-button-core 为自定义元素，:disabled 伪类不匹配，须用 [disabled] 属性选择器
+  &[disabled] { opacity: 0.5; color: #fff; cursor: not-allowed; }
+  &:active:not([disabled]) { transform: scale(0.98); }
 }
 
 // 危险按钮
@@ -75,13 +83,13 @@ body {
   background: #fff;
   color: var(--ms-danger);
   border: 2px solid var(--ms-danger);
-  border-radius: 24px;
+  border-radius: var(--ms-radius-pill);
   font-size: 16px;
   font-weight: 500;
   margin-top: 24px;
   cursor: pointer;
 
-  &:disabled { opacity: 0.5; cursor: not-allowed; }
+  &[disabled] { opacity: 0.5; cursor: not-allowed; }
 }
 
 // 链接按钮
@@ -128,7 +136,7 @@ body {
     height: 48px;
     padding: 0 14px;
     border: 1.5px solid var(--ms-border);
-    border-radius: 10px;
+    border-radius: var(--ms-radius-control);
     font-size: 16px;
     background: var(--ms-bg-elevated);
     outline: none;
@@ -150,13 +158,13 @@ body {
     background: var(--ms-primary-soft);
     color: var(--ms-primary);
     border: none;
-    border-radius: 10px;
+    border-radius: var(--ms-radius-control);
     font-size: 14px;
     white-space: nowrap;
     flex-shrink: 0;
     cursor: pointer;
 
-    &:disabled { color: var(--ms-text-muted); background: var(--ms-border-soft); cursor: not-allowed; }
+    &[disabled] { color: var(--ms-text-muted); background: var(--ms-border-soft); cursor: not-allowed; }
   }
 }
 
@@ -190,7 +198,7 @@ body {
   display: flex;
   margin-bottom: 16px;
   background: var(--ms-border-soft);
-  border-radius: 10px;
+  border-radius: var(--ms-radius-control);
   padding: 4px;
 
   .tab-btn {
@@ -208,7 +216,7 @@ body {
     &.active {
       background: #fff;
       color: var(--ms-text);
-      box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+      box-shadow: var(--ms-shadow-tab);
     }
   }
 }
@@ -222,7 +230,7 @@ body {
   .relation-btn {
     padding: 10px;
     border: 1.5px solid var(--ms-border);
-    border-radius: 10px;
+    border-radius: var(--ms-radius-control);
     background: var(--ms-bg-elevated);
     font-size: 14px;
     cursor: pointer;
@@ -250,7 +258,7 @@ body {
   background: var(--ms-bg-elevated);
   color: var(--ms-primary);
   border: 1.5px solid var(--ms-primary);
-  border-radius: 22px;
+  border-radius: var(--ms-radius-pill);
   font-size: 15px;
   font-weight: 500;
   margin-top: 16px;
@@ -386,7 +394,7 @@ body {
     .child-select-btn {
       padding: 12px 16px;
       border: 1.5px solid var(--ms-border);
-      border-radius: 10px;
+      border-radius: var(--ms-radius-control);
       background: var(--ms-bg-elevated);
       font-size: 14px;
       text-align: left;

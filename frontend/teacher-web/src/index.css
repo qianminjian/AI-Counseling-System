@@ -20,6 +20,12 @@
   --ms-warning-soft: #FDF1E3;
   --ms-danger: #D9534F;
   --ms-danger-soft: #FDEBEA;
+  /* 形态 token（doing/75 方案 A，与家长端同名同值） */
+  --ms-radius-card: 16px;
+  --ms-radius-control: 12px;
+  --ms-radius-pill: 24px;
+  --ms-shadow-card: 0 4px 16px rgba(43, 168, 160, 0.08);
+  --ms-shadow-tab: 0 2px 6px rgba(43, 168, 160, 0.12);
 }
 
 body {
