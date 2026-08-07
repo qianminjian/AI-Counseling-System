@@ -1,13 +1,11 @@
 package com.mindsafe.api.controller;
 
-import com.baomidou.mybatisplus.core.MybatisConfiguration;
-import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.mindsafe.api.security.JwtAuthenticationFilter.TenantContext;
 import com.mindsafe.common.exception.BizException;
 import com.mindsafe.domain.entity.EmotionDiary;
-import com.mindsafe.domain.mapper.EmotionDiaryMapper;
-import org.apache.ibatis.builder.MapperBuilderAssistant;
-import org.apache.ibatis.type.ObjectTypeHandler;
+import com.mindsafe.service.diary.EmotionDiaryService;
+import com.mindsafe.service.diary.EmotionDiaryService.DiaryBadge;
+import com.mindsafe.service.diary.EmotionDiaryService.StreakInfo;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -20,18 +18,20 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
- * EmotionDiaryController 单元测试（P1 覆盖率冲刺：打卡/今日状态/历史/连续天数/徽章）
+ * EmotionDiaryController 单元测试（T4 批次B/C 改造版：SQL 下沉 EmotionDiaryService，Controller 仅 HTTP 层职责）
+ * <p>
+ * 覆盖：打卡参数解析与默认值 / 今日状态 / 历史 / streak / 徽章展示转换。
+ * 域语义（upsert / streak 计算 / 徽章解锁规则）由 EmotionDiaryService 测试覆盖。
  */
 class EmotionDiaryControllerTest {
 
-    private EmotionDiaryMapper diaryMapper;
+    private EmotionDiaryService diaryService;
     private EmotionDiaryController controller;
 
     private final UUID tenantId = UUID.randomUUID();
@@ -39,12 +39,8 @@ class EmotionDiaryControllerTest {
 
     @BeforeEach
     void setUp() {
-        MybatisConfiguration configuration = new MybatisConfiguration();
-        configuration.getTypeHandlerRegistry().register(UUID.class, ObjectTypeHandler.class);
-        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(configuration, ""), EmotionDiary.class);
-
-        diaryMapper = mock(EmotionDiaryMapper.class);
-        controller = new EmotionDiaryController(diaryMapper);
+        diaryService = mock(EmotionDiaryService.class);
+        controller = new EmotionDiaryController(diaryService);
     }
 
     private Authentication studentAuth() {
@@ -53,13 +49,13 @@ class EmotionDiaryControllerTest {
         return auth;
     }
 
-    private EmotionDiary diary(LocalDate date) {
+    private EmotionDiary diary(LocalDate date, String emotion, int intensity) {
         EmotionDiary d = new EmotionDiary();
         d.setDiaryId(UUID.randomUUID());
         d.setTenantId(tenantId);
         d.setStudentUserId(studentUserId);
-        d.setEmotionLabel("happy");
-        d.setIntensity(4);
+        d.setEmotionLabel(emotion);
+        d.setIntensity(intensity);
         d.setDiaryDate(date);
         return d;
     }
@@ -67,43 +63,43 @@ class EmotionDiaryControllerTest {
     // ===== 打卡 =====
 
     @Test
-    @DisplayName("checkin 首次打卡 → 新建记录")
+    @DisplayName("checkin 首次打卡 → 调服务并返回新建记录")
     void checkin_new() {
-        when(diaryMapper.selectOne(any())).thenReturn(null);
+        EmotionDiary created = diary(LocalDate.now(), "sad", 2);
+        when(diaryService.checkin(tenantId, studentUserId, "sad", 2, "有点累")).thenReturn(created);
 
         var resp = controller.checkin(Map.of("emotionLabel", "sad", "intensity", 2, "note", "有点累"), studentAuth());
 
         assertThat(resp.code()).isEqualTo(0);
         assertThat(resp.data().getEmotionLabel()).isEqualTo("sad");
         assertThat(resp.data().getDiaryDate()).isEqualTo(LocalDate.now());
-        verify(diaryMapper).<EmotionDiary>insert(any(EmotionDiary.class));
-        verify(diaryMapper, never()).updateById(any(EmotionDiary.class));
+        verify(diaryService).checkin(tenantId, studentUserId, "sad", 2, "有点累");
     }
 
     @Test
-    @DisplayName("checkin 今日已有记录 → 覆盖更新")
+    @DisplayName("checkin 今日已有记录 → 服务内覆盖更新，Controller 透传")
     void checkin_existing() {
-        EmotionDiary existing = diary(LocalDate.now());
-        existing.setEmotionLabel("sad");
-        when(diaryMapper.selectOne(any())).thenReturn(existing);
+        EmotionDiary updated = diary(LocalDate.now(), "happy", 5);
+        when(diaryService.checkin(tenantId, studentUserId, "happy", 5, "很好")).thenReturn(updated);
 
         var resp = controller.checkin(Map.of("emotionLabel", "happy", "intensity", 5, "note", "很好"), studentAuth());
 
         assertThat(resp.data().getEmotionLabel()).isEqualTo("happy");
         assertThat(resp.data().getIntensity()).isEqualTo(5);
-        verify(diaryMapper).updateById(existing);
-        verify(diaryMapper, never()).<EmotionDiary>insert(any(EmotionDiary.class));
+        verify(diaryService).checkin(tenantId, studentUserId, "happy", 5, "很好");
     }
 
     @Test
-    @DisplayName("checkin 默认值 → neutral/3")
+    @DisplayName("checkin 默认值 → neutral/3 透传服务")
     void checkin_defaults() {
-        when(diaryMapper.selectOne(any())).thenReturn(null);
+        EmotionDiary created = diary(LocalDate.now(), "neutral", 3);
+        when(diaryService.checkin(tenantId, studentUserId, "neutral", 3, null)).thenReturn(created);
 
         var resp = controller.checkin(Map.of(), studentAuth());
 
         assertThat(resp.data().getEmotionLabel()).isEqualTo("neutral");
         assertThat(resp.data().getIntensity()).isEqualTo(3);
+        verify(diaryService).checkin(tenantId, studentUserId, "neutral", 3, null);
     }
 
     @Test
@@ -118,7 +114,7 @@ class EmotionDiaryControllerTest {
     @Test
     @DisplayName("getToday 未打卡 → checkedIn=false")
     void today_notChecked() {
-        when(diaryMapper.selectOne(any())).thenReturn(null);
+        when(diaryService.getToday(tenantId, studentUserId)).thenReturn(null);
 
         var resp = controller.getToday(studentAuth());
 
@@ -128,7 +124,7 @@ class EmotionDiaryControllerTest {
     @Test
     @DisplayName("getToday 已打卡 → diary 返回")
     void today_checked() {
-        when(diaryMapper.selectOne(any())).thenReturn(diary(LocalDate.now()));
+        when(diaryService.getToday(tenantId, studentUserId)).thenReturn(diary(LocalDate.now(), "happy", 4));
 
         var resp = controller.getToday(studentAuth());
 
@@ -139,25 +135,22 @@ class EmotionDiaryControllerTest {
     // ===== 历史 =====
 
     @Test
-    @DisplayName("getHistory 默认 14 天")
+    @DisplayName("getHistory 默认 14 天透传")
     void history_default() {
-        when(diaryMapper.selectList(any())).thenReturn(List.of(diary(LocalDate.now())));
+        when(diaryService.getHistory(tenantId, studentUserId, 14)).thenReturn(List.of(diary(LocalDate.now(), "happy", 4)));
 
         var resp = controller.getHistory(14, studentAuth());
 
         assertThat(resp.data()).hasSize(1);
-        verify(diaryMapper).selectList(any());
+        verify(diaryService).getHistory(tenantId, studentUserId, 14);
     }
 
     // ===== 连续天数 =====
 
     @Test
-    @DisplayName("getStreak 连续 3 天 → streak=3")
+    @DisplayName("getStreak 连续 3 天 → streak=3（Service 计算）")
     void streak_threeDays() {
-        when(diaryMapper.selectList(any())).thenReturn(List.of(
-                diary(LocalDate.now()),
-                diary(LocalDate.now().minusDays(1)),
-                diary(LocalDate.now().minusDays(2))));
+        when(diaryService.getStreak(tenantId, studentUserId)).thenReturn(new StreakInfo(3, 3));
 
         var resp = controller.getStreak(studentAuth());
 
@@ -166,11 +159,9 @@ class EmotionDiaryControllerTest {
     }
 
     @Test
-    @DisplayName("getStreak 昨天断档 → streak=0（今天未打卡）")
+    @DisplayName("getStreak 断档 → streak=0（Service 计算）")
     void streak_broken() {
-        when(diaryMapper.selectList(any())).thenReturn(List.of(
-                diary(LocalDate.now().minusDays(1)),
-                diary(LocalDate.now().minusDays(2))));
+        when(diaryService.getStreak(tenantId, studentUserId)).thenReturn(new StreakInfo(0, 2));
 
         var resp = controller.getStreak(studentAuth());
 
@@ -179,11 +170,9 @@ class EmotionDiaryControllerTest {
     }
 
     @Test
-    @DisplayName("getStreak 今天打了但昨天没有 → streak=1")
+    @DisplayName("getStreak 今天打了昨天没有 → streak=1")
     void streak_todayOnly() {
-        when(diaryMapper.selectList(any())).thenReturn(List.of(
-                diary(LocalDate.now()),
-                diary(LocalDate.now().minusDays(2))));
+        when(diaryService.getStreak(tenantId, studentUserId)).thenReturn(new StreakInfo(1, 2));
 
         var resp = controller.getStreak(studentAuth());
 
@@ -193,7 +182,7 @@ class EmotionDiaryControllerTest {
     @Test
     @DisplayName("getStreak 空记录 → 0")
     void streak_empty() {
-        when(diaryMapper.selectList(any())).thenReturn(List.of());
+        when(diaryService.getStreak(tenantId, studentUserId)).thenReturn(new StreakInfo(0, 0));
 
         var resp = controller.getStreak(studentAuth());
 
@@ -202,11 +191,19 @@ class EmotionDiaryControllerTest {
 
     // ===== 徽章 =====
 
+    private List<DiaryBadge> badges(boolean first, boolean streak3, boolean streak7, boolean diary10, boolean diary30) {
+        return List.of(
+                new DiaryBadge("first_diary", "🌱", "初次记录", "完成第一次情绪打卡", first),
+                new DiaryBadge("streak_3", "🔥", "三天坚持", "连续打卡 3 天", streak3),
+                new DiaryBadge("streak_7", "⭐", "一周达人", "连续打卡 7 天", streak7),
+                new DiaryBadge("diary_10", "📚", "记录达人", "累计打卡 10 天", diary10),
+                new DiaryBadge("diary_30", "🏆", "月度之星", "累计打卡 30 天", diary30));
+    }
+
     @Test
-    @DisplayName("getAchievements 无记录 → 全部未解锁")
+    @DisplayName("getAchievements 无记录 → 全部未解锁（Service 计算，展示层转换）")
     void achievements_empty() {
-        when(diaryMapper.selectCount(any())).thenReturn(0L);
-        when(diaryMapper.selectList(any())).thenReturn(List.of());
+        when(diaryService.getAchievements(tenantId, studentUserId)).thenReturn(badges(false, false, false, false, false));
 
         var resp = controller.getAchievements(studentAuth());
 
@@ -215,13 +212,10 @@ class EmotionDiaryControllerTest {
     }
 
     @Test
-    @DisplayName("getAchievements 10 天 + 连续 3 天 → 徽章解锁")
+    @DisplayName("getAchievements 10 天 + 连续 3 天 → 徽章解锁状态透传")
     void achievements_unlocked() {
-        when(diaryMapper.selectCount(any())).thenReturn(10L);
-        when(diaryMapper.selectList(any())).thenReturn(List.of(
-                diary(LocalDate.now()),
-                diary(LocalDate.now().minusDays(1)),
-                diary(LocalDate.now().minusDays(2))));
+        when(diaryService.getAchievements(tenantId, studentUserId))
+                .thenReturn(badges(true, true, false, true, false));
 
         var resp = controller.getAchievements(studentAuth());
 
@@ -237,5 +231,6 @@ class EmotionDiaryControllerTest {
         assertThat(streak3.get("unlocked")).isEqualTo(true);
         assertThat(diary10.get("unlocked")).isEqualTo(true);
         assertThat(diary30.get("unlocked")).isEqualTo(false);
+        assertThat(resp.data().get(0)).containsKeys("id", "emoji", "title", "desc", "unlocked");
     }
 }

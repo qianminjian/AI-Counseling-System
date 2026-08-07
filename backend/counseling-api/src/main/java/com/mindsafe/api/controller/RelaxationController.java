@@ -1,21 +1,16 @@
 package com.mindsafe.api.controller;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.mindsafe.api.security.JwtAuthenticationFilter.TenantContext;
 import com.mindsafe.common.dto.ApiResponse;
 import com.mindsafe.common.dto.ErrorCode;
 import com.mindsafe.common.exception.BizException;
 import com.mindsafe.domain.entity.RelaxationSession;
-import com.mindsafe.domain.mapper.RelaxationSessionMapper;
+import com.mindsafe.service.relaxation.RelaxationService;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
-import java.time.Instant;
-import java.time.LocalDate;
-import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 
 /**
  * 放松练习 API（对齐 design/16 §3）
@@ -26,7 +21,7 @@ import java.util.UUID;
 @RequestMapping("/api/v1/relaxation")
 public class RelaxationController {
 
-    private final RelaxationSessionMapper relaxationSessionMapper;
+    private final RelaxationService relaxationService;
 
     /** 内置放松练习列表 */
     private static final List<ExerciseVO> EXERCISES = List.of(
@@ -47,8 +42,8 @@ public class RelaxationController {
                     60, "somatic")
     );
 
-    public RelaxationController(RelaxationSessionMapper relaxationSessionMapper) {
-        this.relaxationSessionMapper = relaxationSessionMapper;
+    public RelaxationController(RelaxationService relaxationService) {
+        this.relaxationService = relaxationService;
     }
 
     /** 获取放松练习列表 */
@@ -57,7 +52,7 @@ public class RelaxationController {
         return ApiResponse.ok(EXERCISES);
     }
 
-    /** 记录练习完成 */
+    /** 记录练习完成（T4 批次B：创建下沉 Service） */
     @PostMapping("/sessions")
     public ApiResponse<RelaxationSession> recordSession(
             @RequestBody Map<String, Object> body,
@@ -70,26 +65,16 @@ public class RelaxationController {
         boolean completed = body.containsKey("completed")
                 ? (Boolean) body.get("completed") : true;
 
-        RelaxationSession session = RelaxationSession.create(
+        RelaxationSession session = relaxationService.recordSession(
                 ctx.tenantId(), ctx.userId(), exerciseType, duration, completed);
-        relaxationSessionMapper.insert(session);
-
         return ApiResponse.ok(session);
     }
 
-    /** 今日练习计数 */
+    /** 今日练习计数（T4 批次C：计数下沉 Service） */
     @GetMapping("/sessions/today")
     public ApiResponse<Map<String, Object>> getTodayCount(Authentication auth) {
         TenantContext ctx = extractContext(auth);
-        Instant todayStart = LocalDate.now().atStartOfDay(ZoneId.systemDefault()).toInstant();
-
-        Long count = relaxationSessionMapper.selectCount(
-                new LambdaQueryWrapper<RelaxationSession>()
-                        .eq(RelaxationSession::getTenantId, ctx.tenantId())
-                        .eq(RelaxationSession::getStudentUserId, ctx.userId())
-                        .eq(RelaxationSession::getCompleted, true)
-                        .ge(RelaxationSession::getCreatedAt, todayStart)
-        );
+        long count = relaxationService.countTodayCompleted(ctx.tenantId(), ctx.userId());
         return ApiResponse.ok(Map.of("count", count));
     }
 

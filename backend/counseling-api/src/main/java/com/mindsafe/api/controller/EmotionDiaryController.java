@@ -1,16 +1,17 @@
 package com.mindsafe.api.controller;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.mindsafe.api.security.JwtAuthenticationFilter.TenantContext;
 import com.mindsafe.common.dto.ApiResponse;
 import com.mindsafe.common.dto.ErrorCode;
 import com.mindsafe.common.exception.BizException;
 import com.mindsafe.domain.entity.EmotionDiary;
-import com.mindsafe.domain.mapper.EmotionDiaryMapper;
+import com.mindsafe.service.diary.EmotionDiaryService;
+import com.mindsafe.service.diary.EmotionDiaryService.DiaryBadge;
+import com.mindsafe.service.diary.EmotionDiaryService.StreakInfo;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
-import java.time.LocalDate;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -21,13 +22,13 @@ import java.util.Map;
 @RequestMapping("/api/v1/diary")
 public class EmotionDiaryController {
 
-    private final EmotionDiaryMapper diaryMapper;
+    private final EmotionDiaryService diaryService;
 
-    public EmotionDiaryController(EmotionDiaryMapper diaryMapper) {
-        this.diaryMapper = diaryMapper;
+    public EmotionDiaryController(EmotionDiaryService diaryService) {
+        this.diaryService = diaryService;
     }
 
-    /** 今日打卡（每天仅一次，重复提交覆盖） */
+    /** 今日打卡（每天仅一次，重复提交覆盖；T4 批次B：upsert 下沉 Service） */
     @PostMapping("/checkin")
     public ApiResponse<EmotionDiary> checkin(@RequestBody Map<String, Object> body, Authentication auth) {
         TenantContext ctx = extractContext(auth);
@@ -36,27 +37,7 @@ public class EmotionDiaryController {
         int intensity = body.containsKey("intensity") ? ((Number) body.get("intensity")).intValue() : 3;
         String note = (String) body.get("note");
 
-        LocalDate today = LocalDate.now();
-
-        // 查找今日已有记录
-        EmotionDiary existing = diaryMapper.selectOne(
-                new LambdaQueryWrapper<EmotionDiary>()
-                        .eq(EmotionDiary::getTenantId, ctx.tenantId())
-                        .eq(EmotionDiary::getStudentUserId, ctx.userId())
-                        .eq(EmotionDiary::getDiaryDate, today)
-        );
-
-        if (existing != null) {
-            // 覆盖更新
-            existing.setEmotionLabel(emotion);
-            existing.setIntensity(intensity);
-            existing.setNote(note);
-            diaryMapper.updateById(existing);
-            return ApiResponse.ok(existing);
-        }
-
-        EmotionDiary diary = EmotionDiary.create(ctx.tenantId(), ctx.userId(), emotion, intensity, note);
-        diaryMapper.insert(diary);
+        EmotionDiary diary = diaryService.checkin(ctx.tenantId(), ctx.userId(), emotion, intensity, note);
         return ApiResponse.ok(diary);
     }
 
@@ -64,12 +45,7 @@ public class EmotionDiaryController {
     @GetMapping("/today")
     public ApiResponse<Map<String, Object>> getToday(Authentication auth) {
         TenantContext ctx = extractContext(auth);
-        EmotionDiary today = diaryMapper.selectOne(
-                new LambdaQueryWrapper<EmotionDiary>()
-                        .eq(EmotionDiary::getTenantId, ctx.tenantId())
-                        .eq(EmotionDiary::getStudentUserId, ctx.userId())
-                        .eq(EmotionDiary::getDiaryDate, LocalDate.now())
-        );
+        EmotionDiary today = diaryService.getToday(ctx.tenantId(), ctx.userId());
         if (today == null) {
             return ApiResponse.ok(Map.of("checkedIn", false));
         }
@@ -81,80 +57,32 @@ public class EmotionDiaryController {
     public ApiResponse<List<EmotionDiary>> getHistory(
             @RequestParam(defaultValue = "14") int days, Authentication auth) {
         TenantContext ctx = extractContext(auth);
-        LocalDate since = LocalDate.now().minusDays(days);
-        List<EmotionDiary> history = diaryMapper.selectList(
-                new LambdaQueryWrapper<EmotionDiary>()
-                        .eq(EmotionDiary::getTenantId, ctx.tenantId())
-                        .eq(EmotionDiary::getStudentUserId, ctx.userId())
-                        .ge(EmotionDiary::getDiaryDate, since)
-                        .orderByDesc(EmotionDiary::getDiaryDate)
-        );
-        return ApiResponse.ok(history);
+        return ApiResponse.ok(diaryService.getHistory(ctx.tenantId(), ctx.userId(), days));
     }
 
-    /** 连续打卡天数（streak） */
+    /** 连续打卡天数（streak）与总次数（T4 批次C：计算下沉 Service） */
     @GetMapping("/streak")
     public ApiResponse<Map<String, Object>> getStreak(Authentication auth) {
         TenantContext ctx = extractContext(auth);
-        List<EmotionDiary> all = diaryMapper.selectList(
-                new LambdaQueryWrapper<EmotionDiary>()
-                        .eq(EmotionDiary::getTenantId, ctx.tenantId())
-                        .eq(EmotionDiary::getStudentUserId, ctx.userId())
-                        .orderByDesc(EmotionDiary::getDiaryDate)
-        );
-
-        int streak = 0;
-        LocalDate expected = LocalDate.now();
-        for (EmotionDiary d : all) {
-            if (d.getDiaryDate().equals(expected)) {
-                streak++;
-                expected = expected.minusDays(1);
-            } else if (d.getDiaryDate().isBefore(expected)) {
-                break;
-            }
-        }
-        return ApiResponse.ok(Map.of("streak", streak, "total", all.size()));
+        StreakInfo info = diaryService.getStreak(ctx.tenantId(), ctx.userId());
+        return ApiResponse.ok(Map.of("streak", info.streak(), "total", info.total()));
     }
 
-    /** 成就徽章列表（根据打卡/会话数据计算） */
+    /** 成就徽章列表（T4 批次C：基于打卡数据计算，下沉 Service） */
     @GetMapping("/achievements")
     public ApiResponse<List<Map<String, Object>>> getAchievements(Authentication auth) {
         TenantContext ctx = extractContext(auth);
-
-        long diaryCount = diaryMapper.selectCount(
-                new LambdaQueryWrapper<EmotionDiary>()
-                        .eq(EmotionDiary::getTenantId, ctx.tenantId())
-                        .eq(EmotionDiary::getStudentUserId, ctx.userId()));
-
-        // 计算 streak
-        List<EmotionDiary> all = diaryMapper.selectList(
-                new LambdaQueryWrapper<EmotionDiary>()
-                        .eq(EmotionDiary::getTenantId, ctx.tenantId())
-                        .eq(EmotionDiary::getStudentUserId, ctx.userId())
-                        .orderByDesc(EmotionDiary::getDiaryDate));
-        int streak = 0;
-        LocalDate expected = LocalDate.now();
-        for (EmotionDiary d : all) {
-            if (d.getDiaryDate().equals(expected)) { streak++; expected = expected.minusDays(1); }
-            else if (d.getDiaryDate().isBefore(expected)) break;
-        }
-
-        List<Map<String, Object>> badges = new java.util.ArrayList<>();
-        badges.add(badge("first_diary", "🌱", "初次记录", "完成第一次情绪打卡", diaryCount >= 1));
-        badges.add(badge("streak_3", "🔥", "三天坚持", "连续打卡 3 天", streak >= 3));
-        badges.add(badge("streak_7", "⭐", "一周达人", "连续打卡 7 天", streak >= 7));
-        badges.add(badge("diary_10", "📚", "记录达人", "累计打卡 10 天", diaryCount >= 10));
-        badges.add(badge("diary_30", "🏆", "月度之星", "累计打卡 30 天", diaryCount >= 30));
-        return ApiResponse.ok(badges);
+        return ApiResponse.ok(diaryService.getAchievements(ctx.tenantId(), ctx.userId())
+                .stream().map(EmotionDiaryController::toBadgeMap).toList());
     }
 
-    private Map<String, Object> badge(String id, String emoji, String title, String desc, boolean unlocked) {
-        Map<String, Object> m = new java.util.LinkedHashMap<>();
-        m.put("id", id);
-        m.put("emoji", emoji);
-        m.put("title", title);
-        m.put("desc", desc);
-        m.put("unlocked", unlocked);
+    private static Map<String, Object> toBadgeMap(DiaryBadge b) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("id", b.id());
+        m.put("emoji", b.emoji());
+        m.put("title", b.title());
+        m.put("desc", b.desc());
+        m.put("unlocked", b.unlocked());
         return m;
     }
 

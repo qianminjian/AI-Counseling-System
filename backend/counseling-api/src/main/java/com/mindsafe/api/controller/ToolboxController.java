@@ -2,11 +2,11 @@ package com.mindsafe.api.controller;
 
 import com.mindsafe.common.dto.ApiResponse;
 import com.mindsafe.domain.entity.User;
-import com.mindsafe.domain.mapper.UserMapper;
 import com.mindsafe.service.conversation.ConversationUtils;
 import com.mindsafe.service.toolbox.MoodCheckRecorder;
 import com.mindsafe.service.toolbox.ToolboxRegistry;
 import com.mindsafe.service.toolbox.ToolboxRegistry.ToolDefinition;
+import com.mindsafe.service.toolbox.ToolboxService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.core.Authentication;
@@ -34,14 +34,14 @@ public class ToolboxController {
 
     private final ToolboxRegistry toolboxRegistry;
     private final MoodCheckRecorder moodCheckRecorder;
-    private final UserMapper userMapper;
+    private final ToolboxService toolboxService;
 
     public ToolboxController(ToolboxRegistry toolboxRegistry,
                              MoodCheckRecorder moodCheckRecorder,
-                             UserMapper userMapper) {
+                             ToolboxService toolboxService) {
         this.toolboxRegistry = toolboxRegistry;
         this.moodCheckRecorder = moodCheckRecorder;
-        this.userMapper = userMapper;
+        this.toolboxService = toolboxService;
     }
 
     /**
@@ -118,10 +118,10 @@ public class ToolboxController {
         ));
     }
 
-    /** 从认证信息解析学生年级（1-6，默认 4） */
+    /** 从认证信息解析学生年级（1-6，默认 4；T4 批次C：用户查询下沉 ToolboxService） */
     private int resolveGrade(Authentication auth) {
         if (auth == null || !(auth.getPrincipal() instanceof UUID userId)) return 4;
-        User user = userMapper.selectById(userId);
+        User user = toolboxService.findUserById(userId);
         if (user == null) return 4;
         return ConversationUtils.parseGradeCode(user.getGradeCode());
     }

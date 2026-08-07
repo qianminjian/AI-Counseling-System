@@ -2,12 +2,10 @@ package com.mindsafe.api.controller;
 
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
-import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.mindsafe.api.security.JwtAuthenticationFilter.TenantContext;
 import com.mindsafe.common.dto.ApiResponse;
 import com.mindsafe.common.exception.BizException;
 import com.mindsafe.domain.entity.CounselingSession;
-import com.mindsafe.domain.mapper.CounselingSessionMapper;
 import com.mindsafe.service.conversation.ConversationService;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.apache.ibatis.type.ObjectTypeHandler;
@@ -24,6 +22,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -35,7 +34,6 @@ import static org.mockito.Mockito.when;
  */
 class SessionControllerTest {
 
-    private CounselingSessionMapper sessionMapper;
     private ConversationService conversationService;
     private SessionController controller;
 
@@ -49,9 +47,8 @@ class SessionControllerTest {
         configuration.getTypeHandlerRegistry().register(UUID.class, ObjectTypeHandler.class);
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(configuration, ""), CounselingSession.class);
 
-        sessionMapper = mock(CounselingSessionMapper.class);
         conversationService = mock(ConversationService.class);
-        controller = new SessionController(sessionMapper, conversationService);
+        controller = new SessionController(conversationService);
     }
 
     private Authentication studentAuth() {
@@ -74,7 +71,7 @@ class SessionControllerTest {
     @Test
     @DisplayName("getSessionHistory → VO 映射（limit 透传）")
     void getSessionHistory() {
-        when(sessionMapper.selectPage(any(), any())).thenReturn(new Page<CounselingSession>().setRecords(List.of(session())));
+        when(conversationService.getSessionHistory(any(), any(), anyInt())).thenReturn(List.of(session()));
 
         ApiResponse<List<SessionController.SessionHistoryVO>> resp = controller.getSessionHistory(studentAuth(), 20);
 
@@ -87,24 +84,24 @@ class SessionControllerTest {
         assertThat(vo.satisfactionRating()).isEqualTo(5);
         assertThat(vo.startedAt()).isNotNull();
         assertThat(vo.endedAt()).isNotNull();
-        verify(sessionMapper).selectPage(any(), any());
+        verify(conversationService).getSessionHistory(tenantId, studentUserId, 20);
     }
 
     @Test
     @DisplayName("getSessionHistory limit 超 50 → 截断为 50")
     void getSessionHistory_limitCapped() {
-        when(sessionMapper.selectPage(any(), any())).thenReturn(new Page<CounselingSession>().setRecords(List.of(session())));
+        when(conversationService.getSessionHistory(any(), any(), anyInt())).thenReturn(List.of(session()));
 
         ApiResponse<List<SessionController.SessionHistoryVO>> resp = controller.getSessionHistory(studentAuth(), 999);
 
         assertThat(resp.data()).hasSize(1);
-        verify(sessionMapper).selectPage(any(), any());
+        verify(conversationService).getSessionHistory(tenantId, studentUserId, 999);
     }
 
     @Test
     @DisplayName("getSessionHistory 无会话 → 空列表")
     void getSessionHistory_empty() {
-        when(sessionMapper.selectPage(any(), any())).thenReturn(new Page<CounselingSession>().setRecords(List.of()));
+        when(conversationService.getSessionHistory(any(), any(), anyInt())).thenReturn(List.of());
 
         ApiResponse<List<SessionController.SessionHistoryVO>> resp = controller.getSessionHistory(studentAuth(), 20);
 
@@ -126,7 +123,7 @@ class SessionControllerTest {
 
         assertThat(resp.code()).isEqualTo(0);
         verify(conversationService).endSession(tenantId, studentUserId, sessionId);
-        verify(sessionMapper).updateById(any(CounselingSession.class));
+        verify(conversationService).rateSession(tenantId, studentUserId, sessionId, 4, "很有帮助");
     }
 
     @Test
@@ -135,7 +132,7 @@ class SessionControllerTest {
         controller.closeSession(sessionId, null, studentAuth());
 
         verify(conversationService).endSession(tenantId, studentUserId, sessionId);
-        verify(sessionMapper, never()).updateById(any(CounselingSession.class));
+        verify(conversationService, never()).rateSession(eq(tenantId), eq(studentUserId), eq(sessionId), anyInt(), any());
     }
 
     @Test
@@ -144,7 +141,7 @@ class SessionControllerTest {
         controller.closeSession(sessionId, Map.of("comment", "还行"), studentAuth());
 
         verify(conversationService).endSession(tenantId, studentUserId, sessionId);
-        verify(sessionMapper, never()).updateById(any(CounselingSession.class));
+        verify(conversationService, never()).rateSession(eq(tenantId), eq(studentUserId), eq(sessionId), anyInt(), any());
     }
 
     @Test

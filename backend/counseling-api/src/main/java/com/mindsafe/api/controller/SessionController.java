@@ -1,13 +1,10 @@
 package com.mindsafe.api.controller;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.mindsafe.api.security.JwtAuthenticationFilter.TenantContext;
 import com.mindsafe.common.dto.ApiResponse;
 import com.mindsafe.common.dto.ErrorCode;
 import com.mindsafe.common.exception.BizException;
 import com.mindsafe.domain.entity.CounselingSession;
-import com.mindsafe.domain.mapper.CounselingSessionMapper;
 import com.mindsafe.service.conversation.ConversationService;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
@@ -26,12 +23,9 @@ import java.util.UUID;
 @RequestMapping("/api/v1/sessions")
 public class SessionController {
 
-    private final CounselingSessionMapper sessionMapper;
     private final ConversationService conversationService;
 
-    public SessionController(CounselingSessionMapper sessionMapper,
-                             ConversationService conversationService) {
-        this.sessionMapper = sessionMapper;
+    public SessionController(ConversationService conversationService) {
         this.conversationService = conversationService;
     }
 
@@ -41,15 +35,8 @@ public class SessionController {
             Authentication auth,
             @RequestParam(defaultValue = "20") int limit) {
         TenantContext ctx = extractContext(auth);
-        // AUD-043：分页插件安全化，替代 .last("LIMIT ...") 字符串拼接
-        Page<CounselingSession> pageResult = sessionMapper.selectPage(
-                new Page<>(1, Math.min(limit, 50), false),
-                new LambdaQueryWrapper<CounselingSession>()
-                        .eq(CounselingSession::getTenantId, ctx.tenantId())
-                        .eq(CounselingSession::getStudentUserId, ctx.userId())
-                        .orderByDesc(CounselingSession::getStartedAt)
-        );
-        List<CounselingSession> sessions = pageResult.getRecords();
+        // T4 批次C：查询下沉 ConversationService（租户+学生双重条件内置）
+        List<CounselingSession> sessions = conversationService.getSessionHistory(ctx.tenantId(), ctx.userId(), limit);
         List<SessionHistoryVO> voList = sessions.stream()
                 .map(s -> new SessionHistoryVO(
                         s.getSessionId(), s.getStartedAt(), s.getEndedAt(),
@@ -71,17 +58,11 @@ public class SessionController {
         // 结束会话（SEC-001：传当前用户 ID 做会话归属校验）
         conversationService.endSession(ctx.tenantId(), ctx.userId(), id);
 
-        // 保存满意度评价（如果有）
+        // 保存满意度评价（如果有；T4 批次B：下沉 ConversationService，先归属校验再更新）
         if (body != null && body.containsKey("rating")) {
             int rating = ((Number) body.get("rating")).intValue();
             String comment = (String) body.getOrDefault("comment", null);
-
-            CounselingSession update = new CounselingSession();
-            update.setSessionId(id);
-            update.setSatisfactionRating(rating);
-            update.setSatisfactionComment(comment);
-            update.setUpdatedAt(Instant.now());
-            sessionMapper.updateById(update);
+            conversationService.rateSession(ctx.tenantId(), ctx.userId(), id, rating, comment);
         }
 
         return ApiResponse.ok(null);

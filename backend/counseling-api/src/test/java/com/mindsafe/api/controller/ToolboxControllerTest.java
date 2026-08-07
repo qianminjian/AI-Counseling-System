@@ -2,11 +2,11 @@ package com.mindsafe.api.controller;
 
 import com.mindsafe.common.dto.ApiResponse;
 import com.mindsafe.domain.entity.User;
-import com.mindsafe.domain.mapper.UserMapper;
 import com.mindsafe.service.toolbox.MoodCheckRecorder;
 import com.mindsafe.service.toolbox.ToolboxRegistry;
 import com.mindsafe.service.toolbox.ToolboxRegistry.ToolCategory;
 import com.mindsafe.service.toolbox.ToolboxRegistry.ToolDefinition;
+import com.mindsafe.service.toolbox.ToolboxService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -30,7 +30,7 @@ class ToolboxControllerTest {
 
     private ToolboxRegistry toolboxRegistry;
     private MoodCheckRecorder moodCheckRecorder;
-    private UserMapper userMapper;
+    private ToolboxService toolboxService;
     private ToolboxController controller;
 
     private final UUID studentUserId = UUID.randomUUID();
@@ -42,8 +42,8 @@ class ToolboxControllerTest {
     void setUp() {
         toolboxRegistry = mock(ToolboxRegistry.class);
         moodCheckRecorder = mock(MoodCheckRecorder.class);
-        userMapper = mock(UserMapper.class);
-        controller = new ToolboxController(toolboxRegistry, moodCheckRecorder, userMapper);
+        toolboxService = mock(ToolboxService.class);
+        controller = new ToolboxController(toolboxRegistry, moodCheckRecorder, toolboxService);
     }
 
     private Authentication studentAuth(String gradeCode) {
@@ -52,7 +52,7 @@ class ToolboxControllerTest {
         User u = new User();
         u.setUserId(studentUserId);
         u.setGradeCode(gradeCode);
-        when(userMapper.selectById(studentUserId)).thenReturn(u);
+        when(toolboxService.findUserById(studentUserId)).thenReturn(u);
         return auth;
     }
 
@@ -77,7 +77,7 @@ class ToolboxControllerTest {
 
         assertThat(resp.data()).isEmpty();
         verify(toolboxRegistry).listForGrade(4);
-        verify(userMapper, never()).selectById(anyUuid());
+        verify(toolboxService, never()).findUserById(anyUuid());
     }
 
     @Test
@@ -97,7 +97,7 @@ class ToolboxControllerTest {
     void listTools_userNotFound() {
         Authentication auth = mock(Authentication.class);
         when(auth.getPrincipal()).thenReturn(studentUserId);
-        when(userMapper.selectById(studentUserId)).thenReturn(null);
+        when(toolboxService.findUserById(studentUserId)).thenReturn(null);
         when(toolboxRegistry.listForGrade(4)).thenReturn(List.of());
 
         controller.listTools(auth);
