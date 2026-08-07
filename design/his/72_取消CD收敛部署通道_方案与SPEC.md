@@ -292,7 +292,7 @@ done
 ### 9.7 验收标准（实施时勾选）
 
 - [x] ci.yml 删除手动 `Cache Maven repository` 步骤，仅保留 setup-java `cache: maven`（实测确认：push 1ffe343 run 31156333067 全绿，单缓存恢复无回归）
-- [x] ci.yml 增加 workflow 级文档类 `paths-ignore`（design/doc/docs/reports/tmp/data/根级 *.md）；代码/CI 配置变更仍正常触发（实测确认：1ffe343 同时改 ci.yml 与 design/** 两处，run 正常触发）；docs-only 跳过待后续纯文档 commit 自然验证
+- [x] ci.yml 增加 workflow 级文档类 `paths-ignore`（design/doc/docs/reports/tmp/data/根级 *.md）；**docs-only 跳过实测通过**（2026-08-07 push 74d36f2 纯 design/** 变更，30s 无新 run 触发）；代码/CI 配置变更仍正常触发（1ffe343 实测）
 - [x] python-services-test 增加 pip 缓存（key = service + requirements 文件 hash，两服务独立）；run 31156333067 python job 通过（首次 miss+save，二次起命中）
 - [x] 代码变更 push 实测：全量 CI 全绿且 wall-clock ≤ 2m11s 基线（2026-08-07 push 1ffe343：run 31156333067/31156138650 均 success，wall-clock 2m03s ≤ 2m11s）
 - [x] doing/72 §3.6 修订标记与 §9 内容一致（无残留"CI 零改动"表述）
