@@ -1,9 +1,10 @@
 import { useState } from 'react'
-import type { FormEvent, ChangeEvent } from 'react'
-import { useNavigate } from 'react-router'
-import { parentRegister, parentLogin } from '../../api/index'
-import type { AuthResult } from '../../api/index'
+import { View, Text, Button, Input, Form } from '@tarojs/components'
+import { parentRegister, parentLogin } from '../../services/index'
+import type { AuthResult } from '../../services/index'
 import { setToken, setRefreshToken, setUser, isAuthenticated } from '../../utils/auth'
+import { redirectTo, navigateTo } from '../../utils/nav'
+import { inputValue } from '../../utils/event'
 
 type Mode = 'login' | 'register'
 
@@ -15,7 +16,6 @@ interface FormState {
 }
 
 export default function VerifyPage() {
-  const navigate = useNavigate()
   const [mode, setMode] = useState<Mode>('login')
   const [form, setForm] = useState<FormState>({
     familyCode: '',
@@ -27,7 +27,7 @@ export default function VerifyPage() {
   const [error, setError] = useState('')
 
   if (isAuthenticated()) {
-    navigate('/report', { replace: true })
+    redirectTo('/report')
     return null
   }
 
@@ -36,8 +36,8 @@ export default function VerifyPage() {
     setError('')
   }
 
-  const handleSubmit = async (e: FormEvent) => {
-    e.preventDefault()
+  const handleSubmit = async (e?: { preventDefault?: () => void }) => {
+    e?.preventDefault?.()
     setError('')
 
     if (!form.phone || form.phone.length !== 11) {
@@ -78,7 +78,7 @@ export default function VerifyPage() {
         displayName: data.displayName,
         children: data.children || []
       })
-      navigate('/report', { replace: true })
+      redirectTo('/report')
     } catch (err) {
       setError(err instanceof Error ? err.message : '操作失败，请重试')
     } finally {
@@ -87,112 +87,111 @@ export default function VerifyPage() {
   }
 
   return (
-    <div className="container verify-page">
-      <div className="logo-area">
-        <span className="logo-emoji">🌈</span>
-        <h1 className="page-title">MindSafe 家长端</h1>
-        <p className="page-subtitle">
+    <View className="container verify-page">
+      <View className="logo-area">
+        <Text className="logo-emoji">🌈</Text>
+        <Text className="page-title">MindSafe 家长端</Text>
+        <Text className="page-subtitle">
           {mode === 'register' ? '输入家庭码，绑定您的孩子' : '登录后查看孩子的情绪周报'}
-        </p>
-      </div>
+        </Text>
+      </View>
 
       {/* 切换标签 */}
-      <div className="tab-row">
-        <button
+      <View className="tab-row">
+        <Button
           className={`tab-btn ${mode === 'login' ? 'active' : ''}`}
           onClick={() => { setMode('login'); setError('') }}
         >
           登录
-        </button>
-        <button
+        </Button>
+        <Button
           className={`tab-btn ${mode === 'register' ? 'active' : ''}`}
           onClick={() => { setMode('register'); setError('') }}
         >
           首次注册
-        </button>
-      </div>
+        </Button>
+      </View>
 
-      <form className="card" onSubmit={handleSubmit}>
+      <Form className="card" onSubmit={handleSubmit}>
         {/* 注册模式：家庭码 */}
         {mode === 'register' && (
-          <div className="input-group">
-            <label className="input-label">家庭码</label>
-            <input
+          <View className="input-group">
+            <Text className="input-label">家庭码</Text>
+            <Input
               className="input-field"
-              maxLength={6}
+              maxlength={6}
               placeholder="孩子注册后获得的 6 位码"
               value={form.familyCode}
-              onChange={(e: ChangeEvent<HTMLInputElement>) => update('familyCode', e.target.value.toUpperCase())}
+              onInput={(e) => update('familyCode', inputValue(e).toUpperCase())}
               style={{ textTransform: 'uppercase', letterSpacing: '0.2em', textAlign: 'center', fontSize: '1.2em' }}
             />
-            <p className="hint-text">💡 家庭码在孩子注册成功后显示，也可在个人中心查看</p>
-          </div>
+            <Text className="hint-text">💡 家庭码在孩子注册成功后显示，也可在个人中心查看</Text>
+          </View>
         )}
 
         {/* 手机号 */}
-        <div className="input-group">
-          <label className="input-label">手机号</label>
-          <input
+        <View className="input-group">
+          <Text className="input-label">手机号</Text>
+          <Input
             className="input-field"
-            type="tel"
-            maxLength={11}
+            type="number"
+            maxlength={11}
             placeholder="请输入手机号"
             value={form.phone}
-            onChange={(e: ChangeEvent<HTMLInputElement>) => update('phone', e.target.value)}
+            onInput={(e) => update('phone', inputValue(e))}
           />
-        </div>
+        </View>
 
         {/* 密码 */}
-        <div className="input-group">
-          <label className="input-label">密码</label>
-          <input
+        <View className="input-group">
+          <Text className="input-label">密码</Text>
+          <Input
             className="input-field"
-            type="password"
+            password
             placeholder={mode === 'register' ? '设置密码（至少 6 位）' : '请输入密码'}
             value={form.password}
-            onChange={(e: ChangeEvent<HTMLInputElement>) => update('password', e.target.value)}
+            onInput={(e) => update('password', inputValue(e))}
           />
-        </div>
+        </View>
 
         {/* 注册模式：关系选择 */}
         {mode === 'register' && (
-          <div className="input-group">
-            <label className="input-label">您与孩子的关系</label>
-            <div className="relation-row">
+          <View className="input-group">
+            <Text className="input-label">您与孩子的关系</Text>
+            <View className="relation-row">
               {[
                 { value: 'mother', label: '👩 妈妈' },
                 { value: 'father', label: '👨 爸爸' },
                 { value: 'grandparent', label: '👴 祖父母' },
                 { value: 'other', label: '🤝 其他' }
               ].map(r => (
-                <button
+                <Button
                   key={r.value}
-                  type="button"
                   className={`relation-btn ${form.relation === r.value ? 'active' : ''}`}
                   onClick={() => update('relation', r.value)}
                 >
                   {r.label}
-                </button>
+                </Button>
               ))}
-            </div>
-          </div>
+            </View>
+          </View>
         )}
 
-        {error && <p className="error-text">{error}</p>}
+        {error && <Text className="error-text">{error}</Text>}
 
-        <button
+        <Button
           className="btn-primary"
-          type="submit"
+          formType="submit"
           disabled={loading}
         >
           {loading ? '处理中...' : mode === 'register' ? '注册并绑定' : '登录'}
-        </button>
-      </form>
+        </Button>
+      </Form>
 
-      <p className="tip-text">
+      <Text className="tip-text">
         如有问题请联系学校心理老师 ·{' '}
-        <a href="/parent/privacy">个人信息保护告知</a>
-      </p>
-    </div>
+        <Text className="privacy-link" onClick={() => navigateTo('/privacy')}>个人信息保护告知</Text>
+      </Text>
+    </View>
   )
 }

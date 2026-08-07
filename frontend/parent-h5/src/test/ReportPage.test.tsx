@@ -1,22 +1,31 @@
+// doing/73 T3：ReportPage Taro 化测试（services mock + Taro 导航 mock + userEvent 点击）
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter } from 'react-router'
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import ReportPage from '../pages/report/index'
 
-// Mock API
-vi.mock('../api/index', () => ({
+// Mock Taro 导航
+vi.mock('@tarojs/taro', () => ({
+  default: { redirectTo: vi.fn(), navigateTo: vi.fn() }
+}))
+
+// Mock 服务层
+vi.mock('../services/index', () => ({
   getReport: vi.fn()
 }))
 
-// Mock auth utils
+// Mock auth utils（isAuthenticated 返回 true：守卫不跳转，聚焦页面行为）
 vi.mock('../utils/auth', () => ({
   getUser: vi.fn(),
-  clearAuth: vi.fn()
+  clearAuth: vi.fn(),
+  isAuthenticated: vi.fn(() => true)
 }))
 
-import { getReport } from '../api/index'
-import { getUser, clearAuth } from '../utils/auth'
+import Taro from '@tarojs/taro'
+import { getReport } from '../services/index'
+import { getUser, clearAuth, isAuthenticated } from '../utils/auth'
+
+const mockedTaro = vi.mocked(Taro)
 
 const mockUser = {
   parentId: 'p1',
@@ -40,35 +49,26 @@ describe('ReportPage', () => {
     vi.mocked(getUser).mockReturnValue(mockUser)
     vi.mocked(getReport).mockResolvedValue({ data: mockReport })
     vi.mocked(clearAuth).mockImplementation(() => {})
+    vi.mocked(isAuthenticated).mockImplementation(() => true)
+    mockedTaro.redirectTo.mockClear()
+    mockedTaro.navigateTo.mockClear()
   })
 
   it('渲染页面标题和家长问候', async () => {
-    render(
-      <MemoryRouter>
-        <ReportPage />
-      </MemoryRouter>
-    )
+    render(<ReportPage />)
     expect(screen.getByText('情绪周报')).toBeInTheDocument()
     expect(screen.getByText('测试家长，您好')).toBeInTheDocument()
   })
 
   it('默认加载第一个孩子的周报', async () => {
-    render(
-      <MemoryRouter>
-        <ReportPage />
-      </MemoryRouter>
-    )
+    render(<ReportPage />)
     await waitFor(() => {
       expect(getReport).toHaveBeenCalledWith('c1')
     })
   })
 
   it('显示周报概览数据', async () => {
-    render(
-      <MemoryRouter>
-        <ReportPage />
-      </MemoryRouter>
-    )
+    render(<ReportPage />)
     await waitFor(() => {
       expect(screen.getByText('5')).toBeInTheDocument()
       expect(screen.getByText('42')).toBeInTheDocument()
@@ -77,11 +77,7 @@ describe('ReportPage', () => {
   })
 
   it('显示情绪分布', async () => {
-    render(
-      <MemoryRouter>
-        <ReportPage />
-      </MemoryRouter>
-    )
+    render(<ReportPage />)
     await waitFor(() => {
       expect(screen.getByText('开心')).toBeInTheDocument()
       expect(screen.getByText('平静')).toBeInTheDocument()
@@ -89,22 +85,14 @@ describe('ReportPage', () => {
   })
 
   it('多孩子时显示切换标签', async () => {
-    render(
-      <MemoryRouter>
-        <ReportPage />
-      </MemoryRouter>
-    )
+    render(<ReportPage />)
     expect(screen.getByText('小明')).toBeInTheDocument()
     expect(screen.getByText('小红')).toBeInTheDocument()
   })
 
   it('切换孩子后重新加载周报', async () => {
     const user = userEvent.setup()
-    render(
-      <MemoryRouter>
-        <ReportPage />
-      </MemoryRouter>
-    )
+    render(<ReportPage />)
     await waitFor(() => {
       expect(getReport).toHaveBeenCalledWith('c1')
     })
@@ -118,11 +106,7 @@ describe('ReportPage', () => {
     vi.mocked(getReport).mockResolvedValue({
       data: { ...mockReport, sessionCount: 0, totalTurns: 0 }
     })
-    render(
-      <MemoryRouter>
-        <ReportPage />
-      </MemoryRouter>
-    )
+    render(<ReportPage />)
     await waitFor(() => {
       expect(screen.getByText(/暂无对话记录/)).toBeInTheDocument()
     })
@@ -130,33 +114,34 @@ describe('ReportPage', () => {
 
   it('API 失败时显示错误信息', async () => {
     vi.mocked(getReport).mockRejectedValue(new Error('网络错误'))
-    render(
-      <MemoryRouter>
-        <ReportPage />
-      </MemoryRouter>
-    )
+    render(<ReportPage />)
     await waitFor(() => {
       expect(screen.getByText('网络错误')).toBeInTheDocument()
     })
   })
 
-  it('渲染退出按钮', async () => {
-    render(
-      <MemoryRouter>
-        <ReportPage />
-      </MemoryRouter>
-    )
-    expect(screen.getByText('退出')).toBeInTheDocument()
+  it('渲染退出按钮，点击后清认证并跳回登录页', async () => {
+    const user = userEvent.setup()
+    render(<ReportPage />)
+    await user.click(screen.getByText('退出'))
+    expect(clearAuth).toHaveBeenCalled()
+    expect(mockedTaro.redirectTo).toHaveBeenCalledWith({ url: '/' })
   })
 
-  it('渲染数据授权管理入口', async () => {
-    render(
-      <MemoryRouter>
-        <ReportPage />
-      </MemoryRouter>
-    )
+  it('渲染数据授权管理入口，点击跳转授权页', async () => {
+    const user = userEvent.setup()
+    render(<ReportPage />)
     await waitFor(() => {
       expect(screen.getByText('数据授权管理')).toBeInTheDocument()
     })
+    await user.click(screen.getByText('数据授权管理'))
+    expect(mockedTaro.navigateTo).toHaveBeenCalledWith({ url: '/consent' })
+  })
+
+  it('未登录时守卫跳转登录页', () => {
+    vi.mocked(getUser).mockReturnValue(null)
+    vi.mocked(isAuthenticated).mockImplementation(() => false)
+    render(<ReportPage />)
+    expect(mockedTaro.redirectTo).toHaveBeenCalledWith({ url: '/' })
   })
 })

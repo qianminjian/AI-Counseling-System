@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router'
-import { getReport } from '../../api/index'
-import type { ReportData } from '../../api/index'
-import { getUser, clearAuth } from '../../utils/auth'
+import { View, Text, Button } from '@tarojs/components'
+import { getReport } from '../../services/index'
+import type { ReportData } from '../../services/index'
+import { getUser, clearAuth, isAuthenticated } from '../../utils/auth'
 import type { ChildInfo } from '../../utils/auth'
+import { redirectTo, navigateTo } from '../../utils/nav'
 
 export default function ReportPage() {
-  const navigate = useNavigate()
   const [report, setReport] = useState<ReportData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -14,6 +14,13 @@ export default function ReportPage() {
 
   const user = getUser()
   const children = user?.children || []
+
+  // 登录守卫：未登录跳回登录页（隐私数据页保护）
+  useEffect(() => {
+    if (!isAuthenticated()) {
+      redirectTo('/')
+    }
+  }, [])
 
   useEffect(() => {
     // 默认选第一个孩子
@@ -42,7 +49,7 @@ export default function ReportPage() {
 
   const handleLogout = () => {
     clearAuth()
-    navigate('/', { replace: true })
+    redirectTo('/')
   }
 
   const emotionEmoji = (label: string): string => {
@@ -51,88 +58,88 @@ export default function ReportPage() {
   }
 
   return (
-    <div className="container report-page">
+    <View className="container report-page">
       {/* 头部 */}
-      <div className="report-header">
-        <div>
-          <h1 className="page-title">情绪周报</h1>
-          <p className="page-subtitle">{user?.displayName || '家长'}，您好</p>
-        </div>
-        <button className="logout-btn" onClick={handleLogout}>退出</button>
-      </div>
+      <View className="report-header">
+        <View>
+          <Text className="page-title">情绪周报</Text>
+          <Text className="page-subtitle">{user?.displayName || '家长'}，您好</Text>
+        </View>
+        <Button className="logout-btn" onClick={handleLogout}>退出</Button>
+      </View>
 
       {/* 多孩子切换 */}
       {children.length > 1 && (
-        <div className="child-tabs">
+        <View className="child-tabs">
           {children.map(c => (
-            <button
+            <Button
               key={c.userId}
               className={`child-tab ${selectedChild?.userId === c.userId ? 'active' : ''}`}
               onClick={() => setSelectedChild(c)}
             >
               {c.nickname}
-            </button>
+            </Button>
           ))}
-        </div>
+        </View>
       )}
 
-      {loading && <div className="loading-area">加载中...</div>}
-      {error && <div className="error-area">{error}</div>}
+      {loading && <View className="loading-area">加载中...</View>}
+      {error && <View className="error-area">{error}</View>}
 
       {report && !loading && (
-        <div className="report-content">
+        <View className="report-content">
           {/* 概览卡片 */}
-          <div className="card summary-card">
-            <div className="summary-row">
-              <div className="summary-item">
-                <span className="summary-value">{report.sessionCount || 0}</span>
-                <span className="summary-label">本周对话</span>
-              </div>
-              <div className="summary-item">
-                <span className="summary-value">{report.totalTurns || 0}</span>
-                <span className="summary-label">对话轮次</span>
-              </div>
-              <div className="summary-item">
-                <span className="summary-value risk-badge" data-level={report.maxRiskLevel}>
+          <View className="card summary-card">
+            <View className="summary-row">
+              <View className="summary-item">
+                <Text className="summary-value">{report.sessionCount || 0}</Text>
+                <Text className="summary-label">本周对话</Text>
+              </View>
+              <View className="summary-item">
+                <Text className="summary-value">{report.totalTurns || 0}</Text>
+                <Text className="summary-label">对话轮次</Text>
+              </View>
+              <View className="summary-item">
+                <Text className="summary-value risk-badge" data-level={report.maxRiskLevel}>
                   {report.riskLabel || '良好'}
-                </span>
-                <span className="summary-label">整体状态</span>
-              </div>
-            </div>
-          </div>
+                </Text>
+                <Text className="summary-label">整体状态</Text>
+              </View>
+            </View>
+          </View>
 
           {/* 情绪分布 */}
           {report.emotionDistribution && Object.keys(report.emotionDistribution).length > 0 && (
-            <div className="card">
-              <h3 className="card-title">情绪分布</h3>
-              <div className="emotion-list">
+            <View className="card">
+              <Text className="card-title">情绪分布</Text>
+              <View className="emotion-list">
                 {Object.entries(report.emotionDistribution).map(([label, count]) => (
-                  <div key={label} className="emotion-item">
-                    <span className="emotion-emoji">{emotionEmoji(label)}</span>
-                    <span className="emotion-label">{label}</span>
-                    <span className="emotion-count">{count} 次</span>
-                  </div>
+                  <View key={label} className="emotion-item">
+                    <Text className="emotion-emoji">{emotionEmoji(label)}</Text>
+                    <Text className="emotion-label">{label}</Text>
+                    <Text className="emotion-count">{count} 次</Text>
+                  </View>
                 ))}
-              </div>
-            </div>
+              </View>
+            </View>
           )}
 
           {/* 无数据提示 */}
           {(!report.sessionCount || report.sessionCount === 0) && (
-            <div className="card empty-card">
-              <p>📭 本周暂无对话记录</p>
-              <p className="hint-text">孩子使用 AI 对话后，这里会显示情绪周报</p>
-            </div>
+            <View className="card empty-card">
+              <Text>📭 本周暂无对话记录</Text>
+              <Text className="hint-text">孩子使用 AI 对话后，这里会显示情绪周报</Text>
+            </View>
           )}
 
           {/* 底部操作 */}
-          <div className="report-actions">
-            <button className="btn-secondary" onClick={() => navigate('/consent')}>
+          <View className="report-actions">
+            <Button className="btn-secondary" onClick={() => navigateTo('/consent')}>
               数据授权管理
-            </button>
-          </div>
-        </div>
+            </Button>
+          </View>
+        </View>
       )}
-    </div>
+    </View>
   )
 }

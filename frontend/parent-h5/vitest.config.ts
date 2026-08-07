@@ -38,15 +38,12 @@ export default defineConfig({
     setupFiles: ['./src/test/setup.ts'],
     // DC-005：共享认证传输模块纳入三端门禁（相对导入共享源码方案）
     include: ['src/**/*.{test,spec}.{ts,tsx}', '../shared/src/**/*.test.ts'],
-    // doing/73 T0 过渡态：4 个旧页面测试依赖 react-router（已卸载），T3 页面迁移 + T4 测试对齐后移除本行
-    exclude: ['src/test/VerifyPage.test.tsx', 'src/test/ReportPage.test.tsx', 'src/test/ConsentPage.test.tsx', 'src/test/PrivacyPage.test.tsx'],
     coverage: {
       exclude: [
         'src/app.tsx',
         'src/vite-env.d.ts',
         'dist/**',
         'vitest.config.ts',
-        'vite.config.js',
       ],
       // 审计 P1-11：覆盖率门禁（CI 构建强制，与 student-h5/teacher-web 对齐）
       // 阈值基于 2026-08 实测（lines 61.77 / branches 68.83 / functions 39.02）留余量

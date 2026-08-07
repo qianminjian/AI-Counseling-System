@@ -1,8 +1,9 @@
-import { useState } from 'react'
-import { useNavigate } from 'react-router'
-import { withdrawConsent } from '../../api/index'
-import { getUser } from '../../utils/auth'
+import { useState, useEffect } from 'react'
+import { View, Text, Button } from '@tarojs/components'
+import { withdrawConsent } from '../../services/index'
+import { getUser, isAuthenticated } from '../../utils/auth'
 import type { ChildInfo } from '../../utils/auth'
+import { redirectTo, navigateTo } from '../../utils/nav'
 
 interface WithdrawResult {
   error?: string
@@ -10,7 +11,6 @@ interface WithdrawResult {
 }
 
 export default function ConsentPage() {
-  const navigate = useNavigate()
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<WithdrawResult | null>(null)
   const [confirming, setConfirming] = useState(false)
@@ -18,6 +18,13 @@ export default function ConsentPage() {
 
   const user = getUser()
   const children = user?.children || []
+
+  // 登录守卫：未登录跳回登录页（隐私数据页保护）
+  useEffect(() => {
+    if (!isAuthenticated()) {
+      redirectTo('/')
+    }
+  }, [])
 
   const handleWithdraw = async () => {
     if (!selectedChild) return
@@ -34,73 +41,73 @@ export default function ConsentPage() {
   }
 
   return (
-    <div className="container consent-page">
-      <div className="consent-header">
-        <button className="back-btn" onClick={() => navigate('/report')}>← 返回</button>
-        <h1 className="page-title">数据授权管理</h1>
-      </div>
+    <View className="container consent-page">
+      <View className="consent-header">
+        <Button className="back-btn" onClick={() => navigateTo('/report')}>← 返回</Button>
+        <Text className="page-title">数据授权管理</Text>
+      </View>
 
-      <div className="card">
-        <h3 className="card-title">授权说明</h3>
-        <p className="consent-text">
+      <View className="card">
+        <Text className="card-title">授权说明</Text>
+        <Text className="consent-text">
           您已授权学校心理老师查看孩子的 AI 对话情绪摘要。
           撤回授权后，孩子账号将被冻结，心理画像数据将被删除。
           此操作不可逆，如需恢复请联系学校重新授权。
-        </p>
-      </div>
+        </Text>
+      </View>
 
       {/* 选择孩子 */}
       {children.length > 0 && !result && (
-        <div className="card">
-          <h3 className="card-title">选择孩子</h3>
-          <div className="child-list">
+        <View className="card">
+          <Text className="card-title">选择孩子</Text>
+          <View className="child-list">
             {children.map(c => (
-              <button
+              <Button
                 key={c.userId}
                 className={`child-select-btn ${selectedChild?.userId === c.userId ? 'active' : ''}`}
                 onClick={() => setSelectedChild(c)}
               >
                 {c.nickname}（{c.gradeCode || ''}{c.classCode || ''}）
-              </button>
+              </Button>
             ))}
-          </div>
-        </div>
+          </View>
+        </View>
       )}
 
       {/* 撤回按钮 */}
       {!result && selectedChild && (
-        <div className="card danger-card">
+        <View className="card danger-card">
           {!confirming ? (
-            <button className="btn-danger" onClick={() => setConfirming(true)}>
+            <Button className="btn-danger" onClick={() => setConfirming(true)}>
               撤回「{selectedChild.nickname}」的授权
-            </button>
+            </Button>
           ) : (
-            <div className="confirm-area">
-              <p className="confirm-text">⚠️ 确认撤回？此操作不可逆！</p>
-              <div className="confirm-btns">
-                <button className="btn-danger" disabled={loading} onClick={handleWithdraw}>
+            <View className="confirm-area">
+              <Text className="confirm-text">⚠️ 确认撤回？此操作不可逆！</Text>
+              <View className="confirm-btns">
+                <Button className="btn-danger" disabled={loading} onClick={handleWithdraw}>
                   {loading ? '处理中...' : '确认撤回'}
-                </button>
-                <button className="btn-secondary" onClick={() => setConfirming(false)}>取消</button>
-              </div>
-            </div>
+                </Button>
+                <Button className="btn-secondary" onClick={() => setConfirming(false)}>取消</Button>
+              </View>
+            </View>
           )}
-        </div>
+        </View>
       )}
 
       {/* 结果 */}
       {result && (
-        <div className="card result-card">
+        <View className="card result-card">
           {result.error ? (
-            <p className="error-text">{result.error}</p>
+            <Text className="error-text">{result.error}</Text>
           ) : (
-            <div>
-              <p className="success-text">✅ {result.message || '已撤回授权'}</p>
-              <button className="btn-secondary" onClick={() => navigate('/report')}>返回周报</button>
-            </div>
+            <View>
+              <Text className="success-text">✅ {result.message || '已撤回授权'}</Text>
+              <Button className="btn-secondary" onClick={() => navigateTo('/report')}>返回周报</Button>
+            </View>
           )}
-        </div>
+        </View>
       )}
-    </div>
+    </View>
   )
 }
