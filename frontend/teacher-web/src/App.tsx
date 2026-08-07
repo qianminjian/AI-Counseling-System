@@ -30,8 +30,16 @@ export default function App() {
     })
   }
 
+  // doing/75 方案 A 青屿：两端统一品牌色（antd token 全局生效）
   const themeConfig = {
     algorithm: darkMode ? theme.darkAlgorithm : theme.defaultAlgorithm,
+    token: {
+      colorPrimary: '#2BA8A0',
+      colorSuccess: '#2E9E6B',
+      colorWarning: '#D98E32',
+      colorError: '#D9534F',
+      borderRadius: 8,
+    },
   }
 
   const [user, setUser] = useState(() => {

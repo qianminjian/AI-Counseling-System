@@ -1,3 +1,27 @@
+/* 全局样式（doing/75 方案 A 青屿：与家长端共用 token 命名） */
+:root {
+  /* 品牌色 */
+  --ms-primary: #2BA8A0;          /* 主色：治愈青绿 */
+  --ms-primary-strong: #1E7F7A;   /* 主色加深 */
+  --ms-primary-soft: #E8F6F4;     /* 主色浅底 */
+  /* 中性色 */
+  --ms-bg: #FAF9F6;               /* 页面背景 */
+  --ms-bg-elevated: #F4F7F6;      /* 次级底 */
+  --ms-card: #FFFFFF;             /* 卡片 */
+  --ms-text: #22303A;             /* 主文字 */
+  --ms-text-secondary: #5C6B76;   /* 次要文字 */
+  --ms-text-muted: #8A97A0;       /* 弱文字 */
+  --ms-border: #E3E8E6;           /* 常规边框 */
+  --ms-border-soft: #EEF2F0;      /* 浅底边框 */
+  /* 语义色 */
+  --ms-success: #2E9E6B;
+  --ms-success-soft: #E8F6EE;
+  --ms-warning: #D98E32;
+  --ms-warning-soft: #FDF1E3;
+  --ms-danger: #D9534F;
+  --ms-danger-soft: #FDEBEA;
+}
+
 body {
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;

@@ -224,7 +224,7 @@ export default function Dashboard({ user, onLogout, darkMode, toggleDark }) {
               style={{
                 border: 'none', background: 'none', cursor: 'pointer',
                 display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
-                color: tab === item.key ? '#1677ff' : '#999', fontSize: 11,
+                color: tab === item.key ? 'var(--ms-primary)' : '#999', fontSize: 11,
               }}
             >
               <span style={{ fontSize: 20 }}>{item.icon}</span>

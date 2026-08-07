@@ -42,7 +42,7 @@ export default function Login({ onLogin }) {
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+      background: 'linear-gradient(135deg, var(--ms-primary) 0%, var(--ms-primary-strong) 100%)',
     }}>
       <Card style={{ width: 380, borderRadius: 12, boxShadow: '0 8px 32px rgba(0,0,0,0.1)' }}>
         <div style={{ textAlign: 'center', marginBottom: 24 }}>
@@ -66,7 +66,7 @@ export default function Login({ onLogin }) {
         {wecomUrl && (
           <>
             <Divider plain style={{ margin: '12px 0' }}>或</Divider>
-            <Button block icon={<WechatOutlined />} style={{ color: '#07c160', borderColor: '#07c160' }}
+            <Button block icon={<WechatOutlined />} style={{ color: 'var(--ms-success)', borderColor: 'var(--ms-success)' }}
               onClick={() => { window.location.href = wecomUrl }}>
               企业微信登录
             </Button>
