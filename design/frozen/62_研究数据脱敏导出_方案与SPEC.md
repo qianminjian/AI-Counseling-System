@@ -4,7 +4,7 @@
 >
 > 定位：远期 P2 任务（研究数据脱敏导出，IRB 兼容格式，支持学术合作）方案先行冻结存档。方案由架构审查（improve-codebase-architecture）定稿，含 4 个深化候选（导出管线/伪名化模块/加密接缝/保留豁免）与主 Seam（ExportRequest→ExportResult）；任务本身不实施。
 >
-> 解冻触发：启动学术合作 / IRB 合规流程前，由钱敏健解冻并登记台账后按 TDD 实施。
+> 解冻触发：启动学术合作 / IRB 合规流程前，由项目负责人解冻并登记台账后按 TDD 实施。
 >
 > 依据：design/07（商业化合规：PIPL/删除权/保留期）、design/02（数据库：pseudonym/metadata_redacted 设计）、design/his/06（历史数据库设计）、架构审查报告（tmp/architecture-review-20260728.html）
 >
@@ -104,7 +104,7 @@
 - **接口**：`pseudonymize(record) → record'`（结构化替换）；`restore(key)`（仅授权导出侧）；`isPseudonymized(value)`。
 - **语义**：盐化单向哈希（研究钥 ↔ 运维钥分离）；同一学生跨数据集保持同一假名（哈希一致性）；年龄/年级/班级等准标识符做 k-anonymity 分组泛化（班级→年级段、精确日期→周粒度）；自由文本过 PiiDesensitizer 扩展层（掩码升级为替换）。
 - **与现状解耦**：显示用 pseudonym 字段不动（教师端/企微依赖），研究假名独立生成，两者无映射关系。
-- **定案僵尸列**：display_name_enc/mobile_enc/email_enc/external_subject_id_hash/student_no_hash 五列——实施时二选一：① 启动伪名化后用于研究假名键的持久化存储；② 确认无使用者后 V 迁移删除（删除属数据迁移红线，需钱敏健决策）。
+- **定案僵尸列**：display_name_enc/mobile_enc/email_enc/external_subject_id_hash/student_no_hash 五列——实施时二选一：① 启动伪名化后用于研究假名键的持久化存储；② 确认无使用者后 V 迁移删除（删除属数据迁移红线，需项目负责人决策）。
 - **metadata_redacted**：若保留该设计（风险事件脱敏上下文），在本模块落地为事件级脱敏快照字段；否则从历史文档标注废弃。
 
 ### 4.4 C3 字段加密接缝（Worth exploring）
@@ -145,7 +145,7 @@
 3. **伪名化语义**：盐化单向哈希 + 研究钥/运维钥分离 + k-anonymity 泛化（班级→年级段、日期→周粒度）+ 自由文本替换式脱敏；显示用 pseudonym 不动。
 4. **审计统一**：所有导出与 analytics 个人级访问统一记 EXPORT_*/ANALYTICS_* 动作，detail 含范围与行数（沿用 IMPORT_STUDENTS 的 JSON detail 先例）。
 5. **保留豁免**：数据集注册表仅存引用（范围 + 期限 + 豁免标记），不存副本；清理任务识别豁免跳过并留痕。
-6. **僵尸列定案**：5 个僵尸加密列实施时二选一（伪名化持久化 vs V 迁移删除），数据迁移红线需钱敏健决策。
+6. **僵尸列定案**：5 个僵尸加密列实施时二选一（伪名化持久化 vs V 迁移删除），数据迁移红线需项目负责人决策。
 7. **渲染**：HTML 模板化收敛（不引入新模板引擎，KISS；若 IRB 数据集要求严格 PDF，另议 OpenPDF/IText 依赖引入，属新依赖决策）。
 8. **API 契约**：IRB 数据集导出端点 `GET/POST /api/v1/admin/research/export?scope=...&format=irb`（管理员/平台角色，沿用 AdminController 权限模型）；响应为文件流（复用前端 blob → a.click() 下载模式）。
 9. **实施顺序**：C1 → C2 → C4 → C3（C1 立即可做且修复现存泄漏；C3 改动面大放最后）。
@@ -171,7 +171,7 @@
 
 ## 9. 进一步说明
 
-1. **待决策事项**（实施前需钱敏健确认）：① 主 Seam 取导出管线接口 vs Controller HTTP 接口；② 僵尸列定案（伪名化持久化 vs V 迁移删除，后者属数据迁移红线）；③ 研究导出是否需要新的同意/通知机制（衔接 design/22 告知同意与 design/07 删除权口径）；④ C3 是否全量接缝化（改动面评估后）。
+1. **待决策事项**（实施前需项目负责人确认）：① 主 Seam 取导出管线接口 vs Controller HTTP 接口；② 僵尸列定案（伪名化持久化 vs V 迁移删除，后者属数据迁移红线）；③ 研究导出是否需要新的同意/通知机制（衔接 design/22 告知同意与 design/07 删除权口径）；④ C3 是否全量接缝化（改动面评估后）。
 2. **与既有设计的关系**：pseudonym 现有语义（显示名）不变，研究假名独立；metadata_redacted 是否落地由 C2 定案；保留期设计（design/07：普通 180 天/高风险 365 天）与 DataRetentionCleanupJob 30/365 天口径需在 C4 实施时对齐。
 3. **契约流转**：导出管线接口 →(ContractOpenApiIT)→ OpenAPI 文档 →(gen-openapi-snapshot.sh)→ 前端契约测试（TEST-006 三层防线直接复用）。
 4. **验收标准（EARS）**：研究数据集导出时（when），所有学生身份字段必须为假名且不可逆（shall），审计必须记录范围与行数（shall），豁免数据在保留期内不被物理删除（shall），撤销豁免后数据在下个清理周期被删除（shall）。

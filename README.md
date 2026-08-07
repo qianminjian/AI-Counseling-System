@@ -42,7 +42,7 @@ cd backend && mvn spring-boot:run -pl counseling-app
 cd frontend/student-h5 && npm install && npm run dev
 ```
 
-启动任何服务前遵守端口检查红线（AGENTS.md §6）。
+启动任何服务前遵守端口检查红线（AGENTS.md §4）。
 
 ## 约定
 

@@ -15,8 +15,8 @@
 set -euo pipefail
 
 # ---------- 配置 ----------
-RULES_SOURCE="/Users/minjianq/Documents/.LIB_ALL_PUB/Qoder/.qoder/rules"
-AGENTS_SOURCE="/Users/minjianq/Documents/.LIB_ALL_PUB/Qoder/AGENTS.md"
+RULES_SOURCE="$HOME/Documents/.LIB_ALL_PUB/Qoder/.qoder/rules"
+AGENTS_SOURCE="$HOME/Documents/.LIB_ALL_PUB/Qoder/AGENTS.md"
 
 # ---------- 颜色 ----------
 RED='\033[0;31m'

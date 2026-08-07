@@ -1,7 +1,7 @@
 # 67 合规与数据安全修复（ARCH-007）方案与 SPEC
 
 > 关联任务：ARCH-007（深度审计 B-2/B-5/F-5 回填，登记 TASK-TRACKER §二十八）
-> 状态：📝 方案定稿 → ✅ 决策闭环（D-7 路径 C 两级摘要、D-8 昵称置换注入，2026-07-28 钱敏健拍板）→ ✅ 已实施（2026-07-28 TDD 落地：MessageSummarySummarizer 7 例、DomainEntityFactoryTest 新增 2 例保真/提炼断言、ConversationContextAgentTest 新增昵称置换用例、VerifyPage/PrivacyPage 测试；counseling-domain 28 例 + counseling-service 24 例 + parent-h5 27 例全绿）
+> 状态：📝 方案定稿 → ✅ 决策闭环（D-7 路径 C 两级摘要、D-8 昵称置换注入，2026-07-28 项目负责人拍板）→ ✅ 已实施（2026-07-28 TDD 落地：MessageSummarySummarizer 7 例、DomainEntityFactoryTest 新增 2 例保真/提炼断言、ConversationContextAgentTest 新增昵称置换用例、VerifyPage/PrivacyPage 测试；counseling-domain 28 例 + counseling-service 24 例 + parent-h5 27 例全绿）
 > 依据：深度审计 2026-08-05（B-2/B-5/F-5）、design/08 §5.1、design/10 中国政策与合规风险、design/26 家长端设计（PIPL 告知）
 > 词汇：数据最小化 / 告知同意 / safeContent——见 [13 领域词汇表](../13_领域词汇表.md) 风险安全域
 
@@ -31,7 +31,7 @@
 
 ## 3. 设计方案
 
-### 3.1 B-2 · MessageSummary 原始设计需求落实（✅ D-7 已决策 2026-07-28 钱敏健：路径 C 两级摘要）
+### 3.1 B-2 · MessageSummary 原始设计需求落实（✅ D-7 已决策 2026-07-28 项目负责人：路径 C 两级摘要）
 
 **原始设计需求**（design/08 §5.1「只存结构化摘要」）拆解为三层：
 1. **不存明文原文** → ✅ 已满足（R-01 字段级 AES-256-GCM 加密，AUDIT-P0-3 实证）
@@ -46,7 +46,7 @@
 
 **为何不是简单删除声明**：需求第 3 层是合规实质（未成年人对话内容最小化存储），删除声明只是掩盖差距；两级策略让常规消息不再存原文切片、风险消息保真取证，是「最小化与安全证据」的平衡解。
 
-### 3.2 B-5 · 个人信息注入处置（✅ D-8 已决策 2026-07-28 钱敏健：脱敏注入，只能是昵称进入 LLM）
+### 3.2 B-5 · 个人信息注入处置（✅ D-8 已决策 2026-07-28 项目负责人：脱敏注入，只能是昵称进入 LLM）
 
 **现状**：`extractPersonalInfo`（4 组正则提取 realName/age/grade/class，ConversationServiceImpl L754-790）明文拼入 LLM 上下文；系统已有 `PiiDesensitizer`（SAFE-204，26 用例）与完整昵称体系（`User.pseudonym`：登录 SEC-003 / 问候语 design/28 / 教师 CSV 导出）。
 
@@ -68,8 +68,8 @@
 ## 4. SPEC
 
 ```
-D-7（MessageSummary）：✅ 已决策（2026-07-28 钱敏健）路径 C——常规消息语义提炼 ≤200 字（MessageSummarySummarizer 规则抽取）+ L3+ 消息原文保真；类注释与 design/08 §5.1 准确化；无 schema 变更
-D-8（B-5）：✅ 已决策（2026-07-28 钱敏健）昵称置换——realName → pseudonym（fallback「同学」）；class → 「我们班」；明文不进上下文
+D-7（MessageSummary）：✅ 已决策（2026-07-28 项目负责人）路径 C——常规消息语义提炼 ≤200 字（MessageSummarySummarizer 规则抽取）+ L3+ 消息原文保真；类注释与 design/08 §5.1 准确化；无 schema 变更
+D-8（B-5）：✅ 已决策（2026-07-28 项目负责人）昵称置换——realName → pseudonym（fallback「同学」）；class → 「我们班」；明文不进上下文
 F-5：parent-h5 注册/验证页新增「个人信息保护告知」链接（design/26）
 验收基线：脱敏路径沿用 SAFE-204 的 26 用例 + 新增昵称置换用例；新增「注入上下文无明文 PII」断言测试
 ```
@@ -86,7 +86,7 @@ F-5：parent-h5 注册/验证页新增「个人信息保护告知」链接（des
 ## 6. 风险与回滚
 
 - **风险**：B-5 修复涉及对话上下文组装（核心路径），需全量回归 + SSE 集成验证；昵称/占位值改变 LLM 上下文内容，可能影响对话自然度（冒烟验证）；D-7 提炼可能丢失常规消息细节（风险消息已保真，接受此损失）
-- **红线**：D-8 合规决策已由钱敏健确认（2026-07-28）；D-7 路径 C 无 schema 变更，不触红线 3
+- **红线**：D-8 合规决策已由项目负责人确认（2026-07-28）；D-7 路径 C 无 schema 变更，不触红线 3
 - **回滚**：脱敏注入为局部替换可 revert；F-5 为纯前端增量
 
 ## 7. 关联与落点

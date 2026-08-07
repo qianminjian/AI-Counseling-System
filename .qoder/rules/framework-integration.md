@@ -38,7 +38,7 @@ description: 外部框架协作约定——当用户调用 GSD / Superpowers / a
 | 项目工作流 | new-project → plan-phase → execute-phase | - |
 | 状态管理 | `.planning/` 下所有文件 | - |
 | 进度跟踪 | 阶段 / 任务 / 验证 | - |
-| 用户行为 | - | 我是谁 / 红线 / 思维原则 |
+| 用户行为 | - | 协作约定 / 红线 / 沟通方式 |
 | 工程规范 | - | 代码风格 / 测试 / Git |
 | 安全边界 | - | 敏感信息 / 密钥 / 目录边界 |
 
@@ -84,7 +84,7 @@ GSD agents / hooks **禁止**修改：`AGENTS.md`、`.qoder/rules/*.md`、项目
 
 **本规则补充 Superpowers 没有的**：
 
-- 个人化身份和思维原则
+- 沟通与协作约定（core-identity.md）
 - 自主边界红线
 - 中文交流约定
 - 金融行业特定要求（`code-finance-precision.md`）
@@ -99,7 +99,7 @@ GSD agents / hooks **禁止**修改：`AGENTS.md`、`.qoder/rules/*.md`、项目
 | `executing-plans` | ai-behavior.md §3 + code-engineering.md |
 | `verification-before-completion` | code-engineering.md §8-9 |
 | `requesting-code-review` | 项目级 code-style.md + api-conventions.md |
-| `receiving-code-review` | ai-behavior.md（不谄媚） |
+| `receiving-code-review` | ai-behavior.md（反馈处理） |
 | `security-review` | core-red-lines.md + code-engineering.md §5 |
 
 ---

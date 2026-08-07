@@ -213,8 +213,8 @@ Schema 命名规范：`tenant_{tenant_id}`，如 `tenant_school_001`。每个租
 |------|------|:---:|------|
 | `TenantLineInnerInterceptor` 启用 | ✅ fix-06 已落地（策略 B 稳健渐进：已认证自动注入 tenant_id；`MindSafeTenantLineHandler` + 6 用例守卫）；`ParentAuthService` 去单租户硬编码同期完成 | P1 | Agent |
 | 无上下文 DAO 调用 fail-fast 收紧 | ✅ M1-003 已落地（2026-07-28）：`ignoreTable` 无上下文分支改为抛 `IllegalStateException`；配套 `TenantContextHolder` 系统作用域 API（`runAsSystem`/`callAsSystem`）+ `TaskDecorator` 异步传播；8 处合法跨租户链路（登录/注册/企微回调/定时任务）显式包裹；单测 6 用例 + IT 18 用例全绿且 fail-fast 零误触发 | P1 | Agent |
-| 隔离路线 A/B 决策 | ✅ 已定稿 A：行级隔离为正式架构（2026-07-28 钱敏健）；加固三件套=拦截器覆盖测试+跨租户越权测试+PG RLS 兜底；BIZ-001 维持挂起，遇采购方硬性物理隔离要求再启动 B | P1 | 钱敏健 |
+| 隔离路线 A/B 决策 | ✅ 已定稿 A：行级隔离为正式架构（2026-07-28 项目负责人）；加固三件套=拦截器覆盖测试+跨租户越权测试+PG RLS 兜底；BIZ-001 维持挂起，遇采购方硬性物理隔离要求再启动 B | P1 | 项目负责人 |
 | 热线号码租户配置化 | SAFE-203 | P1 | Agent |
 | SessionState 外置 Redis（租户前缀） | STATE 系列（40） | P2 | Agent |
 | §4 预警规则按实际量表重写 | SCALE-001/002 后置 | P2 | Agent |
-| SSO 钉钉/企微 | 商用前（随学校采购需求） | P3 | 钱敏健+Agent |
+| SSO 钉钉/企微 | 商用前（随学校采购需求） | P3 | 项目负责人+Agent |

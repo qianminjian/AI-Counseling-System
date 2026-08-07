@@ -141,7 +141,7 @@ DOC-054 深度审计将"过度设计（含质疑）"登记为 O1-O5：
 | OD-004 合并门控参数 | 🟩 并入 S2 | `ProfileMergeGate` applyDecay/isExpired 零调用（死分支）+ merge() 被 `ProfileExtractorService` L145 消费 | S2 删死分支；冲突阈值 0.4/EMA 参数**不改**（无数据可校准），待真实数据回流 |
 | OD-005 双层输出审查 | ✅ 维持 | `AiChatServiceImpl` L83/L137 `outputContentFilter.apply`（流式实时）+ L96/L151 `reviewAsync`（异步 LLM 语义） | 规则抓已知词/LLM 抓语义变体=儿童安全**纵深防御**；合并=砍语义层或实时层，违安全红线；可选低优先优化：按风险等级抽样复审 |
 | OD-006 手工租户条件 | ✅ 维持 | 全库手工条件约 **10 处**（TeacherService 3+3、PlatformService 4、Notification 1）；`.last()` 20+ 处全为 LIMIT 分页；`MindSafeTenantLineHandler` 无上下文 fail-fast | "24 处裸 SQL"描述失真（.last() 与租户无关）；手工条件是拦截器外**显式兜底**（平台聚合/跨域），纵深防御非人肉保证 |
-| OD-007 备份双轨 | ✅ 已议决 | `backup.sh`（cron 02:00，daily+weekly+monthly）与 compose `db-backup` 容器（每 24h）**双写同一 volume daily/**，无互斥 | 真冗余（文件重复/清理重叠）；**2026-08-05 钱敏健拍板：保留 backup.sh（周/月分层+恢复演练+生产在用），移除 db-backup 容器**；实施待统一批次，不阻塞本专题 |
+| OD-007 备份双轨 | ✅ 已议决 | `backup.sh`（cron 02:00，daily+weekly+monthly）与 compose `db-backup` 容器（每 24h）**双写同一 volume daily/**，无互斥 | 真冗余（文件重复/清理重叠）；**2026-08-05 项目负责人拍板：保留 backup.sh（周/月分层+恢复演练+生产在用），移除 db-backup 容器**；实施待统一批次，不阻塞本专题 |
 | OD-008 上帝类拆分 | ✅ 维持渐进 | TeacherService 867 / ConversationServiceImpl 825 / AuthController 474 行 | 持续增长属实，但 C3 已建拆分模式（TeacherQualityService 抽出）；不单独排期，触碰时按域拆 |
 | OD-009 prepare-funasr 版本比较 | 🟩 新增 S5 | `prepare-funasr.sh` L35-38 `EXPECTED_MODELS` 全 pin "master" + L66 自写 JSON 解析 | 版本比较**恒真**（死比较）→ S5 删除比较，保留模型存在性/加载校验（entrypoint fail-fast 真实价值） |
 | OD-010 TTS 矩阵 | ✅ 维持 | `tts-service/config.yaml` 7 音色仅 1 emotion_capable + 1 dialect_capable | CFG-004 配置化产物=**声明式能力文档**，运行时按 capable 分支消费无死代码；裁剪失扩展性（同 O5-4 逻辑） |

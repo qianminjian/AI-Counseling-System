@@ -217,7 +217,7 @@ deploy/
 - 应用 Dockerfile 随模块：`backend/Dockerfile`、`frontend/Dockerfile`
 - 容器命名前缀 `mindsafe-`（如 `mindsafe-pg`、`mindsafe-redis`、`mindsafe-app`）
 - 本地开发端口约定：PG 5432、Redis 6379、后端 8080、学生端 5173、教师端 5174
-- 启动服务前必须执行端口检查（红线，见 AGENTS.md §6）
+- 启动服务前必须执行端口检查（红线，见 AGENTS.md §4）
 
 ### 2.10 数据库脚本（`backend/scripts/sql/`）
 
@@ -273,7 +273,7 @@ prompts/
 
 - **存什么**：`data/knowledge-base/` 知识库语料文件（待审/已审），如首批入库语料、后续补全语料；未来其他内容资产（如量表题库文案）按子目录扩展
 - **性质**：**入库源文件**（人工审核 → 经 KnowledgeBaseService 摄入 pgvector），非临时产物（区别于 tmp/）、非设计文档（区别于 design/）
-- **审核状态约定**：文件头部标注 `审核状态：待审核/已审核`；**未经钱敏健审核的语料禁止入库**（design/09 上卷知识库章节定稿流程与审核门禁）
+- **审核状态约定**：文件头部标注 `审核状态：待审核/已审核`；**未经项目负责人审核的语料禁止入库**（design/09 上卷知识库章节定稿流程与审核门禁）
 - **命名**：`NN-主题_vN.md`，语料条目格式遵循 design/09 上卷知识库章节元数据规范
 
 ---
@@ -306,12 +306,12 @@ prompts/
 | 日期 | 变更 | 原因 |
 |------|------|------|
 | 2026-07-23 | 初始版本 | 项目从纯文档探索阶段转入开发准备阶段，建立统一结构 |
-| 2026-07-23 | 技术栈由 Python 改为 Java：`src/`→`backend/`（Maven 多模块），测试约定改为模块内 `src/test/` + 跨模块 `tests/`，YAGNI 清单更新 | 钱敏健决策私有化/信创主营，直接上 Java（Spring Boot + Spring AI） |
-| 2026-07-23 | 技术栈落定：`src/` 后端结构、`apps/` 前端组、YAGNI 清单 | 钱敏健确认 Schema 级隔离 + LLM 供应商无关化方案 |
+| 2026-07-23 | 技术栈由 Python 改为 Java：`src/`→`backend/`（Maven 多模块），测试约定改为模块内 `src/test/` + 跨模块 `tests/`，YAGNI 清单更新 | 项目负责人决策私有化/信创主营，直接上 Java（Spring Boot + Spring AI） |
+| 2026-07-23 | 技术栈落定：`src/` 后端结构、`apps/` 前端组、YAGNI 清单 | 项目负责人确认 Schema 级隔离 + LLM 供应商无关化方案 |
 | 2026-07-23 | 文档整合完成：15 份 docx 全部转为 `design/docs/*.md`，原 docx 归档 `design/his/`，§2.2 更新 docs/his 拆分约定 | M0 文档整合里程碑收尾 |
-| 2026-07-23 | 目录结构纠偏：`design/docs/*.md` 拍平到 `design/`；`design/his/` 迁至项目根 `doc/`；§1/§2.2 同步 | 对齐钱敏健原意（md 直接在 design 下、docx 在 doc 下），消除多余中间层 |
+| 2026-07-23 | 目录结构纠偏：`design/docs/*.md` 拍平到 `design/`；`design/his/` 迁至项目根 `doc/`；§1/§2.2 同步 | 对齐项目负责人原意（md 直接在 design 下、docx 在 doc 下），消除多余中间层 |
 | 2026-07-23 | `prd/` + `prompts/` 归档至 `doc/his/`，删除原目录；§1/§2.1/§2.3/§3/§4 同步 | 内容已被 design/*.md 完全取代，无活跃用途，统一归入只读留档 |
-| 2026-07-23 | 开发规范制定：§2.7 测试命名/目录/管理规则、§2.8 构建产物、§2.9 deploy/、§2.10 DB 脚本、§2.11 报告输出、§2.12 Prompt 资源、§2.13 tmp 扩展；新增 deploy/ + reports/ 目录；§4 新增包名/产物/报告红线 | 钱敏健确认 MVP 范围 + Maven + MyBatis-Plus，开发启动前约束先行 |
+| 2026-07-23 | 开发规范制定：§2.7 测试命名/目录/管理规则、§2.8 构建产物、§2.9 deploy/、§2.10 DB 脚本、§2.11 报告输出、§2.12 Prompt 资源、§2.13 tmp 扩展；新增 deploy/ + reports/ 目录；§4 新增包名/产物/报告红线 | 项目负责人确认 MVP 范围 + Maven + MyBatis-Plus，开发启动前约束先行 |
 | 2026-07-28 | §2.2 新增 `design/demo/` 子目录约定（交互原型 HTML Demo） | 学生端登录页三风格 Demo 需纳入版本管理，从 tmp/ 迁入正式目录 |
 | 2026-07-28 | 目录结构纠偏补漏：`design/docs/` 残留 2 份 md（16_语音情感分析/17_全感官交互）迁入 `design/` 并重编号为 54/55，删除空 `design/docs/` 目录 | 完成 2026-07-23 “拍平”决策的遗漏收尾 |
 | 2026-07-29 | 新增 §2.14 `data/` 内容资产目录（`data/knowledge-base/` 知识库语料，待审/已审约定） | KB-101 首批语料落档需正式位置（非 tmp 非 design），约束先行 |

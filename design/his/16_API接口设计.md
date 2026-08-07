@@ -1033,7 +1033,7 @@ public record RecommendedActions(
 | 教师工作台/预警队列/认领误报处置/回访 | §4.1-4.3 部分 | 🟩 | claim/false-positive/resolve/schedule-followup/complete-followup 已生效 |
 | 预警转派/升级/建个案 | §4.3 部分 | ⬜ | assign/escalate/create-case 设计期，归 WB-001/WB-003 |
 | 个案管理 | §4.4 | ⬜ | 无 CaseController/实体，归 WB-003 |
-| 测评管理 | §4.5 | ⬜ | 代码完全空白（无 Assessment 实体），归 SCALE-001/002；**施测接线上线门禁待钱敏健决策（见 10 §10.2）** |
+| 测评管理 | §4.5 | ⬜ | 代码完全空白（无 Assessment 实体），归 SCALE-001/002；**施测接线上线门禁待项目负责人决策（见 10 §10.2）** |
 | 预约/家校沟通/班主任协同 | §4.6-4.8 | ⬜ | 设计期；预约归 WB-003，班主任协同归 WB-002 字段裁剪衔接 |
 | 管理报表 | §4.9 | 🟫 | teacher-web 有统计页，报表端点覆盖度未逐一核对 |
 | 租户/用户管理 | §5.1-5.2 | 🟫 | platform/* 平台管理端点已实现（新增形态），与本文 admin/* 命名不一致，以实现为准 |
