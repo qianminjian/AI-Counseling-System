@@ -7,12 +7,24 @@
  */
 import type { TokenStorage } from './tokenStorage'
 
-export function handleSessionExpired(storage: TokenStorage, loginPath?: string): never {
-  storage.clear()
-  if (loginPath) {
-    window.location.href = loginPath
+/** 平台跳转实现（doing/73 T1：parent 注入 locationRedirect；P1 小程序端注入 Taro.reLaunch） */
+export type RedirectFn = (to: string) => void
+
+/** 缺省 H5 实现：有目标 → location.href 跳转；空串 → 整页刷新（保持迁移前双分支语义） */
+const defaultRedirect: RedirectFn = (to) => {
+  if (to) {
+    window.location.href = to
   } else {
     window.location.reload()
   }
+}
+
+export function handleSessionExpired(
+  storage: TokenStorage,
+  loginPath?: string,
+  redirect: RedirectFn = defaultRedirect
+): never {
+  storage.clear()
+  redirect(loginPath ?? '')
   throw new Error('登录已过期，请重新登录')
 }

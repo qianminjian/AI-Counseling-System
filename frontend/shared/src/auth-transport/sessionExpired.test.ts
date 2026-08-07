@@ -45,4 +45,26 @@ describe('handleSessionExpired', () => {
     expect(mockLocation.href).toBe('')
     expect(storage.getToken()).toBeNull()
   })
+
+  // doing/73 T1（AC-4）：redirect 注入 —— parent 平台适配层传入 PlatformRedirect（H5 为 locationRedirect）
+  it('redirect 注入 → 调用注入函数且不触碰 window.location', () => {
+    const storage = createSessionStorageTokens('app_')
+    storage.setToken('t')
+    const redirect = vi.fn()
+
+    expect(() => handleSessionExpired(storage, '/parent/', redirect)).toThrow('登录已过期')
+    expect(redirect).toHaveBeenCalledWith('/parent/')
+    expect(mockLocation.href).toBe('')
+    expect(mockLocation.reload).not.toHaveBeenCalled()
+    expect(storage.getToken()).toBeNull()
+  })
+
+  it('redirect 注入且缺省 loginPath → 注入函数收到空串（H5 实现内自行 reload 语义）', () => {
+    const storage = createSessionStorageTokens('app_')
+    const redirect = vi.fn()
+
+    expect(() => handleSessionExpired(storage, undefined, redirect)).toThrow('登录已过期')
+    expect(redirect).toHaveBeenCalledWith('')
+    expect(mockLocation.reload).not.toHaveBeenCalled()
+  })
 })

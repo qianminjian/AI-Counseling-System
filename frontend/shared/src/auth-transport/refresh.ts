@@ -7,11 +7,15 @@
  */
 import type { TokenStorage } from './tokenStorage'
 
-export async function refreshTokens(storage: TokenStorage, baseUrl = ''): Promise<boolean> {
+export async function refreshTokens(
+  storage: TokenStorage,
+  baseUrl = '',
+  fetchImpl: typeof fetch = fetch
+): Promise<boolean> {
   const rt = storage.getRefreshToken()
   if (!rt) return false
   try {
-    const res = await fetch(`${baseUrl}/api/v1/auth/refresh`, {
+    const res = await fetchImpl(`${baseUrl}/api/v1/auth/refresh`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ refreshToken: rt }),

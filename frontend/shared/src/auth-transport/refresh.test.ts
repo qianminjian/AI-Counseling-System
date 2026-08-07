@@ -61,4 +61,25 @@ describe('refreshTokens', () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('network')))
     expect(await refreshTokens(storage)).toBe(false)
   })
+
+  // doing/73 T1（AC-4）：fetchImpl 注入 —— parent 平台适配层传入 PlatformRequest 的 fetch 包装
+  it('fetchImpl 注入 → 使用注入实现而非全局 fetch', async () => {
+    storage.setRefreshToken('rt')
+    const injected = vi.fn().mockResolvedValue(
+      jsonResponse(200, { success: true, data: { token: 'nt', refreshToken: 'nr' } })
+    )
+    const globalFetch = vi.fn()
+    vi.stubGlobal('fetch', globalFetch)
+    expect(await refreshTokens(storage, '', injected)).toBe(true)
+    expect(injected).toHaveBeenCalledWith('/api/v1/auth/refresh', expect.objectContaining({ method: 'POST' }))
+    expect(globalFetch).not.toHaveBeenCalled()
+    expect(storage.getToken()).toBe('nt')
+  })
+
+  it('fetchImpl 注入且 baseUrl 非空 → URL 带前缀', async () => {
+    storage.setRefreshToken('rt')
+    const injected = vi.fn().mockResolvedValue(jsonResponse(200, { success: true, data: { token: 'nt', refreshToken: 'nr' } }))
+    await refreshTokens(storage, 'http://localhost:8080', injected)
+    expect(injected).toHaveBeenCalledWith('http://localhost:8080/api/v1/auth/refresh', expect.anything())
+  })
 })
