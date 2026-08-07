@@ -28,6 +28,10 @@ fi
 # 部署目标通过环境变量指定（不在仓库内硬编码生产 IP）
 # 建议写入 ~/.zshrc：export MINDSAFE_SERVER=user@<服务器IP>
 SERVER="${MINDSAFE_SERVER:-}"
+# SSH 长命令防断连挂起（2026-08-07 部署教训：远程 build/restart 无保活时，
+# 本机网络抖动断开会话 → 本地 ssh 挂起等待、远程构建进程被 SIGHUP 中断；
+# 30s 心跳 × 60 次 = 30 分钟窗口，足够覆盖后端 Maven 打包）
+SSH_OPTS=(-o ConnectTimeout=15 -o ServerAliveInterval=30 -o ServerAliveCountMax=60)
 if [ -z "${SERVER}" ]; then
   echo "ERROR: 必须设置 MINDSAFE_SERVER（如 export MINDSAFE_SERVER=mindsafe@<服务器IP>）"
   exit 1
@@ -72,15 +76,15 @@ if [ -n "$ROLLBACK_TARGET" ]; then
   echo "⏪ 重建 $ROLLBACK_TARGET..."
   case "$ROLLBACK_TARGET" in
     backend)
-      ssh "$SERVER" "cd $REMOTE_DIR/deploy && docker compose -f docker-compose.prod.yml build backend && docker compose -f docker-compose.prod.yml up -d backend"
+      ssh "${SSH_OPTS[@]}" "$SERVER" "cd $REMOTE_DIR/deploy && docker compose -f docker-compose.prod.yml build backend && docker compose -f docker-compose.prod.yml up -d backend"
       echo "✅ 后端已重建"
       ;;
     tts)
-      ssh "$SERVER" "cd $REMOTE_DIR/deploy && docker compose -f docker-compose.prod.yml build tts-service && docker compose -f docker-compose.prod.yml up -d tts-service"
+      ssh "${SSH_OPTS[@]}" "$SERVER" "cd $REMOTE_DIR/deploy && docker compose -f docker-compose.prod.yml build tts-service && docker compose -f docker-compose.prod.yml up -d tts-service"
       echo "✅ TTS 服务已重建"
       ;;
     voice)
-      ssh "$SERVER" "cd $REMOTE_DIR/deploy && docker compose -f docker-compose.prod.yml build voice-service && docker compose -f docker-compose.prod.yml up -d voice-service"
+      ssh "${SSH_OPTS[@]}" "$SERVER" "cd $REMOTE_DIR/deploy && docker compose -f docker-compose.prod.yml build voice-service && docker compose -f docker-compose.prod.yml up -d voice-service"
       echo "✅ Voice 服务已重建"
       ;;
     *)
@@ -272,14 +276,14 @@ rsync_retry -avz --exclude '.env' "$PROJECT_ROOT/deploy/" "$SERVER:$REMOTE_DIR/d
 
 # ===== 上传 service-manager.sh（确保服务器有最新版本） =====
 rsync_retry -avz "$PROJECT_ROOT/service-manager.sh" "$SERVER:$REMOTE_DIR/service-manager.sh"
-ssh "$SERVER" "chmod +x $REMOTE_DIR/service-manager.sh"
+ssh "${SSH_OPTS[@]}" "$SERVER" "chmod +x $REMOTE_DIR/service-manager.sh"
 
 # ===== 清理 CD 残留（DOC-063，2026-08-07） =====
 # 取消 CD 后，服务器 .env 中可能残留 CD 写入的 *_IMAGE 变量（ghcr.io tag），
 # 会污染 compose 默认 tag（mindsafe/*:local）语义；检测到即告警并幂等清理。
 # 注意：必须先为运行中容器的镜像补默认 tag 再删行——否则 compose image 回退默认值后，
 # 下次容器重建会尝试拉取 mindsafe/*:local（本地无此 tag → 失败）
-ssh "$SERVER" "cd $REMOTE_DIR/deploy && if grep -qE '^(BACKEND|VOICE_SERVICE|TTS_SERVICE)_IMAGE=' .env; then
+ssh "${SSH_OPTS[@]}" "$SERVER" "cd $REMOTE_DIR/deploy && if grep -qE '^(BACKEND|VOICE_SERVICE|TTS_SERVICE)_IMAGE=' .env; then
   echo '⚠️ 检测到 CD 残留 IMAGE 变量，自动清理（DOC-063 决策）'
   for spec in 'mindsafe-backend backend' 'mindsafe-voice voice-service' 'mindsafe-tts tts-service'; do
     set -- \$spec
@@ -303,7 +307,7 @@ if [ -n "$BUILD_TARGETS" ]; then
   # build 重试 3 次（对齐 CD pull 重试教训 doing/72 §2.2：服务器在线下载依赖同样受网络抖动影响）
   BUILD_OK=false
   for attempt in 1 2 3; do
-    if ssh "$SERVER" "cd $REMOTE_DIR/deploy && docker compose -f docker-compose.prod.yml build $BUILD_TARGETS"; then
+    if ssh "${SSH_OPTS[@]}" "$SERVER" "cd $REMOTE_DIR/deploy && docker compose -f docker-compose.prod.yml build $BUILD_TARGETS"; then
       BUILD_OK=true
       break
     fi
@@ -327,7 +331,7 @@ $DEPLOY_VOICE && RESTART_TARGETS="$RESTART_TARGETS voice"
 
 if [ -n "$RESTART_TARGETS" ]; then
   echo "🔄 重启服务:$RESTART_TARGETS"
-  if ! ssh "$SERVER" "cd $REMOTE_DIR && bash service-manager.sh restart $RESTART_TARGETS"; then
+  if ! ssh "${SSH_OPTS[@]}" "$SERVER" "cd $REMOTE_DIR && bash service-manager.sh restart $RESTART_TARGETS"; then
     echo "❌ 服务重启失败，请检查：ssh $SERVER 'cd $REMOTE_DIR && bash service-manager.sh status'"
     echo "   部署状态未更新，下次 deploy.sh 将重新部署"
     exit 1
