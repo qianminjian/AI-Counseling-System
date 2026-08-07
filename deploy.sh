@@ -84,7 +84,7 @@ if [ -n "$ROLLBACK_TARGET" ]; then
       echo "✅ Voice 服务已重建"
       ;;
     *)
-      echo "❌ 不支持回滚: $ROLLBACK_TARGET（支持 backend / tts / voice）"
+      echo "❌ 不支持回滚: ${ROLLBACK_TARGET}（支持 backend / tts / voice）"
       exit 1
       ;;
   esac
@@ -343,20 +343,56 @@ echo "DEPLOYED_AT=$(date -Iseconds)" >> "$STATE_FILE"
 
 # ===== 前端路径校验（2026-08-06 切换教训固化）=====
 # 宿主 nginx 静态 location 必须指向 deploy.sh 的部署目标目录（*-h5/dist），否则新构建不被服务
-check_nginx_path() {
-  local app="$1" deploy_dir="$2"
-  if ! ssh "$SERVER" "grep -q '$deploy_dir' /etc/nginx/nginx.conf" 2>/dev/null; then
-    echo "⚠️  nginx 未指向 $app 部署目标 $deploy_dir——前端可能仍在服务旧目录！"
-    echo "   修复: ssh $SERVER 修改 /etc/nginx/nginx.conf 中 $app 相关 location 的 root/alias 为 $deploy_dir，然后 nginx -t && nginx -s reload"
+# 2026-08-07 修复（DOC-063 实测）:
+# ① 变量一律 ${var} 包裹——bash 3.2（macOS 默认）在 UTF-8 locale 下会把 $var 后紧跟的
+#    全角字符首字节并入变量名，导致变量展开为空 + 中文标点丢字节（部署日志乱码根因）
+# ② 单次 ssh 会话完成全部校验 + 连接失败重试——本机网络（代理/运营商）会随机在 banner 阶段
+#    关闭 ssh 连接（kex_exchange_identification: Connection closed），独立 3 次连接失败率远高于
+#    1 次；旧实现 ssh 失败被 2>/dev/null 静默吞掉 → 误报"路径未对齐"（2026-08-07 parent 误报根因）
+check_nginx_paths() {
+  # $1 = 空格分隔的 app:path 列表（如 "student:/guju/.../student-h5/dist/"）
+  local specs="$1"
+  local attempt=1 rc=0 out=""
+  local cmd="" spec app dir
+  for spec in $specs; do
+    app="${spec%%:*}"
+    dir="${spec#*:}"
+    cmd="${cmd} if grep -q '${dir}' /etc/nginx/nginx.conf; then echo 'OK:${app}'; else echo 'MISS:${app}'; fi;"
+  done
+  while [ "$attempt" -le 3 ]; do
+    out=$(ssh -o ConnectTimeout=10 -o BatchMode=yes "$SERVER" "$cmd" 2>&1)
+    rc=$?
+    [ "$rc" -eq 0 ] && break
+    echo "⚠️  ssh 连接失败（第 ${attempt} 次），5s 后重试..."
+    sleep 5
+    attempt=$((attempt + 1))
+  done
+  if [ "$rc" -ne 0 ]; then
+    echo "⚠️  ssh 连接失败 3 次，无法校验 nginx 路径——请人工确认 nginx 配置后重跑"
     return 1
   fi
-  echo "✅ nginx $app 路径指向校验通过（$deploy_dir）"
+  local miss="" line
+  while read -r line; do
+    case "$line" in
+      OK:*)   echo "✅ nginx ${line#OK:} 路径指向校验通过" ;;
+      MISS:*) miss="${miss} ${line#MISS:}" ;;
+    esac
+  done <<< "$out"
+  if [ -n "$miss" ]; then
+    echo "⚠️  nginx 未指向部署目标：${miss}——前端可能仍在服务旧目录！"
+    echo "   修复: ssh ${SERVER} 修改 /etc/nginx/nginx.conf 对应 location 的 root/alias 后 nginx -t && nginx -s reload"
+    return 1
+  fi
   return 0
 }
 NGINX_PATH_FAIL=false
-$DEPLOY_STUDENT && ! check_nginx_path "student" "/guju/mindsafe/frontend/student-h5/dist/" && NGINX_PATH_FAIL=true
-$DEPLOY_TEACHER && ! check_nginx_path "teacher" "/guju/mindsafe/frontend/teacher-web/dist/" && NGINX_PATH_FAIL=true
-$DEPLOY_PARENT && ! check_nginx_path "parent" "/guju/mindsafe/frontend/parent-h5/dist/" && NGINX_PATH_FAIL=true
+if $DEPLOY_STUDENT || $DEPLOY_TEACHER || $DEPLOY_PARENT; then
+  NGINX_SPECS=""
+  $DEPLOY_STUDENT && NGINX_SPECS="${NGINX_SPECS} student:/guju/mindsafe/frontend/student-h5/dist/"
+  $DEPLOY_TEACHER && NGINX_SPECS="${NGINX_SPECS} teacher:/guju/mindsafe/frontend/teacher-web/dist/"
+  $DEPLOY_PARENT && NGINX_SPECS="${NGINX_SPECS} parent:/guju/mindsafe/frontend/parent-h5/dist/"
+  ! check_nginx_paths "$NGINX_SPECS" && NGINX_PATH_FAIL=true
+fi
 if [ "$NGINX_PATH_FAIL" = "true" ]; then
   echo "❌ 前端已部署但 nginx 路径未对齐，部署状态已更新；请按上方提示修复后重试"
   exit 1

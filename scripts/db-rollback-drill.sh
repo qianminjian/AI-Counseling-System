@@ -152,9 +152,9 @@ echo "验证方式：按计划逐文件执行 psql -f <文件>，每步后抽查
 
 if [ "$EXECUTE" -eq 1 ]; then
   for env in DB_HOST DB_PORT DB_NAME DB_USER DB_PASS; do
-    [ -z "${!env:-}" ] && { echo "错误：--execute 需要环境变量 $env（未设置，拒绝执行）" >&2; exit 3; }
+    [ -z "${!env:-}" ] && { echo "错误：--execute 需要环境变量 ${env}（未设置，拒绝执行）" >&2; exit 3; }
   done
-  echo "== 真实执行模式（对 $DB_HOST:$DB_PORT/$DB_NAME）=="
+  echo "== 真实执行模式（对 $DB_HOST:$DB_PORT/${DB_NAME}）=="
   [ -z "$PLAN" ] && exit 0
   echo "$PLAN" | sed '/^$/d' | while read -r rb; do
     echo ">>> psql -f $rb"

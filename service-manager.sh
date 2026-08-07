@@ -133,6 +133,19 @@ start_service() {
   log_info "启动 $svc ..."
 
   local compose_svc="${COMPOSE_NAME[$svc]}"
+
+  # nginx 特判（2026-08-07 修复，DOC-063 实测）：宿主 nginx 为 443 主入口，
+  # compose 的 nginx 服务未启用（容器 Created）；不执行 compose up（443 必被宿主
+  # nginx 占用 → bind 冲突报错 + 残留 mindsafe-nginx 容器），直接健康探测宿主 443
+  if [ "$svc" = "nginx" ]; then
+    if wait_healthy nginx; then
+      log_info "nginx 健康检查通过 ✓（宿主 nginx）"
+      return 0
+    fi
+    log_error "nginx 健康检查失败（宿主 nginx 443 未监听或站点异常）"
+    return 1
+  fi
+
   cd "$COMPOSE_DIR"
   docker compose -f docker-compose.prod.yml up -d "$compose_svc" 2>&1 | tail -3
 
@@ -220,8 +233,8 @@ check_frontend_dist() {
     fi
   done
   if [ -n "$missing" ]; then
-    log_error "前端 dist 缺失（$missing）——nginx 会静默挂载空目录导致前端空白"
-    log_error "请先发布前端：deploy.sh（本地）或 GitHub Actions deploy-frontend job（CI）"
+    log_error "前端 dist 缺失（${missing}）——nginx 会静默挂载空目录导致前端空白"
+    log_error "请先发布前端：本地执行 ./deploy.sh（DOC-063：唯一发布通道，CD 已取消）"
     return 1
   fi
   return 0

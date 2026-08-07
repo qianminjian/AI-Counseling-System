@@ -27,7 +27,7 @@ done
 
 cd "$REPO"
 if ! git rev-parse --is-inside-work-tree > /dev/null 2>&1; then
-  echo "错误：不是 git 仓库（$REPO）" >&2
+  echo "错误：不是 git 仓库（${REPO}）" >&2
   exit 1
 fi
 
