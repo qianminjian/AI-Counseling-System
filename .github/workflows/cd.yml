@@ -164,19 +164,63 @@ jobs:
 
   # P1-DEP：真实 SSH 部署（此前仅 echo 通知，无实际发布动作）
   # 前置：服务器已首次手动部署（/guju/mindsafe/deploy 含 .env），本 job 只做镜像切换 + 拉起
-  # AUD-009：deploy 与 rollback 共用 concurrency 组串行化（手动回滚与常规发布不可并发写 .env）；
-  #         事件收敛到 push main，workflow_dispatch 时不再误触发布
+  # AUD-009：deploy 与 deploy-frontend 拆组并行——实测共享组时 SSH Deploy 排队等 Rsync 20+ 分钟
+  #          纯浪费（两者操作不同资源：.env+镜像 vs dist）；rollback 独立组 + 操作纪律（见 rollback 注释）
+  # OPS-009：增量发布——从服务器 .cd-state-backend（缺省回退 .env 镜像 tag）读上次部署 SHA，
+  #          git diff 组件级映射（规则与 deploy.sh 的路径映射保持一致），仅 pull/up 变更服务；
+  #          无部署历史或 SHA 不可解析时安全回退全量
   deploy:
     name: SSH Deploy to Production
     runs-on: ubuntu-latest
     needs: build-and-push
     if: success() && github.event_name == 'workflow_run' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main'
     concurrency:
-      group: mindsafe-deploy
+      group: mindsafe-deploy-backend
       cancel-in-progress: false
     environment: production
 
     steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          # OPS-009：增量 diff 需要完整历史（git diff LAST_SHA..HEAD）
+          fetch-depth: 0
+
+      # OPS-009：组件变更检测（映射规则对齐 deploy.sh 路径映射：backend/、backend/tts-service/、
+      #          backend/voice-service/ 独立 context；scripts/sql/ 为 Flyway 迁移脚本 → backend）
+      - name: Detect changed services (incremental)
+        id: detect
+        run: |
+          set -euo pipefail
+          REMOTE_DIR=/guju/mindsafe
+          HOST="${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}"
+          LAST_SHA=$(ssh "$HOST" "grep '^LAST_DEPLOYED_SHA=' $REMOTE_DIR/deploy/.cd-state-backend 2>/dev/null | cut -d= -f2" || true)
+          if [ -z "$LAST_SHA" ]; then
+            # 历史部署无状态文件：回退 .env 镜像 tag（CD 写入的 7 位短 SHA）
+            LAST_SHA=$(ssh "$HOST" "grep '^BACKEND_IMAGE=' $REMOTE_DIR/deploy/.env 2>/dev/null | sed 's|.*/backend:||'" || true)
+          fi
+          SERVICES=""
+          if echo "$LAST_SHA" | grep -qE '^[0-9a-f]{7,40}$' && git rev-parse --verify -q "$LAST_SHA" >/dev/null 2>&1; then
+            CHANGED=$(git diff --name-only "$LAST_SHA" HEAD)
+            echo "$CHANGED" | grep -q '^backend/tts-service/' && SERVICES="$SERVICES tts-service"
+            echo "$CHANGED" | grep -q '^backend/voice-service/' && SERVICES="$SERVICES voice-service"
+            # backend 主体变更（排除 tts/voice 独立 context）+ 数据库迁移脚本 → backend
+            echo "$CHANGED" | grep '^backend/' | grep -v '^backend/tts-service/' | grep -qv '^backend/voice-service/' && SERVICES="$SERVICES backend"
+            echo "$CHANGED" | grep -qE '^scripts/sql/' && SERVICES="$SERVICES backend"
+            # compose/部署配置变更 → 全量（镜像引用、网络、环境变量都可能变）
+            echo "$CHANGED" | grep -qE '^(deploy/|deploy\.sh)' && SERVICES="backend voice-service tts-service"
+          else
+            echo "⚠️ 无部署历史或 SHA 不可解析（$LAST_SHA），执行全量部署"
+            SERVICES="backend voice-service tts-service"
+          fi
+          SERVICES=$(echo "$SERVICES" | tr ' ' '\n' | sort -u | tr '\n' ' ' | sed 's/ $//')
+          if [ -z "$SERVICES" ]; then
+            echo "✅ 后端组件无变更（上次 $LAST_SHA），跳过镜像部署"
+          else
+            echo "🎯 待部署服务:$SERVICES"
+          fi
+          echo "services=$SERVICES" >> "$GITHUB_OUTPUT"
+
       # ssh-key-action 在 runner 上安装的 key 未被后续 ssh 使用（实测 Permission denied），
       # 改用手写 ssh-agent 脚本：写 id_ed25519（ssh 默认查找）+ known_hosts + ssh-add，确定性可控
       - name: Install SSH key
@@ -192,7 +236,9 @@ jobs:
           eval "$(ssh-agent -s)" >/dev/null
           ssh-add ~/.ssh/id_ed25519
 
-      - name: Deploy via SSH
+      # 在服务器 .env 中把待部署服务镜像指向本次构建 tag（幂等替换；只处理变更检测命中的服务）
+      - name: Update .env image refs
+        if: steps.detect.outputs.services != ''
         run: |
           set -euo pipefail
           REMOTE_DIR=/guju/mindsafe
@@ -200,10 +246,7 @@ jobs:
           IMAGE_TAG=${SHA:0:7}
           # AUD-035：剔除 frontend——prod compose 无 frontend 服务（前端 dist 直传服务器，见 deploy-frontend job），
           # 此前 sed 循环死写入 FRONTEND_IMAGE 到 .env；frontend 镜像是否继续构建见 build-and-push job 注释
-          IMAGES="backend voice-service tts-service"
-
-          # 1. 在服务器 .env 中把各服务镜像指向本次构建 tag（幂等替换）
-          for svc in $IMAGES; do
+          for svc in ${{ steps.detect.outputs.services }}; do
             VAR=$(echo "${svc^^}-IMAGE" | tr '-' '_')
             LINE="${VAR}=${REGISTRY}/${IMAGE_PREFIX}/${svc}:${IMAGE_TAG}"
             # 幂等：有行则替换、无行则追加——服务器 .env 按 .env.example 初始化时没有
@@ -212,43 +255,73 @@ jobs:
               "cd $REMOTE_DIR/deploy && (grep -q \"^${VAR}=\" .env && sed -i \"s|^${VAR}=.*|${LINE}|\" .env || echo \"${LINE}\" >> .env)"
           done
 
-          # 2. AUD-003：幂等清理可能残留的 test 环境同名容器（docker-compose.test.yml 与 prod.yml
-          #    共用 container_name/mindsafe-internal 网络；残留会报 container name already in use）。
-          #    不触碰 postgres/redis（数据在 volume 中，up 时复用同名容器）
+      # AUD-003：幂等清理可能残留的 test 环境同名容器（docker-compose.test.yml 与 prod.yml
+      #    共用 container_name/mindsafe-internal 网络；残留会报 container name already in use）。
+      #    不触碰 postgres/redis（数据在 volume 中，up 时复用同名容器）
+      - name: Clean leftover containers
+        if: steps.detect.outputs.services != ''
+        run: |
           ssh "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
             "docker rm -f mindsafe-backend mindsafe-voice mindsafe-tts mindsafe-nginx 2>/dev/null || true"
 
-          # 3. 拉取新镜像并滚动重启（数据库/Redis 不动）
+      # OPS-008：pull 带 3 次重试——GHCR 网络抖动 unexpected EOF 实测：voice-service 437MB 大层
+      #          以 ~1MB/s 下载中断导致整次 compose pull 失败（已下载层保留，重试续传）；
+      #          up 不含 nginx——compose nginx 服务未启用（容器 Created 残留），bind 0.0.0.0:443
+      #          与宿主 nginx 冲突（deploy.sh 已注释此教训 2026-08-06，CD 此前未吸收）
+      - name: Pull & restart services
+        if: steps.detect.outputs.services != ''
+        run: |
+          set -euo pipefail
+          REMOTE_DIR=/guju/mindsafe
+          SERVICES="${{ steps.detect.outputs.services }}"
+          ssh "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" "
+            cd $REMOTE_DIR/deploy
+            PULLED=false
+            for attempt in 1 2 3; do
+              if docker compose -f docker-compose.prod.yml pull $SERVICES; then PULLED=true; break; fi
+              echo "⚠️ compose pull 第 \$attempt 次失败，60s 后重试（GHCR 网络抖动兜底）..." >&2
+              sleep 60
+            done
+            [ \"\$PULLED\" = true ] || { echo '❌ compose pull 重试 3 次仍失败'; exit 1; }
+            docker compose -f docker-compose.prod.yml up -d --no-deps $SERVICES
+          "
+
+      - name: Record deployed SHA (backend)
+        if: steps.detect.outputs.services != ''
+        run: |
+          SHA=${{ github.event.workflow_run.head_sha }}
           ssh "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
-            "cd $REMOTE_DIR/deploy && docker compose -f docker-compose.prod.yml pull backend voice-service tts-service nginx && docker compose -f docker-compose.prod.yml up -d --no-deps backend voice-service tts-service nginx"
+            "echo 'LAST_DEPLOYED_SHA=$SHA' > /guju/mindsafe/deploy/.cd-state-backend"
 
       - name: Health check (backend)
         run: |
-          # AUD-004：健康检查 URL 用 SMOKE_URL（域名）优先，缺省回退 https://DEPLOY_HOST；
-          # 加 -k 容忍「DEPLOY_HOST=IP + 证书绑定域名」场景（内网信任域，证书校验交给浏览器层）
-          HEALTH_URL="${{ secrets.SMOKE_URL }}"
-          if [ -z "$HEALTH_URL" ]; then
-            HEALTH_URL="https://${{ secrets.DEPLOY_HOST }}"
-          fi
-          for i in $(seq 1 30); do
-            code=$(curl -sk -o /dev/null -w '%{http_code}' "$HEALTH_URL/actuator/health" || true)
-            if [ "$code" = "200" ]; then echo "✅ backend healthy"; exit 0; fi
-            sleep 10
-          done
-          echo "❌ backend health check timeout"
-          exit 1
+          # OPS-008：健康检查走服务器本机宿主端口 18082（→ 容器 8080），与 compose healthcheck
+          # 路径一致，绕过公网 nginx 路径层——实测 /actuator/health 无 nginx location（404），
+          # /api/actuator/health 被 Spring Security 拦（403：permitAll 仅匹配无前缀路径）；
+          # 本机探针同时验证了「.env 镜像 tag 已生效且容器正常启动」
+          ssh "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" "
+            for i in \$(seq 1 30); do
+              code=\$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:18082/actuator/health || true)
+              if [ \"\$code\" = '200' ]; then echo '✅ backend healthy'; exit 0; fi
+              sleep 10
+            done
+            echo '❌ backend health check timeout'; exit 1
+          "
 
   # P0-4 修复：前端 dist 直传服务器
   # 背景：生产 nginx 直接挂载宿主机 frontend/<app>/dist 目录（docker-compose.prod.yml），
   #       frontend 镜像虽构建推送但生产从不消费——前端发布链路此前是断的。
   # 与 deploy.sh 的 rsync 模式对齐；rsync 前保留上一版 dist.prev 供回滚（P1-9）
+  # AUD-009：与 deploy 拆组并行（不同资源：dist vs 镜像/.env）；实测共享组时排队等 20+ 分钟
+  # OPS-009：增量发布——读服务器 .cd-state-frontend 做 git diff，仅构建/发布变更端；
+  #          无部署历史或 SHA 不可解析时安全回退全量
   deploy-frontend:
     name: Rsync Frontend Dist
     runs-on: ubuntu-latest
     needs: build-and-push
     if: success() && github.event_name == 'workflow_run' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main'
     concurrency:
-      group: mindsafe-deploy
+      group: mindsafe-deploy-frontend
       cancel-in-progress: false
     environment: production
 
@@ -256,9 +329,40 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
+          # OPS-009：增量 diff 需要完整历史（git diff LAST_SHA..HEAD）
+          fetch-depth: 0
+
+      # OPS-009：前端组件变更检测（模型投放脚本/前端 Dockerfile 变更 → 全量，模型进 student dist）
+      - name: Detect changed frontends (incremental)
+        id: detect
+        run: |
+          set -euo pipefail
+          HOST="${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}"
+          LAST_SHA=$(ssh "$HOST" "grep '^LAST_DEPLOYED_SHA=' /guju/mindsafe/deploy/.cd-state-frontend 2>/dev/null | cut -d= -f2" || true)
+          APPS=""
+          if echo "$LAST_SHA" | grep -qE '^[0-9a-f]{7,40}$' && git rev-parse --verify -q "$LAST_SHA" >/dev/null 2>&1; then
+            CHANGED=$(git diff --name-only "$LAST_SHA" HEAD)
+            echo "$CHANGED" | grep -q '^frontend/student-h5/' && APPS="$APPS student-h5"
+            echo "$CHANGED" | grep -q '^frontend/teacher-web/' && APPS="$APPS teacher-web"
+            echo "$CHANGED" | grep -q '^frontend/parent-h5/' && APPS="$APPS parent-h5"
+            # 模型投放脚本/前端 Dockerfile 变更 → 全量
+            echo "$CHANGED" | grep -qE '^(deploy/scripts/prepare-models\.sh|frontend/Dockerfile)' && APPS="student-h5 teacher-web parent-h5"
+          else
+            echo "⚠️ 无前端部署历史或 SHA 不可解析（$LAST_SHA），执行全量构建"
+            APPS="student-h5 teacher-web parent-h5"
+          fi
+          APPS=$(echo "$APPS" | tr ' ' '\n' | sort -u | tr '\n' ' ' | sed 's/ $//')
+          if [ -z "$APPS" ]; then
+            echo "✅ 前端组件无变更（上次 $LAST_SHA），跳过构建与发布"
+          else
+            echo "🎯 待构建前端:$APPS"
+          fi
+          echo "apps=$APPS" >> "$GITHUB_OUTPUT"
 
       # ARCH-009 E-5：模型不入仓（.gitignore），发布前必须投放；缓存加速（脚本未变更则命中）
+      # 仅 student-h5 需要模型，变更检测未命中时跳过（省 30-60s）
       - name: Cache model files
+        if: contains(steps.detect.outputs.apps, 'student-h5')
         uses: actions/cache@v4
         with:
           path: frontend/student-h5/public/models
@@ -275,23 +379,27 @@ jobs:
       # checkout 后 models/ 为空 → dist 无模型 → 生产 SAME_ORIGIN 404 无拦截；
       # 现任何失败即红，阻断发布）
       - name: Prepare & verify edge models
+        if: contains(steps.detect.outputs.apps, 'student-h5')
         run: |
           bash deploy/scripts/prepare-models.sh
           bash deploy/scripts/prepare-models.sh --verify
 
       - name: Build student-h5
+        if: contains(steps.detect.outputs.apps, 'student-h5')
         working-directory: frontend/student-h5
         run: |
           npm ci
           npm run build
 
       - name: Build teacher-web
+        if: contains(steps.detect.outputs.apps, 'teacher-web')
         working-directory: frontend/teacher-web
         run: |
           npm ci
           npm run build
 
       - name: Build parent-h5
+        if: contains(steps.detect.outputs.apps, 'parent-h5')
         working-directory: frontend/parent-h5
         run: |
           npm ci
@@ -312,18 +420,40 @@ jobs:
           eval "$(ssh-agent -s)" >/dev/null
           ssh-add ~/.ssh/id_ed25519
 
+      # rsync 前保留上一版 dist（回滚用）；只同步变更检测命中的端；
+      # OPS-008：rsync 3 次重试（对齐 deploy.sh rsync_retry，网络抖动兜底）
       - name: Rsync dist & keep previous for rollback
+        if: steps.detect.outputs.apps != ''
         run: |
           set -euo pipefail
           REMOTE_DIR=/guju/mindsafe
           HOST="${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}"
+          APPS="${{ steps.detect.outputs.apps }}"
           # 1. 服务器端保留上一版 dist（回滚用）
-          ssh "$HOST" "cd $REMOTE_DIR/frontend && for d in student-h5 teacher-web parent-h5; do rm -rf \$d/dist.prev && [ -d \$d/dist ] && mv \$d/dist \$d/dist.prev; done"
-          # 2. rsync 新 dist（与 deploy.sh 同参数：--delete 清理旧文件）
-          for app in student-h5 teacher-web parent-h5; do
-            rsync -avz --delete "frontend/$app/dist/" "$HOST:$REMOTE_DIR/frontend/$app/dist/"
+          ssh "$HOST" "cd $REMOTE_DIR/frontend && for d in $APPS; do rm -rf \$d/dist.prev && [ -d \$d/dist ] && mv \$d/dist \$d/dist.prev; done"
+          # 2. rsync 新 dist（与 deploy.sh 同参数：--delete 清理旧文件；3 次重试）
+          rsync_retry() {
+            local max_attempts=3 attempt=1
+            while [ $attempt -le $max_attempts ]; do
+              if rsync "$@"; then return 0; fi
+              echo "⚠️ rsync 第 $attempt 次失败，${attempt}s 后重试..."
+              sleep $attempt
+              attempt=$((attempt + 1))
+            done
+            echo "❌ rsync 重试 $max_attempts 次后仍失败"
+            return 1
+          }
+          for app in $APPS; do
+            rsync_retry -avz --delete "frontend/$app/dist/" "$HOST:$REMOTE_DIR/frontend/$app/dist/"
           done
           echo "✅ 前端 dist 已发布（上一版保留在 dist.prev）"
+
+      - name: Record deployed SHA (frontend)
+        if: steps.detect.outputs.apps != ''
+        run: |
+          SHA=${{ github.event.workflow_run.head_sha }}
+          ssh "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
+            "echo 'LAST_DEPLOYED_SHA=$SHA' > /guju/mindsafe/deploy/.cd-state-frontend"
 
       - name: Health check (frontend)
         run: |
@@ -343,13 +473,16 @@ jobs:
   # P1-9 修复：CD 手动回滚（workflow_dispatch 指定旧镜像 tag）
   # 后端/微服务：.env 镜像指向旧 tag → pull → up
   # 前端：服务器 dist.prev → dist（由 deploy-frontend 每次发布前保留）
+  # AUD-009：独立 concurrency 组（原与 deploy 同组会导致 deploy-frontend 排队）；
+  #          操作纪律：手动回滚前先在 Actions 页确认无进行中的自动发布（两者并发会
+  #          竞态写 .env / dist.prev，低频手动操作由人工规避）
   rollback:
     name: Rollback Deployment
     runs-on: ubuntu-latest
     if: github.event_name == 'workflow_dispatch'
-    # AUD-009：与 deploy/deploy-frontend 同组串行，避免并发写 .env / dist 竞态
+    # AUD-009：独立组（见 job 头部注释）；与 deploy/deploy-frontend 不互斥，操作纪律由人工把控
     concurrency:
-      group: mindsafe-deploy
+      group: mindsafe-deploy-rollback
       cancel-in-progress: false
     environment: production
 
@@ -405,18 +538,15 @@ jobs:
         run: |
           TARGETS=",${{ inputs.targets }},"
           if echo "$TARGETS" | grep -q ',backend,'; then
-            # AUD-004：与 deploy job 同策略——SMOKE_URL 优先 + -k
-            HEALTH_URL="${{ secrets.SMOKE_URL }}"
-            if [ -z "$HEALTH_URL" ]; then
-              HEALTH_URL="https://${{ secrets.DEPLOY_HOST }}"
-            fi
-            for i in $(seq 1 30); do
-              code=$(curl -sk -o /dev/null -w '%{http_code}' "$HEALTH_URL/actuator/health" || true)
-              if [ "$code" = "200" ]; then echo "✅ backend healthy after rollback"; exit 0; fi
-              sleep 10
-            done
-            echo "❌ backend health check timeout after rollback"
-            exit 1
+            # OPS-008：与 deploy job 同策略——服务器本机 18082 探针（绕过 nginx 路径层）
+            ssh "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" "
+              for i in \$(seq 1 30); do
+                code=\$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:18082/actuator/health || true)
+                if [ \"\$code\" = '200' ]; then echo '✅ backend healthy after rollback'; exit 0; fi
+                sleep 10
+              done
+              echo '❌ backend health check timeout after rollback'; exit 1
+            "
           fi
           echo "✅ rollback done (no backend in scope)"
 

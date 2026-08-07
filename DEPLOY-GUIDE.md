@@ -90,6 +90,13 @@
 > 触发链路（OPS-005 修复，2026-08-07）：`git push main` → CI 四个 job 全绿 → `workflow_run` 触发 CD
 > （cd.yml 不再使用跨 workflow needs——GitHub Actions 不支持，原配置导致 CD 从未运行）→
 > 构建推送 GHCR 镜像 → SSH 部署后端/微服务 + rsync 前端 dist → E2E 冒烟验证。CI 失败则 CD 不触发。
+>
+> **增量发布（OPS-009，2026-08-07）**：CD 从服务器 `.cd-state-backend` / `.cd-state-frontend`（缺省回退 `.env` 镜像 tag）
+> 读上次部署 SHA，`git diff` 按组件路径映射（backend/、backend/tts-service/、backend/voice-service/、frontend/*-h5/、
+> scripts/sql/、deploy/），**只 pull/up/rsync 变更组件**；无部署历史时安全回退全量。
+> 部署并发（AUD-009）：deploy（镜像）与 deploy-frontend（dist）拆组并行，实测从串行 20+ 分钟降到同时完成。
+> 健壮性（OPS-008）：compose pull 3 次重试（GHCR 网络抖动兜底）、rsync 3 次重试、
+> 健康检查走服务器本机 `127.0.0.1:18082/actuator/health`（绕过公网 nginx 路径层：`/actuator/health` 404、`/api/actuator/health` 403）。
 
 > 镜像仓库说明：默认使用 GHCR（免费、与 GitHub Actions 集成最简）。
 > 若国内拉取 GHCR 慢，可换用阿里云容器镜像服务 ACR（个人版免费），见第七节。
