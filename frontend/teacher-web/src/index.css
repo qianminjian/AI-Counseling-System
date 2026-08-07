@@ -26,10 +26,17 @@
   --ms-radius-pill: 24px;
   --ms-shadow-card: 0 4px 16px rgba(43, 168, 160, 0.08);
   --ms-shadow-tab: 0 2px 6px rgba(43, 168, 160, 0.12);
+  /* 框架 token（doing/75 方案 A） */
+  --ms-sider-bg: #163B38;             /* 工作台深青侧边栏 */
 }
 
 body {
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   -webkit-font-smoothing: antialiased;
+}
+
+/* 卡片：极浅青绿阴影（doing/75 方案 A 组件规格；antd 默认 bordered 卡无 shadow 属性，不冲突） */
+.ant-card {
+  box-shadow: var(--ms-shadow-card);
 }

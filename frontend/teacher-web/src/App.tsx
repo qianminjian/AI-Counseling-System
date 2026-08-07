@@ -40,6 +40,24 @@ export default function App() {
       colorError: '#D9534F',
       borderRadius: 8,
     },
+    components: {
+      // 工作台深青 Sider + 激活项青绿软填充（doing/75 方案 A）
+      Menu: {
+        darkItemBg: '#163B38',
+        darkSubMenuItemBg: '#163B38',
+        darkItemSelectedBg: 'rgba(43, 168, 160, 0.28)',
+        darkItemSelectedColor: '#FFFFFF',
+        darkItemColor: 'rgba(255, 255, 255, 0.75)',
+        darkItemHoverColor: '#FFFFFF',
+        darkItemHoverBg: 'rgba(255, 255, 255, 0.08)',
+      },
+      Layout: { siderBg: '#163B38' },
+      // 卡片：大圆角 + 极浅青绿阴影（doing/75 方案 A 组件规格）
+      Card: {
+        borderRadiusLG: 16,
+        boxShadowTertiary: '0 4px 16px rgba(43, 168, 160, 0.08)',
+      },
+    },
   }
 
   const [user, setUser] = useState(() => {

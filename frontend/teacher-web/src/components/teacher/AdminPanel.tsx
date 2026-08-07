@@ -194,7 +194,7 @@ export default function AdminPanel() {
             <span style={{ width: 100 }}>有效期（天）：</span>
             <InputNumber min={1} max={365} value={expireDays} onChange={setExpireDays} style={{ width: 120 }} />
           </div>
-          <div style={{ fontSize: 12, color: '#999' }}>
+          <div style={{ fontSize: 12, color: 'var(--ms-text-muted)' }}>
             邀请码为 8 位大写字母+数字组合，学校教师使用邀请码完成试用注册。
           </div>
         </div>

@@ -15,7 +15,7 @@ const RISK_DOT = { 3: 'var(--ms-danger)', 2: 'var(--ms-warning)', 1: 'var(--ms-w
 /** SLA 倒计时徽标（逾期红色闪烁提示） */
 function SlaBadge({ riskLevel, status, detectedAt }) {
   const sla = evaluateSla(riskLevel, status, detectedAt)
-  if (!sla.hasSla) return <span style={{ fontSize: 11, color: '#999' }}>无时限</span>
+  if (!sla.hasSla) return <span style={{ fontSize: 11, color: 'var(--ms-text-muted)' }}>无时限</span>
 
   if (sla.breached) {
     return (
@@ -27,7 +27,11 @@ function SlaBadge({ riskLevel, status, detectedAt }) {
   if (sla.remainingMin > 0) {
     const urgent = sla.remainingMin <= 5
     return (
-      <Tag color={urgent ? 'orange' : 'blue'} style={{ margin: 0 }}>
+      // 紧急（≤5min）保持语义橙；非紧急用青屿主色软底（替换 antd 默认蓝）
+      <Tag
+        color={urgent ? 'orange' : undefined}
+        style={urgent ? { margin: 0 } : { margin: 0, color: 'var(--ms-primary)', background: 'var(--ms-primary-soft)', borderColor: 'var(--ms-primary-soft)' }}
+      >
         <ClockCircleOutlined /> 剩 {sla.remainingMin}min
       </Tag>
     )
@@ -131,21 +135,21 @@ export default function TodayTodoPanel({ onNavigate }) {
                     style={{
                       display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px',
                       borderRadius: 8,
-                      background: sla.breached ? 'var(--ms-danger-soft)' : '#fafafa',
-                      border: sla.breached ? '1px solid var(--ms-danger-soft)' : '1px solid #f0f0f0',
+                      background: sla.breached ? 'var(--ms-danger-soft)' : 'var(--ms-bg-elevated)',
+                      border: sla.breached ? '1px solid var(--ms-danger-soft)' : '1px solid var(--ms-border-soft)',
                     }}
                   >
                     <span style={{
                       width: 10, height: 10, borderRadius: '50%', flexShrink: 0,
-                      background: RISK_DOT[a.riskLevel] || '#d9d9d9',
+                      background: RISK_DOT[a.riskLevel] || 'var(--ms-border)',
                     }} />
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                         <Tag color={RISK_COLORS[a.riskLevel]} style={{ margin: 0 }}>{RISK_LABELS[a.riskLevel]}</Tag>
                         <span style={{ fontWeight: 500 }}>{a.studentName}</span>
-                        <span style={{ fontSize: 12, color: '#999' }}>{a.riskType}</span>
+                        <span style={{ fontSize: 12, color: 'var(--ms-text-muted)' }}>{a.riskType}</span>
                       </div>
-                      <div style={{ fontSize: 12, color: '#999', marginTop: 2 }}>
+                      <div style={{ fontSize: 12, color: 'var(--ms-text-muted)', marginTop: 2 }}>
                         {dayjs(a.detectedAt).format('HH:mm')} · {a.status === 'claimed' ? '已认领' : '待认领'}
                       </div>
                     </div>
@@ -168,12 +172,12 @@ export default function TodayTodoPanel({ onNavigate }) {
               {followups.map(f => (
                 <div key={f.riskEventId} style={{
                   display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px',
-                  borderRadius: 8, background: 'var(--ms-success-soft)', border: '1px solid #d9f7be',
+                  borderRadius: 8, background: 'var(--ms-success-soft)', border: '1px solid var(--ms-success-soft)',
                 }}>
                   <CheckCircleOutlined style={{ color: 'var(--ms-success)' }} />
                   <div style={{ flex: 1 }}>
                     <span style={{ fontWeight: 500 }}>回访待完成</span>
-                    <span style={{ fontSize: 12, color: '#999', marginLeft: 8 }}>
+                    <span style={{ fontSize: 12, color: 'var(--ms-text-muted)', marginLeft: 8 }}>
                       {f.riskType} · 计划 {f.followUpAt ? dayjs(f.followUpAt).format('MM-DD HH:mm') : '尽快'}
                     </span>
                   </div>
@@ -197,11 +201,11 @@ export default function TodayTodoPanel({ onNavigate }) {
                 children: (
                   <div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <span style={{ fontSize: 12, color: '#999' }}>{dayjs(a.detectedAt).format('MM-DD HH:mm')}</span>
+                      <span style={{ fontSize: 12, color: 'var(--ms-text-muted)' }}>{dayjs(a.detectedAt).format('MM-DD HH:mm')}</span>
                       <Tag color={RISK_COLORS[a.riskLevel]} style={{ margin: 0, fontSize: 11 }}>{RISK_LABELS[a.riskLevel]}</Tag>
                       <span style={{ fontSize: 13 }}>{a.studentName}</span>
                     </div>
-                    <div style={{ fontSize: 12, color: '#999', marginTop: 2 }}>
+                    <div style={{ fontSize: 12, color: 'var(--ms-text-muted)', marginTop: 2 }}>
                       {a.riskType} · {a.status === 'resolved' ? '已处理 ✓' : a.status === 'claimed' ? '处理中' : '待处理'}
                     </div>
                   </div>

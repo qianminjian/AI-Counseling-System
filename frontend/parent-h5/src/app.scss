@@ -189,8 +189,34 @@ body {
     text-align: center;
     padding: 40px 0 24px;
 
-    .logo-emoji { font-size: 48px; display: block; margin-bottom: 12px; }
+    // 品牌图形：青绿软底圆形容器（替代裸 emoji，方案 A 克制原则）
+    .logo-emoji {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 72px;
+      height: 72px;
+      font-size: 36px;
+      border-radius: 50%;
+      background: var(--ms-primary-soft);
+      margin-bottom: 16px;
+      box-shadow: var(--ms-shadow-tab);
+    }
   }
+}
+
+// 隐私链接
+.privacy-link {
+  color: var(--ms-primary);
+  text-decoration: underline;
+}
+
+// 隐私告知正文（PIPL 页）
+.privacy-text {
+  font-size: 14px;
+  color: var(--ms-text-secondary);
+  line-height: 1.8;
+  margin-bottom: 14px;
 }
 
 // 切换标签
@@ -331,6 +357,11 @@ body {
         border-radius: 12px;
         background: var(--ms-success-soft);
         color: var(--ms-success);
+
+        // 风险等级语义色（对齐 04 风险识别规则库四级口径）
+        &[data-level='4'], &[data-level='5'] { background: var(--ms-danger-soft); color: var(--ms-danger); }
+        &[data-level='3'] { background: var(--ms-warning-soft); color: var(--ms-warning); }
+        &[data-level='2'] { background: var(--ms-success-soft); color: var(--ms-success); }
       }
     }
   }

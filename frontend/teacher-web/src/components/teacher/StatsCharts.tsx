@@ -36,7 +36,17 @@ function ChartBox({ option, height = 260 }) {
   return <div ref={ref} style={{ width: '100%', height }} />
 }
 
-const RISK_COLORS = { 1: 'var(--ms-warning)', 2: 'var(--ms-warning)', 3: 'var(--ms-danger)' }
+// ECharts canvas 绘制不支持 CSS var()，须用真实色值（与 index.css token 同步，doing/75 方案 A）
+const MS = {
+  primary: '#2BA8A0',
+  primaryDeep: '#1E7F7A',
+  primarySoft: 'rgba(43, 168, 160, 0.08)',
+  primaryMid: 'rgba(43, 168, 160, 0.45)',
+  warning: '#D98E32',
+  danger: '#D9534F',
+}
+
+const RISK_COLORS = { 1: MS.warning, 2: MS.warning, 3: MS.danger }
 
 /** 30 天会话趋势折线图 */
 export function SessionTrendChart({ data }) {
@@ -54,9 +64,9 @@ export function SessionTrendChart({ data }) {
       type: 'line',
       data: data?.map(d => d.count) || [],
       smooth: true,
-      areaStyle: { color: 'rgba(24,144,255,0.08)' },
-      lineStyle: { color: 'var(--ms-primary)', width: 2 },
-      itemStyle: { color: 'var(--ms-primary)' },
+      areaStyle: { color: MS.primarySoft },
+      lineStyle: { color: MS.primary, width: 2 },
+      itemStyle: { color: MS.primary },
     }],
   }
   return <ChartBox option={option} height={220} />
@@ -99,14 +109,15 @@ export function ClassBarChart({ data }) {
         name: '预警数',
         type: 'bar',
         data: data?.map(d => d.alertCount) || [],
-        itemStyle: { color: 'var(--ms-danger)', borderRadius: [3, 3, 0, 0] },
+        itemStyle: { color: MS.danger, borderRadius: [3, 3, 0, 0] },
         barMaxWidth: 28,
       },
       {
         name: '学生数',
         type: 'bar',
         data: data?.map(d => d.studentCount) || [],
-        itemStyle: { color: '#91d5ff', borderRadius: [3, 3, 0, 0] },
+        // 青屿主色系（替换 antd 默认蓝 #91d5ff）
+        itemStyle: { color: MS.primaryMid, borderRadius: [3, 3, 0, 0] },
         barMaxWidth: 28,
       },
     ],
@@ -132,9 +143,10 @@ export function EmotionBarChart({ data }) {
       data: sorted.map(d => d.count),
       itemStyle: {
         borderRadius: [0, 3, 3, 0],
+        // 青屿渐变（主色 → 主色加深，替换 antd 默认蓝）
         color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
-          { offset: 0, color: '#83bff6' },
-          { offset: 1, color: '#188df0' },
+          { offset: 0, color: '#8FD4CF' },
+          { offset: 1, color: MS.primaryDeep },
         ]),
       },
       barMaxWidth: 18,

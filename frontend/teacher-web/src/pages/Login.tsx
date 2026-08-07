@@ -42,13 +42,36 @@ export default function Login({ onLogin }) {
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      background: 'linear-gradient(135deg, var(--ms-primary) 0%, var(--ms-primary-strong) 100%)',
+      background: 'var(--ms-bg)',
+      position: 'relative',
+      overflow: 'hidden',
     }}>
-      <Card style={{ width: 380, borderRadius: 12, boxShadow: '0 8px 32px rgba(0,0,0,0.1)' }}>
+      {/* 右上青绿渐变光晕（doing/75 方案 A：克制光晕，非整屏渐变） */}
+      <div style={{
+        position: 'absolute',
+        top: -120,
+        right: -120,
+        width: 420,
+        height: 420,
+        borderRadius: '50%',
+        background: 'radial-gradient(circle, rgba(43,168,160,0.18) 0%, rgba(43,168,160,0) 70%)',
+      }} />
+      <Card style={{ width: 380, borderRadius: 'var(--ms-radius-card)', boxShadow: 'var(--ms-shadow-card)', position: 'relative' }}>
         <div style={{ textAlign: 'center', marginBottom: 24 }}>
-          <div style={{ fontSize: 40 }}>🛡️</div>
-          <h2 style={{ margin: '8px 0 4px', fontSize: 20 }}>MindSafe 教师工作台</h2>
-          <p style={{ color: '#999', fontSize: 13 }}>AI 小学生心理辅导系统</p>
+          <div style={{
+            width: 72,
+            height: 72,
+            margin: '0 auto',
+            borderRadius: '50%',
+            background: 'var(--ms-primary-soft)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: 36,
+            boxShadow: 'var(--ms-shadow-tab)',
+          }}>🛡️</div>
+          <h2 style={{ margin: '16px 0 4px', fontSize: 20 }}>MindSafe 教师工作台</h2>
+          <p style={{ color: 'var(--ms-text-muted)', fontSize: 13 }}>AI 小学生心理辅导系统</p>
         </div>
         <Form onFinish={handleSubmit} size="large">
           <Form.Item name="username" rules={[{ required: true, message: '请输入用户名' }]}>

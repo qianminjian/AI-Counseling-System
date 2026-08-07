@@ -9,7 +9,7 @@ const RISK_COLORS = { 3: 'red', 2: 'orange', 1: 'gold', 0: 'default' }
 const RISK_LABELS = { 3: '红色', 2: '橙色', 1: '黄色', 0: '绿色' }
 const STATUS_MAP = {
   open: { text: '待处理', color: 'red' },
-  claimed: { text: '已认领', color: 'blue' },
+  // claimed 由 render 特判为青屿主色软底（antd preset 无对应色）
   resolved: { text: '已解决', color: 'green' },
   false_positive: { text: '误报', color: 'default' },
 }
@@ -88,14 +88,23 @@ export default function AlertQueue() {
       title: 'SLA', width: 110,
       render: (_, r) => {
         const sla = evaluateSla(r.riskLevel, r.status, r.detectedAt)
-        if (!sla.hasSla) return <span style={{ fontSize: 12, color: '#999' }}>无时限</span>
+        if (!sla.hasSla) return <span style={{ fontSize: 12, color: 'var(--ms-text-muted)' }}>无时限</span>
         if (sla.breached) {
           return <Tag color="red" style={{ margin: 0, fontWeight: 600 }}>逾期 {sla.overdueMin}min</Tag>
         }
         if (sla.remainingMin > 0) {
-          return <Tag color={sla.remainingMin <= 5 ? 'orange' : 'blue'} style={{ margin: 0 }}>剩 {sla.remainingMin}min</Tag>
+          // 紧急（≤5min）保持语义橙；非紧急用青屿主色软底（替换 antd 默认蓝）
+          const urgent = sla.remainingMin <= 5
+          return (
+            <Tag
+              color={urgent ? 'orange' : undefined}
+              style={urgent ? { margin: 0 } : { margin: 0, color: 'var(--ms-primary)', background: 'var(--ms-primary-soft)', borderColor: 'var(--ms-primary-soft)' }}
+            >
+              剩 {sla.remainingMin}min
+            </Tag>
+          )
         }
-        return <span style={{ fontSize: 12, color: '#999' }}>已关闭</span>
+        return <span style={{ fontSize: 12, color: 'var(--ms-text-muted)' }}>已关闭</span>
       },
       sorter: (a, b) => {
         const wa = evaluateSla(a.riskLevel, a.status, a.detectedAt)
@@ -110,6 +119,10 @@ export default function AlertQueue() {
     {
       title: '状态', dataIndex: 'status', width: 90,
       render: (v) => {
+        // 已认领：中性状态用青屿主色软底（替换 antd 默认蓝）
+        if (v === 'claimed') {
+          return <Tag style={{ margin: 0, color: 'var(--ms-primary)', background: 'var(--ms-primary-soft)', borderColor: 'var(--ms-primary-soft)' }}>已认领</Tag>
+        }
         const s = STATUS_MAP[v] || { text: v, color: 'default' }
         return <Tag color={s.color}>{s.text}</Tag>
       },
@@ -198,7 +211,7 @@ export default function AlertQueue() {
         okText="确认处理"
         cancelText="取消"
       >
-        <p style={{ marginBottom: 8, color: '#666' }}>
+        <p style={{ marginBottom: 8, color: 'var(--ms-text-secondary)' }}>
           请记录线下干预措施（可选，将存入学生档案）：
         </p>
         <Input.TextArea

@@ -159,15 +159,22 @@ export default function Dashboard({ user, onLogout, darkMode, toggleDark }) {
   return (
     <Layout style={{ minHeight: '100vh' }}>
       <OnboardingGuide />
-      {/* 桌面端侧边栏 */}
+      {/* 桌面端侧边栏（doing/75 方案 A：深青 #163B38 + 激活项青绿软填充） */}
       {!isMobile && (
-        <Sider theme="light" width={220} style={{ borderRight: '1px solid #f0f0f0' }}>
+        <Sider theme="dark" width={220} style={{ background: 'var(--ms-sider-bg)' }}>
           <div style={{ padding: '20px 16px', textAlign: 'center' }}>
-            <div style={{ fontSize: 28 }}>🛡️</div>
-            <div style={{ fontWeight: 600, fontSize: 15, marginTop: 4 }}>MindSafe</div>
-            <div style={{ fontSize: 12, color: '#999', marginTop: 2 }}>学生心理守护平台</div>
+            {/* 品牌图形：青绿软底圆形容器（呼应登录页，克制原则） */}
+            <div style={{
+              width: 44, height: 44, margin: '0 auto',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              borderRadius: '50%', background: 'var(--ms-primary-soft)',
+              boxShadow: 'var(--ms-shadow-tab)', fontSize: 22,
+            }}>🛡️</div>
+            <div style={{ fontWeight: 600, fontSize: 15, marginTop: 8, color: '#fff' }}>MindSafe</div>
+            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.65)', marginTop: 2 }}>学生心理守护平台</div>
           </div>
           <Menu
+            theme="dark"
             mode="inline"
             selectedKeys={[tab]}
             onClick={({ key }) => setTab(key)}
@@ -180,7 +187,7 @@ export default function Dashboard({ user, onLogout, darkMode, toggleDark }) {
         <Header style={{
           background: '#fff', padding: isMobile ? '0 12px' : '0 24px', display: 'flex',
           alignItems: 'center', justifyContent: 'space-between',
-          borderBottom: '1px solid #f0f0f0', height: 56,
+          borderBottom: '1px solid var(--ms-border)', height: 56,
         }}>
           <span style={{ fontSize: 16, fontWeight: 600 }}>
             {isMobile && '🛡️ '}{TITLES[tab]}
@@ -189,15 +196,15 @@ export default function Dashboard({ user, onLogout, darkMode, toggleDark }) {
             <span onClick={toggleDark} style={{ cursor: 'pointer', fontSize: 16 }} title={darkMode ? '切换亮色' : '切换暗色'}>
               {darkMode ? '☀️' : '🌙'}
             </span>
-            {!isMobile && <span style={{ fontSize: 13, color: '#666' }}>{user.displayName}</span>}
-            <a onClick={onLogout} style={{ fontSize: 13, color: '#999' }}>
+            {!isMobile && <span style={{ fontSize: 13, color: 'var(--ms-text-secondary)' }}>{user.displayName}</span>}
+            <a onClick={onLogout} style={{ fontSize: 13, color: 'var(--ms-text-muted)' }}>
               <LogoutOutlined /> {isMobile ? '' : '退出'}
             </a>
           </div>
         </Header>
 
         <Content style={{
-          padding: isMobile ? 12 : 24, background: '#f5f5f5', overflow: 'auto',
+          padding: isMobile ? 12 : 24, background: 'var(--ms-bg)', overflow: 'auto',
           paddingBottom: isMobile ? 72 : 24, // 底部 Tab 栏留白
         }}>
           {tab === 'overview' && <OverviewPanel onNavigate={setTab} />}
@@ -214,7 +221,7 @@ export default function Dashboard({ user, onLogout, darkMode, toggleDark }) {
       {isMobile && (
         <div style={{
           position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 100,
-          background: '#fff', borderTop: '1px solid #f0f0f0',
+          background: 'var(--ms-bg-elevated)', borderTop: '1px solid var(--ms-border)',
           display: 'flex', justifyContent: 'space-around', padding: '8px 0 env(safe-area-inset-bottom)',
         }}>
           {menuItems.map(item => (
@@ -224,7 +231,7 @@ export default function Dashboard({ user, onLogout, darkMode, toggleDark }) {
               style={{
                 border: 'none', background: 'none', cursor: 'pointer',
                 display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
-                color: tab === item.key ? 'var(--ms-primary)' : '#999', fontSize: 11,
+                color: tab === item.key ? 'var(--ms-primary)' : 'var(--ms-text-muted)', fontSize: 11,
               }}
             >
               <span style={{ fontSize: 20 }}>{item.icon}</span>

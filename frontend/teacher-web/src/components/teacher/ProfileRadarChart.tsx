@@ -39,17 +39,19 @@ export default function ProfileRadarChart({ studentId }) {
         indicator: indicators,
         shape: 'polygon',
         radius: '65%',
-        axisName: { color: '#666', fontSize: 12 },
-        splitArea: { areaStyle: { color: ['#f5f5f5', '#fff'] } },
+        // ECharts canvas 绘制不支持 CSS var()，用 token 对应色值（doing/75 方案 A）
+        axisName: { color: '#5C6B76', fontSize: 12 },
+        splitArea: { areaStyle: { color: ['#F4F7F6', '#FFFFFF'] } },
       },
       series: [{
         type: 'radar',
         data: [{
           value: values,
           name: '心理画像',
-          areaStyle: { color: 'rgba(24, 144, 255, 0.2)' },
-          lineStyle: { color: 'var(--ms-primary)', width: 2 },
-          itemStyle: { color: 'var(--ms-primary)' },
+          // 青屿主色（替换 antd 默认蓝；canvas 不支持 var()，用真实色值）
+          areaStyle: { color: 'rgba(43, 168, 160, 0.2)' },
+          lineStyle: { color: '#2BA8A0', width: 2 },
+          itemStyle: { color: '#2BA8A0' },
         }],
       }],
     })
@@ -91,7 +93,7 @@ export default function ProfileRadarChart({ studentId }) {
     <Card
       title="心理画像"
       size="small"
-      extra={<span style={{ fontSize: 12, color: '#999' }}>累计 {data.totalSessions} 次会话</span>}
+      extra={<span style={{ fontSize: 12, color: 'var(--ms-text-muted)' }}>累计 {data.totalSessions} 次会话</span>}
     >
       {/* 雷达图 */}
       <div ref={chartRef} style={{ width: '100%', height: 280 }} />
@@ -106,7 +108,7 @@ export default function ProfileRadarChart({ studentId }) {
               children: (
                 <span style={{ fontSize: 13 }}>
                   <Tag color="green" style={{ margin: 0 }}>{m.label}</Tag>
-                  {m.period && <span style={{ marginLeft: 8, color: '#999', fontSize: 12 }}>{m.period}</span>}
+                  {m.period && <span style={{ marginLeft: 8, color: 'var(--ms-text-muted)', fontSize: 12 }}>{m.period}</span>}
                 </span>
               ),
             }))}

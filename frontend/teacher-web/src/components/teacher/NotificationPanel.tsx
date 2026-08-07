@@ -37,7 +37,7 @@ export default function NotificationPanel() {
     3: 'var(--ms-danger)',
     2: 'var(--ms-warning)',
     1: 'var(--ms-warning)',
-    0: '#d9d9d9',
+    0: 'var(--ms-border)',
   }
 
   return (
@@ -50,7 +50,7 @@ export default function NotificationPanel() {
           size="small"
           style={{
             marginBottom: 12,
-            borderLeft: `3px solid ${SEVERITY_BORDER[item.severity] || '#d9d9d9'}`,
+            borderLeft: `3px solid ${SEVERITY_BORDER[item.severity] || 'var(--ms-border)'}`,
           }}
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>

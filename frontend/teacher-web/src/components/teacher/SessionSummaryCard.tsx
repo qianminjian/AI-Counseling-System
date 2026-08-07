@@ -60,7 +60,8 @@ export default function SessionSummaryCard({ sessionId }) {
       <Space direction="vertical" size={8} style={{ width: '100%' }}>
         <div>
           <Text strong>主要话题：</Text>
-          <Tag color="blue">{summary.mainTopic || '未识别'}</Tag>
+          {/* 非语义色：青屿主色软底（替换 antd 默认蓝） */}
+          <Tag style={{ color: 'var(--ms-primary)', background: 'var(--ms-primary-soft)', borderColor: 'var(--ms-primary-soft)' }}>{summary.mainTopic || '未识别'}</Tag>
         </div>
 
         <div>

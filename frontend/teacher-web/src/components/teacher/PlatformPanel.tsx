@@ -58,7 +58,7 @@ export default function PlatformPanel() {
         </Col>
         <Col xs={12} sm={8} md={4}>
           <Card size="small"><Statistic title="累计会话" value={overview?.totalSessions || 0}
-            prefix={<MessageOutlined />} valueStyle={{ color: '#722ed1' }} /></Card>
+            prefix={<MessageOutlined />} valueStyle={{ color: 'var(--ms-primary)' }} /></Card>
         </Col>
         <Col xs={12} sm={8} md={4}>
           <Card size="small"><Statistic title="待处理预警" value={overview?.openAlerts || 0}

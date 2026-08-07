@@ -16,18 +16,18 @@ function WeeklyChart({ data }) {
     <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, height: 120, padding: '0 4px' }}>
       {data.map((d) => (
         <div key={d.date} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-          <span style={{ fontSize: 11, color: '#666' }}>{d.count}</span>
+          <span style={{ fontSize: 11, color: 'var(--ms-text-secondary)' }}>{d.count}</span>
           <div
             style={{
               width: '100%',
               maxWidth: 32,
               height: `${Math.max((d.count / max) * 80, 4)}px`,
-              background: d.count > 0 ? 'linear-gradient(to top, var(--ms-danger), #ffa39e)' : '#f0f0f0',
+              background: d.count > 0 ? 'linear-gradient(to top, var(--ms-danger), var(--ms-danger-soft))' : 'var(--ms-border-soft)',
               borderRadius: 4,
               transition: 'height 0.3s ease',
             }}
           />
-          <span style={{ fontSize: 10, color: '#999' }}>{d.date.slice(5)}</span>
+          <span style={{ fontSize: 10, color: 'var(--ms-text-muted)' }}>{d.date.slice(5)}</span>
         </div>
       ))}
     </div>
@@ -120,7 +120,7 @@ export default function OverviewPanel({ onNavigate }) {
               title="待处理预警"
               value={dashboard?.pendingAlerts ?? 0}
               prefix={<AlertOutlined style={{ color: 'var(--ms-danger)' }} />}
-              valueStyle={{ color: dashboard?.pendingAlerts > 0 ? 'var(--ms-danger)' : '#3f8600' }}
+              valueStyle={{ color: dashboard?.pendingAlerts > 0 ? 'var(--ms-danger)' : 'var(--ms-success)' }}
             />
           </Card>
         </Col>
@@ -151,7 +151,7 @@ export default function OverviewPanel({ onNavigate }) {
               prefix={<SmileOutlined style={{ color: 'var(--ms-success)' }} />}
               valueStyle={{ color: (dashboard?.avgSatisfaction ?? 0) >= 3.5 ? 'var(--ms-success)' : 'var(--ms-warning)' }}
             />
-            <div style={{ fontSize: 11, color: '#999', marginTop: 4 }}>
+            <div style={{ fontSize: 11, color: 'var(--ms-text-muted)', marginTop: 4 }}>
               {dashboard?.satisfactionCount ?? 0} 条评价
             </div>
           </Card>
@@ -199,7 +199,7 @@ export default function OverviewPanel({ onNavigate }) {
             extra={<a onClick={() => onNavigate('students')}>查看全部</a>}
           >
             {highRisk.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '24px 0', color: '#999' }}>
+              <div style={{ textAlign: 'center', padding: '24px 0', color: 'var(--ms-text-muted)' }}>
                 暂无高风险学生 🎉
               </div>
             ) : (
@@ -207,12 +207,12 @@ export default function OverviewPanel({ onNavigate }) {
                 {highRisk.slice(0, 5).map((s) => (
                   <div key={s.studentUserId} style={{
                     display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                    padding: '8px 12px', background: '#fafafa', borderRadius: 6,
+                    padding: '8px 12px', background: 'var(--ms-bg-elevated)', borderRadius: 6,
                   }}>
                     <span>{s.displayName}</span>
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                       <Tag color={RISK_COLORS[s.maxRiskLevel]}>{RISK_LABELS[s.maxRiskLevel]}</Tag>
-                      <span style={{ fontSize: 12, color: '#999' }}>{s.openAlertCount} 条预警</span>
+                      <span style={{ fontSize: 12, color: 'var(--ms-text-muted)' }}>{s.openAlertCount} 条预警</span>
                     </div>
                   </div>
                 ))}
@@ -243,24 +243,24 @@ function SatisfactionCard() {
       <Row gutter={16} align="middle">
         <Col span={6} style={{ textAlign: 'center' }}>
           <div style={{ fontSize: 32, fontWeight: 700, color: 'var(--ms-warning)' }}>{data.avgRating}</div>
-          <div style={{ fontSize: 12, color: '#999' }}>平均评分（共 {data.totalRated} 次）</div>
+          <div style={{ fontSize: 12, color: 'var(--ms-text-muted)' }}>平均评分（共 {data.totalRated} 次）</div>
         </Col>
         <Col span={6} style={{ textAlign: 'center' }}>
           <div style={{ fontSize: 32, fontWeight: 700, color: 'var(--ms-success)' }}>{data.recentAvg}</div>
-          <div style={{ fontSize: 12, color: '#999' }}>近 7 天（{data.recentCount} 次）</div>
+          <div style={{ fontSize: 12, color: 'var(--ms-text-muted)' }}>近 7 天（{data.recentCount} 次）</div>
         </Col>
         <Col span={12}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
             {data.distribution?.map(d => (
               <div key={d.stars} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <span style={{ width: 36, fontSize: 12 }}>{d.stars}★</span>
-                <div style={{ flex: 1, height: 10, background: '#f0f0f0', borderRadius: 5, overflow: 'hidden' }}>
+                <div style={{ flex: 1, height: 10, background: 'var(--ms-border-soft)', borderRadius: 5, overflow: 'hidden' }}>
                   <div style={{
                     width: `${data.totalRated ? d.count / data.totalRated * 100 : 0}%`,
                     height: '100%', background: 'var(--ms-warning)', borderRadius: 5,
                   }} />
                 </div>
-                <span style={{ width: 24, fontSize: 11, color: '#999', textAlign: 'right' }}>{d.count}</span>
+                <span style={{ width: 24, fontSize: 11, color: 'var(--ms-text-muted)', textAlign: 'right' }}>{d.count}</span>
               </div>
             ))}
           </div>

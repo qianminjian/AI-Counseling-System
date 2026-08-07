@@ -50,10 +50,14 @@ function SessionMessagesDrawer({ sessionId, onClose }) {
           renderItem={(msg) => (
             <List.Item style={{ display: 'block', padding: '8px 0' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-                <Tag color={msg.senderType === 'student' ? 'blue' : 'green'} style={{ margin: 0 }}>
+                {/* 学生：青屿主色软底（替换 antd 默认蓝）；AI：语义绿 */}
+                <Tag
+                  style={msg.senderType === 'student' ? { margin: 0, color: 'var(--ms-primary)', background: 'var(--ms-primary-soft)', borderColor: 'var(--ms-primary-soft)' } : { margin: 0 }}
+                  color={msg.senderType === 'student' ? undefined : 'green'}
+                >
                   {msg.senderType === 'student' ? '学生' : 'AI'}
                 </Tag>
-                <span style={{ fontSize: 11, color: '#999' }}>第 {msg.turnCount} 轮</span>
+                <span style={{ fontSize: 11, color: 'var(--ms-text-muted)' }}>第 {msg.turnCount} 轮</span>
                 {msg.emotionLabel && <Tag style={{ margin: 0, fontSize: 11 }}>{emotionLabel(msg.emotionLabel)}</Tag>}
                 {msg.riskLevel > 0 && (
                   <Tag color={RISK_COLORS[msg.riskLevel]} style={{ margin: 0, fontSize: 11 }}>
@@ -61,7 +65,7 @@ function SessionMessagesDrawer({ sessionId, onClose }) {
                   </Tag>
                 )}
               </div>
-              <div style={{ fontSize: 13, color: '#333', lineHeight: 1.5 }}>{msg.contentSummary}</div>
+              <div style={{ fontSize: 13, color: 'var(--ms-text)', lineHeight: 1.5 }}>{msg.contentSummary}</div>
             </List.Item>
           )}
         />
@@ -126,7 +130,7 @@ function StudentProfile({ studentId, onBack }) {
             {profile.maxRiskLevel != null ? (
               <Tag color={RISK_COLORS[profile.maxRiskLevel]}>{RISK_LABELS[profile.maxRiskLevel]}</Tag>
             ) : (
-              <span style={{ color: '#999' }}>无权查看</span>
+              <span style={{ color: 'var(--ms-text-muted)' }}>无权查看</span>
             )}
           </Descriptions.Item>
           <Descriptions.Item label="累计会话">{profile.totalSessions} 次</Descriptions.Item>
@@ -159,7 +163,7 @@ function StudentProfile({ studentId, onBack }) {
                         对话摘要
                       </Button>
                     </div>
-                    <div style={{ fontSize: 12, color: '#999' }}>
+                    <div style={{ fontSize: 12, color: 'var(--ms-text-muted)' }}>
                       状态: {s.status} | 风险: {RISK_LABELS[s.riskLevel] || '无'}
                       {s.satisfactionRating && (
                         <span style={{ marginLeft: 8, color: s.satisfactionRating >= 4 ? 'var(--ms-success)' : 'var(--ms-warning)' }}>
@@ -185,7 +189,7 @@ function StudentProfile({ studentId, onBack }) {
                   <Space>
                     <Tag color={RISK_COLORS[item.riskLevel]}>{RISK_LABELS[item.riskLevel]}</Tag>
                     <span>{item.riskType}</span>
-                    <span style={{ fontSize: 12, color: '#999' }}>
+                    <span style={{ fontSize: 12, color: 'var(--ms-text-muted)' }}>
                       {dayjs(item.detectedAt).format('MM-DD')}
                     </span>
                   </Space>
@@ -224,7 +228,7 @@ function StudentProfile({ studentId, onBack }) {
               <List.Item>
                 <div>
                   <div>{note.content}</div>
-                  <div style={{ fontSize: 11, color: '#999', marginTop: 2 }}>
+                  <div style={{ fontSize: 11, color: 'var(--ms-text-muted)', marginTop: 2 }}>
                     {note.noteType} · {dayjs(note.createdAt).format('YYYY-MM-DD HH:mm')}
                   </div>
                 </div>

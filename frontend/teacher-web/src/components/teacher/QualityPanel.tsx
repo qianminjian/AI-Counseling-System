@@ -39,7 +39,7 @@ export default function QualityPanel() {
     { title: '评分', dataIndex: 'rating', key: 'rating', width: 80, align: 'center' as const,
       render: v => <Tag color={v <= 1 ? 'red' : 'orange'}>{v}★</Tag> },
     { title: '学生评价', dataIndex: 'comment', key: 'comment', ellipsis: true,
-      render: v => v || <span style={{ color: '#ccc' }}>无评价</span> },
+      render: v => v || <span style={{ color: 'var(--ms-text-muted)' }}>无评价</span> },
     { title: '时间', dataIndex: 'startedAt', key: 'time', width: 160,
       render: v => v ? new Date(v).toLocaleString('zh-CN') : '-' },
     { title: '操作', key: 'action', width: 100, align: 'center' as const,
@@ -92,9 +92,9 @@ export default function QualityPanel() {
               <div key={i} style={{
                 padding: '8px 12px', borderRadius: 8, maxWidth: '85%',
                 alignSelf: msg.senderType === 'student' ? 'flex-end' : 'flex-start',
-                background: msg.senderType === 'student' ? '#e6f7ff' : 'var(--ms-success-soft)',
+                background: msg.senderType === 'student' ? 'var(--ms-primary-soft)' : 'var(--ms-success-soft)',
               }}>
-                <div style={{ fontSize: 11, color: '#999', marginBottom: 4 }}>
+                <div style={{ fontSize: 11, color: 'var(--ms-text-muted)', marginBottom: 4 }}>
                   {msg.senderType === 'student' ? '🧒 学生' : '🤖 AI'} · {emotionLabel(msg.emotionLabel)}
                 </div>
                 <div style={{ fontSize: 13 }}>{msg.contentSummary || msg.messageContent || ''}</div>

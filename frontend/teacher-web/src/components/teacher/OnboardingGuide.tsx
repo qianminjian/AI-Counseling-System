@@ -28,7 +28,7 @@ const STEPS = [
     desc: '风险预警会通过浏览器弹窗 + 声音实时推送。红色预警弹窗不会自动关闭，确保你不会错过。',
   },
   {
-    icon: <SettingOutlined style={{ fontSize: 32, color: '#722ed1' }} />,
+    icon: <SettingOutlined style={{ fontSize: 32, color: 'var(--ms-primary)' }} />,
     title: '管理控制台',
     desc: '管理员可以导入学生、查看审计日志、下载模板。平台总览提供跨学校的全局数据。',
   },
@@ -53,7 +53,7 @@ export default function OnboardingGuide() {
       <div style={{ textAlign: 'center', padding: '16px 0' }}>
         <div style={{ marginBottom: 16 }}>{step.icon}</div>
         <h3 style={{ fontSize: 18, marginBottom: 8 }}>{step.title}</h3>
-        <p style={{ color: '#666', fontSize: 14, lineHeight: 1.7, minHeight: 60 }}>{step.desc}</p>
+        <p style={{ color: 'var(--ms-text-secondary)', fontSize: 14, lineHeight: 1.7, minHeight: 60 }}>{step.desc}</p>
 
         <Steps current={current} size="small" style={{ margin: '20px 0' }}
           items={STEPS.map((_, i) => ({ title: '' }))} />
