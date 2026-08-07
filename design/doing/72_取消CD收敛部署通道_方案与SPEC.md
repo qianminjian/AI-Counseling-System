@@ -158,13 +158,13 @@ done
 
 ## §5 验收标准
 
-- [ ] cd.yml 已删除，GitHub Actions 仓库 Actions 页无 CD workflow（只剩 CI）
-- [ ] CI 全绿（新 push 自动触发，含 7c5310c 后验证）
-- [ ] deploy.sh 实测全流程一次成功（backend + 前端，含 B2 重试路径代码审查 + B3 残留清理）
-- [ ] 服务器无 `.cd-state-*`、`.env` 无 IMAGE 残留、ghcr.io 镜像已清理、无 Exited 容器堆积
-- [ ] DEPLOY-GUIDE §二/Step 7/secrets 表已改写一致，无 CD 残留描述
-- [ ] doing/71 AUD 条目状态已更新、TASK-TRACKER 登记 DOC-063、BEACON 演进日志同步
-- [ ] 服务健康（本次改造前已恢复：backend/voice/tts 运行 5d5bdac，redis/pg healthy）
+- [x] cd.yml 已删除，GitHub Actions 仓库 Actions 页无 CD workflow（只剩 CI）
+- [x] CI 全绿（67e79ea push 后 run 31148177181 全绿；e1ff891 push 后自动触发待确认）
+- [x] deploy.sh 实测全流程成功（2026-08-07 两轮：首轮 exit 1 暴露 2 个真机坑 → 修复后 --student --teacher --parent 全链路 exit 0）
+- [x] 服务器无 `.cd-state-*`、`.env` 无 IMAGE 残留、ghcr.io 镜像已清理、mindsafe-nginx 残留容器已清理、5 容器 healthy
+- [x] DEPLOY-GUIDE §二/Step 7/secrets 表已改写一致，无 CD 残留描述
+- [x] doing/71 AUD 条目状态已更新、TASK-TRACKER 登记 DOC-063、BEACON 演进日志同步
+- [x] 服务健康（backend/voice/tts/redis/pg 全 healthy）
 
 ---
 
@@ -198,3 +198,25 @@ done
 - CD 阶段 3 个 commit：5d5bdac（CI 修复收尾）→ e3b9d93（OPS-008/009 + AUD-009 + 健康探针）→ 7c5310c（detect 顺序修复）
 - CD run 实测：31145421244 全量恢复 70min+ 后用户取消；服务中断 ~40min 后本地镜像恢复
 - 决策反转时间线：AUD-060 议决（2026-08-06）→ 实战验证（2026-08-07）→ 反转（2026-08-07）
+
+### §8.1 首轮实测暴露的 2 个真机坑（2026-08-07，commit e1ff891 修复）
+
+**坑 1：bash 3.2 多字节变量名解析 bug（部署日志乱码根因）**
+
+- 现象：check_nginx_path 的 echo 中 `$deploy_dir` 展开为空（`（）` 之间零字节），且其后的中文标点丢首字节（`）`→`bc 89`、`——`→`80 94`）
+- 根因：macOS 默认 bash 3.2 在 UTF-8 locale 下，`$var` 后紧跟全角字符（`）` `—` `，` 等）时，把全角字符首字节并入变量名（`${deploy_dir\xef}` 不存在 → 展开为空 + 字符丢首字节）。xxd 对比实验实锤：`A（$d）B` → 路径消失；`A（${d}）B` → 完整
+- 修复：脚本中变量后跟多字节字符一律 `${var}` 包裹（deploy.sh 4 处、service-manager.sh 1 处、db-rollback-drill.sh 2 处、gen-changelog.sh 1 处）；新增 perl 扫描模式 `\$[a-zA-Z_][a-zA-Z0-9_]*[^\x00-\x7f]` 入库检查
+- 教训：**本项目 shell 脚本变量展开统一 `${var}` 风格**（macOS bash 3.2 环境），避免变量后直接跟中文标点
+
+**坑 2：本机网络 ssh banner 阶段随机断连（parent 校验误报根因）**
+
+- 现象：部署时 parent nginx 路径校验误报 FAIL（student/teacher 通过）；日志显示 `kex_exchange_identification: Connection closed by remote host`——连接在 TCP 建立后、认证前的 banner 阶段被随机关闭（代理/运营商干扰，与 BatchMode 无关，-v 调试证实认证本身成功）
+- 影响：旧实现 `! ssh ... 2>/dev/null` 把连接失败（rc=255）与 grep 不匹配（rc=1）混为一谈，静默误报"路径未对齐"导致部署 exit 1；rsync 同样随机失败（实测前 2 次失败、第 3 次重试成功）
+- 修复：check_nginx_paths 重构为**单次 ssh 会话完成全部路径校验**（3 次独立连接失败率降为 1 次）+ 连接失败重试 3 次；rsync_retry 保留（实测已兜底）
+- 教训：**所有 ssh 远程调用必须区分连接失败与命令失败，并带重试**；`2>/dev/null` 静默吞错是部署脚本大忌
+
+**连带修复：service-manager.sh nginx 特判**
+
+- 现象：restart nginx 时执行 `compose up -d nginx` → 443 被宿主 nginx 占用 → bind 冲突报错 + mindsafe-nginx 残留容器（Created）；健康检查实际探测宿主 443 通过，掩盖了冲突
+- 修复：start_service 对 nginx 特判——跳过 compose up，仅健康探测宿主 443（与 L61-62 注释语义对齐）；残留容器已清理
+- 教训：**代码与注释语义矛盾会掩盖真实状态**（注释说 compose nginx 未启用，代码却尝试启动）
