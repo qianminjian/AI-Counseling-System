@@ -57,17 +57,23 @@
 
 ### AUD-002【P0】setup-server.sh 目录布局与 cd.yml 期望不符（按手册初始化后 CD 必失败）
 
+> 状态：✅ 已修复（setup-server.sh 已完整同步 deploy/ 目录）→ **🗑 随 DOC-063（doing/72 取消 CD）关闭，2026-08-07**
+
 - 位置：`deploy/setup-server.sh` L73-80；`.github/workflows/cd.yml` L167-181
 - 证据：setup-server.sh 仅复制 `docker-compose.test.yml` + `nginx/` + `.env.example` 到 `/guju/mindsafe/`（无 `deploy/` 子目录，不含 prod.yml/monitoring.yml/backup.sh/restore.sh）；cd.yml deploy job 执行 `cd $REMOTE_DIR/deploy && docker compose -f docker-compose.prod.yml pull`。按 DEPLOY-GUIDE Step 3→7 走完后 CD 首跑必失败
 - 建议：setup-server.sh 完整同步 `deploy/` 目录到 `/guju/mindsafe/deploy/`（与 deploy.sh rsync 路径对齐），或 cd.yml 部署前先 rsync compose 文件
 
 ### AUD-003【P0】DEPLOY-GUIDE 用 test.yml 首启，与 prod.yml 容器名/网络名冲突且无切换步骤
 
+> 状态：✅ 已修复（DEPLOY-GUIDE「首次 prod 切换」步骤已补，L229-241）→ **⚠️ 保留有效（deploy.sh 通道同样适用），降级 P2，2026-08-07**
+
 - 位置：`DEPLOY-GUIDE.md` L183-190；`docker-compose.test.yml` L9；`docker-compose.prod.yml` L7
 - 证据：两个 compose 共用 `container_name`（mindsafe-pg/backend/nginx）与网络 `mindsafe-internal`；手册称"之后每次 git push main 自动触发部署"但从未提及需先 down test 环境 → CD `up` 报 container name already in use
 - 建议：手册补「首次 prod 切换」步骤（down test + 确认容器清理）；或 CD 部署前幂等 down 冲突容器
 
 ### AUD-004【P0】CD 健康检查/冒烟在 IP + 域名证书场景必然失败
+
+> 状态：✅ 已修复（CD 内 curl -k）→ **🗑 随 DOC-063（doing/72 取消 CD）关闭，2026-08-07**（deploy.sh 用本机 127.0.0.1:18082 探针无此问题）
 
 - 位置：`cd.yml` L183-191、L354-357
 - 证据：DEPLOY-GUIDE Step 6 定义 DEPLOY_HOST 为 ECS 公网 IP、SMOKE_URL 示例 `http://<IP>`；deploy job 硬编码 `curl https://$DEPLOY_HOST/actuator/health`（无 `-k`），smoke 默认 https。prod 强制 TLS 且证书绑定域名时，对 IP 的 curl 证书校验必然失败 → 轮询 30 次后红
@@ -102,6 +108,8 @@
 - 建议：改为「已开启语音功能/点击声音入口后下载」或「WiFi 预下载、4G 延迟到首次使用」；下载前给流量提示
 
 ### AUD-009【P1】CD 手动回滚（workflow_dispatch）与常规发布 job 并发竞态写 .env
+
+> 状态：✅ 已修复（concurrency 拆组）→ **🗑 随 DOC-063（doing/72 取消 CD）关闭，2026-08-07**（deploy.sh --rollback 串行 + 状态文件无竞态）
 
 - 位置：`cd.yml` L12-19、L154、L282
 - 证据：rollback job 无 `needs`、条件仅 `workflow_dispatch`；deploy 条件 `refs/heads/main`。在 main 上手动 dispatch 回滚时，deploy（sed 写新 SHA）与 rollback（sed 写旧 tag）并行修改同一 .env → 结果不确定
@@ -161,7 +169,7 @@
 - **AUD-032【P2】** 备份 cron 未自动化接入：手册称"宿主机 cron 02:00 daily/weekly/monthly 分层"但 setup-server.sh 不配置 cron，backup.sh 仅注释给命令；恢复演练无证据——建议 setup-server.sh/deploy.sh 幂等写入 crontab + 补一次 restore.sh 演练记录
 - **AUD-033【P2】** setup-server.sh 两种执行方式行为不一致：stdin 方式下 `$0=bash` 导致 SCRIPT_DIR 解析错误、配置复制被静默跳过——建议删 stdin 用法说明统一 `./setup-server.sh`，或 BASE_DIR 硬编码
 - **AUD-034【P2】** prod nginx 挂载不存在的 dist 目录时静默创建空目录（docker-compose.prod.yml L173-175），前端空白无 fail-fast——建议 prod 首次启动前置检查 dist 存在，缺失 exit 1
-- **AUD-035【P2】** cd.yml sed 循环含 frontend 但 prod compose 无 frontend 服务（L170-177 死写入 FRONTEND_IMAGE；notify 注释自认"生产不消费镜像"仍构建推送）——建议 IMAGES 剔除 frontend，镜像是否继续构建另行决策
+- **AUD-035【P2】** cd.yml sed 循环含 frontend 但 prod compose 无 frontend 服务（L170-177 死写入 FRONTEND_IMAGE；notify 注释自认"生产不消费镜像"仍构建推送）——建议 IMAGES 剔除 frontend，镜像是否继续构建另行决策 **【🗑 随 DOC-063 取消 CD 关闭，2026-08-07】**
 
 ### 设计一致性
 - **AUD-036【P2】** design/08 工具箱 ⬜ vs design/09 + 代码 🟩（三处标 ⬜/TOOL-001/002，实际 ToolboxController + ToolboxPanel/ToolPractice/SosPanel 已实现）——08 三处 ⬜ 改 🟩
@@ -188,7 +196,7 @@
 | AUD-050 | MessageBubble TTS 播放按钮无 aria-label（读屏器不读 title） | MessageBubble.tsx L66-84 |
 | AUD-051 | DEPLOY-GUIDE 要求 GITHUB_OWNER 必填但 .env.example 无该变量 | .env.example |
 | AUD-052 | ci.yml 未显式收敛 permissions（建议 contents: read） | ci.yml L16 |
-| AUD-053 | cd.yml workflow_dispatch image_tag 输入无格式校验（注入面，建议正则校验） | cd.yml L15 |
+| AUD-053 | cd.yml workflow_dispatch image_tag 输入无格式校验（注入面，建议正则校验）【🗑 随 DOC-063 取消 CD 关闭，2026-08-07】 | cd.yml L15 |
 | AUD-054 | 镜像浮 tag 未 pin digest（可接受，Trivy 已入 CI） | 各 Dockerfile |
 | AUD-055 | postgres/redis/nginx 无 mem_limit（2C2G 主机 pg 可吃满内存） | docker-compose 各文件 |
 | AUD-056 | Grafana dashboards.yml editable: true（建议 false） | monitoring/grafana |
@@ -205,11 +213,13 @@
 
 | 项 | 议决 | 落点 |
 |---|---|---|
-| AUD-060 双部署通道 | **CD 为主，deploy.sh 仅限紧急热修**（CD 不可用或需绕过镜像构建直接源码重建时用）；不冻结 deploy.sh（紧急热修通道保留，2026-08-06 实战验证有效） | DEPLOY-GUIDE Step 7 第 3 点已改述 |
+| AUD-060 双部署通道 | **⚠️ 2026-08-07 决策反转（DOC-063/doing/72）：取消 CD，deploy.sh 为唯一发布通道**——CD 自动发布实战一天即被推翻（带宽 1MB/s 全量 36min+、GHCR 抖动、14 个坑），部署统一走真实环境（rsync 源码 + 服务器本地构建） | cd.yml 已删除；DEPLOY-GUIDE §二/Step 7 已改述 |
 | AUD-061 备份三层 | **保留不收敛**——儿童数据合规 + PIPL 合理成本；真正缺口 cron 接线已由 AUD-032 关闭（setup-server.sh 幂等写入 crontab，02:00 每日触发，backup.sh 内部分层保留） | setup-server.sh §6；恢复演练指引见 DEPLOY-GUIDE「备份与恢复」 |
 | AUD-062 声纹双模式 | **remote 链路保留（已加固）**——AUD-001 修复后不再有跨租户面（租户维度强制 + 阈值对齐 0.70 + 指纹限流）；local 为默认模式，双模式并存是特性非维护负担；后续若 remote 长期零用量再议收敛 | AUD-001 修复（VoiceprintController，工作区） |
 
 ### AUD-060【质疑】deploy.sh 与 cd.yml 双部署通道
+
+> **2026-08-07 决策反转（DOC-063/doing/72）**：原议决"CD 为主"经实战验证（CD run 31145421244：全量恢复 70min+、detect 顺序 bug、服务器服务中断）后撤销——**cd.yml 已删除，deploy.sh 为唯一发布通道**；本质疑的"双通道重叠"问题随 CD 取消自然消解
 
 - 证据：deploy.sh 的 git-diff 增量检测 + `.deploy-state` 状态文件 + 本地构建/服务器重建，与 cd.yml 的"CI 全绿→镜像→SSH"完全重叠且回滚语义不同（源码重建 vs 旧 tag 回退）
 - 候选方向：明确"CD 为主、deploy.sh 仅限紧急热修"并文档化，或冻结 deploy.sh

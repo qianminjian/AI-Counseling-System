@@ -56,50 +56,38 @@
 
 ---
 
-## 二、CI/CD 架构
+## 二、CI 验证 + 发布架构
 
 ```
 开发者 git push main
         │
         ▼
 ┌─────────────────────────┐
-│   GitHub Actions CI     │  ← PR 检查：编译 + 构建
-└─────────────────────────┘
-        │ (merge to main)
+│   GitHub Actions CI     │  ← 自动质量门禁（push 即触发）：后端编译 + 测试 + 覆盖率
+└─────────────────────────┘   + 前端三端构建 + 测试 + 覆盖率 + 漏洞扫描（约 2 分钟）
+        │ (全绿)
         ▼
 ┌─────────────────────────┐
-│  GitHub Actions Deploy  │
-│  1. Build Docker images │
-│  2. Push to GHCR        │  ← GitHub Container Registry（免费）
-│  3. SSH to 阿里云 ECS   │
-│  4. docker compose pull │
-│  5. docker compose up   │
+│   本地执行 ./deploy.sh   │  ← 唯一发布通道（DOC-063，2026-08-07）
+│  1. 变更检测（git diff） │     rsync 增量同步源码 → 服务器本地构建 → 重启 + 健康检查
+│  2. rsync 增量同步源码   │
 └─────────────────────────┘
         │
         ▼
 ┌─────────────────────────┐
-│   阿里云 ECS (x86_64)   │  ← 运行环境
-│   - PostgreSQL          │
-│   - Redis               │
-│   - Backend (Spring)    │
-│   - Nginx (双域名)      │
+│   阿里云 ECS (x86_64)   │  ← 真实环境：源码就地构建（Docker layer 缓存复用）
+│   - PostgreSQL / Redis  │     backend(18082) / voice / tts / 宿主 nginx(443)
+│   - backend/voice/tts   │
 └─────────────────────────┘
 ```
 
-> ⚠️ 发布通道议决（AUD-060，2026-08-06）：**默认发布走 CD，deploy.sh 仅限紧急热修**（开发者主动调用）。
-> 触发链路（OPS-005 修复，2026-08-07）：`git push main` → CI 四个 job 全绿 → `workflow_run` 触发 CD
-> （cd.yml 不再使用跨 workflow needs——GitHub Actions 不支持，原配置导致 CD 从未运行）→
-> 构建推送 GHCR 镜像 → SSH 部署后端/微服务 + rsync 前端 dist → E2E 冒烟验证。CI 失败则 CD 不触发。
+> ⚠️ 发布通道决策（DOC-063，2026-08-07）：**取消 GitHub CD，部署统一走真实环境（deploy.sh）**。
+> 背景（doing/72 §2 深度分析）：服务器→GHCR 带宽 ~1MB/s，voice-service 镜像 2.26GB 首次全量 36min+ 且
+> unexpected EOF 抖动整次失败；CD 自动发布链路 14 个坑（触发断裂/大小写/重试/健康探针/并发/顺序 bug 等）。
+> deploy.sh 通道把跨网传输从 GB 级（镜像 pull）降到 MB 级（源码 rsync），服务器本地构建复用 layer 缓存。
+> CI 保留为纯质量门禁：`git push main` → CI 四个 job 全绿 → 本地 `./deploy.sh` 发布。
 >
-> **增量发布（OPS-009，2026-08-07）**：CD 从服务器 `.cd-state-backend` / `.cd-state-frontend`（缺省回退 `.env` 镜像 tag）
-> 读上次部署 SHA，`git diff` 按组件路径映射（backend/、backend/tts-service/、backend/voice-service/、frontend/*-h5/、
-> scripts/sql/、deploy/），**只 pull/up/rsync 变更组件**；无部署历史时安全回退全量。
-> 部署并发（AUD-009）：deploy（镜像）与 deploy-frontend（dist）拆组并行，实测从串行 20+ 分钟降到同时完成。
-> 健壮性（OPS-008）：compose pull 3 次重试（GHCR 网络抖动兜底）、rsync 3 次重试、
-> 健康检查走服务器本机 `127.0.0.1:18082/actuator/health`（绕过公网 nginx 路径层：`/actuator/health` 404、`/api/actuator/health` 403）。
-
-> 镜像仓库说明：默认使用 GHCR（免费、与 GitHub Actions 集成最简）。
-> 若国内拉取 GHCR 慢，可换用阿里云容器镜像服务 ACR（个人版免费），见第七节。
+> 重新引入 CD 的演进条件（doing/72 §2.4）：多环境/多人协作、服务器带宽 ≥10Mbps 或内网镜像加速、合规审计留痕要求——当前均不满足。
 
 ---
 
@@ -184,28 +172,22 @@ MINDSAFE_CONSENT_TRIAL_AUTO_GRANT=false
 
 ### Step 5：GHCR 登录（服务器上）
 
-```bash
-# 在 GitHub 生成 Personal Access Token（权限：read:packages）
-# Settings → Developer settings → Personal access tokens → Fine-grained tokens
-docker login ghcr.io -u <your-github-username>
-# 密码填 PAT
-```
+> ⚠️ 已停用（DOC-063，2026-08-07）：取消 CD 后镜像不再推送/拉取 GHCR，无需登录。
+> 服务器上若存在历史登录凭据（`~/.docker/config.json` 中 ghcr.io 项），可安全删除。
 
-### Step 6：配置 GitHub Secrets
+### Step 6：配置本地部署环境（替代原 GitHub Secrets）
 
-仓库 → Settings → Secrets and variables → Actions，添加：
+本地机器（执行 deploy.sh 的机器）配置：
 
-| Secret 名称 | 值 |
+| 配置 | 值 |
 |-------------|-----|
-| `DEPLOY_HOST` | 阿里云 ECS 公网 IP 或域名（AUD-004：CD 健康检查已加 `-k` 容忍 IP+域名证书场景，两者皆可） |
-| `DEPLOY_USER` | `root`（或你创建的用户名） |
-| `DEPLOY_SSH_KEY` | SSH 私钥文件全部内容 |
-| `DEPLOY_KNOWN_HOSTS` | `ssh-keyscan <公网 IP>` 输出（ssh-key-action 校验主机指纹，防中间人） |
-| `SMOKE_URL` | 部署后的访问地址（建议 `https://域名`；未设置时 CD 自动回退 `https://DEPLOY_HOST`） |
-| `TEACHER_USER` / `TEACHER_PASS` | 冒烟测试用的教师账号（tests/e2e/smoke-test.sh） |
-| `ADMIN_USER` / `ADMIN_PASS` | 冒烟测试用的管理员账号 |
+| `MINDSAFE_SERVER` | 环境变量：`export MINDSAFE_SERVER=mindsafe@<公网IP>`（建议写入 `~/.zshrc`；deploy.sh 未设置时直接报错退出） |
+| SSH 免密 | `ssh-copy-id mindsafe@<公网IP>`（deploy.sh 全程 SSH 免密执行） |
+| rsync 3.x | macOS 默认 `/usr/bin/rsync` 为 openrsync 子集，与服务器不兼容（dist 传输 SIGSEGV），须 `brew install rsync`（deploy.sh 自动前置 PATH） |
 
-> 冒烟测试缺少教师/管理员账号时，相关用例将告警跳过（smoke-test.sh 对空账号有保护），建议用首次部署种子数据中的账号。
+> 原 CD secrets（`DEPLOY_HOST` / `DEPLOY_USER` / `DEPLOY_SSH_KEY` / `DEPLOY_KNOWN_HOSTS` / `SMOKE_URL`）已随 CD 停用（DOC-063），保留定义仅防误用。
+
+> 冒烟测试（可选）：`tests/e2e/smoke-test.sh` 需要教师/管理员账号，从首次部署种子数据获取；缺少账号时相关用例告警跳过。
 
 ### Step 7：首次部署（生产）
 
@@ -220,10 +202,9 @@ vim .env
 docker compose -f docker-compose.prod.yml up -d
 bash ../service-manager.sh status   # 全部服务健康检查
 
-# 3. 之后每次发版走 CD 主通道：git push main → GitHub Actions 自动构建镜像并 SSH 部署（见 §二）
-#    ⚠️ 双部署通道议决（AUD-060，2026-08-06）：**CD 为主，deploy.sh 仅限紧急热修**。
-#    仓库根目录的 deploy.sh（自动检测变更、选择性构建/上传/重启）仅在 CD 不可用
-#    或需要绕过镜像构建直接源码重建时使用：export MINDSAFE_SERVER=root@<服务器IP> && ./deploy.sh
+# 3. 之后每次发版走唯一发布通道（DOC-063，2026-08-07）：git push main → CI 全绿 → 本地 ./deploy.sh
+#    ./deploy.sh（自动检测变更、选择性构建/上传/重启，全程 SSH 免密）即真实环境发布：
+#    export MINDSAFE_SERVER=mindsafe@<服务器IP> && ./deploy.sh
 ```
 
 > ⚠️ **首次 prod 切换（AUD-003）**：若该服务器此前用 `docker-compose.test.yml` 启动过测试环境，
@@ -237,7 +218,7 @@ bash ../service-manager.sh status   # 全部服务健康检查
 > docker compose -f docker-compose.prod.yml up -d
 > ```
 >
-> CD 流水线侧已做兜底（deploy/rollback job 部署前幂等 `docker rm -f` 同名应用容器，不触碰数据库/Redis），
+> deploy.sh 侧已做兜底（service-manager.sh 重启前幂等清理同名应用容器，不触碰数据库/Redis），
 > 但首次人工部署仍建议按上述步骤手动清理，避免 up 阶段报错。
 
 > 2026-08-06 切换后生产统一走 `/guju/mindsafe/deploy/`（prod profile）；`docker-compose.test.yml` 仅用于轻量测试环境（不含 voice/tts），nginx 配置以宿主 nginx 为准。
@@ -338,11 +319,11 @@ git add . && git commit -m "feat: xxx"
 git push origin feature/xxx
 
 # 创建 PR → GitHub Actions CI 自动编译检查
-# Merge 到 main → 自动部署到阿里云 ECS
-# 浏览器访问 http://<公网IP> 验证
+# Merge 到 main → 本地执行 ./deploy.sh 发布到阿里云 ECS（唯一通道，DOC-063）
+# 浏览器访问 https://yun.gxjugu.com/mindsafe/ 验证
 ```
 
-本机只需要：代码编辑器 + Git。不需要跑 Docker、不需要大内存。
+本机需要：代码编辑器 + Git + rsync 3.x（macOS 用 `brew install rsync`）。不需要跑 Docker、不需要大内存（构建在服务器完成）。
 
 ---
 
@@ -350,8 +331,8 @@ git push origin feature/xxx
 
 | 文件 | 用途 |
 |------|------|
-| `.github/workflows/ci.yml` | PR 检查（后端编译 + 前端构建） |
-| `.github/workflows/cd.yml` | 自动部署（Build → GHCR → SSH） |
+| `.github/workflows/ci.yml` | PR 检查（后端编译 + 测试 + 前端构建 + 覆盖率 + 漏洞扫描） |
+| ~~`.github/workflows/cd.yml`~~ | ~~自动部署（Build → GHCR → SSH）~~ **已删除（DOC-063，2026-08-07）**，历史见 doing/72 §2.2 |
 | `deploy/docker-compose.test.yml` | 轻量测试环境（不含 voice/tts） |
 | `deploy/docker-compose.prod.yml` | 完整生产环境（含 voice/tts） |
 | `deploy/nginx/default.conf` | Nginx 双域名反向代理 |
@@ -381,19 +362,16 @@ sudo systemctl daemon-reload
 sudo systemctl restart docker
 ```
 
-### 方案 B：换用阿里云 ACR（GHCR 太慢时）
+### 方案 B：~~换用阿里云 ACR（GHCR 太慢时）~~
 
-1. 阿里云控制台 → 容器镜像服务 → 创建命名空间（如 `mindsafe`）
-2. 创建镜像仓库：`mindsafe-backend`、`mindsafe-frontend`
-3. GitHub Actions deploy.yml 中改 push 目标为 ACR
-4. 服务器上 `docker login registry.cn-hangzhou.aliyuncs.com`
+> 已停用（DOC-063）：取消 CD 后无 GHCR 推送/拉取，本方案无适用场景；若未来恢复 CD 且带宽未升级，再评估。
 
 ---
 
 ## 八、注意事项
 
 1. **2C2G 内存紧张**：建议开启 swap（setup-server.sh 已自动配置 2GB swap）
-2. **GHCR 私有镜像**：需要在服务器上 `docker login` 才能 pull
+2. **~~GHCR 私有镜像~~**：已随 CD 停用（DOC-063），服务器无需 docker login ghcr.io
 3. **x86_64 架构**：阿里云经济型为 x86，CI 构建无需指定 platform（默认 amd64）
 4. **数据备份**：备份统一走 `deploy/backup.sh`（AUD-032：cron 已由 setup-server.sh 幂等接线 `0 2 * * * /guju/mindsafe/backup.sh >> /guju/mindsafe/logs/backup.log 2>&1`，脚本内部分层保留日 7/周 4/月 3）+ `deploy/restore.sh` 恢复。OD-007（2026-08-05）已移除原 docker-compose.prod.yml 中的 `db-backup` 定时容器（与 backup.sh 双写同一 volume 为真冗余）。**恢复演练**：在非生产库或低峰期执行 `./restore.sh daily/<备份名>.dump`（脚本会自动先打 safety snapshot，失败不覆盖原库），演练后核对 `pg_restore --list` 输出与关键表行数；每季度至少一次，演练记录追加到本文件「运维记录」节
 5. **HTTPS**：测试阶段（docker-compose.test.yml）用 HTTP 即可；生产（docker-compose.prod.yml）已强制 TLS，首次部署先按「HTTPS 证书」节签发证书

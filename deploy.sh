@@ -1,8 +1,9 @@
 #!/bin/bash
-# MindSafe 手动部署脚本（本地执行）
-# ⚠️ 发布通道议决（AUD-060，2026-08-06）：**默认发布走 CD**——git push main 后由
-#    GitHub Actions 自动构建镜像（GHCR）并 SSH 部署 + 冒烟验证（见 DEPLOY-GUIDE.md §二）。
-#    本脚本仅用于【开发者主动调用】的紧急热修/绕过 CD 的源码重建场景（CD 不可用时）。
+# MindSafe 手动部署脚本（本地执行）——**唯一发布通道**
+# ⚠️ 发布通道决策（DOC-063，2026-08-07）：**取消 GitHub CD，部署统一走真实环境**
+#    （本脚本）：git push main → CI 全绿（质量门禁）→ 本地执行本脚本 → rsync 增量同步源码
+#    → 服务器 compose 本地构建 → service-manager 重启 + 健康检查（见 DEPLOY-GUIDE.md §二）。
+#    背景：CD 镜像 pull 模型在 3Mbps 带宽下首次全量 36min+ 且 GHCR 抖动整次失败（doing/72 §2）。
 # 用法：
 #   ./deploy.sh              自动检测变更组件，只部署受影响的服务
 #   ./deploy.sh --all        强制全量部署
@@ -273,6 +274,24 @@ rsync_retry -avz --exclude '.env' "$PROJECT_ROOT/deploy/" "$SERVER:$REMOTE_DIR/d
 rsync_retry -avz "$PROJECT_ROOT/service-manager.sh" "$SERVER:$REMOTE_DIR/service-manager.sh"
 ssh "$SERVER" "chmod +x $REMOTE_DIR/service-manager.sh"
 
+# ===== 清理 CD 残留（DOC-063，2026-08-07） =====
+# 取消 CD 后，服务器 .env 中可能残留 CD 写入的 *_IMAGE 变量（ghcr.io tag），
+# 会污染 compose 默认 tag（mindsafe/*:local）语义；检测到即告警并幂等清理。
+# 注意：必须先为运行中容器的镜像补默认 tag 再删行——否则 compose image 回退默认值后，
+# 下次容器重建会尝试拉取 mindsafe/*:local（本地无此 tag → 失败）
+ssh "$SERVER" "cd $REMOTE_DIR/deploy && if grep -qE '^(BACKEND|VOICE_SERVICE|TTS_SERVICE)_IMAGE=' .env; then
+  echo '⚠️ 检测到 CD 残留 IMAGE 变量，自动清理（DOC-063 决策）'
+  for spec in 'mindsafe-backend backend' 'mindsafe-voice voice-service' 'mindsafe-tts tts-service'; do
+    set -- \$spec
+    img=\$(docker inspect --format '{{.Image}}' \$1 2>/dev/null) || true
+    [ -n \"\$img\" ] && docker tag \$img mindsafe/\$2:local 2>/dev/null || true
+  done
+  sed -i -E '/^(BACKEND|VOICE_SERVICE|TTS_SERVICE)_IMAGE=/d' .env
+  echo '✅ .env 已清理（compose 回退 mindsafe/*:local，运行镜像已补默认 tag）'
+else
+  echo '✅ .env 无 CD 残留'
+fi"
+
 # ===== 构建镜像（源码变更类组件需先 build，再经 service-manager 重启） =====
 BUILD_TARGETS=""
 $DEPLOY_BACKEND && BUILD_TARGETS="$BUILD_TARGETS backend"
@@ -281,8 +300,18 @@ $DEPLOY_VOICE && BUILD_TARGETS="$BUILD_TARGETS voice-service"
 
 if [ -n "$BUILD_TARGETS" ]; then
   echo "🔨 构建镜像:$BUILD_TARGETS"
-  if ! ssh "$SERVER" "cd $REMOTE_DIR/deploy && docker compose -f docker-compose.prod.yml build $BUILD_TARGETS"; then
-    echo "❌ 镜像构建失败，部署中止（服务仍运行旧版本）"
+  # build 重试 3 次（对齐 CD pull 重试教训 doing/72 §2.2：服务器在线下载依赖同样受网络抖动影响）
+  BUILD_OK=false
+  for attempt in 1 2 3; do
+    if ssh "$SERVER" "cd $REMOTE_DIR/deploy && docker compose -f docker-compose.prod.yml build $BUILD_TARGETS"; then
+      BUILD_OK=true
+      break
+    fi
+    echo "⚠️ 镜像构建第 $attempt 次失败，60s 后重试（网络抖动兜底）..."
+    sleep 60
+  done
+  if [ "$BUILD_OK" != true ]; then
+    echo "❌ 镜像构建重试 3 次仍失败，部署中止（服务仍运行旧版本）"
     exit 1
   fi
   echo "✅ 镜像构建完成"
