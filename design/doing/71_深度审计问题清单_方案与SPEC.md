@@ -207,6 +207,7 @@
 |---|---|---|
 | AUD-060 双部署通道 | **CD 为主，deploy.sh 仅限紧急热修**（CD 不可用或需绕过镜像构建直接源码重建时用）；不冻结 deploy.sh（紧急热修通道保留，2026-08-06 实战验证有效） | DEPLOY-GUIDE Step 7 第 3 点已改述 |
 | AUD-061 备份三层 | **保留不收敛**——儿童数据合规 + PIPL 合理成本；真正缺口 cron 接线已由 AUD-032 关闭（setup-server.sh 幂等写入 crontab，02:00 每日触发，backup.sh 内部分层保留） | setup-server.sh §6；恢复演练指引见 DEPLOY-GUIDE「备份与恢复」 |
+| AUD-061 修正 | **DC-002 修正记录（2026-07-28）**：台账原记「已接线」但 cron 指向的路径从未被创建——已修复：cron 固定指向 deploy/ 整目录内 backup.sh（该目录由 setup-server.sh 第 5 步整体 rsync，恒存在）；DB 连接事实 / dbbackups 卷探测 / log() 收敛至 backup-common.sh 单一事实源（backup.sh + restore.sh 共享）；写入前 fail-fast。验证：`bash -n` + tests/unit/backup-common.sh | DC-002（doing/72 §3/§17） |
 | AUD-062 声纹双模式 | **remote 链路保留（已加固）**——AUD-001 修复后不再有跨租户面（租户维度强制 + 阈值对齐 0.70 + 指纹限流）；local 为默认模式，双模式并存是特性非维护负担；后续若 remote 长期零用量再议收敛 | AUD-001 修复（VoiceprintController，工作区） |
 
 ### AUD-060【质疑】deploy.sh 与 cd.yml 双部署通道
@@ -217,6 +218,7 @@
 ### AUD-061【质疑】备份三层（daily/weekly/monthly）+ 异地 rsync + 恢复前快照
 
 - 证据：对试点项目偏重，但针对儿童数据合规与 PIPL 属合理成本——真正缺口是 cron 未接线（AUD-032），本质疑仅提示成本，不强制收敛
+- **DC-002 修正记录（2026-07-28）**：doing/71 原记「cron 已由 AUD-032 接线」属台账失实——接线了，但 crontab 指向的 deploy/backup.sh 路径从未被创建（deploy/ 目录由 setup-server.sh 整目录 rsync，含 backup.sh；cron 实际指向路径当时不存在即静默失败）。已修复：① cron 指向 deploy/ 整目录内 backup.sh，路径在部署链路恒存在；② backup.sh/restore.sh 的 DB 连接事实、卷探测、log() 收敛到 backup-common.sh（单一事实源，杜绝两脚本各自定义 DB 事实漂移）；③ 写入前 fail-fast（目录/权限不满足即退出，不再静默写错位置）。
 
 ### AUD-062【观察】声纹双模式比对维护成本（local 0.70 前端 + remote 0.55 服务端两套链路）
 
@@ -249,6 +251,7 @@
 | ARCH-001 C1 编排拆分 | ConversationServiceImpl 759 行（台账 844→758 吻合）；PersonalInfoExtractor/PromptAssemblyService 存在且配测试 | ✅ 属实 |
 | ARCH-002/005/006/008（前端） | useSilenceNudge 走 authFetch；SSE consumeSseStream 仅一处；useVoiceInputPipeline 边界清晰；authFetch 移植 teacher + CSP/COOP/COEP + console 归零 + BigScreen 错误态 | ✅ 属实 |
 | ARCH-003 风险词典单一规则源 | RiskKeywordRegistry（279 行）被 RiskDetectorServiceImpl/ConversationRiskProcessor 统一引用 | ✅ 属实 |
+| ARCH-003 修正 | **DC-001 + DC-008 修正记录（2026-07-28）**：原抽查仅验证词典引用属实，但类别判定/情绪展示仍各自独立（台账失实）——已收敛：风险分级判定收敛至 HighSensitivityCategories 单一类别源（高敏接线完成，修复 SAFE-202 恒 false 死门控，测试证明）；英文类别常量零残留，风险事件落库类别为中文；情绪五处表示（展示/归一化/成员集）收敛至 EmotionVocabulary，`anxious` 全系统单译，中文标签映射残留仅 `EmotionVocabulary.ZH_LABELS` 一处 | DC-001 + DC-008（doing/72 §2/§9） |
 | ARCH-004 僵尸 API 清理 | **RecurrenceCalculator 零生产调用且不在台账保留清单** | ⚠️ 失实（见 AUD-063） |
 | ARCH-007 两级摘要 + PII 置换 | MessageSummaryService 主链路调用；PiiDesensitizer 含姓名/地址脱敏 | ✅ 属实 |
 | ARCH-009 工程化门禁（7 项全查） | pytest 入 CI 真实；teacher 覆盖率配置链路完整（89.99% 实测值无法复跑）；TTS 面板删除零命中；rollback V28~V33 六文件真实非空；prepare-models.sh --verify + MANIFEST 接线；限流拦截器已注册 | ✅ 全部属实 |
