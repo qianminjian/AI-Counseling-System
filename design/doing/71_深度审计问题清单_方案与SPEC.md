@@ -1,7 +1,7 @@
 # doing/71 深度审计问题清单（方案与 SPEC）
 
-> 编号：DOC-061 | 创建：2026-08-06 | 状态：⏳ 待处理（问题清单已定稿，修复任务后续统一排期实施）
-> 进度：**批次 A/B/C ✅ 完成（2026-08-06）**；**批次 D ✅ 完成（2026-08-06，AUD-063~071 清理 + AUD-060~062 议决，见 §7/§8）**；剩余批次 E（AUD-041~059 P3 收尾）待排期
+> 编号：DOC-061 | 创建：2026-08-06 | 状态：✅ 全部完成（批次 A~E 闭环，2026-08-07）
+> 进度：**批次 A/B/C ✅ 完成（2026-08-06）**；**批次 D ✅ 完成（2026-08-06，AUD-063~071 清理 + AUD-060~062 议决，见 §7/§8）**；**批次 E ✅ 完成（2026-08-07，AUD-041~059 P3 全部实施/确认，见 §8）**
 > 来源：独立架构深度审计（4 路并行 agent 交叉印证：后端 / 前端三端 / 工程化部署 / 设计一致性）
 > 审计基线：develop @ 27ad409（design 合并归档完成后），工作区干净
 > 关联：ARCH-001~010 治理系列（his/61~70，本审计为其延续轮次）；frozen/38 计费套餐、frozen/62 数据脱敏导出
@@ -230,6 +230,8 @@
 
 > **批次 D 清理状态（2026-08-06）**：全部 9 项已闭环——代码类已处理（冻结登记/安全封装/注释修正），文件系统类已验证无残留。
 
+> **批次 E 处置状态（2026-08-07）**：AUD-041~059 共 19 项全部实施/确认（用户指令：P3 低优 19 项全部实施，不要遗留任何一个）。代码类已实施（后端/CI/前端/部署），文档类经核实已在前期批次同步，确认类已登记结论。
+
 | 编号 | 项 | 位置 | 判定 | 批次 D 处置 |
 |---|---|---|---|---|
 | AUD-063 | RecurrenceCalculator | counseling-service/.../assessment/ | **零生产调用且不在台账暂缓清单（台账失实项）**——补登记并移除或显式冻结 | ✅ 显式冻结（类注释标注冻结期禁删禁加调用）+ 台账补登记（03 §4.2.1） |
@@ -241,6 +243,30 @@
 | AUD-069 | tts-service/wheels/（44 文件） | backend/tts-service/wheels/ | 已被 gitignore（不入库），OD-012 已裁决在线安装，工作区残留 | ✅ 验证目录已不存在，无残留 |
 | AUD-070 | tmp/*.patch（14 个） | tmp/ | 历史修复补丁，gitignore 拦截不入库，可归档清理 | ✅ 验证无 *.patch 残留 |
 | AUD-071 | tests/e2e/node_modules、playwright-report/、test-results/ | tests/e2e/ | 本地运行残留（未跟踪），保持工作区干净 | ✅ 验证不存在，无残留 |
+
+### 批次 E 处置登记（AUD-041~059，2026-08-07）
+
+| 编号 | 项 | 位置 | 判定 | 批次 E 处置 |
+|---|---|---|---|---|
+| AUD-041 | `ratelimit:` key 无租户前缀 | RateLimiter.java | ARCH-010 D2 仅覆盖 session:state: | ✅ 已认证用户 key 带租户段（`ratelimit:{tenantId}:{action}:{userId}`，无租户上下文防御回退旧格式）；公开端点（IP/指纹）不属租户维度不添加 |
+| AUD-042 | tts 弃用 on_event；voice 后缀未白名单 | tts/voice app.py | FastAPI 生命周期与上传校验 | ✅ tts 改 lifespan（启动建 httpx 客户端、退出 aclose 回收）；voice 上传后缀白名单（webm/wav/mp3/m4a/ogg/opus/aac/flac，非法 400） |
+| AUD-043 | `.last("LIMIT ...")` 字符串拼接 | 分页相关 Mapper | 值已钳制无注入面，用法不安全 | ✅ MybatisPlusConfig 注册 PaginationInnerInterceptor（租户拦截器之前）+ 10 处动态拼接改 `selectPage(new Page<>(1, n, false))`（不查 COUNT，语义等价）；静态 `LIMIT 1/10/20/50` 惯用法保留（无注入面） |
+| AUD-044 | JDK 25 未实测 | ci.yml | jacoco/byte-buddy/mockito 版本已覆盖 | ✅ 新增 jdk25-smoke job（setup-java 25 + 编译冒烟，不重复跑测试） |
+| AUD-045 | privacy 链接与 basename 重复 | parent-h5 privacy/index.tsx | 依赖 catch-all Navigate 回写 | ✅ `to="/parent/"` → `to="/"`（BrowserRouter basename 已含 /parent） |
+| AUD-046 | ThemeProvider 裸用 localStorage | student-h5 ThemeProvider.tsx | 与 useWakeEnabled 不一致 | ✅ 确认已覆盖——AUD-065（批次 D）已全量接入 storage.ts 安全封装（readLocalStorageSafe/writeLocalStorageSafe），无裸 localStorage |
+| AUD-047 | Dashboard 多层轮询叠加 | Dashboard/TodayTodoPanel/BigScreen | 15s+30s+30s 无节流 | ✅ 三处轮询回调首行 `if (document.hidden) return`——后台标签页零空转请求，恢复可见下一周期续跑 |
+| AUD-048 | StudentPanel 2 处 any | StudentPanel.tsx L183/223 | 类型残留 | ✅ `AlertVO`/`NoteVO` 类型化（profile 标注 `StudentProfileVO | null`） |
+| AUD-049 | menuItems 每次渲染重建 | Dashboard.tsx L135-169 | 应常量/useMemo | ✅ useMemo 缓存（依赖 [unreadCount, isAdmin]） |
+| AUD-050 | TTS 按钮无 aria-label | MessageBubble.tsx L66-84 | 读屏器不读 title | ✅ aria-label（播放语音/正在播放语音，随 isSpeaking 切换） |
+| AUD-051 | GITHUB_OWNER 未定义 | .env.example | DEPLOY-GUIDE 要求但变量缺失 | ✅ 补 `GITHUB_OWNER=mindsafe`（与 docker-compose.test.yml 默认值对齐） |
+| AUD-052 | ci.yml 未收敛 permissions | ci.yml L16 | 最小权限 | ✅ 顶层 `permissions: contents: read` |
+| AUD-053 | image_tag 无格式校验 | cd.yml L15 | 注入面 | ✅ pattern 白名单：`^([0-9a-f]{7,40}|v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.-]+)?)$`（git SHA 或 v 语义化版本） |
+| AUD-054 | 镜像浮 tag 未 pin digest | 各 Dockerfile | 可接受，Trivy 已入 CI | ✅ 确认登记——保持浮 tag（Trivy CRITICAL/HIGH 门禁已覆盖漏洞面），无动作 |
+| AUD-055 | postgres/redis/nginx 无 mem_limit | docker-compose 各文件 | 2C2G 主机 pg 可吃满内存 | ✅ 三 compose（yml/prod/test）postgres 512m / redis 256m / nginx 128m |
+| AUD-056 | Grafana dashboards editable: true | monitoring/grafana | 建议 false | ✅ `editable: false`（仪表盘只读） |
+| AUD-057 | 02 版本头未登记 V33 | design/02 L4/L334/L370 | risk_event_structured_score | ✅ 确认——02 版本头/L89 表标注/L270 迁移登记/L335 工具版本均含 V33（V33 迁移登记时同步） |
+| AUD-058 | 波波四态 vs 代码五态 | design/08 L36 | waitingWake 缺失 | ✅ 确认——08 L36 已为五态（idle/listening/thinking/speaking/waitingWake），与 chatRoomRules.ts BoboState 一致 |
+| AUD-059 | L1-L5 旧口径残留 | design/08 §2.1/§5.4 | 代码四档色级 | ✅ 确认——08 L126 已标注 AUD-059 校正（四档 GREEN(0)/YELLOW(1)/ORANGE(2)/RED(3) + 整数 riskLevel，L1-L5 为旧口径历史叙述），与 RiskLevel.java 一致 |
 
 ---
 
@@ -271,7 +297,7 @@
 2. **批次 B（契约文档止血 + 高风险数据项）**：AUD-011/012（08 错误码/响应字段重写）、AUD-013（analytics 三端点裁决）、AUD-036~040（文档互斥修正）、AUD-057~059（文档口径）
 3. **批次 C（工程化加固）**：AUD-005~008（后端/前端 P1）、AUD-014~035（P2 各项）
 4. **批次 D（清理与收敛）**：AUD-063~071（僵死代码清理）、AUD-060~062（过度设计议决）
-5. **批次 E（P3 收尾）**：AUD-041~059 剩余项
+5. **批次 E（P3 收尾）**：AUD-041~059 全部实施/确认（2026-08-07，见 §8 批次 E 处置登记）✅
 
 ---
 
@@ -282,3 +308,4 @@
 - 审计基线 commit：27ad409（develop）
 - 用户裁决：2026-08-06（§2）
 - 审计全文未落库部分（各维度细节证据链）以本报告为准；his/61~70 各文档头部引用对应历史审计项
+- 批次 E 实施：2026-08-07（用户指令：P3 低优 19 项全部实施，不要遗留任何一个；代码类已实施，文档类核实已在前期批次同步）
