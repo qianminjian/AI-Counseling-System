@@ -1,28 +1,22 @@
 package com.mindsafe.api.controller;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.mindsafe.api.security.JwtAuthenticationFilter.TenantContext;
 import com.mindsafe.api.security.JwtTokenProvider;
 import com.mindsafe.common.dto.ApiResponse;
 import com.mindsafe.common.dto.ErrorCode;
 import com.mindsafe.common.exception.BizException;
 import com.mindsafe.domain.entity.CounselingSession;
-import com.mindsafe.domain.entity.MessageSummary;
 import com.mindsafe.domain.entity.Notification;
 import com.mindsafe.domain.entity.RiskEvent;
 import com.mindsafe.domain.entity.TeacherNote;
 import com.mindsafe.domain.entity.User;
-import com.mindsafe.domain.mapper.CounselingSessionMapper;
-import com.mindsafe.domain.mapper.MessageSummaryMapper;
-import com.mindsafe.domain.mapper.RiskEventMapper;
-import com.mindsafe.domain.mapper.UserMapper;
 import com.mindsafe.service.notification.NotificationService;
 import com.mindsafe.service.casemanage.CaseLifecycleService;
 import com.mindsafe.service.profile.ProfileRadarService;
 import com.mindsafe.service.teacher.TeacherService;
 import com.mindsafe.service.audit.AuditLogService;
 import com.mindsafe.service.security.FieldEncryptionService;
+import com.mindsafe.service.session.SessionAccessService;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
@@ -48,34 +42,26 @@ public class TeacherController {
     private final NotificationService notificationService;
     private final TeacherService teacherService;
     private final ProfileRadarService profileRadarService;
-    private final RiskEventMapper riskEventMapper;
-    private final UserMapper userMapper;
-    private final CounselingSessionMapper sessionMapper;
-    private final MessageSummaryMapper messageSummaryMapper;
     private final AuditLogService auditLogService;
     private final JwtTokenProvider jwtTokenProvider;
     private final FieldEncryptionService fieldEncryptionService;
+    /** T4 批次A：会话归属校验单点（租户条件强制内置） */
+    private final SessionAccessService sessionAccessService;
 
     public TeacherController(NotificationService notificationService,
                              TeacherService teacherService,
                              ProfileRadarService profileRadarService,
-                             RiskEventMapper riskEventMapper,
-                             UserMapper userMapper,
-                             CounselingSessionMapper sessionMapper,
-                             MessageSummaryMapper messageSummaryMapper,
                              AuditLogService auditLogService,
                              JwtTokenProvider jwtTokenProvider,
-                             FieldEncryptionService fieldEncryptionService) {
+                             FieldEncryptionService fieldEncryptionService,
+                             SessionAccessService sessionAccessService) {
         this.notificationService = notificationService;
         this.teacherService = teacherService;
         this.profileRadarService = profileRadarService;
-        this.riskEventMapper = riskEventMapper;
-        this.userMapper = userMapper;
-        this.sessionMapper = sessionMapper;
-        this.messageSummaryMapper = messageSummaryMapper;
         this.auditLogService = auditLogService;
         this.jwtTokenProvider = jwtTokenProvider;
         this.fieldEncryptionService = fieldEncryptionService;
+        this.sessionAccessService = sessionAccessService;
     }
 
     // ===== 工作台 =====
@@ -174,11 +160,8 @@ public class TeacherController {
     public ApiResponse<Map<String, Object>> getSessionSummary(
             @PathVariable UUID sessionId, Authentication auth) {
         TenantContext ctx = (TenantContext) auth.getDetails();
-        CounselingSession session = sessionMapper.selectOne(
-                new LambdaQueryWrapper<CounselingSession>()
-                        .eq(CounselingSession::getTenantId, ctx.tenantId())
-                        .eq(CounselingSession::getSessionId, sessionId)
-        );
+        // T4 批次A：归属校验单点（租户条件强制内置，杜绝跨租户越权）
+        CounselingSession session = sessionAccessService.getTenantSession(ctx.tenantId(), sessionId);
         if (session == null) {
             return ApiResponse.ok(Map.of("summary", "", "status", "not_found"));
         }
@@ -194,22 +177,11 @@ public class TeacherController {
             @PathVariable UUID sessionId, Authentication auth) {
         TenantContext ctx = (TenantContext) auth.getDetails();
         UUID userId = (UUID) auth.getPrincipal();
-        CounselingSession session = sessionMapper.selectOne(
-                new LambdaQueryWrapper<CounselingSession>()
-                        .eq(CounselingSession::getTenantId, ctx.tenantId())
-                        .eq(CounselingSession::getSessionId, sessionId)
-        );
-        if (session == null) {
-            return ApiResponse.ok(Map.of("success", false, "reason", "session_not_found"));
+        // T4 批次A/B：归属校验 + 状态更新 + 审计整体下沉 TeacherService（事务内）
+        TeacherService.TakeoverResult result = teacherService.takeoverSession(ctx.tenantId(), userId, sessionId);
+        if (!result.success()) {
+            return ApiResponse.ok(Map.of("success", false, "reason", result.reason()));
         }
-        // 更新状态为 taken_over
-        CounselingSession update = new CounselingSession();
-        update.setSessionId(sessionId);
-        update.setSessionStatus("taken_over");
-        update.setUpdatedAt(java.time.Instant.now());
-        sessionMapper.updateById(update);
-
-        auditLogService.log(ctx.tenantId(), userId, "SESSION_TAKEOVER", "session", sessionId, null);
         return ApiResponse.ok(Map.of("success", true, "sessionId", sessionId.toString()));
     }
 
@@ -218,12 +190,8 @@ public class TeacherController {
     public ApiResponse<Map<String, String>> generateParentLink(
             @PathVariable UUID studentId, Authentication auth) {
         TenantContext ctx = (TenantContext) auth.getDetails();
-        // 验证学生属于同租户
-        User student = userMapper.selectOne(
-                new LambdaQueryWrapper<User>()
-                        .eq(User::getUserId, studentId)
-                        .eq(User::getTenantId, ctx.tenantId())
-        );
+        // 验证学生属于同租户（T4 批次C：查询下沉 TeacherService，租户条件强制内置）
+        User student = teacherService.findStudentInTenant(ctx.tenantId(), studentId);
         if (student == null) {
             return ApiResponse.ok(Map.of("error", "学生不存在"));
         }
@@ -233,21 +201,12 @@ public class TeacherController {
         return ApiResponse.ok(Map.of("link", link, "expiresIn", "7天"));
     }
 
-    /** 获取学生列表（同租户，班主任仅看本班） */
+    /** 获取学生列表（同租户，班主任仅看本班；T4 批次C：查询下沉 TeacherService） */
     @GetMapping("/teacher/students")
     public ApiResponse<List<StudentVO>> getStudents(Authentication auth) {
         TenantContext ctx = (TenantContext) auth.getDetails();
         String classScope = teacherService.resolveClassScope(ctx.tenantId(), ctx.userId(), ctx.userType());
-        LambdaQueryWrapper<User> wrapper = new LambdaQueryWrapper<User>()
-                .eq(User::getTenantId, ctx.tenantId())
-                .eq(User::getUserType, User.USER_TYPE_STUDENT)
-                .eq(User::getStatus, User.STATUS_ACTIVE)
-                .orderByAsc(User::getGradeCode)
-                .orderByAsc(User::getClassCode);
-        if (classScope != null) {
-            wrapper.eq(User::getClassCode, classScope);
-        }
-        List<User> students = userMapper.selectList(wrapper);
+        List<User> students = teacherService.listActiveStudents(ctx.tenantId(), classScope);
         List<StudentVO> voList = students.stream()
                 .map(s -> new StudentVO(s.getUserId(), s.getPseudonym(), s.getGradeCode(), s.getClassCode()))
                 .toList();
@@ -280,20 +239,13 @@ public class TeacherController {
         return ApiResponse.ok(null);
     }
 
-    /** 获取风险事件列表（同租户） */
+    /** 获取风险事件列表（同租户；T4 批次C：分页查询下沉 TeacherService） */
     @GetMapping("/teacher/risk-events")
     public ApiResponse<List<RiskEvent>> getRiskEvents(
             Authentication auth,
             @RequestParam(defaultValue = "50") int limit) {
         TenantContext ctx = (TenantContext) auth.getDetails();
-        // AUD-043：分页插件安全化，替代 .last("LIMIT ...") 字符串拼接
-        Page<RiskEvent> pageResult = riskEventMapper.selectPage(
-                new Page<>(1, Math.min(limit, 100), false),
-                new LambdaQueryWrapper<RiskEvent>()
-                        .eq(RiskEvent::getTenantId, ctx.tenantId())
-                        .orderByDesc(RiskEvent::getDetectedAt)
-        );
-        return ApiResponse.ok(pageResult.getRecords());
+        return ApiResponse.ok(teacherService.pageRiskEvents(ctx.tenantId(), limit));
     }
 
     // ===== 数据导出 =====
@@ -328,18 +280,11 @@ public class TeacherController {
         w.flush();
     }
 
-    /** 导出学生列表 CSV */
+    /** 导出学生列表 CSV（T4 批次C：查询下沉 TeacherService，与 getStudents 共用 DRY） */
     @GetMapping("/teacher/export/students")
     public void exportStudents(Authentication auth, HttpServletResponse response) throws IOException {
         TenantContext ctx = (TenantContext) auth.getDetails();
-        List<User> students = userMapper.selectList(
-                new LambdaQueryWrapper<User>()
-                        .eq(User::getTenantId, ctx.tenantId())
-                        .eq(User::getUserType, User.USER_TYPE_STUDENT)
-                        .eq(User::getStatus, User.STATUS_ACTIVE)
-                        .orderByAsc(User::getGradeCode)
-                        .orderByAsc(User::getClassCode)
-        );
+        List<User> students = teacherService.listActiveStudents(ctx.tenantId(), null);
 
         response.setContentType("text/csv; charset=UTF-8");
         response.setHeader("Content-Disposition", "attachment; filename=students_export.csv");

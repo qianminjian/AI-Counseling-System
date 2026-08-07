@@ -5,7 +5,9 @@ import com.mindsafe.domain.entity.TeacherNote;
 import com.mindsafe.domain.entity.User;
 import com.mindsafe.domain.mapper.*;
 import com.mindsafe.service.casemanage.CaseLifecycleService;
+import com.mindsafe.service.audit.AuditLogService;
 import com.mindsafe.service.security.FieldEncryptionService;
+import com.mindsafe.service.session.SessionAccessService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -54,7 +56,9 @@ class TeacherCaseStageTransitionTest {
                 teacherNoteMapper,
                 mock(NotificationMapper.class),
                 mock(MessageSummaryMapper.class),
-                fieldEncryptionService);
+                fieldEncryptionService,
+                mock(SessionAccessService.class),
+                mock(AuditLogService.class));
     }
 
     private void givenStudent() {

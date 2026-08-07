@@ -6,7 +6,9 @@ import com.mindsafe.domain.entity.RiskEvent;
 import com.mindsafe.domain.entity.TeacherNote;
 import com.mindsafe.domain.entity.User;
 import com.mindsafe.domain.mapper.*;
+import com.mindsafe.service.audit.AuditLogService;
 import com.mindsafe.service.security.FieldEncryptionService;
+import com.mindsafe.service.session.SessionAccessService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -54,7 +56,9 @@ class TeacherClassScopeTest {
                 teacherNoteMapper,
                 mock(NotificationMapper.class),
                 messageSummaryMapper,
-                fieldEncryptionService);
+                fieldEncryptionService,
+                mock(SessionAccessService.class),
+                mock(AuditLogService.class));
     }
 
     private User teacherWithClass(String classCode) {

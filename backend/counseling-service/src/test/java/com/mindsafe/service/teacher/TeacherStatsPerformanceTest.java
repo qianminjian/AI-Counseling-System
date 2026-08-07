@@ -10,6 +10,8 @@ import com.mindsafe.domain.mapper.RiskEventMapper;
 import com.mindsafe.domain.mapper.TeacherNoteMapper;
 import com.mindsafe.domain.mapper.UserMapper;
 import com.mindsafe.service.security.FieldEncryptionService;
+import com.mindsafe.service.audit.AuditLogService;
+import com.mindsafe.service.session.SessionAccessService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -26,6 +28,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -57,7 +60,8 @@ class TeacherStatsPerformanceTest {
     @BeforeEach
     void setUp() {
         service = new TeacherService(riskEventMapper, sessionMapper, userMapper,
-                teacherNoteMapper, notificationMapper, messageSummaryMapper, fieldEncryptionService);
+                teacherNoteMapper, notificationMapper, messageSummaryMapper, fieldEncryptionService,
+                mock(SessionAccessService.class), mock(AuditLogService.class));
         // getStats 其余部分的默认返回（本测试聚焦趋势/情绪/满意度三处）
         lenient().when(riskEventMapper.selectList(any())).thenReturn(List.of());
         lenient().when(userMapper.selectList(any())).thenReturn(List.of());

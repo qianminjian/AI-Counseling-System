@@ -4,15 +4,12 @@ import com.mindsafe.api.security.JwtAuthenticationFilter.TenantContext;
 import com.mindsafe.api.security.JwtTokenProvider;
 import com.mindsafe.common.dto.ErrorCode;
 import com.mindsafe.common.exception.BizException;
-import com.mindsafe.domain.mapper.CounselingSessionMapper;
-import com.mindsafe.domain.mapper.MessageSummaryMapper;
-import com.mindsafe.domain.mapper.RiskEventMapper;
-import com.mindsafe.domain.mapper.UserMapper;
 import com.mindsafe.service.audit.AuditLogService;
 import com.mindsafe.service.casemanage.CaseLifecycleService;
 import com.mindsafe.service.notification.NotificationService;
 import com.mindsafe.service.profile.ProfileRadarService;
 import com.mindsafe.service.security.FieldEncryptionService;
+import com.mindsafe.service.session.SessionAccessService;
 import com.mindsafe.service.teacher.TeacherService;
 import jakarta.servlet.ServletOutputStream;
 import jakarta.servlet.http.HttpServletResponse;
@@ -67,13 +64,10 @@ class TeacherControllerTest {
                 notificationService,
                 teacherService,
                 mock(ProfileRadarService.class),
-                mock(RiskEventMapper.class),
-                mock(UserMapper.class),
-                mock(CounselingSessionMapper.class),
-                mock(MessageSummaryMapper.class),
                 auditLogService,
                 mock(JwtTokenProvider.class),
-                mock(FieldEncryptionService.class));
+                mock(FieldEncryptionService.class),
+                mock(SessionAccessService.class));
     }
 
     private Authentication teacherAuth(String userType) {

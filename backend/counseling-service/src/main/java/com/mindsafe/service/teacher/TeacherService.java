@@ -8,6 +8,8 @@ import com.mindsafe.domain.entity.*;
 import com.mindsafe.domain.mapper.*;
 import com.mindsafe.service.casemanage.CaseLifecycleService;
 import com.mindsafe.service.security.FieldEncryptionService;
+import com.mindsafe.service.audit.AuditLogService;
+import com.mindsafe.service.session.SessionAccessService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -35,6 +37,10 @@ public class TeacherService {
     private final NotificationMapper notificationMapper;
     private final MessageSummaryMapper messageSummaryMapper;
     private final FieldEncryptionService fieldEncryptionService;
+    /** T4 批次A：会话归属校验单点（租户条件强制内置，防跨租户越权） */
+    private final SessionAccessService sessionAccessService;
+    /** T4 批次B：接管审计留痕随状态更新下沉（事务内） */
+    private final AuditLogService auditLogService;
 
     // 预警待办静音规则（design/35 §4.2 降噪第 3 条，纯规则内联实例化）
     private final AlertTodoMutePolicy alertTodoMutePolicy = new AlertTodoMutePolicy();
@@ -55,7 +61,9 @@ public class TeacherService {
                           TeacherNoteMapper teacherNoteMapper,
                           NotificationMapper notificationMapper,
                           MessageSummaryMapper messageSummaryMapper,
-                          FieldEncryptionService fieldEncryptionService) {
+                          FieldEncryptionService fieldEncryptionService,
+                          SessionAccessService sessionAccessService,
+                          AuditLogService auditLogService) {
         this.riskEventMapper = riskEventMapper;
         this.sessionMapper = sessionMapper;
         this.userMapper = userMapper;
@@ -63,6 +71,8 @@ public class TeacherService {
         this.notificationMapper = notificationMapper;
         this.messageSummaryMapper = messageSummaryMapper;
         this.fieldEncryptionService = fieldEncryptionService;
+        this.sessionAccessService = sessionAccessService;
+        this.auditLogService = auditLogService;
     }
 
     // ===== 数据范围解析（RBAC） =====
@@ -82,6 +92,73 @@ public class TeacherService {
             return "";
         }
         return null; // admin / psych_teacher / teacher → 全校
+    }
+
+    // ===== 教师接管升级会话（T4 批次A/B：归属校验 + 状态更新 + 审计下沉，Controller 不再直查 Mapper） =====
+
+    /**
+     * 教师接管升级会话（红色风险转人工）：
+     * 租户归属校验（SessionAccessService 强制）→ 状态更新 → 审计留痕（同一事务）。
+     */
+    @Transactional
+    public TakeoverResult takeoverSession(UUID tenantId, UUID userId, UUID sessionId) {
+        CounselingSession session = sessionAccessService.getTenantSession(tenantId, sessionId);
+        if (session == null) {
+            return new TakeoverResult(false, "session_not_found");
+        }
+        CounselingSession update = new CounselingSession();
+        update.setSessionId(sessionId);
+        update.setSessionStatus("taken_over");
+        update.setUpdatedAt(Instant.now());
+        sessionMapper.updateById(update);
+        auditLogService.log(tenantId, userId, "SESSION_TAKEOVER", "session", sessionId, null);
+        return new TakeoverResult(true, null);
+    }
+
+    /**
+     * 接管结果（替代 Map 魔法键）。
+     * 注意：success() 为 record 自动生成的存取器（返回 boolean），不可自定义同名静态工厂。
+     */
+    public record TakeoverResult(boolean success, String reason) {
+    }
+
+    // ===== T4 批次C：管理/教师端查询下沉（Controller 不再直查 Mapper，租户条件强制内置） =====
+
+    /** 查询同租户学生（null 表示不存在/非本租户） */
+    public User findStudentInTenant(UUID tenantId, UUID studentId) {
+        return userMapper.selectOne(
+                new LambdaQueryWrapper<User>()
+                        .eq(User::getUserId, studentId)
+                        .eq(User::getTenantId, tenantId)
+        );
+    }
+
+    /**
+     * 学生列表（同租户 + 学生 + 启用；classScope 非 null 时仅该班级，null 表示全校）。
+     * getStudents 与 exportStudents 共用（DRY）。
+     */
+    public List<User> listActiveStudents(UUID tenantId, String classScope) {
+        LambdaQueryWrapper<User> wrapper = new LambdaQueryWrapper<User>()
+                .eq(User::getTenantId, tenantId)
+                .eq(User::getUserType, User.USER_TYPE_STUDENT)
+                .eq(User::getStatus, User.STATUS_ACTIVE)
+                .orderByAsc(User::getGradeCode)
+                .orderByAsc(User::getClassCode);
+        if (classScope != null) {
+            wrapper.eq(User::getClassCode, classScope);
+        }
+        return userMapper.selectList(wrapper);
+    }
+
+    /** 风险事件列表（同租户，最近 limit 条；AUD-043 分页插件安全化） */
+    public List<RiskEvent> pageRiskEvents(UUID tenantId, int limit) {
+        Page<RiskEvent> pageResult = riskEventMapper.selectPage(
+                new Page<>(1, Math.min(limit, 100), false),
+                new LambdaQueryWrapper<RiskEvent>()
+                        .eq(RiskEvent::getTenantId, tenantId)
+                        .orderByDesc(RiskEvent::getDetectedAt)
+        );
+        return pageResult.getRecords();
     }
 
     // ===== 工作台概览 =====

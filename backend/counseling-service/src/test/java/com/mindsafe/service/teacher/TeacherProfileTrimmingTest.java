@@ -5,6 +5,8 @@ import com.mindsafe.domain.entity.RiskEvent;
 import com.mindsafe.domain.entity.TeacherNote;
 import com.mindsafe.domain.entity.User;
 import com.mindsafe.domain.mapper.*;
+import com.mindsafe.service.audit.AuditLogService;
+import com.mindsafe.service.session.SessionAccessService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -50,7 +52,9 @@ class TeacherProfileTrimmingTest {
                 teacherNoteMapper, notificationMapper, messageSummaryMapper,
                 // R-01：未启用加密的真实加密服务 → 明文透传
                 new com.mindsafe.service.security.FieldEncryptionService(
-                        false, "", 1, "", new org.springframework.core.env.StandardEnvironment()));
+                        false, "", 1, "", new org.springframework.core.env.StandardEnvironment()),
+                mock(SessionAccessService.class),
+                mock(AuditLogService.class));
 
         User student = new User();
         student.setUserId(studentId);

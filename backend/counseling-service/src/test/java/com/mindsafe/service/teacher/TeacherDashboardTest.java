@@ -3,7 +3,9 @@ package com.mindsafe.service.teacher;
 import com.mindsafe.domain.entity.CounselingSession;
 import com.mindsafe.domain.entity.RiskEvent;
 import com.mindsafe.domain.mapper.*;
+import com.mindsafe.service.audit.AuditLogService;
 import com.mindsafe.service.security.FieldEncryptionService;
+import com.mindsafe.service.session.SessionAccessService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -46,7 +48,9 @@ class TeacherDashboardTest {
                 mock(TeacherNoteMapper.class),
                 mock(NotificationMapper.class),
                 mock(MessageSummaryMapper.class),
-                mock(FieldEncryptionService.class));
+                mock(FieldEncryptionService.class),
+                mock(SessionAccessService.class),
+                mock(AuditLogService.class));
     }
 
     private CounselingSession ratedSession(int rating) {

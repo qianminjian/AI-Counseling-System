@@ -1,8 +1,5 @@
 package com.mindsafe.api.controller;
 
-import com.baomidou.mybatisplus.core.MybatisConfiguration;
-import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
-import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.mindsafe.api.security.JwtAuthenticationFilter.TenantContext;
 import com.mindsafe.api.security.JwtTokenProvider;
 import com.mindsafe.common.dto.ApiResponse;
@@ -10,19 +7,14 @@ import com.mindsafe.domain.entity.CounselingSession;
 import com.mindsafe.domain.entity.RiskEvent;
 import com.mindsafe.domain.entity.TeacherNote;
 import com.mindsafe.domain.entity.User;
-import com.mindsafe.domain.mapper.CounselingSessionMapper;
-import com.mindsafe.domain.mapper.MessageSummaryMapper;
-import com.mindsafe.domain.mapper.RiskEventMapper;
-import com.mindsafe.domain.mapper.UserMapper;
 import com.mindsafe.service.audit.AuditLogService;
 import com.mindsafe.service.notification.NotificationService;
 import com.mindsafe.service.profile.ProfileRadarService;
 import com.mindsafe.service.security.FieldEncryptionService;
+import com.mindsafe.service.session.SessionAccessService;
 import com.mindsafe.service.teacher.TeacherService;
 import jakarta.servlet.ServletOutputStream;
 import jakarta.servlet.http.HttpServletResponse;
-import org.apache.ibatis.builder.MapperBuilderAssistant;
-import org.apache.ibatis.type.ObjectTypeHandler;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -52,13 +44,10 @@ class TeacherControllerFullTest {
     private NotificationService notificationService;
     private TeacherService teacherService;
     private ProfileRadarService profileRadarService;
-    private RiskEventMapper riskEventMapper;
-    private UserMapper userMapper;
-    private CounselingSessionMapper sessionMapper;
-    private MessageSummaryMapper messageSummaryMapper;
     private AuditLogService auditLogService;
     private JwtTokenProvider jwtTokenProvider;
     private FieldEncryptionService fieldEncryptionService;
+    private SessionAccessService sessionAccessService;
     private TeacherController controller;
 
     private final UUID tenantId = UUID.randomUUID();
@@ -67,25 +56,15 @@ class TeacherControllerFullTest {
 
     @BeforeEach
     void setUp() {
-        MybatisConfiguration configuration = new MybatisConfiguration();
-        configuration.getTypeHandlerRegistry().register(UUID.class, ObjectTypeHandler.class);
-        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(configuration, ""), User.class);
-        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(configuration, ""), CounselingSession.class);
-        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(configuration, ""), RiskEvent.class);
-
         notificationService = mock(NotificationService.class);
         teacherService = mock(TeacherService.class);
         profileRadarService = mock(ProfileRadarService.class);
-        riskEventMapper = mock(RiskEventMapper.class);
-        userMapper = mock(UserMapper.class);
-        sessionMapper = mock(CounselingSessionMapper.class);
-        messageSummaryMapper = mock(MessageSummaryMapper.class);
         auditLogService = mock(AuditLogService.class);
         jwtTokenProvider = mock(JwtTokenProvider.class);
         fieldEncryptionService = mock(FieldEncryptionService.class);
+        sessionAccessService = mock(SessionAccessService.class);
         controller = new TeacherController(notificationService, teacherService, profileRadarService,
-                riskEventMapper, userMapper, sessionMapper, messageSummaryMapper, auditLogService,
-                jwtTokenProvider, fieldEncryptionService);
+                auditLogService, jwtTokenProvider, fieldEncryptionService, sessionAccessService);
     }
 
     private Authentication teacherAuth(String userType) {
@@ -234,7 +213,7 @@ class TeacherControllerFullTest {
     @Test
     @DisplayName("getSessionSummary 会话不存在 → not_found")
     void sessionSummary_notFound() {
-        when(sessionMapper.selectOne(any())).thenReturn(null);
+        when(sessionAccessService.getTenantSession(any(), any())).thenReturn(null);
 
         var resp = controller.getSessionSummary(UUID.randomUUID(), teacherAuth("psych_teacher"));
 
@@ -246,7 +225,7 @@ class TeacherControllerFullTest {
     void sessionSummary_ready() {
         CounselingSession s = new CounselingSession();
         s.setSessionSummary("摘要内容");
-        when(sessionMapper.selectOne(any())).thenReturn(s);
+        when(sessionAccessService.getTenantSession(any(), any())).thenReturn(s);
         when(fieldEncryptionService.decrypt("摘要内容")).thenReturn("摘要内容");
 
         var resp = controller.getSessionSummary(UUID.randomUUID(), teacherAuth("psych_teacher"));
@@ -258,7 +237,7 @@ class TeacherControllerFullTest {
     @Test
     @DisplayName("getSessionSummary 摘要生成中 → pending")
     void sessionSummary_pending() {
-        when(sessionMapper.selectOne(any())).thenReturn(new CounselingSession());
+        when(sessionAccessService.getTenantSession(any(), any())).thenReturn(new CounselingSession());
 
         var resp = controller.getSessionSummary(UUID.randomUUID(), teacherAuth("psych_teacher"));
 
@@ -268,7 +247,8 @@ class TeacherControllerFullTest {
     @Test
     @DisplayName("takeoverSession 会话不存在 → success=false")
     void takeover_notFound() {
-        when(sessionMapper.selectOne(any())).thenReturn(null);
+        when(teacherService.takeoverSession(any(), any(), any()))
+                .thenReturn(new TeacherService.TakeoverResult(false, "session_not_found"));
 
         var resp = controller.takeoverSession(UUID.randomUUID(), teacherAuth("psych_teacher"));
 
@@ -277,18 +257,16 @@ class TeacherControllerFullTest {
     }
 
     @Test
-    @DisplayName("takeoverSession 成功 → taken_over + 审计")
+    @DisplayName("takeoverSession 成功 → success=true + 下沉 TeacherService 调用")
     void takeover_success() {
         UUID sessionId = UUID.randomUUID();
-        CounselingSession s = new CounselingSession();
-        s.setSessionId(sessionId);
-        when(sessionMapper.selectOne(any())).thenReturn(s);
+        when(teacherService.takeoverSession(any(), any(), any()))
+                .thenReturn(new TeacherService.TakeoverResult(true, null));
 
         var resp = controller.takeoverSession(sessionId, teacherAuth("psych_teacher"));
 
         assertThat(resp.data().get("success")).isEqualTo(true);
-        verify(sessionMapper).updateById(any(CounselingSession.class));
-        verify(auditLogService).log(tenantId, teacherUserId, "SESSION_TAKEOVER", "session", sessionId, null);
+        verify(teacherService).takeoverSession(eq(tenantId), eq(teacherUserId), eq(sessionId));
     }
 
     // ===== 家长链接 =====
@@ -296,7 +274,7 @@ class TeacherControllerFullTest {
     @Test
     @DisplayName("generateParentLink 学生不存在 → error")
     void parentLink_noStudent() {
-        when(userMapper.selectOne(any())).thenReturn(null);
+        when(teacherService.findStudentInTenant(tenantId, studentUserId)).thenReturn(null);
 
         var resp = controller.generateParentLink(studentUserId, teacherAuth("psych_teacher"));
 
@@ -306,7 +284,7 @@ class TeacherControllerFullTest {
     @Test
     @DisplayName("generateParentLink 成功 → 签发 parent_report token（SEC-006）")
     void parentLink_success() {
-        when(userMapper.selectOne(any())).thenReturn(student());
+        when(teacherService.findStudentInTenant(tenantId, studentUserId)).thenReturn(student());
         when(jwtTokenProvider.generateParentReportToken(studentUserId, tenantId)).thenReturn("parent-token-xyz");
 
         var resp = controller.generateParentLink(studentUserId, teacherAuth("psych_teacher"));
@@ -321,7 +299,7 @@ class TeacherControllerFullTest {
     @DisplayName("getStudents 心理老师（scope=null）→ 全校学生")
     void students_schoolWide() {
         when(teacherService.resolveClassScope(tenantId, teacherUserId, "psych_teacher")).thenReturn(null);
-        when(userMapper.selectList(any())).thenReturn(List.of(student()));
+        when(teacherService.listActiveStudents(tenantId, null)).thenReturn(List.of(student()));
 
         ApiResponse<List<TeacherController.StudentVO>> resp = controller.getStudents(teacherAuth("psych_teacher"));
 
@@ -333,11 +311,11 @@ class TeacherControllerFullTest {
     @DisplayName("getStudents 班主任（scope=CLASS_1）→ 本班过滤")
     void students_classScope() {
         when(teacherService.resolveClassScope(tenantId, teacherUserId, "class_teacher")).thenReturn("CLASS_1");
-        when(userMapper.selectList(any())).thenReturn(List.of(student()));
+        when(teacherService.listActiveStudents(tenantId, "CLASS_1")).thenReturn(List.of(student()));
 
         controller.getStudents(teacherAuth("class_teacher"));
 
-        verify(userMapper).selectList(any());
+        verify(teacherService).listActiveStudents(tenantId, "CLASS_1");
     }
 
     // ===== 通知 =====
@@ -365,12 +343,12 @@ class TeacherControllerFullTest {
     @Test
     @DisplayName("getRiskEvents 按租户查询 + limit 上限 100")
     void riskEvents() {
-        when(riskEventMapper.selectPage(any(), any())).thenReturn(new Page<RiskEvent>().setRecords(List.of(new RiskEvent())));
+        when(teacherService.pageRiskEvents(tenantId, 500)).thenReturn(List.of(new RiskEvent()));
 
         var resp = controller.getRiskEvents(teacherAuth("psych_teacher"), 500);
 
         assertThat(resp.code()).isEqualTo(0);
-        verify(riskEventMapper).selectPage(any(), any());
+        verify(teacherService).pageRiskEvents(tenantId, 500);
     }
 
     // ===== 导出 =====
@@ -378,7 +356,7 @@ class TeacherControllerFullTest {
     @Test
     @DisplayName("exportStudents 输出 BOM + CSV 表头 + 学生行 + 审计")
     void exportStudents() throws IOException {
-        when(userMapper.selectList(any())).thenReturn(List.of(student()));
+        when(teacherService.listActiveStudents(tenantId, null)).thenReturn(List.of(student()));
         HttpServletResponse response = mock(HttpServletResponse.class);
         when(response.getOutputStream()).thenReturn(mock(ServletOutputStream.class));
         StringWriter sw = new StringWriter();
