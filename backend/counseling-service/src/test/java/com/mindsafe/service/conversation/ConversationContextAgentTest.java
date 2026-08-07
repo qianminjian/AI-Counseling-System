@@ -321,13 +321,23 @@ class ConversationContextAgentTest {
         }
 
         @Test
-        @DisplayName("未知情绪标签原样透传")
+        @DisplayName("未知情绪标签原样透传（DC-008：仅权威集外码值透传）")
         void unknownEmotionPassThrough() {
+            SessionState s = newState("ecstatic", null, 3);
+
+            String brief = agent.buildContextBrief(s, null, null, null, 1);
+
+            assertThat(brief).contains("进入心情：ecstatic");
+        }
+
+        @Test
+        @DisplayName("已收录情绪标签翻译为中文（DC-008：excited → 兴奋）")
+        void knownEmotionTranslated() {
             SessionState s = newState("excited", null, 3);
 
             String brief = agent.buildContextBrief(s, null, null, null, 1);
 
-            assertThat(brief).contains("进入心情：excited");
+            assertThat(brief).contains("进入心情：兴奋");
         }
 
         @Test

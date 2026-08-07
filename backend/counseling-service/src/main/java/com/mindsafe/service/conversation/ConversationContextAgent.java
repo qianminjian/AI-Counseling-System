@@ -28,20 +28,6 @@ public class ConversationContextAgent {
 
     private static final Logger log = LoggerFactory.getLogger(ConversationContextAgent.class);
 
-    /** 情绪标签中文映射（语音 SER 规范集 → 儿童友好表述） */
-    private static final Map<String, String> EMOTION_LABELS = Map.ofEntries(
-            Map.entry("happy", "开心"),
-            Map.entry("sad", "难过"),
-            Map.entry("angry", "生气"),
-            Map.entry("fearful", "害怕"),
-            Map.entry("anxious", "紧张"),
-            Map.entry("calm", "平静"),
-            Map.entry("withdrawn", "沉默"),
-            Map.entry("disgusted", "烦躁"),
-            Map.entry("surprised", "惊讶"),
-            Map.entry("neutral", "平静")
-    );
-
     /**
      * 构建完整上下文简报（每轮调用，注入 System Prompt Layer 3）。
      *
@@ -260,11 +246,10 @@ public class ConversationContextAgent {
 
     // ===== 辅助方法 =====
 
-    /** 情绪标签 → 中文（支持中英文输入） */
+    /** 情绪标签 → 中文（DC-008：EmotionVocabulary.ZH_LABELS 单一标签源） */
     private String toChinese(String emotion) {
         if (emotion == null) return "未知";
-        String mapped = EMOTION_LABELS.get(emotion.toLowerCase());
-        return mapped != null ? mapped : emotion;
+        return EmotionVocabulary.labelOf(emotion.toLowerCase());
     }
 
     /** 评估情绪趋势（对比前半段和后半段） */

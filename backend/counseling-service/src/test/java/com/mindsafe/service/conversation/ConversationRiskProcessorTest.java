@@ -159,6 +159,33 @@ class ConversationRiskProcessorTest {
             assertThat(result.level()).isEqualTo(RiskLevel.ORANGE);
             assertThat(result.score()).isEqualTo(60);
         }
+
+        @Test
+        @DisplayName("语义升级：关键词已有真实类别 → 保留原类别（DC-001：真实类别落库 + 高敏门控可命中）")
+        void semanticUpgrade_keepsKeywordCategory() {
+            RiskDetectionResult yellowResult = new RiskDetectionResult(
+                    RiskLevel.YELLOW, "性侵/性骚扰", List.of("摸隐私部位"), 30, false, "关注");
+            when(semanticRiskClassifier.classify(anyString(), any(), any(), anyInt())).thenReturn(RiskLevel.RED);
+
+            RiskDetectionResult result = processor.applySemanticRisk(yellowResult, "文本", 4);
+
+            assertThat(result.level()).isEqualTo(RiskLevel.RED);
+            assertThat(result.category()).isEqualTo("性侵/性骚扰");
+            assertThat(result.score()).isEqualTo(85);
+        }
+
+        @Test
+        @DisplayName("语义升级：无关键词类别 → 维持 llm_semantic（原语义兜底）")
+        void semanticUpgrade_withoutCategory_keepsLlmsemantic() {
+            RiskDetectionResult yellowResult = new RiskDetectionResult(
+                    RiskLevel.YELLOW, "未分类", List.of(), 30, false, "关注");
+            when(semanticRiskClassifier.classify(anyString(), any(), any(), anyInt())).thenReturn(RiskLevel.RED);
+
+            RiskDetectionResult result = processor.applySemanticRisk(yellowResult, "文本", 4);
+
+            assertThat(result.level()).isEqualTo(RiskLevel.RED);
+            assertThat(result.category()).isEqualTo("llm_semantic");
+        }
     }
 
     @Nested
