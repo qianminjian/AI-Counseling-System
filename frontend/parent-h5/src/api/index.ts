@@ -1,6 +1,21 @@
 import { getToken, getRefreshToken, setToken, setRefreshToken, clearAuth } from '../utils/auth'
+// DC-005：认证传输收敛为共享模块（SPEC §19）——parent 适配层
+//（键名历史差异 parent_refresh_token，utils/auth 的 '' 语义适配共享 TokenStorage 的 null 语义）
+import { refreshTokens } from '../../../shared/src/auth-transport/refresh'
+import { handleSessionExpired } from '../../../shared/src/auth-transport/sessionExpired'
+import { toApiError } from '../../../shared/src/auth-transport/apiError'
+import type { TokenStorage } from '../../../shared/src/auth-transport/tokenStorage'
 
 const BASE_URL = '/api/v1'
+
+/** parent 适配层：保持 utils/auth 现状（getToken 返回 ''），适配共享 TokenStorage（null）语义 */
+const storage: TokenStorage = {
+  getToken: () => getToken() || null,
+  getRefreshToken: () => getRefreshToken() || null,
+  setToken,
+  setRefreshToken,
+  clear: clearAuth,
+}
 
 interface RequestOptions {
   method?: string
@@ -35,40 +50,20 @@ async function request<T = unknown>(path: string, options: RequestOptions = {}):
 
   // 401 自动刷新
   if (res.status === 401 && !options._retried) {
-    const refreshed = await tryRefresh()
+    const refreshed = await refreshTokens(storage)
     if (refreshed) {
       return request<T>(path, { ...options, _retried: true })
     }
-    clearAuth()
-    window.location.href = '/parent/'
-    throw new Error('登录已过期，请重新登录')
+    // DC-005：统一 401 登出决策点（clear + 跳转登录页 + throw）
+    handleSessionExpired(storage, '/parent/')
   }
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({})) as ApiResponse
-    throw new Error(body.message || `请求失败 (${res.status})`)
+    throw toApiError({ code: body.code, message: body.message || `请求失败 (${res.status})` })
   }
 
   return res.json() as Promise<ApiResponse<T>>
-}
-
-async function tryRefresh(): Promise<boolean> {
-  const rt = getRefreshToken()
-  if (!rt) return false
-  try {
-    const res = await fetch(`${BASE_URL}/auth/refresh`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refreshToken: rt })
-    })
-    const json = await res.json() as ApiResponse<{ token: string; refreshToken: string }>
-    if (json.success && json.data?.token) {
-      setToken(json.data.token)
-      setRefreshToken(json.data.refreshToken)
-      return true
-    }
-  } catch { /* ignore */ }
-  return false
 }
 
 // ========== 家长认证 API ==========

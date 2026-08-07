@@ -69,7 +69,8 @@ describe('端点清单自身质量（FRONTEND_ENDPOINTS）', () => {
 
 describe('防漂移：api/index.ts 源码路径 ⊆ 清单', () => {
   it('源码中提取到 API 路径（提取逻辑有效）', () => {
-    expect(SOURCE_PATHS.length).toBeGreaterThanOrEqual(5)
+    // DC-005 收敛后 request 端点 4 个（refresh 移入共享模块，不再出现在本文件）
+    expect(SOURCE_PATHS.length).toBeGreaterThanOrEqual(4)
   })
 
   it('清单覆盖源码全部端点（新增端点必须登记）', () => {

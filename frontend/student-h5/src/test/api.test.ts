@@ -1,13 +1,21 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+// DC-005：tryRefresh 别名已删，刷新行为直测共享模块（SPEC §19 验收：三端零副本）
+import { refreshTokens } from '../../../shared/src/auth-transport/refresh'
+import type { TokenStorage } from '../../../shared/src/auth-transport/tokenStorage'
 import {
   getToken, setToken, getRefreshToken, setRefreshToken,
   clearToken, getUser, setUser,
   isConsentDone, markConsentDone, ConsentKeys,
-  isAuthenticated, authFetch, tryRefresh, api, fetchWarmPrompt,
+  isAuthenticated, authFetch, api, fetchWarmPrompt,
   fetchSystemConfig, fetchLoginPrompt, fetchTtsSynthesize, fetchVoiceAnalyze,
   trialRegister, pinLogin, setPin, issueVoiceCredential,
   voiceLogin, requestGuardianConsent, confirmGuardianConsent,
 } from '../api'
+
+// DC-005：直测共享 refreshTokens 用的 storage（与 api.ts 同源 sessionStorage 键）
+const tokenStorage: TokenStorage = {
+  getToken, setToken, getRefreshToken, setRefreshToken, clear: clearToken,
+}
 
 // mock fetch
 const mockFetch = vi.fn()
@@ -271,9 +279,9 @@ describe('api.ts', () => {
     })
   })
 
-  describe('tryRefresh', () => {
+  describe('refreshTokens（DC-005 共享模块）', () => {
     it('无 refreshToken 返回 false', async () => {
-      expect(await tryRefresh()).toBe(false)
+      expect(await refreshTokens(tokenStorage)).toBe(false)
     })
 
     it('刷新成功更新双 token', async () => {
@@ -281,7 +289,7 @@ describe('api.ts', () => {
       mockFetch.mockResolvedValue({
         json: () => Promise.resolve({ success: true, data: { token: 'nt', refreshToken: 'nr' } }),
       })
-      expect(await tryRefresh()).toBe(true)
+      expect(await refreshTokens(tokenStorage)).toBe(true)
       expect(getToken()).toBe('nt')
       expect(getRefreshToken()).toBe('nr')
     })
@@ -289,7 +297,7 @@ describe('api.ts', () => {
     it('网络异常返回 false', async () => {
       setRefreshToken('rt')
       mockFetch.mockRejectedValue(new Error('network'))
-      expect(await tryRefresh()).toBe(false)
+      expect(await refreshTokens(tokenStorage)).toBe(false)
     })
   })
 
