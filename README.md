@@ -13,7 +13,7 @@
 | 层 | 技术 |
 |------|------|
 | 后端 | Java 21 + Spring Boot 3 + MyBatis-Plus + PostgreSQL 16 (pgvector) + Redis 7 |
-| 前端 | React 19 + Vite + Tailwind CSS |
+| 前端 | student-h5/teacher-web：React + Vite + Tailwind CSS；parent-h5：Taro 4 + React 18（doing/73 跨端迁移） |
 | AI | Spring AI + Transformers.js（端侧声纹/唤醒词） |
 | 部署 | Docker Compose + Nginx |
 
