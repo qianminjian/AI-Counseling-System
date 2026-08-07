@@ -36,9 +36,10 @@ EOF
 while [ $# -gt 0 ]; do
   case "$1" in
     --last) LAST="$2"; shift 2 ;;
-    --staged) STAGED=1 ;;
+    --staged) STAGED=1; shift ;;
     --help|-h) usage; exit 0 ;;
-    *) echo "未知参数: $1" >&2; usage >&2; exit 2 ;;
+    -*) echo "未知参数: $1" >&2; usage >&2; exit 2 ;;
+    *) break ;;  # 位置参数：--staged 模式的消息文件路径
   esac
 done
 
@@ -47,6 +48,22 @@ done
 
 fail() { echo "  ✗ $1"; FAILED=$((FAILED + 1)); }
 pass() { echo "  ✓ $1"; }
+
+# T4 纪律（DOC-072）：Controller 层禁止注入 MyBatis Mapper（数据访问下沉领域 Service）
+# 用法：check_controller_mapper <commit-hash|空> <file-path>（hash 为空时读取暂存区）
+check_controller_mapper() {
+  local hash="$1" f="$2" content
+  case "$f" in
+    backend/counseling-api/src/main/java/com/mindsafe/api/controller/*.java)
+      content=$(git show "$hash:$f" 2>/dev/null || true)
+      if echo "$content" | grep -qE 'import com\.mindsafe\.domain\.mapper\.'; then
+        fail "$f 违反 T4 分层纪律：Controller 禁止 import MyBatis Mapper（数据访问下沉 Service）"
+      elif echo "$content" | grep -E 'private final [A-Za-z]+Mapper ' | grep -qv 'ObjectMapper'; then
+        fail "$f 违反 T4 分层纪律：Controller 禁止注入 MyBatis Mapper 字段（数据访问下沉 Service）"
+      fi
+      ;;
+  esac
+}
 
 check_one() {
   local hash="$1"
@@ -93,6 +110,11 @@ check_one() {
   else
     pass "$hash 变更文件数 ${files} ≤ ${MAX_FILES}"
   fi
+
+  # T4 纪律（DOC-072）：Controller 层禁止注入 MyBatis Mapper
+  while IFS= read -r f; do
+    [ -n "$f" ] && check_controller_mapper "$hash" "$f"
+  done <<< "$(git show --name-only --format='' "$hash" | sed '/^$/d')"
 }
 
 if [ "$STAGED" -eq 1 ]; then
@@ -110,7 +132,21 @@ if [ "$STAGED" -eq 1 ]; then
     usage >&2
     exit 1
   fi
-  exit 0
+
+  # T4 纪律（DOC-072）：Controller 层禁止注入 MyBatis Mapper（暂存区检查）
+  echo "== T4 分层纪律检查（Controller 禁止注入 Mapper）=="
+  while IFS= read -r f; do
+    [ -n "$f" ] && check_controller_mapper "" "$f"
+  done <<< "$(git diff --cached --name-only)"
+
+  echo ""
+  if [ "$FAILED" -eq 0 ]; then
+    echo "检查通过：消息格式合规 + T4 分层纪律无违规"
+    exit 0
+  else
+    echo "提交中止：${FAILED} 项违规（消息格式 / T4 分层纪律）"
+    exit 1
+  fi
 fi
 
 echo "== 提交质量检查（最近 ${LAST} 个提交）=="

@@ -111,6 +111,14 @@ test/{简述} | chore/{简述} | perf/{简述} | hotfix/{简述}
 - 检查 License 兼容性（避免 GPL 传染到商业项目）
 - unpinned 依赖锁定到具体版本号
 
+### 3.5 分层纪律：Controller 禁止直接访问 Mapper（T4 纪律，DOC-072）
+
+- **禁止**在 `backend/counseling-api/**/controller/` 下注入或使用 MyBatis Mapper（字段、构造器参数、`@Autowired` 注入均禁止）
+- 数据访问一律经领域 Service（`counseling-service`）；租户隔离条件（`eq(tenantId)`）由 Service 层公共方法强制内置，Controller 不得自行拼装查询条件
+- Controller 保留职责：HTTP 参数解析/校验、响应组装、审计调用（`AuditLogService` 非 Mapper 可保留）、租户门禁判定（`TenantAccessGuard` 等）
+- 新增/修改端点违反时，commit-msg hook 拦截（grep `import com.mindsafe.domain.mapper` 或 `private final *Mapper` 字段）
+- 例外：Jackson `ObjectMapper` 等序列化器不属于 MyBatis Mapper，不受限
+
 ---
 
 ## 4. 错误处理
