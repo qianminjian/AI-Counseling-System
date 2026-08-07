@@ -186,8 +186,24 @@ jobs:
           # OPS-009：增量 diff 需要完整历史（git diff LAST_SHA..HEAD）
           fetch-depth: 0
 
+      # ssh-key-action 在 runner 上安装的 key 未被后续 ssh 使用（实测 Permission denied），
+      # 改用手写 ssh-agent 脚本：写 id_ed25519（ssh 默认查找）+ known_hosts + ssh-add，确定性可控
+      - name: Install SSH key
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+          eval "$(ssh-agent -s)" >/dev/null
+          ssh-add ~/.ssh/id_ed25519
+
       # OPS-009：组件变更检测（映射规则对齐 deploy.sh 路径映射：backend/、backend/tts-service/、
       #          backend/voice-service/ 独立 context；scripts/sql/ 为 Flyway 迁移脚本 → backend）
+      # 必须在 Install SSH key 之后：检测需 ssh 读服务器状态（此前放前面导致 ssh 无 key 失败回退全量）
       - name: Detect changed services (incremental)
         id: detect
         run: |
@@ -220,21 +236,6 @@ jobs:
             echo "🎯 待部署服务:$SERVICES"
           fi
           echo "services=$SERVICES" >> "$GITHUB_OUTPUT"
-
-      # ssh-key-action 在 runner 上安装的 key 未被后续 ssh 使用（实测 Permission denied），
-      # 改用手写 ssh-agent 脚本：写 id_ed25519（ssh 默认查找）+ known_hosts + ssh-add，确定性可控
-      - name: Install SSH key
-        env:
-          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
-          SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
-        run: |
-          mkdir -p ~/.ssh
-          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_ed25519
-          chmod 600 ~/.ssh/id_ed25519
-          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
-          chmod 644 ~/.ssh/known_hosts
-          eval "$(ssh-agent -s)" >/dev/null
-          ssh-add ~/.ssh/id_ed25519
 
       # 在服务器 .env 中把待部署服务镜像指向本次构建 tag（幂等替换；只处理变更检测命中的服务）
       - name: Update .env image refs
@@ -332,7 +333,23 @@ jobs:
           # OPS-009：增量 diff 需要完整历史（git diff LAST_SHA..HEAD）
           fetch-depth: 0
 
+      # ssh-key-action 在 runner 上安装的 key 未被后续 ssh 使用（实测 Permission denied），
+      # 改用手写 ssh-agent 脚本：写 id_ed25519（ssh 默认查找）+ known_hosts + ssh-add，确定性可控
+      - name: Install SSH key
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+          eval "$(ssh-agent -s)" >/dev/null
+          ssh-add ~/.ssh/id_ed25519
+
       # OPS-009：前端组件变更检测（模型投放脚本/前端 Dockerfile 变更 → 全量，模型进 student dist）
+      # 必须在 Install SSH key 之后：检测需 ssh 读服务器状态（此前放前面导致 ssh 无 key 失败回退全量）
       - name: Detect changed frontends (incremental)
         id: detect
         run: |
@@ -404,21 +421,6 @@ jobs:
         run: |
           npm ci
           npm run build
-
-      # ssh-key-action 在 runner 上安装的 key 未被后续 ssh 使用（实测 Permission denied），
-      # 改用手写 ssh-agent 脚本：写 id_ed25519（ssh 默认查找）+ known_hosts + ssh-add，确定性可控
-      - name: Install SSH key
-        env:
-          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
-          SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
-        run: |
-          mkdir -p ~/.ssh
-          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_ed25519
-          chmod 600 ~/.ssh/id_ed25519
-          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
-          chmod 644 ~/.ssh/known_hosts
-          eval "$(ssh-agent -s)" >/dev/null
-          ssh-add ~/.ssh/id_ed25519
 
       # rsync 前保留上一版 dist（回滚用）；只同步变更检测命中的端；
       # OPS-008：rsync 3 次重试（对齐 deploy.sh rsync_retry，网络抖动兜底）
