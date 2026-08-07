@@ -26,7 +26,10 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_PREFIX: ${{ github.repository }}
+  # OPS-007：Docker CLI 的 reference 解析器要求 repository 名全小写（GHCR 本身大小写不敏感，
+  # 但服务器 docker compose pull 用 Docker CLI 解析，大写会报 invalid reference format）。
+  # 仓库名 qianminjian/AI-Counseling-System 必须小写为 ai-counseling-system。
+  IMAGE_PREFIX: qianminjian/ai-counseling-system
 
 jobs:
   build-and-push:
