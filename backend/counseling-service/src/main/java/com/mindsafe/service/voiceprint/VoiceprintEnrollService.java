@@ -3,6 +3,7 @@ package com.mindsafe.service.voiceprint;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.mindsafe.domain.entity.VoiceprintEmbedding;
 import com.mindsafe.domain.mapper.VoiceprintEmbeddingMapper;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
@@ -22,7 +23,7 @@ public class VoiceprintEnrollService {
     private final int maxTemplates;
 
     public VoiceprintEnrollService(VoiceprintEmbeddingMapper mapper,
-                                   int maxTemplates) {
+                                   @Value("${mindsafe.voiceprint.max-templates:8}") int maxTemplates) {
         this.mapper = mapper;
         this.maxTemplates = maxTemplates;
     }
