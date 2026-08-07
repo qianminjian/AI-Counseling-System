@@ -5,7 +5,7 @@ import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.mindsafe.api.security.JwtTokenProvider;
 import com.mindsafe.common.dto.ApiResponse;
 import com.mindsafe.domain.entity.User;
-import com.mindsafe.domain.mapper.UserMapper;
+import com.mindsafe.service.wecom.WeComOAuthService;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.apache.ibatis.type.ObjectTypeHandler;
 import org.junit.jupiter.api.BeforeEach;
@@ -34,7 +34,7 @@ import static org.mockito.Mockito.when;
 class WeComOAuthControllerTest {
 
     private JwtTokenProvider jwtTokenProvider;
-    private UserMapper userMapper;
+    private WeComOAuthService weComOAuthService;
     private RestTemplate restTemplate;
     private WeComOAuthController controller;
 
@@ -48,9 +48,9 @@ class WeComOAuthControllerTest {
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(configuration, ""), User.class);
 
         jwtTokenProvider = mock(JwtTokenProvider.class);
-        userMapper = mock(UserMapper.class);
+        weComOAuthService = mock(WeComOAuthService.class);
         restTemplate = mock(RestTemplate.class);
-        controller = new WeComOAuthController(jwtTokenProvider, userMapper);
+        controller = new WeComOAuthController(jwtTokenProvider, weComOAuthService);
         // 直接 new 不触发 @Value 注入 → 手动模拟默认空串（未配置分支依赖）
         ReflectionTestUtils.setField(controller, "corpId", "");
         ReflectionTestUtils.setField(controller, "agentId", "");
@@ -132,7 +132,7 @@ class WeComOAuthControllerTest {
         configureWeCom();
         when(restTemplate.getForObject(anyString(), eq(Map.class)))
                 .thenReturn(Map.of("access_token", "at_123"), Map.of("userid", "wx_zhang"));
-        when(userMapper.selectOne(any())).thenReturn(teacher());
+        when(weComOAuthService.findTeacherByWeComId("wx_zhang")).thenReturn(teacher());
         when(jwtTokenProvider.generateToken(userId, "teacher", tenantId)).thenReturn("tk");
         when(jwtTokenProvider.generateRefreshToken(userId, "teacher", tenantId)).thenReturn("rt");
 
@@ -145,8 +145,8 @@ class WeComOAuthControllerTest {
         assertThat(resp.data().get("userId")).isEqualTo(userId.toString());
         assertThat(resp.data().get("userType")).isEqualTo("teacher");
         assertThat(resp.data().get("tenantId")).isEqualTo(tenantId.toString());
-        verify(userMapper).selectOne(any());
-        verify(userMapper).updateById(any(User.class));
+        verify(weComOAuthService).findTeacherByWeComId("wx_zhang");
+        verify(weComOAuthService).touchLastLogin(tenantId, userId);
         verify(jwtTokenProvider).generateToken(userId, "teacher", tenantId);
         verify(jwtTokenProvider).generateRefreshToken(userId, "teacher", tenantId);
     }
@@ -162,7 +162,7 @@ class WeComOAuthControllerTest {
 
         assertThat(resp.code()).isEqualTo(401);
         assertThat(resp.message()).contains("企微授权失败");
-        verify(userMapper, never()).selectOne(any());
+        verify(weComOAuthService, never()).findTeacherByWeComId(anyString());
     }
 
     @Test
@@ -171,7 +171,7 @@ class WeComOAuthControllerTest {
         configureWeCom();
         when(restTemplate.getForObject(anyString(), eq(Map.class)))
                 .thenReturn(Map.of("access_token", "at_123"), Map.of("userid", "wx_unknown"));
-        when(userMapper.selectOne(any())).thenReturn(null);
+        when(weComOAuthService.findTeacherByWeComId("wx_unknown")).thenReturn(null);
 
         ApiResponse<Map<String, Object>> resp = controller.callback(Map.of("code", "authcode"));
 

@@ -21,8 +21,8 @@ import com.mindsafe.common.dto.ErrorCode;
 import com.mindsafe.common.exception.BizException;
 import com.mindsafe.common.tenant.TenantContextHolder;
 import com.mindsafe.domain.entity.User;
-import com.mindsafe.domain.mapper.UserMapper;
 import com.mindsafe.service.audit.AuditLogService;
+import com.mindsafe.service.auth.AuthUserService;
 import com.mindsafe.service.consent.GuardianConsentService;
 import com.mindsafe.service.auth.LoginLockoutService;
 import com.mindsafe.service.auth.PasswordPolicyService;
@@ -45,7 +45,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -70,7 +69,7 @@ import static org.mockito.Mockito.when;
  */
 class AuthControllerTest {
 
-    private UserMapper userMapper;
+    private AuthUserService authUserService;
     private PasswordEncoder passwordEncoder;
     private JwtTokenProvider jwtTokenProvider;
     private TrialAuthStrategy trialAuthStrategy;
@@ -95,7 +94,7 @@ class AuthControllerTest {
 
     @BeforeEach
     void setUp() {
-        userMapper = mock(UserMapper.class);
+        authUserService = mock(AuthUserService.class);
         passwordEncoder = mock(PasswordEncoder.class);
         jwtTokenProvider = mock(JwtTokenProvider.class);
         trialAuthStrategy = mock(TrialAuthStrategy.class);
@@ -107,10 +106,10 @@ class AuthControllerTest {
         tokenBlacklistService = mock(TokenBlacklistService.class);
         tenantAccessGuard = mock(TenantAccessGuard.class);
 
-        controller = new AuthController(userMapper, passwordEncoder, jwtTokenProvider,
+        controller = new AuthController(passwordEncoder, jwtTokenProvider,
                 trialAuthStrategy, trialAuthService, auditLogService, lockoutService,
                 passwordPolicyService, guardianConsentService, tokenBlacklistService,
-                tenantAccessGuard);
+                tenantAccessGuard, authUserService);
     }
 
     @AfterEach
@@ -151,7 +150,7 @@ class AuthControllerTest {
     @DisplayName("login 成功：密码匹配 + 租户门禁通过 → 双 token + mustChangePassword")
     void login_success() {
         User user = activeStudent();
-        when(userMapper.selectList(any())).thenReturn(List.of(user));
+        when(authUserService.findLoginCandidates("小星")).thenReturn(List.of(user));
         when(passwordEncoder.matches("pwd12345", "hash")).thenReturn(true);
         when(tenantAccessGuard.isLoginAllowed(tenantId)).thenReturn(true);
         when(passwordPolicyService.isExpired(user.getPasswordChangedAt())).thenReturn(false);
@@ -168,8 +167,7 @@ class AuthControllerTest {
         assertThat(data.mustChangePassword()).isFalse();
         verify(lockoutService).checkLockout("小星");
         verify(lockoutService).clearFailures("小星");
-        verify(auditLogService).log(tenantId, userId, "LOGIN", "user", userId, null);
-        verify(userMapper).<User>updateById(any(User.class));
+        verify(authUserService).recordLoginSuccess(tenantId, userId);
         assertNull(TenantContextHolder.get(), "请求结束后租户上下文必须清除");
     }
 
@@ -177,7 +175,7 @@ class AuthControllerTest {
     @DisplayName("login 密码错误 → recordFailure + UNAUTHORIZED")
     void login_wrongPassword() {
         User user = activeStudent();
-        when(userMapper.selectList(any())).thenReturn(List.of(user));
+        when(authUserService.findLoginCandidates("小星")).thenReturn(List.of(user));
         when(passwordEncoder.matches(anyString(), anyString())).thenReturn(false);
 
         assertThatThrownBy(() -> controller.login(new LoginRequest("小星", "wrong")))
@@ -191,20 +189,20 @@ class AuthControllerTest {
     @Test
     @DisplayName("login 昵称重名（>1 候选）→ 拒绝登录防随机命中他人账号")
     void login_duplicatePseudonym() {
-        when(userMapper.selectList(any())).thenReturn(List.of(activeStudent(), activeStudent()));
+        when(authUserService.findLoginCandidates("小星")).thenReturn(List.of(activeStudent(), activeStudent()));
 
         assertThatThrownBy(() -> controller.login(new LoginRequest("小星", "pwd12345")))
                 .isExactlyInstanceOf(BizException.class)
                 .extracting("code")
                 .isEqualTo(ErrorCode.UNAUTHORIZED.code());
         verify(lockoutService).recordFailure("小星");
-        verify(userMapper, never()).<User>updateById(any(User.class));
+        verify(authUserService, never()).recordLoginSuccess(any(), any());
     }
 
     @Test
     @DisplayName("login 用户不存在 → UNAUTHORIZED")
     void login_userNotFound() {
-        when(userMapper.selectList(any())).thenReturn(List.of());
+        when(authUserService.findLoginCandidates("nobody")).thenReturn(List.of());
 
         assertThatThrownBy(() -> controller.login(new LoginRequest("nobody", "pwd12345")))
                 .isExactlyInstanceOf(BizException.class)
@@ -216,7 +214,7 @@ class AuthControllerTest {
     @DisplayName("login 租户 suspended/archived → FORBIDDEN（SEC-004 门禁）")
     void login_tenantSuspended() {
         User user = activeStudent();
-        when(userMapper.selectList(any())).thenReturn(List.of(user));
+        when(authUserService.findLoginCandidates("小星")).thenReturn(List.of(user));
         when(passwordEncoder.matches(anyString(), anyString())).thenReturn(true);
         when(tenantAccessGuard.isLoginAllowed(tenantId)).thenReturn(false);
 
@@ -232,7 +230,7 @@ class AuthControllerTest {
     void login_mustChangePassword() {
         User user = activeStudent();
         user.setMustChangePassword(true);
-        when(userMapper.selectList(any())).thenReturn(List.of(user));
+        when(authUserService.findLoginCandidates("小星")).thenReturn(List.of(user));
         when(passwordEncoder.matches(anyString(), anyString())).thenReturn(true);
         when(tenantAccessGuard.isLoginAllowed(tenantId)).thenReturn(true);
         mockTokenIssuance();
@@ -252,7 +250,7 @@ class AuthControllerTest {
                 .isExactlyInstanceOf(BizException.class)
                 .extracting("code")
                 .isEqualTo(ErrorCode.RATE_LIMITED.code());
-        verify(userMapper, never()).selectList(any());
+        verify(authUserService, never()).findLoginCandidates(any());
     }
 
     // ===== trialRegister =====
@@ -264,7 +262,7 @@ class AuthControllerTest {
         when(trialAuthStrategy.authenticate(any())).thenReturn(au);
         User fullUser = activeStudent();
         fullUser.setFamilyCode("FAM-001");
-        when(userMapper.selectById(userId)).thenReturn(fullUser);
+        when(authUserService.findByIdAsSystem(userId)).thenReturn(fullUser);
         when(jwtTokenProvider.generateToken(userId, "trial_student", tenantId)).thenReturn(ACCESS_TOKEN);
         when(jwtTokenProvider.generateRefreshToken(userId, "trial_student", tenantId)).thenReturn(REFRESH_TOKEN);
 
@@ -282,7 +280,7 @@ class AuthControllerTest {
     void trialRegister_minorPendingConsent() {
         AuthenticatedUser au = new AuthenticatedUser(userId, "trial_student", tenantId, "小星", false);
         when(trialAuthStrategy.authenticate(any())).thenReturn(au);
-        when(userMapper.selectById(userId)).thenReturn(activeStudent());
+        when(authUserService.findByIdAsSystem(userId)).thenReturn(activeStudent());
         when(guardianConsentService.hasGuardianConsent(tenantId, userId)).thenReturn(false);
         when(jwtTokenProvider.generateToken(userId, "trial_student", tenantId)).thenReturn(ACCESS_TOKEN);
         when(jwtTokenProvider.generateRefreshToken(userId, "trial_student", tenantId)).thenReturn(REFRESH_TOKEN);
@@ -298,7 +296,7 @@ class AuthControllerTest {
     void trialRegister_minorWithConsent() {
         AuthenticatedUser au = new AuthenticatedUser(userId, "trial_student", tenantId, "小星", false);
         when(trialAuthStrategy.authenticate(any())).thenReturn(au);
-        when(userMapper.selectById(userId)).thenReturn(activeStudent());
+        when(authUserService.findByIdAsSystem(userId)).thenReturn(activeStudent());
         when(guardianConsentService.hasGuardianConsent(tenantId, userId)).thenReturn(true);
         when(jwtTokenProvider.generateToken(userId, "trial_student", tenantId)).thenReturn(ACCESS_TOKEN);
         when(jwtTokenProvider.generateRefreshToken(userId, "trial_student", tenantId)).thenReturn(REFRESH_TOKEN);
@@ -449,7 +447,7 @@ class AuthControllerTest {
         when(jwtTokenProvider.getTokenId(VOICE_CRED)).thenReturn(VOICE_JTI);
         when(tokenBlacklistService.isBlacklisted(VOICE_JTI)).thenReturn(false);
         when(jwtTokenProvider.getUserId(VOICE_CRED)).thenReturn(userId);
-        when(userMapper.selectById(userId)).thenReturn(null);
+        when(authUserService.findByIdAsSystem(userId)).thenReturn(null);
 
         assertThatThrownBy(() -> controller.voiceLogin(new VoiceLoginRequest(VOICE_CRED)))
                 .isExactlyInstanceOf(BizException.class)
@@ -466,14 +464,14 @@ class AuthControllerTest {
         when(jwtTokenProvider.getTokenId(VOICE_CRED)).thenReturn(VOICE_JTI);
         when(tokenBlacklistService.isBlacklisted(VOICE_JTI)).thenReturn(false);
         when(jwtTokenProvider.getUserId(VOICE_CRED)).thenReturn(userId);
-        when(userMapper.selectById(userId)).thenReturn(user);
+        when(authUserService.findByIdAsSystem(userId)).thenReturn(user);
         mockTokenIssuance();
 
         ApiResponse<LoginResponse> resp = controller.voiceLogin(new VoiceLoginRequest(VOICE_CRED));
 
         assertThat(resp.code()).isEqualTo(0);
         assertEquals(ACCESS_TOKEN, resp.data().token());
-        verify(userMapper).updateById(any(User.class));
+        verify(authUserService).touchLastLogin(userId);
         verify(auditLogService).log(tenantId, userId, "VOICE_LOGIN", "user", userId, null);
     }
 
@@ -491,7 +489,7 @@ class AuthControllerTest {
     @Test
     @DisplayName("me 用户不存在 → RESOURCE_NOT_FOUND")
     void me_userNotFound() {
-        when(userMapper.selectById(userId)).thenReturn(null);
+        when(authUserService.findById(userId)).thenReturn(null);
 
         assertThatThrownBy(() -> controller.me(auth()))
                 .isExactlyInstanceOf(BizException.class)
@@ -505,7 +503,7 @@ class AuthControllerTest {
         User user = activeStudent();
         user.setFamilyCode("FAM-001");
         user.setMustChangePassword(true);
-        when(userMapper.selectById(userId)).thenReturn(user);
+        when(authUserService.findById(userId)).thenReturn(user);
 
         ApiResponse<Map<String, Object>> resp = controller.me(auth());
 
@@ -650,25 +648,21 @@ class AuthControllerTest {
         verify(guardianConsentService).confirmConsent(tenantId, userId, "13800000001", "123456");
     }
 
-    // ===== 租户上下文绑定（login / pinLogin 审计路径） =====
+    // ===== 租户上下文绑定（login 审计路径下沉 Service） =====
 
     @Test
-    @DisplayName("login 成功路径：审计前 TenantContextHolder 绑定真实租户，结束后清除")
+    @DisplayName("login 成功路径：请求结束后 TenantContextHolder 清除，登录留痕经 Service")
     void login_bindsTenantContextForAudit() {
         User user = activeStudent();
-        when(userMapper.selectList(any())).thenReturn(List.of(user));
+        when(authUserService.findLoginCandidates("小星")).thenReturn(List.of(user));
         when(passwordEncoder.matches(anyString(), anyString())).thenReturn(true);
         when(tenantAccessGuard.isLoginAllowed(tenantId)).thenReturn(true);
         mockTokenIssuance();
 
-        when(userMapper.updateById(any(User.class))).thenAnswer(inv -> {
-            assertTrue(tenantId.equals(TenantContextHolder.get()),
-                    "updateById 前 TenantContextHolder 应为登录用户租户");
-            return 1;
-        });
-
         controller.login(new LoginRequest("小星", "pwd12345"));
 
+        // 上下文绑定已下沉 AuthUserService.recordLoginSuccess（Service 测试覆盖）；Controller 不得遗留上下文
+        verify(authUserService).recordLoginSuccess(tenantId, userId);
         assertNull(TenantContextHolder.get(), "请求结束后租户上下文必须清除");
     }
 }

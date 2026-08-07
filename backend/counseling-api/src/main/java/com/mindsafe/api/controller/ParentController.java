@@ -1,6 +1,5 @@
 package com.mindsafe.api.controller;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.mindsafe.api.security.JwtTokenProvider;
 import com.mindsafe.common.dto.ApiResponse;
 import com.mindsafe.common.dto.ErrorCode;
@@ -9,10 +8,8 @@ import com.mindsafe.common.tenant.TenantContextHolder;
 import com.mindsafe.domain.entity.CounselingSession;
 import com.mindsafe.domain.entity.MessageSummary;
 import com.mindsafe.domain.entity.User;
-import com.mindsafe.domain.mapper.CounselingSessionMapper;
-import com.mindsafe.domain.mapper.MessageSummaryMapper;
-import com.mindsafe.domain.mapper.UserMapper;
 import com.mindsafe.service.consent.ConsentWithdrawalService;
+import com.mindsafe.service.parent.ParentService;
 import com.mindsafe.service.sms.PhoneVerificationService;
 import org.springframework.web.bind.annotation.*;
 
@@ -37,22 +34,16 @@ import java.util.stream.Collectors;
 public class ParentController {
 
     private final JwtTokenProvider jwtTokenProvider;
-    private final UserMapper userMapper;
-    private final CounselingSessionMapper sessionMapper;
-    private final MessageSummaryMapper messageSummaryMapper;
+    private final ParentService parentService;
     private final ConsentWithdrawalService consentWithdrawalService;
     private final PhoneVerificationService phoneVerificationService;
 
     public ParentController(JwtTokenProvider jwtTokenProvider,
-                            UserMapper userMapper,
-                            CounselingSessionMapper sessionMapper,
-                            MessageSummaryMapper messageSummaryMapper,
+                            ParentService parentService,
                             ConsentWithdrawalService consentWithdrawalService,
                             PhoneVerificationService phoneVerificationService) {
         this.jwtTokenProvider = jwtTokenProvider;
-        this.userMapper = userMapper;
-        this.sessionMapper = sessionMapper;
-        this.messageSummaryMapper = messageSummaryMapper;
+        this.parentService = parentService;
         this.consentWithdrawalService = consentWithdrawalService;
         this.phoneVerificationService = phoneVerificationService;
     }
@@ -74,7 +65,8 @@ public class ParentController {
 
     private ApiResponse<Map<String, Object>> doGetWeeklyReport(ParentTokenInfo info) {
         UUID studentUserId = info.studentUserId();
-        User student = userMapper.selectById(studentUserId);
+        // T4 批次C：查询下沉 ParentService（租户 + 学生双条件）
+        User student = parentService.getStudent(info.tenantId(), studentUserId);
         if (student == null) {
             throw new BizException(ErrorCode.RESOURCE_NOT_FOUND, "学生不存在");
         }
@@ -83,22 +75,11 @@ public class ParentController {
         Instant weekAgo = Instant.now().minus(7, ChronoUnit.DAYS);
 
         // 近 7 天会话
-        List<CounselingSession> sessions = sessionMapper.selectList(
-                new LambdaQueryWrapper<CounselingSession>()
-                        .eq(CounselingSession::getTenantId, tenantId)
-                        .eq(CounselingSession::getStudentUserId, studentUserId)
-                        .ge(CounselingSession::getStartedAt, weekAgo)
-                        .orderByDesc(CounselingSession::getStartedAt)
-        );
+        List<CounselingSession> sessions = parentService.getRecentSessions(tenantId, studentUserId, weekAgo);
 
         // 近 7 天情绪标签统计
-        List<MessageSummary> studentMessages = messageSummaryMapper.selectList(
-                new LambdaQueryWrapper<MessageSummary>()
-                        .eq(MessageSummary::getTenantId, tenantId)
-                        .eq(MessageSummary::getStudentUserId, studentUserId)
-                        .eq(MessageSummary::getSenderType, User.USER_TYPE_STUDENT)
-                        .ge(MessageSummary::getCreatedAt, weekAgo)
-        );
+        List<MessageSummary> studentMessages =
+                parentService.getRecentStudentMessages(tenantId, studentUserId, weekAgo);
 
         // 情绪分布
         Map<String, Long> emotionDist = studentMessages.stream()
@@ -149,7 +130,8 @@ public class ParentController {
 
     private ApiResponse<Map<String, Object>> doWithdrawConsent(ParentTokenInfo info) {
         UUID studentUserId = info.studentUserId();
-        User student = userMapper.selectById(studentUserId);
+        // T4 批次C：查询下沉 ParentService（租户 + 学生双条件）
+        User student = parentService.getStudent(info.tenantId(), studentUserId);
         if (student == null) {
             throw new BizException(ErrorCode.RESOURCE_NOT_FOUND, "学生不存在");
         }
@@ -185,10 +167,11 @@ public class ParentController {
                     jwtTokenProvider.getUserId(token),
                     jwtTokenProvider.getTenantId(token));
 
-            // P1 审计修复：撤回同意后旧 token 失效。selectById 受租户行隔离拦截，必须先绑定租户上下文
+            // P1 审计修复：撤回同意后旧 token 失效。selectOne 受租户行隔离拦截，必须先绑定租户上下文
+            // T4 批次C：查询下沉 ParentService（租户 + 学生双条件）
             TenantContextHolder.set(info.tenantId());
             try {
-                User student = userMapper.selectById(info.studentUserId());
+                User student = parentService.getStudent(info.tenantId(), info.studentUserId());
                 if (student == null
                         || ConsentWithdrawalService.STATUS_WITHDRAWN.equals(student.getStatus())) {
                     throw new BizException(ErrorCode.UNAUTHORIZED, "监护人同意已撤回，链接已失效");
@@ -263,7 +246,7 @@ public class ParentController {
         }
 
         // 验证通过，签发正式 7 天 token（SEC-006：独立 parent_report tokenType + 7d TTL，兑现有效期承诺）
-        User student = userMapper.selectById(studentUserId);
+        User student = parentService.getStudent(info.tenantId(), studentUserId);
         if (student == null) {
             throw new BizException(ErrorCode.RESOURCE_NOT_FOUND, "学生不存在");
         }

@@ -1,18 +1,13 @@
 package com.mindsafe.api.controller;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.mindsafe.api.security.JwtTokenProvider;
 import com.mindsafe.common.dto.ApiResponse;
 import com.mindsafe.common.dto.ErrorCode;
 import com.mindsafe.common.exception.BizException;
 import com.mindsafe.common.tenant.TenantContextHolder;
-import com.mindsafe.domain.entity.CounselingSession;
-import com.mindsafe.domain.entity.MessageSummary;
 import com.mindsafe.domain.entity.User;
-import com.mindsafe.domain.mapper.CounselingSessionMapper;
-import com.mindsafe.domain.mapper.MessageSummaryMapper;
-import com.mindsafe.domain.mapper.UserMapper;
 import com.mindsafe.service.consent.ConsentWithdrawalService;
+import com.mindsafe.service.parent.ParentService;
 import com.mindsafe.service.sms.PhoneVerificationService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -20,7 +15,6 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
-import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -48,9 +42,7 @@ import static org.mockito.Mockito.when;
 class ParentControllerTest {
 
     private JwtTokenProvider jwtTokenProvider;
-    private UserMapper userMapper;
-    private CounselingSessionMapper sessionMapper;
-    private MessageSummaryMapper messageSummaryMapper;
+    private ParentService parentService;
     private ConsentWithdrawalService consentWithdrawalService;
     private PhoneVerificationService phoneVerificationService;
     private ParentController controller;
@@ -62,14 +54,12 @@ class ParentControllerTest {
     @BeforeEach
     void setUp() {
         jwtTokenProvider = mock(JwtTokenProvider.class);
-        userMapper = mock(UserMapper.class);
-        sessionMapper = mock(CounselingSessionMapper.class);
-        messageSummaryMapper = mock(MessageSummaryMapper.class);
+        parentService = mock(ParentService.class);
         consentWithdrawalService = mock(ConsentWithdrawalService.class);
         phoneVerificationService = mock(PhoneVerificationService.class);
 
-        controller = new ParentController(jwtTokenProvider, userMapper, sessionMapper,
-                messageSummaryMapper, consentWithdrawalService, phoneVerificationService);
+        controller = new ParentController(jwtTokenProvider, parentService,
+                consentWithdrawalService, phoneVerificationService);
 
         // 默认：有效 parent token
         when(jwtTokenProvider.validateToken(VALID_PARENT_TOKEN)).thenReturn(true);
@@ -101,12 +91,12 @@ class ParentControllerTest {
     @DisplayName("getWeeklyReport 从 token 绑定租户上下文，执行期间 TenantContextHolder 为有效值")
     void getWeeklyReportBindsTenantContext() {
         User student = studentUser();
-        when(sessionMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of());
-        when(messageSummaryMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of());
+        when(parentService.getRecentSessions(any(), any(), any())).thenReturn(List.of());
+        when(parentService.getRecentStudentMessages(any(), any(), any())).thenReturn(List.of());
 
-        when(userMapper.selectById(studentUserId)).thenAnswer(inv -> {
+        when(parentService.getStudent(tenantId, studentUserId)).thenAnswer(inv -> {
             assertEquals(tenantId, TenantContextHolder.get(),
-                    "userMapper 查询前 TenantContextHolder 应为 token 中的 tenantId");
+                    "getStudent 查询前 TenantContextHolder 应为 token 中的 tenantId");
             return student;
         });
 
@@ -121,9 +111,9 @@ class ParentControllerTest {
     void withdrawConsentBindsTenantContext() {
         User student = studentUser();
 
-        when(userMapper.selectById(studentUserId)).thenAnswer(inv -> {
+        when(parentService.getStudent(tenantId, studentUserId)).thenAnswer(inv -> {
             assertEquals(tenantId, TenantContextHolder.get(),
-                    "userMapper 查询前 TenantContextHolder 应为 token 中的 tenantId");
+                    "getStudent 查询前 TenantContextHolder 应为 token 中的 tenantId");
             return student;
         });
 
@@ -195,7 +185,7 @@ class ParentControllerTest {
         private void mockWithdrawnStudent() {
             User student = studentUser();
             student.setStatus("withdrawn");
-            when(userMapper.selectById(studentUserId)).thenReturn(student);
+            when(parentService.getStudent(tenantId, studentUserId)).thenReturn(student);
         }
 
         @Test
@@ -207,7 +197,7 @@ class ParentControllerTest {
                     .isExactlyInstanceOf(BizException.class)
                     .extracting("code")
                     .isEqualTo(ErrorCode.UNAUTHORIZED.code());
-            verify(sessionMapper, org.mockito.Mockito.never()).selectList(any());
+            verify(parentService, org.mockito.Mockito.never()).getRecentSessions(any(), any(), any());
             assertNull(TenantContextHolder.get(), "拒绝路径也不得泄漏租户上下文");
         }
 
@@ -239,7 +229,7 @@ class ParentControllerTest {
         @Test
         @DisplayName("学生查无此人 → UNAUTHORIZED")
         void missingStudentRejected() {
-            when(userMapper.selectById(studentUserId)).thenReturn(null);
+            when(parentService.getStudent(tenantId, studentUserId)).thenReturn(null);
 
             assertThatThrownBy(() -> controller.getWeeklyReport("Bearer " + VALID_PARENT_TOKEN))
                     .isExactlyInstanceOf(BizException.class)
@@ -254,7 +244,7 @@ class ParentControllerTest {
     @DisplayName("verifyPhone 验证通过后签发正式 parent_report token")
     void verifyPhoneIssuesToken() {
         User student = studentUser();
-        when(userMapper.selectById(studentUserId)).thenReturn(student);
+        when(parentService.getStudent(tenantId, studentUserId)).thenReturn(student);
         when(phoneVerificationService.verifyCode("13800000001", "123456")).thenReturn(true);
 
         String formalToken = "formal-parent-token";
@@ -273,7 +263,7 @@ class ParentControllerTest {
     @DisplayName("verifyPhone 验证码错误 → UNAUTHORIZED")
     void verifyPhoneWrongCode() {
         User student = studentUser();
-        when(userMapper.selectById(studentUserId)).thenReturn(student);
+        when(parentService.getStudent(tenantId, studentUserId)).thenReturn(student);
         when(phoneVerificationService.verifyCode("13800000001", "wrong")).thenReturn(false);
 
         assertThatThrownBy(() -> controller.verifyPhone(

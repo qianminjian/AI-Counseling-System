@@ -2,10 +2,8 @@ package com.mindsafe.api.controller;
 
 import com.mindsafe.api.security.JwtTokenProvider;
 import com.mindsafe.common.dto.ApiResponse;
-import com.mindsafe.common.tenant.TenantContextHolder;
 import com.mindsafe.domain.entity.User;
-import com.mindsafe.domain.mapper.UserMapper;
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.mindsafe.service.wecom.WeComOAuthService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -14,7 +12,6 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.client.RestTemplate;
 
 import java.time.Duration;
-import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -45,7 +42,7 @@ public class WeComOAuthController {
     private String redirectUri;
 
     private final JwtTokenProvider jwtTokenProvider;
-    private final UserMapper userMapper;
+    private final WeComOAuthService weComOAuthService;
     private final RestTemplate restTemplate = buildRestTemplate();
 
     /** 企微外呼必须带超时：避免登录链路被外部服务挂死 */
@@ -56,9 +53,9 @@ public class WeComOAuthController {
         return new RestTemplate(factory);
     }
 
-    public WeComOAuthController(JwtTokenProvider jwtTokenProvider, UserMapper userMapper) {
+    public WeComOAuthController(JwtTokenProvider jwtTokenProvider, WeComOAuthService weComOAuthService) {
         this.jwtTokenProvider = jwtTokenProvider;
-        this.userMapper = userMapper;
+        this.weComOAuthService = weComOAuthService;
     }
 
     /** 获取企微 OAuth 授权 URL（前端跳转用） */
@@ -107,13 +104,9 @@ public class WeComOAuthController {
             }
 
             // Step 3: 匹配系统用户（用 pseudonym 字段匹配企微 userId，待 wecom_user_id 字段上线后切换）
-            // 前置认证链路（无 JWT，跨租户匹配教师）：显式声明系统作用域（M1-003 fail-fast 配套）
+            // 前置认证链路（无 JWT，跨租户匹配教师）：系统作用域在 Service 内声明（M1-003 fail-fast 配套）
             log.info("企微 OAuth 登录: wecomUserId={}", wecomUserId);
-            User matchedUser = TenantContextHolder.callAsSystem(() -> userMapper.selectOne(
-                    new LambdaQueryWrapper<User>()
-                            .eq(User::getPseudonym, wecomUserId)
-                            .eq(User::getUserType, User.USER_TYPE_TEACHER)
-                            .last("LIMIT 1")));
+            User matchedUser = weComOAuthService.findTeacherByWeComId(wecomUserId);
 
             if (matchedUser == null) {
                 return ApiResponse.ok(Map.of(
@@ -124,15 +117,8 @@ public class WeComOAuthController {
             }
 
             // Step 4: 更新最后登录时间（已识别出租户，绑定真实租户上下文执行）+ 签发 JWT
-            TenantContextHolder.set(matchedUser.getTenantId());
-            try {
-                User loginUpdate = new User();
-                loginUpdate.setUserId(matchedUser.getUserId());
-                loginUpdate.setLastLoginAt(Instant.now());
-                userMapper.updateById(loginUpdate);
-            } finally {
-                TenantContextHolder.clear();
-            }
+            // T4 批次B：登录时间更新下沉 WeComOAuthService（租户上下文绑定在 Service 内）
+            weComOAuthService.touchLastLogin(matchedUser.getTenantId(), matchedUser.getUserId());
 
             String token = jwtTokenProvider.generateToken(
                     matchedUser.getUserId(), matchedUser.getUserType(), matchedUser.getTenantId());

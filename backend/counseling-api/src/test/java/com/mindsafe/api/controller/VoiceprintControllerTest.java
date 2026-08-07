@@ -7,10 +7,9 @@ import com.mindsafe.common.dto.ApiResponse;
 import com.mindsafe.common.dto.ErrorCode;
 import com.mindsafe.common.exception.BizException;
 import com.mindsafe.domain.entity.User;
-import com.mindsafe.domain.mapper.UserMapper;
 import com.mindsafe.service.audit.AuditLogService;
-import com.mindsafe.service.auth.TenantAccessGuard;
 import com.mindsafe.service.voiceprint.VoiceprintEnrollService;
+import com.mindsafe.service.voiceprint.VoiceprintLoginService;
 import com.mindsafe.service.voiceprint.VoiceprintVerifyService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -20,7 +19,6 @@ import org.mockito.ArgumentCaptor;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.security.core.Authentication;
 
-import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -48,24 +46,22 @@ class VoiceprintControllerTest {
 
     private VoiceprintVerifyService verifyService;
     private VoiceprintEnrollService enrollService;
-    private UserMapper userMapper;
+    private VoiceprintLoginService voiceprintLoginService;
     private JwtTokenProvider jwtTokenProvider;
     private AuditLogService auditLogService;
     private RateLimiter rateLimiter;
-    private TenantAccessGuard tenantAccessGuard;
     private VoiceprintController controller;
 
     @BeforeEach
     void setUp() {
         verifyService = mock(VoiceprintVerifyService.class);
         enrollService = mock(VoiceprintEnrollService.class);
-        userMapper = mock(UserMapper.class);
+        voiceprintLoginService = mock(VoiceprintLoginService.class);
         jwtTokenProvider = mock(JwtTokenProvider.class);
         auditLogService = mock(AuditLogService.class);
         rateLimiter = mock(RateLimiter.class);
-        tenantAccessGuard = mock(TenantAccessGuard.class);
-        controller = new VoiceprintController(verifyService, enrollService, userMapper,
-                jwtTokenProvider, auditLogService, rateLimiter, tenantAccessGuard);
+        controller = new VoiceprintController(verifyService, enrollService, voiceprintLoginService,
+                jwtTokenProvider, auditLogService, rateLimiter);
         when(rateLimiter.tryAcquire(anyString(), anyString(), anyInt(), any())).thenReturn(true);
     }
 
@@ -223,8 +219,7 @@ class VoiceprintControllerTest {
             user.setStatus("active");
             user.setPseudonym("小明");
             user.setUserType("student");
-            when(userMapper.selectById(userId)).thenReturn(user);
-            when(tenantAccessGuard.isLoginAllowed(tenantId)).thenReturn(true);
+            when(voiceprintLoginService.findLoginAllowedUser(userId)).thenReturn(user);
             when(jwtTokenProvider.generateToken(userId, "student", tenantId)).thenReturn("tok");
             when(jwtTokenProvider.generateRefreshToken(userId, "student", tenantId)).thenReturn("rtok");
 
@@ -236,24 +231,17 @@ class VoiceprintControllerTest {
             assertThat(resp.data().get("refreshToken")).isEqualTo("rtok");
             verify(auditLogService).log(eq(tenantId), eq(userId),
                     eq("VOICEPRINT_LOGIN_REMOTE"), anyString(), any(), any());
-            ArgumentCaptor<User> updateCaptor = ArgumentCaptor.forClass(User.class);
-            verify(userMapper).updateById(updateCaptor.capture());
-            assertThat(updateCaptor.getValue().getLastLoginAt()).isNotNull();
+            verify(voiceprintLoginService).touchLastLogin(userId);
         }
 
         @Test
-        @DisplayName("匹配成功但用户非 active 或租户禁用 → 不签发 token")
+        @DisplayName("匹配成功但用户非 active 或租户禁用 → 不签发 token（门禁判定随查询下沉 Service）")
         void matchedButUserNotEligible() {
             UUID userId = UUID.randomUUID();
             UUID tenantId = UUID.randomUUID();
             when(verifyService.verify(eq(tenantId), any())).thenReturn(
                     new VoiceprintVerifyService.VerifyOutcome(true, 0.99, userId, tenantId));
-            User user = new User();
-            user.setUserId(userId);
-            user.setTenantId(tenantId);
-            user.setStatus("suspended");
-            when(userMapper.selectById(userId)).thenReturn(user);
-            when(tenantAccessGuard.isLoginAllowed(tenantId)).thenReturn(false);
+            when(voiceprintLoginService.findLoginAllowedUser(userId)).thenReturn(null);
 
             ApiResponse<Map<String, Object>> resp = controller.verify(
                     new VoiceprintController.VerifyRequest(tenantId, List.of(List.of(1.0, 1.0))), request());

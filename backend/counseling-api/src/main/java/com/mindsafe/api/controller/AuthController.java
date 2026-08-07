@@ -1,6 +1,5 @@
 package com.mindsafe.api.controller;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.mindsafe.api.auth.AuthenticatedUser;
 import com.mindsafe.api.auth.TrialAuthStrategy;
 import com.mindsafe.api.auth.TrialRegisterRequest;
@@ -11,7 +10,7 @@ import com.mindsafe.common.dto.ErrorCode;
 import com.mindsafe.common.exception.BizException;
 import com.mindsafe.common.tenant.TenantContextHolder;
 import com.mindsafe.domain.entity.User;
-import com.mindsafe.domain.mapper.UserMapper;
+import com.mindsafe.service.auth.AuthUserService;
 import com.mindsafe.service.auth.TrialAuthService;
 import com.mindsafe.service.auth.TenantAccessGuard;
 import com.mindsafe.service.auth.LoginLockoutService;
@@ -26,7 +25,6 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
-import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
 
@@ -44,7 +42,6 @@ public class AuthController {
 
     private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(AuthController.class);
 
-    private final UserMapper userMapper;
     private final PasswordEncoder passwordEncoder;
     private final JwtTokenProvider jwtTokenProvider;
     private final TrialAuthStrategy trialAuthStrategy;
@@ -55,9 +52,9 @@ public class AuthController {
     private final GuardianConsentService guardianConsentService;
     private final TokenBlacklistService tokenBlacklistService;
     private final TenantAccessGuard tenantAccessGuard;
+    private final AuthUserService authUserService;
 
-    public AuthController(UserMapper userMapper,
-                          PasswordEncoder passwordEncoder,
+    public AuthController(PasswordEncoder passwordEncoder,
                           JwtTokenProvider jwtTokenProvider,
                           TrialAuthStrategy trialAuthStrategy,
                           TrialAuthService trialAuthService,
@@ -66,8 +63,8 @@ public class AuthController {
                           PasswordPolicyService passwordPolicyService,
                           GuardianConsentService guardianConsentService,
                           TokenBlacklistService tokenBlacklistService,
-                          TenantAccessGuard tenantAccessGuard) {
-        this.userMapper = userMapper;
+                          TenantAccessGuard tenantAccessGuard,
+                          AuthUserService authUserService) {
         this.passwordEncoder = passwordEncoder;
         this.jwtTokenProvider = jwtTokenProvider;
         this.trialAuthStrategy = trialAuthStrategy;
@@ -78,6 +75,7 @@ public class AuthController {
         this.guardianConsentService = guardianConsentService;
         this.tokenBlacklistService = tokenBlacklistService;
         this.tenantAccessGuard = tenantAccessGuard;
+        this.authUserService = authUserService;
     }
 
     /**
@@ -90,11 +88,8 @@ public class AuthController {
 
         // 前置认证链路（无 JWT，跨租户按昵称查用户）：显式声明系统作用域（M1-003 fail-fast 配套）
         // SEC-003：昵称无全局唯一约束，重名时拒绝登录（防 LIMIT 1 随机命中他人账号）
-        java.util.List<User> candidates = TenantContextHolder.callAsSystem(() -> userMapper.selectList(
-                new LambdaQueryWrapper<User>()
-                        .eq(User::getPseudonym, request.username())
-                        .eq(User::getStatus, User.STATUS_ACTIVE)
-        ));
+        // T4 批次C：候选查询下沉 AuthUserService（系统作用域在 Service 内声明）
+        java.util.List<User> candidates = authUserService.findLoginCandidates(request.username());
         if (candidates.size() > 1) {
             log.warn("登录拒绝：昵称重复无法唯一定位账号, username={}, matches={}", request.username(), candidates.size());
             lockoutService.recordFailure(request.username());
@@ -116,19 +111,8 @@ public class AuthController {
         // 登录成功，清除失败计数
         lockoutService.clearFailures(request.username());
 
-        // 更新最后登录时间（已识别出用户租户，绑定真实租户上下文执行）
-        TenantContextHolder.set(user.getTenantId());
-        try {
-            User update = new User();
-            update.setUserId(user.getUserId());
-            update.setLastLoginAt(Instant.now());
-            userMapper.updateById(update);
-
-            // 审计：登录成功（@Async 经 TaskDecorator 继承本线程租户上下文）
-            auditLogService.log(user.getTenantId(), user.getUserId(), "LOGIN", "user", user.getUserId(), null);
-        } finally {
-            TenantContextHolder.clear();
-        }
+        // 更新最后登录时间 + LOGIN 审计（T4 批次B：下沉 AuthUserService，租户上下文绑定在 Service 内）
+        authUserService.recordLoginSuccess(user.getTenantId(), user.getUserId());
 
         String token = jwtTokenProvider.generateToken(
                 user.getUserId(), user.getUserType(), user.getTenantId());
@@ -159,8 +143,7 @@ public class AuthController {
         AuthenticatedUser authUser = trialAuthStrategy.authenticate(request);
 
         // 查询完整用户信息（含 familyCode）+ 监护人同意状态——注册响应期尚无 JWT 上下文，系统作用域执行（M1-003）
-        User fullUser = TenantContextHolder.callAsSystem(
-                () -> userMapper.selectById(authUser.userId()));
+        User fullUser = authUserService.findByIdAsSystem(authUser.userId());
         // age<14 且尚无同意记录 → 前端须引导 SMS 闭环（AUTH-040；试运行 auto-grant 时注册已写入，此处为 false）
         boolean guardianConsentPending = request.age() < 14
                 && !TenantContextHolder.callAsSystem(
@@ -276,19 +259,14 @@ public class AuthController {
 
         // 声纹登录是 permitAll 端点，无 Authorization header → JwtAuthenticationFilter 不设置租户上下文
         // 需显式声明系统作用域，否则多租户拦截器拒绝 SQL（M1-003）
-        User user = TenantContextHolder.callAsSystem(() ->
-                userMapper.selectById(jwtTokenProvider.getUserId(vc)));
+        // T4 批次B：查询下沉 AuthUserService（系统作用域在 Service 内声明）
+        User user = authUserService.findByIdAsSystem(jwtTokenProvider.getUserId(vc));
         if (user == null || !User.STATUS_ACTIVE.equals(user.getStatus())) {
             throw new BizException(ErrorCode.UNAUTHORIZED, "账号不可用，请联系老师");
         }
 
-        // 更新最后登录时间
-        TenantContextHolder.runAsSystem(() -> {
-            User update = new User();
-            update.setUserId(user.getUserId());
-            update.setLastLoginAt(Instant.now());
-            userMapper.updateById(update);
-        });
+        // 更新最后登录时间（T4 批次B：下沉 AuthUserService）
+        authUserService.touchLastLogin(user.getUserId());
 
         String token = jwtTokenProvider.generateToken(
                 user.getUserId(), user.getUserType(), user.getTenantId());
@@ -311,7 +289,7 @@ public class AuthController {
         if (authentication == null || !(authentication.getDetails() instanceof TenantContext ctx)) {
             throw new BizException(ErrorCode.UNAUTHORIZED);
         }
-        User user = userMapper.selectById(ctx.userId());
+        User user = authUserService.findById(ctx.userId());
         if (user == null) {
             throw new BizException(ErrorCode.RESOURCE_NOT_FOUND, "用户不存在");
         }

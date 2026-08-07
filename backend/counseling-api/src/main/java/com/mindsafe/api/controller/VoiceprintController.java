@@ -7,12 +7,11 @@ import com.mindsafe.common.dto.ApiResponse;
 import com.mindsafe.common.dto.ErrorCode;
 import com.mindsafe.common.exception.BizException;
 import com.mindsafe.domain.entity.User;
-import com.mindsafe.domain.mapper.UserMapper;
 import com.mindsafe.common.tenant.TenantContextHolder;
 import com.mindsafe.service.audit.AuditLogService;
-import com.mindsafe.service.auth.TenantAccessGuard;
 import com.mindsafe.service.voiceprint.VoiceprintDomain;
 import com.mindsafe.service.voiceprint.VoiceprintEnrollService;
+import com.mindsafe.service.voiceprint.VoiceprintLoginService;
 import com.mindsafe.service.voiceprint.VoiceprintVerifyService;
 import com.mindsafe.service.voiceprint.VoiceprintVerifyService.VerifyOutcome;
 import jakarta.servlet.http.HttpServletRequest;
@@ -27,7 +26,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.Duration;
-import java.time.Instant;
 import java.util.*;
 
 /**
@@ -43,11 +41,10 @@ public class VoiceprintController {
 
     private final VoiceprintVerifyService verifyService;
     private final VoiceprintEnrollService enrollService;
-    private final UserMapper userMapper;
+    private final VoiceprintLoginService voiceprintLoginService;
     private final JwtTokenProvider jwtTokenProvider;
     private final AuditLogService auditLogService;
     private final RateLimiter rateLimiter;
-    private final TenantAccessGuard tenantAccessGuard;
 
     /** 公开端点按 IP 限流：每分钟最多 10 次声纹验证尝试（防暴力探测） */
     private static final int VERIFY_MAX_PER_MINUTE = 10;
@@ -59,18 +56,16 @@ public class VoiceprintController {
 
     public VoiceprintController(VoiceprintVerifyService verifyService,
                                 VoiceprintEnrollService enrollService,
-                                UserMapper userMapper,
+                                VoiceprintLoginService voiceprintLoginService,
                                 JwtTokenProvider jwtTokenProvider,
                                 AuditLogService auditLogService,
-                                RateLimiter rateLimiter,
-                                TenantAccessGuard tenantAccessGuard) {
+                                RateLimiter rateLimiter) {
         this.verifyService = verifyService;
         this.enrollService = enrollService;
-        this.userMapper = userMapper;
+        this.voiceprintLoginService = voiceprintLoginService;
         this.jwtTokenProvider = jwtTokenProvider;
         this.auditLogService = auditLogService;
         this.rateLimiter = rateLimiter;
-        this.tenantAccessGuard = tenantAccessGuard;
     }
 
     /** 获取声纹配置（公开）：前端据此决定走 local 还是 remote 流程 */
@@ -147,18 +142,14 @@ public class VoiceprintController {
             return ApiResponse.ok(Map.of("matched", false));
         }
 
-        // 匹配成功：查用户 + 签发 token
-        User user = userMapper.selectById(outcome.userId());
-        if (user == null || !User.STATUS_ACTIVE.equals(user.getStatus())
-                || !tenantAccessGuard.isLoginAllowed(user.getTenantId())) {
+        // 匹配成功：查用户 + 签发 token（T4 批次B：账号状态 + 租户门禁判定随查询下沉 Service）
+        User user = voiceprintLoginService.findLoginAllowedUser(outcome.userId());
+        if (user == null) {
             return ApiResponse.ok(Map.of("matched", false));
         }
 
-        // 更新最后登录时间
-        User update = new User();
-        update.setUserId(user.getUserId());
-        update.setLastLoginAt(Instant.now());
-        userMapper.updateById(update);
+        // 更新最后登录时间（T4 批次B：下沉 Service）
+        voiceprintLoginService.touchLastLogin(user.getUserId());
 
         String token = jwtTokenProvider.generateToken(
                 user.getUserId(), user.getUserType(), user.getTenantId());
