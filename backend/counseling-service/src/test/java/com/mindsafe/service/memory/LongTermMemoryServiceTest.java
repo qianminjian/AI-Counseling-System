@@ -1,5 +1,6 @@
 package com.mindsafe.service.memory;
 
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mindsafe.domain.entity.LongTermMemory;
@@ -170,7 +171,7 @@ class LongTermMemoryServiceTest {
             m.setRecallCount(0);
             memories.add(m);
         }
-        when(memoryMapper.selectList(any())).thenReturn(memories);
+        when(memoryMapper.selectPage(any(), any())).thenReturn(new Page<LongTermMemory>().setRecords(memories));
         when(memoryRelevanceScorer.score(anyFloat(), anyFloat(), any(), any(), any())).thenReturn(10.0);
         when(memoryRelevanceScorer.isWorthRecalling(anyDouble())).thenReturn(true);
 
@@ -230,7 +231,10 @@ class LongTermMemoryServiceTest {
             m.setRecallCount(0);
             allMemories.add(m);
         }
+        // 存量 61 条走 selectList（evictOldMemories）；数量兜底 excess=11 条幸存者走 selectPage（AUD-043）
         when(memoryMapper.selectList(any())).thenReturn(allMemories);
+        when(memoryMapper.selectPage(any(), any())).thenReturn(
+                new Page<LongTermMemory>().setRecords(allMemories.subList(0, 11)));
         when(memoryRiskCorrelator.evaluateForget(any(), any()))
                 .thenReturn(new MemoryRiskCorrelator.ForgetDecision(false, "keep", "none"));
 

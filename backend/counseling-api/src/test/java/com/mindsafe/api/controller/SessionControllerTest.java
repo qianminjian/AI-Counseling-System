@@ -2,6 +2,7 @@ package com.mindsafe.api.controller;
 
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.mindsafe.api.security.JwtAuthenticationFilter.TenantContext;
 import com.mindsafe.common.dto.ApiResponse;
 import com.mindsafe.common.exception.BizException;
@@ -73,7 +74,7 @@ class SessionControllerTest {
     @Test
     @DisplayName("getSessionHistory → VO 映射（limit 透传）")
     void getSessionHistory() {
-        when(sessionMapper.selectList(any())).thenReturn(List.of(session()));
+        when(sessionMapper.selectPage(any(), any())).thenReturn(new Page<CounselingSession>().setRecords(List.of(session())));
 
         ApiResponse<List<SessionController.SessionHistoryVO>> resp = controller.getSessionHistory(studentAuth(), 20);
 
@@ -86,24 +87,24 @@ class SessionControllerTest {
         assertThat(vo.satisfactionRating()).isEqualTo(5);
         assertThat(vo.startedAt()).isNotNull();
         assertThat(vo.endedAt()).isNotNull();
-        verify(sessionMapper).selectList(any());
+        verify(sessionMapper).selectPage(any(), any());
     }
 
     @Test
     @DisplayName("getSessionHistory limit 超 50 → 截断为 50")
     void getSessionHistory_limitCapped() {
-        when(sessionMapper.selectList(any())).thenReturn(List.of(session()));
+        when(sessionMapper.selectPage(any(), any())).thenReturn(new Page<CounselingSession>().setRecords(List.of(session())));
 
         ApiResponse<List<SessionController.SessionHistoryVO>> resp = controller.getSessionHistory(studentAuth(), 999);
 
         assertThat(resp.data()).hasSize(1);
-        verify(sessionMapper).selectList(any());
+        verify(sessionMapper).selectPage(any(), any());
     }
 
     @Test
     @DisplayName("getSessionHistory 无会话 → 空列表")
     void getSessionHistory_empty() {
-        when(sessionMapper.selectList(any())).thenReturn(List.of());
+        when(sessionMapper.selectPage(any(), any())).thenReturn(new Page<CounselingSession>().setRecords(List.of()));
 
         ApiResponse<List<SessionController.SessionHistoryVO>> resp = controller.getSessionHistory(studentAuth(), 20);
 

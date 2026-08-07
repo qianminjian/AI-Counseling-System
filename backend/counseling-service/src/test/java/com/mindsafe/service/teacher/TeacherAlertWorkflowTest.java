@@ -1,5 +1,6 @@
 package com.mindsafe.service.teacher;
 
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.mindsafe.domain.entity.RiskEvent;
 import com.mindsafe.domain.entity.TeacherNote;
 import com.mindsafe.domain.entity.User;
@@ -187,7 +188,7 @@ class TeacherAlertWorkflowTest {
     @DisplayName("getAlerts 四参重载：转发五参（全校范围）")
     void getAlertsFourArg_delegates() {
         RiskEvent event = givenEvent();
-        when(riskEventMapper.selectList(any())).thenReturn(List.of(event));
+        when(riskEventMapper.selectPage(any(), any())).thenReturn(new Page<RiskEvent>().setRecords(List.of(event)));
         when(userMapper.selectBatchIds(any())).thenReturn(List.of());
 
         List<TeacherService.AlertVO> alerts = teacherService.getAlerts(tenantId, "open", 2, 50);
@@ -200,7 +201,7 @@ class TeacherAlertWorkflowTest {
     @DisplayName("getAlerts：学生信息命中时映射实名")
     void getAlerts_studentNameMapped() {
         RiskEvent event = givenEvent();
-        when(riskEventMapper.selectList(any())).thenReturn(List.of(event));
+        when(riskEventMapper.selectPage(any(), any())).thenReturn(new Page<RiskEvent>().setRecords(List.of(event)));
         User student = new User();
         student.setUserId(event.getStudentUserId());
         student.setPseudonym("小华*");

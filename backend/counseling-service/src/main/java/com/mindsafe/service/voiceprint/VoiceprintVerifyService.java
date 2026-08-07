@@ -5,6 +5,7 @@ import com.mindsafe.domain.entity.VoiceprintEmbedding;
 import com.mindsafe.domain.mapper.VoiceprintEmbeddingMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -33,7 +34,7 @@ public class VoiceprintVerifyService {
     private final double threshold;
 
     public VoiceprintVerifyService(VoiceprintEmbeddingMapper mapper,
-                                   double threshold) {
+                                   @Value("${mindsafe.voiceprint.verify-threshold:0.70}") double threshold) {
         this.mapper = mapper;
         this.threshold = threshold;
     }
