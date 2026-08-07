@@ -135,8 +135,8 @@ done
 
 ### 3.6 CI 保持不动（F）
 
-- 已确认 ci.yml 无镜像构建/推送步骤（仅 pgvector/redis 服务容器）→ 零改动
-- 可选增强（不做，YAGNI）：CI 增加"部署就绪"产物（如前端构建缓存预热），无需求不引入
+- 已确认 ci.yml 无镜像构建/推送步骤（仅 pgvector/redis 服务容器）→ 当时结论零改动
+- ⚠️ 2026-08-07 追加修订：深度分析后发现 4 类可优化项（冗余缓存步骤、文档变更全量跑 CI、pip 无缓存、增量构建形态评估）→ 方案与验收标准见 **§9**，后续与专题剩余项一起实施
 
 ---
 
@@ -220,3 +220,87 @@ done
 - 现象：restart nginx 时执行 `compose up -d nginx` → 443 被宿主 nginx 占用 → bind 冲突报错 + mindsafe-nginx 残留容器（Created）；健康检查实际探测宿主 443 通过，掩盖了冲突
 - 修复：start_service 对 nginx 特判——跳过 compose up，仅健康探测宿主 443（与 L61-62 注释语义对齐）；残留容器已清理
 - 教训：**代码与注释语义矛盾会掩盖真实状态**（注释说 compose nginx 未启用，代码却尝试启动）
+
+---
+
+## §9 CI 深度优化分析（2026-08-07 追加，§3.6 修订）
+
+> 触发：取消 CD 后 CI 成为唯一质量门禁，用户要求深度分析——非必要步骤、时间缩短、增量构建、依赖下载。
+> 方法：基于成功 run 31149891947 的 job/step 级实测时长 + 失败 run 31151252115 交叉验证。
+> 状态：**仅分析 + 方案，未实施**（与专题剩余项一起实施）。
+
+### 9.1 现状时间基线（run 31149891947，总 wall-clock 2m11s）
+
+| Job | 时长 | 时间构成（step 实测） | 说明 |
+|---|---|---|---|
+| Backend Build & Test | 2m00s | 容器 21s + checkout 1s + JDK 2s + Maven 缓存 2s + Compile 16s + Init DB 1s + **verify 72s**（858 测试）+ 收尾 7s | 全 run 瓶颈 |
+| Frontend student-h5 | 61s | setup-node 6s + **npm ci+build 21s** + **test:coverage 32s** | matrix 3 job 并行 |
+| Frontend teacher-web | 57s | 同构（student 略慢） | |
+| Frontend parent-h5 | 19s | 依赖规模小 | |
+| Python tts-service | 30s | **pip install 8s（每次全量下载）** + pytest 7s | matrix 2 job 并行 |
+| Python voice-service | 9s | pip install 2s + pytest 1s | |
+| Dependency Scan | 13s | Trivy backend + frontend（DB 缓存命中） | |
+
+### 9.2 发现 1：非必要步骤（1 项确认冗余，其余均有门禁价值）
+
+- **冗余：手动 `Cache Maven repository`（ci.yml L69-75）**——与 `setup-java` 的 `cache: maven`（L66）**重复缓存同一路径** `~/.m2/repository`，且两处 key 不同（setup-java 用依赖 key；手动用 `hashFiles('backend/**/pom.xml')`）→ 每次 run 双份缓存写入、restore 行为不一致、浪费缓存配额
+  - 处置：**删除手动缓存步骤，保留 setup-java cache: maven**（官方推荐，key 粒度更细：含全部 pom 内容）
+- 保留项确认：`Compile`（fail-fast：编译错误 16s 暴露而非 72s；verify 内编译因 target 时间戳增量跳过，不重复耗时）、`Init DB Extensions`（IT 前置）、`Coverage Gate` + `Upload Coverage`（门禁 + 排查）、`Lint` + `Test (coverage)`（门禁）、前端 `rm -rf dist`（可复现）
+
+### 9.3 发现 2：可缩短时间的步骤（按收益排序）
+
+1. **文档类变更跳过 CI（收益最大：docs-only 从 2m11s → 0）**
+   - 现状：design/**、doc/**、docs/**、*.md、CHANGELOG.md、reports/、tmp/、data/ 变更同样跑全量 4 job；实测 develop run 31151252115 即 docs commit 触发且失败（develop 代码问题），纯噪音
+   - 方案：workflow 级 `paths-ignore` 文档类路径（.github 与代码路径不受影响）
+2. **pip 依赖每次全量下载（tts 8s / voice 2s）**——Maven/npm/Trivy 均有缓存，唯独 Python 无
+   - 方案：`actions/cache` 缓存 pip（key = requirements 文件 hash，restore-keys 前缀），8s→约 2s
+3. **Initialize containers 21s**：pgvector 镜像 pull + pg 启动，GitHub services 无镜像缓存机制，难优化；`--health-interval 10s`→5s 最多提前 5s（可选微调，收益小）
+4. **verify 72s（858 测试）**：真实测试成本；`-T` 并行有共享 PostgreSQL 竞争风险（6 模块 failsafe 连同一 DB，schema 迁移/写入冲突）→ **不引入并行**，标注可接受
+5. **前端 npm ci 21s + vitest 32s**：已有 npm 缓存命中；node_modules 缓存会破坏 npm ci 干净语义 → 不做
+
+### 9.4 发现 3：增量构建分析（结论：只做路径过滤，不做产物缓存式增量）
+
+- GitHub Actions 每次全新 runner、无持久 workspace → "增量"唯一可行形态是**路径过滤（只跑受影响的检查）**
+- **方案 A（推荐落地）：文档类 `paths-ignore`**——低风险、零门禁损失（文档不参与构建），见 9.3-1
+- **方案 B（可选，默认不做）：组件级 `paths` 过滤**——backend/** 变更才跑 backend job、frontend/** 才跑 frontend job
+  - 限制：matrix job 的 paths 是 job 级静态条件，**无法按 app 细粒度过滤**（三个前端 app 只能一起触发/一起跳过）
+  - 代价：门禁严格性下降（改 backend 不跑前端测试），与"全量回归保底"原则冲突 → 当前 run 仅 2m11s，收益 < 风险，**仅在 run 时长成为瓶颈时再启用**
+- **不推荐：Maven `target/` 缓存做增量编译**（16s→约 5s 收益小；缓存脏风险高——源文件删除后 target 残留旧类、与 JaCoCo 报告/测试产物混淆、缓存体积数百 MB）
+- **不推荐：node_modules 缓存跳过 npm ci**（npm ci 语义 = 干净安装，缓存破坏可复现性）
+
+### 9.5 发现 4：依赖下载现状盘点（每个 job 是否每次全量下载）
+
+| 依赖 | 缓存机制 | 状态 |
+|---|---|---|
+| Maven (~/.m2) | setup-java `cache: maven` | ✓ 已缓存，但**双缓存冗余待修**（9.2） |
+| npm | setup-node `cache: npm`（三端独立 key） | ✓ 已缓存 |
+| pip | **无** | ✗ 每次全量下载（9.3-2 待修） |
+| Trivy 漏洞库 | trivy-action 默认 cache | ✓ 已缓存 |
+
+### 9.6 风险与边界
+
+| 风险 | 缓解 |
+|---|---|
+| paths-ignore 误伤（如 `.md` 被代码引用） | 文档类路径白名单严格限定：design/、doc/、docs/、reports/、tmp/、data/、根级 *.md；.github/、backend/、frontend/、scripts/ 永不忽略 |
+| develop 分支 CI 当前红（31151252115：backend 858 测试 14E+2F、parent-h5、trivy frontend） | 属 develop 代码状态问题（docs commit 触发），与 CI 配置无关，不阻塞本方案；paths-ignore 落地后此类噪音 commit 不再触发全量 |
+| 组件级过滤（方案 B）降低门禁严格性 | 默认不启用，run 时长成为瓶颈时再评估 |
+| -T 并行测试引入共享 DB 竞争 | 不引入（9.3-4） |
+
+### 9.7 验收标准（实施时勾选）
+
+- [ ] ci.yml 删除手动 `Cache Maven repository` 步骤，仅保留 setup-java `cache: maven`（日志确认单 key 缓存恢复）
+- [ ] ci.yml 增加 workflow 级文档类 `paths-ignore`；docs-only push 实测不触发 run
+- [ ] python-services-test 增加 pip 缓存（key 含 requirements 文件 hash）；tts/voice job 日志显示 cache 命中
+- [ ] 代码变更 push 实测：全量 CI 全绿且 wall-clock ≤ 2m11s 基线
+- [ ] doing/72 §3.6 修订标记与 §9 内容一致（无残留"CI 零改动"表述）
+
+### 9.8 实施清单（后续与专题剩余项一起实施）
+
+| 批次 | 项 | 验证 |
+|---|---|---|
+| G1 | 删除手动 Maven 缓存步骤（9.2） | backend job 日志单缓存恢复 |
+| G2 | workflow 级 paths-ignore 文档类路径（9.3-1） | docs-only push 不触发 run |
+| G3 | pip 缓存（9.3-2） | tts/voice job 日志 cache 命中 |
+| G4 | （可选）health-interval 5s 微调 | backend job 容器初始化 ≤ 现状 21s |
+
+> 不实施项登记（防重复分析）：verify -T 并行、Maven target 缓存、node_modules 缓存、组件级 paths 过滤（9.3-4/9.4，含理由，勿再次评估）
