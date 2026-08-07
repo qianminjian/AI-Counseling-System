@@ -358,4 +358,4 @@ privacy 页「← 返回登录」：`Taro.navigateBack()` 或跳 verify（等价
 | 2026-08-07 | 实施前复杂度/风险评估：改造低复杂度、风险集中 T4（R7），spike 前置 | ✅ |
 | 2026-08-07 | 文档更新：R7~R11、构建器决策、组件事件差异、AC-11/12、TDD 计划 | ✅ |
 | 2026-08-07 | **产物体积基线记录（AC-11）**：迁移前 dist = 256K（2026-08-07 12:54 构建） | ✅ |
-| 2026-08-07 | T0 工程基线 + spike | 进行中 |
+| 2026-08-07 | **T0 工程基线 + spike（R7）路径 A 判定成功**：Taro 4.2.1 骨架铺入（config/、babel.config.cjs、project.config.json、app.config.ts、app.tsx）；React 18.3.1 exact 降级；react-router 移除；vitest alias `@tarojs/components` → `lib/react`（主入口为 Stencil ES class，react-dom 无法直接调用）；setup.ts 注入 8 个编译期常量（7 个 ENABLE_* + DEPRECATED_ADAPTER_COMPONENT=false）；spike 4/4 通过——jsdom 下 Stencil shadow DOM 不初始化（宿主为属性透传+children 槽位），children 渲染/宿主原生事件可用，Input/Form 事件需 fireEvent 显式派发，回调收到原生 Event（页面按 R2 取 e.target.value）；tsc 通过（react-router 4 处预期错误待 T3 消除）；全量回归 45/45；旧 4 页面测试临时 exclude（T4 移除） | ✅ |
