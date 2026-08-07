@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { api } from '../api'
 import { useTheme } from '../theme/ThemeProvider'
+import BoBoAvatar from './BoBoAvatar'
 import SceneDecor from './SceneDecor'
 
 const EMOTIONS = [
@@ -148,7 +149,7 @@ export default function EmotionDiary({ onBack }) {
 
       <div className="relative z-10 flex flex-col items-center w-full max-w-sm">
         {/* 头部：伙伴 + 标题 */}
-        <div className="text-5xl mb-3 float-companion">{theme.companion}</div>
+        <div className="mb-3 float-companion"><BoBoAvatar size={48} colors={theme.bobo} /></div>
         <h2 className="kid-title text-2xl font-bold mb-1" style={{ color: ts.title, textShadow: ts.titleShadow }}>情绪日记 📔</h2>
         <p className="text-sm mb-5 text-center" style={{ color: ts.sub }}>记录每天的心情，看见自己的变化</p>
 

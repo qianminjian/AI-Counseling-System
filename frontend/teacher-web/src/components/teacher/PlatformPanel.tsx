@@ -19,11 +19,11 @@ export default function PlatformPanel() {
       .finally(() => setLoading(false))
   }, [])
 
-  if (loading) return <div style={{ textAlign: 'center', padding: 80 }}><Spin size="large" /></div>
+  if (loading) return <div className="ms-empty-lg"><Spin size="large" /></div>
 
   const tenantColumns = [
     { title: '学校/机构', dataIndex: 'tenantName', key: 'name', render: (t, r) => (
-      <span><BankOutlined style={{ marginRight: 6, color: 'var(--ms-primary)' }} />{t}
+      <span><BankOutlined className="ms-text-primary" style={{ marginRight: 6 }} />{t}
         <Tag style={{ marginLeft: 8 }} color={r.status === 'active' ? 'green' : 'default'}>{r.status}</Tag>
       </span>
     )},

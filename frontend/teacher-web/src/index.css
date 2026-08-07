@@ -40,3 +40,21 @@ body {
 .ant-card {
   box-shadow: var(--ms-shadow-card);
 }
+
+/* ===== 面板内联样式 class 化抽取（doing/75 §7.5-1 渐进式，与 --ms-* token 同源） ===== */
+.ms-hint { font-size: 12px; color: var(--ms-text-muted); }
+.ms-text-primary { color: var(--ms-primary); }
+.ms-text-danger { color: var(--ms-danger); }
+.ms-text-warning { color: var(--ms-warning); }
+.ms-text-success { color: var(--ms-success); }
+.ms-step-icon { font-size: 32px; }
+.ms-tag-sm { margin: 0; font-size: 11px; }
+.ms-tag-strong { margin: 0; font-weight: 600; }
+.ms-tag-claim { margin: 0; color: var(--ms-primary); background: var(--ms-primary-soft); border-color: var(--ms-primary-soft); }
+.ms-m-0 { margin: 0; }
+.ms-mt-16 { margin-top: 16px; }
+.ms-mb-16 { margin-bottom: 16px; }
+.ms-empty { text-align: center; padding: 40px; }
+.ms-empty-lg { text-align: center; padding: 80px; }
+.ms-text-sm { font-size: 13px; }
+.ms-stat-big { font-size: 32px; font-weight: 700; }

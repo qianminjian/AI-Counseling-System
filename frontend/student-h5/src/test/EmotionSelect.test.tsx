@@ -4,7 +4,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // Mock 依赖模块
 let mockThemeId = 'ocean'
 vi.mock('../theme/ThemeProvider', () => ({
-  useTheme: () => ({ theme: { companion: '🐻', primary: '#FF6B6B' }, themeId: mockThemeId }),
+  useTheme: () => ({ theme: { companion: '🐬', bobo: { body: '#38BDF8', belly: '#E0F2FE', fin: '#0284C7' }, primary: '#FF6B6B' }, themeId: mockThemeId }),
 }));
 const mockApi = vi.fn();
 class FakeApiError extends Error {

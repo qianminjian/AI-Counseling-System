@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { api } from '../api'
 import { useTheme } from '../theme/ThemeProvider'
+import BoBoAvatar from './BoBoAvatar'
 import { readLocalStorageSafe, writeLocalStorageSafe } from '../utils/storage'
 import SceneDecor from './SceneDecor'
 
@@ -368,7 +369,7 @@ export default function RelaxationExercises({ onBack }) {
 
       <div className="relative z-10 flex flex-col items-center w-full max-w-sm">
         {/* 头部：伙伴 + 标题 */}
-        <div className="text-5xl mb-3 float-companion">{theme.companion}</div>
+        <div className="mb-3 float-companion"><BoBoAvatar size={48} colors={theme.bobo} /></div>
         <h2 className="kid-title text-2xl font-bold mb-2" style={{ color: ts.title, textShadow: ts.titleShadow }}>放松一下 🌿</h2>
         <p className="text-sm mb-6 text-center" style={{ color: ts.sub }}>选一个练习，让身体和心情都放松下来</p>
 

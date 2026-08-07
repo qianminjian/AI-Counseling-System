@@ -88,9 +88,9 @@ export default function AlertQueue() {
       title: 'SLA', width: 110,
       render: (_, r) => {
         const sla = evaluateSla(r.riskLevel, r.status, r.detectedAt)
-        if (!sla.hasSla) return <span style={{ fontSize: 12, color: 'var(--ms-text-muted)' }}>无时限</span>
+        if (!sla.hasSla) return <span className="ms-hint">无时限</span>
         if (sla.breached) {
-          return <Tag color="red" style={{ margin: 0, fontWeight: 600 }}>逾期 {sla.overdueMin}min</Tag>
+          return <Tag color="red" className="ms-tag-strong">逾期 {sla.overdueMin}min</Tag>
         }
         if (sla.remainingMin > 0) {
           // 紧急（≤5min）保持语义橙；非紧急用青屿主色软底（替换 antd 默认蓝）
@@ -98,13 +98,13 @@ export default function AlertQueue() {
           return (
             <Tag
               color={urgent ? 'orange' : undefined}
-              style={urgent ? { margin: 0 } : { margin: 0, color: 'var(--ms-primary)', background: 'var(--ms-primary-soft)', borderColor: 'var(--ms-primary-soft)' }}
+              className={urgent ? 'ms-m-0' : 'ms-tag-claim'}
             >
               剩 {sla.remainingMin}min
             </Tag>
           )
         }
-        return <span style={{ fontSize: 12, color: 'var(--ms-text-muted)' }}>已关闭</span>
+        return <span className="ms-hint">已关闭</span>
       },
       sorter: (a, b) => {
         const wa = evaluateSla(a.riskLevel, a.status, a.detectedAt)
@@ -121,7 +121,7 @@ export default function AlertQueue() {
       render: (v) => {
         // 已认领：中性状态用青屿主色软底（替换 antd 默认蓝）
         if (v === 'claimed') {
-          return <Tag style={{ margin: 0, color: 'var(--ms-primary)', background: 'var(--ms-primary-soft)', borderColor: 'var(--ms-primary-soft)' }}>已认领</Tag>
+          return <Tag className="ms-tag-claim">已认领</Tag>
         }
         const s = STATUS_MAP[v] || { text: v, color: 'default' }
         return <Tag color={s.color}>{s.text}</Tag>
@@ -160,7 +160,7 @@ export default function AlertQueue() {
   return (
     <Card size="small">
       {/* 筛选栏 */}
-      <div style={{ marginBottom: 16, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+      <div className="ms-mb-16" style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
         <Select
           placeholder="状态筛选"
           allowClear

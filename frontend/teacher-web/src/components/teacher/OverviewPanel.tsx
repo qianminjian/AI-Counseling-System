@@ -80,7 +80,7 @@ export default function OverviewPanel({ onNavigate }) {
   }, [])
 
   if (loading) {
-    return <div style={{ textAlign: 'center', padding: 80 }}><Spin size="large" /></div>
+    return <div className="ms-empty-lg"><Spin size="large" /></div>
   }
 
   if (loadError) {
@@ -103,12 +103,12 @@ export default function OverviewPanel({ onNavigate }) {
   return (
     <div>
       {/* 今日待办（行动驱动首屏，WB-001） */}
-      <div style={{ marginBottom: 16 }}>
+      <div className="ms-mb-16">
         <TodayTodoPanel onNavigate={onNavigate} />
       </div>
 
       {/* 周报导出 */}
-      <div style={{ marginBottom: 16, textAlign: 'right' }}>
+      <div className="ms-mb-16" style={{ textAlign: 'right' }}>
         <Button icon={<FileTextOutlined />} onClick={openWeeklyReport}>导出周报（可打印 PDF）</Button>
       </div>
 
@@ -119,7 +119,7 @@ export default function OverviewPanel({ onNavigate }) {
             <Statistic
               title="待处理预警"
               value={dashboard?.pendingAlerts ?? 0}
-              prefix={<AlertOutlined style={{ color: 'var(--ms-danger)' }} />}
+              prefix={<AlertOutlined className="ms-text-danger" />}
               valueStyle={{ color: dashboard?.pendingAlerts > 0 ? 'var(--ms-danger)' : 'var(--ms-success)' }}
             />
           </Card>
@@ -129,7 +129,7 @@ export default function OverviewPanel({ onNavigate }) {
             <Statistic
               title="今日新增预警"
               value={dashboard?.todayAlerts ?? 0}
-              prefix={<ClockCircleOutlined style={{ color: 'var(--ms-warning)' }} />}
+              prefix={<ClockCircleOutlined className="ms-text-warning" />}
             />
           </Card>
         </Col>
@@ -138,7 +138,7 @@ export default function OverviewPanel({ onNavigate }) {
             <Statistic
               title="今日活跃会话"
               value={dashboard?.todaySessions ?? 0}
-              prefix={<MessageOutlined style={{ color: 'var(--ms-primary)' }} />}
+              prefix={<MessageOutlined className="ms-text-primary" />}
             />
           </Card>
         </Col>
@@ -148,7 +148,7 @@ export default function OverviewPanel({ onNavigate }) {
               title="近30天平均满意度"
               value={dashboard?.avgSatisfaction ?? '-'}
               suffix={dashboard?.satisfactionCount > 0 ? '/ 5' : ''}
-              prefix={<SmileOutlined style={{ color: 'var(--ms-success)' }} />}
+              prefix={<SmileOutlined className="ms-text-success" />}
               valueStyle={{ color: (dashboard?.avgSatisfaction ?? 0) >= 3.5 ? 'var(--ms-success)' : 'var(--ms-warning)' }}
             />
             <div style={{ fontSize: 11, color: 'var(--ms-text-muted)', marginTop: 4 }}>
@@ -158,7 +158,7 @@ export default function OverviewPanel({ onNavigate }) {
         </Col>
       </Row>
 
-      <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
+      <Row gutter={[16, 16]} className="ms-mt-16">
         {/* 30天会话趋势 */}
         <Col xs={24} lg={14}>
           <Card title="近 30 天会话趋势" size="small">
@@ -174,7 +174,7 @@ export default function OverviewPanel({ onNavigate }) {
         </Col>
       </Row>
 
-      <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
+      <Row gutter={[16, 16]} className="ms-mt-16">
         {/* 班级对比 */}
         <Col xs={24} lg={14}>
           <Card title="班级预警对比" size="small">
@@ -190,11 +190,11 @@ export default function OverviewPanel({ onNavigate }) {
         </Col>
       </Row>
 
-      <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
+      <Row gutter={[16, 16]} className="ms-mt-16">
         {/* 高风险学生 */}
         <Col xs={24}>
           <Card
-            title={<span><RiseOutlined style={{ color: 'var(--ms-danger)' }} /> 高风险学生</span>}
+            title={<span><RiseOutlined className="ms-text-danger" /> 高风险学生</span>}
             size="small"
             extra={<a onClick={() => onNavigate('students')}>查看全部</a>}
           >
@@ -212,7 +212,7 @@ export default function OverviewPanel({ onNavigate }) {
                     <span>{s.displayName}</span>
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                       <Tag color={RISK_COLORS[s.maxRiskLevel]}>{RISK_LABELS[s.maxRiskLevel]}</Tag>
-                      <span style={{ fontSize: 12, color: 'var(--ms-text-muted)' }}>{s.openAlertCount} 条预警</span>
+                      <span className="ms-hint">{s.openAlertCount} 条预警</span>
                     </div>
                   </div>
                 ))}
@@ -239,15 +239,15 @@ function SatisfactionCard() {
   if (!data || data.totalRated === 0) return null
 
   return (
-    <Card title={<span><SmileOutlined style={{ color: 'var(--ms-warning)' }} /> 学生满意度</span>} size="small" style={{ marginTop: 16 }}>
+    <Card title={<span><SmileOutlined className="ms-text-warning" /> 学生满意度</span>} size="small" className="ms-mt-16">
       <Row gutter={16} align="middle">
         <Col span={6} style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: 32, fontWeight: 700, color: 'var(--ms-warning)' }}>{data.avgRating}</div>
-          <div style={{ fontSize: 12, color: 'var(--ms-text-muted)' }}>平均评分（共 {data.totalRated} 次）</div>
+          <div className="ms-stat-big ms-text-warning">{data.avgRating}</div>
+          <div className="ms-hint">平均评分（共 {data.totalRated} 次）</div>
         </Col>
         <Col span={6} style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: 32, fontWeight: 700, color: 'var(--ms-success)' }}>{data.recentAvg}</div>
-          <div style={{ fontSize: 12, color: 'var(--ms-text-muted)' }}>近 7 天（{data.recentCount} 次）</div>
+          <div className="ms-stat-big ms-text-success">{data.recentAvg}</div>
+          <div className="ms-hint">近 7 天（{data.recentCount} 次）</div>
         </Col>
         <Col span={12}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>

@@ -9,7 +9,7 @@ vi.mock('../api', () => ({
 // 主题 mock：组件用 useTheme 取 themeId + theme.companion
 let mockThemeId = 'ocean'
 vi.mock('../theme/ThemeProvider', () => ({
-  useTheme: () => ({ theme: { companion: '🐬', companionName: '波波' }, themeId: mockThemeId }),
+  useTheme: () => ({ theme: { companion: '🐬', bobo: { body: '#38BDF8', belly: '#E0F2FE', fin: '#0284C7' }, companionName: '波波' }, themeId: mockThemeId }),
 }))
 
 // 场景装饰为纯展示组件，mock 掉避免干扰

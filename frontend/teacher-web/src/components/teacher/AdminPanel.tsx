@@ -194,7 +194,7 @@ export default function AdminPanel() {
             <span style={{ width: 100 }}>有效期（天）：</span>
             <InputNumber min={1} max={365} value={expireDays} onChange={setExpireDays} style={{ width: 120 }} />
           </div>
-          <div style={{ fontSize: 12, color: 'var(--ms-text-muted)' }}>
+          <div className="ms-hint">
             邀请码为 8 位大写字母+数字组合，学校教师使用邀请码完成试用注册。
           </div>
         </div>
@@ -205,7 +205,7 @@ export default function AdminPanel() {
       {/* 批量导入学生 */}
       <div style={{ marginTop: 8 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-          <h4 style={{ margin: 0 }}>批量导入学生</h4>
+          <h4 className="ms-m-0">批量导入学生</h4>
           <Button size="small" icon={<DownloadOutlined />} onClick={downloadImportTemplate}>下载模板</Button>
         </div>
         <Upload.Dragger
@@ -218,7 +218,7 @@ export default function AdminPanel() {
           <p className="ant-upload-text">点击或拖拽 CSV 文件到此区域</p>
           <p className="ant-upload-hint">格式：昵称,年级,班级（每行一个学生，首行为表头可省略）</p>
         </Upload.Dragger>
-        {importing && <div style={{ marginTop: 8, color: 'var(--ms-primary)' }}>导入中...</div>}
+        {importing && <div className="ms-text-primary" style={{ marginTop: 8 }}>导入中...</div>}
         {importResult && (
           <Alert
             style={{ marginTop: 12 }}

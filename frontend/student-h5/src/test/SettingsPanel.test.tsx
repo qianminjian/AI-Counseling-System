@@ -23,9 +23,9 @@ vi.mock('../utils/voiceprintStore', () => ({
 vi.mock('../theme/ThemeProvider', () => ({
   useTheme: () => ({ themeId: 'ocean', changeTheme: vi.fn() }),
   THEMES: {
-    ocean: { id: 'ocean', name: '海底世界', emoji: '🌊', companion: '🐬' },
-    garden: { id: 'garden', name: '糖果乐园', emoji: '🍬', companion: '🦄' },
-    rainbow: { id: 'rainbow', name: '星际探险', emoji: '🚀', companion: '🤖' },
+    ocean: { id: 'ocean', name: '海洋探险', emoji: '🌊', companion: '🐬', bobo: { body: '#38BDF8', belly: '#E0F2FE', fin: '#0284C7' } },
+    garden: { id: 'garden', name: '花园精灵', emoji: '🌸', companion: '🐬', bobo: { body: '#F472B6', belly: '#FCE7F3', fin: '#DB2777' } },
+    rainbow: { id: 'rainbow', name: '彩虹自由', emoji: '🌈', companion: '🐬', bobo: { body: '#A78BFA', belly: '#EDE9FE', fin: '#7C3AED' } },
   },
 }))
 vi.mock('../hooks/useVoicePersona', () => ({
@@ -97,9 +97,9 @@ describe('SettingsPanel', () => {
 
   it('渲染 3 个主题选项', () => {
     render(<SettingsPanel {...defaultProps} />)
-    expect(screen.getByText('海底世界')).toBeTruthy()
-    expect(screen.getByText('糖果乐园')).toBeTruthy()
-    expect(screen.getByText('星际探险')).toBeTruthy()
+    expect(screen.getByText('海洋探险')).toBeTruthy()
+    expect(screen.getByText('花园精灵')).toBeTruthy()
+    expect(screen.getByText('彩虹自由')).toBeTruthy()
   })
 
   it('渲染 3 个音色选项', () => {
@@ -269,7 +269,7 @@ describe('SettingsPanel', () => {
 
   it('点击主题按钮触发 changeTheme', () => {
     render(<SettingsPanel {...defaultProps} />)
-    fireEvent.click(screen.getByText('糖果乐园'))
+    fireEvent.click(screen.getByText('花园精灵'))
     // changeTheme 是 vi.fn()，不报错即可
   })
 

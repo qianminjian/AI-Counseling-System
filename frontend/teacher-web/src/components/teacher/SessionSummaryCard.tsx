@@ -61,7 +61,7 @@ export default function SessionSummaryCard({ sessionId }) {
         <div>
           <Text strong>主要话题：</Text>
           {/* 非语义色：青屿主色软底（替换 antd 默认蓝） */}
-          <Tag style={{ color: 'var(--ms-primary)', background: 'var(--ms-primary-soft)', borderColor: 'var(--ms-primary-soft)' }}>{summary.mainTopic || '未识别'}</Tag>
+          <Tag className="ms-tag-claim">{summary.mainTopic || '未识别'}</Tag>
         </div>
 
         <div>

@@ -10,6 +10,7 @@ import VoiceLoginOverlay from './VoiceLoginOverlay'
 import { useVoiceEnrollment } from '../hooks/useVoiceEnrollment'
 import SceneDecor from './SceneDecor'
 import ConfirmDialog from './ConfirmDialog'
+import BoBoAvatar from './BoBoAvatar'
 
 /**
  * 学生端登录页（三主题 + 共享 Pad 适配）
@@ -99,11 +100,11 @@ export default function LoginPage({ onLogin, onRegister, onNeedConsent, initialT
 
       {/* Pad 横屏左侧品牌 */}
       <div className={`login-left-brand login-left-brand--${themeId}`}>
-        <span className="mascot">{themeId === 'ocean' ? '🐬' : themeId === 'garden' ? '🍭' : '🚀'}</span>
+        <BoBoAvatar size={96} colors={THEMES[themeId].bobo} className="mascot" />
         <h1>波波小精灵</h1>
         <p>AI 情绪陪伴助手</p>
         <span className="tagline">
-          {themeId === 'ocean' ? '🌊 在海底世界找到属于你的角落' : themeId === 'garden' ? '🍬 甜蜜陪伴，快乐成长' : '✨ 探索星际，发现内心'}
+          {themeId === 'ocean' ? '🌊 在海底世界找到属于你的角落' : themeId === 'garden' ? '🌸 花园里的小精灵，陪你一起成长' : '✨ 探索星际，发现内心'}
         </span>
       </div>
 
@@ -111,9 +112,7 @@ export default function LoginPage({ onLogin, onRegister, onNeedConsent, initialT
       <div className={`login-card login-card--${themeId}`}>
         {/* 品牌（竖屏显示，横屏由左侧品牌替代） */}
         <div className={`login-brand login-brand--${themeId}`}>
-          <span className={`mascot mascot--${themeId}`}>
-            {themeId === 'ocean' ? '🐬' : themeId === 'garden' ? '🍭' : '🚀'}
-          </span>
+          <BoBoAvatar size={52} colors={THEMES[themeId].bobo} className="mascot" />
           <h1>波波小精灵</h1>
           <p>AI 情绪陪伴助手</p>
         </div>

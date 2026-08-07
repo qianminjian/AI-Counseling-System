@@ -30,9 +30,9 @@ vi.mock('../hooks/useVoiceprint', () => ({
 vi.mock('../theme/ThemeProvider', () => ({
   useTheme: () => ({ themeId: 'ocean', changeTheme: vi.fn() }),
   THEMES: {
-    ocean: { id: 'ocean', name: '海底世界', emoji: '🌊', companion: '🐬' },
-    garden: { id: 'garden', name: '糖果乐园', emoji: '🍬', companion: '🦄' },
-    rainbow: { id: 'rainbow', name: '星际探险', emoji: '🚀', companion: '🤖' },
+    ocean: { id: 'ocean', name: '海洋探险', emoji: '🌊', companion: '🐬', bobo: { body: '#38BDF8', belly: '#E0F2FE', fin: '#0284C7' } },
+    garden: { id: 'garden', name: '花园精灵', emoji: '🌸', companion: '🐬', bobo: { body: '#F472B6', belly: '#FCE7F3', fin: '#DB2777' } },
+    rainbow: { id: 'rainbow', name: '彩虹自由', emoji: '🌈', companion: '🐬', bobo: { body: '#A78BFA', belly: '#EDE9FE', fin: '#7C3AED' } },
   },
 }))
 vi.mock('../components/VoiceLoginOverlay', () => ({
@@ -105,8 +105,8 @@ describe('LoginPage', () => {
   it('主题切换浮标渲染 3 个按钮', () => {
     render(<LoginPage onLogin={vi.fn()} onRegister={vi.fn()} onNeedConsent={vi.fn()} />)
     expect(screen.getByText('🌊')).toBeTruthy()
-    expect(screen.getByText('🍬')).toBeTruthy()
-    expect(screen.getByText('🚀')).toBeTruthy()
+    expect(screen.getByText('🌸')).toBeTruthy()
+    expect(screen.getByText('🌈')).toBeTruthy()
   })
 
   describe('PIN 登录', () => {
@@ -527,7 +527,7 @@ describe('LoginPage', () => {
   describe('补充函数覆盖', () => {
     it('点击主题按钮触发 changeTheme', () => {
       render(<LoginPage onLogin={vi.fn()} onRegister={vi.fn()} onNeedConsent={vi.fn()} />)
-      fireEvent.click(screen.getByText('🍬'))
+      fireEvent.click(screen.getByText('🌸'))
       // changeTheme 是 vi.fn()，不报错即可
     })
 
