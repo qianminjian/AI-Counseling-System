@@ -146,7 +146,7 @@
 - **对外物料口径底线**：全线禁用"诊断/治疗/心理咨询"表述，统一"心理辅导/情绪支持"
 
 ### 技术栈（实现期定稿，详见 03）
-- **后端**：Java 21（LTS）+ Spring Boot 3.4 + Spring AI 1.0（模块化单体，Maven 7 模块）
+- **后端**：Java 21（LTS）+ Spring Boot 3.5.12 + Spring AI 1.0（模块化单体，Maven 6 模块）
 - **AI 编排**：Spring AI（ChatClient + Advisor 链 + 状态机）替代原 LangGraph 设计
 - **LLM**：DeepSeek（deepseek-v4-flash/pro，已接入验证）
 - **数据库**：PostgreSQL 16 + pgvector（共享表 + 行级 tenant_id 隔离定稿）

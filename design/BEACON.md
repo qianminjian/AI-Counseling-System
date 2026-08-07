@@ -33,7 +33,7 @@
 | 2 | 文档分层：`design/`（正式设计）与 `doc/his/`（早期需求/探索产物，只读留档）分离 | 需求与设计生命周期不同，避免混杂；早期产物已归档至 `doc/his/` | 2026-07-23 |
 | 3 | `tmp/` 为唯一临时目录并 gitignore | 杜绝临时文件散落 | 2026-07-23 |
 | 4 | 3 版建设方案全部保留（时间戳后缀） | md5 均不同，取舍需人工比对，不擅自删；已归档至 `doc/his/` | 2026-07-23 |
-| 5 | 技术栈：**Java 21+Spring Boot 3.4+Spring AI 1.0** / PostgreSQL16 / React19+**TypeScript**+Vite8+Tailwind(学生端)+AntDesign6(教师端) / Maven / Docker Compose | 私有化/信创是主营（项目负责人决策）：Java 信创适配成熟、政企交付预期；前端已于 2026-07 全量迁移 TypeScript（渐进式策略，noImplicitAny:false） | 2026-07-23（实现期修正，2026-07-28 TS 迁移） |
+| 5 | 技术栈：**Java 21+Spring Boot 3.5.12+Spring AI 1.0** / PostgreSQL16 / React19+**TypeScript**+Vite8+Tailwind(学生端)+AntDesign6(教师端) / Maven / Docker Compose | 私有化/信创是主营（项目负责人决策）：Java 信创适配成熟、政企交付预期；前端已于 2026-07 全量迁移 TypeScript（渐进式策略，noImplicitAny:false） | 2026-07-23（实现期修正，2026-07-28 TS 迁移） |
 | 6 | 多租户用 Schema 级隔离（`tenant_{id}`） | 项目负责人决策：隔离强度优先，与07号文档一致；代价是迁移运维复杂度，接受 | 2026-07-23 |
 | 7 | LLM 供应商无关化：Spring AI 配置驱动接入任意国产合规 LLM，主备降级 | 项目负责人决策：不锁定供应商；Spring AI 天然多 Provider；合规候选 DeepSeek/通义/GLM | 2026-07-23 |
 | 8 | 后端架构：**模块化单体（Maven 多模块）**，MVP 不上微服务 | 微服务运维税（注册/配置/链路/分布式事务）MVP 纯负担；Maven 模块隔离领域未来可拆；私有化单体容器化对学校机房更友好 | 2026-07-23 |
@@ -63,7 +63,7 @@
 
 - **阶段**：商业化版本开发完成 + 已生产部署上线 + UAT 修复 + P0-P2 接线收官 + 语音服务生产化 + **配置统一纳管完成** + **2026-08-02 三轮深度迭代**（主 Agent 上下文简报上线 + 声纹双模式 + TTS 7×8 矩阵 + 唤醒深化 + WASM 兼容性 + 模型自托管）；设计深化工程 33 篇完成；「语音唤醒与冷场引导」（design/28）阶段 1-3 完成 + **深化二轮**（持续监听+预加载）；「学生画像与年龄适配」（design/29）P0+P1+P2 已实现；「产品全景优化规划」（design/30）Sprint A-E 核心任务完成，远期任务待执行
 - **已实现规模**：
-  - 后端：7 Maven 模块、18+ 个 Controller、628+ 单元测试、**32 个 DB 迁移**（V1-V26 + V28-V32，V27 跳号，含 V28 voiceprint_embeddings / V29 user.dialect / V30 知识库审核 / V31 risk_notify_outbox / V32 加密扩容）
+  - 后端：6 Maven 模块、18+ 个 Controller、628+ 单元测试、**33 个 DB 迁移**（V1-V33，含 V27 清理种子数据 / V28 voiceprint_embeddings / V29 user.dialect / V30 知识库审核 / V31 risk_notify_outbox / V32 加密扩容 / V33 risk_event_structured_score）
   - 学生端 H5：24+ 个组件（对话/情绪选择/放松练习/情绪日记/成就徽章/PWA/语音/TTS/**声纹登录双模式**/**唤醒词持续监听+预加载**/**CTX-Agent 上下文接收**/冷场暖场/吐泡泡气泡/悬浮球拖拽）
   - 教师端 Web：19 个组件（工作台/预警队列/学生档案/质量监控/平台总览/数据大屏/暗色模式/画像雷达/知识库）
   - 家长端 H5：家庭码注册/登录 + 情绪周报 + 同意管理（frontend/parent-h5）
