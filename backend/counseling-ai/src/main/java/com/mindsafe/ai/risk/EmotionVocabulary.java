@@ -1,5 +1,6 @@
 package com.mindsafe.ai.risk;
 
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -31,9 +32,12 @@ public final class EmotionVocabulary {
         NEGATIVE, POSITIVE, UNKNOWN
     }
 
-    /** 权威负面成员（英文 SER 规范集；anxious 全管线一致 = doing/63 核心修复点） */
+    /** 权威负面成员（英文 SER 规范集；anxious 全管线一致 = doing/63 核心修复点）
+     *  DC-008（doing/72 §22）：增补 scared/nervous（系统真实码值且语义负面，
+     *  DISTRESS_EMOTIONS 独立成员集收编后不丢判定） */
     public static final Set<String> NEGATIVE_KEYS = Set.of(
-            "sad", "fearful", "angry", "anxious", "disgusted", "withdrawn", "crisis", "lonely"
+            "sad", "fearful", "angry", "anxious", "disgusted", "withdrawn",
+            "crisis", "lonely", "scared", "nervous"
     );
 
     /** 权威正面成员（英文 SER 规范集） */
@@ -43,7 +47,7 @@ public final class EmotionVocabulary {
 
     /** 负面中文别名（精确词或作为子串出现均判定为负面） */
     public static final Set<String> NEGATIVE_CHINESE = Set.of(
-            "难过", "悲伤", "生气", "愤怒", "害怕", "恐惧", "焦虑", "厌恶", "退缩", "孤独", "危机"
+            "难过", "悲伤", "生气", "愤怒", "害怕", "恐惧", "焦虑", "厌恶", "退缩", "孤独", "危机", "紧张"
     );
 
     /** 正面中文别名 */
@@ -142,6 +146,33 @@ public final class EmotionVocabulary {
      */
     public static boolean isNegative(String keyOrText) {
         return classify(keyOrText) == Category.NEGATIVE;
+    }
+
+    // ===== 中文展示标签（DC-008，doing/72 §22：anxious 全系统单译，五处收敛为一） =====
+
+    /**
+     * 展示标签表（儿童友好主场景：anxious→紧张；教师端同源）。
+     * 覆盖 SER + 展示全码值（含 scared/nervous/tired/withdrawn/lonely/crisis 等）。
+     */
+    public static final Map<String, String> ZH_LABELS = Map.ofEntries(
+            Map.entry("happy", "开心"), Map.entry("sad", "难过"), Map.entry("angry", "生气"),
+            Map.entry("scared", "害怕"), Map.entry("fearful", "恐惧"), Map.entry("nervous", "紧张"),
+            Map.entry("anxious", "紧张"), Map.entry("neutral", "平静"), Map.entry("calm", "平静"),
+            Map.entry("excited", "兴奋"), Map.entry("surprised", "惊讶"), Map.entry("disgusted", "厌恶"),
+            Map.entry("tired", "疲惫"), Map.entry("withdrawn", "沉默"), Map.entry("lonely", "孤独"),
+            Map.entry("crisis", "危机"));
+
+    /**
+     * 情绪码值 → 中文展示标签（消费点统一入口，替代各文件本地 EMOTION_LABELS/EMOTION_ZH）。
+     *
+     * @param code 情绪码值（英文 key）
+     * @return 中文标签；null/空白 → ""；未知码值原样返回
+     */
+    public static String labelOf(String code) {
+        if (code == null || code.isBlank()) {
+            return "";
+        }
+        return ZH_LABELS.getOrDefault(code, code);
     }
 
     private static boolean containsAny(String text, Set<String> candidates) {

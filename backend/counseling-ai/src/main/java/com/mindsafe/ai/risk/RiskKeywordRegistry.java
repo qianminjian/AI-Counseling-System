@@ -260,6 +260,42 @@ public final class RiskKeywordRegistry {
         return "未分类";
     }
 
+    // ===== 高敏/不降级类别（DC-001，doing/72 §16：SAFE-202 中文权威类别单一源） =====
+
+    /**
+     * SAFE-202 高敏类别（中文权威类别子集）：对应原英文集
+     * physical_abuse/sexual_abuse/domestic_violence/neglect/self_harm/suicidal_ideation；
+     * bereavement 中文无对应类别不新增（YAGNI）。
+     */
+    public static final Set<String> HIGH_SENSITIVITY_CATEGORIES = Set.of(
+            "自伤/自杀", "他伤/暴力", "家庭虐待/忽视", "性侵/性骚扰", "严重抑郁/绝望"
+    );
+
+    /** 不降级类别（性侵/虐待类不可因否定/语境降级）——RISK-104 字符串 contains 语义收敛 */
+    public static final Set<String> NON_DEGRADABLE_CATEGORIES = Set.of(
+            "性侵/性骚扰", "家庭虐待/忽视"
+    );
+
+    /**
+     * 判断类别是否属于高敏场景（SAFE-202 门控，会话标记高敏模式）。
+     *
+     * @param category 中文风险类别
+     * @return true=高敏类别
+     */
+    public static boolean isHighSensitivityCategory(String category) {
+        return category != null && HIGH_SENSITIVITY_CATEGORIES.contains(category);
+    }
+
+    /**
+     * 判断类别是否不可降级（否定/引用语境不可降级，RISK-104）。
+     *
+     * @param category 中文风险类别
+     * @return true=不可降级
+     */
+    public static boolean isNonDegradableCategory(String category) {
+        return category != null && NON_DEGRADABLE_CATEGORIES.contains(category);
+    }
+
     private static boolean containsAny(String text, Set<String> keywords) {
         for (String keyword : keywords) {
             if (text.contains(keyword)) {

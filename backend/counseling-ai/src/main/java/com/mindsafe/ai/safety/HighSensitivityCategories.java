@@ -1,6 +1,6 @@
 package com.mindsafe.ai.safety;
 
-import java.util.Set;
+import com.mindsafe.ai.risk.RiskKeywordRegistry;
 
 /**
  * 高敏场景类别注册表（SAFE-202，design/52 §三：Layer2 高敏前置化/触发关注）
@@ -14,30 +14,23 @@ import java.util.Set;
  * <p>
  * 与 RED 硬短路的区别：高敏不短路 LLM，只调整策略权重；
  * 与 ORANGE 的区别：高敏是"话题敏感性"而非"即时危险"。
+ * <p>
+ * DC-001（doing/72 §16）：类别单一源委托 {@link RiskKeywordRegistry#isHighSensitivityCategory}——
+ * 中文权威类别收敛于 RiskKeywordRegistry.HIGH_SENSITIVITY_CATEGORIES（原英文常量集已删除，
+ * 英文类别在生产判定链中从不出现，SAFE-202 门控恒 false 根因）。
  */
 public final class HighSensitivityCategories {
 
     private HighSensitivityCategories() {
     }
 
-    /** 高敏类别集（命中即标记，不论级别） */
-    private static final Set<String> CATEGORIES = Set.of(
-            "physical_abuse",       // 躯体虐待
-            "sexual_abuse",         // 性侵/性骚扰
-            "domestic_violence",    // 家暴
-            "neglect",              // 忽视/遗弃
-            "bereavement",          // 丧失/亲人离世
-            "self_harm",            // 自伤（非即时也需高敏关注）
-            "suicidal_ideation"     // 自杀意念（低强度也需高敏）
-    );
-
     /**
      * 判断给定风险类别是否属于高敏场景。
      *
-     * @param category 风险类别标识（来自 RiskDetectionResult.category()）
+     * @param category 风险类别标识（来自 RiskDetectionResult.category()，中文类别）
      * @return true=高敏类别
      */
     public static boolean isHighSensitivity(String category) {
-        return category != null && CATEGORIES.contains(category);
+        return RiskKeywordRegistry.isHighSensitivityCategory(category);
     }
 }

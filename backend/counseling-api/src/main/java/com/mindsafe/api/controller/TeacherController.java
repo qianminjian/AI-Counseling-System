@@ -497,16 +497,8 @@ public class TeacherController {
         response.getWriter().flush();
     }
 
-    /** 情绪码值 → 中文标签（导出报告用，未知码值原样返回） */
-    private static final Map<String, String> EMOTION_ZH = Map.ofEntries(
-            Map.entry("happy", "开心"), Map.entry("sad", "难过"), Map.entry("angry", "生气"),
-            Map.entry("scared", "害怕"), Map.entry("fearful", "恐惧"), Map.entry("nervous", "紧张"),
-            Map.entry("anxious", "焦虑"), Map.entry("neutral", "平静"), Map.entry("calm", "平静"),
-            Map.entry("excited", "兴奋"), Map.entry("surprised", "惊讶"), Map.entry("disgusted", "厌恶"),
-            Map.entry("tired", "疲惫"));
-
+    /** 情绪码值 → 中文标签（DC-008：EmotionVocabulary.ZH_LABELS 单一标签源，anxious→紧张 全系统单译） */
     private static String emotionZh(String code) {
-        if (code == null || code.isBlank()) return "";
-        return EMOTION_ZH.getOrDefault(code, code);
+        return com.mindsafe.ai.risk.EmotionVocabulary.labelOf(code);
     }
 }

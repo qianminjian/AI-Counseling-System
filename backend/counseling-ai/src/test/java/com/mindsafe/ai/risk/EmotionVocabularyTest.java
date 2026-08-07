@@ -135,4 +135,62 @@ class EmotionVocabularyTest {
             }
         }
     }
+
+    @Nested
+    @DisplayName("中文展示标签（DC-008，doing/72 §22）")
+    class ZhLabels {
+
+        @Test
+        @DisplayName("labelOf 全码值映射（anxious→紧张 全系统单译）")
+        void labelOfFullMapping() {
+            assertThat(EmotionVocabulary.labelOf("happy")).isEqualTo("开心");
+            assertThat(EmotionVocabulary.labelOf("sad")).isEqualTo("难过");
+            assertThat(EmotionVocabulary.labelOf("angry")).isEqualTo("生气");
+            assertThat(EmotionVocabulary.labelOf("scared")).isEqualTo("害怕");
+            assertThat(EmotionVocabulary.labelOf("fearful")).isEqualTo("恐惧");
+            assertThat(EmotionVocabulary.labelOf("nervous")).isEqualTo("紧张");
+            assertThat(EmotionVocabulary.labelOf("anxious")).isEqualTo("紧张");
+            assertThat(EmotionVocabulary.labelOf("neutral")).isEqualTo("平静");
+            assertThat(EmotionVocabulary.labelOf("calm")).isEqualTo("平静");
+            assertThat(EmotionVocabulary.labelOf("excited")).isEqualTo("兴奋");
+            assertThat(EmotionVocabulary.labelOf("surprised")).isEqualTo("惊讶");
+            assertThat(EmotionVocabulary.labelOf("disgusted")).isEqualTo("厌恶");
+            assertThat(EmotionVocabulary.labelOf("tired")).isEqualTo("疲惫");
+            assertThat(EmotionVocabulary.labelOf("withdrawn")).isEqualTo("沉默");
+            assertThat(EmotionVocabulary.labelOf("lonely")).isEqualTo("孤独");
+            assertThat(EmotionVocabulary.labelOf("crisis")).isEqualTo("危机");
+        }
+
+        @Test
+        @DisplayName("未知码值原样返回（导出报告不丢信息）")
+        void labelOfUnknownReturnsOriginal() {
+            assertThat(EmotionVocabulary.labelOf("weird_code")).isEqualTo("weird_code");
+        }
+
+        @Test
+        @DisplayName("null/空白 → 空字符串")
+        void labelOfBlankReturnsEmpty() {
+            assertThat(EmotionVocabulary.labelOf(null)).isEmpty();
+            assertThat(EmotionVocabulary.labelOf("")).isEmpty();
+            assertThat(EmotionVocabulary.labelOf("  ")).isEmpty();
+        }
+
+        @Test
+        @DisplayName("ZH_LABELS 键全部为已知码值（权威集 ∪ 展示白名单）")
+        void zhLabelsKeysKnown() {
+            var known = new java.util.HashSet<String>(EmotionVocabulary.NEGATIVE_KEYS);
+            known.addAll(EmotionVocabulary.POSITIVE_KEYS);
+            known.addAll(java.util.Set.of("scared", "nervous", "excited", "surprised", "tired"));
+            assertThat(EmotionVocabulary.ZH_LABELS.keySet()).isSubsetOf(known);
+        }
+
+        @Test
+        @DisplayName("scared/nervous 权威化（DC-008：DISTRESS_EMOTIONS 收编后不丢语义）")
+        void scaredAndNervousNegative() {
+            assertThat(EmotionVocabulary.isNegative("scared")).isTrue();
+            assertThat(EmotionVocabulary.isNegative("nervous")).isTrue();
+            assertThat(EmotionVocabulary.classify("scared")).isEqualTo(Category.NEGATIVE);
+            assertThat(EmotionVocabulary.classify("nervous")).isEqualTo(Category.NEGATIVE);
+        }
+    }
 }
