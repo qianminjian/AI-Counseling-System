@@ -1,6 +1,7 @@
 package com.mindsafe.service.memory;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.mindsafe.ai.risk.EmotionVocabulary;
@@ -156,14 +157,15 @@ public class LongTermMemoryService {
         try {
             // 取更多候选（MEM-102 多因子排序后取 top）
             int candidateLimit = RECALL_LIMIT * 3;
-            List<LongTermMemory> candidates = memoryMapper.selectList(
+            // AUD-043：分页插件安全化（不查 COUNT，语义与原 selectList 一致）
+            List<LongTermMemory> candidates = memoryMapper.selectPage(
+                    new Page<>(1, candidateLimit, false),
                     new LambdaQueryWrapper<LongTermMemory>()
                             .eq(LongTermMemory::getTenantId, tenantId)
                             .eq(LongTermMemory::getStudentUserId, studentUserId)
                             .orderByDesc(LongTermMemory::getImportance)
                             .orderByDesc(LongTermMemory::getCreatedAt)
-                            .last("LIMIT " + candidateLimit)
-            );
+            ).getRecords();
 
             if (candidates == null || candidates.isEmpty()) return null;
 
@@ -248,14 +250,15 @@ public class LongTermMemoryService {
         long remaining = allMemories.size() - evicted;
         if (remaining > MAX_MEMORIES_PER_STUDENT) {
             long excess = remaining - MAX_MEMORIES_PER_STUDENT;
-            List<LongTermMemory> survivors = memoryMapper.selectList(
+            // AUD-043：分页插件安全化（不查 COUNT，语义与原 selectList 一致）
+            List<LongTermMemory> survivors = memoryMapper.selectPage(
+                    new Page<>(1, excess, false),
                     new LambdaQueryWrapper<LongTermMemory>()
                             .eq(LongTermMemory::getTenantId, tenantId)
                             .eq(LongTermMemory::getStudentUserId, studentUserId)
                             .orderByAsc(LongTermMemory::getImportance)
                             .orderByAsc(LongTermMemory::getCreatedAt)
-                            .last("LIMIT " + excess)
-            );
+            ).getRecords();
             for (LongTermMemory m : survivors) {
                 toDelete.add(m.getMemoryId());
             }

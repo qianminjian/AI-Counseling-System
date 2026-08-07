@@ -1,6 +1,6 @@
 package com.mindsafe.service.conversation;
 
-import com.mindsafe.ai.safety.CrisisResources;
+import com.mindsafe.ai.risk.EmotionVocabulary;
 
 import java.util.Set;
 
@@ -64,17 +64,6 @@ public final class ConversationUtils {
     }
 
     /**
-     * RISK-201：RED 短路安全文案选择（分年级两版，预审核模板，不由 LLM 生成）
-     * <p>
-     * 1-2 年级 → 短句版；3-6 年级 → 标准版（含热线，design/04 §18.2）。
-     */
-    public static String redSafetyReply(int grade) {
-        return grade <= 2
-                ? CrisisResources.RED_SAFETY_REPLY_LOWER_GRADE
-                : CrisisResources.RED_SAFETY_REPLY;
-    }
-
-    /**
      * 构建问候语：个性化"哈喽，[昵称]！" + 情绪问候（design/28 §2.2）
      * <p>
      * 唤醒词 onboarding：用"哈喽+名字"模式自然引导孩子回应"哈喽波波"；
@@ -106,9 +95,7 @@ public final class ConversationUtils {
             "嗯", "哦", "喔", "好", "好的", "是", "是的", "啊", "行", "可以",
             "不知道", "不晓得", "随便", "还行", "还好", "嗯嗯", "哦哦", "没有", "没", "不想说");
 
-    /** 负面情绪标签集（用于轻微倾诉判定：表达了感受但未命中风险信号） */
-    private static final Set<String> DISTRESS_EMOTIONS = Set.of(
-            "sad", "angry", "scared", "nervous");
+    /** 负面情绪标签判定（DC-008：EmotionVocabulary.isNegative 单一判定源，含 scared/nervous 权威码值） */
 
     /**
      * 分类学生消息类型（信号 C）：沉重倾诉（命中风险信号）/ 敷衍回答 / 轻微倾诉 / 普通
@@ -124,7 +111,7 @@ public final class ConversationUtils {
             return NudgeDecisionModel.MSG_PERFUNCTORY;
         }
         // 轻微倾诉：负面情绪 + 有内容（如"没人和我玩"），未命中风险信号
-        if (stripped.length() > 5 && emotionTag != null && DISTRESS_EMOTIONS.contains(emotionTag)) {
+        if (stripped.length() > 5 && emotionTag != null && EmotionVocabulary.isNegative(emotionTag)) {
             return NudgeDecisionModel.MSG_DISCLOSURE;
         }
         return NudgeDecisionModel.MSG_NORMAL;

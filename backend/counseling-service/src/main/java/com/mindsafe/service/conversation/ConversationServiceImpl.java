@@ -13,7 +13,6 @@ import com.mindsafe.ai.orchestrator.ReplyEmotionResolver;
 import com.mindsafe.ai.orchestrator.StrategyProfile;
 import com.mindsafe.ai.safety.ConfidentialityNotice;
 import com.mindsafe.ai.safety.CrisisResourceProvider;
-import com.mindsafe.ai.safety.CrisisResources;
 import com.mindsafe.ai.safety.HighSensitivityCategories;
 import com.mindsafe.ai.safety.PiiDesensitizer;
 import com.mindsafe.common.dto.ErrorCode;
@@ -33,6 +32,8 @@ import com.mindsafe.service.memory.LongTermMemoryService;
 import com.mindsafe.service.memory.ThemeEvolutionEngine;
 import com.mindsafe.service.profile.StudentProfileService;
 import com.mindsafe.service.security.FieldEncryptionService;
+import com.mindsafe.service.conversation.strategy.NudgeStrategy;
+import com.mindsafe.service.conversation.strategy.RiskResponseStrategy;
 import com.mindsafe.service.usage.UsageTimeLimitService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -323,10 +324,10 @@ public class ConversationServiceImpl implements ConversationService {
         // 4.2 RISK-201：RED 硬短路——跳过 LLM 自由生成，返回预审核安全文案（design/04 §18.2）。
         //     短路不可被否定/引用降噪覆盖（fusedLevel 已经硬规则融合）；教师告警已在上方照发。
         //     安全响应模式：RED 触发后的后续轮次也不再自由生成，返回陪伴话术，解除需教师处置/新会话。
+        //     （DC-010：策略决策下沉 RiskResponseStrategy）
         if (fusedLevel == RiskLevel.RED || session.inSafetyMode()) {
-            String safetyReply = (fusedLevel == RiskLevel.RED)
-                    ? crisisResourceProvider.getRedSafetyReply(session.getGrade())
-                    : CrisisResources.SAFETY_MODE_COMPANION_REPLY;
+            String safetyReply = RiskResponseStrategy.resolveSafetyReply(
+                    fusedLevel, session.inSafetyMode(), session.getGrade(), crisisResourceProvider);
             messageSummaryService.persistAiMessageSummary(session, turn, safetyReply);
             session.recordAiReply(safetyReply);
             sessionStateStore.save(tenantId, sessionId, session);
@@ -343,8 +344,7 @@ public class ConversationServiceImpl implements ConversationService {
             log.info("每日使用时长已达上限，引导休息: sessionId={}, student={}, usedSec={}",
                     sessionId, session.getStudentUserId(),
                     usageTimeLimitService.getUsedSeconds(session.getTenantId(), session.getStudentUserId()));
-            String guidance = "今天我们聊了不少啦，你已经很棒了。为了让眼睛和心情都休息一下，今天就先到这里好吗？"
-                    + "明天我还在这里等你。\uD83C\uDF19 如果现在有紧急的事情，可以告诉老师，或拨打心理援助热线 12355。";
+            String guidance = RiskResponseStrategy.buildTimeLimitGuidance();
             return riskEvents.concatWith(Flux.just(
                     StreamMessageEvent.token(guidance),
                     StreamMessageEvent.done("")
@@ -492,16 +492,9 @@ public class ConversationServiceImpl implements ConversationService {
                 session.getExpressionDepth()
         ));
 
-        // Enhancement 2: 情绪旅程约束——ACTIVATED/CRISIS 时强制轻陪伴，不引导破冰
-        if (session.getEmotionState() != com.mindsafe.ai.orchestrator.StrategyProfile.EmotionState.STABLE
-                && decision.warmthLevel() > 1) {
-            decision = new NudgeDecisionModel.NudgeDecision(1, decision.direction());
-            log.debug("nudge: 情绪状态机非 STABLE，warmthLevel 降级为 1: sessionId={}", sessionId);
-        }
-        // 连续积极回应 >= 3 时，暖场方向偏向积极肯定
-        if (session.getReliefCount() >= 3 && decision.warmthLevel() > 0) {
-            decision = new NudgeDecisionModel.NudgeDecision(decision.warmthLevel(), "积极肯定");
-        }
+        // Enhancement 2: 情绪旅程约束——ACTIVATED/CRISIS 时强制轻陪伴，不引导破冰；
+        // 连续积极回应 >= 3 时方向偏积极肯定（DC-010：策略决策下沉 NudgeStrategy）
+        decision = NudgeStrategy.adjust(decision, session.getEmotionState(), session.getReliefCount());
 
         if (decision.warmthLevel() == 0) {
             // 留白：把安静还给孩子（他可能在思考），前端不做任何事

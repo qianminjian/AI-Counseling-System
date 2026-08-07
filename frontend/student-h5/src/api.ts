@@ -6,32 +6,29 @@
  */
 // AUD-065：consent 读写接入 localStorage 安全封装（隐私模式/存储禁用下不抛 SecurityError）
 import { readLocalStorageSafe, writeLocalStorageSafe } from './utils/storage'
+// DC-005：认证传输三端收敛为共享模块（SPEC §19）——token 存取/刷新/authFetch/登出/错误模型
+import { createSessionStorageTokens } from '../../shared/src/auth-transport/tokenStorage'
+import { refreshTokens } from '../../shared/src/auth-transport/refresh'
+import { createAuthFetch } from '../../shared/src/auth-transport/authFetch'
+import { handleSessionExpired } from '../../shared/src/auth-transport/sessionExpired'
+import { ApiError, toApiError } from '../../shared/src/auth-transport/apiError'
+export { ApiError }
 
-const TOKEN_KEY = 'mindsafe_student_token'
-const REFRESH_KEY = 'mindsafe_student_refresh'
+const storage = createSessionStorageTokens('mindsafe_student_')
+
+export const getToken = () => storage.getToken()
+
+export const setToken = (token: string) => storage.setToken(token)
+
+export const getRefreshToken = () => storage.getRefreshToken()
+
+export const setRefreshToken = (token: string) => storage.setRefreshToken(token)
+
+/** 清双 token + 用户信息（与原 clearToken 语义一致） */
+export const clearToken = () => storage.clear()
+
+/** 用户信息键（getUser/setUser 使用；storage.clear() 一并清除 `${prefix}user`） */
 const USER_KEY = 'mindsafe_student_user'
-
-export function getToken() {
-  return sessionStorage.getItem(TOKEN_KEY)
-}
-
-export function setToken(token: string) {
-  sessionStorage.setItem(TOKEN_KEY, token)
-}
-
-export function getRefreshToken() {
-  return sessionStorage.getItem(REFRESH_KEY)
-}
-
-export function setRefreshToken(token: string) {
-  sessionStorage.setItem(REFRESH_KEY, token)
-}
-
-export function clearToken() {
-  sessionStorage.removeItem(TOKEN_KEY)
-  sessionStorage.removeItem(REFRESH_KEY)
-  sessionStorage.removeItem(USER_KEY)
-}
 
 export function getUser(): Record<string, unknown> | null {
   try {
@@ -80,32 +77,12 @@ export function isAuthenticated() {
 }
 
 /**
- * 带 JWT 认证的 fetch（自动携带 token + 401 自动刷新重试）
- * 
+ * 带 JWT 认证的 fetch（DC-005：共享实现，自动携带 token + 401 刷新重放一次）
+ *
  * 适用于不经过 api() 的场景（如 multipart 上传、SSE 流、音频下载），
  * 不解析 JSON、不检查 success 字段——调用方自行处理 Response。
  */
-export async function authFetch(url: string, init?: RequestInit): Promise<Response> {
-  const doFetch = () => {
-    const token = getToken()
-    return fetch(url, {
-      ...init,
-      headers: {
-        ...(init?.headers instanceof Headers
-          ? Object.fromEntries((init.headers as Headers).entries())
-          : init?.headers || {}),
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-    })
-  }
-  let res = await doFetch()
-  if (res.status === 401) {
-    if (await tryRefresh()) {
-      res = await doFetch()
-    }
-  }
-  return res
-}
+export const authFetch = createAuthFetch(storage)
 
 /**
  * 暖场（冷场引导）请求（design/28 §2.3，P0-1）
@@ -158,38 +135,11 @@ export function fetchVoiceAnalyze(formData: FormData): Promise<Response> {
   })
 }
 
-/** 尝试刷新 Token，成功返回 true */
-export async function tryRefresh() {
-  const rt = getRefreshToken()
-  if (!rt) return false
-  try {
-    const res = await fetch('/api/v1/auth/refresh', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refreshToken: rt }),
-    })
-    const json = await res.json()
-    if (json.success && json.data?.token) {
-      setToken(json.data.token)
-      setRefreshToken(json.data.refreshToken)
-      return true
-    }
-  } catch { /* ignore */ }
-  return false
-}
-
 /**
- * 带业务错误码的 API 异常（后端 BizException → HTTP 200 + body.code 约定）。
+ * 带业务错误码的 API 异常（DC-005：共享模块 ApiError，语义不变）。
+ * 后端 BizException → HTTP 200 + body.code 约定；
  * 调用方可按 code 分支处理（如 CONSENT_REQUIRED 20003 → 监护人同意门禁）。
  */
-export class ApiError extends Error {
-  code: number
-  constructor(code: number, message: string) {
-    super(message)
-    this.name = 'ApiError'
-    this.code = code
-  }
-}
 
 /** 监护人同意门禁错误码（对齐后端 ErrorCode.CONSENT_REQUIRED） */
 export const CONSENT_REQUIRED_CODE = 20003
@@ -214,8 +164,8 @@ export async function api(path: string, options: RequestInit & { headers?: Recor
   })
 
   if (res.status === 401) {
-    // 尝试刷新
-    if (await tryRefresh()) {
+    // 尝试刷新（DC-005：共享实现，三端零副本）
+    if (await refreshTokens(storage)) {
       // 重试原请求
       const newToken = getToken()
       const retry = await fetch(`/api/v1${path}`, {
@@ -227,17 +177,16 @@ export async function api(path: string, options: RequestInit & { headers?: Recor
         },
       })
       const json = await retry.json()
-      if (!json.success) throw new ApiError(json.code ?? 0, json.message || '请求失败')
+      if (!json.success) throw toApiError(json)
       return json.data
     }
-    clearToken()
-    window.location.reload()
-    throw new Error('登录已过期，请重新进入')
+    // DC-005：统一 401 登出决策点（clear + reload + throw，后续代码不可达）
+    handleSessionExpired(storage)
   }
 
   const json = await res.json()
   if (!json.success) {
-    throw new ApiError(json.code ?? 0, json.message || '请求失败')
+    throw toApiError(json)
   }
   return json.data
 }

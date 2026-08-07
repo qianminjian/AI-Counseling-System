@@ -6,6 +6,8 @@ services:
   # ===== PostgreSQL（pgvector 镜像：Flyway V24 需要 vector 扩展；与 prod 对齐） =====
   postgres:
     image: pgvector/pgvector:pg16
+    # AUD-055：2C2G 主机防 pg 吃满内存
+    mem_limit: 512m
     environment:
       POSTGRES_DB: mindsafe
       POSTGRES_USER: mindsafe
@@ -26,6 +28,8 @@ services:
   # ===== Redis（会话状态/限流/token黑名单/验证码均依赖，与 prod 对齐） =====
   redis:
     image: redis:7-alpine
+    # AUD-055：2C2G 主机防 redis 内存失控（maxmemory 之外再加容器级兜底）
+    mem_limit: 256m
     command: redis-server --maxmemory 128mb --maxmemory-policy allkeys-lru
     volumes:
       - redisdata:/data
@@ -46,6 +50,9 @@ services:
       DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:-}
       # TTS 模型名（CFG-004：运行时切换模型无需改代码，默认 cosyvoice-v3-flash）
       DASHSCOPE_TTS_MODEL: ${DASHSCOPE_TTS_MODEL:-cosyvoice-v3-flash}
+      # DC-003：TTS 运行时参数透传（与 .env.example 声明、tts-service 消费对齐）
+      TTS_SYNTHESIZE_TIMEOUT: ${TTS_SYNTHESIZE_TIMEOUT:-30}
+      TTS_CORS_ORIGINS: ${TTS_CORS_ORIGINS:-}
 
   # ===== 语音识别与情绪分析微服务（ASR + SER 解耦） =====
   voice-service:
@@ -125,6 +132,8 @@ services:
   # ===== Nginx 反向代理 =====
   nginx:
     image: nginx:alpine
+    # AUD-055：静态代理容器内存占用极低，限 128m 防异常增长
+    mem_limit: 128m
     ports:
       - "80:80"
     volumes:

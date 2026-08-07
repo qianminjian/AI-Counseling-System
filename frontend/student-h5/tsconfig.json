@@ -19,5 +19,7 @@
     "noUnusedParameters": false,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src"]
+  // DC-005：共享认证传输模块相对导入（shared 测试由 vitest 转译，不纳入 tsc）
+  "include": ["src", "../../shared/src"],
+  "exclude": ["../../shared/src/**/*.test.ts"]
 }

@@ -1,6 +1,7 @@
 package com.mindsafe.service.teacher;
 
 import com.baomidou.mybatisplus.core.conditions.Wrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.mindsafe.domain.entity.RiskEvent;
 import com.mindsafe.domain.entity.TeacherNote;
 import com.mindsafe.domain.entity.User;
@@ -129,8 +130,8 @@ class TeacherClassScopeTest {
         UUID otherClass = UUID.randomUUID();
         // 班级学生查询（DB 已按 classCode 过滤）→ 仅本班学生；事件列表含他班 → 内存过滤剔除
         when(userMapper.selectList(any(Wrapper.class))).thenReturn(List.of(student(inClass, "CLASS_1")));
-        when(riskEventMapper.selectList(any(Wrapper.class))).thenReturn(List.of(
-                alert(inClass), alert(otherClass)));
+        when(riskEventMapper.selectPage(any(), any())).thenReturn(new Page<RiskEvent>().setRecords(
+                List.of(alert(inClass), alert(otherClass))));
         when(teacherNoteMapper.selectList(any(Wrapper.class))).thenReturn(List.of());
 
         List<TeacherService.AlertVO> alerts = teacherService.getAlerts(tenantId, "CLASS_1", null, null, 50);
@@ -163,7 +164,7 @@ class TeacherClassScopeTest {
     @DisplayName("getAlerts 无 scope（心理老师）→ 全校事件")
     void getAlerts_noScope_returnsAll() {
         UUID s1 = UUID.randomUUID();
-        when(riskEventMapper.selectList(any(Wrapper.class))).thenReturn(List.of(alert(s1)));
+        when(riskEventMapper.selectPage(any(), any())).thenReturn(new Page<RiskEvent>().setRecords(List.of(alert(s1))));
         when(teacherNoteMapper.selectList(any(Wrapper.class))).thenReturn(List.of());
 
         List<TeacherService.AlertVO> alerts = teacherService.getAlerts(tenantId, null, null, null, 50);

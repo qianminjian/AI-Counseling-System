@@ -1,12 +1,12 @@
 """
-MindSafe TTS 微服务（三级降级架构 v3）
-- Level 1：阿里云百炼 CosyVoice（DashScope SDK WebSocket 流式合成，首包 <800ms）
-- Level 2：edge-tts（微软，备用）
-- Level 3：前端浏览器 speechSynthesis 兖底（本服务返回 503 时前端自动降级）
+MindSafe TTS 微服务（DC-011 适配器层 + 降级策略，v4）
+- Level 1：阿里云百炼 CosyVoice（DashScopeBackend，SDK WebSocket 流式合成，首包 <800ms）
+- Level 2：edge-tts（EdgeBackend，微软备用）
+- Level 3：前端浏览器 speechSynthesis 兜底（本服务返回 503 时前端自动降级）
+- 引擎实现细节全部下沉 tts_engines.py / tts_policy.py，本文件仅装配与编排
 - 部署：Docker 容器，端口 10096
 """
 
-import asyncio
 import io
 import json
 import logging
@@ -17,15 +17,33 @@ from typing import Optional
 
 import httpx
 import yaml
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel
 
+from tts_engines import DashScopeBackend, EdgeBackend
+from tts_policy import DegradationPolicy, TTSSynthesisFailed
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("tts-service")
 
-app = FastAPI(title="MindSafe TTS Service", version="3.1.0")
+# 全局复用 httpx 客户端（edge-tts 降级时用）
+http_client: httpx.AsyncClient = None
+
+
+@asynccontextmanager
+async def _lifespan(_: FastAPI):
+    """AUD-042：用 lifespan 替代弃用的 @app.on_event（FastAPI 推荐生命周期管理，退出时确保 http_client 回收）"""
+    global http_client
+    http_client = httpx.AsyncClient(timeout=20.0, limits=httpx.Limits(max_connections=20))
+    yield
+    if http_client:
+        await http_client.aclose()
+
+
+app = FastAPI(title="MindSafe TTS Service", version="4.0.0", lifespan=_lifespan)
 
 # ===== Prometheus 指标（P1-10：手写文本格式，零新增依赖，供监控栈 internal 网络抓取） =====
 _METRICS_LOCK = threading.Lock()
@@ -62,28 +80,13 @@ def metrics():
     out += [
         "# HELP tts_engine_available TTS engine availability (1=ready 0=unavailable)",
         "# TYPE tts_engine_available gauge",
-        f'tts_engine_available{{engine="cosyvoice"}} {1 if CLOUD_TTS_AVAILABLE else 0}',
-        f'tts_engine_available{{engine="edge_tts"}} {1 if EDGE_TTS_AVAILABLE else 0}',
+        f'tts_engine_available{{engine="cosyvoice"}} {1 if _TTS_POLICY.backends[0].is_available() else 0}',
+        f'tts_engine_available{{engine="edge_tts"}} {1 if _TTS_POLICY.backends[1].is_available() else 0}',
     ]
     return Response(content="\n".join(out) + "\n", media_type="text/plain; version=0.0.4; charset=utf-8")
 
-# 全局复用 httpx 客户端（edge-tts 降级时用）
-http_client: httpx.AsyncClient = None
-
 # 单次合成超时（P1-DEP：SDK 线程挂死/网络黑洞时避免请求永久挂起；超时后自动降级或 503）
 TTS_SYNTHESIZE_TIMEOUT = float(os.environ.get("TTS_SYNTHESIZE_TIMEOUT", "30"))
-
-
-@app.on_event("startup")
-async def _startup():
-    global http_client
-    http_client = httpx.AsyncClient(timeout=20.0, limits=httpx.Limits(max_connections=20))
-
-
-@app.on_event("shutdown")
-async def _shutdown():
-    if http_client:
-        await http_client.aclose()
 
 # CORS 白名单（安全收敛）：默认拒绝跨域（本服务仅由同网络后端调用）；
 # 确需前端直连时用 TTS_CORS_ORIGINS="https://a.com,https://b.com" 显式声明，禁止 *
@@ -179,33 +182,30 @@ def load_config(config_path: str = None) -> dict:
 # 加载配置（模块级，启动时执行一次）
 _CONFIG = load_config()
 
-# ===== Level 1：阿里云百炼 CosyVoice（DashScope SDK WebSocket 流式） =====
+# ===== 引擎装配（DC-011：适配器层 + 降级策略；引擎实现细节见 tts_engines.py / tts_policy.py） =====
 
-DASHSCOPE_API_KEY = os.environ.get("DASHSCOPE_API_KEY", "")
 DASHSCOPE_TTS_MODEL = _CONFIG["model"]["dashscope"]
-CLOUD_TTS_AVAILABLE = False
+_TTS_POLICY = DegradationPolicy(
+    [
+        DashScopeBackend(
+            model=DASHSCOPE_TTS_MODEL,
+            api_key=os.environ.get("DASHSCOPE_API_KEY", ""),
+            timeout=TTS_SYNTHESIZE_TIMEOUT,
+        ),
+        EdgeBackend(timeout=TTS_SYNTHESIZE_TIMEOUT),
+    ],
+    log=logger.warning,
+)
+# X-TTS-Engine 响应头映射（内部引擎名 → 对外契约名）
+_ENGINE_HEADER_MAP = {"cosyvoice": "cosyvoice-cloud", "edge_tts": "edge-tts"}
 
-if DASHSCOPE_API_KEY:
-    try:
-        import dashscope
-        from dashscope.audio.tts_v2 import SpeechSynthesizer, AudioFormat, ResultCallback
-        dashscope.api_key = DASHSCOPE_API_KEY
-        # 使用默认北京地域 WebSocket 端点
-        CLOUD_TTS_AVAILABLE = True
-        logger.info("✅ 阿里云 CosyVoice TTS 就绪 (model=%s, SDK WebSocket 流式)", DASHSCOPE_TTS_MODEL)
-    except ImportError:
-        logger.warning("dashscope SDK 未安装，CosyVoice 不可用")
+if _TTS_POLICY.backends[0].is_available():
+    logger.info("✅ 阿里云 CosyVoice TTS 就绪 (model=%s)", DASHSCOPE_TTS_MODEL)
 else:
-    logger.warning("DASHSCOPE_API_KEY 未配置，阿里云 CosyVoice 不可用")
-
-# ===== Level 2：edge-tts（微软免费 TTS，备用） =====
-
-EDGE_TTS_AVAILABLE = False
-try:
-    import edge_tts  # noqa: F401
-    EDGE_TTS_AVAILABLE = True
+    logger.warning("阿里云 CosyVoice 不可用（API Key 缺失或 SDK 未安装）")
+if _TTS_POLICY.backends[1].is_available():
     logger.info("✅ edge-tts 备用方案就绪")
-except ImportError:
+else:
     logger.warning("edge-tts 未安装，备用方案不可用")
 
 
@@ -284,9 +284,9 @@ class TtsInfoResponse(BaseModel):
 
 @app.get("/health")
 def health():
-    if CLOUD_TTS_AVAILABLE:
+    if _TTS_POLICY.backends[0].is_available():
         engine = "cosyvoice-cloud"
-    elif EDGE_TTS_AVAILABLE:
+    elif _TTS_POLICY.backends[1].is_available():
         engine = "edge-tts"
     else:
         engine = "none"
@@ -309,7 +309,7 @@ def list_personas():
 @app.post("/api/v1/tts/synthesize")
 async def synthesize(req: TtsRequest):
     """
-    文本 → 语音合成（三级降级：阿里云 CosyVoice → edge-tts → 503）
+    文本 → 语音合成（DC-011：适配器层 + 降级策略：CosyVoice → edge-tts → 503）
     返回音频二进制流
     """
     if not req.text.strip():
@@ -330,170 +330,42 @@ async def synthesize(req: TtsRequest):
     )
     actual_voice = override_voice or persona_cfg["dashscope_voice"]
 
+    # edge-tts 音色映射：仅东北/陕西有方言音色，其他方言回退普通话（policy 按引擎选 voice）
+    edge_voice = persona_cfg["edge_voice"]
+    if req.dialect:
+        dialect_info = SUPPORTED_DIALECTS.get(req.dialect)
+        if dialect_info and dialect_info.get("edge_voice"):
+            edge_voice = dialect_info["edge_voice"]
+
     t_start = time.time()
     logger.debug(f"TTS 请求: text_len={len(req.text)}, persona={req.persona}, "
                 f"emotion={req.emotion}, speed={final_speed:.2f}, dialect={req.dialect}, "
                 f"voice={actual_voice}, instruction={instruction}")
 
-    # Level 1：阿里云 CosyVoice
-    if CLOUD_TTS_AVAILABLE:
-        try:
-            resp = await _synthesize_dashscope(req.text, actual_voice, final_speed, instruction)
-            logger.info(f"TTS 合成完成 [cosyvoice]: text_len={len(req.text)}, voice={actual_voice}, "
-                        f"elapsed={time.time() - t_start:.3f}s")
-            _record_tts_request("cosyvoice", time.time() - t_start)
-            return resp
-        except Exception as e:
-            if instruction:
-                # Instruct 失败 → 无指令重试（保留音色品质）
-                logger.warning(f"CosyVoice Instruct 失败，无指令重试: voice={actual_voice}, instruction={instruction}")
-                try:
-                    resp = await _synthesize_dashscope(req.text, actual_voice, final_speed, None)
-                    logger.info(f"TTS 合成完成 [cosyvoice-no-instruct]: text_len={len(req.text)}, voice={actual_voice}, "
-                                f"elapsed={time.time() - t_start:.3f}s")
-                    _record_tts_request("cosyvoice_fallback", time.time() - t_start)
-                    return resp
-                except Exception as e2:
-                    logger.warning(f"CosyVoice 无指令重试也失败，降级 edge-tts: {e2}")
-            else:
-                logger.warning(f"阿里云 CosyVoice 失败，降级 edge-tts: {e}")
-
-    # Level 2：edge-tts（方言降级：仅东北/陕西有对应音色，其他回退普通话）
-    if EDGE_TTS_AVAILABLE:
-        try:
-            edge_voice = persona_cfg["edge_voice"]
-            # 方言降级：检查是否有对应 edge-tts 方言音色
-            if req.dialect:
-                dialect_info = SUPPORTED_DIALECTS.get(req.dialect)
-                if dialect_info and dialect_info.get("edge_voice"):
-                    edge_voice = dialect_info["edge_voice"]
-                # 无对应 edge 方言音色 → 用默认普通话 edge_voice
-            resp = await _synthesize_edge_tts(req.text, edge_voice, final_speed, req.pitch)
-            logger.info(f"TTS 合成完成 [edge-tts]: text_len={len(req.text)}, voice={edge_voice}, "
-                        f"elapsed={time.time() - t_start:.3f}s")
-            _record_tts_request("edge_tts", time.time() - t_start)
-            return resp
-        except Exception as e:
-            logger.error(f"edge-tts 也失败 (elapsed={time.time() - t_start:.3f}s): {e}")
-
-    # Level 3：返回 503，前端自动降级到浏览器 speechSynthesis
-    _record_tts_request("error", time.time() - t_start)
-    raise HTTPException(status_code=503, detail="TTS 服务不可用")
-
-
-async def _synthesize_dashscope(text: str, voice: str, speed: float, instruction: Optional[str] = None):
-    """
-    Level 1：阿里云 CosyVoice（DashScope SDK WebSocket 流式合成）
-    内部缓冲全部音频后返回，确保 SDK 错误能被上层 try/except 捕获并降级到 edge-tts。
-    （单句 TTS 音频通常 20-50KB，缓冲无性能问题）
-    """
-    loop = asyncio.get_event_loop()
-    queue: asyncio.Queue = asyncio.Queue()
-    error_holder = [None]  # 用列表包装以便在回调中修改
-
-    class _Callback(ResultCallback):
-        def on_open(self):
-            pass
-
-        def on_data(self, data: bytes):
-            loop.call_soon_threadsafe(queue.put_nowait, data)
-
-        def on_complete(self):
-            loop.call_soon_threadsafe(queue.put_nowait, None)
-
-        def on_error(self, message):
-            error_holder[0] = str(message)
-            loop.call_soon_threadsafe(queue.put_nowait, None)
-
-        def on_close(self):
-            loop.call_soon_threadsafe(queue.put_nowait, None)
-
-    def _run_synthesis():
-        """SDK 的 call() 是阻塞的，在线程中执行"""
-        try:
-            kwargs = dict(
-                model=DASHSCOPE_TTS_MODEL,
-                voice=voice,
-                format=AudioFormat.MP3_22050HZ_MONO_256KBPS,
-                speech_rate=max(0.5, min(2.0, speed)),
-                callback=_Callback(),
-            )
-            # 方言/情感 Instruct 指令（仅部分音色支持，不支持时 SDK 返回 428）
-            if instruction:
-                kwargs["instruction"] = instruction
-            synthesizer = SpeechSynthesizer(**kwargs)
-            synthesizer.call(text)
-        except Exception as e:
-            error_holder[0] = str(e)
-            loop.call_soon_threadsafe(queue.put_nowait, None)
-
-    # 启动合成线程
-    t = threading.Thread(target=_run_synthesis, daemon=True)
-    t.start()
-
-    # 缓冲全部音频（等待合成完成或出错）
-    # P1-DEP：queue.get() 无超时 → SDK 线程挂死时请求永久挂起；wait_for 超时后抛错交给上层降级
-    chunks = []
-    while True:
-        try:
-            chunk = await asyncio.wait_for(queue.get(), timeout=TTS_SYNTHESIZE_TIMEOUT)
-        except asyncio.TimeoutError:
-            raise RuntimeError(
-                f"CosyVoice 合成超时 ({TTS_SYNTHESIZE_TIMEOUT}s, voice={voice})"
-            ) from None
-        if chunk is None:
-            break
-        chunks.append(chunk)
-
-    # 错误检查：在返回前抛出异常，使上层 try/except 能捕获并降级到 edge-tts
-    if error_holder[0]:
-        logger.warning(f"CosyVoice SDK 错误 (voice={voice}, instruction={instruction}): {error_holder[0]}")
-        raise RuntimeError(error_holder[0])
-
-    audio_bytes = b"".join(chunks)
-    if not audio_bytes:
-        raise RuntimeError(f"CosyVoice 返回空音频 (voice={voice})")
-
-    logger.debug(f"CosyVoice 合成完成: voice={voice}, instruction={instruction}, bytes={len(audio_bytes)}")
-    return StreamingResponse(
-        io.BytesIO(audio_bytes),
-        media_type="audio/mpeg",
-        headers={"X-TTS-Engine": "cosyvoice-cloud", "X-TTS-Voice": voice},
-    )
-
-
-async def _synthesize_edge_tts(text: str, voice: str, speed: float, pitch: float = 1.0):
-    """Level 2：edge-tts 备用合成（需联网访问微软）"""
-    import edge_tts
-
-    rate_pct = int((speed - 1.0) * 100)
-    rate_str = f"+{rate_pct}%" if rate_pct >= 0 else f"{rate_pct}%"
-    pitch_hz = int((pitch - 1.0) * 100)
-    pitch_str = f"+{pitch_hz}Hz" if pitch_hz >= 0 else f"{pitch_hz}Hz"
-
-    communicate = edge_tts.Communicate(text, voice, rate=rate_str, pitch=pitch_str)
-    buffer = io.BytesIO()
-
-    async def _stream_audio():
-        async for chunk in communicate.stream():
-            if chunk["type"] == "audio":
-                buffer.write(chunk["data"])
-
-    # P1-DEP：stream() 无超时 → 微软侧连接挂死时请求永久挂起；wait_for 超时抛错交给上层 503
     try:
-        await asyncio.wait_for(_stream_audio(), timeout=TTS_SYNTHESIZE_TIMEOUT)
-    except asyncio.TimeoutError:
-        raise RuntimeError(f"edge-tts 合成超时 ({TTS_SYNTHESIZE_TIMEOUT}s, voice={voice})") from None
+        result = await _TTS_POLICY.synthesize_with_degradation(
+            req.text, actual_voice, final_speed,
+            instruction=instruction, pitch=req.pitch,
+            voice_map={"edge_tts": edge_voice},
+        )
+    except TTSSynthesisFailed as e:
+        # Level 3：全部引擎失败 → 503，前端自动降级到浏览器 speechSynthesis
+        _record_tts_request("error", time.time() - t_start)
+        logger.error(f"TTS 全部引擎失败 (elapsed={time.time() - t_start:.3f}s): {e}")
+        raise HTTPException(status_code=503, detail="TTS 服务不可用")
 
-    if buffer.tell() == 0:
-        raise RuntimeError("edge-tts 返回音频为空")
-
-    buffer.seek(0)
-    logger.debug(f"edge-tts 合成成功: voice={voice}, bytes={buffer.tell()}")
+    # 指标：Instruct 失败后无指令重试成功 → cosyvoice_fallback（与 v3 指标契约一致）
+    engine_label = "cosyvoice_fallback" if result.retried else result.engine
+    _record_tts_request(engine_label, time.time() - t_start)
+    logger.info(f"TTS 合成完成 [{result.engine}]: text_len={len(req.text)}, voice={actual_voice}, "
+                f"elapsed={time.time() - t_start:.3f}s")
     return StreamingResponse(
-        buffer,
+        io.BytesIO(result.audio),
         media_type="audio/mpeg",
-        headers={"X-TTS-Engine": "edge-tts", "X-TTS-Voice": voice},
+        headers={
+            "X-TTS-Engine": _ENGINE_HEADER_MAP.get(result.engine, result.engine),
+            "X-TTS-Voice": actual_voice,
+        },
     )
 
 

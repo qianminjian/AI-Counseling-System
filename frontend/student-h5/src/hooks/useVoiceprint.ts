@@ -23,6 +23,8 @@ import {
 import { getConfigValue } from '../config/remote'
 import { getAllVoiceprints } from '../utils/voiceprintStore'
 import { createModelStatusStore, type ModelStatus } from '../utils/modelStatusStore'
+// DC-009：Transformers.js 初始化收敛到共享 loader（SPEC §23）
+import { loadTransformersModel, createProgressHandler, formatModelError } from '../utils/transformersLoader'
 
 // ===== 全局模型加载状态（ARCH-006 收敛 A：复用 createModelStatusStore 基座） =====
 
@@ -59,102 +61,51 @@ export function preloadVoiceprintModel() {
 function getModelBundle() {
   if (!modelBundlePromise) {
     setVpModelStatus('loading')
-    modelBundlePromise = (async () => {
-      // ━━ 环境前置检查：SharedArrayBuffer 是 ORT WASM 的硬性依赖 ━━
-      // 缺少 cross-origin isolation (COOP/COEP 头) 时，浏览器不暴露 SharedArrayBuffer，
-      // ORT 工厂顶层语句 `var SharedArrayBuffer = globalThis.SharedArrayBuffer ?? ...` 会直接崩溃。
-      const hasSAB = typeof SharedArrayBuffer !== 'undefined'
-      const isIsolated = (globalThis as any).crossOriginIsolated === true
-      // WebAssembly SIMD 检测：ort-wasm-simd-threaded 二进制包含 SIMD 指令，不支持则无法编译
-      let hasSimd = false
-      try {
-        hasSimd = WebAssembly.validate(new Uint8Array([0,97,115,109,1,0,0,0,1,5,1,96,0,1,123,3,2,1,0,10,8,1,6,0,65,0,253,15,11]))
-      } catch { /* ignore */ }
-      if (!hasSAB) {
-        console.warn('[Voiceprint] SharedArrayBuffer不可用(isolated=%s)，声纹功能降级', isIsolated)
-        throw Object.assign(new Error('ENV_UNSUPPORTED'), { _unsupported: true })
-      }
-      if (!hasSimd) {
-        console.warn('[Voiceprint] 浏览器不支持WebAssembly SIMD，声纹功能降级（需Chrome 91+/Safari 16.4+）')
-        throw Object.assign(new Error('ENV_UNSUPPORTED'), { _unsupported: true })
-      }
-
-      const { AutoModel, AutoFeatureExtractor, env } = await import('@huggingface/transformers')
-      // 模型同源部署：从自己服务器加载（/mindsafe/models/）
-      const base = import.meta.env.BASE_URL || '/'
-      // 关键：remoteHost 必须是绝对 URL，否则 get_file_metadata 内的 new URL() 会失败
-      let vpRemoteHost = VP_MODEL_REMOTE_HOST === 'SAME_ORIGIN'
-        ? `${base}models/`
-        : VP_MODEL_REMOTE_HOST
-      if (vpRemoteHost && !vpRemoteHost.startsWith('http')) {
-        vpRemoteHost = window.location.origin + vpRemoteHost
-      }
-      env.remoteHost = vpRemoteHost
-      // 自托管模型不带 /resolve/{revision}/ 路径段
-      env.remotePathTemplate = '{model}/'
-      env.allowLocalModels = false
-
-      // ━━ 关键修复 1：禁用 WASM 缓存，避免 blob URL 工厂导致 Worker 创建失败 ━━
-      env.useWasmCache = false
-      // ━━ 关键修复 2：单线程模式，避免 ORT 创建 pthread Worker ━━
-      // ort-wasm-simd-threaded 变体初始化时会 new Worker() 创建线程池，
-      // 部分浏览器/WebView 对 module Worker 有限制导致 TypeError。
-      // numThreads=1 时 ORT 不创建任何 Worker，WASM 在主线程运行。
-      env.backends.onnx.wasm.numThreads = 1
-
-      // 请求持久化存储
-      navigator.storage?.persist?.().catch(() => {})
-      // ONNX Runtime WASM 走本地（与唤醒词共用）
-      // 始终使用非 asyncify 变体：ORT 主代码(ort.wasm.mjs)非 asyncify 编译，
-      // asyncify 工厂的调用约定与主代码不匹配 → TypeError。
-      // 所有现代浏览器均支持 native async/await，无需 asyncify 回退。
-      const variant = 'ort-wasm-simd-threaded'
-      env.backends.onnx.wasm.wasmPaths = {
-        mjs: `${base}ort/${variant}.mjs`,
-        wasm: `${base}ort/${variant}.wasm`,
-      }
-      // 跟踪各文件下载进度，聚合为总百分比
-      const fileProgress: Record<string, number> = {}
-      const progress_callback = (p) => {
-        if (p.status === 'progress' && p.file && typeof p.progress === 'number') {
-          fileProgress[p.file] = p.progress
-          const files = Object.keys(fileProgress)
-          const avg = files.reduce((s, f) => s + fileProgress[f], 0) / files.length
-          setVpModelStatus('loading', Math.round(avg))
-          console.debug(`[Voiceprint] 模型加载 ${p.file} ${p.progress.toFixed(0)}%`)
+    modelBundlePromise = loadTransformersModel({
+      modelHost: VP_MODEL_REMOTE_HOST,
+      // DC-009：环境检查/env 配置已移入 loader；此处仅保留模型 API 调用与状态机
+      load: async ({ AutoModel, AutoFeatureExtractor }) => {
+        // WeSpeaker 是音频模型，不能用 pipeline('feature-extraction')（那是文本模型专用）。
+        // 正确方式：AutoModel + AutoFeatureExtractor 分别加载，手动编排推理。
+        const sessionOpts = {
+          session_options: { graphOptimizationLevel: 'basic' as const },
+          progress_callback: createProgressHandler((p) => {
+            setVpModelStatus('loading', p)
+            console.debug(`[Voiceprint] 模型加载 ${p}%`)
+          }),
         }
-      }
-      // 并行加载模型和特征提取器
-      const sessionOpts = { session_options: { graphOptimizationLevel: 'basic' as const }, progress_callback }
-      const [model, featureExtractor] = await Promise.all([
-        AutoModel.from_pretrained(VP_MODEL_ID, sessionOpts),
-        AutoFeatureExtractor.from_pretrained(VP_MODEL_ID, { progress_callback }),
-      ])
-      setVpModelStatus('ready', 100)
-      return { model, featureExtractor }
-    })().catch((err) => {
-      modelBundlePromise = null
-      // 环境不支持（SIMD/SAB缺失）→ 静默降级，不报错、不清SW
-      if (err?._unsupported) {
-        setVpModelStatus('unsupported')
-        return null as any
-      }
-      const errMsg = err?.message || String(err)
-      const errStack = err?.stack?.split('\n').slice(0, 3).join(' | ') || ''
-      const fullMsg = `${errMsg}${errStack ? ' @ ' + errStack : ''}`
-      console.error('[Voiceprint] 模型加载失败（详细）:', fullMsg, err)
-      setVpModelStatus('error', undefined, fullMsg)
-      // 模型加载失败时清理 SW 缓存（排除旧 SW 缓存无 COOP/COEP 头的 HTML）
-      if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.getRegistrations().then(regs => {
-          regs.forEach(r => r.unregister())
-        }).catch(() => {})
-      }
-      if ('caches' in window) {
-        caches.keys().then(keys => keys.forEach(k => caches.delete(k))).catch(() => {})
-      }
-      throw err
+        // 并行加载模型和特征提取器
+        const [model, featureExtractor] = await Promise.all([
+          AutoModel.from_pretrained(VP_MODEL_ID, sessionOpts),
+          AutoFeatureExtractor.from_pretrained(VP_MODEL_ID, { progress_callback: sessionOpts.progress_callback }),
+        ])
+        setVpModelStatus('ready', 100)
+        return { model, featureExtractor }
+      },
+      onError: (err) => {
+        const fullMsg = formatModelError(err)
+        console.error('[Voiceprint] 模型加载失败（详细）:', fullMsg, err)
+        setVpModelStatus('error', undefined, fullMsg)
+        // 模型加载失败时清理 SW 缓存（排除旧 SW 缓存无 COOP/COEP 头的 HTML）
+        if ('serviceWorker' in navigator) {
+          navigator.serviceWorker.getRegistrations().then(regs => {
+            regs.forEach(r => r.unregister())
+          }).catch(() => {})
+        }
+        if ('caches' in window) {
+          caches.keys().then(keys => keys.forEach(k => caches.delete(k))).catch(() => {})
+        }
+      },
     })
+      .catch((err) => {
+        modelBundlePromise = null
+        // 环境不支持（SAB/SIMD）→ 静默降级，不报错；其余错误已由 onError 置 error 态
+        if (err?.unsupported) {
+          setVpModelStatus('unsupported')
+          return null as any
+        }
+        throw err
+      })
   }
   return modelBundlePromise
 }

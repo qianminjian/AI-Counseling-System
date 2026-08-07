@@ -1,5 +1,6 @@
 package com.mindsafe.service.notification;
 
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.mindsafe.domain.entity.Notification;
 import com.mindsafe.domain.entity.User;
 import com.mindsafe.domain.mapper.NotificationMapper;
@@ -93,7 +94,8 @@ class NotificationServiceImplTest {
     @Test
     @DisplayName("getNotifications 仅返回当前用户通知（按 recipientUserId 过滤）")
     void getNotifications_filtersByRecipient() {
-        when(notificationMapper.selectList(any())).thenReturn(List.of(notification(teacherId)));
+        when(notificationMapper.selectPage(any(), any())).thenReturn(
+                new Page<Notification>().setRecords(List.of(notification(teacherId))));
 
         List<Notification> list = service.getNotifications(teacherId, 50);
 

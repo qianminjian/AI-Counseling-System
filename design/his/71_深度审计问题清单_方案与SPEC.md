@@ -1,7 +1,7 @@
 # doing/71 深度审计问题清单（方案与 SPEC）
 
-> 编号：DOC-061 | 创建：2026-08-06 | 状态：⏳ 待处理（问题清单已定稿，修复任务后续统一排期实施）
-> 进度：**批次 A/B/C ✅ 完成（2026-08-06）**；**批次 D ✅ 完成（2026-08-06，AUD-063~071 清理 + AUD-060~062 议决，见 §7/§8）**；剩余批次 E（AUD-041~059 P3 收尾）待排期
+> 编号：DOC-061 | 创建：2026-08-06 | 状态：✅ 全部完成（批次 A~E 闭环，2026-08-07）
+> 进度：**批次 A/B/C ✅ 完成（2026-08-06）**；**批次 D ✅ 完成（2026-08-06，AUD-063~071 清理 + AUD-060~062 议决，见 §7/§8）**；**批次 E ✅ 完成（2026-08-07，AUD-041~059 P3 全部实施/确认，见 §8）**
 > 来源：独立架构深度审计（4 路并行 agent 交叉印证：后端 / 前端三端 / 工程化部署 / 设计一致性）
 > 审计基线：develop @ 27ad409（design 合并归档完成后），工作区干净
 > 关联：ARCH-001~010 治理系列（his/61~70，本审计为其延续轮次）；frozen/38 计费套餐、frozen/62 数据脱敏导出
@@ -215,6 +215,7 @@
 |---|---|---|
 | AUD-060 双部署通道 | **⚠️ 2026-08-07 决策反转（DOC-063/doing/72）：取消 CD，deploy.sh 为唯一发布通道**——CD 自动发布实战一天即被推翻（带宽 1MB/s 全量 36min+、GHCR 抖动、14 个坑），部署统一走真实环境（rsync 源码 + 服务器本地构建） | cd.yml 已删除；DEPLOY-GUIDE §二/Step 7 已改述 |
 | AUD-061 备份三层 | **保留不收敛**——儿童数据合规 + PIPL 合理成本；真正缺口 cron 接线已由 AUD-032 关闭（setup-server.sh 幂等写入 crontab，02:00 每日触发，backup.sh 内部分层保留） | setup-server.sh §6；恢复演练指引见 DEPLOY-GUIDE「备份与恢复」 |
+| AUD-061 修正 | **DC-002 修正记录（2026-07-28）**：台账原记「已接线」但 cron 指向的路径从未被创建——已修复：cron 固定指向 deploy/ 整目录内 backup.sh（该目录由 setup-server.sh 第 5 步整体 rsync，恒存在）；DB 连接事实 / dbbackups 卷探测 / log() 收敛至 backup-common.sh 单一事实源（backup.sh + restore.sh 共享）；写入前 fail-fast。验证：`bash -n` + tests/unit/backup-common.sh | DC-002（doing/72 §3/§17） |
 | AUD-062 声纹双模式 | **remote 链路保留（已加固）**——AUD-001 修复后不再有跨租户面（租户维度强制 + 阈值对齐 0.70 + 指纹限流）；local 为默认模式，双模式并存是特性非维护负担；后续若 remote 长期零用量再议收敛 | AUD-001 修复（VoiceprintController，工作区） |
 
 ### AUD-060【质疑】deploy.sh 与 cd.yml 双部署通道
@@ -227,6 +228,7 @@
 ### AUD-061【质疑】备份三层（daily/weekly/monthly）+ 异地 rsync + 恢复前快照
 
 - 证据：对试点项目偏重，但针对儿童数据合规与 PIPL 属合理成本——真正缺口是 cron 未接线（AUD-032），本质疑仅提示成本，不强制收敛
+- **DC-002 修正记录（2026-07-28）**：doing/71 原记「cron 已由 AUD-032 接线」属台账失实——接线了，但 crontab 指向的 deploy/backup.sh 路径从未被创建（deploy/ 目录由 setup-server.sh 整目录 rsync，含 backup.sh；cron 实际指向路径当时不存在即静默失败）。已修复：① cron 指向 deploy/ 整目录内 backup.sh，路径在部署链路恒存在；② backup.sh/restore.sh 的 DB 连接事实、卷探测、log() 收敛到 backup-common.sh（单一事实源，杜绝两脚本各自定义 DB 事实漂移）；③ 写入前 fail-fast（目录/权限不满足即退出，不再静默写错位置）。
 
 ### AUD-062【观察】声纹双模式比对维护成本（local 0.70 前端 + remote 0.55 服务端两套链路）
 
@@ -237,6 +239,8 @@
 ## §8 僵死/僵尸代码清单（后续统一清理任务）
 
 > **批次 D 清理状态（2026-08-06）**：全部 9 项已闭环——代码类已处理（冻结登记/安全封装/注释修正），文件系统类已验证无残留。
+
+> **批次 E 处置状态（2026-08-07）**：AUD-041~059 共 19 项全部实施/确认（用户指令：P3 低优 19 项全部实施，不要遗留任何一个）。代码类已实施（后端/CI/前端/部署），文档类经核实已在前期批次同步，确认类已登记结论。
 
 | 编号 | 项 | 位置 | 判定 | 批次 D 处置 |
 |---|---|---|---|---|
@@ -250,6 +254,30 @@
 | AUD-070 | tmp/*.patch（14 个） | tmp/ | 历史修复补丁，gitignore 拦截不入库，可归档清理 | ✅ 验证无 *.patch 残留 |
 | AUD-071 | tests/e2e/node_modules、playwright-report/、test-results/ | tests/e2e/ | 本地运行残留（未跟踪），保持工作区干净 | ✅ 验证不存在，无残留 |
 
+### 批次 E 处置登记（AUD-041~059，2026-08-07）
+
+| 编号 | 项 | 位置 | 判定 | 批次 E 处置 |
+|---|---|---|---|---|
+| AUD-041 | `ratelimit:` key 无租户前缀 | RateLimiter.java | ARCH-010 D2 仅覆盖 session:state: | ✅ 已认证用户 key 带租户段（`ratelimit:{tenantId}:{action}:{userId}`，无租户上下文防御回退旧格式）；公开端点（IP/指纹）不属租户维度不添加 |
+| AUD-042 | tts 弃用 on_event；voice 后缀未白名单 | tts/voice app.py | FastAPI 生命周期与上传校验 | ✅ tts 改 lifespan（启动建 httpx 客户端、退出 aclose 回收）；voice 上传后缀白名单（webm/wav/mp3/m4a/ogg/opus/aac/flac，非法 400） |
+| AUD-043 | `.last("LIMIT ...")` 字符串拼接 | 分页相关 Mapper | 值已钳制无注入面，用法不安全 | ✅ MybatisPlusConfig 注册 PaginationInnerInterceptor（租户拦截器之前）+ 10 处动态拼接改 `selectPage(new Page<>(1, n, false))`（不查 COUNT，语义等价）；静态 `LIMIT 1/10/20/50` 惯用法保留（无注入面） |
+| AUD-044 | JDK 25 未实测 | ci.yml | jacoco/byte-buddy/mockito 版本已覆盖 | ✅ 新增 jdk25-smoke job（setup-java 25 + 编译冒烟，不重复跑测试） |
+| AUD-045 | privacy 链接与 basename 重复 | parent-h5 privacy/index.tsx | 依赖 catch-all Navigate 回写 | ✅ `to="/parent/"` → `to="/"`（BrowserRouter basename 已含 /parent） |
+| AUD-046 | ThemeProvider 裸用 localStorage | student-h5 ThemeProvider.tsx | 与 useWakeEnabled 不一致 | ✅ 确认已覆盖——AUD-065（批次 D）已全量接入 storage.ts 安全封装（readLocalStorageSafe/writeLocalStorageSafe），无裸 localStorage |
+| AUD-047 | Dashboard 多层轮询叠加 | Dashboard/TodayTodoPanel/BigScreen | 15s+30s+30s 无节流 | ✅ 三处轮询回调首行 `if (document.hidden) return`——后台标签页零空转请求，恢复可见下一周期续跑 |
+| AUD-048 | StudentPanel 2 处 any | StudentPanel.tsx L183/223 | 类型残留 | ✅ `AlertVO`/`NoteVO` 类型化（profile 标注 `StudentProfileVO | null`） |
+| AUD-049 | menuItems 每次渲染重建 | Dashboard.tsx L135-169 | 应常量/useMemo | ✅ useMemo 缓存（依赖 [unreadCount, isAdmin]） |
+| AUD-050 | TTS 按钮无 aria-label | MessageBubble.tsx L66-84 | 读屏器不读 title | ✅ aria-label（播放语音/正在播放语音，随 isSpeaking 切换） |
+| AUD-051 | GITHUB_OWNER 未定义 | .env.example | DEPLOY-GUIDE 要求但变量缺失 | ✅ 补 `GITHUB_OWNER=mindsafe`（与 docker-compose.test.yml 默认值对齐） |
+| AUD-052 | ci.yml 未收敛 permissions | ci.yml L16 | 最小权限 | ✅ 顶层 `permissions: contents: read` |
+| AUD-053 | image_tag 无格式校验 | cd.yml L15 | 注入面 | ✅ pattern 白名单：`^([0-9a-f]{7,40}|v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.-]+)?)$`（git SHA 或 v 语义化版本） |
+| AUD-054 | 镜像浮 tag 未 pin digest | 各 Dockerfile | 可接受，Trivy 已入 CI | ✅ 确认登记——保持浮 tag（Trivy CRITICAL/HIGH 门禁已覆盖漏洞面），无动作 |
+| AUD-055 | postgres/redis/nginx 无 mem_limit | docker-compose 各文件 | 2C2G 主机 pg 可吃满内存 | ✅ 三 compose（yml/prod/test）postgres 512m / redis 256m / nginx 128m |
+| AUD-056 | Grafana dashboards editable: true | monitoring/grafana | 建议 false | ✅ `editable: false`（仪表盘只读） |
+| AUD-057 | 02 版本头未登记 V33 | design/02 L4/L334/L370 | risk_event_structured_score | ✅ 确认——02 版本头/L89 表标注/L270 迁移登记/L335 工具版本均含 V33（V33 迁移登记时同步） |
+| AUD-058 | 波波四态 vs 代码五态 | design/08 L36 | waitingWake 缺失 | ✅ 确认——08 L36 已为五态（idle/listening/thinking/speaking/waitingWake），与 chatRoomRules.ts BoboState 一致 |
+| AUD-059 | L1-L5 旧口径残留 | design/08 §2.1/§5.4 | 代码四档色级 | ✅ 确认——08 L126 已标注 AUD-059 校正（四档 GREEN(0)/YELLOW(1)/ORANGE(2)/RED(3) + 整数 riskLevel，L1-L5 为旧口径历史叙述），与 RiskLevel.java 一致 |
+
 ---
 
 ## §9 台账抽查验证（ARCH-001~010）
@@ -259,6 +287,7 @@
 | ARCH-001 C1 编排拆分 | ConversationServiceImpl 759 行（台账 844→758 吻合）；PersonalInfoExtractor/PromptAssemblyService 存在且配测试 | ✅ 属实 |
 | ARCH-002/005/006/008（前端） | useSilenceNudge 走 authFetch；SSE consumeSseStream 仅一处；useVoiceInputPipeline 边界清晰；authFetch 移植 teacher + CSP/COOP/COEP + console 归零 + BigScreen 错误态 | ✅ 属实 |
 | ARCH-003 风险词典单一规则源 | RiskKeywordRegistry（279 行）被 RiskDetectorServiceImpl/ConversationRiskProcessor 统一引用 | ✅ 属实 |
+| ARCH-003 修正 | **DC-001 + DC-008 修正记录（2026-07-28）**：原抽查仅验证词典引用属实，但类别判定/情绪展示仍各自独立（台账失实）——已收敛：风险分级判定收敛至 HighSensitivityCategories 单一类别源（高敏接线完成，修复 SAFE-202 恒 false 死门控，测试证明）；英文类别常量零残留，风险事件落库类别为中文；情绪五处表示（展示/归一化/成员集）收敛至 EmotionVocabulary，`anxious` 全系统单译，中文标签映射残留仅 `EmotionVocabulary.ZH_LABELS` 一处 | DC-001 + DC-008（doing/72 §2/§9） |
 | ARCH-004 僵尸 API 清理 | **RecurrenceCalculator 零生产调用且不在台账保留清单** | ⚠️ 失实（见 AUD-063） |
 | ARCH-007 两级摘要 + PII 置换 | MessageSummaryService 主链路调用；PiiDesensitizer 含姓名/地址脱敏 | ✅ 属实 |
 | ARCH-009 工程化门禁（7 项全查） | pytest 入 CI 真实；teacher 覆盖率配置链路完整（89.99% 实测值无法复跑）；TTS 面板删除零命中；rollback V28~V33 六文件真实非空；prepare-models.sh --verify + MANIFEST 接线；限流拦截器已注册 | ✅ 全部属实 |
@@ -278,7 +307,7 @@
 2. **批次 B（契约文档止血 + 高风险数据项）**：AUD-011/012（08 错误码/响应字段重写）、AUD-013（analytics 三端点裁决）、AUD-036~040（文档互斥修正）、AUD-057~059（文档口径）
 3. **批次 C（工程化加固）**：AUD-005~008（后端/前端 P1）、AUD-014~035（P2 各项）
 4. **批次 D（清理与收敛）**：AUD-063~071（僵死代码清理）、AUD-060~062（过度设计议决）
-5. **批次 E（P3 收尾）**：AUD-041~059 剩余项
+5. **批次 E（P3 收尾）**：AUD-041~059 全部实施/确认（2026-08-07，见 §8 批次 E 处置登记）✅
 
 ---
 
@@ -289,3 +318,4 @@
 - 审计基线 commit：27ad409（develop）
 - 用户裁决：2026-08-06（§2）
 - 审计全文未落库部分（各维度细节证据链）以本报告为准；his/61~70 各文档头部引用对应历史审计项
+- 批次 E 实施：2026-08-07（用户指令：P3 低优 19 项全部实施，不要遗留任何一个；代码类已实施，文档类核实已在前期批次同步）

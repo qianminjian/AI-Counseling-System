@@ -9,6 +9,10 @@ on:
   pull_request:
     branches: [main, develop]
 
+# AUD-052：显式收敛最小权限（contents 只读；CD 发布写权限由 cd.yml 按 job 单独授予）
+permissions:
+  contents: read
+
 env:
   JAVA_VERSION: '21'
   MAVEN_OPTS: '-Xmx1024m'
@@ -136,6 +140,28 @@ jobs:
           name: coverage-report
           path: backend/counseling-app/target/site/jacoco-aggregate/
           retention-days: 7
+
+  jdk25-smoke:
+    # AUD-044：JDK 25 运行时冒烟（jacoco/byte-buddy/mockito 版本已覆盖，防编译/插件兼容性回归）
+    # 仅编译冒烟不重复跑测试（主链路 JDK 21 已跑 verify 全量）
+    name: JDK 25 Compile Smoke
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v4
+        with:
+          java-version: '25'
+          distribution: temurin
+          cache: maven
+
+      - name: Compile smoke (JDK 25)
+        run: mvn compile -B -q
 
   python-services-test:
     # ARCH-009 E-1：tts/voice-service pytest 入 CI（此前 Python 服务无测试门禁）

@@ -1,77 +1,31 @@
 // AUD-007：双 token 移出 localStorage，改存 sessionStorage（会话级，关闭浏览器自动清除）
 // 与 student-h5 策略对齐：XSS 单点突破不再获得持久凭证；刷新页面仍保持登录（同 tab 会话）
-const TOKEN_KEY = 'mindsafe_token'
-const REFRESH_KEY = 'mindsafe_refresh'
+// DC-005：认证传输三端收敛为共享模块（SPEC §19）——token 存取/刷新/authFetch/登出/错误模型
+import { createSessionStorageTokens } from '../../shared/src/auth-transport/tokenStorage'
+import { createAuthFetch } from '../../shared/src/auth-transport/authFetch'
+import { handleSessionExpired } from '../../shared/src/auth-transport/sessionExpired'
+import { toApiError } from '../../shared/src/auth-transport/apiError'
 
-export function getToken() {
-  return sessionStorage.getItem(TOKEN_KEY)
-}
+const storage = createSessionStorageTokens('mindsafe_')
 
-export function setToken(token: string) {
-  sessionStorage.setItem(TOKEN_KEY, token)
-}
+export const getToken = () => storage.getToken()
 
-export function getRefreshToken() {
-  return sessionStorage.getItem(REFRESH_KEY)
-}
+export const setToken = (token: string) => storage.setToken(token)
 
-export function setRefreshToken(token: string) {
-  sessionStorage.setItem(REFRESH_KEY, token)
-}
+export const getRefreshToken = () => storage.getRefreshToken()
 
-export function clearToken() {
-  sessionStorage.removeItem(TOKEN_KEY)
-  sessionStorage.removeItem(REFRESH_KEY)
-}
+export const setRefreshToken = (token: string) => storage.setRefreshToken(token)
 
-/** 尝试刷新 Token */
-async function tryRefresh() {
-  const rt = getRefreshToken()
-  if (!rt) return false
-  try {
-    const res = await fetch('/api/v1/auth/refresh', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refreshToken: rt }),
-    })
-    const json = await res.json()
-    if (json.success && json.data?.token) {
-      setToken(json.data.token)
-      setRefreshToken(json.data.refreshToken)
-      return true
-    }
-  } catch { /* ignore */ }
-  return false
-}
+export const clearToken = () => storage.clear()
 
 /**
- * 带 JWT 认证的 fetch（自动携带 token + 401 刷新重放，ARCH-008 F-6）
+ * 带 JWT 认证的 fetch（DC-005：共享实现，自动携带 token + 401 刷新重放，ARCH-008 F-6）
  *
  * 适用于 blob 下载 / multipart 上传等不解析 JSON 的场景；
  * 返回原始 Response，成功/失败由调用方处理。
  * 401 语义：内部尝试刷新并重放一次；仍 401 则原样返回（登出决策交调用方）。
  */
-export async function authFetch(url: string, init?: RequestInit): Promise<Response> {
-  const doFetch = () => {
-    const token = getToken()
-    return fetch(url, {
-      ...init,
-      headers: {
-        ...(init?.headers instanceof Headers
-          ? Object.fromEntries((init.headers as Headers).entries())
-          : init?.headers || {}),
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-    })
-  }
-  let res = await doFetch()
-  if (res.status === 401) {
-    if (await tryRefresh()) {
-      res = await doFetch()
-    }
-  }
-  return res
-}
+export const authFetch = createAuthFetch(storage)
 
 // ===== DTO 类型（与后端 TeacherService VO record 一一对齐） =====
 
@@ -207,14 +161,12 @@ export async function api<T = any>(path: string, options: RequestInit & { header
     throw new Error('后端服务不可达，请确认服务已启动')
   }
   if (res.status === 401) {
-    // authFetch 已尝试刷新+重放；仍 401 → 刷新失败 → 登出
-    clearToken()
-    window.location.reload()
-    throw new Error('登录已过期')
+    // authFetch 已尝试刷新+重放；仍 401 → 刷新失败 → 统一登出决策点（clear + reload + throw）
+    handleSessionExpired(storage)
   }
   const json = await res.json()
   if (!json.success) {
-    throw new Error(json.message || '请求失败')
+    throw toApiError(json)
   }
   return json.data
 }
@@ -234,12 +186,12 @@ export const getFlaggedSessions = () => api('/teacher/quality/flagged')
 
 /**
  * AUD-018：blob 下载统一封装（收敛 5 处重复的 401 处理 + 下载逻辑）
- * - 401 → 清理 token + 整页刷新（与 authFetch 语义一致）
+ * - 401 → 统一登出决策点（clear + reload，与 authFetch 语义一致）
  * - 统一 <a download> 触发下载：window.open 在 async 之后调用会失去用户激活被弹窗拦截
  */
 async function downloadBlob(path: string, filename: string) {
   const res = await authFetch(`/api/v1${path}`)
-  if (res.status === 401) { clearToken(); window.location.reload(); return }
+  if (res.status === 401) { handleSessionExpired(storage) }
   const blob = await res.blob()
   const a = document.createElement('a')
   const url = URL.createObjectURL(blob)
@@ -323,12 +275,11 @@ export async function importStudentsCsv(file: File) {
     body: formData,
   })
   if (res.status === 401) {
-    clearToken()
-    window.location.reload()
-    throw new Error('登录已过期')
+    // 统一登出决策点
+    handleSessionExpired(storage)
   }
   const json = await res.json()
-  if (!json.success) throw new Error(json.message || '导入失败')
+  if (!json.success) throw toApiError({ code: json.code, message: json.message || '导入失败' })
   return json.data
 }
 

@@ -1,5 +1,6 @@
 package com.mindsafe.service.prompt;
 
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.mindsafe.domain.entity.CounselingSession;
 import com.mindsafe.domain.entity.QualityScore;
 import com.mindsafe.domain.mapper.CounselingSessionMapper;
@@ -56,7 +57,7 @@ class PromptEvalScoreReaderTest {
     @Test
     @DisplayName("无该版本会话 → (0, 0, 0.0)，不再查评分表")
     void noSessions_emptyStat() {
-        when(sessionMapper.selectList(any())).thenReturn(List.of());
+        when(sessionMapper.selectPage(any(), any())).thenReturn(new Page<CounselingSession>().setRecords(List.of()));
 
         PromptEvalScoreReader.EvalStat stat = reader.read("SYS_001:v2:control");
 
@@ -69,7 +70,7 @@ class PromptEvalScoreReaderTest {
     @Test
     @DisplayName("有会话但无评分 → scoredCount=0（门禁视为样本不足）")
     void sessionsWithoutScores() {
-        when(sessionMapper.selectList(any())).thenReturn(List.of(session(UUID.randomUUID())));
+        when(sessionMapper.selectPage(any(), any())).thenReturn(new Page<CounselingSession>().setRecords(List.of(session(UUID.randomUUID()))));
         when(qualityScoreMapper.selectList(any())).thenReturn(List.of());
 
         PromptEvalScoreReader.EvalStat stat = reader.read("SYS_001:v2:control");
@@ -82,7 +83,7 @@ class PromptEvalScoreReaderTest {
     @DisplayName("overallScore = 四维均值再平均（与 ab-comparison 口径一致）")
     void overallIsMeanOfFourDimensions() {
         UUID sid = UUID.randomUUID();
-        when(sessionMapper.selectList(any())).thenReturn(List.of(session(sid)));
+        when(sessionMapper.selectPage(any(), any())).thenReturn(new Page<CounselingSession>().setRecords(List.of(session(sid))));
         // 四维：0.8 / 0.6 / 1.0 / 0.8 → 均值 0.8
         when(qualityScoreMapper.selectList(any())).thenReturn(
                 List.of(score(sid, 0.8, 0.6, 1.0, 0.8)));
@@ -98,7 +99,7 @@ class PromptEvalScoreReaderTest {
     @DisplayName("多条评分取均值；null 维度跳过不拉低")
     void multipleScores_averaged() {
         UUID sid = UUID.randomUUID();
-        when(sessionMapper.selectList(any())).thenReturn(List.of(session(sid)));
+        when(sessionMapper.selectPage(any(), any())).thenReturn(new Page<CounselingSession>().setRecords(List.of(session(sid))));
         QualityScore q1 = score(sid, 0.8, 0.8, 0.8, 0.8);
         QualityScore q2 = score(sid, 1.0, 1.0, 1.0, 1.0);
         q2.setEmpathyScore(null); // null 维度跳过

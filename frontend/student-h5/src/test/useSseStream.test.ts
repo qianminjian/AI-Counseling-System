@@ -289,8 +289,8 @@ describe('useSseStream（UX-006，design/17 §chat/hooks）', () => {
     const { result } = renderHook(() => useSseStream())
 
     const promise = result.current.streamMessage('/u', {}, { onToken: vi.fn(), onEmotion: vi.fn(), onRisk: vi.fn() })
-    // 先附加 rejection 断言再推进定时器：abort 会在 tick 内同步触发 read() reject，
-    // 若后附加 handler 会跨宏任务边界，Node 判定为 unhandled rejection（vitest 报错）
+    // rejection handler 必须在 abort 触发前注册：abort 引发的拒绝发生在 act 内部，
+    // 若在 act 之后才 rejects.toThrow()，顶层 promise 短暂无 handler → jsdom 报 unhandled rejection
     const assertion = expect(promise).rejects.toThrow()
     // 30s 超时判定为 >30000ms，interval 每 5s tick → 第 7 次 tick（35s）触发 abort
     await act(async () => { await vi.advanceTimersByTimeAsync(40000) })
@@ -308,7 +308,11 @@ describe('useSseStream（UX-006，design/17 §chat/hooks）', () => {
         body: {
           getReader: () => ({
             read: () => new Promise((_r, reject) => {
-              signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')))
+              // reject 延迟到下一微任务：jsdom 同步派发 abort 事件时 await 链尚未绑定 handler，
+              // 立即 reject 会触发 unhandled rejection；延迟后 await reader.read() 已绑定，错误正常传播
+              signal?.addEventListener('abort', () => {
+                Promise.resolve().then(() => reject(new DOMException('aborted', 'AbortError')))
+              })
             }),
             cancel: vi.fn(),
           }),
@@ -321,7 +325,7 @@ describe('useSseStream（UX-006，design/17 §chat/hooks）', () => {
     await act(async () => {
       promise = result.current.streamMessage('/u', {}, { onToken: vi.fn(), onEmotion: vi.fn(), onRisk: vi.fn() })
     })
-    // 先附加 rejection 断言再 abort（stopStream 同步触发 read() reject，避免 unhandled rejection）
+    // rejection handler 必须在 abort 触发前注册（同上：abort 引发的拒绝发生在 act 内部）
     const assertion = expect(promise).rejects.toThrow()
     await act(async () => {
       result.current.stopStream()

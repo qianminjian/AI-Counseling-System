@@ -27,6 +27,7 @@ import com.mindsafe.service.memory.LongTermMemoryService;
 import com.mindsafe.service.memory.ThemeEvolutionEngine;
 import com.mindsafe.service.profile.ProfileExtractorService;
 import com.mindsafe.service.profile.StudentProfileService;
+import com.mindsafe.service.conversation.strategy.RiskResponseStrategy;
 import com.mindsafe.service.prompt.PromptVersionService;
 import com.mindsafe.service.quality.ConversationQualityService;
 import com.mindsafe.service.usage.UsageTimeLimitService;
@@ -690,12 +691,16 @@ class ConversationServiceImplTest {
         }
 
         @Test
-        @DisplayName("redSafetyReply: 分年级选版（1-2 短句版 / 3-6 标准版）")
-        void redSafetyReply_gradeVariants() {
-            assertThat(ConversationUtils.redSafetyReply(1)).isEqualTo(CrisisResources.RED_SAFETY_REPLY_LOWER_GRADE);
-            assertThat(ConversationUtils.redSafetyReply(2)).isEqualTo(CrisisResources.RED_SAFETY_REPLY_LOWER_GRADE);
-            assertThat(ConversationUtils.redSafetyReply(3)).isEqualTo(CrisisResources.RED_SAFETY_REPLY);
-            assertThat(ConversationUtils.redSafetyReply(6)).isEqualTo(CrisisResources.RED_SAFETY_REPLY);
+        @DisplayName("resolveSafetyReply: RED 分年级选版（1-2 短句版 / 3-6 标准版）")
+        void resolveSafetyReply_redGradeVariants() {
+            assertThat(RiskResponseStrategy.resolveSafetyReply(RiskLevel.RED, false, 1, crisisResourceProvider))
+                    .isEqualTo(CrisisResources.RED_SAFETY_REPLY_LOWER_GRADE);
+            assertThat(RiskResponseStrategy.resolveSafetyReply(RiskLevel.RED, false, 2, crisisResourceProvider))
+                    .isEqualTo(CrisisResources.RED_SAFETY_REPLY_LOWER_GRADE);
+            assertThat(RiskResponseStrategy.resolveSafetyReply(RiskLevel.RED, false, 3, crisisResourceProvider))
+                    .isEqualTo(CrisisResources.RED_SAFETY_REPLY);
+            assertThat(RiskResponseStrategy.resolveSafetyReply(RiskLevel.RED, false, 6, crisisResourceProvider))
+                    .isEqualTo(CrisisResources.RED_SAFETY_REPLY);
         }
     }
 

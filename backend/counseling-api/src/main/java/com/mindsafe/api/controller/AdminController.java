@@ -1,6 +1,7 @@
 package com.mindsafe.api.controller;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.mindsafe.api.security.JwtAuthenticationFilter.TenantContext;
 import com.mindsafe.common.dto.ApiResponse;
 import com.mindsafe.common.dto.ErrorCode;
@@ -318,11 +319,12 @@ public class AdminController {
         TenantContext ctx = extractContext(auth);
         var wrapper = new LambdaQueryWrapper<AuditLog>()
                 .eq(AuditLog::getTenantId, ctx.tenantId())
-                .orderByDesc(AuditLog::getCreatedAt)
-                .last("LIMIT " + Math.min(limit, 500));
+                .orderByDesc(AuditLog::getCreatedAt);
         if (action != null && !action.isBlank()) {
             wrapper.eq(AuditLog::getAction, action);
         }
-        return ApiResponse.ok(auditLogMapper.selectList(wrapper));
+        // AUD-043：分页插件安全化，替代 .last("LIMIT ...") 字符串拼接
+        var pageResult = auditLogMapper.selectPage(new Page<>(1, Math.min(limit, 500), false), wrapper);
+        return ApiResponse.ok(pageResult.getRecords());
     }
 }

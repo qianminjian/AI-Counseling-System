@@ -1,11 +1,13 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { pinLogin, setToken, setRefreshToken, setUser, issueVoiceCredential, getVoiceprintConfig, remoteVoiceprintEnroll, trialRegister, markConsentDone, setPin as apiSetPin } from '../api'
+import { pinLogin, setToken, setRefreshToken, setUser, getVoiceprintConfig, trialRegister, markConsentDone, setPin as apiSetPin } from '../api'
 import { CONSENT_VERSION } from './ConsentGate'
-import { hasAnyVoiceprint, enrollVoiceprint, saveVoiceCredential, markRemoteVoiceprintEnrolled } from '../utils/voiceprintStore'
+import { hasAnyVoiceprint } from '../utils/voiceprintStore'
 import { useTheme, THEMES } from '../theme/ThemeProvider'
 import { preloadVoiceprintModel, useVoiceprintModelStatus } from '../hooks/useVoiceprint'
 import { useWakeModelStatus } from '../hooks/useWakeWord'
 import VoiceLoginOverlay from './VoiceLoginOverlay'
+// DC-007：声纹注册编排收敛（SPEC §21）
+import { useVoiceEnrollment } from '../hooks/useVoiceEnrollment'
 import SceneDecor from './SceneDecor'
 import ConfirmDialog from './ConfirmDialog'
 
@@ -300,6 +302,8 @@ function RegisterForm({ themeId, onRegister }) {
   const [vpMode, setVpMode] = useState<'local' | 'remote'>('local')
   const [voiceEnrollError, setVoiceEnrollError] = useState('')
   const [showVoiceEnroll, setShowVoiceEnroll] = useState(false)
+  // DC-007：双模式注册编排（local/remote）收敛到 hook（SPEC §21）
+  const { enroll } = useVoiceEnrollment()
 
   // 获取声纹模式配置
   useEffect(() => {
@@ -433,7 +437,7 @@ function RegisterForm({ themeId, onRegister }) {
       return (
         <div className={`done-panel done-panel--${themeId}`}>
           <span className="emoji">😢</span>
-          <h2>声纹保存失败</h2>
+          <h2>声音数据保存失败</h2>
           <p style={{ color: '#ef4444', fontSize: 13, margin: '8px 0' }}>{voiceEnrollError}</p>
           <p style={{ fontSize: 12, opacity: 0.6 }}>可以重新录入，或先跳过以后在设置里再录</p>
           <button
@@ -459,21 +463,11 @@ function RegisterForm({ themeId, onRegister }) {
         onComplete={async (result) => {
           if (result.embeddings && result.embeddings.length > 0) {
             try {
-              if (vpMode === 'remote') {
-                // remote 模式：embedding 传服务端存储
-                const { tenantId } = await remoteVoiceprintEnroll(result.embeddings)
-                // AUD-001：暂存服务端签发的租户，声纹登录 verify 时需回传租户维度
-                markRemoteVoiceprintEnrolled(tenantId)
-              } else {
-                // local 模式：存 IndexedDB + 签发设备凭证
-                await enrollVoiceprint(regUserId, form.pseudonym.trim(), result.embeddings)
-                try {
-                  const cred = await issueVoiceCredential()
-                  await saveVoiceCredential(regUserId, cred)
-                } catch (e) {
-                  console.warn('[声纹注册] 设备凭证签发失败（不影响本次注册）:', e)
-                }
-              }
+              // DC-007：双模式注册编排收敛（SPEC §21）——remote 传服务端 + 租户暂存，local 存 IndexedDB + 凭证签发
+              await enroll(
+                { userId: regUserId as string, pseudonym: form.pseudonym.trim(), embeddings: result.embeddings },
+                vpMode
+              )
               setHasVoiceprint(true)
               setStep('done')
             } catch (e) {

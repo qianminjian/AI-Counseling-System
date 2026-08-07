@@ -2,6 +2,12 @@ import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 
 export default defineConfig({
+  // DC-005：共享模块位于 root 之外（../shared），Vite fs.allow 放行否则无法加载
+  server: {
+    fs: {
+      allow: ['.', '../shared/src'],
+    },
+  },
   plugins: [react()],
   esbuild: {
     jsx: 'automatic',
@@ -17,7 +23,8 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     setupFiles: ['./src/test/setup.ts'],
-    include: ['src/**/*.{test,spec}.{ts,tsx}'],
+    // DC-005：共享认证传输模块纳入三端门禁（相对导入共享源码方案）
+    include: ['src/**/*.{test,spec}.{ts,tsx}', '../shared/src/**/*.test.ts'],
     coverage: {
       exclude: [
         'src/main.tsx',

@@ -8,7 +8,7 @@ import ToolboxPanel from './ToolboxPanel'
 import SosPanel from './SosPanel'
 import BoBoPet from './BoBoPet'
 import DraggableVoiceButton from './DraggableVoiceButton'
-import MessageBubble, { EMOTION_EMOJI, type ChatMessage } from './MessageBubble'
+import MessageBubble from './MessageBubble'
 import { useTheme } from '../theme/ThemeProvider'
 import { useVoicePersona } from '../hooks/useVoicePersona'
 import { useTtsPlayer } from '../hooks/useTtsPlayer'
@@ -18,8 +18,11 @@ import { useWakeEnabled } from '../hooks/useWakeEnabled'
 import { useSilenceNudge } from '../hooks/useSilenceNudge'
 import { useVoiceInputPipeline } from '../hooks/useVoiceInputPipeline'
 import { useChatSession } from '../hooks/useChatSession'
-import { api, getUser } from '../api'
-import { emotionBus } from '../utils/emotionBus'
+// DC-012：规则抽离（SPEC §26）——唤醒授权联动 / 安卓音频路由 / 波波状态机
+import { useWakeConsentFlow } from '../hooks/useWakeConsentFlow'
+import { useAndroidAudioRouting } from '../hooks/useAndroidAudioRouting'
+import { computeBoboState } from '../utils/chatRoomRules'
+import { getUser } from '../api'
 import { useBoboExpression } from '../hooks/useBoboExpression'
 import { useMotionPreference } from '../hooks/useMotionPreference'
 
@@ -49,7 +52,7 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: Se
   const boboExpression = useBoboExpression()
   // 动效偏好（design/37 §4.3/§4.4）：动画/触觉开关 + 帧率降级守卫
   const motion = useMotionPreference()
-  const { personaId, changePersona, activeDialect, selectedDialect, changeDialect, supportedDialects, persona, hasNativeVoice } = useVoicePersona()
+  const { personaId, changePersona, activeDialect, selectedDialect, changeDialect, supportedDialects, hasNativeVoice } = useVoicePersona()
 
   // 语音授权（合规）
   const { showDialog: showConsent, hasConsent, requestConsent, grantConsent, denyConsent } = useVoiceConsent()
@@ -107,22 +110,13 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: Se
     }
   }, [tts.engine])
 
-  // 首次进入：唤醒默认开启但未授权 → 自动弹出授权说明（合规，design/28 §1.4）
-  useEffect(() => {
-    if (wakeEnabled && !wakeConsent.hasConsent()) {
-      const t = setTimeout(() => wakeConsent.requestConsent(), 800)
-      return () => clearTimeout(t)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  // 预加载唤醒模型：一进对话就开始下载，利用 TTS 播放时间窗口
-  useEffect(() => {
-    if (wakeEnabled && wakeConsent.hasConsent()) {
-      preloadWakeModel()
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  // DC-012：唤醒授权联动抽离（SPEC §26）——首次进入未授权自动弹窗（合规 design/28 §1.4）；已授权预加载模型
+  useWakeConsentFlow({
+    enabled: wakeEnabled,
+    hasConsent: () => wakeConsent.hasConsent(),
+    requestConsent: () => wakeConsent.requestConsent(),
+    onPreload: preloadWakeModel,
+  })
 
 
 
@@ -184,29 +178,13 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: Se
     resetSilenceBase()
   }, [streaming, tts.playing, wakeEnabled, resetSilenceBase])
 
-  // 安卓音频路由保护：活跃麦克风会让 Chrome 切到“通话模式”（像打电话），把 TTS 路由到听筒且切不回扬声器。
-  // 对策：播放期间释放麦克风（保证走扬声器）；播放结束 600ms 后再预热（保证下次录音秒开）。
-  // 预热策略：
-  //   - 唤醒开启：挂载即预热（唤醒引擎本身也需要麦克风，指示器亮是预期行为）
-  //   - 唤醒关闭：等用户首次触摸页面后再预热（此时有用户手势，且用户已表达交互意图）
-  //   - 两种情况 TTS 播放期间都释放（安卓路由保护）
-  const [userInteracted, setUserInteracted] = useState(false)
-  useEffect(() => {
-    if (userInteracted) return
-    const handler = () => setUserInteracted(true)
-    document.addEventListener('pointerdown', handler, { once: true })
-    return () => document.removeEventListener('pointerdown', handler)
-  }, [userInteracted])
-  
-  useEffect(() => {
-    if (tts.playing) {
-      releaseStream()
-    } else if (hasConsent() && (wakeEnabled || userInteracted)) {
-      const timer = setTimeout(() => warmUpMic(), 600)
-      return () => clearTimeout(timer)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tts.playing, wakeEnabled, userInteracted])
+  // DC-012：安卓音频路由保护抽离（SPEC §26）——播放中释放麦克风；结束 600ms 预热（userInteracted 联动在 hook 内部）
+  useAndroidAudioRouting({
+    playing: tts.playing,
+    micWanted: hasConsent() && wakeEnabled,
+    releaseStream,
+    warmUpMic,
+  })
 
 
 
@@ -295,13 +273,14 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: Se
   }
 
   /* ===== 波波状态机（design/27 §4.3 + design/28 §1.1）：
-     recording > streaming > tts.playing > 待唤醒(standby) > 会话窗聆听(active) > idle ===== */
-  const boboState = recording ? 'listening'
-    : streaming ? 'thinking'
-    : tts.playing ? 'speaking'
-    : voiceCall.mode === 'standby' ? 'waitingWake'
-    : voiceCall.mode === 'active' ? 'listening'
-    : 'idle'
+     recording > streaming > tts.playing > 待唤醒(standby) > 会话窗聆听(active) > idle
+     DC-012：规则抽离到 computeBoboState 纯函数（SPEC §26） ===== */
+  const boboState = computeBoboState({
+    recording,
+    streaming,
+    playing: tts.playing,
+    wakeMode: voiceCall.mode,
+  })
 
   /* ===== 波波宠物（手机悬浮输入栏右上角 / Pad 左栏共用）— 按住说话 ===== */
   // 唤醒 active 模式下不展示残留转写，气泡显示聆听提示

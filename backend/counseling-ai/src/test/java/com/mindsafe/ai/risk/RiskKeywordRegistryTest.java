@@ -187,6 +187,36 @@ class RiskKeywordRegistryTest {
             assertThat(RiskKeywordRegistry.findCategory(java.util.List.of("不存在词")))
                     .isEqualTo("未分类");
         }
+
+        @ParameterizedTest
+        @ValueSource(strings = {"自伤/自杀", "他伤/暴力", "家庭虐待/忽视", "性侵/性骚扰", "严重抑郁/绝望"})
+        @DisplayName("高敏类别命中（DC-001：SAFE-202 门控类目）")
+        void highSensitivityHit(String category) {
+            assertThat(RiskKeywordRegistry.isHighSensitivityCategory(category)).isTrue();
+        }
+
+        @Test
+        @DisplayName("非高敏类别/空 → 不命中")
+        void highSensitivityMiss() {
+            assertThat(RiskKeywordRegistry.isHighSensitivityCategory("霸凌/网络欺凌")).isFalse();
+            assertThat(RiskKeywordRegistry.isHighSensitivityCategory("离家/失联")).isFalse();
+            assertThat(RiskKeywordRegistry.isHighSensitivityCategory(null)).isFalse();
+        }
+
+        @ParameterizedTest
+        @ValueSource(strings = {"性侵/性骚扰", "家庭虐待/忽视"})
+        @DisplayName("不降级类别命中（DC-001：否定/语境不可降级）")
+        void nonDegradableHit(String category) {
+            assertThat(RiskKeywordRegistry.isNonDegradableCategory(category)).isTrue();
+        }
+
+        @Test
+        @DisplayName("可降级类别/空 → 不命中")
+        void nonDegradableMiss() {
+            assertThat(RiskKeywordRegistry.isNonDegradableCategory("自伤/自杀")).isFalse();
+            assertThat(RiskKeywordRegistry.isNonDegradableCategory("")).isFalse();
+            assertThat(RiskKeywordRegistry.isNonDegradableCategory(null)).isFalse();
+        }
     }
 
     @Nested

@@ -1,5 +1,6 @@
 package com.mindsafe.api.controller;
 
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.mindsafe.api.security.JwtAuthenticationFilter.TenantContext;
 import com.mindsafe.common.dto.ErrorCode;
 import com.mindsafe.common.exception.BizException;
@@ -326,22 +327,22 @@ class AdminControllerTest {
     @Test
     @DisplayName("getAuditLogs 无 action → 全部日志（limit 默认 200）")
     void getAuditLogs_all() {
-        when(auditLogMapper.selectList(any())).thenReturn(List.of(new AuditLog()));
+        when(auditLogMapper.selectPage(any(), any())).thenReturn(new Page<AuditLog>().setRecords(List.of(new AuditLog())));
 
         var resp = controller.getAuditLogs(adminAuth(), null, 200);
 
         assertThat(resp.code()).isEqualTo(0);
         assertThat(resp.data()).hasSize(1);
-        verify(auditLogMapper).selectList(any());
+        verify(auditLogMapper).selectPage(any(), any());
     }
 
     @Test
     @DisplayName("getAuditLogs 带 action → 按动作过滤")
     void getAuditLogs_byAction() {
-        when(auditLogMapper.selectList(any())).thenReturn(List.of());
+        when(auditLogMapper.selectPage(any(), any())).thenReturn(new Page<AuditLog>().setRecords(List.of()));
 
         controller.getAuditLogs(adminAuth(), "LOGIN", 200);
 
-        verify(auditLogMapper).selectList(any());
+        verify(auditLogMapper).selectPage(any(), any());
     }
 }

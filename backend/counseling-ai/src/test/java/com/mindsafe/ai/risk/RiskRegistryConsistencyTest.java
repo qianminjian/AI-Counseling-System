@@ -128,4 +128,30 @@ class RiskRegistryConsistencyTest {
                     .contains("想死", "遗书", "跳楼");
         }
     }
+
+    @Nested
+    @DisplayName("高敏/不降级类别必须是既有风险类别（DC-001 防漂移护栏）")
+    class SensitivityCategoryConsistency {
+
+        @Test
+        @DisplayName("高敏类别 ⊆ RISK_KEYWORDS 类别表（中文权威类别子集）")
+        void highSensitivitySubset() {
+            assertThat(RiskKeywordRegistry.HIGH_SENSITIVITY_CATEGORIES)
+                    .isSubsetOf(RiskKeywordRegistry.RISK_KEYWORDS.keySet());
+        }
+
+        @Test
+        @DisplayName("不降级类别 ⊆ RISK_KEYWORDS 类别表")
+        void nonDegradableSubset() {
+            assertThat(RiskKeywordRegistry.NON_DEGRADABLE_CATEGORIES)
+                    .isSubsetOf(RiskKeywordRegistry.RISK_KEYWORDS.keySet());
+        }
+
+        @Test
+        @DisplayName("不降级类别 ⊆ 高敏类别（语义：不可降级必高敏）")
+        void nonDegradableSubsetOfHighSensitivity() {
+            assertThat(RiskKeywordRegistry.NON_DEGRADABLE_CATEGORIES)
+                    .isSubsetOf(RiskKeywordRegistry.HIGH_SENSITIVITY_CATEGORIES);
+        }
+    }
 }

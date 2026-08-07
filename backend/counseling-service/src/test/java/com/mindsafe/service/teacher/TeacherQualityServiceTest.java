@@ -2,6 +2,7 @@ package com.mindsafe.service.teacher;
 
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.mindsafe.domain.entity.CounselingSession;
 import com.mindsafe.domain.entity.MessageSummary;
 import com.mindsafe.domain.entity.QualityScore;
@@ -103,8 +104,8 @@ class TeacherQualityServiceTest {
     void qualityScoresEnrichesAndPaginates() {
         // 学生筛选：有匹配会话
         when(sessionMapper.selectList(any())).thenReturn(List.of(session(sessionId, 4)));
-        when(qualityScoreMapper.selectCount(any())).thenReturn(1L);
-        when(qualityScoreMapper.selectList(any())).thenReturn(List.of(score(UUID.randomUUID(), 88)));
+        when(qualityScoreMapper.selectPage(any(), any())).thenReturn(
+                new Page<QualityScore>().setTotal(1L).setRecords(List.of(score(UUID.randomUUID(), 88))));
         when(sessionMapper.selectBatchIds(any())).thenReturn(List.of(session(sessionId, 4)));
         User student = new User();
         student.setUserId(studentId);

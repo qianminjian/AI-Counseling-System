@@ -69,6 +69,8 @@ export default function MessageBubble({ msg, isLast, streaming, onReplay, isSpea
               bg-white shadow-md border border-gray-100 transition-all active:scale-90
               ${isSpeaking ? 'text-[var(--primary)]' : 'text-gray-400 hover:text-[var(--primary)]'}`}
             title="播放语音"
+            // AUD-050：aria-label 供读屏器识别（title 仅悬浮提示，读屏不保证朗读）
+            aria-label={isSpeaking ? '正在播放语音' : '播放语音'}
           >
             {isSpeaking ? (
               <span className="flex items-end gap-[2px] h-3.5">

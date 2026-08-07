@@ -34,6 +34,8 @@ import {
 } from '../config/wakeWord'
 import { createPcmCapture, type PcmCaptureHandle } from '../utils/createPcmCapture'
 import { createModelStatusStore, type ModelStatus } from '../utils/modelStatusStore'
+// DC-009：Transformers.js 初始化收敛到共享 loader（SPEC §23）
+import { loadTransformersModel, createProgressHandler, formatModelError } from '../utils/transformersLoader'
 
 /** Whisper 要求的采样率 */
 const TARGET_SAMPLE_RATE = 16000
@@ -118,81 +120,37 @@ let transcriberPromise = null
 function getTranscriber() {
   if (!transcriberPromise) {
     setModelStatus('loading')
-    transcriberPromise = (async () => {
-      // ━━ 环境前置检查：SharedArrayBuffer + SIMD 是 ORT WASM 的硬性依赖 ━━
-      if (typeof SharedArrayBuffer === 'undefined') {
-        if (import.meta.env.DEV) console.warn('[WakeWord] SharedArrayBuffer不可用，语音功能降级')
-        throw Object.assign(new Error('ENV_UNSUPPORTED'), { _unsupported: true })
-      }
-      let hasSimd = false
-      try {
-        hasSimd = WebAssembly.validate(new Uint8Array([0,97,115,109,1,0,0,0,1,5,1,96,0,1,123,3,2,1,0,10,8,1,6,0,65,0,253,15,11]))
-      } catch { /* ignore */ }
-      if (!hasSimd) {
-        if (import.meta.env.DEV) console.warn('[WakeWord] 浏览器不支持WebAssembly SIMD，语音功能降级')
-        throw Object.assign(new Error('ENV_UNSUPPORTED'), { _unsupported: true })
-      }
-
-      // 动态导入：Transformers.js 独立分包，未启用唤醒时主路径零开销
-      const { pipeline, env } = await import('@huggingface/transformers')
-      // 模型同源部署：从自己服务器加载（/mindsafe/models/），浏览器 HTTP 缓存持久化
-      const base = import.meta.env.BASE_URL || '/'
-      // 关键：remoteHost 必须是绝对 URL，否则 get_file_metadata 内的 new URL() 会失败，
-      // 导致 preprocessor_config.json 存在性检查返回 false → processor 不加载 → 转写崩溃
-      let remoteHost = WAKE_MODEL_REMOTE_HOST === 'SAME_ORIGIN'
-        ? `${base}models/`
-        : WAKE_MODEL_REMOTE_HOST
-      if (remoteHost && !remoteHost.startsWith('http')) {
-        remoteHost = window.location.origin + remoteHost
-      }
-      env.remoteHost = remoteHost
-      // 自托管模型不带 /resolve/{revision}/ 路径段
-      env.remotePathTemplate = '{model}/'
-      env.allowLocalModels = false
-
-      // ━━ 关键修复 1：禁用 WASM 缓存，避免 blob URL 工厂导致 Worker 创建失败 ━━
-      env.useWasmCache = false
-      // ━━ 关键修复 2：单线程模式，避免 ORT 创建 pthread Worker ━━
-      env.backends.onnx.wasm.numThreads = 1
-
-      // 请求持久化存储（防止浏览器在存储压力下清除模型缓存）
-      navigator.storage?.persist?.().catch(() => {})
-      // ONNX Runtime WASM 走本地（dist/ort/ → /mindsafe/ort/）
-      // 始终用非 asyncify 变体（ORT 主代码非 asyncify 编译，asyncify 调用约定不匹配）
-      const variant = 'ort-wasm-simd-threaded'
-      env.backends.onnx.wasm.wasmPaths = {
-        mjs: `${base}ort/${variant}.mjs`,
-        wasm: `${base}ort/${variant}.wasm`,
-      }
-      const t = await pipeline('automatic-speech-recognition', WAKE_MODEL_ID, {
-        // 禁用高级图优化：ORT 1.26.0 的 TransposeDQWeightsForMatMulNBits
-        // 优化对 int8 QDQ 模型有 bug（缺少 scale 张量导致 session 创建失败）
-        session_options: { graphOptimizationLevel: 'basic' },
-        progress_callback: (p) => {
-          if (p.status === 'progress_total' && typeof p.progress === 'number') {
-            // 聚合进度（跨所有文件的总百分比）
-            dbg(`模型总进度 ${p.progress.toFixed(0)}%`)
-            setModelStatus('loading', Math.round(p.progress))
-          } else if (p.status === 'progress' && p.file && typeof p.progress === 'number') {
-            dbg(`${p.file} ${p.progress.toFixed(0)}%`)
-          }
-        },
-      })
-      setModelStatus('ready')
-      return t
-    })().catch((err) => {
-      transcriberPromise = null
-      if (err?._unsupported) {
-        setModelStatus('unsupported')
-        return null as any
-      }
-      const errMsg = err?.message || String(err)
-      const errStack = err?.stack?.split('\n').slice(0, 3).join(' | ') || ''
-      const fullMsg = `${errMsg}${errStack ? ' @ ' + errStack : ''}`
-      console.error('[WakeWord] 模型加载失败:', fullMsg, err)
-      setModelStatus('error', undefined, fullMsg)
-      throw err
+    transcriberPromise = loadTransformersModel({
+      modelHost: WAKE_MODEL_REMOTE_HOST,
+      // DC-009：环境检查/env 配置已移入 loader；此处仅保留模型 API 调用与状态机
+      load: async ({ pipeline }) => {
+        const t = await pipeline('automatic-speech-recognition', WAKE_MODEL_ID, {
+          // 禁用高级图优化：ORT 1.26.0 的 TransposeDQWeightsForMatMulNBits
+          // 优化对 int8 QDQ 模型有 bug（缺少 scale 张量导致 session 创建失败）
+          session_options: { graphOptimizationLevel: 'basic' },
+          progress_callback: createProgressHandler((p) => {
+            dbg(`模型总进度 ${p}%`)
+            setModelStatus('loading', p)
+          }),
+        })
+        setModelStatus('ready')
+        return t
+      },
+      onError: (err) => {
+        const fullMsg = formatModelError(err)
+        console.error('[WakeWord] 模型加载失败:', fullMsg, err)
+        setModelStatus('error', undefined, fullMsg)
+      },
     })
+      .catch((err) => {
+        transcriberPromise = null
+        // 环境不支持（SAB/SIMD）→ 静默降级，不报错；其余错误已由 onError 置 error 态
+        if (err?.unsupported) {
+          setModelStatus('unsupported')
+          return null as any
+        }
+        throw err
+      })
   }
   return transcriberPromise
 }

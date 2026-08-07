@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { Layout, Menu, Badge, message, notification } from 'antd'
 import {
   BellOutlined, WarningOutlined, TeamOutlined, LogoutOutlined,
@@ -120,7 +120,11 @@ export default function Dashboard({ user, onLogout, darkMode, toggleDark }) {
   }, [])
 
   useEffect(() => {
-    const timer = setInterval(() => pollUnread(true), POLL_INTERVAL)
+    const timer = setInterval(() => {
+      // AUD-047：页面不可见时暂停轮询（后台标签页不空转请求）
+      if (document.hidden) return
+      pollUnread(true)
+    }, POLL_INTERVAL)
     return () => clearInterval(timer)
   }, [pollUnread])
 
@@ -132,14 +136,15 @@ export default function Dashboard({ user, onLogout, darkMode, toggleDark }) {
     },
   })
 
-  const menuItems = [
+  // AUD-049：menuItems 依赖 unreadCount/isAdmin，用 useMemo 缓存避免每次渲染重建
+  const menuItems = useMemo(() => [
     ...MENU_ITEMS.map((item) =>
       item.key === 'notifications'
         ? { ...item, icon: <Badge count={unreadCount} size="small"><BellOutlined /></Badge> }
         : item
     ),
     ...(isAdmin ? ADMIN_MENU_ITEMS : []),
-  ]
+  ], [unreadCount, isAdmin])
 
   const TITLES = {
     overview: '工作台',

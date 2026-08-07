@@ -138,9 +138,9 @@ public class RiskDetectorServiceImpl implements RiskDetectorService {
         return matches;
     }
 
-    /** 判断是否为不可降级的敏感类别（性侵/虐待） */
+    /** 判断是否为不可降级的敏感类别（性侵/虐待，DC-001：RiskKeywordRegistry 单一类别源） */
     private boolean isSensitiveCategory(List<String> matchedKeywords) {
         String category = RiskKeywordRegistry.findCategory(matchedKeywords);
-        return category.contains("性侵") || category.contains("虐待");
+        return RiskKeywordRegistry.isNonDegradableCategory(category);
     }
 }

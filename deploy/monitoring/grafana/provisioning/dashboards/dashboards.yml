@@ -6,6 +6,7 @@ providers:
     folder: ''
     type: file
     disableDeletion: false
-    editable: true
+    # AUD-056：仪表盘只读（editable: false），防误改配置层数据
+    editable: false
     options:
       path: /etc/grafana/provisioning/dashboards

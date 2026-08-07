@@ -87,7 +87,14 @@ public class ConversationRiskProcessor {
         int score = semanticLevel == RiskLevel.RED ? RiskKeywordRegistry.SCORE_HARD
                 : semanticLevel == RiskLevel.ORANGE ? RiskKeywordRegistry.SCORE_ORANGE
                 : RiskKeywordRegistry.SCORE_SEMANTIC_YELLOW;
-        return new RiskDetectionResult(semanticLevel, "llm_semantic", List.of(), score, false,
+        // DC-001（doing/72 §16）：语义升级时保留关键词真实类别（真实类别落库 + 高敏门控可命中）；
+        // 无类别（未分类/null）时维持 llm_semantic 兜底标识
+        String category = (keywordResult.category() != null
+                && !keywordResult.category().isBlank()
+                && !"未分类".equals(keywordResult.category()))
+                ? keywordResult.category()
+                : "llm_semantic";
+        return new RiskDetectionResult(semanticLevel, category, List.of(), score, false,
                 "语义分析识别到隐性风险表达（隐喻/暗示），请结合原文人工复核");
     }
 

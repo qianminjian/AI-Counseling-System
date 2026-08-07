@@ -11,8 +11,10 @@
 import { useState, useEffect, useRef } from 'react'
 import { useTheme, THEMES } from '../theme/ThemeProvider'
 import { useVoicePersona, VOICE_PERSONAS, NATIVE_DIALECT_IDS } from '../hooks/useVoicePersona'
-import { api, getUser, issueVoiceCredential, getVoiceprintConfig, remoteVoiceprintEnroll } from '../api'
-import { hasAnyVoiceprint, deleteVoiceprint, enrollVoiceprint, saveVoiceCredential, markRemoteVoiceprintEnrolled, clearRemoteVoiceprintMark } from '../utils/voiceprintStore'
+import { api, getUser, getVoiceprintConfig } from '../api'
+import { hasAnyVoiceprint, deleteVoiceprint, clearRemoteVoiceprintMark } from '../utils/voiceprintStore'
+// DC-007：声纹注册编排收敛（SPEC §21）
+import { useVoiceEnrollment } from '../hooks/useVoiceEnrollment'
 import { useMotionPreference } from '../hooks/useMotionPreference'
 import VoiceLoginOverlay from './VoiceLoginOverlay'
 import ConfirmDialog from './ConfirmDialog'
@@ -52,6 +54,8 @@ export default function SettingsPanel({ open, onClose, muted, onToggleMute, wake
   const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => () => { if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current) }, [])
   const [hasVoiceprint, setHasVoiceprint] = useState(false)
+  // DC-007：双模式重录编排（local/remote）收敛到 hook（SPEC §21）
+  const { enroll } = useVoiceEnrollment()
   const [showEnroll, setShowEnroll] = useState(false)
   const [enrollError, setEnrollError] = useState('')
   const [confirmAction, setConfirmAction] = useState<'deleteVp' | null>(null)
@@ -93,26 +97,16 @@ export default function SettingsPanel({ open, onClose, muted, onToggleMute, wake
         onComplete={async (result) => {
           if (result.embeddings && result.embeddings.length > 0 && user?.userId) {
             try {
-              if (vpMode === 'remote') {
-                // remote 模式：embedding 传服务端存储
-                const { tenantId } = await remoteVoiceprintEnroll(result.embeddings)
-                // AUD-001：暂存服务端签发的租户，声纹登录 verify 时需回传租户维度
-                markRemoteVoiceprintEnrolled(tenantId)
-              } else {
-                // local 模式：存 IndexedDB + 签发设备凭证
-                await enrollVoiceprint(user.userId as string, (user.pseudonym || '') as string, result.embeddings)
-                try {
-                  const cred = await issueVoiceCredential()
-                  await saveVoiceCredential(user.userId as string, cred)
-                } catch (e) {
-                  console.warn('[声纹重录] 设备凭证签发失败（不影响本次录入）:', e)
-                }
-              }
+              // DC-007：双模式重录编排收敛（SPEC §21）——remote 传服务端 + 租户暂存，local 存 IndexedDB + 凭证签发
+              await enroll(
+                { userId: user.userId as string, pseudonym: (user.pseudonym || '') as string, embeddings: result.embeddings },
+                vpMode
+              )
               setHasVoiceprint(true)
               setEnrollError('')
             } catch (e) {
               console.error('[声纹重录] 存储失败:', e)
-              setEnrollError('声纹保存失败，请检查网络后重试')
+              setEnrollError('声音数据保存失败，请检查网络后重试')
             }
           }
           setShowEnroll(false)

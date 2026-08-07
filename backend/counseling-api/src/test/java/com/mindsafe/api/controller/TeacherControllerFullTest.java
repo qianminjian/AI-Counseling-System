@@ -2,6 +2,7 @@ package com.mindsafe.api.controller;
 
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.mindsafe.api.security.JwtAuthenticationFilter.TenantContext;
 import com.mindsafe.api.security.JwtTokenProvider;
 import com.mindsafe.common.dto.ApiResponse;
@@ -364,12 +365,12 @@ class TeacherControllerFullTest {
     @Test
     @DisplayName("getRiskEvents 按租户查询 + limit 上限 100")
     void riskEvents() {
-        when(riskEventMapper.selectList(any())).thenReturn(List.of(new RiskEvent()));
+        when(riskEventMapper.selectPage(any(), any())).thenReturn(new Page<RiskEvent>().setRecords(List.of(new RiskEvent())));
 
         var resp = controller.getRiskEvents(teacherAuth("psych_teacher"), 500);
 
         assertThat(resp.code()).isEqualTo(0);
-        verify(riskEventMapper).selectList(any());
+        verify(riskEventMapper).selectPage(any(), any());
     }
 
     // ===== 导出 =====

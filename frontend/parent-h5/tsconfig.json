@@ -21,6 +21,8 @@
     "noFallthroughCasesInSwitch": true,
     "forceConsistentCasingInFileNames": true
   },
-  "include": ["src"],
-  "exclude": ["src/test/**", "src/**/*.test.ts", "src/**/*.test.tsx"]
+  // DC-005：共享认证传输模块相对导入（shared 测试由 vitest 转译，不纳入 tsc；
+  // shared 源码须满足 parent 严格 tsconfig 标准）
+  "include": ["src", "../../shared/src"],
+  "exclude": ["src/test/**", "src/**/*.test.ts", "src/**/*.test.tsx", "../../shared/src/**/*.test.ts"]
 }

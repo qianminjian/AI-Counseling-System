@@ -1,5 +1,6 @@
 package com.mindsafe.api.ratelimit;
 
+import com.mindsafe.common.tenant.TenantContextHolder;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -27,6 +28,15 @@ public class RateLimiter {
     private static final int MAX_REQUESTS_PER_MINUTE = 30;
     private static final Duration WINDOW = Duration.ofMinutes(1);
 
+    /**
+     * AUD-041：已认证用户限流 key 带租户段（ratelimit:{tenantId}:{action}:{userId}），
+     * 与 session:state: 前缀对齐（ARCH-010 D2），防跨租户 key 碰撞/统计污染；
+     * 无租户上下文（防御回退）时保持旧格式。公开端点重载（IP/指纹 key）不属租户维度，不添加。
+     */
+    private static String tenantSegmented(UUID tenantId) {
+        return tenantId != null ? KEY_PREFIX + tenantId + ":" : KEY_PREFIX;
+    }
+
     private final StringRedisTemplate redisTemplate;
     private final MeterRegistry meterRegistry;
 
@@ -50,7 +60,7 @@ public class RateLimiter {
      * @return true = 允许通过，false = 已限流
      */
     public boolean tryAcquire(UUID userId, String action) {
-        String key = KEY_PREFIX + action + ":" + userId;
+        String key = tenantSegmented(TenantContextHolder.get()) + action + ":" + userId;
         Long count;
         try {
             count = redisTemplate.opsForValue().increment(key);
@@ -115,7 +125,7 @@ public class RateLimiter {
      * 获取剩余配额
      */
     public int remainingQuota(UUID userId, String action) {
-        String key = KEY_PREFIX + action + ":" + userId;
+        String key = tenantSegmented(TenantContextHolder.get()) + action + ":" + userId;
         String val = redisTemplate.opsForValue().get(key);
         int current = val != null ? Integer.parseInt(val) : 0;
         return Math.max(0, MAX_REQUESTS_PER_MINUTE - current);

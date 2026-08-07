@@ -1,6 +1,7 @@
 package com.mindsafe.service.teacher;
 
 import com.baomidou.mybatisplus.core.conditions.Wrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.mindsafe.domain.entity.RiskEvent;
 import com.mindsafe.domain.entity.TeacherNote;
 import com.mindsafe.domain.entity.User;
@@ -152,7 +153,7 @@ class TeacherCaseTrackingTest {
     @Test
     void 个案跟踪中_S2预警_静音() {
         givenStudent();
-        when(riskEventMapper.selectList(any(Wrapper.class))).thenReturn(List.of(givenAlert(1)));
+        when(riskEventMapper.selectPage(any(), any())).thenReturn(new Page<RiskEvent>().setRecords(List.of(givenAlert(1))));
         when(teacherNoteMapper.selectList(any(Wrapper.class)))
                 .thenReturn(List.of(caseTrackingNote("active", Instant.now())));
 
@@ -165,7 +166,7 @@ class TeacherCaseTrackingTest {
     @Test
     void 个案跟踪中_S1预警_不静音() {
         givenStudent();
-        when(riskEventMapper.selectList(any(Wrapper.class))).thenReturn(List.of(givenAlert(2)));
+        when(riskEventMapper.selectPage(any(), any())).thenReturn(new Page<RiskEvent>().setRecords(List.of(givenAlert(2))));
         when(teacherNoteMapper.selectList(any(Wrapper.class)))
                 .thenReturn(List.of(caseTrackingNote("active", Instant.now())));
 
@@ -177,7 +178,7 @@ class TeacherCaseTrackingTest {
     @Test
     void 未跟踪_S2预警_不静音() {
         givenStudent();
-        when(riskEventMapper.selectList(any(Wrapper.class))).thenReturn(List.of(givenAlert(1)));
+        when(riskEventMapper.selectPage(any(), any())).thenReturn(new Page<RiskEvent>().setRecords(List.of(givenAlert(1))));
         when(teacherNoteMapper.selectList(any(Wrapper.class))).thenReturn(List.of());
 
         List<TeacherService.AlertVO> alerts = teacherService.getAlerts(tenantId, null, null, 50);
@@ -189,7 +190,7 @@ class TeacherCaseTrackingTest {
     void 最新一条为inactive_不静音() {
         givenStudent();
         Instant base = Instant.now();
-        when(riskEventMapper.selectList(any(Wrapper.class))).thenReturn(List.of(givenAlert(0)));
+        when(riskEventMapper.selectPage(any(), any())).thenReturn(new Page<RiskEvent>().setRecords(List.of(givenAlert(0))));
         when(teacherNoteMapper.selectList(any(Wrapper.class))).thenReturn(List.of(
                 caseTrackingNote("active", base.minusSeconds(60)),
                 caseTrackingNote("inactive", base)
