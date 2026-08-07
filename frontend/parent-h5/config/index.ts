@@ -1,5 +1,6 @@
 import path from 'node:path'
 import { defineConfig, type UserConfigExport } from '@tarojs/cli'
+import { toCustomRoutes } from '../src/routing/route-map'
 
 // doing/73 D2 决策（R8）：compiler.type = 'webpack5'（Taro 4 默认，稳定优先）
 // 平台耦合点：h5.router（browser + basename /parent）与 publicPath 对齐迁移前 URL/部署
@@ -47,6 +48,8 @@ export default defineConfig<'webpack5'>(async (merge) => {
       router: {
         mode: 'browser',
         basename: '/parent',
+        // doing/73 T2：pages 路径 → H5 URL 映射（与迁移前 React Router 四路由等价，route-map.ts 为单一事实源）
+        customRoutes: toCustomRoutes(),
       },
       // 视觉零变化（doing/73 §3.6）：关闭 pxtransform，保留现状 px 值
       postcss: {

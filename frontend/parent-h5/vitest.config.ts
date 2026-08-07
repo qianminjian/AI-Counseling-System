@@ -42,11 +42,11 @@ export default defineConfig({
     exclude: ['src/test/VerifyPage.test.tsx', 'src/test/ReportPage.test.tsx', 'src/test/ConsentPage.test.tsx', 'src/test/PrivacyPage.test.tsx'],
     coverage: {
       exclude: [
-        'src/main.tsx',
+        'src/app.tsx',
         'src/vite-env.d.ts',
         'dist/**',
         'vitest.config.ts',
-        'vite.config.ts',
+        'vite.config.js',
       ],
       // 审计 P1-11：覆盖率门禁（CI 构建强制，与 student-h5/teacher-web 对齐）
       // 阈值基于 2026-08 实测（lines 61.77 / branches 68.83 / functions 39.02）留余量

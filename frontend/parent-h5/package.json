@@ -5,9 +5,9 @@
   "description": "MindSafe 家长端 H5",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc && vite build",
-    "preview": "vite preview",
+    "dev": "taro build --type h5 --watch",
+    "build": "taro build --type h5",
+    "preview": "taro build --type h5 --watch",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint",
     "test": "vitest run",
