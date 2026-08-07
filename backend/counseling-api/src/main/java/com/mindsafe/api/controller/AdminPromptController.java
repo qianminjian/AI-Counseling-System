@@ -1,15 +1,9 @@
 package com.mindsafe.api.controller;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.mindsafe.api.security.JwtAuthenticationFilter.TenantContext;
 import com.mindsafe.common.dto.ApiResponse;
 import com.mindsafe.common.dto.ErrorCode;
-import com.mindsafe.domain.entity.CounselingSession;
 import com.mindsafe.domain.entity.PromptVersion;
-import com.mindsafe.domain.entity.QualityScore;
-import com.mindsafe.domain.mapper.CounselingSessionMapper;
-import com.mindsafe.domain.mapper.PromptVersionMapper;
-import com.mindsafe.domain.mapper.QualityScoreMapper;
 import com.mindsafe.service.audit.AuditLogService;
 import com.mindsafe.service.prompt.PromptEvalGovernance;
 import com.mindsafe.service.prompt.PromptEvalScoreReader;
@@ -32,26 +26,17 @@ import java.util.stream.Collectors;
 public class AdminPromptController {
 
     private final PromptVersionService promptVersionService;
-    private final PromptVersionMapper promptVersionMapper;
-    private final CounselingSessionMapper sessionMapper;
-    private final QualityScoreMapper qualityScoreMapper;
     private final AuditLogService auditLogService;
     private final TemplateMatrixRegistry templateMatrixRegistry;
     private final PromptEvalGovernance promptEvalGovernance;
     private final PromptEvalScoreReader evalScoreReader;
 
     public AdminPromptController(PromptVersionService promptVersionService,
-                                 PromptVersionMapper promptVersionMapper,
-                                 CounselingSessionMapper sessionMapper,
-                                 QualityScoreMapper qualityScoreMapper,
                                  AuditLogService auditLogService,
                                  TemplateMatrixRegistry templateMatrixRegistry,
                                  PromptEvalGovernance promptEvalGovernance,
                                  PromptEvalScoreReader evalScoreReader) {
         this.promptVersionService = promptVersionService;
-        this.promptVersionMapper = promptVersionMapper;
-        this.sessionMapper = sessionMapper;
-        this.qualityScoreMapper = qualityScoreMapper;
         this.auditLogService = auditLogService;
         this.templateMatrixRegistry = templateMatrixRegistry;
         this.promptEvalGovernance = promptEvalGovernance;
@@ -73,7 +58,7 @@ public class AdminPromptController {
     /** 查询单个版本详情 */
     @GetMapping("/versions/{versionId}")
     public ApiResponse<Map<String, Object>> getVersion(@PathVariable UUID versionId) {
-        PromptVersion pv = promptVersionMapper.selectById(versionId);
+        PromptVersion pv = promptVersionService.getVersionById(versionId);
         if (pv == null) {
             return ApiResponse.ok(Map.of("error", "版本不存在"));
         }
@@ -133,16 +118,10 @@ public class AdminPromptController {
         return ApiResponse.ok(null);
     }
 
-    /** 停用版本 */
+    /** 停用版本（T4 批次B：查询 + 状态更新 + 缓存失效下沉 Service） */
     @PostMapping("/versions/{versionId}/deactivate")
     public ApiResponse<Void> deactivateVersion(@PathVariable UUID versionId) {
-        PromptVersion pv = promptVersionMapper.selectById(versionId);
-        if (pv != null) {
-            pv.setIsActive(false);
-            pv.setUpdatedAt(java.time.Instant.now());
-            promptVersionMapper.updateById(pv);
-            promptVersionService.invalidateCache();
-        }
+        promptVersionService.deactivateVersion(versionId);
         return ApiResponse.ok(null);
     }
 
@@ -156,68 +135,8 @@ public class AdminPromptController {
     public ApiResponse<Map<String, Object>> abComparison(
             @RequestParam UUID tenantId,
             @RequestParam(required = false) String templateKey) {
-
-        // 查询该租户所有有 prompt_version 记录的会话
-        LambdaQueryWrapper<CounselingSession> sessionWrapper = new LambdaQueryWrapper<CounselingSession>()
-                .eq(CounselingSession::getTenantId, tenantId)
-                .isNotNull(CounselingSession::getPromptVersion);
-        if (templateKey != null) {
-            sessionWrapper.likeRight(CounselingSession::getPromptVersion, templateKey + ":");
-        }
-        List<CounselingSession> sessions = sessionMapper.selectList(sessionWrapper);
-
-        if (sessions.isEmpty()) {
-            return ApiResponse.ok(Map.of("groups", List.of(), "totalSessions", 0));
-        }
-
-        // 按 ab_group 分组（从 versionTag 解析：SYS_001:v3:treatment_a → treatment_a）
-        Map<String, List<UUID>> groupSessions = new LinkedHashMap<>();
-        for (CounselingSession s : sessions) {
-            String tag = s.getPromptVersion();
-            String group = tag.contains(":") ? tag.substring(tag.lastIndexOf(':') + 1) : "unknown";
-            groupSessions.computeIfAbsent(group, k -> new ArrayList<>()).add(s.getSessionId());
-        }
-
-        // 每组计算质量评分均值
-        List<Map<String, Object>> groups = new ArrayList<>();
-        for (Map.Entry<String, List<UUID>> entry : groupSessions.entrySet()) {
-            List<UUID> sessionIds = entry.getValue();
-            List<QualityScore> scores = qualityScoreMapper.selectList(
-                    new LambdaQueryWrapper<QualityScore>()
-                            .in(QualityScore::getSessionId, sessionIds));
-
-            Map<String, Object> groupStat = new LinkedHashMap<>();
-            groupStat.put("abGroup", entry.getKey());
-            groupStat.put("sessionCount", sessionIds.size());
-            groupStat.put("scoredCount", scores.size());
-
-            if (!scores.isEmpty()) {
-                double avgEmpathy = scores.stream()
-                        .filter(q -> q.getEmpathyScore() != null)
-                        .mapToDouble(q -> q.getEmpathyScore().doubleValue()).average().orElse(0);
-                double avgCbt = scores.stream()
-                        .filter(q -> q.getCbtCompletion() != null)
-                        .mapToDouble(q -> q.getCbtCompletion().doubleValue()).average().orElse(0);
-                double avgSafety = scores.stream()
-                        .filter(q -> q.getSafetyCompliance() != null)
-                        .mapToDouble(q -> q.getSafetyCompliance().doubleValue()).average().orElse(0);
-                double avgEngagement = scores.stream()
-                        .filter(q -> q.getEngagementScore() != null)
-                        .mapToDouble(q -> q.getEngagementScore().doubleValue()).average().orElse(0);
-                groupStat.put("avgEmpathy", Math.round(avgEmpathy * 100) / 100.0);
-                groupStat.put("avgCbtCompletion", Math.round(avgCbt * 100) / 100.0);
-                groupStat.put("avgSafetyCompliance", Math.round(avgSafety * 100) / 100.0);
-                groupStat.put("avgEngagement", Math.round(avgEngagement * 100) / 100.0);
-                double overall = (avgEmpathy + avgCbt + avgSafety + avgEngagement) / 4;
-                groupStat.put("avgOverall", Math.round(overall * 100) / 100.0);
-            }
-            groups.add(groupStat);
-        }
-
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("totalSessions", sessions.size());
-        result.put("groups", groups);
-        return ApiResponse.ok(result);
+        // T4 批次C：分组统计逻辑整体下沉 PromptVersionService（Controller 不再直查 Mapper）
+        return ApiResponse.ok(promptVersionService.abComparison(tenantId, templateKey));
     }
 
     // ===== 工具方法 =====
@@ -254,7 +173,7 @@ public class AdminPromptController {
         double safetyMean = 1.0;
         String versionTag = null;
         if (versionId != null) {
-            PromptVersion version = promptVersionMapper.selectById(versionId);
+            PromptVersion version = promptVersionService.getVersionById(versionId);
             if (version != null) {
                 versionTag = version.versionTag();
                 safetyMean = evalScoreReader.readSafetyMean(versionTag);
@@ -264,19 +183,13 @@ public class AdminPromptController {
         // fix-gate：evalDelta 从库读数（目标版本 vs 基线版本 overall score 差值）
         double evalDelta = 0.0;
         if (versionId != null) {
-            PromptVersion target = promptVersionMapper.selectById(versionId);
+            PromptVersion target = promptVersionService.getVersionById(versionId);
             if (target != null) {
                 PromptEvalScoreReader.EvalStat targetStat = evalScoreReader.read(target.versionTag());
-                // 基线取最近一条非当前版本的活跃版本
-                List<PromptVersion> activeOthers = promptVersionMapper.selectList(
-                        new LambdaQueryWrapper<PromptVersion>()
-                                .eq(PromptVersion::getTemplateKey, target.getTemplateKey())
-                                .eq(PromptVersion::getIsActive, true)
-                                .ne(PromptVersion::getVersionId, versionId)
-                                .orderByDesc(PromptVersion::getUpdatedAt)
-                                .last("LIMIT 1"));
-                if (!activeOthers.isEmpty()) {
-                    PromptEvalScoreReader.EvalStat baseStat = evalScoreReader.read(activeOthers.get(0).versionTag());
+                // 基线取最近一条非当前版本的活跃版本（查询下沉 Service）
+                PromptVersion baseline = promptVersionService.findActiveBaseline(target.getTemplateKey(), versionId);
+                if (baseline != null) {
+                    PromptEvalScoreReader.EvalStat baseStat = evalScoreReader.read(baseline.versionTag());
                     evalDelta = targetStat.overallScore() - baseStat.overallScore();
                 }
             }

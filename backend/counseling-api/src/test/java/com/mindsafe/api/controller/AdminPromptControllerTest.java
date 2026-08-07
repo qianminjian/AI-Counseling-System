@@ -1,30 +1,19 @@
 package com.mindsafe.api.controller;
 
-import com.baomidou.mybatisplus.core.MybatisConfiguration;
-import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.mindsafe.api.security.JwtAuthenticationFilter.TenantContext;
 import com.mindsafe.common.dto.ApiResponse;
 import com.mindsafe.common.dto.ErrorCode;
-import com.mindsafe.domain.entity.CounselingSession;
 import com.mindsafe.domain.entity.PromptVersion;
-import com.mindsafe.domain.entity.QualityScore;
-import com.mindsafe.domain.mapper.CounselingSessionMapper;
-import com.mindsafe.domain.mapper.PromptVersionMapper;
-import com.mindsafe.domain.mapper.QualityScoreMapper;
 import com.mindsafe.service.audit.AuditLogService;
 import com.mindsafe.service.prompt.PromptEvalGovernance;
 import com.mindsafe.service.prompt.PromptEvalScoreReader;
 import com.mindsafe.service.prompt.PromptVersionService;
 import com.mindsafe.service.prompt.TemplateMatrixRegistry;
-import org.apache.ibatis.builder.MapperBuilderAssistant;
-import org.apache.ibatis.type.ObjectTypeHandler;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.core.Authentication;
 
-import java.math.BigDecimal;
-import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -39,14 +28,13 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
- * AdminPromptController 单元测试（P1 覆盖率冲刺：版本 CRUD / 激活门禁 / A/B 对比 / 放量评估）
+ * AdminPromptController 单元测试（T4 批次B/C 改造版：SQL 下沉 PromptVersionService，Controller 仅 HTTP 层职责）
+ * <p>
+ * 域语义（分组统计均值 / 基线选取 / 停用持久化）由 PromptVersionService 测试覆盖——本测试经 Service 接口验证 Controller 编排。
  */
 class AdminPromptControllerTest {
 
     private PromptVersionService promptVersionService;
-    private PromptVersionMapper promptVersionMapper;
-    private CounselingSessionMapper sessionMapper;
-    private QualityScoreMapper qualityScoreMapper;
     private AuditLogService auditLogService;
     private TemplateMatrixRegistry templateMatrixRegistry;
     private PromptEvalGovernance promptEvalGovernance;
@@ -59,23 +47,13 @@ class AdminPromptControllerTest {
 
     @BeforeEach
     void setUp() {
-        MybatisConfiguration configuration = new MybatisConfiguration();
-        configuration.getTypeHandlerRegistry().register(UUID.class, ObjectTypeHandler.class);
-        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(configuration, ""), PromptVersion.class);
-        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(configuration, ""), CounselingSession.class);
-        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(configuration, ""), QualityScore.class);
-
         promptVersionService = mock(PromptVersionService.class);
-        promptVersionMapper = mock(PromptVersionMapper.class);
-        sessionMapper = mock(CounselingSessionMapper.class);
-        qualityScoreMapper = mock(QualityScoreMapper.class);
         auditLogService = mock(AuditLogService.class);
         templateMatrixRegistry = mock(TemplateMatrixRegistry.class);
         promptEvalGovernance = mock(PromptEvalGovernance.class);
         evalScoreReader = mock(PromptEvalScoreReader.class);
-        controller = new AdminPromptController(promptVersionService, promptVersionMapper, sessionMapper,
-                qualityScoreMapper, auditLogService, templateMatrixRegistry, promptEvalGovernance,
-                evalScoreReader);
+        controller = new AdminPromptController(promptVersionService, auditLogService,
+                templateMatrixRegistry, promptEvalGovernance, evalScoreReader);
     }
 
     private Authentication adminAuth() {
@@ -95,26 +73,8 @@ class AdminPromptControllerTest {
         pv.setAbGroup("control");
         pv.setIsActive(true);
         pv.setCreatedBy(adminUserId);
-        pv.setCreatedAt(Instant.now());
+        pv.setCreatedAt(java.time.Instant.now());
         return pv;
-    }
-
-    private CounselingSession session(String versionTag) {
-        CounselingSession s = new CounselingSession();
-        s.setSessionId(UUID.randomUUID());
-        s.setTenantId(tenantId);
-        s.setPromptVersion(versionTag);
-        return s;
-    }
-
-    private QualityScore score(BigDecimal empathy, BigDecimal cbt, BigDecimal safety, BigDecimal engagement) {
-        QualityScore q = new QualityScore();
-        q.setSessionId(UUID.randomUUID());
-        q.setEmpathyScore(empathy);
-        q.setCbtCompletion(cbt);
-        q.setSafetyCompliance(safety);
-        q.setEngagementScore(engagement);
-        return q;
     }
 
     // ===== 版本 CRUD =====
@@ -147,7 +107,7 @@ class AdminPromptControllerTest {
     @Test
     @DisplayName("getVersion 版本存在 → 详情 map")
     void getVersion_found() {
-        when(promptVersionMapper.selectById(versionId)).thenReturn(version("SYS_001:v3:control"));
+        when(promptVersionService.getVersionById(versionId)).thenReturn(version("SYS_001:v3:control"));
 
         var resp = controller.getVersion(versionId);
 
@@ -159,7 +119,7 @@ class AdminPromptControllerTest {
     @Test
     @DisplayName("getVersion 版本不存在 → error")
     void getVersion_notFound() {
-        when(promptVersionMapper.selectById(versionId)).thenReturn(null);
+        when(promptVersionService.getVersionById(versionId)).thenReturn(null);
 
         var resp = controller.getVersion(versionId);
 
@@ -277,52 +237,51 @@ class AdminPromptControllerTest {
     // ===== 停用 =====
 
     @Test
-    @DisplayName("deactivateVersion 存在 → 停用 + 缓存失效")
+    @DisplayName("deactivateVersion → 透传 Service（持久化 + 缓存失效在 Service 内）")
     void deactivate_found() {
-        PromptVersion pv = version("SYS_001:v3:control");
-        when(promptVersionMapper.selectById(versionId)).thenReturn(pv);
-
         var resp = controller.deactivateVersion(versionId);
 
         assertThat(resp.code()).isEqualTo(0);
-        assertThat(pv.getIsActive()).isFalse();
-        verify(promptVersionMapper).<PromptVersion>updateById(pv);
-        verify(promptVersionService).invalidateCache();
+        verify(promptVersionService).deactivateVersion(versionId);
     }
 
     @Test
-    @DisplayName("deactivateVersion 不存在 → 静默跳过")
+    @DisplayName("deactivateVersion 不存在 → 静默跳过（Service 内判空）")
     void deactivate_notFound() {
-        when(promptVersionMapper.selectById(versionId)).thenReturn(null);
-
         controller.deactivateVersion(versionId);
 
-        verify(promptVersionMapper, never()).<PromptVersion>updateById(any(PromptVersion.class));
-        verify(promptVersionService, never()).invalidateCache();
+        verify(promptVersionService).deactivateVersion(versionId);
     }
 
     // ===== A/B 对比 =====
 
     @Test
-    @DisplayName("abComparison 无会话 → 空分组")
+    @DisplayName("abComparison 无会话 → 空分组透传")
     void abComparison_empty() {
-        when(sessionMapper.selectList(any())).thenReturn(List.of());
+        when(promptVersionService.abComparison(tenantId, null))
+                .thenReturn(Map.of("totalSessions", 0, "groups", List.of()));
 
         var resp = controller.abComparison(tenantId, null);
 
         assertThat(resp.data().get("totalSessions")).isEqualTo(0);
         assertThat((List<?>) resp.data().get("groups")).isEmpty();
+        verify(promptVersionService).abComparison(tenantId, null);
     }
 
     @Test
-    @DisplayName("abComparison 按 tag 尾段分组并计算均值（含 null 过滤）")
+    @DisplayName("abComparison 分组均值结果透传（域语义由 PromptVersionService 测试覆盖）")
     void abComparison_groups() {
-        CounselingSession s1 = session("SYS_001:v3:treatment_a");
-        CounselingSession s2 = session("SYS_001:v3:treatment_a");
-        when(sessionMapper.selectList(any())).thenReturn(List.of(s1, s2));
-        when(qualityScoreMapper.selectList(any())).thenReturn(List.of(
-                score(new BigDecimal("80"), new BigDecimal("70"), new BigDecimal("90"), new BigDecimal("60")),
-                score(new BigDecimal("100"), null, new BigDecimal("50"), new BigDecimal("80"))));
+        when(promptVersionService.abComparison(tenantId, "SYS_001")).thenReturn(Map.of(
+                "totalSessions", 2,
+                "groups", List.of(Map.of(
+                        "abGroup", "treatment_a",
+                        "sessionCount", 2,
+                        "scoredCount", 2,
+                        "avgEmpathy", 90.0,
+                        "avgCbtCompletion", 70.0,
+                        "avgSafetyCompliance", 70.0,
+                        "avgEngagement", 70.0,
+                        "avgOverall", 75.0))));
 
         var resp = controller.abComparison(tenantId, "SYS_001");
 
@@ -334,21 +293,23 @@ class AdminPromptControllerTest {
         assertThat(group.get("abGroup")).isEqualTo("treatment_a");
         assertThat(group.get("sessionCount")).isEqualTo(2);
         assertThat(group.get("scoredCount")).isEqualTo(2);
-        // 均值: empathy=(80+100)/2=90, cbt=70（null 过滤后仅1个）, safety=70, engagement=70
         assertThat(group.get("avgEmpathy")).isEqualTo(90.0);
         assertThat(group.get("avgCbtCompletion")).isEqualTo(70.0);
         assertThat(group.get("avgSafetyCompliance")).isEqualTo(70.0);
         assertThat(group.get("avgEngagement")).isEqualTo(70.0);
-        // overall=(90+70+70+70)/4=75
         assertThat(group.get("avgOverall")).isEqualTo(75.0);
+        verify(promptVersionService).abComparison(tenantId, "SYS_001");
     }
 
     @Test
     @DisplayName("abComparison 无 tag 冒号 → unknown 组；templateKey 过滤透传")
     void abComparison_unknownGroup() {
-        CounselingSession s = session("plain-tag");
-        when(sessionMapper.selectList(any())).thenReturn(List.of(s));
-        when(qualityScoreMapper.selectList(any())).thenReturn(List.of());
+        when(promptVersionService.abComparison(tenantId, "SYS_001")).thenReturn(Map.of(
+                "totalSessions", 1,
+                "groups", List.of(Map.of(
+                        "abGroup", "unknown",
+                        "sessionCount", 1,
+                        "scoredCount", 0))));
 
         var resp = controller.abComparison(tenantId, "SYS_001");
 
@@ -357,6 +318,7 @@ class AdminPromptControllerTest {
         assertThat(group.get("scoredCount")).isEqualTo(0);
         // 无分数 → 不写均值键
         assertThat(group.containsKey("avgEmpathy")).isFalse();
+        verify(promptVersionService).abComparison(tenantId, "SYS_001");
     }
 
     // ===== 模板矩阵 / 护栏 =====
@@ -410,8 +372,8 @@ class AdminPromptControllerTest {
         PromptVersion baseline = version(null);
         baseline.setVersion(2);
         baseline.setVersionId(UUID.randomUUID());
-        when(promptVersionMapper.selectById(versionId)).thenReturn(target);
-        when(promptVersionMapper.selectList(any())).thenReturn(List.of(baseline));
+        when(promptVersionService.getVersionById(versionId)).thenReturn(target);
+        when(promptVersionService.findActiveBaseline("SYS_001", versionId)).thenReturn(baseline);
         when(evalScoreReader.readSafetyMean("SYS_001:v3:treatment_a")).thenReturn(0.92);
         when(evalScoreReader.read("SYS_001:v3:treatment_a"))
                 .thenReturn(new PromptEvalScoreReader.EvalStat(20, 18, 88.5));
@@ -433,7 +395,7 @@ class AdminPromptControllerTest {
     @Test
     @DisplayName("evaluateRollout 版本不存在 → 降级默认分数")
     void rollout_versionNotFound() {
-        when(promptVersionMapper.selectById(versionId)).thenReturn(null);
+        when(promptVersionService.getVersionById(versionId)).thenReturn(null);
 
         controller.evaluateRollout(Map.of("stageIndex", 1, "versionId", versionId.toString()));
 
@@ -445,8 +407,8 @@ class AdminPromptControllerTest {
     void rollout_noBaseline() {
         PromptVersion target = version(null);
         target.setAbGroup("treatment_a");
-        when(promptVersionMapper.selectById(versionId)).thenReturn(target);
-        when(promptVersionMapper.selectList(any())).thenReturn(List.of());
+        when(promptVersionService.getVersionById(versionId)).thenReturn(target);
+        when(promptVersionService.findActiveBaseline("SYS_001", versionId)).thenReturn(null);
         when(evalScoreReader.readSafetyMean("SYS_001:v3:treatment_a")).thenReturn(0.9);
 
         controller.evaluateRollout(Map.of("stageIndex", 1, "versionId", versionId.toString()));

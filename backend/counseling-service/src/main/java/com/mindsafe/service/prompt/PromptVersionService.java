@@ -11,6 +11,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -54,6 +56,9 @@ public class PromptVersionService {
     private final TemplateMatrixRegistry templateMatrixRegistry;
     private final AuditLogService auditLogService;
     private final PromptEvalScoreReader evalScoreReader;
+    /** T4 批次C：A/B 效果对比查询下沉（Controller 不再直查 Mapper） */
+    private final com.mindsafe.domain.mapper.CounselingSessionMapper sessionMapper;
+    private final com.mindsafe.domain.mapper.QualityScoreMapper qualityScoreMapper;
 
     /** 本地缓存：避免每次对话都查 DB（key = tenantId:templateKey:abGroup） */
     private final Map<String, CachedPrompt> cache = new ConcurrentHashMap<>();
@@ -64,13 +69,17 @@ public class PromptVersionService {
                                 RedTeamRegressionRunner redTeamRegressionRunner,
                                 TemplateMatrixRegistry templateMatrixRegistry,
                                 AuditLogService auditLogService,
-                                PromptEvalScoreReader evalScoreReader) {
+                                PromptEvalScoreReader evalScoreReader,
+                                com.mindsafe.domain.mapper.CounselingSessionMapper sessionMapper,
+                                com.mindsafe.domain.mapper.QualityScoreMapper qualityScoreMapper) {
         this.promptVersionMapper = promptVersionMapper;
         this.promptTemplateService = promptTemplateService;
         this.redTeamRegressionRunner = redTeamRegressionRunner;
         this.templateMatrixRegistry = templateMatrixRegistry;
         this.auditLogService = auditLogService;
         this.evalScoreReader = evalScoreReader;
+        this.sessionMapper = sessionMapper;
+        this.qualityScoreMapper = qualityScoreMapper;
     }
 
     /**
@@ -342,6 +351,105 @@ public class PromptVersionService {
         invalidateCache();
         log.info("Prompt 版本已激活: key={}, version={}, abGroup={}",
                 target.getTemplateKey(), target.getVersion(), target.getAbGroup());
+    }
+
+    // ===== T4 批次C：管理端查询下沉（Controller 不再直查 Mapper） =====
+
+    /** 按 ID 查询版本（null 表示不存在） */
+    public PromptVersion getVersionById(UUID versionId) {
+        return promptVersionMapper.selectById(versionId);
+    }
+
+    /** 停用版本（含缓存失效） */
+    public void deactivateVersion(UUID versionId) {
+        PromptVersion pv = promptVersionMapper.selectById(versionId);
+        if (pv != null) {
+            pv.setIsActive(false);
+            pv.setUpdatedAt(Instant.now());
+            promptVersionMapper.updateById(pv);
+            invalidateCache();
+        }
+    }
+
+    /** 同模板当前生效的基线版本（排除目标自身，取最近更新一条） */
+    public PromptVersion findActiveBaseline(String templateKey, UUID excludeVersionId) {
+        List<PromptVersion> activeOthers = promptVersionMapper.selectList(
+                new LambdaQueryWrapper<PromptVersion>()
+                        .eq(PromptVersion::getTemplateKey, templateKey)
+                        .eq(PromptVersion::getIsActive, true)
+                        .ne(PromptVersion::getVersionId, excludeVersionId)
+                        .orderByDesc(PromptVersion::getUpdatedAt)
+                        .last("LIMIT 1"));
+        return activeOthers.isEmpty() ? null : activeOthers.get(0);
+    }
+
+    /**
+     * A/B 效果对比：按 prompt_version 分组统计质量评分均值。
+     * 关联 counseling_sessions.prompt_version + quality_scores（行为保持，整体搬移自 AdminPromptController）。
+     */
+    public Map<String, Object> abComparison(UUID tenantId, String templateKey) {
+        // 查询该租户所有有 prompt_version 记录的会话
+        LambdaQueryWrapper<com.mindsafe.domain.entity.CounselingSession> sessionWrapper =
+                new LambdaQueryWrapper<com.mindsafe.domain.entity.CounselingSession>()
+                        .eq(com.mindsafe.domain.entity.CounselingSession::getTenantId, tenantId)
+                        .isNotNull(com.mindsafe.domain.entity.CounselingSession::getPromptVersion);
+        if (templateKey != null) {
+            sessionWrapper.likeRight(com.mindsafe.domain.entity.CounselingSession::getPromptVersion, templateKey + ":");
+        }
+        List<com.mindsafe.domain.entity.CounselingSession> sessions = sessionMapper.selectList(sessionWrapper);
+
+        if (sessions.isEmpty()) {
+            return Map.of("groups", List.of(), "totalSessions", 0);
+        }
+
+        // 按 ab_group 分组（从 versionTag 解析：SYS_001:v3:treatment_a → treatment_a）
+        Map<String, List<UUID>> groupSessions = new LinkedHashMap<>();
+        for (com.mindsafe.domain.entity.CounselingSession s : sessions) {
+            String tag = s.getPromptVersion();
+            String group = tag.contains(":") ? tag.substring(tag.lastIndexOf(':') + 1) : "unknown";
+            groupSessions.computeIfAbsent(group, k -> new ArrayList<>()).add(s.getSessionId());
+        }
+
+        // 每组计算质量评分均值
+        List<Map<String, Object>> groups = new ArrayList<>();
+        for (Map.Entry<String, List<UUID>> entry : groupSessions.entrySet()) {
+            List<UUID> sessionIds = entry.getValue();
+            List<com.mindsafe.domain.entity.QualityScore> scores = qualityScoreMapper.selectList(
+                    new LambdaQueryWrapper<com.mindsafe.domain.entity.QualityScore>()
+                            .in(com.mindsafe.domain.entity.QualityScore::getSessionId, sessionIds));
+
+            Map<String, Object> groupStat = new LinkedHashMap<>();
+            groupStat.put("abGroup", entry.getKey());
+            groupStat.put("sessionCount", sessionIds.size());
+            groupStat.put("scoredCount", scores.size());
+
+            if (!scores.isEmpty()) {
+                double avgEmpathy = scores.stream()
+                        .filter(q -> q.getEmpathyScore() != null)
+                        .mapToDouble(q -> q.getEmpathyScore().doubleValue()).average().orElse(0);
+                double avgCbt = scores.stream()
+                        .filter(q -> q.getCbtCompletion() != null)
+                        .mapToDouble(q -> q.getCbtCompletion().doubleValue()).average().orElse(0);
+                double avgSafety = scores.stream()
+                        .filter(q -> q.getSafetyCompliance() != null)
+                        .mapToDouble(q -> q.getSafetyCompliance().doubleValue()).average().orElse(0);
+                double avgEngagement = scores.stream()
+                        .filter(q -> q.getEngagementScore() != null)
+                        .mapToDouble(q -> q.getEngagementScore().doubleValue()).average().orElse(0);
+                groupStat.put("avgEmpathy", Math.round(avgEmpathy * 100) / 100.0);
+                groupStat.put("avgCbtCompletion", Math.round(avgCbt * 100) / 100.0);
+                groupStat.put("avgSafetyCompliance", Math.round(avgSafety * 100) / 100.0);
+                groupStat.put("avgEngagement", Math.round(avgEngagement * 100) / 100.0);
+                double overall = (avgEmpathy + avgCbt + avgSafety + avgEngagement) / 4;
+                groupStat.put("avgOverall", Math.round(overall * 100) / 100.0);
+            }
+            groups.add(groupStat);
+        }
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("totalSessions", sessions.size());
+        result.put("groups", groups);
+        return result;
     }
 
     /** 查询版本列表 */

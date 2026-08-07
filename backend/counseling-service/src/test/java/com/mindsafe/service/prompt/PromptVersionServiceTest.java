@@ -2,7 +2,9 @@ package com.mindsafe.service.prompt;
 
 import com.mindsafe.ai.prompt.PromptTemplateService;
 import com.mindsafe.domain.entity.PromptVersion;
+import com.mindsafe.domain.mapper.CounselingSessionMapper;
 import com.mindsafe.domain.mapper.PromptVersionMapper;
+import com.mindsafe.domain.mapper.QualityScoreMapper;
 import com.mindsafe.service.audit.AuditLogService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -41,6 +43,12 @@ class PromptVersionServiceTest {
     @Mock
     private PromptEvalScoreReader evalScoreReader;
 
+    @Mock
+    private CounselingSessionMapper sessionMapper;
+
+    @Mock
+    private QualityScoreMapper qualityScoreMapper;
+
     private PromptVersionService service;
 
     /** 合法安全模板正文：含必含声明、无禁止模式 */
@@ -51,7 +59,7 @@ class PromptVersionServiceTest {
     void setUp() {
         service = new PromptVersionService(promptVersionMapper, promptTemplateService,
                 new RedTeamRegressionRunner(), new TemplateMatrixRegistry(), auditLogService,
-                evalScoreReader);
+                evalScoreReader, sessionMapper, qualityScoreMapper);
     }
 
     @Test

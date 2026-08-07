@@ -1,62 +1,39 @@
 package com.mindsafe.api.controller;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.mindsafe.api.security.JwtAuthenticationFilter.TenantContext;
 import com.mindsafe.common.dto.ApiResponse;
 import com.mindsafe.common.dto.ErrorCode;
 import com.mindsafe.common.exception.BizException;
-import com.mindsafe.domain.entity.TrialInviteCode;
-import com.mindsafe.domain.entity.User;
-import com.mindsafe.domain.mapper.TrialInviteCodeMapper;
-import com.mindsafe.domain.mapper.UserMapper;
 import com.mindsafe.domain.entity.AuditLog;
-import com.mindsafe.domain.mapper.AuditLogMapper;
-import com.mindsafe.service.audit.AuditLogService;
+import com.mindsafe.domain.entity.TrialInviteCode;
+import com.mindsafe.service.admin.AdminService;
 import org.springframework.security.core.Authentication;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import jakarta.servlet.http.HttpServletResponse;
 
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
-import java.nio.charset.StandardCharsets;
-import java.security.SecureRandom;
-import java.time.Instant;
-import java.time.temporal.ChronoUnit;
-import java.util.*;
+import java.io.IOException;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 
 /**
  * 管理端 API - 邀请码管理
  * <p>
- * 功能：生成邀请码 / 列表 / 停用 / 删除
+ * 功能：生成邀请码 / 列表 / 停用 / 删除 / 批量导入学生 / 审计日志查询
  * 权限：仅 admin 角色可访问（由 SecurityConfig 控制）
+ * <p>
+ * T4 批次B/C：全部 SQL 下沉 AdminService（租户条件强制内置），Controller 不再直查 Mapper。
  */
 @RestController
 @RequestMapping("/api/v1/admin/invite-codes")
 public class AdminController {
 
-    private static final String CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-    private static final int CODE_LENGTH = 8;
-    private static final SecureRandom RANDOM = new SecureRandom();
+    private final AdminService adminService;
 
-    private final TrialInviteCodeMapper inviteCodeMapper;
-    private final UserMapper userMapper;
-    private final PasswordEncoder passwordEncoder;
-    private final AuditLogService auditLogService;
-    private final AuditLogMapper auditLogMapper;
-
-    public AdminController(TrialInviteCodeMapper inviteCodeMapper,
-                           UserMapper userMapper,
-                           PasswordEncoder passwordEncoder,
-                           AuditLogService auditLogService,
-                           AuditLogMapper auditLogMapper) {
-        this.inviteCodeMapper = inviteCodeMapper;
-        this.userMapper = userMapper;
-        this.passwordEncoder = passwordEncoder;
-        this.auditLogService = auditLogService;
-        this.auditLogMapper = auditLogMapper;
+    public AdminController(AdminService adminService) {
+        this.adminService = adminService;
     }
 
     /** 生成邀请码 */
@@ -79,18 +56,7 @@ public class AdminController {
             }
         }
 
-        TrialInviteCode code = new TrialInviteCode();
-        code.setCodeId(UUID.randomUUID());
-        code.setTenantId(ctx.tenantId());
-        code.setCode(generateUniqueCode());
-        code.setMaxUses(maxUses);
-        code.setUsedCount(0);
-        code.setExpiresAt(Instant.now().plus(expireDays, ChronoUnit.DAYS));
-        code.setStatus(TrialInviteCode.STATUS_ACTIVE);
-        code.setCreatedBy(userId);
-        code.setCreatedAt(Instant.now());
-
-        inviteCodeMapper.insert(code);
+        TrialInviteCode code = adminService.createInviteCode(ctx.tenantId(), userId, maxUses, expireDays);
         return ApiResponse.ok(code);
     }
 
@@ -113,33 +79,11 @@ public class AdminController {
             if (body.containsKey("expireDays")) expireDays = ((Number) body.get("expireDays")).intValue();
         }
 
-        String batchId = "BATCH-" + System.currentTimeMillis();
-        List<String> codes = new ArrayList<>();
-
-        for (int i = 0; i < count; i++) {
-            TrialInviteCode code = new TrialInviteCode();
-            code.setCodeId(UUID.randomUUID());
-            code.setTenantId(ctx.tenantId());
-            code.setCode(generateUniqueCode());
-            code.setMaxUses(1); // 一人一码
-            code.setUsedCount(0);
-            code.setExpiresAt(Instant.now().plus(expireDays, ChronoUnit.DAYS));
-            code.setStatus(TrialInviteCode.STATUS_ACTIVE);
-            code.setCreatedBy(userId);
-            code.setCreatedAt(Instant.now());
-            code.setBatchId(batchId);
-            code.setGeneratedBy(userId);
-            inviteCodeMapper.insert(code);
-            codes.add(code.getCode());
-        }
-
-        auditLogService.log(ctx.tenantId(), userId, "BATCH_INVITE_CODES",
-                "invite_code_batch", null, "生成" + count + "个邀请码，批次:" + batchId);
-
+        AdminService.BatchResult r = adminService.batchCreateCodes(ctx.tenantId(), userId, count, expireDays);
         return ApiResponse.ok(Map.of(
-                "batchId", batchId,
-                "count", count,
-                "codes", codes,
+                "batchId", r.batchId(),
+                "count", r.count(),
+                "codes", r.codes(),
                 "expireDays", expireDays
         ));
     }
@@ -148,50 +92,23 @@ public class AdminController {
     @GetMapping
     public ApiResponse<List<TrialInviteCode>> listCodes(Authentication auth) {
         TenantContext ctx = extractContext(auth);
-        List<TrialInviteCode> codes = inviteCodeMapper.selectList(
-                new LambdaQueryWrapper<TrialInviteCode>()
-                        .eq(TrialInviteCode::getTenantId, ctx.tenantId())
-                        .orderByDesc(TrialInviteCode::getCreatedAt)
-        );
-        return ApiResponse.ok(codes);
+        return ApiResponse.ok(adminService.listInviteCodes(ctx.tenantId()));
     }
 
     /** 停用邀请码 */
     @PatchMapping("/{codeId}/deactivate")
     public ApiResponse<Void> deactivateCode(@PathVariable UUID codeId, Authentication auth) {
-        extractContext(auth); // 验证身份
-        TrialInviteCode code = inviteCodeMapper.selectById(codeId);
-        if (code == null) {
-            throw new BizException(ErrorCode.RESOURCE_NOT_FOUND);
-        }
-        code.setStatus("disabled");
-        inviteCodeMapper.updateById(code);
+        TenantContext ctx = extractContext(auth);
+        adminService.deactivateInviteCode(ctx.tenantId(), codeId);
         return ApiResponse.ok(null);
     }
 
     /** 删除邀请码 */
     @DeleteMapping("/{codeId}")
     public ApiResponse<Void> deleteCode(@PathVariable UUID codeId, Authentication auth) {
-        extractContext(auth);
-        inviteCodeMapper.deleteById(codeId);
+        TenantContext ctx = extractContext(auth);
+        adminService.deleteInviteCode(ctx.tenantId(), codeId);
         return ApiResponse.ok(null);
-    }
-
-    private String generateUniqueCode() {
-        for (int attempt = 0; attempt < 10; attempt++) {
-            StringBuilder sb = new StringBuilder(CODE_LENGTH);
-            for (int i = 0; i < CODE_LENGTH; i++) {
-                sb.append(CODE_CHARS.charAt(RANDOM.nextInt(CODE_CHARS.length())));
-            }
-            String candidate = sb.toString();
-            // 检查唯一性
-            Long count = inviteCodeMapper.selectCount(
-                    new LambdaQueryWrapper<TrialInviteCode>()
-                            .eq(TrialInviteCode::getCode, candidate)
-            );
-            if (count == 0) return candidate;
-        }
-        throw new BizException(ErrorCode.INTERNAL_ERROR);
     }
 
     private TenantContext extractContext(Authentication authentication) {
@@ -205,7 +122,7 @@ public class AdminController {
 
     /** 下载导入模板 CSV */
     @GetMapping("/import-template")
-    public void downloadTemplate(HttpServletResponse response) throws java.io.IOException {
+    public void downloadTemplate(HttpServletResponse response) throws IOException {
         response.setContentType("text/csv; charset=UTF-8");
         response.setHeader("Content-Disposition", "attachment; filename=student_import_template.csv");
         // BOM for Excel
@@ -227,7 +144,7 @@ public class AdminController {
             @RequestParam("file") MultipartFile file,
             Authentication auth) {
         TenantContext ctx = extractContext(auth);
-        UUID tenantId = ctx.tenantId();
+        UUID userId = (UUID) auth.getPrincipal();
 
         if (file.isEmpty()) {
             throw new BizException(ErrorCode.PARAM_INVALID, "文件为空");
@@ -237,75 +154,16 @@ public class AdminController {
             throw new BizException(ErrorCode.PARAM_INVALID, "仅支持 CSV 文件");
         }
 
-        int created = 0;
-        int skipped = 0;
-        List<String> errors = new ArrayList<>();
-
-        try (BufferedReader reader = new BufferedReader(
-                new InputStreamReader(file.getInputStream(), StandardCharsets.UTF_8))) {
-            String line;
-            int lineNo = 0;
-            while ((line = reader.readLine()) != null) {
-                lineNo++;
-                // 跳过 BOM 和表头
-                if (lineNo == 1) {
-                    line = line.replace("\uFEFF", "");
-                    if (line.contains("昵称") || line.toLowerCase().contains("nickname")) continue;
-                }
-                line = line.trim();
-                if (line.isEmpty()) continue;
-
-                String[] parts = line.split(",");
-                if (parts.length < 1 || parts[0].trim().isEmpty()) {
-                    errors.add("第" + lineNo + "行：缺少昵称");
-                    skipped++;
-                    continue;
-                }
-
-                String pseudonym = parts[0].trim();
-                String gradeCode = parts.length > 1 ? parts[1].trim() : "";
-                String classCode = parts.length > 2 ? parts[2].trim() : "";
-
-                // 检查同租户下是否已存在同名学生
-                Long exists = userMapper.selectCount(
-                        new LambdaQueryWrapper<User>()
-                                .eq(User::getTenantId, tenantId)
-                                .eq(User::getPseudonym, pseudonym)
-                                .eq(User::getUserType, User.USER_TYPE_STUDENT)
-                );
-                if (exists > 0) {
-                    errors.add("第" + lineNo + "行：\"" + pseudonym + "\" 已存在，跳过");
-                    skipped++;
-                    continue;
-                }
-
-                // 创建学生用户
-                User student = User.createStudent(tenantId, null, pseudonym, gradeCode, classCode);
-                student.setUserId(UUID.randomUUID());
-                // 初始密码：随机 6 位数字
-                String initPwd = String.format("%06d", RANDOM.nextInt(1000000));
-                student.setPasswordHash(passwordEncoder.encode(initPwd));
-                student.setMustChangePassword(true);
-                userMapper.insert(student);
-                created++;
-            }
-        } catch (BizException e) {
-            throw e;
-        } catch (Exception e) {
+        try {
+            AdminService.ImportResult r = adminService.importStudents(ctx.tenantId(), userId, file.getInputStream());
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("created", r.created());
+            result.put("skipped", r.skipped());
+            result.put("errors", r.errors());
+            return ApiResponse.ok(result);
+        } catch (IOException e) {
             throw new BizException(ErrorCode.INTERNAL_ERROR, "CSV 解析失败: " + e.getMessage());
         }
-
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("created", created);
-        result.put("skipped", skipped);
-        result.put("errors", errors);
-
-        // 审计：批量导入
-        UUID userId = (UUID) auth.getPrincipal();
-        auditLogService.log(tenantId, userId, "IMPORT_STUDENTS", "batch",
-                null, "{\"created\":" + created + ",\"skipped\":" + skipped + "}");
-
-        return ApiResponse.ok(result);
     }
 
     // ===== 审计日志查询 =====
@@ -317,14 +175,6 @@ public class AdminController {
             @RequestParam(required = false) String action,
             @RequestParam(defaultValue = "200") int limit) {
         TenantContext ctx = extractContext(auth);
-        var wrapper = new LambdaQueryWrapper<AuditLog>()
-                .eq(AuditLog::getTenantId, ctx.tenantId())
-                .orderByDesc(AuditLog::getCreatedAt);
-        if (action != null && !action.isBlank()) {
-            wrapper.eq(AuditLog::getAction, action);
-        }
-        // AUD-043：分页插件安全化，替代 .last("LIMIT ...") 字符串拼接
-        var pageResult = auditLogMapper.selectPage(new Page<>(1, Math.min(limit, 500), false), wrapper);
-        return ApiResponse.ok(pageResult.getRecords());
+        return ApiResponse.ok(adminService.getAuditLogs(ctx.tenantId(), action, limit));
     }
 }

@@ -1,15 +1,11 @@
 package com.mindsafe.api.controller;
 
-import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.mindsafe.api.security.JwtAuthenticationFilter.TenantContext;
 import com.mindsafe.common.dto.ErrorCode;
 import com.mindsafe.common.exception.BizException;
 import com.mindsafe.domain.entity.AuditLog;
 import com.mindsafe.domain.entity.TrialInviteCode;
-import com.mindsafe.domain.entity.User;
-import com.mindsafe.domain.mapper.AuditLogMapper;
-import com.mindsafe.domain.mapper.TrialInviteCodeMapper;
-import com.mindsafe.domain.mapper.UserMapper;
+import com.mindsafe.service.admin.AdminService;
 import com.mindsafe.service.audit.AuditLogService;
 import jakarta.servlet.ServletOutputStream;
 import jakarta.servlet.http.HttpServletResponse;
@@ -18,9 +14,9 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.core.Authentication;
-import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.nio.charset.StandardCharsets;
@@ -31,31 +27,29 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
- * AdminController 单元测试（P1 覆盖率冲刺：邀请码管理 / 批量导入 / 审计日志）
+ * AdminController 单元测试（T4 批次B/C 改造版：SQL 下沉 AdminService，Controller 仅 HTTP 层职责）
  * <p>
  * 覆盖：
- * - createCode 默认值与自定义参数、邀请码唯一性冲突 10 次 → INTERNAL_ERROR
- * - batchCreateCodes 默认 30 / count 上限 200 clamp / 审计
+ * - createCode 默认值与自定义参数、唯一性冲突 10 次 → INTERNAL_ERROR（异常由 Service 抛出）
+ * - batchCreateCodes 默认 30 / count 上限 200 clamp
  * - deactivateCode 不存在 → RESOURCE_NOT_FOUND、成功停用
  * - deleteCode / listCodes
  * - downloadTemplate 输出 BOM + CSV
  * - importStudents 空文件 / 非 CSV / 成功 / 重复昵称跳过 / 缺昵称 / 解析异常
  * - getAuditLogs action 过滤 + limit clamp
+ * <p>
+ * 域语义（唯一性冲突 / CSV 解析 / 去重 / 审计）由 AdminService 测试覆盖——本测试经 Service 接口验证 Controller 编排。
  */
 class AdminControllerTest {
 
-    private TrialInviteCodeMapper inviteCodeMapper;
-    private UserMapper userMapper;
-    private PasswordEncoder passwordEncoder;
-    private AuditLogService auditLogService;
-    private AuditLogMapper auditLogMapper;
+    private AdminService adminService;
     private AdminController controller;
 
     private final UUID tenantId = UUID.randomUUID();
@@ -63,13 +57,8 @@ class AdminControllerTest {
 
     @BeforeEach
     void setUp() {
-        inviteCodeMapper = mock(TrialInviteCodeMapper.class);
-        userMapper = mock(UserMapper.class);
-        passwordEncoder = mock(PasswordEncoder.class);
-        auditLogService = mock(AuditLogService.class);
-        auditLogMapper = mock(AuditLogMapper.class);
-        controller = new AdminController(inviteCodeMapper, userMapper, passwordEncoder,
-                auditLogService, auditLogMapper);
+        adminService = mock(AdminService.class);
+        controller = new AdminController(adminService);
     }
 
     private Authentication adminAuth() {
@@ -79,75 +68,97 @@ class AdminControllerTest {
         return a;
     }
 
+    private TrialInviteCode inviteCode(int maxUses, int expireDays) {
+        TrialInviteCode code = new TrialInviteCode();
+        code.setCodeId(UUID.randomUUID());
+        code.setTenantId(tenantId);
+        code.setCode("ABCD1234");
+        code.setMaxUses(maxUses);
+        code.setUsedCount(0);
+        code.setStatus("active");
+        code.setCreatedBy(adminUserId);
+        // 有效期由 Service 创建时填充（T4 下沉后 Controller 透传）
+        code.setExpiresAt(java.time.Instant.now().plusSeconds(expireDays * 86400L));
+        return code;
+    }
+
     // ===== createCode =====
 
     @Test
-    @DisplayName("createCode 无 body → 默认 maxUses=10 / expireDays=30，插入并返回")
+    @DisplayName("createCode 无 body → 默认 maxUses=10 / expireDays=30，调用服务并返回")
     void createCode_defaults() {
-        when(inviteCodeMapper.selectCount(any())).thenReturn(0L);
+        TrialInviteCode code = inviteCode(10, 30);
+        when(adminService.createInviteCode(tenantId, adminUserId, 10, 30)).thenReturn(code);
 
         var resp = controller.createCode(null, adminAuth());
 
         assertThat(resp.code()).isEqualTo(0);
-        TrialInviteCode code = resp.data();
-        assertThat(code.getTenantId()).isEqualTo(tenantId);
-        assertThat(code.getMaxUses()).isEqualTo(10);
-        assertThat(code.getUsedCount()).isZero();
-        assertThat(code.getStatus()).isEqualTo("active");
-        assertThat(code.getCreatedBy()).isEqualTo(adminUserId);
-        assertThat(code.getCode()).hasSize(8);
-        verify(inviteCodeMapper).<TrialInviteCode>insert(code);
+        TrialInviteCode returned = resp.data();
+        assertThat(returned.getTenantId()).isEqualTo(tenantId);
+        assertThat(returned.getMaxUses()).isEqualTo(10);
+        assertThat(returned.getUsedCount()).isZero();
+        assertThat(returned.getStatus()).isEqualTo("active");
+        assertThat(returned.getCreatedBy()).isEqualTo(adminUserId);
+        assertThat(returned.getCode()).hasSize(8);
+        verify(adminService).createInviteCode(tenantId, adminUserId, 10, 30);
     }
 
     @Test
     @DisplayName("createCode body 提供 maxUses/expireDays → 覆盖默认值")
     void createCode_customParams() {
-        when(inviteCodeMapper.selectCount(any())).thenReturn(0L);
+        TrialInviteCode code = inviteCode(3, 7);
+        when(adminService.createInviteCode(tenantId, adminUserId, 3, 7)).thenReturn(code);
 
         var resp = controller.createCode(Map.of("maxUses", 3, "expireDays", 7), adminAuth());
 
         assertThat(resp.data().getMaxUses()).isEqualTo(3);
         assertThat(resp.data().getExpiresAt()).isNotNull();
+        verify(adminService).createInviteCode(tenantId, adminUserId, 3, 7);
     }
 
     @Test
-    @DisplayName("createCode 邀请码唯一性连续冲突 10 次 → INTERNAL_ERROR")
+    @DisplayName("createCode 唯一性连续冲突 10 次 → INTERNAL_ERROR（Service 抛出，Controller 传播）")
     void createCode_uniqueConflict() {
-        when(inviteCodeMapper.selectCount(any())).thenReturn(1L);
+        doThrow(new BizException(ErrorCode.INTERNAL_ERROR))
+                .when(adminService).createInviteCode(eq(tenantId), eq(adminUserId), eq(10), eq(30));
 
         assertThatThrownBy(() -> controller.createCode(null, adminAuth()))
                 .isExactlyInstanceOf(BizException.class)
                 .extracting("code")
                 .isEqualTo(ErrorCode.INTERNAL_ERROR.code());
-        verify(inviteCodeMapper, never()).<TrialInviteCode>insert(any(TrialInviteCode.class));
     }
 
     // ===== batchCreateCodes =====
 
     @Test
-    @DisplayName("batchCreateCodes 默认 30 个一人一码 + 审计")
+    @DisplayName("batchCreateCodes 默认 30 个一人一码")
     void batchCreateCodes_default() {
-        when(inviteCodeMapper.selectCount(any())).thenReturn(0L);
+        List<String> codes = java.util.stream.IntStream.range(0, 30)
+                .mapToObj(i -> "CODE" + i).toList();
+        when(adminService.batchCreateCodes(tenantId, adminUserId, 30, 90))
+                .thenReturn(new AdminService.BatchResult("BATCH-1", 30, codes));
 
         var resp = controller.batchCreateCodes(null, adminAuth());
 
         assertThat(resp.code()).isEqualTo(0);
         assertThat(resp.data().get("count")).isEqualTo(30);
+        assertThat(resp.data().get("batchId")).isEqualTo("BATCH-1");
         assertThat(((List<?>) resp.data().get("codes"))).hasSize(30);
-        verify(inviteCodeMapper, org.mockito.Mockito.times(30)).insert(any(TrialInviteCode.class));
-        verify(auditLogService).log(tenantId, adminUserId, "BATCH_INVITE_CODES",
-                "invite_code_batch", null, "生成30个邀请码，批次:" + resp.data().get("batchId"));
+        verify(adminService).batchCreateCodes(tenantId, adminUserId, 30, 90);
     }
 
     @Test
     @DisplayName("batchCreateCodes count 超过 200 → clamp 到 200")
     void batchCreateCodes_clampCount() {
-        when(inviteCodeMapper.selectCount(any())).thenReturn(0L);
+        List<String> codes = java.util.stream.IntStream.range(0, 200)
+                .mapToObj(i -> "CODE" + i).toList();
+        when(adminService.batchCreateCodes(tenantId, adminUserId, 200, 90))
+                .thenReturn(new AdminService.BatchResult("BATCH-2", 200, codes));
 
         var resp = controller.batchCreateCodes(Map.of("count", 500), adminAuth());
 
         assertThat(resp.data().get("count")).isEqualTo(200);
-        verify(inviteCodeMapper, org.mockito.Mockito.times(200)).insert(any(TrialInviteCode.class));
+        verify(adminService).batchCreateCodes(tenantId, adminUserId, 200, 90);
     }
 
     // ===== listCodes / deactivateCode / deleteCode =====
@@ -155,19 +166,20 @@ class AdminControllerTest {
     @Test
     @DisplayName("listCodes 按租户查询邀请码")
     void listCodes() {
-        when(inviteCodeMapper.selectList(any())).thenReturn(List.of(new TrialInviteCode()));
+        when(adminService.listInviteCodes(tenantId)).thenReturn(List.of(new TrialInviteCode()));
 
         var resp = controller.listCodes(adminAuth());
 
         assertThat(resp.code()).isEqualTo(0);
         assertThat(resp.data()).hasSize(1);
-        verify(inviteCodeMapper).selectList(any());
+        verify(adminService).listInviteCodes(tenantId);
     }
 
     @Test
-    @DisplayName("deactivateCode 邀请码不存在 → RESOURCE_NOT_FOUND")
+    @DisplayName("deactivateCode 邀请码不存在 → RESOURCE_NOT_FOUND（Service 抛出）")
     void deactivateCode_notFound() {
-        when(inviteCodeMapper.selectById(any(UUID.class))).thenReturn(null);
+        doThrow(new BizException(ErrorCode.RESOURCE_NOT_FOUND))
+                .when(adminService).deactivateInviteCode(eq(tenantId), any(UUID.class));
 
         assertThatThrownBy(() -> controller.deactivateCode(UUID.randomUUID(), adminAuth()))
                 .isExactlyInstanceOf(BizException.class)
@@ -176,28 +188,25 @@ class AdminControllerTest {
     }
 
     @Test
-    @DisplayName("deactivateCode 成功 → status=disabled 持久化")
+    @DisplayName("deactivateCode 成功 → 调用服务（租户条件内置 Service）")
     void deactivateCode_success() {
-        TrialInviteCode code = new TrialInviteCode();
-        code.setStatus("active");
-        when(inviteCodeMapper.selectById(any(UUID.class))).thenReturn(code);
+        UUID codeId = UUID.randomUUID();
 
-        var resp = controller.deactivateCode(UUID.randomUUID(), adminAuth());
+        var resp = controller.deactivateCode(codeId, adminAuth());
 
         assertThat(resp.code()).isEqualTo(0);
-        assertThat(code.getStatus()).isEqualTo("disabled");
-        verify(inviteCodeMapper).updateById(code);
+        verify(adminService).deactivateInviteCode(tenantId, codeId);
     }
 
     @Test
-    @DisplayName("deleteCode → 直接删除")
+    @DisplayName("deleteCode → 调用服务（租户条件内置 Service）")
     void deleteCode() {
         UUID codeId = UUID.randomUUID();
 
         var resp = controller.deleteCode(codeId, adminAuth());
 
         assertThat(resp.code()).isEqualTo(0);
-        verify(inviteCodeMapper).deleteById(codeId);
+        verify(adminService).deleteInviteCode(tenantId, codeId);
     }
 
     @Test
@@ -255,10 +264,10 @@ class AdminControllerTest {
     }
 
     @Test
-    @DisplayName("importStudents 成功：创建学生 + 初始密码 + 审计")
+    @DisplayName("importStudents 成功：透传 Service 结果")
     void importStudents_success() {
-        when(userMapper.selectCount(any())).thenReturn(0L);
-        when(passwordEncoder.encode(anyString())).thenReturn("encoded-pwd");
+        when(adminService.importStudents(eq(tenantId), eq(adminUserId), any(InputStream.class)))
+                .thenReturn(new AdminService.ImportResult(2, 0, List.of()));
         MockMultipartFile file = new MockMultipartFile("file", "students.csv",
                 "text/csv", "\uFEFF昵称,年级,班级\n小明,四年级,2班\n小红,五年级,1班\n".getBytes(StandardCharsets.UTF_8));
 
@@ -267,17 +276,14 @@ class AdminControllerTest {
         assertThat(resp.code()).isEqualTo(0);
         assertThat(resp.data().get("created")).isEqualTo(2);
         assertThat(resp.data().get("skipped")).isEqualTo(0);
-        verify(userMapper, org.mockito.Mockito.times(2)).insert(any(User.class));
-        verify(passwordEncoder, org.mockito.Mockito.times(2)).encode(anyString());
-        verify(auditLogService).log(tenantId, adminUserId, "IMPORT_STUDENTS", "batch",
-                null, "{\"created\":2,\"skipped\":0}");
+        verify(adminService).importStudents(eq(tenantId), eq(adminUserId), any(InputStream.class));
     }
 
     @Test
-    @DisplayName("importStudents 重复昵称跳过 + 空行 + 表头行跳过")
+    @DisplayName("importStudents 重复昵称跳过 → 透传 skipped/errors")
     void importStudents_skipDuplicates() {
-        when(userMapper.selectCount(any())).thenReturn(1L, 0L);
-        when(passwordEncoder.encode(anyString())).thenReturn("encoded-pwd");
+        when(adminService.importStudents(eq(tenantId), eq(adminUserId), any(InputStream.class)))
+                .thenReturn(new AdminService.ImportResult(1, 1, List.of("第3行：\"小明\" 已存在，跳过")));
         MockMultipartFile file = new MockMultipartFile("file", "students.csv",
                 "text/csv", "昵称,年级,班级\n\n小明,四年级,2班\n小红,五年级,1班\n".getBytes(StandardCharsets.UTF_8));
 
@@ -286,14 +292,13 @@ class AdminControllerTest {
         assertThat(resp.data().get("created")).isEqualTo(1);
         assertThat(resp.data().get("skipped")).isEqualTo(1);
         assertThat(((List<?>) resp.data().get("errors"))).hasSize(1);
-        verify(userMapper, org.mockito.Mockito.times(1)).insert(any(User.class));
     }
 
     @Test
-    @DisplayName("importStudents 缺昵称行 → errors + skipped")
+    @DisplayName("importStudents 缺昵称行 → 透传 errors + skipped")
     void importStudents_missingPseudonym() {
-        when(userMapper.selectCount(any())).thenReturn(0L);
-        when(passwordEncoder.encode(anyString())).thenReturn("encoded-pwd");
+        when(adminService.importStudents(eq(tenantId), eq(adminUserId), any(InputStream.class)))
+                .thenReturn(new AdminService.ImportResult(1, 1, List.of("第2行：缺少昵称")));
         MockMultipartFile file = new MockMultipartFile("file", "students.csv",
                 "text/csv", "小明,四年级,2班\n,五年级,1班\n".getBytes(StandardCharsets.UTF_8));
 
@@ -305,16 +310,12 @@ class AdminControllerTest {
     }
 
     @Test
-    @DisplayName("importStudents CSV 读取异常 → INTERNAL_ERROR")
+    @DisplayName("importStudents CSV 解析异常 → INTERNAL_ERROR（Service 抛出）")
     void importStudents_parseError() {
-        when(userMapper.selectCount(any())).thenReturn(0L);
+        doThrow(new BizException(ErrorCode.INTERNAL_ERROR, "CSV 解析失败: disk error"))
+                .when(adminService).importStudents(eq(tenantId), eq(adminUserId), any(InputStream.class));
         MockMultipartFile file = new MockMultipartFile("file", "students.csv",
-                "text/csv", "小明,四年级,2班".getBytes(StandardCharsets.UTF_8)) {
-            @Override
-            public java.io.InputStream getInputStream() throws IOException {
-                throw new IOException("disk error");
-            }
-        };
+                "text/csv", "小明,四年级,2班".getBytes(StandardCharsets.UTF_8));
 
         assertThatThrownBy(() -> controller.importStudents(file, adminAuth()))
                 .isExactlyInstanceOf(BizException.class)
@@ -327,22 +328,22 @@ class AdminControllerTest {
     @Test
     @DisplayName("getAuditLogs 无 action → 全部日志（limit 默认 200）")
     void getAuditLogs_all() {
-        when(auditLogMapper.selectPage(any(), any())).thenReturn(new Page<AuditLog>().setRecords(List.of(new AuditLog())));
+        when(adminService.getAuditLogs(tenantId, null, 200)).thenReturn(List.of(new AuditLog()));
 
         var resp = controller.getAuditLogs(adminAuth(), null, 200);
 
         assertThat(resp.code()).isEqualTo(0);
         assertThat(resp.data()).hasSize(1);
-        verify(auditLogMapper).selectPage(any(), any());
+        verify(adminService).getAuditLogs(tenantId, null, 200);
     }
 
     @Test
     @DisplayName("getAuditLogs 带 action → 按动作过滤")
     void getAuditLogs_byAction() {
-        when(auditLogMapper.selectPage(any(), any())).thenReturn(new Page<AuditLog>().setRecords(List.of()));
+        when(adminService.getAuditLogs(tenantId, "LOGIN", 200)).thenReturn(List.of());
 
         controller.getAuditLogs(adminAuth(), "LOGIN", 200);
 
-        verify(auditLogMapper).selectPage(any(), any());
+        verify(adminService).getAuditLogs(tenantId, "LOGIN", 200);
     }
 }
