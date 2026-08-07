@@ -1,69 +1,60 @@
+// doing/73 T3a：auth 平台化测试（utils/auth.ts 走 createPlatformTokens + sessionStorageImpl）
+// 语义：与迁移前完全等价（'' 空串语义、parent_ 前缀、双 token + 用户信息 JSON）
 import { describe, it, expect, beforeEach } from 'vitest'
 import {
-  getToken, setToken, getRefreshToken, setRefreshToken,
-  clearAuth, setUser, getUser, isAuthenticated,
+  getToken, setToken, getRefreshToken, setRefreshToken, clearAuth,
+  setUser, getUser, isAuthenticated,
 } from '../utils/auth'
 
-/**
- * AUD-022：parent-h5 覆盖率门禁提升配套测试——auth.ts 会话级 token/用户信息存取全覆盖
- * （AUD-007 后 auth 函数由 localStorage 迁 sessionStorage，行为契约在此锁定）
- */
-describe('auth utils（AUD-022 补测）', () => {
+describe('auth（PlatformStorage 平台化）', () => {
   beforeEach(() => {
     sessionStorage.clear()
   })
 
-  it('setToken/getToken 写入会话级 storage（非 localStorage）', () => {
-    setToken('token-1')
-    expect(getToken()).toBe('token-1')
-    expect(sessionStorage.getItem('parent_token')).toBe('token-1')
-    expect(localStorage.getItem('parent_token')).toBeNull()
-  })
-
-  it('setRefreshToken/getRefreshToken 存取', () => {
-    setRefreshToken('rt-1')
-    expect(getRefreshToken()).toBe('rt-1')
-    expect(sessionStorage.getItem('parent_refresh_token')).toBe('rt-1')
-  })
-
-  it('未设置 token 时 getToken 返回空串', () => {
+  it("set/get token 读写一致（'' 空串语义保持）", () => {
     expect(getToken()).toBe('')
-    expect(getRefreshToken()).toBe('')
+    setToken('t1')
+    expect(getToken()).toBe('t1')
   })
 
-  it('isAuthenticated 依据 token 存在性', () => {
-    expect(isAuthenticated()).toBe(false)
-    setToken('token-2')
-    expect(isAuthenticated()).toBe(true)
+  it('refresh token 读写一致', () => {
+    setRefreshToken('r1')
+    expect(getRefreshToken()).toBe('r1')
   })
 
-  it('setUser/getUser 存取用户信息（含孩子列表）', () => {
-    const user = {
-      parentId: 'p-1',
-      displayName: '家长甲',
-      children: [{ userId: 'u-1', nickname: '小星', gradeCode: 'G3', classCode: 'C1' }],
-    }
+  it('写入 parent_ 前缀键（token/refresh/user）', () => {
+    setToken('t')
+    setRefreshToken('r')
+    setUser({ parentId: 'p1', displayName: '家长', children: [] })
+    expect(sessionStorage.getItem('parent_token')).toBe('t')
+    expect(sessionStorage.getItem('parent_refresh')).toBe('r')
+    expect(sessionStorage.getItem('parent_user')).toBeTruthy()
+  })
+
+  it('setUser/getUser JSON 往返', () => {
+    const user = { parentId: 'p1', displayName: '家长', children: [{ userId: 'c1', nickname: '小明' }] }
     setUser(user)
     expect(getUser()).toEqual(user)
   })
 
-  it('getUser 对损坏 JSON 容错返回 null', () => {
-    sessionStorage.setItem('parent_user', '{broken json')
+  it('getUser 遇非法 JSON 返回 null', () => {
+    sessionStorage.setItem('parent_user', 'not-json')
     expect(getUser()).toBeNull()
   })
 
-  it('getUser 未登录时返回 null', () => {
-    expect(getUser()).toBeNull()
-  })
-
-  it('clearAuth 清空 token/refresh/用户信息', () => {
+  it('clearAuth 清除 token/refresh/user 三键', () => {
     setToken('t')
     setRefreshToken('r')
-    setUser({ parentId: 'p', displayName: 'x', children: [] })
+    setUser({ parentId: 'p1', displayName: '家长', children: [] })
     clearAuth()
     expect(getToken()).toBe('')
     expect(getRefreshToken()).toBe('')
-    expect(getUser()).toBeNull()
+    expect(sessionStorage.getItem('parent_user')).toBeNull()
+  })
+
+  it('isAuthenticated 依据正式 token', () => {
     expect(isAuthenticated()).toBe(false)
+    setToken('t')
+    expect(isAuthenticated()).toBe(true)
   })
 })

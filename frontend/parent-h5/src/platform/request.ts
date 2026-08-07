@@ -45,7 +45,6 @@ export interface PlatformRequestDeps {
 
 export function createPlatformRequest(deps: PlatformRequestDeps): PlatformRequest {
   const { storage, baseUrl = '/api/v1', fetchImpl, onSessionExpired } = deps
-  const doFetch = fetchImpl ?? fetch
   const expire = onSessionExpired ??
     (() => handleSessionExpired(storage, '/parent/', locationRedirect))
 
@@ -53,6 +52,8 @@ export function createPlatformRequest(deps: PlatformRequestDeps): PlatformReques
     path: string,
     options: PlatformRequestOptions = {}
   ): Promise<PlatformApiResponse<T>> {
+    // 调用时解析 fetch 实现（非工厂创建时）：测试 stubGlobal 全局 fetch 可生效，生产语义不变
+    const doFetch = fetchImpl ?? fetch
     const token = storage.getToken()
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',

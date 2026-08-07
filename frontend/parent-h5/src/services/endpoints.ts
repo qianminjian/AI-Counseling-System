@@ -1,5 +1,6 @@
 /**
  * parent-h5 前端端点清单（ARCH-008 F-7 契约防线，单一事实源）
+ * doing/73 T3：由 src/api/endpoints.ts 迁移（内容原样，契约断言继续生效）
  *
  * 形态约定（与 apiContract.test.ts 的规范化规则一致）：
  * - 全路径（/api/v1 开头），query 剥离

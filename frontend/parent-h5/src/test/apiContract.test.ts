@@ -1,17 +1,17 @@
 /**
- * ARCH-008 F-7：parent-h5 契约防线（端点清单 ↔ api/index.ts 源码防漂移）
+ * ARCH-008 F-7：parent-h5 契约防线（端点清单 ↔ services/index.ts 源码防漂移）
  *
  * 与 teacher-web 同款轻量模式（无 openapi 快照基建）：
  * - 清单自身质量：非空 / /api/v1 前缀 / 方法合法 / 无重复
- * - 防漂移：api/index.ts 源码中全部 API 字符串字面量（规范化后）⊆ 清单
+ * - 防漂移：services/index.ts 源码中全部 API 字符串字面量（规范化后）⊆ 清单
  *
  * 规范化规则：
  * - 模板占位符 ${x} 删除（含未闭合残段）；query（? 后）剥离；trim；
  *   斜杠归一 + 尾部斜杠去除；非 /api/v1 前缀路径拼接 /api/v1（request() 拼接形态）
  */
 import { describe, expect, it } from 'vitest'
-import apiSource from '../api/index.ts?raw'
-import { FRONTEND_ENDPOINTS } from '../api/endpoints'
+import apiSource from '../services/index.ts?raw'
+import { FRONTEND_ENDPOINTS } from '../services/endpoints'
 
 const VALID_METHODS = ['get', 'post', 'put', 'patch', 'delete']
 
@@ -67,7 +67,7 @@ describe('端点清单自身质量（FRONTEND_ENDPOINTS）', () => {
   })
 })
 
-describe('防漂移：api/index.ts 源码路径 ⊆ 清单', () => {
+describe('防漂移：services/index.ts 源码路径 ⊆ 清单', () => {
   it('源码中提取到 API 路径（提取逻辑有效）', () => {
     // DC-005 收敛后 request 端点 4 个（refresh 移入共享模块，不再出现在本文件）
     expect(SOURCE_PATHS.length).toBeGreaterThanOrEqual(4)
