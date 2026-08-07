@@ -1,6 +1,6 @@
 # 73 - 家长端 Taro 跨端迁移（H5 架构先行）
 
-> 创建：2026-08-07 | 状态：方案与 SPEC 待评审，实施统一安排 | 对应专题：frozen/43（家长端小程序化设计）、design/30 §方向五（PARENT-WX-001~006）
+> 创建：2026-08-07 | 状态：**实施中（TDD，2026-08-07 启动）** | 对应专题：frozen/43（家长端小程序化设计）、design/30 §方向五（PARENT-WX-001~006）
 >
 > 定位：frozen/43 判定家长端（Vite + React H5 SPA）技术栈不符合后续演进规划（微信小程序渠道），需 Taro 跨端迁移。本文按钱敏健指令「**先对现有 H5 进行技术架构迁移，输出仍保持 H5 单页应用**」输出**两阶段路线**：**P0 = H5 架构迁移（本方案主体）**——把 parent-h5 原地改造为 Taro 工程，H5 产物行为/URL/部署完全等价；**P1 = 微信小程序编译与认证接入（后续专题，依赖企业主体）**。本文只做设计，不含实现代码。
 
@@ -13,7 +13,7 @@
 | **可行性** | ✅ 可行。家长端规模极小（19 个源文件、4 页面、7 个测试文件 + setup 共 8 文件 564 行），Taro H5 产物本身即 React SPA，`h5.router.basename` 可保持 `/parent/` URL 与 nginx 部署完全不变 |
 | **关键风险** | Taro 4 官方支持 React 18（依赖 `react ^18.3.1`），当前三端均为 React 19.2.7 → **Taro 工程需锁定 React 18**；家长端代码未使用 React 19 独有特性（无 `use()`/Actions/Server Components），降级成本 ≈ 0 |
 | **迁移策略** | **原地演进 parent-h5 → Taro 工程**（不新建双工程）：git 历史连续、部署路径不变、用户指令「先对现有 H5 迁移」天然契合 |
-| **P0 工作量** | 2~3 人日（工程改造 + 4 页面组件化 + 平台适配层 + 测试对齐 + CI 命令替换） |
+| **P0 工作量** | 2~3 人日（工程改造 + 4 页面组件化 + 平台适配层 + 测试对齐 + CI 命令替换）；**实施前评估已出**：代码改造低复杂度（758 行源码、样式元素选择器仅 2 处、fetch 直调 1 处、React 19 独有 API 零使用），风险集中 T4 测试适配（R7） |
 | **frozen/43 基线修正** | frozen/43（2026-07-28）基于旧基线（3 页、send-code/verify-phone、localStorage、无 shared 依赖）——**已过时**，本文以 2026-08-07 代码为基线全面更新（见 §一） |
 
 ---
@@ -97,6 +97,11 @@ frontend/parent-h5/src/
 | R4 | 路由守卫（ProtectedRoute）在 Taro 的等价实现 | 低 | 未登录访问 /report、/consent 失守 | P0 用「页面组件内 `Taro.getCurrentInstance().router` + 未登录 `Taro.redirectTo('/pages/verify/index')`」等价实现（4 页面仅 2 个受保护） |
 | R5 | Taro 4 版本选择（4.0.x 系列维护节奏） | 低 | 生态风险 | 锁定 4.0.13+（2025-05 正式版）；不使用实验特性 |
 | R6 | sessionStorage 会话语义（AUD-007）在 Taro storage 无对应 | 低（P1） | 小程序端凭证持久化语义变化 | P0 不涉及（H5 保持 sessionStorage）；P1 设计「storage 键 + 7 天过期 + 退出即清」策略并评审 |
+| R7 | **Taro 组件在 vitest+jsdom 渲染无官方承诺**：Taro 官方测试体系是 Jest+Enzyme；`@tarojs/components` 与 `@tarojs/taro` API 在 vitest 下渲染/mock 均需自行验证 | **高** | **T0 spike 前置**（红-绿循环）：最小 Taro 页面 + vitest+jsdom 验证 View/Button/Input 渲染与文本查询；受阻则 T4 降级「页面逻辑测试 + Taro 组件层 mock」，覆盖率门禁维持（以逻辑覆盖为主） |
+| R8 | Taro 构建器选择（webpack5 默认 vs vite 实验） | 中 | **P0 锁定 `compiler.type='webpack5'`**（官方默认、稳定优先）；vite 模式后置为优化项 |
+| R9 | 产物体积膨胀（Taro 运行时注入） | 低 | **AC-11：迁移前后 dist 体积对比基线**，偏差 >30% 需说明 |
+| R10 | React 18 版本漂移（npm 解析到 19） | 低 | `react`/`react-dom`/`@types/react` 锁 **exact 版本 18.3.1**（非 ^） |
+| R11 | shared 注入改造后 student/teacher 回归遗漏 | 低 | T1 完成后先跑两工程全量测试再进 T3（顺序约束） |
 
 ### 2.3 结论
 
@@ -180,6 +185,18 @@ export type PlatformRedirect = (to: string) => void   // H5: location.href = to�
 - `handleSessionExpired(storage, loginPath?, redirect?)`：新增可选参数，parent 传入 PlatformRedirect；
 - **student-h5 / teacher-web 调用零改动**（默认参数保持现状行为）。
 
+**组件事件模型差异（R2 实施要点，Taro 与 React DOM 的关键差异）**：
+
+| DOM（现状） | Taro（P0） | 说明 |
+|-------------|-----------|------|
+| `input onChange`（`e.target.value`） | `Input onInput`（`e.detail.value`） | 核心差异，verify 页 3 个输入框全部涉及 |
+| `button type="submit"` | `Button` + `Form onSubmit` | Taro Button 无 submit 语义，表单提交走 `Form` 事件 |
+| `form onSubmit` | `Form onSubmit`（需 `e.preventDefault()`） | 事件对象形态差异 |
+| `a href`（隐私页链接） | `Text`/`View` + `onClick` + `navigateTo` | 跨端无 `<a>`，H5 等价跳转 |
+| `style={{}}` 内联对象 | H5 支持（对象形态） | 保持现状 |
+
+**Taro API 使用（页面内）**：`Taro.navigateTo({ url: '/pages/xxx/index' })` / `Taro.redirectTo` / `Taro.navigateBack`；守卫用 `isAuthenticated()` + `redirectTo('/pages/verify/index')`（report/consent 两页顶部，语义同现状 ProtectedRoute）；测试中统一 `vi.mock('@tarojs/taro')`。
+
 ### 3.4 路由设计（URL 完全兼容）
 
 | 现状（react-router） | Taro（P0） | URL（不变） |
@@ -216,17 +233,17 @@ privacy 页「← 返回登录」：`Taro.navigateBack()` 或跳 verify（等价
 |----|------|---------|
 | 逻辑/工具单测（auth.test.ts 69 行） | vitest + jsdom + sessionStorage mock | **保留**；auth.ts 改走 PlatformStorage 后，mock 目标换为注入对象（断言等价） |
 | 契约测试（apiContract.test.ts 80 行） | 断言源码端点 ⊆ endpoints.ts | **原样保留**（services 目录路径变化同步 import 路径） |
-| 页面组件测试（5 文件 414 行） | testing-library + MemoryRouter（HTML 元素断言） | **适配**：Taro 组件（View 渲染 div 等）仍可用 testing-library 查询文本/占位符/角色；MemoryRouter 替换为 Taro 路由 mock 或组件直渲染；断言锚点改为「文本/占位符/aria」而非具体标签 |
+| 页面组件测试（5 文件 414 行） | testing-library + MemoryRouter（HTML 元素断言） | **spike 双路径（R7）**：路径 A = Taro 组件 jsdom 直渲染（`@tarojs/components` H5 端渲染真实 DOM，testing-library 文本/占位符查询可用）→ 保留现有断言模式；路径 B = spike 受阻 → 页面逻辑测试 + Taro 组件层 mock；导航断言统一改为 `vi.mock('@tarojs/taro')` 断言 navigateTo/redirectTo/navigateBack 调用 |
 | ErrorBoundary 测试 | — | reload 改 PlatformRedirect 后 mock 注入函数 |
-| 覆盖率门禁 | 70/65/50/70（vitest.config） | **阈值不降**，迁移后实测并登记（对齐 AUD-022 惯例） |
+| 覆盖率门禁 | 70/65/50/70（vite.config） | **提升至 80/80/80/80（AC-12，用户指令）**，迁移后实测并登记 |
 
 ### 3.8 CI / 构建 / 部署影响
 
 | 项 | 现状 | P0 后 |
 |----|------|-------|
-| dev | `vite`（5174，/api 代理 8080） | `taro build --type h5 --watch`（dev server 端口/代理在 config/dev.ts 对齐 5174 + /api 代理） |
+| dev | `vite`（5174，/api 代理 8080） | `taro build --type h5 --watch`（**`compiler.type='webpack5'`，R8 决策**；dev server 端口/代理在 config/dev.ts 对齐 5174 + /api 代理） |
 | build | `tsc && vite build` → dist/ | `taro build --type h5` → dist/（publicPath `/parent/`，资源路径不变） |
-| lint/test | oxlint / vitest run | 保留（Taro 工程内 oxlint 可加 eslint-config-taro，可选） |
+| lint/test | oxlint / vitest run | oxlint 保留；**vitest 配置独立 `vitest.config.js`**（Taro 工程无 vite.config.js，student/teacher 同型先例）；**覆盖率门禁提升至 80/80/80/80（用户指令，AC-12）** |
 | 部署 | nginx `/parent/` 静态托管 | **nginx 零改动**（产物结构等价）；DEPLOY-GUIDE 构建命令段同步 |
 | CI | workflow 中 parent-h5 build + test 步骤 | 命令替换（`taro build` + vitest 不变），门禁（覆盖率/契约）不变 |
 
@@ -271,6 +288,8 @@ privacy 页「← 返回登录」：`Taro.navigateBack()` 或跳 verify（等价
 | AC-8 | While P0 完成后，the 微信小程序编译通道 shall 保持配置就绪但未启用（weapp 产物不进入交付） | config 保留 weapp 支持，CI 不构建 weapp |
 | AC-9 | The 部署 shall 不改变 `/parent/` nginx 托管与 `/api` 代理（产物结构等价） | T5 构建产物 + nginx 配置 diff 核验 |
 | AC-10 | The 迁移 shall 不改变后端 API 契约（无后端变更，P0 不引入新端点） | 契约测试 + 后端零 diff |
+| AC-11 | The 迁移后 H5 产物体积 shall 相对迁移前基线不膨胀超过 30%（dist 体积对比） | T0 前记录基线体积 + T5 实测对比登记 |
+| AC-12 | The 测试覆盖率 shall 四维度均达到 80% 以上（lines/branches/functions/statements） | vitest coverage 实测登记 |
 
 ---
 
@@ -298,6 +317,45 @@ privacy 页「← 返回登录」：`Taro.navigateBack()` 或跳 verify（等价
 | 未成年人数据类目审核（P1） | 中 | 对齐 design/22 隐私协议 + 最小必要（frozen/43 §1.3） |
 | 工作量估计偏差 | 低 | 规模 19 文件可完整盘点；2~3 人日为上限估计 |
 
+## 八、TDD 实施计划（2026-08-07 评估后定稿）
+
+### 8.1 实施顺序（评估结论：不确定性前置）
+
+| 阶段 | 内容 | TDD 循环（红→绿→重构） | 验收 |
+|------|------|------------------------|------|
+| T0 工程基线 | Taro 4.0.13+ 骨架铺入 parent-h5（config/、babel、tsconfig paths）；**React 降级 18.3.1（exact，R10）**；依赖裁剪（移除 react-router）；**spike（R7）**：最小 Taro 页面 + vitest+jsdom 渲染验证 | 红：spike 测试先写（View/Button/Input 渲染 + 文本查询断言）；绿：Taro 组件渲染通过；重构：骨架清理 | 可编译空 Taro H5 工程 + spike 结论记录（路径 A/B） |
+| T1 平台适配层 | `platform/` 三接口 + shared 注入改造（createPlatformTokens/fetchImpl/redirect）；**student/teacher 全量回归（R11）** | 红：platform 三接口测试 + shared 兼容测试（默认参数行为不变断言）；绿：实现；重构：收敛重复 | 适配层 + 共享模块兼容 + 三端测试全绿 |
+| T2 路由与入口 | app.config.ts pages 注册 + app.tsx 替换 main.tsx；basename/publicPath 四 URL 等价；守卫等价 | 红：路由映射断言（4 URL → 页面）；绿：实现；重构：— | 四路由 URL 兼容可访问 |
+| T3 页面迁移 | 4 页面组件化（View/Text/Button/Input/Form 替换，**onInput/onSubmit 事件模型 R2**）；services/ 目录重构；auth.ts 走 PlatformStorage；app.scss 类名化（2 处元素选择器） | 红：现有 5 页面测试改写先行（Taro 化断言 + @tarojs/taro mock）；绿：页面实现；重构：样式类名化 + 重复逻辑收敛 | 功能等价的 Taro H5 页面 |
+| T4 测试对齐 | 覆盖率 80% 达成（AC-12）：api 层不整模块 mock（mock fetch 走真实 request 逻辑）、platform 专项测试、页面交互分支补齐 | 红：缺覆盖用例逐个写；绿：补测通过；重构：断言收敛 | 四维度 ≥80% 实测登记 |
+| T5 验证与台账 | 冒烟（登录/注册/周报/撤回/隐私五流程）+ 产物体积对比（AC-11）+ CI 命令替换 + DEPLOY-GUIDE 同步 + 台账登记（DOC-072） | — | 验收全过 + 台账同步 |
+
+### 8.2 覆盖率 80% 达成策略（现状 73.62/72.72/54.76/73.62 的差距分析）
+
+| 缺口 | 现状原因 | 达成手段 |
+|------|----------|----------|
+| functions 54.76 失真 | `api/index.ts` 被整模块 `vi.mock` 替换，v8 统计不到真实函数体 | 迁移后 **api 层不整模块 mock**：mock 全局 `fetch` + storage 注入，`request()` 真实执行（401 刷新/错误分支/成功分支全覆盖） |
+| 页面分支覆盖 | 现有测试覆盖主路径，loading/空孩子/无 data 分支少 | 按交互分支补齐用例（verify 校验分支 × 3、report 无孩子/加载中、consent 空孩子） |
+| platform/ 新增层 | 无测试 | 三接口专项测试（storage 语义、request 编排、redirect 调用） |
+| auth.ts 改造后 | 测试目标变化 | auth.test.ts 改为注入 mock storage 断言等价 |
+
+### 8.3 决策记录（2026-08-07 实施前评估）
+
+| 决策 | 结论 | 依据 |
+|------|------|------|
+| D2 构建器 | `compiler.type='webpack5'`（R8） | Taro 4 默认、稳定优先；vite 模式实验性后置 |
+| D3 测试生态 | vitest + testing-library 保留，spike 双路径（R7） | 现有 564 行测试资产复用优先；Taro 官方 Jest 体系迁移成本高 |
+| D4 React 版本 | 18.3.1 exact 锁定（R10） | Taro 4 官方依赖 ^18.3.1；代码审计无 React 19 独有 API |
+| D5 覆盖门禁 | 80/80/80/80（AC-12） | 用户指令（本专题）高于既有 70/65/50/70 门禁 |
+
 ---
 
-_本文基于 2026-08-07 代码基线（Vite 8 + React 19.2.7 + react-router 8 + DC-005 shared 模块）深度分析，结论：P0 H5 架构迁移可行（Taro H5 产物即 React SPA，URL/部署零变化，React 降级 18 成本≈0）；P1 小程序技术面可控、门槛在企业主体。Taro 版本兼容性事实依据 Taro 官方文档（h5.router.basename/mode、publicPath、React 18 支持）。_
+## 九、实施记录
+
+| 日期 | 事件 | 状态 |
+|------|------|------|
+| 2026-08-07 | 方案输出（bd0a407） | ✅ |
+| 2026-08-07 | 实施前复杂度/风险评估：改造低复杂度、风险集中 T4（R7），spike 前置 | ✅ |
+| 2026-08-07 | 文档更新：R7~R11、构建器决策、组件事件差异、AC-11/12、TDD 计划 | ✅ |
+| 2026-08-07 | **产物体积基线记录（AC-11）**：迁移前 dist = 256K（2026-08-07 12:54 构建） | ✅ |
+| 2026-08-07 | T0 工程基线 + spike | 进行中 |
