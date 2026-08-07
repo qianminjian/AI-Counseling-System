@@ -14,6 +14,9 @@ on:
       image_tag:
         description: '回滚目标镜像 tag（git SHA 前 7 位或 v 标签）'
         required: true
+        # AUD-053：输入格式白名单（git SHA 7-40 位十六进制 或 v 语义化版本），
+        # 防 workflow_dispatch 注入（shell 拼接/镜像拉取路径注入面）
+        pattern: '^([0-9a-f]{7,40}|v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.-]+)?)$'
       targets:
         description: '回滚范围，逗号分隔：backend,voice,tts,frontend（默认全部）'
         default: 'backend,voice,tts,frontend'
