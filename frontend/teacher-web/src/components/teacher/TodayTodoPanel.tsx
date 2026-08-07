@@ -66,8 +66,12 @@ export default function TodayTodoPanel({ onNavigate }) {
   useEffect(() => { load() }, [load])
 
   // 每 30s 刷新 SLA 倒计时
+  // AUD-047：页面不可见时暂停轮询（与 Dashboard 15s 轮询叠加时不空转请求）
   useEffect(() => {
-    const timer = setInterval(load, 30000)
+    const timer = setInterval(() => {
+      if (document.hidden) return
+      load()
+    }, 30000)
     return () => clearInterval(timer)
   }, [load])
 

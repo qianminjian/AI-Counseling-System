@@ -27,7 +27,11 @@ export default function BigScreen({ onExit }: { onExit?: () => void }) {
 
   useEffect(() => {
     fetchData()
-    const timer = setInterval(fetchData, REFRESH_INTERVAL)
+    // AUD-047：页面不可见时暂停轮询（大屏切后台不空转请求）
+    const timer = setInterval(() => {
+      if (document.hidden) return
+      fetchData()
+    }, REFRESH_INTERVAL)
     const clock = setInterval(() => setTime(new Date()), 1000)
     return () => { clearInterval(timer); clearInterval(clock) }
   }, [fetchData])

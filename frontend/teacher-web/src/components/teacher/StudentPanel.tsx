@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Table, Tag, Card, Button, message, Input, List, Descriptions, Timeline, Space, Empty, Spin, Drawer } from 'antd'
 import { ArrowLeftOutlined, PlusOutlined, MessageOutlined, DownloadOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
-import { getStudents, getHighRiskStudents, getStudentProfile, addStudentNote, getSessionMessages, exportStudentsCsv } from '../../api'
+import { getStudents, getHighRiskStudents, getStudentProfile, addStudentNote, getSessionMessages, exportStudentsCsv, type AlertVO, type NoteVO, type StudentProfileVO } from '../../api'
 import SessionSummaryCard from './SessionSummaryCard'
 import { emotionLabel } from '../../utils/emotionLabels'
 import ProfileRadarChart from './ProfileRadarChart'
@@ -72,7 +72,7 @@ function SessionMessagesDrawer({ sessionId, onClose }) {
 
 /** 学生档案详情 */
 function StudentProfile({ studentId, onBack }) {
-  const [profile, setProfile] = useState(null)
+  const [profile, setProfile] = useState<StudentProfileVO | null>(null)
   const [loading, setLoading] = useState(true)
   const [noteText, setNoteText] = useState('')
   const [adding, setAdding] = useState(false)
@@ -180,7 +180,7 @@ function StudentProfile({ studentId, onBack }) {
             <List
               size="small"
               dataSource={profile.alertHistory}
-              renderItem={(item: any) => (
+              renderItem={(item: AlertVO) => (
                 <List.Item>
                   <Space>
                     <Tag color={RISK_COLORS[item.riskLevel]}>{RISK_LABELS[item.riskLevel]}</Tag>
@@ -220,7 +220,7 @@ function StudentProfile({ studentId, onBack }) {
           <List
             size="small"
             dataSource={profile.notes}
-            renderItem={(note: any) => (
+            renderItem={(note: NoteVO) => (
               <List.Item>
                 <div>
                   <div>{note.content}</div>

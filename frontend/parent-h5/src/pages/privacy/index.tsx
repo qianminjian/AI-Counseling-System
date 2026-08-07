@@ -36,7 +36,8 @@ export default function PrivacyPage() {
         </p>
 
         <p className="tip-text">
-          <Link to="/parent/">← 返回登录</Link>
+          {/* AUD-045：basename 已含 /parent，直接指向根路由，避免 /parent/parent/ 重复前缀 */}
+          <Link to="/">← 返回登录</Link>
         </p>
       </div>
     </div>
