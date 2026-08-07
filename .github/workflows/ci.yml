@@ -275,7 +275,7 @@ jobs:
           npm run build
 
       # lint/test 按需执行（ARCH-009 E-5：parent-h5 已补 .oxlintrc.json，三端均接 lint；
-      # 三端均有 vitest：student-h5/teacher-web 用 vitest.config.js，parent-h5 在 vite.config.js 内）
+      # 三端均有 vitest：student-h5/teacher-web 用 vitest.config.js，parent-h5 用 vitest.config.ts（doing/73 迁移后））
       - name: Lint
         run: npm run lint --if-present
 
