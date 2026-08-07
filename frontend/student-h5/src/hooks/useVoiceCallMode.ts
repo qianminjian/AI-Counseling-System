@@ -39,10 +39,11 @@ const SPEECH_END_DEBOUNCE_MS = 1800
  * @returns {{ mode: 'off'|'standby'|'active', wakeSupported: boolean }}
  */
 export function useVoiceCallMode({ enabled, tts, busy, onFinalTranscript }) {
-  const [mode, setMode] = useState('off')
+  // DC-012：字面量联合类型收紧（computeBoboState 入参契约要求），避免 string 宽化
+  const [mode, setMode] = useState<'off' | 'standby' | 'active'>('off')
 
   // 同步 ref（供回调/计时器读取最新值，避免闭包过期）
-  const modeRef = useRef('off')
+  const modeRef = useRef<'off' | 'standby' | 'active'>('off')
   const enabledRef = useRef(enabled)
   const busyRef = useRef(busy)
   const onFinalTranscriptRef = useRef(onFinalTranscript)

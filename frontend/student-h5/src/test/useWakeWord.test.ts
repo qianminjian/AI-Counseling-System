@@ -365,7 +365,8 @@ describe('useWakeWord 模块级错误路径', () => {
     })
     expect(capturedOpts).toBeTruthy()
     // AUD-027：dbg helper 前缀 + 可变参数（console.debug('[WakeWord]', ...args)）
-    expect(debugSpy).toHaveBeenCalledWith('[WakeWord]', 'whisper.onnx 75%')
+    // DC-009：进度经 createProgressHandler 聚合为总进度（SPEC §23），断言同步更新
+    expect(debugSpy).toHaveBeenCalledWith('[WakeWord]', '模型总进度 75%')
     unmount()
     debugSpy.mockRestore()
     infoSpy.mockRestore()

@@ -245,7 +245,8 @@ describe('useVoiceprint 模块级错误路径', () => {
       emb = await result.current.extractEmbedding(new Float32Array(1600).fill(0.5), 16000)
     })
     expect(emb).not.toBeNull()
-    expect(debugSpy).toHaveBeenCalledWith('[Voiceprint] 模型加载 model.onnx 50%')
+    // DC-009：进度经 createProgressHandler 聚合为总进度（SPEC §23），断言同步更新
+    expect(debugSpy).toHaveBeenCalledWith('[Voiceprint] 模型加载 50%')
     debugSpy.mockRestore()
   })
 })

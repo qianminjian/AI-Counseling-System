@@ -1,0 +1,125 @@
+/**
+ * DC-009 本地模型加载器双实现收敛（SPEC §23）
+ *
+ * 收敛 useWakeWord.getTranscriber 与 useVoiceprint.getModelBundle 的重复初始化：
+ * 环境检查（SAB/SIMD）/ env 配置（remoteHost/模板/缓存/线程/ort 路径）/ 错误分类与格式化。
+ *
+ * 单例 + 状态机保留在各 hook；本模块只负责"一次加载流程"。
+ */
+import type * as HF from '@huggingface/transformers'
+
+/** 环境不支持（无 SharedArrayBuffer / 无 WebAssembly SIMD）——调用方应静默降级，不触发 onError */
+export class UnsupportedEnvironmentError extends Error {
+  readonly unsupported = true
+  constructor(reason: string) {
+    super(`ENV_UNSUPPORTED: ${reason}`)
+    this.name = 'UnsupportedEnvironmentError'
+  }
+}
+
+/** ORT SIMD 探测字节码（v128 类型 + i32x4 常量 + f32x4 min 指令，V8 11+/现代浏览器为 true） */
+const SIMD_PROBE = new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0, 1, 5, 1, 96, 0, 1, 123, 3, 2, 1, 0, 10, 8, 1, 6, 0, 65, 0, 253, 15, 11])
+
+/** 环境前置检查：SharedArrayBuffer + SIMD 是 ORT WASM 的硬性依赖；不满足抛 UnsupportedEnvironmentError */
+export function checkWasmEnvironment(): void {
+  if (typeof SharedArrayBuffer === 'undefined') {
+    if (import.meta.env.DEV) console.warn('[ModelLoader] SharedArrayBuffer不可用（需 cross-origin isolation），语音功能降级')
+    throw new UnsupportedEnvironmentError('SharedArrayBuffer')
+  }
+  let hasSimd = false
+  try {
+    hasSimd = WebAssembly.validate(SIMD_PROBE)
+  } catch { /* ignore */ }
+  if (!hasSimd) {
+    if (import.meta.env.DEV) console.warn('[ModelLoader] 浏览器不支持WebAssembly SIMD，语音功能降级')
+    throw new UnsupportedEnvironmentError('WebAssembly SIMD')
+  }
+}
+
+/**
+ * 模型远程宿主解析：
+ * - 'SAME_ORIGIN' → `${base}models/`（同源部署，浏览器 HTTP 缓存持久化）
+ * - 相对路径 → origin 拼接（remoteHost 必须是绝对 URL，否则 get_file_metadata 的 new URL() 失败）
+ * - 绝对 URL 原样返回
+ */
+export function buildRemoteHost(base: string, modelHost: string): string {
+  if (modelHost === 'SAME_ORIGIN') return `${base}models/`
+  if (modelHost.startsWith('http')) return modelHost
+  return window.location.origin + modelHost
+}
+
+export interface LoadTransformersOptions<T> {
+  /** 模型宿主：'SAME_ORIGIN' / 相对路径 / 绝对 URL */
+  modelHost: string
+  /** 模型加载回调（hf 为动态导入的 transformers 模块，调用方自行 pipeline/from_pretrained） */
+  load: (hf: typeof HF) => Promise<T>
+  /** 聚合进度（progress_total 优先，否则文件平均） */
+  onProgress?: (p: number) => void
+  /** 非环境不支持错误（message+stack 前 3 行语义见 formatModelError），回调后仍上抛 */
+  onError?: (err: unknown) => void
+}
+
+/**
+ * 一次模型加载流程：checkWasmEnvironment → 动态 import（独立分包，未启用时主路径零开销）
+ * → env 配置 → persist → load。
+ *
+ * 失败语义：UnsupportedEnvironmentError 直接上抛且不触发 onError（环境不支持不算加载失败）；
+ * import/load 失败调 onError 后上抛（调用方自行置单例 null 允许重试）。
+ */
+export async function loadTransformersModel<T>(opts: LoadTransformersOptions<T>): Promise<T> {
+  checkWasmEnvironment()
+  const base = import.meta.env.BASE_URL || '/'
+  try {
+    const hf = await import('@huggingface/transformers')
+    configureEnv(hf, buildRemoteHost(base, opts.modelHost), base)
+    return await opts.load(hf)
+  } catch (err) {
+    if (opts.onError) opts.onError(err)
+    throw err
+  }
+}
+
+function configureEnv(hf: typeof HF, remoteHost: string, base: string): void {
+  // 自托管模型不带 /resolve/{revision}/ 路径段
+  hf.env.remotePathTemplate = '{model}/'
+  hf.env.remoteHost = remoteHost
+  hf.env.allowLocalModels = false
+  // 关键修复 1：禁用 WASM 缓存，避免 blob URL 工厂导致 Worker 创建失败
+  hf.env.useWasmCache = false
+  // 关键修复 2：单线程模式，避免 ORT 创建 pthread Worker（部分浏览器/WebView 对 module Worker 有限制）
+  hf.env.backends.onnx.wasm.numThreads = 1
+  // ONNX Runtime WASM 走本地（dist/ort/ → /mindsafe/ort/）；始终非 asyncify 变体（调用约定匹配）
+  const variant = 'ort-wasm-simd-threaded'
+  hf.env.backends.onnx.wasm.wasmPaths = {
+    mjs: `${base}ort/${variant}.mjs`,
+    wasm: `${base}ort/${variant}.wasm`,
+  }
+  // 请求持久化存储（防止浏览器在存储压力下清除模型缓存）
+  navigator.storage?.persist?.().catch(() => {})
+}
+
+/**
+ * 模型下载进度聚合处理器（传给 pipeline/from_pretrained 的 progress_callback）：
+ * progress_total 优先（直接取总百分比）；否则按文件平均聚合。
+ */
+export function createProgressHandler(onProgress: (p: number) => void): (ev: unknown) => void {
+  const fileProgress: Record<string, number> = {}
+  return (ev) => {
+    const e = ev as { status?: string; progress?: number; file?: string }
+    if (e.status === 'progress_total' && typeof e.progress === 'number') {
+      onProgress(Math.round(e.progress))
+    } else if (e.status === 'progress' && e.file && typeof e.progress === 'number') {
+      fileProgress[e.file] = e.progress
+      const files = Object.keys(fileProgress)
+      const avg = files.reduce((s, f) => s + fileProgress[f], 0) / files.length
+      onProgress(Math.round(avg))
+    }
+  }
+}
+
+/** 模型加载错误格式化：message + stack 前 3 行（' | ' 连接），非 Error 值降级 String() */
+export function formatModelError(err: unknown): string {
+  const errMsg = (err as { message?: string })?.message || String(err)
+  const errStack = (err as { stack?: string })?.stack?.split('\n').slice(0, 3).join(' | ') || ''
+  return `${errMsg}${errStack ? ' @ ' + errStack : ''}`
+}
