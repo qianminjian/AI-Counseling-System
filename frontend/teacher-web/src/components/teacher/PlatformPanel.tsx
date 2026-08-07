@@ -23,7 +23,7 @@ export default function PlatformPanel() {
 
   const tenantColumns = [
     { title: '学校/机构', dataIndex: 'tenantName', key: 'name', render: (t, r) => (
-      <span><BankOutlined style={{ marginRight: 6, color: '#1677ff' }} />{t}
+      <span><BankOutlined style={{ marginRight: 6, color: 'var(--ms-primary)' }} />{t}
         <Tag style={{ marginLeft: 8 }} color={r.status === 'active' ? 'green' : 'default'}>{r.status}</Tag>
       </span>
     )},
@@ -42,7 +42,7 @@ export default function PlatformPanel() {
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
         <Col xs={12} sm={8} md={4}>
           <Card size="small"><Statistic title="合作学校" value={overview?.tenantCount || 0}
-            prefix={<BankOutlined />} valueStyle={{ color: '#1677ff' }} /></Card>
+            prefix={<BankOutlined />} valueStyle={{ color: 'var(--ms-primary)' }} /></Card>
         </Col>
         <Col xs={12} sm={8} md={4}>
           <Card size="small"><Statistic title="校区数" value={overview?.schoolCount || 0}
@@ -50,7 +50,7 @@ export default function PlatformPanel() {
         </Col>
         <Col xs={12} sm={8} md={4}>
           <Card size="small"><Statistic title="学生总数" value={overview?.studentCount || 0}
-            prefix={<TeamOutlined />} valueStyle={{ color: '#52c41a' }} /></Card>
+            prefix={<TeamOutlined />} valueStyle={{ color: 'var(--ms-success)' }} /></Card>
         </Col>
         <Col xs={12} sm={8} md={4}>
           <Card size="small"><Statistic title="教师总数" value={overview?.teacherCount || 0}
@@ -62,7 +62,7 @@ export default function PlatformPanel() {
         </Col>
         <Col xs={12} sm={8} md={4}>
           <Card size="small"><Statistic title="待处理预警" value={overview?.openAlerts || 0}
-            prefix={<AlertOutlined />} valueStyle={{ color: overview?.openAlerts > 0 ? '#ff4d4f' : '#52c41a' }} /></Card>
+            prefix={<AlertOutlined />} valueStyle={{ color: overview?.openAlerts > 0 ? 'var(--ms-danger)' : 'var(--ms-success)' }} /></Card>
         </Col>
       </Row>
 

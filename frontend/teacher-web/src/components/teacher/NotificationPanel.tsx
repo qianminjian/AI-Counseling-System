@@ -34,9 +34,9 @@ export default function NotificationPanel() {
   }
 
   const SEVERITY_BORDER = {
-    3: '#ff4d4f',
-    2: '#fa8c16',
-    1: '#faad14',
+    3: 'var(--ms-danger)',
+    2: 'var(--ms-warning)',
+    1: 'var(--ms-warning)',
     0: '#d9d9d9',
   }
 

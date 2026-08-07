@@ -55,7 +55,7 @@ export default function QualityPanel() {
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
         <Col xs={12} md={6}>
           <Card size="small"><Statistic title="平均评分" value={stats?.avgRating || 0}
-            prefix={<StarOutlined />} suffix="/ 5" valueStyle={{ color: '#faad14' }} /></Card>
+            prefix={<StarOutlined />} suffix="/ 5" valueStyle={{ color: 'var(--ms-warning)' }} /></Card>
         </Col>
         <Col xs={12} md={6}>
           <Card size="small"><Statistic title="近 7 天均分" value={stats?.recentAvg || 0}
@@ -63,16 +63,16 @@ export default function QualityPanel() {
         </Col>
         <Col xs={12} md={6}>
           <Card size="small"><Statistic title="低分会话" value={stats?.flaggedCount || 0}
-            prefix={<WarningOutlined />} valueStyle={{ color: '#ff4d4f' }} /></Card>
+            prefix={<WarningOutlined />} valueStyle={{ color: 'var(--ms-danger)' }} /></Card>
         </Col>
         <Col xs={12} md={6}>
           <Card size="small"><Statistic title="低分率" value={stats?.flagRate || 0}
-            suffix="%" valueStyle={{ color: (stats?.flagRate || 0) > 20 ? '#ff4d4f' : '#52c41a' }} /></Card>
+            suffix="%" valueStyle={{ color: (stats?.flagRate || 0) > 20 ? 'var(--ms-danger)' : 'var(--ms-success)' }} /></Card>
         </Col>
       </Row>
 
       {/* 低分会话列表 */}
-      <Card title={<span><WarningOutlined style={{ color: '#ff4d4f' }} /> 待抽检会话（评分 ≤ 2★）</span>} size="small">
+      <Card title={<span><WarningOutlined style={{ color: 'var(--ms-danger)' }} /> 待抽检会话（评分 ≤ 2★）</span>} size="small">
         {flagged.length === 0 ? (
           <Empty description="暂无低分会话，AI 对话质量良好 🎉" />
         ) : (
@@ -92,7 +92,7 @@ export default function QualityPanel() {
               <div key={i} style={{
                 padding: '8px 12px', borderRadius: 8, maxWidth: '85%',
                 alignSelf: msg.senderType === 'student' ? 'flex-end' : 'flex-start',
-                background: msg.senderType === 'student' ? '#e6f7ff' : '#f6ffed',
+                background: msg.senderType === 'student' ? '#e6f7ff' : 'var(--ms-success-soft)',
               }}>
                 <div style={{ fontSize: 11, color: '#999', marginBottom: 4 }}>
                   {msg.senderType === 'student' ? '🧒 学生' : '🤖 AI'} · {emotionLabel(msg.emotionLabel)}

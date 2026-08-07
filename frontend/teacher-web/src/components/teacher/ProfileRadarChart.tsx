@@ -48,8 +48,8 @@ export default function ProfileRadarChart({ studentId }) {
           value: values,
           name: '心理画像',
           areaStyle: { color: 'rgba(24, 144, 255, 0.2)' },
-          lineStyle: { color: '#1890ff', width: 2 },
-          itemStyle: { color: '#1890ff' },
+          lineStyle: { color: 'var(--ms-primary)', width: 2 },
+          itemStyle: { color: 'var(--ms-primary)' },
         }],
       }],
     })

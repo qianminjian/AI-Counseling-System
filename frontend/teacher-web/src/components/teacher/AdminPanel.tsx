@@ -218,7 +218,7 @@ export default function AdminPanel() {
           <p className="ant-upload-text">点击或拖拽 CSV 文件到此区域</p>
           <p className="ant-upload-hint">格式：昵称,年级,班级（每行一个学生，首行为表头可省略）</p>
         </Upload.Dragger>
-        {importing && <div style={{ marginTop: 8, color: '#1890ff' }}>导入中...</div>}
+        {importing && <div style={{ marginTop: 8, color: 'var(--ms-primary)' }}>导入中...</div>}
         {importResult && (
           <Alert
             style={{ marginTop: 12 }}

@@ -36,7 +36,7 @@ function ChartBox({ option, height = 260 }) {
   return <div ref={ref} style={{ width: '100%', height }} />
 }
 
-const RISK_COLORS = { 1: '#faad14', 2: '#fa8c16', 3: '#ff4d4f' }
+const RISK_COLORS = { 1: 'var(--ms-warning)', 2: 'var(--ms-warning)', 3: 'var(--ms-danger)' }
 
 /** 30 天会话趋势折线图 */
 export function SessionTrendChart({ data }) {
@@ -55,8 +55,8 @@ export function SessionTrendChart({ data }) {
       data: data?.map(d => d.count) || [],
       smooth: true,
       areaStyle: { color: 'rgba(24,144,255,0.08)' },
-      lineStyle: { color: '#1890ff', width: 2 },
-      itemStyle: { color: '#1890ff' },
+      lineStyle: { color: 'var(--ms-primary)', width: 2 },
+      itemStyle: { color: 'var(--ms-primary)' },
     }],
   }
   return <ChartBox option={option} height={220} />
@@ -99,7 +99,7 @@ export function ClassBarChart({ data }) {
         name: '预警数',
         type: 'bar',
         data: data?.map(d => d.alertCount) || [],
-        itemStyle: { color: '#ff7875', borderRadius: [3, 3, 0, 0] },
+        itemStyle: { color: 'var(--ms-danger)', borderRadius: [3, 3, 0, 0] },
         barMaxWidth: 28,
       },
       {

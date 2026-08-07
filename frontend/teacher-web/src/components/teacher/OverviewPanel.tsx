@@ -22,7 +22,7 @@ function WeeklyChart({ data }) {
               width: '100%',
               maxWidth: 32,
               height: `${Math.max((d.count / max) * 80, 4)}px`,
-              background: d.count > 0 ? 'linear-gradient(to top, #ff7875, #ffa39e)' : '#f0f0f0',
+              background: d.count > 0 ? 'linear-gradient(to top, var(--ms-danger), #ffa39e)' : '#f0f0f0',
               borderRadius: 4,
               transition: 'height 0.3s ease',
             }}
@@ -119,8 +119,8 @@ export default function OverviewPanel({ onNavigate }) {
             <Statistic
               title="待处理预警"
               value={dashboard?.pendingAlerts ?? 0}
-              prefix={<AlertOutlined style={{ color: '#ff4d4f' }} />}
-              valueStyle={{ color: dashboard?.pendingAlerts > 0 ? '#ff4d4f' : '#3f8600' }}
+              prefix={<AlertOutlined style={{ color: 'var(--ms-danger)' }} />}
+              valueStyle={{ color: dashboard?.pendingAlerts > 0 ? 'var(--ms-danger)' : '#3f8600' }}
             />
           </Card>
         </Col>
@@ -129,7 +129,7 @@ export default function OverviewPanel({ onNavigate }) {
             <Statistic
               title="今日新增预警"
               value={dashboard?.todayAlerts ?? 0}
-              prefix={<ClockCircleOutlined style={{ color: '#fa8c16' }} />}
+              prefix={<ClockCircleOutlined style={{ color: 'var(--ms-warning)' }} />}
             />
           </Card>
         </Col>
@@ -138,7 +138,7 @@ export default function OverviewPanel({ onNavigate }) {
             <Statistic
               title="今日活跃会话"
               value={dashboard?.todaySessions ?? 0}
-              prefix={<MessageOutlined style={{ color: '#1890ff' }} />}
+              prefix={<MessageOutlined style={{ color: 'var(--ms-primary)' }} />}
             />
           </Card>
         </Col>
@@ -148,8 +148,8 @@ export default function OverviewPanel({ onNavigate }) {
               title="近30天平均满意度"
               value={dashboard?.avgSatisfaction ?? '-'}
               suffix={dashboard?.satisfactionCount > 0 ? '/ 5' : ''}
-              prefix={<SmileOutlined style={{ color: '#52c41a' }} />}
-              valueStyle={{ color: (dashboard?.avgSatisfaction ?? 0) >= 3.5 ? '#52c41a' : '#fa8c16' }}
+              prefix={<SmileOutlined style={{ color: 'var(--ms-success)' }} />}
+              valueStyle={{ color: (dashboard?.avgSatisfaction ?? 0) >= 3.5 ? 'var(--ms-success)' : 'var(--ms-warning)' }}
             />
             <div style={{ fontSize: 11, color: '#999', marginTop: 4 }}>
               {dashboard?.satisfactionCount ?? 0} 条评价
@@ -194,7 +194,7 @@ export default function OverviewPanel({ onNavigate }) {
         {/* 高风险学生 */}
         <Col xs={24}>
           <Card
-            title={<span><RiseOutlined style={{ color: '#ff4d4f' }} /> 高风险学生</span>}
+            title={<span><RiseOutlined style={{ color: 'var(--ms-danger)' }} /> 高风险学生</span>}
             size="small"
             extra={<a onClick={() => onNavigate('students')}>查看全部</a>}
           >
@@ -239,14 +239,14 @@ function SatisfactionCard() {
   if (!data || data.totalRated === 0) return null
 
   return (
-    <Card title={<span><SmileOutlined style={{ color: '#faad14' }} /> 学生满意度</span>} size="small" style={{ marginTop: 16 }}>
+    <Card title={<span><SmileOutlined style={{ color: 'var(--ms-warning)' }} /> 学生满意度</span>} size="small" style={{ marginTop: 16 }}>
       <Row gutter={16} align="middle">
         <Col span={6} style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: 32, fontWeight: 700, color: '#faad14' }}>{data.avgRating}</div>
+          <div style={{ fontSize: 32, fontWeight: 700, color: 'var(--ms-warning)' }}>{data.avgRating}</div>
           <div style={{ fontSize: 12, color: '#999' }}>平均评分（共 {data.totalRated} 次）</div>
         </Col>
         <Col span={6} style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: 32, fontWeight: 700, color: '#52c41a' }}>{data.recentAvg}</div>
+          <div style={{ fontSize: 32, fontWeight: 700, color: 'var(--ms-success)' }}>{data.recentAvg}</div>
           <div style={{ fontSize: 12, color: '#999' }}>近 7 天（{data.recentCount} 次）</div>
         </Col>
         <Col span={12}>
@@ -257,7 +257,7 @@ function SatisfactionCard() {
                 <div style={{ flex: 1, height: 10, background: '#f0f0f0', borderRadius: 5, overflow: 'hidden' }}>
                   <div style={{
                     width: `${data.totalRated ? d.count / data.totalRated * 100 : 0}%`,
-                    height: '100%', background: '#faad14', borderRadius: 5,
+                    height: '100%', background: 'var(--ms-warning)', borderRadius: 5,
                   }} />
                 </div>
                 <span style={{ width: 24, fontSize: 11, color: '#999', textAlign: 'right' }}>{d.count}</span>

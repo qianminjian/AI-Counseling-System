@@ -36,7 +36,7 @@ export function useAlertWebSocket({ onAlert, enabled = true }) {
       try {
         const data = JSON.parse(event.data)
         if (data.type === 'risk_alert') {
-          const levelColor = { 3: '#ff4d4f', 2: '#fa8c16', 1: '#faad14' }
+          const levelColor = { 3: 'var(--ms-danger)', 2: 'var(--ms-warning)', 1: 'var(--ms-warning)' }
           const isRed = data.riskLevel >= 3
 
           notification.open({
@@ -44,7 +44,7 @@ export function useAlertWebSocket({ onAlert, enabled = true }) {
             description: data.body,
             placement: 'topRight',
             duration: isRed ? 0 : 8, // 红色不自动关闭
-            style: { borderLeft: `4px solid ${levelColor[data.riskLevel] || '#1890ff'}` },
+            style: { borderLeft: `4px solid ${levelColor[data.riskLevel] || 'var(--ms-primary)'}` },
             btn: isRed && data.sessionId ? (
               <Button
                 type="primary"

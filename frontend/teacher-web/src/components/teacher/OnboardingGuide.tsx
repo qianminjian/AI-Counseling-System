@@ -8,22 +8,22 @@ const ONBOARDING_KEY = 'mindsafe_onboarding_done'
 
 const STEPS = [
   {
-    icon: <DashboardOutlined style={{ fontSize: 32, color: '#1677ff' }} />,
+    icon: <DashboardOutlined style={{ fontSize: 32, color: 'var(--ms-primary)' }} />,
     title: '工作台',
     desc: '这里是你的工作首页，展示今日会话、预警概览、高风险学生和满意度数据。每天打开先看这里。',
   },
   {
-    icon: <AlertOutlined style={{ fontSize: 32, color: '#ff4d4f' }} />,
+    icon: <AlertOutlined style={{ fontSize: 32, color: 'var(--ms-danger)' }} />,
     title: '预警队列',
     desc: 'AI 检测到学生风险信号时会自动生成预警。红色预警需要立即处理，点击"接管"进行线下干预。',
   },
   {
-    icon: <TeamOutlined style={{ fontSize: 32, color: '#52c41a' }} />,
+    icon: <TeamOutlined style={{ fontSize: 32, color: 'var(--ms-success)' }} />,
     title: '学生管理',
     desc: '查看每位学生的心理档案、历史会话和 AI 摘要。支持批量导入学生、添加教师备注。',
   },
   {
-    icon: <BellOutlined style={{ fontSize: 32, color: '#faad14' }} />,
+    icon: <BellOutlined style={{ fontSize: 32, color: 'var(--ms-warning)' }} />,
     title: '实时通知',
     desc: '风险预警会通过浏览器弹窗 + 声音实时推送。红色预警弹窗不会自动关闭，确保你不会错过。',
   },

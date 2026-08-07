@@ -162,7 +162,7 @@ function StudentProfile({ studentId, onBack }) {
                     <div style={{ fontSize: 12, color: '#999' }}>
                       状态: {s.status} | 风险: {RISK_LABELS[s.riskLevel] || '无'}
                       {s.satisfactionRating && (
-                        <span style={{ marginLeft: 8, color: s.satisfactionRating >= 4 ? '#52c41a' : '#fa8c16' }}>
+                        <span style={{ marginLeft: 8, color: s.satisfactionRating >= 4 ? 'var(--ms-success)' : 'var(--ms-warning)' }}>
                           满意度: {'⭐'.repeat(s.satisfactionRating)}
                         </span>
                       )}
@@ -296,9 +296,9 @@ export default function StudentPanel() {
     <div>
       {/* 高风险提醒 */}
       {highRisk.length > 0 && (
-        <Card size="small" style={{ marginBottom: 16, borderColor: '#ffccc7' }}>
+        <Card size="small" style={{ marginBottom: 16, borderColor: 'var(--ms-danger-soft)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-            <span style={{ fontWeight: 500, color: '#ff4d4f' }}>⚠️ 高风险学生：</span>
+            <span style={{ fontWeight: 500, color: 'var(--ms-danger)' }}>⚠️ 高风险学生：</span>
             {highRisk.map((s) => (
               <Tag
                 key={s.studentUserId}

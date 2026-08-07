@@ -10,7 +10,7 @@ import { evaluateSla, urgencyWeight } from '../../utils/sla'
 
 const RISK_COLORS = { 3: 'red', 2: 'orange', 1: 'gold', 0: 'default' }
 const RISK_LABELS = { 3: '红色', 2: '橙色', 1: '黄色', 0: '绿色' }
-const RISK_DOT = { 3: '#ff4d4f', 2: '#fa8c16', 1: '#faad14', 0: '#52c41a' }
+const RISK_DOT = { 3: 'var(--ms-danger)', 2: 'var(--ms-warning)', 1: 'var(--ms-warning)', 0: 'var(--ms-success)' }
 
 /** SLA 倒计时徽标（逾期红色闪烁提示） */
 function SlaBadge({ riskLevel, status, detectedAt }) {
@@ -111,7 +111,7 @@ export default function TodayTodoPanel({ onNavigate }) {
           size="small"
           title={
             <span>
-              <AlertOutlined style={{ color: '#ff4d4f' }} /> 今日待办
+              <AlertOutlined style={{ color: 'var(--ms-danger)' }} /> 今日待办
               {overdueCount > 0 && (
                 <Tag color="red" style={{ marginLeft: 8 }}>{overdueCount} 项逾期</Tag>
               )}
@@ -131,8 +131,8 @@ export default function TodayTodoPanel({ onNavigate }) {
                     style={{
                       display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px',
                       borderRadius: 8,
-                      background: sla.breached ? '#fff1f0' : '#fafafa',
-                      border: sla.breached ? '1px solid #ffccc7' : '1px solid #f0f0f0',
+                      background: sla.breached ? 'var(--ms-danger-soft)' : '#fafafa',
+                      border: sla.breached ? '1px solid var(--ms-danger-soft)' : '1px solid #f0f0f0',
                     }}
                   >
                     <span style={{
@@ -168,9 +168,9 @@ export default function TodayTodoPanel({ onNavigate }) {
               {followups.map(f => (
                 <div key={f.riskEventId} style={{
                   display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px',
-                  borderRadius: 8, background: '#f6ffed', border: '1px solid #d9f7be',
+                  borderRadius: 8, background: 'var(--ms-success-soft)', border: '1px solid #d9f7be',
                 }}>
-                  <CheckCircleOutlined style={{ color: '#52c41a' }} />
+                  <CheckCircleOutlined style={{ color: 'var(--ms-success)' }} />
                   <div style={{ flex: 1 }}>
                     <span style={{ fontWeight: 500 }}>回访待完成</span>
                     <span style={{ fontSize: 12, color: '#999', marginLeft: 8 }}>

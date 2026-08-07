@@ -88,7 +88,7 @@ export default function SessionSummaryCard({ sessionId }) {
 
         {summary.suggestion && (
           <div>
-            <BulbOutlined style={{ color: '#faad14', marginRight: 6 }} />
+            <BulbOutlined style={{ color: 'var(--ms-warning)', marginRight: 6 }} />
             <Text italic>{summary.suggestion}</Text>
           </div>
         )}
