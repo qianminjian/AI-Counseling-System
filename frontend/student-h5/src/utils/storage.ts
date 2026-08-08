@@ -25,3 +25,16 @@ export function writeLocalStorageSafe(key: string, value: string): void {
     // 偏好不持久化不影响功能（会话内状态仍生效）
   }
 }
+
+/** TTS 静音偏好键（FA-05，DOC-074：EmotionSelect / useTtsPlayer 共享同一持久化状态） */
+export const TTS_MUTED_KEY = 'mindsafe_tts_muted_v1'
+
+/** 读取 TTS 静音偏好（默认未静音） */
+export function readMutedPreference(): boolean {
+  return readLocalStorageSafe(TTS_MUTED_KEY, '0') === '1'
+}
+
+/** 写入 TTS 静音偏好 */
+export function writeMutedPreference(muted: boolean): void {
+  writeLocalStorageSafe(TTS_MUTED_KEY, muted ? '1' : '0')
+}

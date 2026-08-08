@@ -57,10 +57,13 @@ describe('hooks/useTtsPlayer', () => {
       lang: '', rate: 1, pitch: 1, voice: null, onend: null, onerror: null,
     })))
     mockFetchTtsSynthesize.mockReset()
+    // FA-05：静音偏好持久化后跨用例隔离（避免上一个用例写入的 muted 污染后续 mount）
+    localStorage.clear()
   })
 
   afterEach(() => {
     vi.unstubAllGlobals()
+    localStorage.clear()
   })
 
   describe('初始状态', () => {
@@ -81,6 +84,20 @@ describe('hooks/useTtsPlayer', () => {
       expect(result.current.muted).toBe(true)
       act(() => { result.current.toggleMute() })
       expect(result.current.muted).toBe(false)
+    })
+
+    // FA-05：静音偏好持久化——切换后 localStorage 同步，重新 mount 读取（跨页生效）
+    it('静音偏好持久化到 localStorage，重新挂载后仍生效', () => {
+      const { result, unmount } = renderHook(() => useTtsPlayer())
+      expect(result.current.muted).toBe(false)
+      act(() => { result.current.toggleMute() })
+      expect(result.current.muted).toBe(true)
+      unmount()
+
+      const { result: r2 } = renderHook(() => useTtsPlayer())
+      expect(r2.current.muted).toBe(true)
+      act(() => { r2.current.toggleMute() })
+      expect(r2.current.muted).toBe(false)
     })
   })
 

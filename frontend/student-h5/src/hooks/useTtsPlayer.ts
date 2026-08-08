@@ -10,6 +10,7 @@ import { useState, useRef, useCallback, useEffect } from 'react'
 import { getGlobalAudioElement, getGlobalAudioContext, unlockAudio } from '../utils/audioUnlock'
 import { browserSpeak, stopBrowserSpeak } from '../utils/browserSpeak'
 import { fetchTtsSynthesize } from '../api'
+import { readMutedPreference, writeMutedPreference } from '../utils/storage'
 
 /** 去除 emoji 和特殊符号（TTS 不需要朗读） */
 function stripEmoji(text) {
@@ -73,7 +74,8 @@ export function useTtsPlayer({ persona = 'xiaoxing', emotion = 'neutral', speed 
   const [currentSentenceIdx, setCurrentSentenceIdx] = useState(-1)
   // 当前正在播放的句子数组（供波波话语气泡逐句展示，见 design/27 §4.4）
   const [sentences, setSentences] = useState([])
-  const [muted, setMuted] = useState(false)
+  // FA-05：静音偏好持久化（与 EmotionSelect 设置面板共享同一 localStorage 状态，跨页面生效）
+  const [muted, setMutedState] = useState(readMutedPreference)
   // 语音引擎状态：'backend' | 'browser' | 'none'
   const [engine, setEngine] = useState('backend')
   // 单一持久 Audio 元素（在用户手势中创建，规避自动播放拦截）
@@ -382,13 +384,22 @@ export function useTtsPlayer({ persona = 'xiaoxing', emotion = 'neutral', speed 
     }
   }, [muted, synthesizeSentence, playBlob, speed, persona])
 
-  /** 切换静音 */
+  /** 切换静音（FA-05：同时持久化偏好，供 EmotionSelect 设置面板跨页读取） */
   const toggleMute = useCallback(() => {
     setMuted(prev => {
       if (!prev) stop() // 静音时停止播放
       return !prev
     })
   }, [stop])
+
+  // FA-05：setMuted 包装——状态变更同步写入偏好（兼容函数式更新，外部仅测试传字面量）
+  const setMuted = useCallback((next: boolean | ((prev: boolean) => boolean)) => {
+    setMutedState(prev => {
+      const v = typeof next === 'function' ? (next as (p: boolean) => boolean)(prev) : next
+      writeMutedPreference(v)
+      return v
+    })
+  }, [])
 
   // 当前正在朗读的那一句（波波话语气泡用，逐句滚动）
   const currentSentenceText =

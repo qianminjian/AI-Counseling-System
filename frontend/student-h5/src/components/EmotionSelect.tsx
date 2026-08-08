@@ -12,6 +12,7 @@ import Achievements from './Achievements'
 import SettingsPanel from './SettingsPanel'
 import ConfirmDialog from './ConfirmDialog'
 import { emotionLabel, emotionEmoji } from '../../../shared/src/emotionMeta'
+import { readMutedPreference, writeMutedPreference } from '../utils/storage'
 
 // F4：label/emoji 单一源 shared emotionMeta（与后端 ZH_LABELS 对齐），desc/color 为组件特有展示
 const EMOTIONS = [
@@ -33,7 +34,8 @@ export default function EmotionSelect({ onStart, userName, onLogout, onConsentRe
   const [showRelaxation, setShowRelaxation] = useState(false)
   const [showDiary, setShowDiary] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
-  const [muted, setMuted] = useState(false)
+  // FA-05：静音偏好持久化（与 ChatRoom/useTtsPlayer 共享 localStorage 状态，跨页生效）
+  const [muted, setMuted] = useState(readMutedPreference)
   const [confirmSwitch, setConfirmSwitch] = useState(false)
   // A4 收敛（ARCH-006）：唤醒开关统一由 useWakeEnabled 管理（初始化 + 切换 + 持久化 + 失败安全）
   const { enabled: wakeEnabled, setEnabled: setWakeEnabled } = useWakeEnabled()
@@ -115,7 +117,7 @@ export default function EmotionSelect({ onStart, userName, onLogout, onConsentRe
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
         muted={muted}
-        onToggleMute={() => setMuted(v => !v)}
+        onToggleMute={() => setMuted(v => { const nv = !v; writeMutedPreference(nv); return nv })}
         wakeSupported={micSupported}
         wakeOn={wakeEnabled}
         onToggleWake={() => setWakeEnabled(!wakeEnabled)}
