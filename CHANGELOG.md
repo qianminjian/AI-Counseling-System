@@ -8,6 +8,8 @@
 
 ### 文档
 
+- docs: doing 子文档合并归档（DOC-082）：doing/80 深度审计问题清单第四轮（develop 线，批次 A~D + R-1/R-2/R-4/R-7 + FA-16 全部闭环）最终态并入 02（D-12）/ 04（D-01·R-1·R-2·D-02·D-10·D-13·D-19）/ 05（D-06·R-4）/ 06（B-05·B-07）/ 11（R-7），归档 design/his/80_深度审计问题清单（与 his/80 部署计时同号异题，文件名可区分）；合并前同步修正 6 处缺口（design/04 引用消歧 + 七件套 + D-02 恢复行、design/06 阈值残留删除、design/11 WB-002 改述）；DESIGN-OVERVIEW v6.11 + BEACON 演进日志 + TASK-TRACKER 头部登记
+
 - docs: doing 子文档合并归档（DOC-078）：doing/81 部署日志审计与回归分析（部署审计标准化）最终态并入 04 §5.9（审计模型/规则表 R1-R6/报告格式/修复分级/测试），归档 design/his/81；DESIGN-OVERVIEW v6.8 + BEACON 演进日志 + TASK-TRACKER 头部登记
 
 - docs: doing 子文档合并归档（DOC-059）：doing/58 O 专题过度设计收敛分主题并入 03 §2.7/04 §6·§8/06 §3.3/10 §2.6·§2.12，doing/59 前后端契约测试并入 05 §8.6，归档 design/his/；DESIGN-OVERVIEW v5.2（新增 §2.3 已合并子文档对照、冻结区扩展至 12 份）+ BEACON 演进日志 2026-08-05 + TASK-TRACKER 登记
