@@ -78,6 +78,16 @@ public class PromptTemplateService {
     public static final String TSK_003 = "prompts/tasks/session_close_zh-CN_v1.0.0.md";
     public static final String TSK_004 = "prompts/tasks/proactive_nudge_zh-CN_v1.0.0.md";
     public static final String EMO_001 = "prompts/emotion/emotion_strategy_zh-CN_v1.0.0.md";
+    // B4：性别×年级沟通风格模板（PROF-014，design/29 §3.10），文案下沉 prompts/ 后经版本路由
+    public static final String GENDER_STYLE_MALE_LOW = "prompts/style/gender_style_male_low_zh-CN_v1.0.0.md";
+    public static final String GENDER_STYLE_MALE_MID = "prompts/style/gender_style_male_mid_zh-CN_v1.0.0.md";
+    public static final String GENDER_STYLE_MALE_HIGH = "prompts/style/gender_style_male_high_zh-CN_v1.0.0.md";
+    public static final String GENDER_STYLE_FEMALE_LOW = "prompts/style/gender_style_female_low_zh-CN_v1.0.0.md";
+    public static final String GENDER_STYLE_FEMALE_MID = "prompts/style/gender_style_female_mid_zh-CN_v1.0.0.md";
+    public static final String GENDER_STYLE_FEMALE_HIGH = "prompts/style/gender_style_female_high_zh-CN_v1.0.0.md";
+    public static final String GENDER_STYLE_NEUTRAL_LOW = "prompts/style/gender_style_neutral_low_zh-CN_v1.0.0.md";
+    public static final String GENDER_STYLE_NEUTRAL_MID = "prompts/style/gender_style_neutral_mid_zh-CN_v1.0.0.md";
+    public static final String GENDER_STYLE_NEUTRAL_HIGH = "prompts/style/gender_style_neutral_high_zh-CN_v1.0.0.md";
 
     /**
      * 根据年级获取对应语言模板路径
