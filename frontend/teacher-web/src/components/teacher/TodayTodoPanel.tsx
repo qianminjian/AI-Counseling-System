@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useCallback } from 'react'
 import { Card, Tag, Button, Empty, Spin, Row, Col, Timeline, message } from 'antd'
 import {
   AlertOutlined, ClockCircleOutlined, CheckCircleOutlined,
@@ -7,6 +7,7 @@ import {
 import dayjs from 'dayjs'
 import { getAlerts, claimAlert, getPendingFollowups } from '../../api'
 import { evaluateSla, urgencyWeight } from '../../utils/sla'
+import { usePolling } from '../../hooks/usePolling'
 
 const RISK_COLORS = { 3: 'red', 2: 'orange', 1: 'gold', 0: 'default' }
 const RISK_LABELS = { 3: '红色', 2: '橙色', 1: '黄色', 0: '绿色' }
@@ -67,17 +68,9 @@ export default function TodayTodoPanel({ onNavigate }) {
     }
   }, [])
 
-  useEffect(() => { load() }, [load])
-
-  // 每 30s 刷新 SLA 倒计时
-  // AUD-047：页面不可见时暂停轮询（与 Dashboard 15s 轮询叠加时不空转请求）
-  useEffect(() => {
-    const timer = setInterval(() => {
-      if (document.hidden) return
-      load()
-    }, 30000)
-    return () => clearInterval(timer)
-  }, [load])
+  // 轮询收敛（F3）：初始加载 + 每 30s 刷新 SLA 倒计时
+  // AUD-047 页面不可见暂停由 usePolling 默认承担（与 Dashboard 15s 轮询叠加时不空转请求）
+  usePolling(load, 30000)
 
   const handleClaim = async (id) => {
     setClaimingId(id)

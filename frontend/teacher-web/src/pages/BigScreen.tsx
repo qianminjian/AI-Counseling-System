@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { getStats, getDashboard, getSatisfaction } from '../api'
 import { emotionLabel } from '../utils/emotionLabels'
+import { usePolling } from '../hooks/usePolling'
 
 const REFRESH_INTERVAL = 30000
 
@@ -25,16 +26,14 @@ export default function BigScreen({ onExit }: { onExit?: () => void }) {
     }
   }, [])
 
+  // 轮询收敛（F3）：初始加载 + 30s 刷新；AUD-047 不可见暂停由 usePolling 默认承担
+  usePolling(fetchData, REFRESH_INTERVAL)
+
   useEffect(() => {
-    fetchData()
-    // AUD-047：页面不可见时暂停轮询（大屏切后台不空转请求）
-    const timer = setInterval(() => {
-      if (document.hidden) return
-      fetchData()
-    }, REFRESH_INTERVAL)
+    // 时钟 1s 刷新（实时时钟不走轮询收敛）
     const clock = setInterval(() => setTime(new Date()), 1000)
-    return () => { clearInterval(timer); clearInterval(clock) }
-  }, [fetchData])
+    return () => clearInterval(clock)
+  }, [])
 
   const s = stats || {}
   const d = dashboard || {}

@@ -3,15 +3,21 @@ import { api } from '../api'
 import { useTheme } from '../theme/ThemeProvider'
 import BoBoAvatar from './BoBoAvatar'
 import SceneDecor from './SceneDecor'
+import { emotionLabel, emotionEmoji } from '../../../shared/src/emotionMeta'
 
+// F4：emoji/text 单一源 shared emotionMeta（neutral→平静、anxious→紧张 对齐 DC-008），color 为组件特有展示
 const EMOTIONS = [
-  { label: 'happy', emoji: '😊', text: '开心', color: '#52c41a' },
-  { label: 'calm', emoji: '😌', text: '平静', color: '#1677ff' },
-  { label: 'neutral', emoji: '😐', text: '一般', color: '#999' },
-  { label: 'sad', emoji: '😢', text: '难过', color: '#722ed1' },
-  { label: 'angry', emoji: '😠', text: '生气', color: '#ff4d4f' },
-  { label: 'anxious', emoji: '😰', text: '焦虑', color: '#fa8c16' },
-]
+  { label: 'happy', color: '#52c41a' },
+  { label: 'calm', color: '#1677ff' },
+  { label: 'neutral', color: '#999' },
+  { label: 'sad', color: '#722ed1' },
+  { label: 'angry', color: '#ff4d4f' },
+  { label: 'anxious', color: '#fa8c16' },
+].map(e => ({
+  ...e,
+  emoji: emotionEmoji(e.label),
+  text: emotionLabel(e.label),
+}))
 
 const INTENSITY_LABELS = ['', '很轻微', '比较轻', '中等', '比较强', '非常强']
 

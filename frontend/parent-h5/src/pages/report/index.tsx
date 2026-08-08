@@ -5,6 +5,7 @@ import type { ReportData } from '../../services/index'
 import { getUser, clearAuth, isAuthenticated } from '../../utils/auth'
 import type { ChildInfo } from '../../utils/auth'
 import { redirectTo, navigateTo } from '../../utils/nav'
+import { emotionLabel as toZhLabel, emotionEmoji as toEmoji } from '../../../../shared/src/emotionMeta'
 
 export default function ReportPage() {
   const [report, setReport] = useState<ReportData | null>(null)
@@ -53,10 +54,8 @@ export default function ReportPage() {
     redirectTo('/')
   }
 
-  const emotionEmoji = (label: string): string => {
-    const map: Record<string, string> = { '开心': '😊', '平静': '😌', '焦虑': '😰', '难过': '😢', '愤怒': '😠', '恐惧': '😨' }
-    return map[label] || '🫧'
-  }
+  // F4：emoji/label 单一源 shared emotionMeta（周报键兼容英文码值与中文标签两种格式，未知兜底🫧）
+  const emotionEmoji = (label: string): string => toEmoji(label) || '🫧'
 
   return (
     <View className="container report-page">
@@ -117,7 +116,7 @@ export default function ReportPage() {
                 {Object.entries(report.emotionDistribution).map(([label, count]) => (
                   <View key={label} className="emotion-item">
                     <Text className="emotion-emoji">{emotionEmoji(label)}</Text>
-                    <Text className="emotion-label">{label}</Text>
+                    <Text className="emotion-label">{toZhLabel(label)}</Text>
                     <Text className="emotion-count">{count} 次</Text>
                   </View>
                 ))}

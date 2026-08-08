@@ -6,6 +6,7 @@ import {
 } from '@ant-design/icons'
 import { getUnreadCount } from '../api'
 import { useAlertWebSocket } from '../hooks/useAlertWebSocket'
+import { usePolling } from '../hooks/usePolling'
 import OverviewPanel from '../components/teacher/OverviewPanel'
 import AlertQueue from '../components/teacher/AlertQueue'
 import StudentPanel from '../components/teacher/StudentPanel'
@@ -119,14 +120,9 @@ export default function Dashboard({ user, onLogout, darkMode, toggleDark }) {
     return () => { cancelled = true }
   }, [])
 
-  useEffect(() => {
-    const timer = setInterval(() => {
-      // AUD-047：页面不可见时暂停轮询（后台标签页不空转请求）
-      if (document.hidden) return
-      pollUnread(true)
-    }, POLL_INTERVAL)
-    return () => clearInterval(timer)
-  }, [pollUnread])
+  // 轮询收敛（F3）：15s 未读刷新；immediate=false 由上方 tryPoll 首次探测独立负责
+  // AUD-047 页面不可见暂停由 usePolling 默认承担
+  usePolling(() => pollUnread(true), POLL_INTERVAL, { immediate: false })
 
   // WebSocket 实时预警推送（补充轮询，秒级触达）
   useAlertWebSocket({

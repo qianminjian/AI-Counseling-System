@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
-import MessageBubble, { EMOTION_EMOJI } from '../components/MessageBubble'
+import MessageBubble from '../components/MessageBubble'
+import { emotionEmoji } from '../../../shared/src/emotionMeta'
 
 // mock emotionTypography
 vi.mock('../theme/emotionTypography', () => ({
@@ -26,18 +27,18 @@ describe('MessageBubble', () => {
     vi.clearAllMocks()
   })
 
-  describe('EMOTION_EMOJI 映射', () => {
+  describe('emotionEmoji 映射（F4 收编 shared emotionMeta）', () => {
     it('包含基本情绪', () => {
-      expect(EMOTION_EMOJI.happy).toBe('😊')
-      expect(EMOTION_EMOJI.sad).toBe('😢')
-      expect(EMOTION_EMOJI.angry).toBe('😠')
-      expect(EMOTION_EMOJI.fearful).toBe('😨')
-      expect(EMOTION_EMOJI.neutral).toBe('😐')
+      expect(emotionEmoji('happy')).toBe('😊')
+      expect(emotionEmoji('sad')).toBe('😢')
+      expect(emotionEmoji('angry')).toBe('😠')
+      expect(emotionEmoji('fearful')).toBe('😨')
+      expect(emotionEmoji('neutral')).toBe('😐')
     })
 
     it('unknown 和 other 为空字符串', () => {
-      expect(EMOTION_EMOJI.unknown).toBe('')
-      expect(EMOTION_EMOJI.other).toBe('')
+      expect(emotionEmoji('unknown')).toBe('')
+      expect(emotionEmoji('other')).toBe('')
     })
   })
 
