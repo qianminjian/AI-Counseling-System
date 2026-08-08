@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { api } from '../api'
 import { useTheme } from '../theme/ThemeProvider'
+import { THEME_STYLES } from '../theme/immersiveStyles'
 import BoBoAvatar from './BoBoAvatar'
 import { readLocalStorageSafe, writeLocalStorageSafe } from '../utils/storage'
 import { browserSpeak, stopBrowserSpeak } from '../utils/browserSpeak'
@@ -22,78 +23,6 @@ const CATEGORY_ACCENT = {
 }
 
 const VOICE_PREF_KEY = 'mindsafe_relax_voice_on'
-
-/**
- * 主题适配样式映射
- * 与登录页 / 情绪选择页同款沉浸式场景：
- * - ocean / rainbow 为深色场景 → 浅色文字 + 玻璃拟态卡片
- * - garden 为浅色场景 → 深色文字 + 白底卡片
- */
-const THEME_STYLES = {
-  ocean: {
-    dark: true,
-    title: '#ffffff',
-    titleShadow: '0 2px 12px rgba(0,0,0,0.25)',
-    sub: 'rgba(224,242,254,0.78)',
-    text: 'rgba(240,249,255,0.94)',
-    muted: 'rgba(186,230,253,0.62)',
-    back: '#7dd3fc',
-    cardBg: 'rgba(255,255,255,0.10)',
-    cardBorder: '1px solid rgba(255,255,255,0.18)',
-    cardShadow: '0 8px 32px rgba(2,132,199,0.25)',
-    cardBlur: 'blur(12px)',
-    pillBg: 'rgba(125,211,252,0.16)',
-    pillBorder: '1px solid rgba(125,211,252,0.32)',
-    pillText: '#bae6fd',
-    progressTrack: 'rgba(255,255,255,0.16)',
-    circleFrom: '#38bdf8',
-    circleTo: '#0284c7',
-    glow: 'rgba(56,189,248,0.55)',
-    btnBg: 'linear-gradient(135deg, #0ea5e9, #06b6d4)',
-  },
-  garden: {
-    dark: false,
-    title: '#9d174d',
-    titleShadow: 'none',
-    sub: 'rgba(157,23,77,0.62)',
-    text: '#831843',
-    muted: 'rgba(190,24,93,0.55)',
-    back: '#db2777',
-    cardBg: 'rgba(255,255,255,0.82)',
-    cardBorder: '1px solid rgba(244,114,182,0.28)',
-    cardShadow: '0 8px 28px rgba(236,72,153,0.14)',
-    cardBlur: 'blur(6px)',
-    pillBg: 'rgba(244,114,182,0.12)',
-    pillBorder: '1px solid rgba(244,114,182,0.32)',
-    pillText: '#be185d',
-    progressTrack: 'rgba(236,72,153,0.12)',
-    circleFrom: '#f9a8d4',
-    circleTo: '#ec4899',
-    glow: 'rgba(236,72,153,0.4)',
-    btnBg: 'linear-gradient(135deg, #ec4899, #a855f7)',
-  },
-  rainbow: {
-    dark: true,
-    title: '#e0e7ff',
-    titleShadow: '0 0 18px rgba(139,92,246,0.4)',
-    sub: 'rgba(165,180,252,0.82)',
-    text: 'rgba(224,231,255,0.94)',
-    muted: 'rgba(129,140,248,0.72)',
-    back: '#a5b4fc',
-    cardBg: 'rgba(139,92,246,0.12)',
-    cardBorder: '1px solid rgba(139,92,246,0.30)',
-    cardShadow: '0 8px 32px rgba(76,29,149,0.35)',
-    cardBlur: 'blur(12px)',
-    pillBg: 'rgba(139,92,246,0.18)',
-    pillBorder: '1px solid rgba(167,139,250,0.38)',
-    pillText: '#c4b5fd',
-    progressTrack: 'rgba(139,92,246,0.20)',
-    circleFrom: '#a78bfa',
-    circleTo: '#7c3aed',
-    glow: 'rgba(139,92,246,0.55)',
-    btnBg: 'linear-gradient(135deg, #8b5cf6, #6d28d9)',
-  },
-} as const
 
 /** 放松练习语音引导朗读（轻柔语速，冥想/呼吸场景；F5：复用共享 browserSpeak 降级链） */
 function speakGuide(text) {

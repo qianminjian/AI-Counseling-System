@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { api } from '../api'
 import { useTheme } from '../theme/ThemeProvider'
+import { isDarkTheme } from '../theme/immersiveStyles'
 
 /** 成就徽章展示 */
 export default function Achievements() {
@@ -13,7 +14,8 @@ export default function Achievements() {
   }, [])
 
   const unlockedCount = badges.filter(b => b.unlocked).length
-  const isDark = themeId === 'ocean' || themeId === 'rainbow'
+  // FA-02：明暗判断收敛至沉浸式色板单源（此前硬编码 ocean/rainbow 列表，新增主题改漏即白字白底）
+  const isDark = isDarkTheme(themeId)
 
   return (
     <div className="mt-4 w-full">
