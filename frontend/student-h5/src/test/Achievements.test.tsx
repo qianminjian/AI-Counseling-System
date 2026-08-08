@@ -7,7 +7,7 @@ let mockThemeId = 'ocean'
 vi.mock('../api', () => ({ api: vi.fn() }))
 // importOriginal 保留真实 THEMES（组件直接 import THEMES.ocean.bobo 等品牌色），仅覆写 useTheme
 vi.mock('../theme/ThemeProvider', async (importOriginal) => {
-  const actual = await importOriginal()
+  const actual = await importOriginal<typeof import('../theme/ThemeProvider')>()
   return {
     ...actual,
     useTheme: () => ({ themeId: mockThemeId, theme: {}, changeTheme: vi.fn() }),
