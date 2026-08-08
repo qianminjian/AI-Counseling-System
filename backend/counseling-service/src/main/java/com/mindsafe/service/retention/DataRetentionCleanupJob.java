@@ -21,9 +21,9 @@ import java.time.temporal.ChronoUnit;
  * <p>
  * 保留策略（对齐 design/14 §8 + design/12 数据保留策略）：
  * <ul>
- *   <li>普通对话消息摘要：30 天后物理删除</li>
- *   <li>高风险对话消息摘要（risk_level ≥ 2）：365 天后物理删除</li>
- *   <li>已完成会话记录：跟随消息保留期（普通 30 天 / 高风险 365 天）</li>
+ *   <li>普通对话消息摘要：180 天后物理删除（默认，可配置 normal-session-days）</li>
+ *   <li>高风险对话消息摘要（risk_level ≥ 2）：365 天后物理删除（默认，可配置 high-risk-session-days）</li>
+ *   <li>已完成会话记录：跟随消息保留期（普通 180 天 / 高风险 365 天）</li>
  * </ul>
  * 每日凌晨 03:00 执行（低峰期），清理结果写入审计日志。
  */
@@ -74,7 +74,7 @@ public class DataRetentionCleanupJob {
         int deletedSessions = 0;
 
         try {
-            // 1. 清理普通消息摘要（risk_level < 2 且超过 30 天）
+            // 1. 清理普通消息摘要（risk_level < 2 且超过 180 天）
             deletedMessages += messageSummaryMapper.delete(
                     new LambdaQueryWrapper<MessageSummary>()
                             .lt(MessageSummary::getCreatedAt, normalCutoff)
@@ -92,7 +92,7 @@ public class DataRetentionCleanupJob {
                             .ge(MessageSummary::getRiskLevel, HIGH_RISK_THRESHOLD)
             );
 
-            // 3. 清理已完成的普通会话（risk_level_snapshot < 2 且超过 30 天）
+            // 3. 清理已完成的普通会话（risk_level_snapshot < 2 且超过 180 天）
             deletedSessions += sessionMapper.delete(
                     new LambdaQueryWrapper<CounselingSession>()
                             .eq(CounselingSession::getSessionStatus, CounselingSession.STATUS_COMPLETED)
