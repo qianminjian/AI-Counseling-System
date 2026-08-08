@@ -2,7 +2,7 @@
 
 > 登记：2026-08-08 | 方式：/improve-codebase-architecture（参数：排除已审计区，剩余部分审计），3 路并行探索 agent（后端 Java / 前端三端 / Python 与部署链路），全部只读
 > 排除区：AUD-001~071、DC-001~012、T1-T5、B/F/D 系列（his/77+78）、BA/FA/DA 系列（his/79）、ARCH-001~010、取消 CD、**doing/80 刚登记问题点**（B-01~19/F-01~16/D-01~23）
-> 状态：**已实施完成（2026-08-08）**：批次 A 全量闭环（BA-09/10/11 按 TOP 3 SPEC + DA-08~11），待合并归档（登记 DOC-079）；批次 B（Worth）/批次 C（Speculative）待议决
+> 状态：**已实施完成（2026-08-08）**：批次 A 全量闭环（BA-09/10/11 按 TOP 3 SPEC + DA-08~11），待合并归档（登记 DOC-079）；**FA-16（承接 R-3，DOC-080 议决）已实施完成（2026-08-08，DOC-081）**：删 emotionLabels 垫片 + shared 测试入 CI；批次 B（Worth）/批次 C（Speculative）待议决
 
 ---
 
@@ -319,7 +319,7 @@
 - 日期：2026-08-08
 - Strong×7 全部主 agent 代码级复核实锤，0 处失实
 - 排除区：AUD/DC/T/B·F·D/BA·FA·DA/ARCH 系列 + 取消 CD + doing/80（B/F/D 问题点）
-- 状态：候选清单 + SPEC 登记完成（doing/81），批次 A~C 待排期；**2026-08-08 批次 A 实施完成（BA-09/10/11 + DA-08~11，DOC-079）；批次 B/C 待排期（DOC-080 已议决：R-3 合并 FA-16、R-5 合并 BA-12/BA-13 一并跟踪）**
+- 状态：候选清单 + SPEC 登记完成（doing/81），批次 A~C 待排期；**2026-08-08 批次 A 实施完成（BA-09/10/11 + DA-08~11，DOC-079）；FA-16（承接 R-3）实施完成（2026-08-08，DOC-081）：删 emotionLabels.ts 垫片，BigScreen/SessionMessagesDrawer/StatsCharts 三消费点直连 shared/src/emotionMeta，teacher-web 233 测试全绿 + tsc OK，CI 无需改动（三端 vitest include 已含 shared）；批次 B/C 待排期（DOC-080 已议决：R-5 合并 BA-12/BA-13 一并跟踪）**
 
 ---
 

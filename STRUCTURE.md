@@ -26,7 +26,7 @@ AI-Counseling-System/
 ├── tests/                  # 跨模块测试（常规测试在模块/应用内，详见 §2.7）
 │   ├── unit/               #   跨模块单元测试（备用；常规单元测试在模块内）
 │   ├── integration/        #   集成测试：跨模块、含 DB/API/LLM 调用
-│   └── e2e/                #   端到端测试：Playwright，完整用户场景
+│   └── e2e/                #   端到端测试：Playwright 预留态（R-4：CI 不执行，冒烟走 smoke-test.sh）
 │
 ├── deploy/                 # 部署配置：Docker Compose、生产编排、基础设施初始化（详见 §2.9）
 ├── data/                   # 内容资产：知识库语料等待审/已审内容（详见 §2.14）
@@ -52,7 +52,7 @@ AI-Counseling-System/
 
 - **存什么**：
   - `BEACON.md` — 项目明灯文件（设计决策、范围、当前状态），**唯一强制**
-  - `DESIGN-OVERVIEW.md` — 设计文档总览 v6.8（12 份合并文档目录导航 + 旧编号对照表 + 关键摘要 + doing 区说明）
+  - `DESIGN-OVERVIEW.md` — 设计文档总览 v6.9（12 份合并文档目录导航 + 旧编号对照表 + 关键摘要 + doing 区说明）
   - `TASK-TRACKER.md` — 任务跟踪表（文档整合任务 + MVP 开发任务 + 决策/风险/里程碑）
   - `01_系统概述与产品功能说明.md` ~ `12_家长端功能详细设计.md` — **12 份合并设计文档（md 格式，当前单一事实源）**：01 概述/02 数据库/03 技术架构/04 部署/05 测试/06 配置与外部服务/07 商业化合规/08 概要设计（三端+接口）/09 学生端上卷（对话引擎与安全）/10 学生端下卷（个性化与情感交互）/11 老师端/12 家长端；每份含合并来源标注与任务归口总表
   - `his/` — **历史设计文档归档**（50 份旧编号文档 + 已合并的 doing 子文档，只读溯源，编号对照见 DESIGN-OVERVIEW §二）
@@ -128,7 +128,7 @@ frontend/
 |------|------|------|----------|
 | 单元测试 | 各模块 `src/test/java/` | JUnit 5 + Mockito | 每次 commit 前 |
 | 集成测试 | 各模块 `src/test/java/`（`*IT.java` 后缀区分） | Testcontainers + Spring Boot Test | merge 前 / CI |
-| E2E | `tests/e2e/` | Playwright | 发布前 |
+| E2E | `tests/e2e/` | Playwright（预留态，R-4） | 待排期（冒烟 smoke-test.sh 每次部署后） |
 | 前端单元/组件 | `frontend/*/src/test/`（就近放置） | Vitest + React Testing Library | 每次 commit 前 |
 
 #### 2.7.2 后端测试命名规则
@@ -170,15 +170,16 @@ frontend/
 |------|----------|------|
 | 单元/工具函数 | `{source}.test.ts` | 与源码同目录 |
 | 组件 | `{Component}.test.tsx` | 与源码同目录 |
-| E2E | `{scenario}.spec.ts` | `tests/e2e/`（项目根） |
+| E2E | `{scenario}.spec.ts` | `tests/e2e/`（项目根，预留态 R-4） |
 
 - E2E 按用户场景命名：`student-chat.spec.ts`、`alert-claim.spec.ts`
 - E2E 测试数据由 seed 脚本初始化（`tests/e2e/fixtures/`）
+- **R-4 预留态（DOC-080，2026-08-08）**：Playwright 配置与 specs 保留但 CI 不执行（DA-04 议决：全栈成本高，8983862a 已移除；部署现场验证由 `tests/e2e/smoke-test.sh` 覆盖，deploy.sh 后置门禁）；规划有浏览器 E2E 需求时恢复
 
 #### 2.7.6 跨模块测试（`tests/`）
 
 - 跨模块集成：位于 backend/counseling-app/src/test/java/（`*IT.java`，如 AuthFlowIT/ConversationRiskFlowIT；`tests/integration/` 空壳已删除，DA-05）
-- `tests/e2e/`：Playwright 驱动浏览器的完整用户场景
+- `tests/e2e/`：Playwright 驱动浏览器的完整用户场景（**预留态 R-4**：配置/specs 保留未执行，冒烟走 smoke-test.sh）
 - `tests/unit/`：仅作备用，常规单元测试必须在模块内
 - `tests/` 不含可构建代码，仅为脚本/配置/fixture 容器
 - TDD 工作流见 `.qoder/rules/tdd-workflow.md`（@tdd-workflow）
@@ -238,7 +239,7 @@ deploy/
 | 单元/集成测试报告 | `target/surefire-reports/`、`target/failsafe-reports/` | ✅ | Maven 自动生成 |
 | 覆盖率报告 | `target/site/jacoco/` | ✅ | JaCoCo |
 | 前端覆盖率 | `frontend/*/coverage/` | ✅ | Vitest c8 |
-| E2E 报告 | `tests/e2e/playwright-report/` | ✅ | Playwright HTML 报告 |
+| E2E 报告 | `tests/e2e/playwright-report/` | ✅ | Playwright HTML 报告（预留态 R-4，仅本地/未来恢复时生成） |
 | 部署日志与审计 | `logs/deploy/deploy-<ts>.log`、`audit-<ts>.md`、`.deploy-state`（项目根） | ✅ | deploy.sh 内建计时/监控/审计（04 §5.8/§5.9） |
 | 汇总报告 | `reports/`（项目根） | ✅ | CI 聚合产物、手工分析报告暂存 |
 

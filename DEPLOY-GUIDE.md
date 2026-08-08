@@ -153,7 +153,7 @@ ENCRYPTION_ENABLED=false
 # LLM 主模型（新命名，旧 LLM_API_KEY 已废弃）
 LLM_PRIMARY_API_KEY=sk-your-deepseek-key
 LLM_PRIMARY_BASE_URL=https://api.deepseek.com
-LLM_PRIMARY_MODEL=deepseek-v4-pro
+LLM_PRIMARY_MODEL=deepseek-v4-flash
 # LLM 备份模型（可选，留空 = 单模型）
 LLM_BACKUP_API_KEY=
 LLM_BACKUP_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
@@ -252,11 +252,11 @@ DNS 设置：A 记录 → 阿里云 ECS 公网 IP
 > ⚠️ **ICP 备案**：国内服务器绑定域名必须完成 ICP 备案（阿里云有备案入口，约 7-15 个工作日）。
 > 测试阶段直接用公网 IP 访问即可，无需备案。
 
-修改教师端域名：
+修改教师端域名（宿主 nginx，D-19：compose nginx 未启用，配置修改走宿主机文件）：
 ```bash
-vim /guju/mindsafe/nginx/default.conf
+vim /etc/nginx/nginx.conf
 # 将 server_name teacher.mindsafe.app 改为你的域名
-docker compose -f docker-compose.test.yml restart nginx
+nginx -t && nginx -s reload
 ```
 
 ### HTTPS 证书（生产必做，宿主 nginx 承载 443）
@@ -285,15 +285,14 @@ nginx -t && nginx -s reload
 
 ### 端侧 ONNX 模型投放（语音唤醒/声纹，发布前端前必做）
 
-学生端语音唤醒（whisper-tiny）与声纹登录（wespeaker）均为浏览器内推理，前端配置为 `SAME_ORIGIN` 同源加载（`/mindsafe/models/`）。**模型文件不入仓、不随构建传输**（deploy.sh rsync 固定 `--exclude 'models/'` 保护），由服务器侧维护：
+学生端语音唤醒（whisper-tiny）与声纹登录（wespeaker）均为浏览器内推理，前端配置为 `SAME_ORIGIN` 同源加载（`/mindsafe/models/`）。**模型不入仓**（.gitignore），由 `prepare-models.sh` 下载到本地 `frontend/student-h5/public/models/`，Vite 构建后**随 dist 一并 rsync 上传**（D-19：DA-06 反转后 deploy.sh 不再排除 models/，模型随 dist 部署，无需服务器侧单独投放）；deploy.sh 构建 dist 前置执行 `prepare-models.sh --verify` 校验，模型缺失直接拦截部署：
 
 ```bash
-# 方式一（推荐）：服务器上直接把模型放到部署目标目录
-#   /guju/mindsafe/frontend/student-h5/dist/models/onnx-community/{whisper-tiny,wespeaker-voxceleb-resnet34-LM}
-#   （模型目录与本地 frontend/student-h5/public/models 内容一致，约 50MB）
-# 方式二：本地运行投放脚本后手动 rsync 到服务器（注意 deploy.sh 会自动排除，需手动传输）
-bash deploy/scripts/prepare-models.sh   # 下载到 frontend/student-h5/public/models
-rsync -avz frontend/student-h5/public/models/ root@<服务器>:/guju/mindsafe/frontend/student-h5/dist/models/
+# 本地准备（首次或模型文件缺失时）
+bash deploy/scripts/prepare-models.sh   # 下载到 frontend/student-h5/public/models（约 50MB）
+
+# 部署：deploy.sh 自动完成「verify 前置校验 → 构建 dist（含 models/）→ rsync 上传 → nginx reload」
+./deploy.sh --student
 
 # 校验：模型文件经 /mindsafe/models/ 可 200 访问（浏览器 Network 面板逐请求确认）
 ```
@@ -362,10 +361,17 @@ git push origin feature/xxx
 
 ### 方案 A：阿里云 Docker 镜像加速（推荐）
 
-setup-server.sh 已自动配置。手动配置方式：
+setup-server.sh 自动配置（R-1：通过 `ALIYUN_MIRROR_ID` 环境变量写入阿里云 ACR 官方加速地址 `https://<ID>.mirror.aliyuncs.com`，不再使用第三方镜像源）：
 
 ```bash
-# 获取你的专属加速地址：阿里云控制台 → 容器镜像服务 → 镜像加速器
+# 服务器上执行 setup-server.sh 前导出你的专属 ID（阿里云控制台 → 容器镜像服务 → 镜像加速器）
+export ALIYUN_MIRROR_ID=<你的ID>
+cd deploy && ./setup-server.sh
+
+# 未设置 ALIYUN_MIRROR_ID 时脚本跳过镜像加速（不写入第三方源），基础镜像直接走 Docker Hub
+# 已含 registry-mirrors 的 daemon.json 不会被覆盖（保留已有配置）
+
+# 手动配置方式（等价）：
 sudo mkdir -p /etc/docker
 sudo tee /etc/docker/daemon.json <<EOF
 {

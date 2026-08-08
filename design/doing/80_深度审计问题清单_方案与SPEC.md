@@ -2,7 +2,7 @@
 
 > 登记：2026-08-08 | 审计方式：3 路独立 agent 交叉审计（后端 Java / 前端三端 / 工程化·部署·设计一致性），全部只读
 > 排除区：AUD-001~071（his/71）、DC-001~012（his/72）、T1-T5（his/76）、B/F/D 系列（his/77+78）、BA/FA/DA 系列（his/79）、ARCH-001~010（his/61~70）、取消 CD（his/72_取消CD）——仅在发现「假闭环/台账失实」时重复报告
-> 状态：**已实施完成（2026-08-08）**：批次 A（SPEC-A1~A6 P1 六项）+ 批次 B（SPEC-B1~B7 台账失实群）全部闭环，待合并归档（登记 DOC-079）
+> 状态：**已实施完成（2026-08-08）**：批次 A（SPEC-A1~A6 P1 六项）+ 批次 B（SPEC-B1~B7 台账失实群）+ 批次 C（P2 十项）+ 批次 D（P3 十九项）+ R-1/R-2/R-4/R-7 + FA-16（承接 R-3）全部闭环，待合并归档（登记 DOC-079 + DOC-081）
 
 ---
 
@@ -284,4 +284,4 @@ B-10~B-19（.last LIMIT 收敛或注释修正/DataRetention Javadoc/僵死方法
 - 审计方式：3 路并行独立 agent（GeneralPurpose，只读），交叉印证后主 agent 汇总，证据均文件:行号双源核实
 - 审计日期：2026-08-08
 - 排除区：AUD-001~071（his/71）、DC-001~012（his/72）、T1-T5（his/76）、B/F/D 系列（his/77+78）、BA/FA/DA 系列（his/79）、ARCH-001~010（his/61~70）、取消 CD（his/72_取消CD）
-- 状态：报告 + SPEC 登记完成（doing/80），修复批次 A~D 待排期；**2026-08-08 实施完成：批次 A（SPEC-A1~A6）+ 批次 B（SPEC-B1~B7）闭环（DOC-079）；R-1~R-7 已议决（DOC-080）——R-3 合并 FA-16、R-6 合并 B-02，R-1/R-2/R-4/R-7 独立任务待排期（S）；批次 C/D（P2/P3）待排期**
+- 状态：报告 + SPEC 登记完成（doing/80），修复批次 A~D 待排期；**2026-08-08 实施完成：批次 A（SPEC-A1~A6）+ 批次 B（SPEC-B1~B7）闭环（DOC-079）；R-1~R-7 已议决（DOC-080）——R-3 合并 FA-16、R-6 合并 B-02，R-1/R-2/R-4/R-7 独立任务待排期（S）；批次 C/D（P2/P3）待排期**；**2026-08-08 第四轮全面闭环（DOC-081）**：批次 C（P2，10 项：B-02 TTS 文本上限+限流注册 / B-03 统计日边界 Asia/Shanghai 时区工具 / B-04 exportSession HTML 转义 contentSummary / B-05 声纹 embedding 维度·范数校验 + design/06 契约 / F-03 noImplicitAny 分端推进 / F-04 parent request 收敛 data 解包 / F-06 硬编码 hex 收编 token / F-07 teacher storage 安全封装 / F-08 JWT UTF-8 解码抽 utils / F-09 静默 catch 补 console.error）+ 批次 D（P3，19 项：后端 B-10~B-19（last LIMIT/Javadoc/僵死代码/ErrorCode/事务等）/ 前端 F-10~F-16（AudioContext/render 副作用/存储/类型等）/ 工程化 D-13~D-21（rollback 健康检查/僵尸卷/env 模板/文档同步等））+ R-1（镜像加速源改阿里云 ACR）/ R-2（test compose 本地构建，AUD-003 确认闭环）/ R-4（Playwright 预留态登记 STRUCTURE+design/05）/ R-7（干预话术 TEMPLATES 下沉 service 层）+ FA-16（承接 R-3：删 emotionLabels 垫片 + shared 测试入 CI）全部闭环
