@@ -97,10 +97,12 @@ describe('useAudioRecorder', () => {
     expect(onComplete).not.toHaveBeenCalled()
   })
 
-  it('warmUp 预热麦克风流', async () => {
+  it('warmUp 预热麦克风流（统一 micSession 约束）', async () => {
     const { result } = renderHook(() => useAudioRecorder(vi.fn()))
     await act(async () => { await result.current.warmUp() })
-    expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledWith({ audio: true })
+    expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledWith({
+      audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+    })
   })
 
   it('warmUp 已有活跃流时跳过', async () => {

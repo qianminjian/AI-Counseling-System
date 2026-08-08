@@ -2,10 +2,10 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, act, waitFor } from '@testing-library/react'
 
 // vi.hoisted 确保变量在 vi.mock 工厂提升后仍可访问
-const { mockTranscriber, mockCaptureCleanup, mockCreatePcmCapture } = vi.hoisted(() => ({
+const { mockTranscriber, mockSessionStop, mockCreateMicSession } = vi.hoisted(() => ({
   mockTranscriber: vi.fn(),
-  mockCaptureCleanup: vi.fn(),
-  mockCreatePcmCapture: vi.fn(),
+  mockSessionStop: vi.fn(),
+  mockCreateMicSession: vi.fn(),
 }))
 
 vi.mock('@huggingface/transformers', () => ({
@@ -17,8 +17,8 @@ vi.mock('@huggingface/transformers', () => ({
   },
 }))
 
-vi.mock('../utils/createPcmCapture', () => ({
-  createPcmCapture: (...args: any[]) => mockCreatePcmCapture(...args),
+vi.mock('../utils/micSession', () => ({
+  createMicSession: (...args: any[]) => mockCreateMicSession(...args),
 }))
 
 import { useWakeWord, __resetWakeWordForTest } from '../hooks/useWakeWord'
@@ -27,23 +27,19 @@ describe('useWakeWord', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     __resetWakeWordForTest()
-    mockCreatePcmCapture.mockResolvedValue({ engine: 'worklet', cleanup: mockCaptureCleanup })
+    mockCreateMicSession.mockResolvedValue({
+      engine: 'worklet',
+      stop: mockSessionStop,
+      ctx: { sampleRate: 16000 },
+      stream: {},
+    })
     mockTranscriber.mockResolvedValue({ text: '' })
+    // supported 探测依赖 mediaDevices 存在（会话已 mock，无需真实 getUserMedia 行为）
     Object.defineProperty(navigator, 'mediaDevices', {
-      value: { getUserMedia: vi.fn().mockResolvedValue({ getTracks: () => [{ stop: vi.fn() }] }) },
+      value: { getUserMedia: vi.fn() },
       writable: true,
       configurable: true,
     })
-    ;(window as any).AudioContext = vi.fn().mockImplementation(() => ({
-      state: 'running',
-      sampleRate: 16000,
-      resume: vi.fn().mockResolvedValue(undefined),
-      close: vi.fn().mockResolvedValue(undefined),
-    }))
-  })
-
-  afterEach(() => {
-    delete (window as any).AudioContext
   })
 
   it('无麦克风时 supported=false', async () => {
@@ -80,7 +76,7 @@ describe('useWakeWord', () => {
     const { result, unmount } = renderHook(() => useWakeWord({ active: true, paused: false, onDetected: vi.fn() }))
     await waitFor(() => expect(result.current.wakeStatus).toBe('listening'))
     unmount()
-    expect(mockCaptureCleanup).toHaveBeenCalled()
+    expect(mockSessionStop).toHaveBeenCalled()
   })
 
   it('模型加载失败时 wakeStatus=error', async () => {
@@ -97,9 +93,9 @@ describe('useWakeWord', () => {
     mockTranscriber.mockResolvedValue({ text: '哈喽波波' })
     const onDetected = vi.fn()
     let pcmCallback: (pcm: Float32Array) => void = () => {}
-    mockCreatePcmCapture.mockImplementation(async (_ctx: any, _stream: any, cb: any) => {
-      pcmCallback = cb
-      return { engine: 'worklet', cleanup: mockCaptureCleanup }
+    mockCreateMicSession.mockImplementation(async (onPcm: any) => {
+      pcmCallback = onPcm
+      return { engine: 'worklet', stop: mockSessionStop, ctx: { sampleRate: 16000 }, stream: {} }
     })
 
     const { result } = renderHook(() => useWakeWord({ active: true, paused: false, onDetected }))
@@ -121,9 +117,9 @@ describe('useWakeWord', () => {
   it('静音音频不触发转写（VAD 过滤）', async () => {
     const onDetected = vi.fn()
     let pcmCallback: (pcm: Float32Array) => void = () => {}
-    mockCreatePcmCapture.mockImplementation(async (_ctx: any, _stream: any, cb: any) => {
-      pcmCallback = cb
-      return { engine: 'worklet', cleanup: mockCaptureCleanup }
+    mockCreateMicSession.mockImplementation(async (onPcm: any) => {
+      pcmCallback = onPcm
+      return { engine: 'worklet', stop: mockSessionStop, ctx: { sampleRate: 16000 }, stream: {} }
     })
 
     const { result } = renderHook(() => useWakeWord({ active: true, paused: false, onDetected }))
@@ -145,9 +141,9 @@ describe('useWakeWord', () => {
     mockTranscriber.mockResolvedValue({ text: '今天天气真好' })
     const onDetected = vi.fn()
     let pcmCallback: (pcm: Float32Array) => void = () => {}
-    mockCreatePcmCapture.mockImplementation(async (_ctx: any, _stream: any, cb: any) => {
-      pcmCallback = cb
-      return { engine: 'worklet', cleanup: mockCaptureCleanup }
+    mockCreateMicSession.mockImplementation(async (onPcm: any) => {
+      pcmCallback = onPcm
+      return { engine: 'worklet', stop: mockSessionStop, ctx: { sampleRate: 16000 }, stream: {} }
     })
 
     const { result } = renderHook(() => useWakeWord({ active: true, paused: false, onDetected }))
@@ -167,9 +163,9 @@ describe('useWakeWord', () => {
     mockTranscriber.mockRejectedValue(new Error('inference failed'))
     const onDetected = vi.fn()
     let pcmCallback: (pcm: Float32Array) => void = () => {}
-    mockCreatePcmCapture.mockImplementation(async (_ctx: any, _stream: any, cb: any) => {
-      pcmCallback = cb
-      return { engine: 'worklet', cleanup: mockCaptureCleanup }
+    mockCreateMicSession.mockImplementation(async (onPcm: any) => {
+      pcmCallback = onPcm
+      return { engine: 'worklet', stop: mockSessionStop, ctx: { sampleRate: 16000 }, stream: {} }
     })
 
     const { result } = renderHook(() => useWakeWord({ active: true, paused: false, onDetected }))
@@ -190,9 +186,9 @@ describe('useWakeWord', () => {
     // 拒绝值为字符串（无 .message 属性）→ 走 || err 分支
     mockTranscriber.mockRejectedValue('raw string error')
     let pcmCallback: (pcm: Float32Array) => void = () => {}
-    mockCreatePcmCapture.mockImplementation(async (_ctx: any, _stream: any, cb: any) => {
-      pcmCallback = cb
-      return { engine: 'worklet', cleanup: mockCaptureCleanup }
+    mockCreateMicSession.mockImplementation(async (onPcm: any) => {
+      pcmCallback = onPcm
+      return { engine: 'worklet', stop: mockSessionStop, ctx: { sampleRate: 16000 }, stream: {} }
     })
 
     const { result } = renderHook(() => useWakeWord({ active: true, paused: false, onDetected: vi.fn() }))
@@ -209,9 +205,9 @@ describe('useWakeWord', () => {
   it('积压超限时丢弃旧音频（保留最新一窗）', async () => {
     const onDetected = vi.fn()
     let pcmCallback: (pcm: Float32Array) => void = () => {}
-    mockCreatePcmCapture.mockImplementation(async (_ctx: any, _stream: any, cb: any) => {
-      pcmCallback = cb
-      return { engine: 'worklet', cleanup: mockCaptureCleanup }
+    mockCreateMicSession.mockImplementation(async (onPcm: any) => {
+      pcmCallback = onPcm
+      return { engine: 'worklet', stop: mockSessionStop, ctx: { sampleRate: 16000 }, stream: {} }
     })
     // 让转写器挂起（模拟识别慢）
     let resolveTranscribe: any
@@ -235,19 +231,13 @@ describe('useWakeWord', () => {
   })
 
   it('降采样：非 16kHz 输入时正确转换', async () => {
-    // 设置 sampleRate 为 48000（触发降采样路径）
-    ;(window as any).AudioContext = vi.fn().mockImplementation(() => ({
-      state: 'running',
-      sampleRate: 48000,
-      resume: vi.fn().mockResolvedValue(undefined),
-      close: vi.fn().mockResolvedValue(undefined),
-    }))
     mockTranscriber.mockResolvedValue({ text: '哈喽波波' })
     const onDetected = vi.fn()
     let pcmCallback: (pcm: Float32Array) => void = () => {}
-    mockCreatePcmCapture.mockImplementation(async (_ctx: any, _stream: any, cb: any) => {
-      pcmCallback = cb
-      return { engine: 'worklet', cleanup: mockCaptureCleanup }
+    mockCreateMicSession.mockImplementation(async (onPcm: any) => {
+      pcmCallback = onPcm
+      // 48kHz 采样率（触发降采样路径）
+      return { engine: 'worklet', stop: mockSessionStop, ctx: { sampleRate: 48000 }, stream: {} }
     })
 
     const { result } = renderHook(() => useWakeWord({ active: true, paused: false, onDetected }))
@@ -265,27 +255,10 @@ describe('useWakeWord', () => {
     expect(onDetected).toHaveBeenCalledWith(expect.objectContaining({ label: 'halou-bobo' }))
   })
 
-  it('iOS AudioContext suspended 时注册 pointerdown 监听', async () => {
-    const addEventSpy = vi.spyOn(document, 'addEventListener')
-    ;(window as any).AudioContext = vi.fn().mockImplementation(() => ({
-      state: 'suspended',
-      sampleRate: 16000,
-      resume: vi.fn().mockResolvedValue(undefined),
-      close: vi.fn().mockResolvedValue(undefined),
-    }))
-
-    const { result } = renderHook(() => useWakeWord({ active: true, paused: false, onDetected: vi.fn() }))
-    await waitFor(() => expect(result.current.wakeStatus).toBe('listening'))
-    // resume 后仍为 suspended → 注册 pointerdown
-    expect(addEventSpy).toHaveBeenCalledWith('pointerdown', expect.any(Function))
-    addEventSpy.mockRestore()
-  })
-
-  it('模型加载后取消（getUserMedia 解析前 unmount）释放轨道', async () => {
-    const stopFn = vi.fn()
-    let resolveGetUserMedia: (v: any) => void = () => {}
-    ;(navigator.mediaDevices.getUserMedia as any).mockImplementation(
-      () => new Promise(r => { resolveGetUserMedia = r })
+  it('模型加载后取消（createMicSession 解析前 unmount）释放会话', async () => {
+    let resolveSession: (v: any) => void = () => {}
+    mockCreateMicSession.mockImplementation(
+      () => new Promise(r => { resolveSession = r })
     )
     // 让 pipeline 挂起，保证 wakeStatus 停留在 loading
     const { pipeline } = await import('@huggingface/transformers')
@@ -299,38 +272,34 @@ describe('useWakeWord', () => {
     // unmount 触发 cancelled = true
     unmount()
 
-    // 解析 pipeline + getUserMedia → 进入 if (cancelled) 分支，停止轨道
+    // 解析 pipeline + createMicSession → 进入 cancelled 分支，立即释放会话
     await act(async () => {
       resolvePipeline(mockTranscriber)
       await new Promise(r => setTimeout(r, 10))
-      resolveGetUserMedia({ getTracks: () => [{ stop: stopFn }] })
+      resolveSession({ engine: 'worklet', stop: mockSessionStop, ctx: { sampleRate: 16000 }, stream: {} })
       await new Promise(r => setTimeout(r, 10))
     })
-    expect(stopFn).toHaveBeenCalled()
+    expect(mockSessionStop).toHaveBeenCalled()
   })
 })
 
 describe('useWakeWord 模块级错误路径', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mockCreatePcmCapture.mockResolvedValue({ engine: 'worklet', cleanup: vi.fn() })
+    mockCreateMicSession.mockResolvedValue({
+      engine: 'worklet',
+      stop: vi.fn(),
+      ctx: { sampleRate: 16000 },
+      stream: {},
+    })
     mockTranscriber.mockResolvedValue({ text: '' })
     Object.defineProperty(navigator, 'mediaDevices', {
-      value: { getUserMedia: vi.fn().mockResolvedValue({ getTracks: () => [{ stop: vi.fn() }] }) },
+      value: { getUserMedia: vi.fn() },
       writable: true,
       configurable: true,
     })
-    ;(window as any).AudioContext = vi.fn().mockImplementation(() => ({
-      state: 'running',
-      sampleRate: 16000,
-      resume: vi.fn().mockResolvedValue(undefined),
-      close: vi.fn().mockResolvedValue(undefined),
-    }))
   })
 
-  afterEach(() => {
-    delete (window as any).AudioContext
-  })
 
   it('pipeline 加载失败时 transcriberPromise 重置，wakeStatus=error', async () => {
     vi.resetModules()

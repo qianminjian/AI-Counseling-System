@@ -14,7 +14,8 @@ import { VP_GUIDE_SCRIPTS, VP_SAMPLE_RATE, VP_SEGMENT_DURATION, VP_SILENCE_THRES
 import { getConfigValue } from '../config/remote'
 import { useVoiceprint } from '../hooks/useVoiceprint'
 import { unlockAudio, getGlobalAudioElement } from '../utils/audioUnlock'
-import { createPcmCapture, type PcmCaptureHandle } from '../utils/createPcmCapture'
+import { browserSpeak } from '../utils/browserSpeak'
+import { createMicSession, type MicSessionHandle } from '../utils/micSession'
 import { getVoiceprint, getRemoteVoiceprintTenantId } from '../utils/voiceprintStore'
 import { voiceLogin, remoteVoiceprintVerify, getVoiceprintConfig, setToken, setRefreshToken, setUser, fetchLoginPrompt } from '../api'
 import { readLocalStorageSafe } from '../utils/storage'
@@ -51,21 +52,17 @@ export default function VoiceLoginOverlay({ mode = 'verify', onComplete, onCance
 
   const { extractEmbedding, verify, loading, modelErrorRef } = useVoiceprint()
   const collectedEmbeddings = useRef([])
-  const audioCtxRef = useRef<AudioContext | null>(null)
-  const streamRef = useRef<MediaStream | null>(null)
-  const captureRef = useRef<PcmCaptureHandle | null>(null)
+  const sessionRef = useRef<MicSessionHandle | null>(null)
   const chunksRef = useRef<Float32Array[]>([])
   const listeningRef = useRef(false)
   const cancelledRef = useRef(false)
 
-  // 清理资源
+  // 清理资源（会话 stop 统一释放采集节点 + 麦克风 + AudioContext）
   const cleanup = useCallback(() => {
     cancelledRef.current = true
     listeningRef.current = false
-    captureRef.current?.cleanup()
-    captureRef.current = null
-    streamRef.current?.getTracks().forEach((t) => t.stop())
-    audioCtxRef.current?.close().catch(() => {})
+    sessionRef.current?.stop()
+    sessionRef.current = null
   }, [])
 
   useEffect(() => () => cleanup(), [cleanup])
@@ -97,41 +94,20 @@ export default function VoiceLoginOverlay({ mode = 'verify', onComplete, onCance
         }
       } catch { /* 后端 TTS 不可用，降级 */ }
 
-      // 2. 降级：浏览器 speechSynthesis
-      if ('speechSynthesis' in window) {
-        try {
-          window.speechSynthesis.cancel()
-          const utter = new SpeechSynthesisUtterance(text)
-          utter.lang = 'zh-CN'
-          utter.rate = 0.9
-          const voices = window.speechSynthesis.getVoices()
-          const zhVoice = voices.find((v) => v.lang.startsWith('zh'))
-          if (zhVoice) utter.voice = zhVoice
-          utter.onend = () => { clearTimeout(timer); done() }
-          utter.onerror = () => { clearTimeout(timer); done() }
-          window.speechSynthesis.speak(utter)
-          return
-        } catch { /* ignore */ }
-      }
+      // 2. 降级：浏览器 speechSynthesis（F5：复用共享 browserSpeak，按登录主题人设调音）
+      const ok = browserSpeak(text, { rate: 0.9, persona: getLoginPersona(), onEnd: done })
+      if (ok) return
 
       // 3. 无 TTS：显示字幕 2 秒后继续
       setTimeout(() => { clearTimeout(timer); done() }, 2000)
     })
   }, [])
 
-  /** 初始化麦克风 + PCM 采集（AudioWorklet 优先，ScriptProcessor 降级） */
+  /** 初始化麦克风 + PCM 采集会话（F6：统一 micSession 模块，音量 rms 在回调内计算） */
   const initMic = useCallback(async () => {
-    if (audioCtxRef.current) return true
+    if (sessionRef.current) return true
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-      })
-      streamRef.current = stream
-      const ctx = new (window.AudioContext || window.webkitAudioContext)()
-      if (ctx.state === 'suspended') await ctx.resume().catch(() => {})
-      audioCtxRef.current = ctx
-
-      const handle = await createPcmCapture(ctx, stream, (pcm: Float32Array) => {
+      const session = await createMicSession((pcm: Float32Array) => {
         if (!listeningRef.current) return
         chunksRef.current.push(pcm)
         // 计算音量（UI 动画）
@@ -139,7 +115,12 @@ export default function VoiceLoginOverlay({ mode = 'verify', onComplete, onCance
         for (let i = 0; i < pcm.length; i++) sum += pcm[i] * pcm[i]
         setVolume(Math.min(1, Math.sqrt(sum / pcm.length) * 10))
       })
-      captureRef.current = handle
+      if (cancelledRef.current) {
+        // 卸载时会话才创建完成：立即释放，避免麦克风泄漏
+        session.stop()
+        return false
+      }
+      sessionRef.current = session
       return true
     } catch (err) {
       console.warn('[VoiceLogin] 麦克风初始化失败:', (err as Error)?.message)
@@ -206,7 +187,7 @@ export default function VoiceLoginOverlay({ mode = 'verify', onComplete, onCance
       // 3. 提取 embedding
       setPhase('processing')
       setStatusText('正在识别...')
-      const sampleRate = audioCtxRef.current?.sampleRate || VP_SAMPLE_RATE
+      const sampleRate = sessionRef.current?.ctx.sampleRate || VP_SAMPLE_RATE
       const embedding = await extractEmbedding(audio, sampleRate)
 
       if (embedding) {

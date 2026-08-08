@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
+import { getMicStream } from '../utils/micSession'
 
 /** 检测浏览器支持的录音格式（iOS Safari 不支持 webm，只支持 mp4/aac） */
 function getSupportedMimeType() {
@@ -48,7 +49,8 @@ export function useAudioRecorder(onComplete: (blob: Blob | null) => Promise<unkn
     if (warmingRef.current) return // 预热进行中，避免重复获取流（StrictMode 双调用防护）
     warmingRef.current = true
     try {
-      streamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true })
+      // F6：统一 micSession 模块获取流（约束/错误映射单点），MediaRecorder 场景不建 AudioContext
+      streamRef.current = await getMicStream()
     } catch (err: unknown) {
       console.warn('麦克风预热失败（将在录音时重试）', (err as Error).name)
     } finally {
@@ -63,7 +65,7 @@ export function useAudioRecorder(onComplete: (blob: Blob | null) => Promise<unkn
       // 优先复用预热的麦克风流（秒开，避免 getUserMedia 异步延迟漏录开头的词）
       let stream = streamRef.current
       if (!stream || !stream.getTracks().some(t => t.readyState === 'live')) {
-        stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+        stream = await getMicStream()
         streamRef.current = stream
       }
       const mimeType = getSupportedMimeType()

@@ -3,6 +3,7 @@ import { api } from '../api'
 import { useTheme } from '../theme/ThemeProvider'
 import BoBoAvatar from './BoBoAvatar'
 import { readLocalStorageSafe, writeLocalStorageSafe } from '../utils/storage'
+import { browserSpeak, stopBrowserSpeak } from '../utils/browserSpeak'
 import SceneDecor from './SceneDecor'
 
 const CATEGORY_EMOJI = {
@@ -94,25 +95,14 @@ const THEME_STYLES = {
   },
 } as const
 
-/** 放松练习语音引导朗读（轻柔语速，冥想/呼吸场景） */
+/** 放松练习语音引导朗读（轻柔语速，冥想/呼吸场景；F5：复用共享 browserSpeak 降级链） */
 function speakGuide(text) {
-  if (!('speechSynthesis' in window)) return
-  try {
-    window.speechSynthesis.cancel()
-    const utter = new SpeechSynthesisUtterance(text)
-    utter.lang = 'zh-CN'
-    utter.rate = 0.85
-    utter.pitch = 1.0
-    const zhVoice = window.speechSynthesis.getVoices().find(v => v.lang.startsWith('zh'))
-    if (zhVoice) utter.voice = zhVoice
-    window.speechSynthesis.speak(utter)
-  } catch { /* ignore */ }
+  // bobo 人设（温柔女老师，pitch 1.05 × rateScale 0.95），rate 0.9 → 实际语速 ~0.86
+  browserSpeak(text, { rate: 0.9, persona: 'bobo' })
 }
 
 function stopGuide() {
-  if ('speechSynthesis' in window) {
-    try { window.speechSynthesis.cancel() } catch { /* ignore */ }
-  }
+  stopBrowserSpeak()
 }
 
 /** 呼吸引导动画圆圈（主题色驱动 + 光晕脉冲） */

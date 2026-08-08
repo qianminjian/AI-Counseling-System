@@ -32,7 +32,7 @@ import {
   matchesWakeWord,
   isHallucination,
 } from '../config/wakeWord'
-import { createPcmCapture, type PcmCaptureHandle } from '../utils/createPcmCapture'
+import { createMicSession, type MicSessionHandle } from '../utils/micSession'
 import { createModelStatusStore, type ModelStatus } from '../utils/modelStatusStore'
 // DC-009：Transformers.js 初始化收敛到共享 loader（SPEC §23）
 import { loadTransformersModel, createProgressHandler, formatModelError } from '../utils/transformersLoader'
@@ -53,8 +53,8 @@ const WINDOW_SAMPLES = Math.round(WAKE_WINDOW_SECONDS * TARGET_SAMPLE_RATE)
 const KEEP_SAMPLES = Math.round(WAKE_KEEP_SECONDS * TARGET_SAMPLE_RATE)
 const MAX_BUFFER_SAMPLES = WINDOW_SAMPLES * 2
 
-/** AudioWorklet 处理器代码（保留用于 createPcmCapture 内部，此处不再直接使用） */
-// 注：实际采集由 createPcmCapture 统一管理，支持 ScriptProcessor 降级
+/** 采集由 utils/micSession 统一管理（createMicSession：约束/错误映射/iOS 兜底/释放单点） */
+// 注：AudioWorklet 优先 / ScriptProcessor 降级逻辑在 createPcmCapture 内部
 
 /** 线性插值降采样到 16kHz（Float32 输出，Whisper 直接消费） */
 function downsampleTo16kFloat(f32, inputRate) {
@@ -227,10 +227,7 @@ export function useWakeWord({ active, paused, onDetected }) {
     if (!active || !supported) return undefined
 
     let cancelled = false
-    let stream: MediaStream | null = null
-    let audioCtx: AudioContext | null = null
-    let captureHandle: PcmCaptureHandle | null = null
-    let iosResumeHandler: (() => void) | null = null
+    let session: MicSessionHandle | null = null
     let worker: Worker | null = null
     let transcribeId = 0
     /** Worker 不可用时降级为主线程推理（确保唤醒功能可用，代价是推理期间短暂阻塞 UI） */
@@ -415,29 +412,13 @@ export function useWakeWord({ active, paused, onDetected }) {
       })()
     }
 
-    // 启动麦克风
+    // 启动麦克风（F6：统一 micSession 模块——约束/错误映射/iOS resume 兜底/释放单点）
     ;(async () => {
       try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-        })
-        if (cancelled) {
-          stream.getTracks().forEach((t) => t.stop())
-          return
-        }
-
-        audioCtx = new (window.AudioContext || window.webkitAudioContext)()
-        if (audioCtx.state === 'suspended') {
-          await audioCtx.resume().catch(() => {})
-          if (audioCtx.state === 'suspended') {
-            iosResumeHandler = () => { audioCtx?.resume().catch(() => {}) }
-            document.addEventListener('pointerdown', iosResumeHandler)
-          }
-        }
-
-        const inputRate = audioCtx.sampleRate
+        // 采样率在会话创建后取得（PCM 回调由事件循环异步触发，赋值先于首次回调，无竞态）
+        let inputRate = TARGET_SAMPLE_RATE
         let chunkCount = 0
-        captureHandle = await createPcmCapture(audioCtx, stream, (rawPcm: Float32Array) => {
+        session = await createMicSession((rawPcm: Float32Array) => {
           if (cancelled) return
           const pcm = downsampleTo16kFloat(rawPcm, inputRate)
           chunks.push(pcm)
@@ -455,13 +436,20 @@ export function useWakeWord({ active, paused, onDetected }) {
           }
           maybeAnalyze()
         })
+        inputRate = session.ctx.sampleRate
+        if (cancelled) {
+          // unmount 时会话创建才完成：立即释放，避免麦克风泄漏
+          session.stop()
+          session = null
+          return
+        }
 
         setWakeStatus('listening')
       } catch (err) {
-        console.warn('[WakeWord] 麦克风初始化失败:', err?.message || err)
+        console.warn('[WakeWord] 麦克风初始化失败:', (err as Error)?.message || err)
         setWakeStatus('error')
-        stream?.getTracks().forEach((t) => t.stop())
-        audioCtx?.close().catch(() => {})
+        session?.stop()
+        session = null
       }
     })()
 
@@ -469,10 +457,8 @@ export function useWakeWord({ active, paused, onDetected }) {
     return () => {
       cancelled = true
       setWakeStatus('idle')
-      if (iosResumeHandler) document.removeEventListener('pointerdown', iosResumeHandler)
-      captureHandle?.cleanup()
-      stream?.getTracks().forEach((t) => t.stop())
-      audioCtx?.close().catch(() => {})
+      session?.stop()
+      session = null
       worker?.terminate()
       worker = null
     }

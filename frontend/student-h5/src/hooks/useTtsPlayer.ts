@@ -8,6 +8,7 @@
  */
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { getGlobalAudioElement, getGlobalAudioContext, unlockAudio } from '../utils/audioUnlock'
+import { browserSpeak, stopBrowserSpeak } from '../utils/browserSpeak'
 import { fetchTtsSynthesize } from '../api'
 
 /** 去除 emoji 和特殊符号（TTS 不需要朗读） */
@@ -65,40 +66,7 @@ function mergeShortSentences(sentences, minLen = 8) {
 }
 
 
-/** 浏览器降级时的人设音色参数（speechSynthesis 无法选音色，用 pitch/rate 区分人设） */
-const PERSONA_VOICE_PROFILES = {
-  xiaoxing: { pitch: 1.1, rateScale: 1.0 },   // 小星：温暖大姐姐
-  bobo: { pitch: 1.05, rateScale: 0.95 },     // 波波老师：温柔女老师
-  qiqiu: { pitch: 1.4, rateScale: 1.1 },      // 方言：活泼俘皮，音调高、语速快
-  yueliang: { pitch: 1.0, rateScale: 0.9 },   // 月亮：温柔轻语，语速慢
-  xiaotaiyang: { pitch: 0.7, rateScale: 1.0 },// 小太阳：阳光大哥哥，低音调模拟男声
-  dashu: { pitch: 0.6, rateScale: 0.95 },     // 大树：暖心大叔，低沉稳重
-  doudou: { pitch: 1.5, rateScale: 1.1 },     // 豆豆：顽皮男孩，音调高语速快
-}
-
-/** 用浏览器 speechSynthesis 朗读（后端 TTS 不可用时的降级，按人设调整音高语速） */
-function browserSpeak(text: string, { rate = 1.0, persona = 'xiaoxing', onEnd }: { rate?: number; persona?: string; onEnd?: () => void } = {}) {
-  if (!('speechSynthesis' in window)) { onEnd?.(); return false }
-  try {
-    window.speechSynthesis.cancel()
-    const utter = new SpeechSynthesisUtterance(text)
-    const profile = PERSONA_VOICE_PROFILES[persona] || PERSONA_VOICE_PROFILES.xiaoxing
-    utter.lang = 'zh-CN'
-    utter.rate = Math.max(0.5, Math.min(2, rate * profile.rateScale))
-    utter.pitch = profile.pitch
-    // 优先选中文语音
-    const voices = window.speechSynthesis.getVoices()
-    const zhVoice = voices.find(v => v.lang.startsWith('zh'))
-    if (zhVoice) utter.voice = zhVoice
-    utter.onend = () => onEnd?.()
-    utter.onerror = () => onEnd?.()
-    window.speechSynthesis.speak(utter)
-    return true
-  } catch {
-    onEnd?.()
-    return false
-  }
-}
+// F5（doing/78 §12）：browserSpeak / 人设 profile 已收敛至 utils/browserSpeak（三处实现合一），此处仅消费
 
 export function useTtsPlayer({ persona = 'xiaoxing', emotion = 'neutral', speed = 1.0, dialect = null }: { persona?: string; emotion?: string; speed?: number; dialect?: string | null } = {}) {
   const [playing, setPlaying] = useState(false)
@@ -304,9 +272,7 @@ export function useTtsPlayer({ persona = 'xiaoxing', emotion = 'neutral', speed 
       audioRef.current.pause()
     }
     // 停止浏览器 TTS
-    if ('speechSynthesis' in window) {
-      try { window.speechSynthesis.cancel() } catch { /* ignore */ }
-    }
+    stopBrowserSpeak()
     setPlaying(false)
     setCurrentSentenceIdx(-1)
     setSentences([])

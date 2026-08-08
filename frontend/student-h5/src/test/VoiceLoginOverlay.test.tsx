@@ -4,8 +4,9 @@ import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 // 可控 mock（vi.hoisted 确保提升安全）
 const {
   mockExtractEmbedding, mockVerify, mockGetVoiceprint, mockVoiceLogin,
-  mockSetToken, mockSetRefreshToken, mockSetUser, mockCaptureCleanup,
+  mockSetToken, mockSetRefreshToken, mockSetUser, mockSessionStop,
   mockGetVoiceprintConfig, mockGetRemoteTenantId, mockRemoteVerify,
+  mockCreateMicSession,
 } = vi.hoisted(() => ({
   mockExtractEmbedding: vi.fn(),
   mockVerify: vi.fn(),
@@ -14,10 +15,11 @@ const {
   mockSetToken: vi.fn(),
   mockSetRefreshToken: vi.fn(),
   mockSetUser: vi.fn(),
-  mockCaptureCleanup: vi.fn(),
+  mockSessionStop: vi.fn(),
   mockGetVoiceprintConfig: vi.fn(),
   mockGetRemoteTenantId: vi.fn(),
   mockRemoteVerify: vi.fn(),
+  mockCreateMicSession: vi.fn(),
 }))
 
 vi.mock('../hooks/useVoiceprint', () => ({
@@ -31,11 +33,8 @@ vi.mock('../hooks/useVoiceprint', () => ({
 vi.mock('../utils/audioUnlock', () => ({
   unlockAudio: vi.fn().mockResolvedValue(undefined),
 }))
-vi.mock('../utils/createPcmCapture', () => ({
-  createPcmCapture: vi.fn().mockResolvedValue({
-    engine: 'worklet',
-    cleanup: mockCaptureCleanup,
-  }),
+vi.mock('../utils/micSession', () => ({
+  createMicSession: (...args: any[]) => mockCreateMicSession(...args),
 }))
 vi.mock('../utils/voiceprintStore', () => ({
   getVoiceprint: (...args: any[]) => mockGetVoiceprint(...args),
@@ -64,6 +63,12 @@ describe('VoiceLoginOverlay', () => {
     mockGetVoiceprintConfig.mockResolvedValue({ mode: 'local', enabled: true })
     mockGetRemoteTenantId.mockReturnValue('tenant-t1')
     mockRemoteVerify.mockResolvedValue({ matched: false })
+    mockCreateMicSession.mockResolvedValue({
+      engine: 'worklet',
+      stop: mockSessionStop,
+      ctx: { sampleRate: 16000 },
+      stream: { getTracks: () => [{ stop: vi.fn() }] },
+    })
     // mock SpeechSynthesisUtterance
     ;(window as any).SpeechSynthesisUtterance = vi.fn().mockImplementation((text: string) => ({
       text, lang: '', rate: 1, voice: null, onend: null, onerror: null,
@@ -77,18 +82,6 @@ describe('VoiceLoginOverlay', () => {
       writable: true,
       configurable: true,
     })
-    Object.defineProperty(navigator, 'mediaDevices', {
-      value: { getUserMedia: vi.fn().mockResolvedValue({ getTracks: () => [{ stop: vi.fn() }] }) },
-      writable: true,
-      configurable: true,
-    })
-    ;(window as any).AudioContext = vi.fn().mockImplementation(() => ({
-      state: 'running',
-      sampleRate: 16000,
-      resume: vi.fn().mockResolvedValue(undefined),
-      close: vi.fn().mockResolvedValue(undefined),
-      createMediaStreamSource: vi.fn(),
-    }))
   })
 
   afterEach(() => {
@@ -121,7 +114,7 @@ describe('VoiceLoginOverlay', () => {
   })
 
   it('麦克风不可用时显示失败提示', async () => {
-    ;(navigator.mediaDevices.getUserMedia as any).mockRejectedValue(new Error('denied'))
+    ;(mockCreateMicSession as any).mockRejectedValue(new Error('denied'))
     render(<VoiceLoginOverlay mode="verify" onComplete={vi.fn()} onCancel={vi.fn()} />)
     await act(async () => { await vi.advanceTimersByTimeAsync(0) })
     expect(screen.getByText(/麦克风不可用/)).toBeTruthy()
@@ -239,7 +232,7 @@ describe('VoiceLoginOverlay', () => {
   })
 
   it('失败时点击“用秘密数字登录”调用 onCancel', async () => {
-    ;(navigator.mediaDevices.getUserMedia as any).mockRejectedValue(new Error('denied'))
+    ;(mockCreateMicSession as any).mockRejectedValue(new Error('denied'))
     const onCancel = vi.fn()
     render(<VoiceLoginOverlay mode="verify" onComplete={vi.fn()} onCancel={onCancel} />)
     await act(async () => { await vi.advanceTimersByTimeAsync(0) })
