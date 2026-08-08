@@ -1,27 +1,55 @@
 import { useState, useEffect } from 'react'
-import { Card, Row, Col, Statistic, Table, Tag, Spin } from 'antd'
+import { Card, Row, Col, Statistic, Table, Tag, Spin, Button, Alert } from 'antd'
+import type { TableProps } from 'antd'
 import {
   BankOutlined, TeamOutlined, MessageOutlined, AlertOutlined,
   HomeOutlined, UserOutlined,
 } from '@ant-design/icons'
 import { getPlatformOverview, getPlatformTenants } from '../../api'
 
+/** 租户列表（getPlatformTenants 契约） */
+interface TenantVO {
+  tenantName: string
+  status: string
+  tenantCode: string
+  schoolCount: number
+  studentCount: number
+  teacherCount: number
+  sessionCount: number
+  createdAt: string
+}
+
 /** 平台管理后台面板（仅 ADMIN 可见） */
 export default function PlatformPanel() {
   const [overview, setOverview] = useState(null)
-  const [tenants, setTenants] = useState([])
+  const [tenants, setTenants] = useState<TenantVO[]>([])
   const [loading, setLoading] = useState(true)
+  // F-09：加载失败不静默——console.error + 局部错误条 + 重试（与 QualityPanel 同构）
+  const [error, setError] = useState<string | null>(null)
+  const [retryKey, setRetryKey] = useState(0)
 
   useEffect(() => {
+    setLoading(true)
     Promise.all([getPlatformOverview(), getPlatformTenants()])
-      .then(([ov, ts]) => { setOverview(ov); setTenants(ts) })
-      .catch(() => {})
+      .then(([ov, ts]) => { setOverview(ov); setTenants(ts); setError(null) })
+      .catch((e) => {
+        console.error('[PlatformPanel] 加载平台概览失败:', e)
+        setError('平台数据加载失败，请检查网络后重试')
+      })
       .finally(() => setLoading(false))
-  }, [])
+  }, [retryKey])
 
   if (loading) return <div className="ms-empty-lg"><Spin size="large" /></div>
 
-  const tenantColumns = [
+  // F-09：加载失败展示错误条（不再渲染空面板，提供重试入口）
+  if (error) {
+    return (
+      <Alert type="error" showIcon message={error}
+        action={<Button size="small" onClick={() => setRetryKey(k => k + 1)}>重试</Button>} />
+    )
+  }
+
+  const tenantColumns: TableProps<TenantVO>['columns'] = [
     { title: '学校/机构', dataIndex: 'tenantName', key: 'name', render: (t, r) => (
       <span><BankOutlined className="ms-text-primary" style={{ marginRight: 6 }} />{t}
         <Tag style={{ marginLeft: 8 }} color={r.status === 'active' ? 'green' : 'default'}>{r.status}</Tag>

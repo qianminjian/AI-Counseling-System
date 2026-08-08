@@ -3,6 +3,15 @@ import { notification, Button, message } from 'antd'
 import { getToken, takeoverSession } from '../api'
 import { usePolling } from './usePolling'
 
+/** WebSocket 预警推送消息（ws /alerts 契约） */
+interface AlertPushMessage {
+  type: string
+  riskLevel: number
+  title: string
+  body: string
+  sessionId?: string
+}
+
 /**
  * 教师端预警 WebSocket 实时推送 Hook
  * 连接 ws://host/ws/alerts
@@ -10,7 +19,7 @@ import { usePolling } from './usePolling'
  * 避免入 nginx access log / 浏览器历史（P1-FE-4）
  * 收到 risk_alert 消息时弹出 antd notification + 触发回调
  */
-export function useAlertWebSocket({ onAlert, enabled = true }) {
+export function useAlertWebSocket({ onAlert, enabled = true }: { onAlert?: (data: AlertPushMessage) => void; enabled?: boolean }) {
   const wsRef = useRef(null)
   const reconnectTimer = useRef(null)
 
@@ -29,7 +38,7 @@ export function useAlertWebSocket({ onAlert, enabled = true }) {
       try {
         const data = JSON.parse(event.data)
         if (data.type === 'risk_alert') {
-          const levelColor = { 3: 'var(--ms-danger)', 2: 'var(--ms-warning)', 1: 'var(--ms-warning)' }
+          const levelColor: Record<number, string> = { 3: 'var(--ms-danger)', 2: 'var(--ms-warning)', 1: 'var(--ms-warning)' }
           const isRed = data.riskLevel >= 3
 
           notification.open({

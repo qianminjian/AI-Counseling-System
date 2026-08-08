@@ -3,6 +3,8 @@ import { Modal, Steps, Button } from 'antd'
 import {
   DashboardOutlined, AlertOutlined, TeamOutlined, BellOutlined, SettingOutlined,
 } from '@ant-design/icons'
+// F-07：失败安全读写（隐私模式/禁用存储下不抛 SecurityError）
+import { readLocalStorageSafe, writeLocalStorageSafe } from '../../utils/storage'
 
 const ONBOARDING_KEY = 'mindsafe_onboarding_done'
 
@@ -36,11 +38,11 @@ const STEPS = [
 
 /** 新手引导弹窗（首次登录显示） */
 export default function OnboardingGuide() {
-  const [visible, setVisible] = useState(() => !localStorage.getItem(ONBOARDING_KEY))
+  const [visible, setVisible] = useState(() => readLocalStorageSafe(ONBOARDING_KEY, 'false') !== 'true')
   const [current, setCurrent] = useState(0)
 
   const finish = () => {
-    localStorage.setItem(ONBOARDING_KEY, 'true')
+    writeLocalStorageSafe(ONBOARDING_KEY, 'true')
     setVisible(false)
   }
 

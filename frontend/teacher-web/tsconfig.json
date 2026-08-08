@@ -15,12 +15,13 @@
     "jsx": "react-jsx",
 
     /* Linting
-     * 注：strict:true 但下列三项为分阶段迁移遗留，当前并非全量严格模式：
-     * - noImplicitAny:false：12 个面板组件参数未标注，全量开启需逐组件改造
-     * - strictNullChecks:false：api 层与组件对可空字段未做防御
+     * 注：strict:true 但下列两项为分阶段迁移遗留，当前并非全量严格模式：
+     * - strictNullChecks:false：api 层与组件对可空字段未做防御（后续批次推进）
+     * - useUnknownInCatchVariables:false：catch 变量宽松处理
+     * noImplicitAny 已全量开启（doing/80 F-03：12 个面板组件参数全部完成类型标注）
      * 新增代码（api.ts DTO / utils）应按严格标准编写，存量逐步收敛 */
     "strict": true,
-    "noImplicitAny": false,
+    "noImplicitAny": true,
     "strictNullChecks": false,
     "useUnknownInCatchVariables": false,
     "noUnusedLocals": false,

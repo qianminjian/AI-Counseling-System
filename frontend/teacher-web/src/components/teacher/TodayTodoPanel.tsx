@@ -6,14 +6,15 @@ import {
 } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import { getAlerts, claimAlert, getPendingFollowups } from '../../api'
+import type { AlertVO, FollowUpItem } from '../../api'
 import { evaluateSla, urgencyWeight } from '../../utils/sla'
 import { usePolling } from '../../hooks/usePolling'
 import { riskColor, riskLabel } from '../../utils/riskLevel'
 
-const RISK_DOT = { 3: 'var(--ms-danger)', 2: 'var(--ms-warning)', 1: 'var(--ms-warning)', 0: 'var(--ms-success)' }
+const RISK_DOT: Record<number, string> = { 3: 'var(--ms-danger)', 2: 'var(--ms-warning)', 1: 'var(--ms-warning)', 0: 'var(--ms-success)' }
 
 /** SLA 倒计时徽标（逾期红色闪烁提示） */
-function SlaBadge({ riskLevel, status, detectedAt }) {
+function SlaBadge({ riskLevel, status, detectedAt }: { riskLevel: number; status: string; detectedAt: string | Date }) {
   const sla = evaluateSla(riskLevel, status, detectedAt)
   if (!sla.hasSla) return <span style={{ fontSize: 11, color: 'var(--ms-text-muted)' }}>无时限</span>
 
@@ -44,17 +45,17 @@ function SlaBadge({ riskLevel, status, detectedAt }) {
  * 行动驱动首屏：教师打开 10 秒内知道今天该处理谁。
  * 左：今日待办（SLA 倒计时排序）；右：24h 预警时间线。
  */
-export default function TodayTodoPanel({ onNavigate }) {
-  const [alerts, setAlerts] = useState([])
-  const [followups, setFollowups] = useState([])
+export default function TodayTodoPanel({ onNavigate }: { onNavigate: (tab: string) => void }) {
+  const [alerts, setAlerts] = useState<AlertVO[]>([])
+  const [followups, setFollowups] = useState<FollowUpItem[]>([])
   const [loading, setLoading] = useState(true)
-  const [claimingId, setClaimingId] = useState(null)
+  const [claimingId, setClaimingId] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     try {
       const [openAlerts, fus] = await Promise.all([
         getAlerts({ limit: 100 }),
-        getPendingFollowups().catch(() => []),
+        getPendingFollowups().catch((): FollowUpItem[] => []),
       ])
       // 待办 = 未关闭的预警（open/claimed）
       const pending = (openAlerts || []).filter(a => a.status === 'open' || a.status === 'claimed')
@@ -71,7 +72,7 @@ export default function TodayTodoPanel({ onNavigate }) {
   // AUD-047 页面不可见暂停由 usePolling 默认承担（与 Dashboard 15s 轮询叠加时不空转请求）
   usePolling(load, 30000)
 
-  const handleClaim = async (id) => {
+  const handleClaim = async (id: string) => {
     setClaimingId(id)
     try {
       await claimAlert(id)

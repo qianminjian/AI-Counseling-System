@@ -1,19 +1,20 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Table, Tag, Card, Button, message, Input, List, Descriptions, Timeline, Space, Empty, Spin } from 'antd'
+import type { TableProps } from 'antd'
 import { ArrowLeftOutlined, PlusOutlined, MessageOutlined, DownloadOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
-import { getStudents, getHighRiskStudents, getStudentProfile, addStudentNote, exportStudentsCsv, type AlertVO, type NoteVO, type StudentProfileVO } from '../../api'
+import { getStudents, getHighRiskStudents, getStudentProfile, addStudentNote, exportStudentsCsv, type AlertVO, type NoteVO, type StudentProfileVO, type StudentVO, type HighRiskStudentVO } from '../../api'
 import SessionMessagesDrawer from './SessionMessagesDrawer'
 import ProfileRadarChart from './ProfileRadarChart'
 import { riskColor, riskLabel } from '../../utils/riskLevel'
 
 /** 学生档案详情 */
-function StudentProfile({ studentId, onBack }) {
+function StudentProfile({ studentId, onBack }: { studentId: string; onBack: () => void }) {
   const [profile, setProfile] = useState<StudentProfileVO | null>(null)
   const [loading, setLoading] = useState(true)
   const [noteText, setNoteText] = useState('')
   const [adding, setAdding] = useState(false)
-  const [viewSessionId, setViewSessionId] = useState(null)
+  const [viewSessionId, setViewSessionId] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -179,8 +180,8 @@ function StudentProfile({ studentId, onBack }) {
 
 /** 学生管理主面板 */
 export default function StudentPanel() {
-  const [students, setStudents] = useState([])
-  const [highRisk, setHighRisk] = useState([])
+  const [students, setStudents] = useState<StudentVO[]>([])
+  const [highRisk, setHighRisk] = useState<HighRiskStudentVO[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedStudent, setSelectedStudent] = useState(null)
 
@@ -209,7 +210,7 @@ export default function StudentPanel() {
 
   const highRiskIds = new Set(highRisk.map((h) => h.studentUserId))
 
-  const columns = [
+  const columns: TableProps<StudentVO>['columns'] = [
     {
       title: '姓名', dataIndex: 'displayName',
       render: (v, record) => (

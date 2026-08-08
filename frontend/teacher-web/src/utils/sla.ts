@@ -10,9 +10,9 @@ import dayjs from 'dayjs'
  */
 
 // riskLevel 数字（3=红/S0, 2=橙/S1, 1=黄/S2, 0=绿/S3）→ SLA 分钟
-const SLA_MINUTES_BY_LEVEL = { 3: 5, 2: 15, 1: 60, 0: 0 }
+const SLA_MINUTES_BY_LEVEL: Record<number, number> = { 3: 5, 2: 15, 1: 60, 0: 0 }
 
-export function getSlaMinutes(riskLevel) {
+export function getSlaMinutes(riskLevel: number): number {
   return SLA_MINUTES_BY_LEVEL[riskLevel] ?? 0
 }
 
@@ -23,7 +23,7 @@ export function getSlaMinutes(riskLevel) {
  * @param {string|Date} detectedAt 检测时间
  * @returns {{breached:boolean, escalate:boolean, overdueMin:number, remainingMin:number, hasSla:boolean}}
  */
-export function evaluateSla(riskLevel, status, detectedAt) {
+export function evaluateSla(riskLevel: number, status: string, detectedAt: string | Date) {
   const slaMin = getSlaMinutes(riskLevel)
   if (slaMin <= 0 || !detectedAt) {
     return { breached: false, escalate: false, overdueMin: 0, remainingMin: 0, hasSla: false }
@@ -50,7 +50,7 @@ export function evaluateSla(riskLevel, status, detectedAt) {
  * 格式化 SLA 倒计时为人类可读文本。
  * @returns {string} 如 "剩 8min" / "逾期 12min" / "无时限"
  */
-export function formatSlaCountdown(riskLevel, status, detectedAt) {
+export function formatSlaCountdown(riskLevel: number, status: string, detectedAt: string | Date): string {
   const sla = evaluateSla(riskLevel, status, detectedAt)
   if (!sla.hasSla) return '无时限'
   if (!sla.breached && !sla.escalate && sla.remainingMin > 0) return `剩 ${sla.remainingMin}min`
@@ -62,7 +62,7 @@ export function formatSlaCountdown(riskLevel, status, detectedAt) {
  * 待办排序权重：逾期 > SLA 剩余时间（越小越紧急）。
  * 返回数字，升序排列即紧急度从高到低。
  */
-export function urgencyWeight(riskLevel, status, detectedAt) {
+export function urgencyWeight(riskLevel: number, status: string, detectedAt: string | Date): number {
   const sla = evaluateSla(riskLevel, status, detectedAt)
   if (!sla.hasSla) return Number.MAX_SAFE_INTEGER // 无 SLA 排最后
   if (sla.breached) return -sla.overdueMin * 1000 - riskLevel // 逾期：越久越靠前

@@ -1,11 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 
 /**
  * 平台总览面板测试（仅 ADMIN 可见，ARCH-009 E-2 补测）
  * - 渲染 6 个平台指标
  * - 渲染租户表格（机构名/编码/状态 Tag）
- * - 接口失败时静默降级不崩溃
+ * - 接口失败时展示错误条 + 重试（F-09：不再静默降级吞错）
  */
 
 const mockGetOverview = vi.fn();
@@ -55,12 +55,18 @@ describe('PlatformPanel 平台总览', () => {
     expect(screen.getByText('disabled')).toBeInTheDocument();
   });
 
-  it('接口失败时静默降级（空列表不崩溃）', async () => {
+  it('接口失败时展示错误条（F-09：不静默吞错，可重试）', async () => {
     mockGetOverview.mockRejectedValue(new Error('network'));
     mockGetTenants.mockRejectedValue(new Error('network'));
     render(<PlatformPanel />);
-    // 加载结束无异常，指标默认 0
-    await waitFor(() => expect(screen.getByText('合作学校')).toBeInTheDocument());
-    expect(screen.queryByText('示范小学')).not.toBeInTheDocument();
+    // 失败后展示错误条而非空面板
+    expect(await screen.findByText('平台数据加载失败，请检查网络后重试')).toBeInTheDocument();
+    expect(screen.queryByText('合作学校')).not.toBeInTheDocument();
+
+    // 重试成功后恢复面板
+    mockGetOverview.mockResolvedValue(overview);
+    mockGetTenants.mockResolvedValue(tenants);
+    fireEvent.click(screen.getByRole('button', { name: /重\s*试/ }));
+    expect(await screen.findByText('合作学校')).toBeInTheDocument();
   });
 });

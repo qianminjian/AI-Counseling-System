@@ -4,17 +4,26 @@ import { RadarChart } from 'echarts/charts'
 import { TooltipComponent, RadarComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 import * as echarts from 'echarts/core'
+import type { EChartsOption } from 'echarts'
 import { getStudentRadar } from '../../api'
 import { useECharts } from '../../hooks/useECharts'
 
 // FA-03：按需注册（替代全量导入 ~1MB），与 StatsCharts 同模式
 echarts.use([RadarChart, TooltipComponent, RadarComponent, CanvasRenderer])
 
+/** 画像雷达数据（后端 Map 输出，见 ProfileRadarService） */
+interface RadarData {
+  dimensions?: Array<{ name: string; score: number }>
+  hasProfile?: boolean
+  totalSessions?: number
+  milestones?: Array<{ label: string; period?: string }>
+}
+
 /** 画像雷达图 + 成长里程碑（PROF-004，对齐 design/23 §6） */
-export default function ProfileRadarChart({ studentId }) {
-  const [data, setData] = useState(null)
+export default function ProfileRadarChart({ studentId }: { studentId: string }) {
+  const [data, setData] = useState<RadarData | null>(null)
   const [loading, setLoading] = useState(true)
-  const chartRef = useRef(null)
+  const chartRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     if (!studentId) return
@@ -28,7 +37,7 @@ export default function ProfileRadarChart({ studentId }) {
   }, [studentId])
 
   // 渲染 ECharts 雷达图（生命周期统一走 useECharts，FA-03）
-  const option = data?.dimensions ? {
+  const option: EChartsOption | null = data?.dimensions ? {
     tooltip: { trigger: 'item' },
     radar: {
       indicator: data.dimensions.map((d) => ({ name: d.name, max: 100 })),

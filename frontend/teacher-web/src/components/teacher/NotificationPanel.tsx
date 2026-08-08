@@ -6,8 +6,18 @@ import { getNotifications, markNotificationRead } from '../../api'
 
 const { Text } = Typography
 
+/** 通知项（getNotifications 契约） */
+interface NotificationVO {
+  notificationId: string
+  title: string
+  bodySummary: string
+  createdAt: string
+  deliveryStatus: string
+  severity: number
+}
+
 export default function NotificationPanel() {
-  const [notifications, setNotifications] = useState([])
+  const [notifications, setNotifications] = useState<NotificationVO[]>([])
   const [loading, setLoading] = useState(true)
 
   const load = useCallback(async () => {
@@ -23,7 +33,7 @@ export default function NotificationPanel() {
 
   useEffect(() => { load() }, [load])
 
-  const handleMarkRead = async (id) => {
+  const handleMarkRead = async (id: string) => {
     try {
       await markNotificationRead(id)
       message.success('已标记为已读')
@@ -33,7 +43,7 @@ export default function NotificationPanel() {
     }
   }
 
-  const SEVERITY_BORDER = {
+  const SEVERITY_BORDER: Record<number, string> = {
     3: 'var(--ms-danger)',
     2: 'var(--ms-warning)',
     1: 'var(--ms-warning)',

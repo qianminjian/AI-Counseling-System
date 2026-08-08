@@ -5,11 +5,20 @@ import { getSessionSummary } from '../../api'
 
 const { Text, Paragraph } = Typography
 
+/** AI 摘要解析结构（getSessionSummary 契约） */
+interface AiSummary {
+  mainTopic?: string
+  emotionTrend?: string
+  keyPoints?: string[]
+  riskNote?: string
+  suggestion?: string
+}
+
 /**
  * 会话 AI 摘要卡片
  * 展示 LLM 生成的结构化摘要：主要话题 / 情绪趋势 / 关键点 / 风险提示 / 建议
  */
-export default function SessionSummaryCard({ sessionId }) {
+export default function SessionSummaryCard({ sessionId }: { sessionId: string }) {
   const [loading, setLoading] = useState(false)
   const [data, setData] = useState(null)
 
@@ -39,7 +48,7 @@ export default function SessionSummaryCard({ sessionId }) {
   }
 
   // 解析 JSON 摘要
-  let summary
+  let summary: AiSummary
   try {
     summary = JSON.parse(data.summary)
   } catch {

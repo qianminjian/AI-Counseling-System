@@ -8,8 +8,17 @@ import { SessionTrendChart, RiskPieChart, ClassBarChart, EmotionBarChart } from 
 import { riskColor, riskLabel } from '../../utils/riskLevel'
 import TodayTodoPanel from './TodayTodoPanel'
 
+/** 满意度统计（getSatisfaction 契约） */
+interface SatisfactionVO {
+  totalRated: number
+  avgRating: number
+  recentAvg: number
+  recentCount: number
+  distribution?: Array<{ stars: number; count: number }>
+}
+
 /** 轻量 CSS 柱状图（7 天趋势） */
-function WeeklyChart({ data }) {
+function WeeklyChart({ data }: { data: Array<{ date: string; count: number }> }) {
   if (!data || data.length === 0) return null
   const max = Math.max(...data.map((d) => d.count), 1)
 
@@ -35,7 +44,7 @@ function WeeklyChart({ data }) {
   )
 }
 
-export default function OverviewPanel({ onNavigate }) {
+export default function OverviewPanel({ onNavigate }: { onNavigate: (tab: string) => void }) {
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState(false)
   const [dashboard, setDashboard] = useState(null)
@@ -213,11 +222,27 @@ export default function OverviewPanel({ onNavigate }) {
 
 /** 满意度卡片 */
 function SatisfactionCard() {
-  const [data, setData] = useState(null)
+  const [data, setData] = useState<SatisfactionVO | null>(null)
+  // F-09：加载失败不静默——console.error + 局部错误条 + 重试（AUD-019 只覆盖主加载）
+  const [error, setError] = useState<string | null>(null)
+  const [retryKey, setRetryKey] = useState(0)
 
   useEffect(() => {
-    getSatisfaction().then(setData).catch(() => {})
-  }, [])
+    getSatisfaction()
+      .then(d => { setData(d); setError(null) })
+      .catch((e) => {
+        console.error('[OverviewPanel] 加载满意度失败:', e)
+        setError('满意度数据加载失败，请检查网络后重试')
+      })
+  }, [retryKey])
+
+  // F-09：加载失败展示错误条（提供重试入口）
+  if (error) {
+    return (
+      <Alert type="error" showIcon message={error} className="ms-mt-16"
+        action={<Button size="small" onClick={() => setRetryKey(k => k + 1)}>重试</Button>} />
+    )
+  }
 
   if (!data || data.totalRated === 0) return null
 

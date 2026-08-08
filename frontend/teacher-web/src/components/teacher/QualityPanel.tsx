@@ -1,8 +1,17 @@
 import { useState, useEffect } from 'react'
-import { Card, Row, Col, Statistic, Table, Tag, Button, Spin, Empty } from 'antd'
+import { Card, Row, Col, Statistic, Table, Tag, Button, Spin, Empty, Alert } from 'antd'
+import type { TableProps } from 'antd'
 import { WarningOutlined, StarOutlined, EyeOutlined } from '@ant-design/icons'
 import { getQualityStats, getFlaggedSessions, exportSessionPdf } from '../../api'
 import SessionMessagesDrawer from './SessionMessagesDrawer'
+
+/** 低分会话（getFlaggedSessions 契约） */
+interface FlaggedSessionVO {
+  sessionId: string
+  rating: number
+  comment?: string
+  startedAt: string
+}
 
 /** AI 对话质量监控面板 */
 export default function QualityPanel() {
@@ -11,23 +20,38 @@ export default function QualityPanel() {
   const [loading, setLoading] = useState(true)
   const [replayOpen, setReplayOpen] = useState(false)
   const [currentSessionId, setCurrentSessionId] = useState(null)
+  // F-09：加载失败不静默——console.error + 局部错误条 + 重试（AUD-019 只覆盖主加载）
+  const [error, setError] = useState<string | null>(null)
+  const [retryKey, setRetryKey] = useState(0)
 
   useEffect(() => {
+    setLoading(true)
     Promise.all([getQualityStats(), getFlaggedSessions()])
-      .then(([s, f]) => { setStats(s); setFlagged(f) })
-      .catch(() => {})
+      .then(([s, f]) => { setStats(s); setFlagged(f); setError(null) })
+      .catch((e) => {
+        console.error('[QualityPanel] 加载质量统计失败:', e)
+        setError('质量数据加载失败，请检查网络后重试')
+      })
       .finally(() => setLoading(false))
-  }, [])
+  }, [retryKey])
 
   // FA-04：消息加载与渲染统一走共享 SessionMessagesDrawer（含 cancelled 守卫）
-  const openReplay = (sessionId) => {
+  const openReplay = (sessionId: string) => {
     setCurrentSessionId(sessionId)
     setReplayOpen(true)
   }
 
   if (loading) return <div className="ms-empty-lg"><Spin size="large" /></div>
 
-  const columns = [
+  // F-09：加载失败展示错误条（不再渲染空面板，提供重试入口）
+  if (error) {
+    return (
+      <Alert type="error" showIcon message={error}
+        action={<Button size="small" onClick={() => setRetryKey(k => k + 1)}>重试</Button>} />
+    )
+  }
+
+  const columns: TableProps<FlaggedSessionVO>['columns'] = [
     { title: '评分', dataIndex: 'rating', key: 'rating', width: 80, align: 'center' as const,
       render: v => <Tag color={v <= 1 ? 'red' : 'orange'}>{v}★</Tag> },
     { title: '学生评价', dataIndex: 'comment', key: 'comment', ellipsis: true,

@@ -1,5 +1,6 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, type RefObject } from 'react'
 import * as echarts from 'echarts/core'
+import type { EChartsOption } from 'echarts'
 
 /**
  * ECharts 统一生命周期 hook（FA-03，DOC-074）
@@ -9,14 +10,14 @@ import * as echarts from 'echarts/core'
  * 支持图表容器条件渲染（div 晚于挂载出现）：option 就绪后自动补 init。
  * 注意：模块注册（echarts.use）由消费方按需完成（echarts/core 按需注册模式）。
  */
-function initChart(node) {
+function initChart(node: HTMLElement) {
   const chart = echarts.init(node)
   const ro = new ResizeObserver(() => chart.resize())
   ro.observe(node)
   return { chart, ro }
 }
 
-export function useECharts(ref, option) {
+export function useECharts(ref: RefObject<HTMLElement | null>, option: EChartsOption | null | undefined) {
   const chartRef = useRef(null)
 
   // 挂载即 init（容器常驻渲染的场景，如 ChartBox）

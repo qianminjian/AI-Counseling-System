@@ -1,12 +1,14 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Table, Tag, Button, Space, Select, Card, message, Popconfirm, Modal, Input } from 'antd'
+import type { TableProps } from 'antd'
 import { CheckOutlined, StopOutlined, UserOutlined, CheckCircleOutlined, DownloadOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import { getAlerts, claimAlert, markFalsePositive, resolveAlert, exportAlertsCsv } from '../../api'
+import type { AlertStatus, AlertVO } from '../../api'
 import { evaluateSla } from '../../utils/sla'
 import { riskColor, riskLabel } from '../../utils/riskLevel'
 
-const STATUS_MAP = {
+const STATUS_MAP: Record<string, { text: string; color: string }> = {
   open: { text: '待处理', color: 'red' },
   // claimed 由 render 特判为青屿主色软底（antd preset 无对应色）
   resolved: { text: '已解决', color: 'green' },
@@ -14,11 +16,11 @@ const STATUS_MAP = {
 }
 
 export default function AlertQueue() {
-  const [alerts, setAlerts] = useState([])
+  const [alerts, setAlerts] = useState<AlertVO[]>([])
   const [loading, setLoading] = useState(true)
-  const [statusFilter, setStatusFilter] = useState(undefined)
-  const [levelFilter, setLevelFilter] = useState(undefined)
-  const [resolveModal, setResolveModal] = useState({ open: false, alertId: null })
+  const [statusFilter, setStatusFilter] = useState<AlertStatus | undefined>(undefined)
+  const [levelFilter, setLevelFilter] = useState<number | undefined>(undefined)
+  const [resolveModal, setResolveModal] = useState<{ open: boolean; alertId: string | null }>({ open: false, alertId: null })
   const [resolveNote, setResolveNote] = useState('')
   const [resolving, setResolving] = useState(false)
 
@@ -36,7 +38,7 @@ export default function AlertQueue() {
 
   useEffect(() => { load() }, [load])
 
-  const handleClaim = async (id) => {
+  const handleClaim = async (id: string) => {
     try {
       await claimAlert(id)
       message.success('已认领')
@@ -46,7 +48,7 @@ export default function AlertQueue() {
     }
   }
 
-  const handleFalsePositive = async (id) => {
+  const handleFalsePositive = async (id: string) => {
     try {
       await markFalsePositive(id)
       message.success('已标记为误报')
@@ -57,6 +59,7 @@ export default function AlertQueue() {
   }
 
   const handleResolve = async () => {
+    if (!resolveModal.alertId) return
     setResolving(true)
     try {
       await resolveAlert(resolveModal.alertId, resolveNote.trim() || undefined)
@@ -71,7 +74,7 @@ export default function AlertQueue() {
     }
   }
 
-  const columns = [
+  const columns: TableProps<AlertVO>['columns'] = [
     {
       title: '时间', dataIndex: 'detectedAt', width: 120,
       render: (v) => dayjs(v).format('MM-DD HH:mm'),

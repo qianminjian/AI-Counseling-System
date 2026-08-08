@@ -1,27 +1,55 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Table, Tag, Button, Space, Card, message, Popconfirm, Modal, InputNumber, Typography, Upload, Divider, Alert } from 'antd'
+import type { TableProps } from 'antd'
 import { PlusOutlined, CopyOutlined, StopOutlined, DeleteOutlined, UploadOutlined, InboxOutlined, DownloadOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import { getInviteCodes, createInviteCode, deactivateInviteCode, deleteInviteCode, importStudentsCsv, getAuditLogs, downloadImportTemplate } from '../../api'
 
 const { Text } = Typography
 
-const STATUS_MAP = {
+/** 邀请码（后端 GET /admin/invite-codes 契约） */
+interface InviteCodeVO {
+  codeId: string
+  code: string
+  usedCount?: number
+  maxUses?: number
+  status: 'active' | 'disabled' | 'expired'
+  expiresAt?: string
+  createdAt: string
+}
+
+/** CSV 导入结果 */
+interface ImportResultVO {
+  created: number
+  skipped: number
+  errors?: string[]
+}
+
+/** 操作审计日志 */
+interface AuditLogVO {
+  auditLogId: string
+  action: string
+  resourceType: string
+  detail?: string
+  createdAt: string
+}
+
+const STATUS_MAP: Record<string, { text: string; color: string }> = {
   active: { text: '有效', color: 'green' },
   disabled: { text: '已停用', color: 'default' },
   expired: { text: '已过期', color: 'orange' },
 }
 
 export default function AdminPanel() {
-  const [codes, setCodes] = useState([])
+  const [codes, setCodes] = useState<InviteCodeVO[]>([])
   const [loading, setLoading] = useState(true)
   const [createModal, setCreateModal] = useState(false)
   const [maxUses, setMaxUses] = useState(10)
   const [expireDays, setExpireDays] = useState(30)
   const [creating, setCreating] = useState(false)
   const [importing, setImporting] = useState(false)
-  const [importResult, setImportResult] = useState(null)
-  const [auditLogs, setAuditLogs] = useState([])
+  const [importResult, setImportResult] = useState<ImportResultVO | null>(null)
+  const [auditLogs, setAuditLogs] = useState<AuditLogVO[]>([])
   const [auditLoading, setAuditLoading] = useState(false)
 
   const load = useCallback(async () => {
@@ -63,7 +91,7 @@ export default function AdminPanel() {
     }
   }
 
-  const handleDeactivate = async (codeId) => {
+  const handleDeactivate = async (codeId: string) => {
     try {
       await deactivateInviteCode(codeId)
       message.success('已停用')
@@ -73,7 +101,7 @@ export default function AdminPanel() {
     }
   }
 
-  const handleDelete = async (codeId) => {
+  const handleDelete = async (codeId: string) => {
     try {
       await deleteInviteCode(codeId)
       message.success('已删除')
@@ -83,7 +111,7 @@ export default function AdminPanel() {
     }
   }
 
-  const handleImport = async (file) => {
+  const handleImport = async (file: File) => {
     setImporting(true)
     setImportResult(null)
     try {
@@ -98,19 +126,19 @@ export default function AdminPanel() {
     return false // 阻止 antd 默认上传
   }
 
-  const copyCode = (code) => {
+  const copyCode = (code: string) => {
     navigator.clipboard.writeText(code).then(() => message.success('已复制到剪贴板'))
   }
 
   /** 计算显示状态（active 但已过期 → expired） */
-  const displayStatus = (record) => {
+  const displayStatus = (record: InviteCodeVO) => {
     if (record.status === 'active' && record.expiresAt && dayjs(record.expiresAt).isBefore(dayjs())) {
       return 'expired'
     }
     return record.status
   }
 
-  const columns = [
+  const columns: TableProps<InviteCodeVO>['columns'] = [
     {
       title: '邀请码', dataIndex: 'code', width: 140,
       render: (v) => (
@@ -246,7 +274,7 @@ export default function AdminPanel() {
             { title: '资源类型', dataIndex: 'resourceType', width: 100 },
             { title: '详情', dataIndex: 'detail', ellipsis: true },
             { title: '时间', dataIndex: 'createdAt', width: 150, render: (v) => v ? dayjs(v).format('MM-DD HH:mm') : '' },
-          ]}
+          ] as TableProps<AuditLogVO>['columns']}
         />
       </div>
     </Card>
