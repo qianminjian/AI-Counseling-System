@@ -204,7 +204,7 @@ deploy/
 ├── docker-compose.prod.yml     # 生产 All-in-One（私有化交付用，TLS + 自动备份）
 ├── docker-compose.test.yml     # 轻量测试/演示环境（不含 voice/tts）
 ├── docker-compose.monitoring.yml # Prometheus + Grafana 监控栈
-├── nginx/                      # default.conf（HTTP）/ default-ssl.conf（TLS）
+├── nginx/                      # default.conf + security-headers.conf（test/dev 容器活资产）/ host/（宿主 nginx.conf 版本化位，DA-13）
 ├── scripts/                    # deploy-metrics.sh / deploy-audit.sh（部署计时监控与日志审计，DOC-077/078）
 │                               # prepare-funasr.sh / prepare-models.sh（模型投放）
 ├── backup.sh / restore.sh      # 宿主机备份/恢复（dbbackups volume）

@@ -2,7 +2,7 @@
 
 > 登记：2026-08-08 | 方式：/improve-codebase-architecture（参数：排除已审计区，剩余部分审计），3 路并行探索 agent（后端 Java / 前端三端 / Python 与部署链路），全部只读
 > 排除区：AUD-001~071、DC-001~012、T1-T5、B/F/D 系列（his/77+78）、BA/FA/DA 系列（his/79）、ARCH-001~010、取消 CD、**doing/80 刚登记问题点**（B-01~19/F-01~16/D-01~23）
-> 状态：**已实施完成（2026-08-08）**：批次 A 全量闭环（BA-09/10/11 按 TOP 3 SPEC + DA-08~11），待合并归档（登记 DOC-079）；**FA-16（承接 R-3，DOC-080 议决）已实施完成（2026-08-08，DOC-081）**：删 emotionLabels 垫片 + shared 测试入 CI；批次 B（Worth）/批次 C（Speculative）待议决
+> 状态：**已实施完成（2026-08-08）**：批次 A 全量闭环（BA-09/10/11 按 TOP 3 SPEC + DA-08~11），待合并归档（登记 DOC-079）；**FA-16（承接 R-3，DOC-080 议决）已实施完成（2026-08-08，DOC-081）**：删 emotionLabels 垫片 + shared 测试入 CI；**批次 B/C 实施完成（2026-08-08）**：批次 B 建议项 FA-10/12/14/15 + BA-14 + DA-12/13/14 全量闭环，批次 C 建议项 BA-15 + FA-17 + DA-15 全量闭环（详见 §5 状态段），待合并归档（登记 DOC-083）
 
 ---
 
@@ -320,6 +320,9 @@
 - Strong×7 全部主 agent 代码级复核实锤，0 处失实
 - 排除区：AUD/DC/T/B·F·D/BA·FA·DA/ARCH 系列 + 取消 CD + doing/80（B/F/D 问题点）
 - 状态：候选清单 + SPEC 登记完成（doing/81），批次 A~C 待排期；**2026-08-08 批次 A 实施完成（BA-09/10/11 + DA-08~11，DOC-079）；FA-16（承接 R-3）实施完成（2026-08-08，DOC-081）：删 emotionLabels.ts 垫片，BigScreen/SessionMessagesDrawer/StatsCharts 三消费点直连 shared/src/emotionMeta，teacher-web 233 测试全绿 + tsc OK，CI 无需改动（三端 vitest include 已含 shared）；批次 B/C 待排期（DOC-080 已议决：R-5 合并 BA-12/BA-13 一并跟踪）**
+- **2026-08-08 批次 B（Worth）实施完成**：FA-10 抽 SpeechRecognition 共享装配层（useVoiceInputPipeline/useVoiceCallMode 收敛 + fake-timers 测试）｜FA-12 RemoteConfig 删未消费键 + 每声明键有消费点测试｜FA-14 VoiceStatusHint 子组件收敛状态→文案映射（ChatRoom 双处接入）｜FA-15 端点常量表 + apiContract 直接校验｜BA-14 recordMoodCheck 下沉 MoodCheckService + 请求体 DTO（ToolboxController 瘦身）｜DA-12 deploy.sh/service-manager.sh $REMOTE_DIR 统一拼接 + 一致性 shell 测试（12 断言）｜DA-13 nginx 双事实源消除（议决 a+b 全套：prod compose nginx 服务 + default-ssl.conf 死资产删除；default.conf/security-headers.conf 保留为 test/dev 活资产；deploy/nginx/host/ 宿主配置版本化位 + deploy.sh sync_host_nginx 备份→上传→nginx -t 门禁→reload；verify-nginx-host-test.sh 16 断言）｜DA-14 config.yaml 兜底诚实化（tts 补 xiaoxing persona/neutral instruct 最小矩阵 + voice 补 9 情感标签 + 两服务启动契约 fail-fast，测试断言从空矩阵更新为最小矩阵并新增拒绝测试）
+- **2026-08-08 批次 C（Speculative）实施完成**：BA-15 TaskDecorator（TenantContextTaskDecorator，提交时捕获 tenantId/systemScope 子线程传播 + finally 清理）+ stripCodeFence 收公共工具 TextUtils（OutputReviewService/MessageSummaryService 收敛，22+29+5+3 测试全绿）｜FA-17 useWakeConsentFlow/useAndroidAudioRouting 两接线 hook 补 fake-timers 测试｜DA-15 entrypoint 感知 SER_ENABLED（false 时 REQUIRED_MODELS 剔除 emotion2vec，与 app.py 加载面一致；verify-ser-enabled-test.sh 12 断言，含 fixture 行为验证 A~D）
+- **2026-08-08 全量回归**：后端 Maven BUILD SUCCESS（7 模块）；前端 student-h5 928（77 文件）+ teacher-web 205（33 文件）+ parent-h5 127（20 文件）全绿；Python tts-service 83 + voice-service 40+1skip 全绿；shell 十四件套全 PASS（含新增 verify-remote-dir / verify-nginx-host / verify-ser-enabled）；修复既有基线缺陷 3 处（Achievements/EmotionDiary/RelaxationExercises 测试 mock 缺 THEMES export → importOriginal 保留真实 THEMES）；冻结主文档同步（design/04 7 处 + design/07 1 处 default-ssl.conf 旧引用改为宿主 nginx 事实，STRUCTURE.md 目录注释同步）
 
 ---
 
