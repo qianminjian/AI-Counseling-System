@@ -38,7 +38,11 @@ export function getUser(): Record<string, unknown> | null {
 }
 
 export function setUser(user: Record<string, unknown>) {
-  sessionStorage.setItem(USER_KEY, JSON.stringify(user))
+  try {
+    sessionStorage.setItem(USER_KEY, JSON.stringify(user))
+  } catch {
+    // F-12：会话存储不可用/配额满 → 静默跳过（与 getUser 失败安全对称，不抛白屏）
+  }
 }
 
 // ===== 设备级存储（跨会话保持） =====

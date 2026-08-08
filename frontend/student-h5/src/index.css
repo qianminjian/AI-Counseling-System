@@ -30,6 +30,14 @@
   --bubble-user: #DBEAFE;
   --voice-btn: #0EA5E9;
   --card-bg: #FFFFFF;
+  /* 全局语义色（F-06：警示/弱文字/家庭码等非主题装饰色收编，随主题不变） */
+  --danger: #EF4444;              /* 警示（取消发送/登录错误） */
+  --danger-border: #F87171;       /* 警示描边 */
+  --text-faint: #9ca3af;          /* 弱文字（次级链接） */
+  --family-bg: #f0fdf4;           /* 家庭码卡片底 */
+  --family-border: #86efac;       /* 家庭码卡片虚边 */
+  --family-text: #6b7280;         /* 家庭码说明文字 */
+  --family-value: #16a34a;        /* 家庭码数值 */
 }
 
 body {

@@ -34,10 +34,10 @@ describe('SpeechBubble', () => {
     expect(screen.getByText('松开手指，取消发送')).toBeInTheDocument();
   });
 
-  it('cancelArmed 时气泡背景为红色', () => {
+  it('cancelArmed 时气泡背景为红色（F-06：收编 --danger token）', () => {
     const { container } = render(<SpeechBubble mode="listening" text="" cancelArmed={true} />);
     const bubble = Array.from(container.querySelectorAll('div')).find(
-      (el) => (el as HTMLElement).style.background.includes('239, 68, 68') || (el as HTMLElement).style.background === 'rgb(239, 68, 68)'
+      (el) => (el as HTMLElement).style.background === 'var(--danger)'
     );
     expect(bubble).toBeTruthy();
   });

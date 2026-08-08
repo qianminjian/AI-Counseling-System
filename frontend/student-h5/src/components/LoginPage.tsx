@@ -437,7 +437,7 @@ function RegisterForm({ themeId, onRegister }) {
         <div className={`done-panel done-panel--${themeId}`}>
           <span className="emoji">😢</span>
           <h2>声音数据保存失败</h2>
-          <p style={{ color: '#ef4444', fontSize: 13, margin: '8px 0' }}>{voiceEnrollError}</p>
+          <p style={{ color: 'var(--danger)', fontSize: 13, margin: '8px 0' }}>{voiceEnrollError}</p>
           <p style={{ fontSize: 12, opacity: 0.6 }}>可以重新录入，或先跳过以后在设置里再录</p>
           <button
             className={`btn-enter btn-enter--${themeId}`}
@@ -447,7 +447,7 @@ function RegisterForm({ themeId, onRegister }) {
             🎤 重新录入
           </button>
           <button
-            style={{ marginTop: 10, background: 'none', border: 'none', fontSize: 13, color: '#9ca3af', textDecoration: 'underline', cursor: 'pointer' }}
+            style={{ marginTop: 10, background: 'none', border: 'none', fontSize: 13, color: 'var(--text-faint)', textDecoration: 'underline', cursor: 'pointer' }}
             onClick={() => setStep('done')}
           >
             先跳过，以后再说
@@ -491,9 +491,9 @@ function RegisterForm({ themeId, onRegister }) {
         <h2>注册成功！</h2>
         <p>下次打开时用昵称和秘密数字就能登录啦</p>
         {familyCode && (
-          <div style={{ margin: '16px 0', padding: '16px', borderRadius: 16, border: '2px dashed #86efac', background: '#f0fdf4' }}>
-            <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>🏠 我的家庭码（告诉家长用于绑定）</p>
-            <p style={{ fontSize: 28, fontWeight: 'bold', fontFamily: 'monospace', letterSpacing: '0.2em', color: '#16a34a' }}>{familyCode}</p>
+          <div style={{ margin: '16px 0', padding: '16px', borderRadius: 16, border: '2px dashed var(--family-border)', background: 'var(--family-bg)' }}>
+            <p style={{ fontSize: 12, color: 'var(--family-text)', marginBottom: 6 }}>🏠 我的家庭码（告诉家长用于绑定）</p>
+            <p style={{ fontSize: 28, fontWeight: 'bold', fontFamily: 'monospace', letterSpacing: '0.2em', color: 'var(--family-value)' }}>{familyCode}</p>
           </div>
         )}
         {!hasVoiceprint && (

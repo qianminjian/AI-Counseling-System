@@ -222,7 +222,8 @@ export function useTtsPlayer({ persona = 'xiaoxing', emotion = 'neutral', speed 
     setCurrentSentenceIdx(-1)
     setSentences([])
     // 如果整段都用了浏览器降级且引擎不可用，恢复 backend 标记（下次重试）
-    if (usedBrowserFallback && backendFailCount.current < 3) {
+    // F-13：恢复阈值与切换阈值（>= 2 进降级窗口）对齐——< 2 表示未触发降级窗口，可恢复
+    if (usedBrowserFallback && backendFailCount.current < 2) {
       setEngine('backend')
     }
   }, [muted, synthesizeSentence, playBlob, speed])

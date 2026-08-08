@@ -26,7 +26,7 @@ export default function SpeechBubble({ mode, text, cancelArmed = false, align = 
 
   // 水泡皮肤：警示态纯红，其余为主题色水泡（渐变 + 描边随主题联动）
   const skin = danger
-    ? { background: '#EF4444', borderColor: '#F87171' }
+    ? { background: 'var(--danger)', borderColor: 'var(--danger-border)' }
     : {
         background: 'radial-gradient(circle at 30% 22%, #FFFFFF 0%, var(--primary-light) 90%)',
         borderColor: 'var(--primary)',
@@ -92,10 +92,10 @@ export default function SpeechBubble({ mode, text, cancelArmed = false, align = 
       {/* 递减小圆泡尾巴（从水泡垂向波波嘴部）——"吐泡泡"的视觉锚点 */}
       <div className={`absolute top-full ${tailAlign} flex flex-col items-center gap-0.5 -mt-0.5`}>
         <span className="w-2.5 h-2.5 rounded-full border-2"
-          style={danger ? { background: '#EF4444', borderColor: '#F87171' }
+          style={danger ? { background: 'var(--danger)', borderColor: 'var(--danger-border)' }
             : { background: 'var(--primary-light)', borderColor: 'var(--primary)' }} />
         <span className="w-1.5 h-1.5 rounded-full border"
-          style={danger ? { background: '#EF4444', borderColor: '#F87171' }
+          style={danger ? { background: 'var(--danger)', borderColor: 'var(--danger-border)' }
             : { background: 'var(--primary-light)', borderColor: 'var(--primary)' }} />
       </div>
 

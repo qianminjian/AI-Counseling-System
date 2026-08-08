@@ -72,7 +72,7 @@ function downsampleTo16kFloat(f32, inputRate) {
 }
 
 /** 合并多个 Float32 chunk */
-function concatChunks(chunks, total) {
+function concatChunks(chunks: Float32Array[], total: number): Float32Array {
   const merged = new Float32Array(total)
   let offset = 0
   for (const c of chunks) {
@@ -108,6 +108,9 @@ export function __resetWakeWordForTest() {
   wakeModelStore.reset()
 }
 
+/** ASR 转写器最小可调用契约（HF pipeline 返回值结构，仅约束本模块用到的面） */
+type TranscriberFn = (audio: Float32Array, opts: { language: string; task: string }) => Promise<{ text?: string }>
+
 /**
  * 模块级模型单例：加载一次，跨会话复用。
  * 失败时重置为 null，允许下次重试（如网络恢复）。
@@ -116,7 +119,7 @@ export function __resetWakeWordForTest() {
  * 不走 transformers 默认的 jsdelivr CDN（国内不稳定）。变体选择与 transformers 默认一致：
  * Safari/iOS 用 plain，其余（Chrome/Android 等）用 asyncify。
  */
-let transcriberPromise = null
+let transcriberPromise: Promise<TranscriberFn> | null = null
 function getTranscriber() {
   if (!transcriberPromise) {
     setModelStatus('loading')
@@ -147,7 +150,7 @@ function getTranscriber() {
         // 环境不支持（SAB/SIMD）→ 静默降级，不报错；其余错误已由 onError 置 error 态
         if (err?.unsupported) {
           setModelStatus('unsupported')
-          return null as any
+          return null
         }
         throw err
       })
@@ -234,7 +237,7 @@ export function useWakeWord({ active, paused, onDetected }) {
     let useMainThread = false
 
     // 滑窗状态
-    let chunks = []
+    let chunks: Float32Array[] = []
     let totalSamples = 0
     let analyzing = false
 
