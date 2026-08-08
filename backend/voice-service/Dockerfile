@@ -41,8 +41,8 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 #   3. 通过 prepare-funasr.sh 脚本管理版本和更新
 # 挂载点：/home/appuser/.cache/modelscope（由 docker-compose volumes 配置）
 
-# 应用代码 + 配置 + 启动脚本
-COPY app.py config.py config_loader.py config.yaml entrypoint.sh ./
+# 应用代码 + 配置 + 启动脚本（DA-01 核对：补齐 asr_engines.py，此前漏拷 → 发布必然 ModuleNotFoundError）
+COPY app.py config.py config_loader.py asr_engines.py config.yaml entrypoint.sh ./
 RUN chmod +x entrypoint.sh
 
 # 非 root 运行（审计 P3-31）
