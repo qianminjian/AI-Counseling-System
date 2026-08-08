@@ -252,15 +252,10 @@ public class TeacherService {
      * @param classScope 班级范围（null=全校；空串=无可见范围，返回空列表）
      */
     public List<AlertVO> getAlerts(UUID tenantId, String classScope, String status, Integer minLevel, int limit) {
-        // 班级范围解析：先确认该班存在学生，空班/未绑定班级直接返回空列表
+        // 班级范围解析：先确认该班存在学生，空班/未绑定班级直接返回空列表（B5：查询下沉 SessionAccessService）
         Set<UUID> classStudentIds = null;
         if (classScope != null) {
-            List<User> classStudents = userMapper.selectList(
-                    new LambdaQueryWrapper<User>()
-                            .eq(User::getTenantId, tenantId)
-                            .eq(User::getUserType, User.USER_TYPE_STUDENT)
-                            .eq(User::getClassCode, classScope)
-            );
+            List<User> classStudents = sessionAccessService.listClassStudents(tenantId, classScope);
             if (classStudents.isEmpty()) {
                 return List.of();
             }
@@ -359,14 +354,15 @@ public class TeacherService {
 
     /** 学生是否在个案跟踪中（最新一条 case_tracking 备注为 active） */
     public boolean isCaseTracking(UUID tenantId, UUID studentUserId) {
-        List<TeacherNote> notes = teacherNoteMapper.selectList(
+        // AUD-043：分页插件安全化，替代 .last("LIMIT 1") 字符串拼接
+        List<TeacherNote> notes = teacherNoteMapper.selectPage(
+                new Page<>(1, 1, false),
                 new LambdaQueryWrapper<TeacherNote>()
                         .eq(TeacherNote::getTenantId, tenantId)
                         .eq(TeacherNote::getStudentUserId, studentUserId)
                         .eq(TeacherNote::getNoteType, CASE_TRACKING_NOTE_TYPE)
                         .orderByDesc(TeacherNote::getCreatedAt)
-                        .last("LIMIT 1")
-        );
+        ).getRecords();
         return !notes.isEmpty() && CASE_TRACKING_ACTIVE.equals(fieldEncryptionService.decrypt(notes.get(0).getContent()));
     }
 
@@ -590,23 +586,23 @@ public class TeacherService {
             );
         }
 
-        // 最近会话
-        List<CounselingSession> recentSessions = sessionMapper.selectList(
+        // 最近会话（AUD-043：分页插件安全化，替代 .last("LIMIT 10") 拼接）
+        List<CounselingSession> recentSessions = sessionMapper.selectPage(
+                new Page<>(1, 10, false),
                 new LambdaQueryWrapper<CounselingSession>()
                         .eq(CounselingSession::getTenantId, tenantId)
                         .eq(CounselingSession::getStudentUserId, studentUserId)
                         .orderByDesc(CounselingSession::getStartedAt)
-                        .last("LIMIT 10")
-        );
+        ).getRecords();
 
-        // 预警历史
-        List<RiskEvent> riskHistory = riskEventMapper.selectList(
+        // 预警历史（AUD-043：分页插件安全化，替代 .last("LIMIT 20") 拼接）
+        List<RiskEvent> riskHistory = riskEventMapper.selectPage(
+                new Page<>(1, 20, false),
                 new LambdaQueryWrapper<RiskEvent>()
                         .eq(RiskEvent::getTenantId, tenantId)
                         .eq(RiskEvent::getStudentUserId, studentUserId)
                         .orderByDesc(RiskEvent::getDetectedAt)
-                        .last("LIMIT 20")
-        );
+        ).getRecords();
 
         // 最高风险等级
         int maxRisk = riskHistory.stream()
@@ -647,15 +643,10 @@ public class TeacherService {
                         .orderByDesc(RiskEvent::getRiskLevel)
         );
 
-        // 班主任班级过滤：只保留本班学生的事件
+        // 班主任班级过滤：只保留本班学生的事件（B5：查询下沉 SessionAccessService）
         Set<UUID> classStudentIds = null;
         if (classScope != null) {
-            List<User> classStudents = userMapper.selectList(
-                    new LambdaQueryWrapper<User>()
-                            .eq(User::getTenantId, tenantId)
-                            .eq(User::getUserType, User.USER_TYPE_STUDENT)
-                            .eq(User::getClassCode, classScope)
-            );
+            List<User> classStudents = sessionAccessService.listClassStudents(tenantId, classScope);
             classStudentIds = classStudents.stream().map(User::getUserId).collect(Collectors.toSet());
             Set<UUID> finalIds = classStudentIds;
             openEvents = openEvents.stream().filter(e -> finalIds.contains(e.getStudentUserId())).toList();
@@ -726,15 +717,10 @@ public class TeacherService {
     public StatsVO getStats(UUID tenantId, String classScope) {
         Instant now = Instant.now();
 
-        // 班级范围过滤：获取本班学生 ID 集合
+        // 班级范围过滤：获取本班学生 ID 集合（B5：查询下沉 SessionAccessService）
         Set<UUID> scopeStudentIds = null;
         if (classScope != null) {
-            List<User> classStudents = userMapper.selectList(
-                    new LambdaQueryWrapper<User>()
-                            .eq(User::getTenantId, tenantId)
-                            .eq(User::getUserType, User.USER_TYPE_STUDENT)
-                            .eq(User::getClassCode, classScope)
-            );
+            List<User> classStudents = sessionAccessService.listClassStudents(tenantId, classScope);
             scopeStudentIds = classStudents.stream().map(User::getUserId).collect(Collectors.toSet());
         }
 
@@ -755,15 +741,8 @@ public class TeacherService {
                 new RiskDistItem(3, "红色", riskByLevel.getOrDefault(3, 0L))
         );
 
-        // 2. 班级对比（按 classCode 分组统计预警数 + 学生数）
-        LambdaQueryWrapper<User> studentWrapper = new LambdaQueryWrapper<User>()
-                .eq(User::getTenantId, tenantId)
-                .eq(User::getUserType, User.USER_TYPE_STUDENT)
-                .eq(User::getStatus, User.STATUS_ACTIVE);
-        if (classScope != null) {
-            studentWrapper.eq(User::getClassCode, classScope);
-        }
-        List<User> students = userMapper.selectList(studentWrapper);
+        // 2. 班级对比（按 classCode 分组统计预警数 + 学生数）——复用 listActiveStudents（B5：五处范围查询收敛）
+        List<User> students = listActiveStudents(tenantId, classScope);
         Map<String, Long> studentByClass = students.stream()
                 .filter(s -> s.getClassCode() != null && !s.getClassCode().isBlank())
                 .collect(Collectors.groupingBy(User::getClassCode, Collectors.counting()));

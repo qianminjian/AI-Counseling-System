@@ -37,6 +37,7 @@ class TeacherClassScopeTest {
     private UserMapper userMapper;
     private TeacherNoteMapper teacherNoteMapper;
     private MessageSummaryMapper messageSummaryMapper;
+    private SessionAccessService sessionAccessService;
     private TeacherService teacherService;
 
     private final UUID tenantId = UUID.randomUUID();
@@ -49,6 +50,7 @@ class TeacherClassScopeTest {
         teacherNoteMapper = mock(TeacherNoteMapper.class);
         messageSummaryMapper = mock(MessageSummaryMapper.class);
         FieldEncryptionService fieldEncryptionService = mock(FieldEncryptionService.class);
+        sessionAccessService = mock(SessionAccessService.class);
         teacherService = new TeacherService(
                 riskEventMapper,
                 mock(CounselingSessionMapper.class),
@@ -57,7 +59,7 @@ class TeacherClassScopeTest {
                 mock(NotificationMapper.class),
                 messageSummaryMapper,
                 fieldEncryptionService,
-                mock(SessionAccessService.class),
+                sessionAccessService,
                 mock(AuditLogService.class));
     }
 
@@ -132,8 +134,8 @@ class TeacherClassScopeTest {
     void getAlerts_withScope_filtersByClass() {
         UUID inClass = UUID.randomUUID();
         UUID otherClass = UUID.randomUUID();
-        // 班级学生查询（DB 已按 classCode 过滤）→ 仅本班学生；事件列表含他班 → 内存过滤剔除
-        when(userMapper.selectList(any(Wrapper.class))).thenReturn(List.of(student(inClass, "CLASS_1")));
+        // 班级学生查询（DB 已按 classCode 过滤，B5 下沉 SessionAccessService）→ 仅本班学生；事件列表含他班 → 内存过滤剔除
+        when(sessionAccessService.listClassStudents(tenantId, "CLASS_1")).thenReturn(List.of(student(inClass, "CLASS_1")));
         when(riskEventMapper.selectPage(any(), any())).thenReturn(new Page<RiskEvent>().setRecords(
                 List.of(alert(inClass), alert(otherClass))));
         when(teacherNoteMapper.selectList(any(Wrapper.class))).thenReturn(List.of());
@@ -147,7 +149,7 @@ class TeacherClassScopeTest {
     @Test
     @DisplayName("getAlerts 空班级（无学生）→ 空列表（不全校兜底）")
     void getAlerts_emptyClass_returnsEmpty() {
-        when(userMapper.selectList(any(Wrapper.class))).thenReturn(List.of());
+        when(sessionAccessService.listClassStudents(tenantId, "CLASS_EMPTY")).thenReturn(List.of());
 
         List<TeacherService.AlertVO> alerts = teacherService.getAlerts(tenantId, "CLASS_EMPTY", null, null, 50);
 
@@ -157,7 +159,7 @@ class TeacherClassScopeTest {
     @Test
     @DisplayName("getAlerts 未绑定班级（空串）→ 空列表")
     void getAlerts_blankScope_returnsEmpty() {
-        when(userMapper.selectList(any(Wrapper.class))).thenReturn(List.of());
+        when(sessionAccessService.listClassStudents(tenantId, "")).thenReturn(List.of());
 
         List<TeacherService.AlertVO> alerts = teacherService.getAlerts(tenantId, "", null, null, 50);
 
@@ -181,6 +183,8 @@ class TeacherClassScopeTest {
     @Test
     @DisplayName("getStats 空班级范围 → 空统计（不聚合全校数据）")
     void getStats_emptyScope_returnsEmptyVO() {
+        // B5：班级范围查询下沉 SessionAccessService；班级对比复用 listActiveStudents（仍走 userMapper）
+        when(sessionAccessService.listClassStudents(tenantId, "")).thenReturn(List.of());
         when(userMapper.selectList(any(Wrapper.class))).thenReturn(List.of());
 
         TeacherService.StatsVO stats = teacherService.getStats(tenantId, "");

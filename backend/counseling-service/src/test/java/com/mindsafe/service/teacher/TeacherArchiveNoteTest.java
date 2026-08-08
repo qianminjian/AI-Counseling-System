@@ -1,5 +1,6 @@
 package com.mindsafe.service.teacher;
 
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.mindsafe.domain.entity.CounselingSession;
 import com.mindsafe.domain.entity.MessageSummary;
 import com.mindsafe.domain.entity.RiskEvent;
@@ -38,6 +39,7 @@ class TeacherArchiveNoteTest {
     private UserMapper userMapper;
     private TeacherNoteMapper teacherNoteMapper;
     private MessageSummaryMapper messageSummaryMapper;
+    private SessionAccessService sessionAccessService;
     private TeacherService teacherService;
 
     private final UUID tenantId = UUID.randomUUID();
@@ -53,6 +55,7 @@ class TeacherArchiveNoteTest {
         FieldEncryptionService fieldEncryptionService = mock(FieldEncryptionService.class);
         when(fieldEncryptionService.encrypt(any())).thenAnswer(inv -> inv.getArgument(0));
         when(fieldEncryptionService.decrypt(any())).thenAnswer(inv -> inv.getArgument(0));
+        sessionAccessService = mock(SessionAccessService.class);
         teacherService = new TeacherService(
                 riskEventMapper,
                 sessionMapper,
@@ -61,7 +64,7 @@ class TeacherArchiveNoteTest {
                 mock(NotificationMapper.class),
                 messageSummaryMapper,
                 fieldEncryptionService,
-                mock(SessionAccessService.class),
+                sessionAccessService,
                 mock(AuditLogService.class));
     }
 
@@ -94,7 +97,9 @@ class TeacherArchiveNoteTest {
         note.setContent("建议多关注");
         note.setNoteType("general");
         note.setCreatedAt(Instant.now());
-        when(teacherNoteMapper.selectList(any())).thenReturn(List.of(note)); // 备注 + case_tracking 查询共用
+        when(teacherNoteMapper.selectList(any())).thenReturn(List.of(note)); // 备注查询
+        // B5：isCaseTracking 改 selectPage（AUD-043）→ 默认非跟踪
+        when(teacherNoteMapper.selectPage(any(), any())).thenReturn(new Page<TeacherNote>().setRecords(List.of()));
 
         CounselingSession session = new CounselingSession();
         session.setSessionId(UUID.randomUUID());
@@ -102,10 +107,10 @@ class TeacherArchiveNoteTest {
         session.setSessionStatus("completed");
         session.setRiskLevelSnapshot(2);
         session.setSatisfactionRating(4);
-        when(sessionMapper.selectList(any())).thenReturn(List.of(session));
+        when(sessionMapper.selectPage(any(), any())).thenReturn(new Page<CounselingSession>().setRecords(List.of(session)));
 
         // 历史预警 2 条：3 级 + 2 级 → maxRisk=3
-        when(riskEventMapper.selectList(any())).thenReturn(List.of(event(2), event(3)));
+        when(riskEventMapper.selectPage(any(), any())).thenReturn(new Page<RiskEvent>().setRecords(List.of(event(2), event(3))));
 
         TeacherService.StudentProfileVO vo =
                 teacherService.getStudentProfile(tenantId, studentId, "psych_teacher");
@@ -178,7 +183,8 @@ class TeacherArchiveNoteTest {
         classA.setUserId(studentA);
         classA.setUserType("student");
         classA.setClassCode("C1");
-        when(userMapper.selectList(any())).thenReturn(List.of(classA)); // 本班学生
+        // B5：班级学生查询下沉 SessionAccessService
+        when(sessionAccessService.listClassStudents(tenantId, "C1")).thenReturn(List.of(classA)); // 本班学生
         when(userMapper.selectBatchIds(any())).thenReturn(List.of(classA));
 
         List<TeacherService.HighRiskStudentVO> result =

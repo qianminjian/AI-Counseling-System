@@ -126,23 +126,24 @@ class TeacherCaseTrackingTest {
 
     @Test
     void 最新备注为active_在跟踪中() {
-        when(teacherNoteMapper.selectList(any(Wrapper.class)))
-                .thenReturn(List.of(caseTrackingNote("active", Instant.now())));
+        // B5：isCaseTracking 改 selectPage（AUD-043 分页插件安全化）
+        when(teacherNoteMapper.selectPage(any(), any()))
+                .thenReturn(new Page<TeacherNote>().setRecords(List.of(caseTrackingNote("active", Instant.now()))));
 
         assertTrue(teacherService.isCaseTracking(tenantId, studentId));
     }
 
     @Test
     void 最新备注为inactive_不在跟踪中() {
-        when(teacherNoteMapper.selectList(any(Wrapper.class)))
-                .thenReturn(List.of(caseTrackingNote("inactive", Instant.now())));
+        when(teacherNoteMapper.selectPage(any(), any()))
+                .thenReturn(new Page<TeacherNote>().setRecords(List.of(caseTrackingNote("inactive", Instant.now()))));
 
         assertFalse(teacherService.isCaseTracking(tenantId, studentId));
     }
 
     @Test
     void 无备注_不在跟踪中() {
-        when(teacherNoteMapper.selectList(any(Wrapper.class))).thenReturn(List.of());
+        when(teacherNoteMapper.selectPage(any(), any())).thenReturn(new Page<TeacherNote>().setRecords(List.of()));
 
         assertFalse(teacherService.isCaseTracking(tenantId, studentId));
     }

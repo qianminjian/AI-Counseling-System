@@ -1,7 +1,9 @@
 package com.mindsafe.service.session;
 
 import com.mindsafe.domain.entity.CounselingSession;
+import com.mindsafe.domain.entity.User;
 
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -17,4 +19,12 @@ public interface SessionAccessService {
 
     /** 会话归属校验：会话存在且属于该租户 */
     boolean sessionBelongsToTenant(UUID tenantId, UUID sessionId);
+
+    /**
+     * 班级学生列表（租户内该班全部学生；classScope 为 null/空白时返回空列表）。
+     * <p>
+     * B5：班级范围查询单点——TeacherService 五处逐字重复的
+     * tenant + user_type=student + class_code 查询收敛于此，租户条件仍强制内置。
+     */
+    List<User> listClassStudents(UUID tenantId, String classScope);
 }

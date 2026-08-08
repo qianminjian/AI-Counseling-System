@@ -1,5 +1,6 @@
 package com.mindsafe.service.teacher;
 
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.mindsafe.domain.entity.CounselingSession;
 import com.mindsafe.domain.entity.RiskEvent;
 import com.mindsafe.domain.entity.TeacherNote;
@@ -71,13 +72,15 @@ class TeacherProfileTrimmingTest {
         note.setNoteType("general");
         note.setCreatedAt(Instant.now());
         when(teacherNoteMapper.selectList(any())).thenReturn(List.of(note));
+        // B5：isCaseTracking 改 selectPage（AUD-043）→ 默认非跟踪
+        when(teacherNoteMapper.selectPage(any(), any())).thenReturn(new Page<TeacherNote>().setRecords(List.of()));
 
         CounselingSession session = new CounselingSession();
         session.setSessionId(UUID.randomUUID());
         session.setStartedAt(Instant.now());
         session.setSessionStatus("completed");
         session.setRiskLevelSnapshot(1);
-        when(sessionMapper.selectList(any())).thenReturn(List.of(session));
+        when(sessionMapper.selectPage(any(), any())).thenReturn(new Page<CounselingSession>().setRecords(List.of(session)));
 
         RiskEvent event = new RiskEvent();
         event.setRiskEventId(UUID.randomUUID());
@@ -86,7 +89,7 @@ class TeacherProfileTrimmingTest {
         event.setRiskLevel(2);
         event.setStatus("open");
         event.setDetectedAt(Instant.now());
-        when(riskEventMapper.selectList(any())).thenReturn(List.of(event));
+        when(riskEventMapper.selectPage(any(), any())).thenReturn(new Page<RiskEvent>().setRecords(List.of(event)));
     }
 
     @Test
@@ -121,8 +124,8 @@ class TeacherProfileTrimmingTest {
     void classTeacherSkipsSensitiveQueries() {
         service.getStudentProfile(tenantId, studentId, "class_teacher");
 
-        verify(sessionMapper, never()).selectList(any());
-        verify(riskEventMapper, never()).selectList(any());
+        verify(sessionMapper, never()).selectPage(any(), any());
+        verify(riskEventMapper, never()).selectPage(any(), any());
     }
 
     @Test

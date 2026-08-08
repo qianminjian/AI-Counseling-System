@@ -52,6 +52,7 @@ class TeacherStatsPerformanceTest {
     @Mock private NotificationMapper notificationMapper;
     @Mock private MessageSummaryMapper messageSummaryMapper;
     @Mock private FieldEncryptionService fieldEncryptionService;
+    @Mock private SessionAccessService sessionAccessService;
 
     private TeacherService service;
 
@@ -61,12 +62,14 @@ class TeacherStatsPerformanceTest {
     void setUp() {
         service = new TeacherService(riskEventMapper, sessionMapper, userMapper,
                 teacherNoteMapper, notificationMapper, messageSummaryMapper, fieldEncryptionService,
-                mock(SessionAccessService.class), mock(AuditLogService.class));
+                sessionAccessService, mock(AuditLogService.class));
         // getStats 其余部分的默认返回（本测试聚焦趋势/情绪/满意度三处）
         lenient().when(riskEventMapper.selectList(any())).thenReturn(List.of());
         lenient().when(userMapper.selectList(any())).thenReturn(List.of());
         lenient().when(sessionMapper.selectList(any())).thenReturn(List.of());
         lenient().when(messageSummaryMapper.selectMaps(any())).thenReturn(List.of());
+        // B5：班级范围查询下沉 SessionAccessService（本文件仅 classScope 测试触碰）
+        lenient().when(sessionAccessService.listClassStudents(any(), any())).thenReturn(List.of());
     }
 
     private CounselingSession sessionAt(Instant startedAt) {
@@ -185,6 +188,7 @@ class TeacherStatsPerformanceTest {
     @DisplayName("getStats 班级范围：classScope 过滤 + 空班级返回全空")
     void classScopeFilterAndEmptyClass() {
         // 空班级：本班学生为空集合 → 直接返回全空 VO
+        when(sessionAccessService.listClassStudents(tenantId, "C9")).thenReturn(List.of());
         when(userMapper.selectList(any())).thenReturn(List.of());
         TeacherService.StatsVO empty = service.getStats(tenantId, "C9");
         assertThat(empty.riskDistribution()).isEmpty();
@@ -195,6 +199,7 @@ class TeacherStatsPerformanceTest {
         // 有数据班级：仅统计本班学生
         UUID studentA = UUID.randomUUID();
         User ua = new User(); ua.setUserId(studentA); ua.setClassCode("C1");
+        when(sessionAccessService.listClassStudents(tenantId, "C1")).thenReturn(List.of(ua));
         when(userMapper.selectList(any())).thenReturn(List.of(ua));
         RiskEvent e1 = RiskEvent.fromDetection(tenantId, studentA, UUID.randomUUID(), "self_harm", 3);
         when(riskEventMapper.selectList(any())).thenReturn(List.of(e1));
