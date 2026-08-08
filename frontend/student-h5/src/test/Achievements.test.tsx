@@ -5,9 +5,14 @@ import Achievements from '../components/Achievements'
 // mock api + useTheme（可控 themeId 覆盖明暗主题分支）
 let mockThemeId = 'ocean'
 vi.mock('../api', () => ({ api: vi.fn() }))
-vi.mock('../theme/ThemeProvider', () => ({
-  useTheme: () => ({ themeId: mockThemeId, theme: {}, changeTheme: vi.fn() }),
-}))
+// importOriginal 保留真实 THEMES（组件直接 import THEMES.ocean.bobo 等品牌色），仅覆写 useTheme
+vi.mock('../theme/ThemeProvider', async (importOriginal) => {
+  const actual = await importOriginal()
+  return {
+    ...actual,
+    useTheme: () => ({ themeId: mockThemeId, theme: {}, changeTheme: vi.fn() }),
+  }
+})
 
 import { api } from '../api'
 
