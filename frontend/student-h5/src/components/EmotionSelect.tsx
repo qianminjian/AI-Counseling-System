@@ -11,21 +11,22 @@ import EmotionDiary from './EmotionDiary'
 import Achievements from './Achievements'
 import SettingsPanel from './SettingsPanel'
 import ConfirmDialog from './ConfirmDialog'
-import { emotionLabel, emotionEmoji } from '../../../shared/src/emotionMeta'
+import { emotionLabel, emotionEmoji, STUDENT_EMOTION_TAGS } from '../../../shared/src/emotionMeta'
 import { readMutedPreference, writeMutedPreference } from '../utils/storage'
 
-// F4：label/emoji 单一源 shared emotionMeta（与后端 ZH_LABELS 对齐），desc/color 为组件特有展示
-const EMOTIONS = [
-  { tag: 'happy', desc: '有好事发生', color: 'bg-yellow-100 border-yellow-400 text-yellow-800' },
-  { tag: 'sad', desc: '心里不舒服', color: 'bg-blue-100 border-blue-400 text-blue-800' },
-  { tag: 'angry', desc: '有点烦躁', color: 'bg-red-100 border-red-400 text-red-800' },
-  { tag: 'scared', desc: '有点担心', color: 'bg-purple-100 border-purple-400 text-purple-800' },
-  { tag: 'nervous', desc: '心跳加速', color: 'bg-orange-100 border-orange-400 text-orange-800' },
-].map(e => ({
-  ...e,
-  label: emotionLabel(e.tag),
-  emoji: emotionEmoji(e.tag),
-}))
+// DOC-082：情绪集与 EmotionDiary 打卡面板统一（共享 STUDENT_EMOTION_TAGS 基线），
+// 色彩/描述为首页开聊场景特有展示，与后端 ZH_LABELS/F4 词表单一源对齐
+const EMOTION_STYLE: Record<string, { desc: string; color: string }> = {
+  happy:   { desc: '有好事发生',   color: 'bg-yellow-100 border-yellow-400 text-yellow-800' },
+  sad:     { desc: '心里不舒服',   color: 'bg-blue-100 border-blue-400 text-blue-800' },
+  angry:   { desc: '有点烦躁',     color: 'bg-red-100 border-red-400 text-red-800' },
+  scared:  { desc: '有点担心',     color: 'bg-purple-100 border-purple-400 text-purple-800' },
+  nervous: { desc: '心跳加速',     color: 'bg-orange-100 border-orange-400 text-orange-800' },
+}
+const EMOTIONS = STUDENT_EMOTION_TAGS.map(tag => {
+  const style = EMOTION_STYLE[tag] || { desc: '', color: '' }
+  return { tag, ...style, label: emotionLabel(tag), emoji: emotionEmoji(tag) }
+})
 
 export default function EmotionSelect({ onStart, userName, onLogout, onConsentRequired }) {
   const [selected, setSelected] = useState(null)

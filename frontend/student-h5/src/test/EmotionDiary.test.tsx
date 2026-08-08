@@ -48,13 +48,14 @@ describe('EmotionDiary', () => {
     expect(onBack).toHaveBeenCalledTimes(1)
   })
 
-  it('显示 5 种情绪选项（F4：neutral→平静、anxious→紧张 对齐 DC-008 单译；calm/neutral 同译去重仅保留 neutral）', () => {
+  it('显示 5 种情绪选项（DOC-082 与首页 EmotionSelect 共享 STUDENT_EMOTION_TAGS 基线）', () => {
     render(<EmotionDiary onBack={vi.fn()} />)
     expect(screen.getByText('开心')).toBeTruthy()
-    expect(screen.getAllByText('平静')).toHaveLength(1) // 展示层去重：仅 neutral
     expect(screen.getByText('难过')).toBeTruthy()
     expect(screen.getByText('生气')).toBeTruthy()
-    expect(screen.getByText('紧张')).toBeTruthy() // anxious
+    expect(screen.getByText('害怕')).toBeTruthy() // scared
+    expect(screen.getByText('紧张')).toBeTruthy() // nervous
+    expect(screen.queryAllByText('平静')).toHaveLength(0) // calm/neutral 同译去重
   })
 
   it('未选情绪时提交按钮禁用', () => {
