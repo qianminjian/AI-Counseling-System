@@ -245,3 +245,22 @@ class TestHealth:
         assert resp.status_code == 200
         # 测试环境无 DASHSCOPE_API_KEY，应为 DEGRADED 或依赖 edge-tts
         assert resp.json()["status"] in ("UP", "DEGRADED")
+
+
+# ===== /metrics 契约（DA-03：指标名是 alert-rules.yml 隐式依赖，改名需同步告警规则） =====
+
+class TestMetrics:
+    def test_metric_contract(self, client, mock_dashscope):
+        """告警规则硬依赖的指标名/标签必须存在"""
+        # counter 无记录时不输出具体标签行，先产生一条 error 记录再断言
+        mock_dashscope._metrics.record("error", 0.1)
+        resp = client.get("/metrics")
+        assert resp.status_code == 200
+        body = resp.text
+        # MindsafeTtsAllEnginesDown 依赖 tts_engine_available（cosyvoice/edge_tts 两维度）
+        assert 'tts_engine_available{engine="cosyvoice"}' in body
+        assert 'tts_engine_available{engine="edge_tts"}' in body
+        # MindsafeTtsHighFailureRate 依赖 tts_synthesize_requests_total{engine="error"}
+        assert 'tts_synthesize_requests_total{engine="error"}' in body
+        assert "tts_synthesize_duration_seconds_sum" in body
+        assert "tts_synthesize_duration_seconds_count" in body

@@ -13,7 +13,6 @@ import io
 import logging
 import subprocess
 import tempfile
-import threading
 import os
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -28,6 +27,7 @@ from pydantic import BaseModel
 
 from config import load_config
 from asr_engines import ASRBackendError, DashScopeASRBackend, FunASRBackend
+from metrics_common import Metrics
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("voice-service")
@@ -67,46 +67,37 @@ async def _lifespan(_: FastAPI):
 app = FastAPI(title="MindSafe Voice Analysis", version="2.1.0", lifespan=_lifespan)
 
 # ===== Prometheus 指标（P1-10：手写文本格式，零新增依赖，供监控栈 internal 网络抓取） =====
-_METRICS_LOCK = threading.Lock()
-_VOICE_REQUESTS: dict = {}    # result -> 请求总数（result: success/error/timeout）
-_VOICE_DURATION_SUM = 0.0     # 分析耗时总和（秒，summary 的 _sum）
-_VOICE_DURATION_COUNT = 0     # 分析次数（summary 的 _count）
-
-
-def _record_voice_request(result: str, duration_sec: float):
-    """记录一次语音分析请求结果（线程安全）"""
-    global _VOICE_DURATION_SUM, _VOICE_DURATION_COUNT
-    with _METRICS_LOCK:
-        _VOICE_REQUESTS[result] = _VOICE_REQUESTS.get(result, 0) + 1
-        _VOICE_DURATION_SUM += duration_sec
-        _VOICE_DURATION_COUNT += 1
+# DA-03：counter+summary 公共结构复用 metrics_common（与 tts-service 复制共享），
+# 指标名/标签是 alert-rules.yml 的隐式契约，改名需同步告警规则
+_metrics = Metrics()
 
 
 @app.get("/metrics")
 def metrics():
     """Prometheus 文本格式指标（P1-10；服务仅在 internal 网络暴露，不公网开放）"""
-    out = [
-        "# HELP voice_analyze_requests_total Voice analyze requests total by result",
-        "# TYPE voice_analyze_requests_total counter",
-    ]
-    with _METRICS_LOCK:
-        for result in sorted(_VOICE_REQUESTS):
-            out.append(f'voice_analyze_requests_total{{result="{result}"}} {_VOICE_REQUESTS[result]}')
-        out += [
-            "# HELP voice_analyze_duration_seconds Voice analyze duration in seconds",
-            "# TYPE voice_analyze_duration_seconds summary",
-            f"voice_analyze_duration_seconds_sum {_VOICE_DURATION_SUM:.6f}",
-            f"voice_analyze_duration_seconds_count {_VOICE_DURATION_COUNT}",
-        ]
-    out += [
-        "# HELP voice_asr_ready ASR engine readiness (1=ready 0=unavailable)",
-        "# TYPE voice_asr_ready gauge",
-        f"voice_asr_ready {1 if asr_model is not None or ASR_ENGINE == 'dashscope' else 0}",
-        "# HELP voice_ser_ready SER model readiness (1=ready 0=unavailable)",
-        "# TYPE voice_ser_ready gauge",
-        f"voice_ser_ready {1 if emotion_model is not None else 0}",
-    ]
-    return Response(content="\n".join(out) + "\n", media_type="text/plain; version=0.0.4; charset=utf-8")
+    return Response(
+        content=_metrics.render(
+            counter_name="voice_analyze_requests_total",
+            counter_help="Voice analyze requests total by result",
+            label_key="result",
+            summary_name="voice_analyze_duration_seconds",
+            summary_help="Voice analyze duration in seconds",
+            extra_lines=[
+                "# HELP voice_asr_ready ASR engine readiness (1=ready 0=unavailable)",
+                "# TYPE voice_asr_ready gauge",
+                f"voice_asr_ready {1 if asr_model is not None or ASR_ENGINE == 'dashscope' else 0}",
+                "# HELP voice_ser_ready SER model readiness (1=ready 0=unavailable)",
+                "# TYPE voice_ser_ready gauge",
+                f"voice_ser_ready {1 if emotion_model is not None else 0}",
+                # DA-02：ser_enabled 与 ready 解耦——显式禁用（SER_ENABLED=false）不触发降级告警，
+                # 仅「启用但加载失败」才告警（告警表达式 voice_ser_ready == 0 and voice_ser_enabled == 1）
+                "# HELP voice_ser_enabled SER feature enabled (1=enabled 0=disabled via SER_ENABLED)",
+                "# TYPE voice_ser_enabled gauge",
+                f"voice_ser_enabled {1 if SER_ENABLED else 0}",
+            ],
+        ),
+        media_type="text/plain; version=0.0.4; charset=utf-8",
+    )
 
 # CORS 白名单（安全收敛）：默认拒绝跨域（本服务仅由同网络后端调用）；
 # 确需前端直连时用 VOICE_CORS_ORIGINS="https://a.com,https://b.com" 显式声明，禁止 *
@@ -213,9 +204,27 @@ def parse_emotion_result(raw: dict) -> EmotionResult:
 
 @app.get("/health")
 def health():
-    asr_model_name = "SenseVoiceSmall" if ASR_ENGINE == "funasr" else "DashScope-Paraformer-V2"
-    ser_model_name = "emotion2vec_plus_large" if emotion_model is not None else "disabled"
-    return {"status": "UP", "asr_engine": ASR_ENGINE, "asr_model": asr_model_name, "ser_model": ser_model_name}
+    """就绪探测（DA-02：纳入模型就绪判定，与 tts /health 降级语义同构）
+    - UP：ASR 就绪，SER 就绪或显式禁用
+    - DEGRADED：SER 启用但模型加载失败（情绪识别降级为中性，服务仍可用）
+    - DOWN：ASR 未就绪（核心链路不可用；funasr 加载失败实际在启动期崩溃，此为防御语义）
+    """
+    asr_ready = asr_model is not None or ASR_ENGINE == "dashscope"
+    ser_ready = emotion_model is not None
+    if not asr_ready:
+        status = "DOWN"
+    elif not ser_ready and SER_ENABLED:
+        status = "DEGRADED"
+    else:
+        status = "UP"
+    return {
+        "status": status,
+        "asr_engine": ASR_ENGINE,
+        "asr_model": "SenseVoiceSmall" if ASR_ENGINE == "funasr" else "DashScope-Paraformer-V2",
+        "ser_model": "emotion2vec_plus_large" if emotion_model is not None else "disabled",
+        "asr_ready": int(asr_ready),
+        "ser_ready": int(ser_ready),
+    }
 
 
 # ===== ASR 实现（D2：已收敛至 asr_engines.py 适配器层，端点经 _ASR_BACKEND.transcribe 调用） =====
@@ -297,7 +306,7 @@ async def analyze_voice(file: UploadFile = File(...)):
         logger.info(f"分析完成 [ASR={ASR_ENGINE}, SER={'on' if emotion_model else 'off'}]: "
                     f"text_len={len(text)}, emotion={emotion.label_en}({emotion.confidence:.2f}), duration={duration:.1f}s")
 
-        _record_voice_request("success", time.time() - t_start)
+        _metrics.record("success", time.time() - t_start)
         return VoiceAnalysisResponse(
             text=text,
             emotion=emotion,
@@ -305,28 +314,28 @@ async def analyze_voice(file: UploadFile = File(...)):
         )
 
     except subprocess.CalledProcessError as e:
-        _record_voice_request("error", time.time() - t_start)
+        _metrics.record("error", time.time() - t_start)
         logger.error(f"音频转码失败: {e.stderr.decode(errors='ignore') if e.stderr else e}")
         raise HTTPException(status_code=500, detail="音频格式转换失败")
     except subprocess.TimeoutExpired:
-        _record_voice_request("timeout", time.time() - t_start)
+        _metrics.record("timeout", time.time() - t_start)
         logger.error(f"ffmpeg 转码超时 ({VOICE_PROCESS_TIMEOUT}s)")
         raise HTTPException(status_code=504, detail="音频转码超时")
     except TimeoutError:
         # concurrent.futures.TimeoutError = builtins.TimeoutError（3.11+）
-        _record_voice_request("timeout", time.time() - t_start)
+        _metrics.record("timeout", time.time() - t_start)
         logger.error(f"ASR/SER 分析超时 ({VOICE_ANALYZE_TIMEOUT}s)")
         raise HTTPException(status_code=504, detail="语音分析超时")
     except ASRBackendError as e:
         # D2：上游 DashScope ASR 错误（非 200 / SDK 缺失）→ 502（原 _dashscope_asr 语义）
-        _record_voice_request("error", time.time() - t_start)
+        _metrics.record("error", time.time() - t_start)
         logger.error(f"DashScope ASR 服务错误: {e}")
         raise HTTPException(status_code=502, detail=f"DashScope ASR 服务错误: {e}")
     except HTTPException:
-        _record_voice_request("error", time.time() - t_start)
+        _metrics.record("error", time.time() - t_start)
         raise  # 已包装的异常直接抛出
     except Exception as e:
-        _record_voice_request("error", time.time() - t_start)
+        _metrics.record("error", time.time() - t_start)
         logger.error(f"语音分析失败: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"语音分析失败: {str(e)}")
 

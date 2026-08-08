@@ -11,7 +11,6 @@ import io
 import json
 import logging
 import os
-import threading
 import time
 from typing import Optional
 
@@ -25,6 +24,7 @@ from pydantic import BaseModel
 from tts_engines import DashScopeBackend, EdgeBackend
 from tts_policy import DegradationPolicy, TTSSynthesisFailed
 from config_loader import load_config as loader_load_config
+from metrics_common import Metrics
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("tts-service")
@@ -46,44 +46,30 @@ async def _lifespan(_: FastAPI):
 app = FastAPI(title="MindSafe TTS Service", version="4.0.0", lifespan=_lifespan)
 
 # ===== Prometheus 指标（P1-10：手写文本格式，零新增依赖，供监控栈 internal 网络抓取） =====
-_METRICS_LOCK = threading.Lock()
-_TTS_REQUESTS: dict = {}      # engine -> 请求总数（engine: cosyvoice/cosyvoice_fallback/edge_tts/error）
-_TTS_DURATION_SUM = 0.0       # 合成耗时总和（秒，summary 的 _sum）
-_TTS_DURATION_COUNT = 0       # 合成次数（summary 的 _count）
-
-
-def _record_tts_request(engine: str, duration_sec: float):
-    """记录一次合成请求结果（线程安全）"""
-    global _TTS_DURATION_SUM, _TTS_DURATION_COUNT
-    with _METRICS_LOCK:
-        _TTS_REQUESTS[engine] = _TTS_REQUESTS.get(engine, 0) + 1
-        _TTS_DURATION_SUM += duration_sec
-        _TTS_DURATION_COUNT += 1
+# DA-03：counter+summary 公共结构复用 metrics_common（与 voice-service 复制共享），
+# 指标名/标签是 alert-rules.yml 的隐式契约，改名需同步告警规则
+_metrics = Metrics()
 
 
 @app.get("/metrics")
 def metrics():
     """Prometheus 文本格式指标（P1-10；服务仅在 internal 网络暴露，不公网开放）"""
-    out = [
-        "# HELP tts_synthesize_requests_total TTS synthesize requests total by final engine/result",
-        "# TYPE tts_synthesize_requests_total counter",
-    ]
-    with _METRICS_LOCK:
-        for engine in sorted(_TTS_REQUESTS):
-            out.append(f'tts_synthesize_requests_total{{engine="{engine}"}} {_TTS_REQUESTS[engine]}')
-        out += [
-            "# HELP tts_synthesize_duration_seconds TTS synthesize duration in seconds",
-            "# TYPE tts_synthesize_duration_seconds summary",
-            f"tts_synthesize_duration_seconds_sum {_TTS_DURATION_SUM:.6f}",
-            f"tts_synthesize_duration_seconds_count {_TTS_DURATION_COUNT}",
-        ]
-    out += [
-        "# HELP tts_engine_available TTS engine availability (1=ready 0=unavailable)",
-        "# TYPE tts_engine_available gauge",
-        f'tts_engine_available{{engine="cosyvoice"}} {1 if _TTS_POLICY.backends[0].is_available() else 0}',
-        f'tts_engine_available{{engine="edge_tts"}} {1 if _TTS_POLICY.backends[1].is_available() else 0}',
-    ]
-    return Response(content="\n".join(out) + "\n", media_type="text/plain; version=0.0.4; charset=utf-8")
+    return Response(
+        content=_metrics.render(
+            counter_name="tts_synthesize_requests_total",
+            counter_help="TTS synthesize requests total by final engine/result",
+            label_key="engine",
+            summary_name="tts_synthesize_duration_seconds",
+            summary_help="TTS synthesize duration in seconds",
+            extra_lines=[
+                "# HELP tts_engine_available TTS engine availability (1=ready 0=unavailable)",
+                "# TYPE tts_engine_available gauge",
+                f'tts_engine_available{{engine="cosyvoice"}} {1 if _TTS_POLICY.backends[0].is_available() else 0}',
+                f'tts_engine_available{{engine="edge_tts"}} {1 if _TTS_POLICY.backends[1].is_available() else 0}',
+            ],
+        ),
+        media_type="text/plain; version=0.0.4; charset=utf-8",
+    )
 
 # 单次合成超时（P1-DEP：SDK 线程挂死/网络黑洞时避免请求永久挂起；超时后自动降级或 503）
 TTS_SYNTHESIZE_TIMEOUT = float(os.environ.get("TTS_SYNTHESIZE_TIMEOUT", "30"))
@@ -301,13 +287,13 @@ async def synthesize(req: TtsRequest):
         )
     except TTSSynthesisFailed as e:
         # Level 3：全部引擎失败 → 503，前端自动降级到浏览器 speechSynthesis
-        _record_tts_request("error", time.time() - t_start)
+        _metrics.record("error", time.time() - t_start)
         logger.error(f"TTS 全部引擎失败 (elapsed={time.time() - t_start:.3f}s): {e}")
         raise HTTPException(status_code=503, detail="TTS 服务不可用")
 
     # 指标：Instruct 失败后无指令重试成功 → cosyvoice_fallback（与 v3 指标契约一致）
     engine_label = "cosyvoice_fallback" if result.retried else result.engine
-    _record_tts_request(engine_label, time.time() - t_start)
+    _metrics.record(engine_label, time.time() - t_start)
     logger.info(f"TTS 合成完成 [{result.engine}]: text_len={len(req.text)}, voice={actual_voice}, "
                 f"elapsed={time.time() - t_start:.3f}s")
     return StreamingResponse(
