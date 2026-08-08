@@ -48,10 +48,10 @@ describe('EmotionDiary', () => {
     expect(onBack).toHaveBeenCalledTimes(1)
   })
 
-  it('显示 6 种情绪选项（F4：neutral→平静、anxious→紧张 对齐 DC-008 单译）', () => {
+  it('显示 5 种情绪选项（F4：neutral→平静、anxious→紧张 对齐 DC-008 单译；calm/neutral 同译去重仅保留 neutral）', () => {
     render(<EmotionDiary onBack={vi.fn()} />)
     expect(screen.getByText('开心')).toBeTruthy()
-    expect(screen.getAllByText('平静')).toHaveLength(2) // calm + neutral 同标签
+    expect(screen.getAllByText('平静')).toHaveLength(1) // 展示层去重：仅 neutral
     expect(screen.getByText('难过')).toBeTruthy()
     expect(screen.getByText('生气')).toBeTruthy()
     expect(screen.getByText('紧张')).toBeTruthy() // anxious

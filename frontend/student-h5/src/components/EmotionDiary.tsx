@@ -7,9 +7,10 @@ import SceneDecor from './SceneDecor'
 import { emotionLabel, emotionEmoji } from '../../../shared/src/emotionMeta'
 
 // F4：emoji/text 单一源 shared emotionMeta（neutral→平静、anxious→紧张 对齐 DC-008），color 为组件特有展示
+// 展示层去重（doing/78 §5.1 决策落地）：calm/neutral 同译「平静」，打卡面板仅保留 neutral 入口，避免同文本重复选项；
+// 词表单一源不动（后端 calm 仍合法，对话采集不受影响）
 const EMOTIONS = [
   { label: 'happy', color: '#52c41a' },
-  { label: 'calm', color: '#1677ff' },
   { label: 'neutral', color: '#999' },
   { label: 'sad', color: '#722ed1' },
   { label: 'angry', color: '#ff4d4f' },
@@ -19,6 +20,9 @@ const EMOTIONS = [
   emoji: emotionEmoji(e.label),
   text: emotionLabel(e.label),
 }))
+
+// 趋势图未知/历史码值兜底：显式中性情绪（不依赖数组索引，防列表调整后错位）
+const NEUTRAL = EMOTIONS.find(e => e.label === 'neutral') || EMOTIONS[0]
 
 const INTENSITY_LABELS = ['', '很轻微', '比较轻', '中等', '比较强', '非常强']
 
@@ -179,7 +183,7 @@ export default function EmotionDiary({ onBack }) {
             <p className="text-sm font-semibold mb-4" style={{ color: ts.title }}>近 14 天心情趋势</p>
             <div className="flex items-end justify-between gap-1 h-28">
               {[...history].reverse().map((d, i) => {
-                const emo = EMOTIONS.find(e => e.label === d.emotionLabel) || EMOTIONS[2]
+                const emo = EMOTIONS.find(e => e.label === d.emotionLabel) || NEUTRAL
                 return (
                   <div key={i} className="flex flex-col items-center gap-1 flex-1">
                     <div className="w-full rounded-t-lg transition-all hover:opacity-100 opacity-85"
