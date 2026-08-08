@@ -10,6 +10,7 @@
 
 ### 文档
 
+- docs: doing/81 架构深化候选清单第四轮合并归档（DOC-084）：批次 A~C + FA-16 全部闭环最终态并入主文档 03（§2.3·§3.3·§5.3）/ 04（§3.1·§5.2·§5.6）/ 05（§8.6.1）/ 06（§3.1·§4.0·§5.2·§5.2.1）/ 08（§2.5）/ 09（§3.9）/ 10（§6.2）/ 11（§13.3），各主文档头部追加 2026-08-08 同步行；归档 design/his/81_架构深化候选清单第四轮（与 his/81 部署审计同号异题，文件名可区分）；DESIGN-OVERVIEW v6.12 + BEACON 演进日志 + TASK-TRACKER 头部登记
 - docs: doing/81 批次 B/C 实施完成登记（DOC-083）：doing/81 状态行 + §5 状态段更新（批次 B FA-10/12/14/15 + BA-14 + DA-12/13/14、批次 C BA-15 + FA-17 + DA-15 全部闭环）；冻结主文档事实同步（design/04 七处 default-ssl.conf/compose nginx 旧引用改为宿主 nginx.conf 事实 + deploy/nginx/host/ 版本化位与 sync_host_nginx 流程、design/07 一处 TLS 行、STRUCTURE.md 目录注释）；BEACON 演进日志 + 头部、TASK-TRACKER 头部登记；doing/81 批次 B/C 实施完成待合并归档
 
 - docs: doing 子文档合并归档（DOC-082）：doing/80 深度审计问题清单第四轮（develop 线，批次 A~D + R-1/R-2/R-4/R-7 + FA-16 全部闭环）最终态并入 02（D-12）/ 04（D-01·R-1·R-2·D-02·D-10·D-13·D-19）/ 05（D-06·R-4）/ 06（B-05·B-07）/ 11（R-7），归档 design/his/80_深度审计问题清单（与 his/80 部署计时同号异题，文件名可区分）；合并前同步修正 6 处缺口（design/04 引用消歧 + 七件套 + D-02 恢复行、design/06 阈值残留删除、design/11 WB-002 改述）；DESIGN-OVERVIEW v6.11 + BEACON 演进日志 + TASK-TRACKER 头部登记
