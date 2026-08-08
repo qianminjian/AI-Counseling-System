@@ -100,3 +100,24 @@ groups:
         annotations:
           summary: "语音分析失败/超时率过高"
           description: "语音分析失败率 {{ $value | humanizePercentage }} 持续 5 分钟，检查 ffmpeg/ASR/SER 链路。"
+
+      # ----- 语音引擎就绪状态（DA-02：voice_ser_enabled 与 ready 解耦，显式禁用不告警） -----
+      - alert: MindsafeVoiceAsrNotReady
+        expr: voice_asr_ready == 0
+        for: 5m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "语音 ASR 引擎未就绪"
+          description: "ASR 引擎未就绪持续 5 分钟，语音转写核心链路不可用，学生语音消息将失败。"
+
+      - alert: MindsafeVoiceSerNotReady
+        expr: voice_ser_ready == 0 and voice_ser_enabled == 1
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "语音情感识别降级（SER 未就绪）"
+          description: "emotion2vec+ 模型未加载，情绪识别降级为中性——功能部分失效，请检查 SER 模型加载日志。"

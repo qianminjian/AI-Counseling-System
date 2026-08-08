@@ -227,6 +227,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # DA-03：metrics_common.py 为 tts/voice 复制共享（独立发布不共享 wheel），
+      # 改一份忘另一份 → 两服务指标渲染行为静默分叉；diff 硬性拦截
+      - name: Check metrics_common copies in sync
+        run: diff backend/tts-service/metrics_common.py backend/voice-service/metrics_common.py
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -240,14 +245,14 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # DA-01 验收：镜像内模块可导入（voice 有 ENTRYPOINT，需 --entrypoint 覆盖）
+      # DA-01/DA-03 验收：镜像内模块可导入（voice 有 ENTRYPOINT，需 --entrypoint 覆盖）
       - name: Import smoke (tts)
         if: matrix.service == 'tts-service'
-        run: docker run --rm mindsafe/tts-service:smoke python -c "import tts_engines, tts_policy"
+        run: docker run --rm mindsafe/tts-service:smoke python -c "import tts_engines, tts_policy, metrics_common"
 
       - name: Import smoke (voice)
         if: matrix.service == 'voice-service'
-        run: docker run --rm --entrypoint python mindsafe/voice-service:smoke -c "import asr_engines"
+        run: docker run --rm --entrypoint python mindsafe/voice-service:smoke -c "import asr_engines, metrics_common"
 
   dependency-scan:
     name: Dependency Vulnerability Scan

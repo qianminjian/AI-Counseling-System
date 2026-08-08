@@ -143,7 +143,9 @@ services:
       # 容器内挂载到非 root 用户 HOME（审计 P3-31：容器不再以 root 运行）
       - ${MODEL_CACHE_DIR:-./cache/modelscope}:/home/appuser/.cache/modelscope
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:10095/health')"]
+      # DA-02：消费 /health status 三态（与 service-manager voice 分支同语义）
+      #   UP/DEGRADED=健康（SER 降级 ≠ 宕机）；DOWN=不健康（ASR 核心链路不可用）
+      test: ["CMD", "python", "-c", "import json,urllib.request; d=json.load(urllib.request.urlopen('http://localhost:10095/health', timeout=5)); raise SystemExit(0 if d.get('status') in ('UP','DEGRADED') else 1)"]
       interval: 30s
       timeout: 10s
       retries: 3

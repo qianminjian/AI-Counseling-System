@@ -106,7 +106,24 @@ except Exception:
       esac
       ;;
     voice)
-      docker exec "${CONTAINER_NAME[voice]}" python -c "import urllib.request; urllib.request.urlopen('http://localhost:10095/health')" >/dev/null 2>&1
+      # DA-02：消费 /health 的 status 语义（与 tts 分支 D5 同构：降级 ≠ 宕机）
+      #   UP=健康；DEGRADED=告警但仍健康（SER 未就绪，情绪识别降级为中性）；
+      #   DOWN=不健康（ASR 核心链路不可用）
+      local vstatus
+      vstatus=$(docker exec "${CONTAINER_NAME[voice]}" python -c "
+import json, urllib.request
+try:
+    data = json.load(urllib.request.urlopen('http://localhost:10095/health', timeout=5))
+    print(data.get('status', ''))
+except Exception:
+    raise SystemExit(2)  # 接口不可达/解析失败 → 非 0 退出（判不健康，与原语义一致）
+" 2>/dev/null) || { log_warn "voice /health 读取失败（视为不健康）"; return 1; }
+      case "$vstatus" in
+        UP)       return 0 ;;
+        DEGRADED) log_warn "语音服务降级运行（status=DEGRADED，SER 未就绪，情绪识别降级为中性）——请检查模型加载日志"; return 0 ;;
+        DOWN)     log_warn "语音服务不可用（status=DOWN，ASR 未就绪）——请检查 ASR 引擎配置"; return 1 ;;
+        *)        log_warn "voice /health status 未知（status=${vstatus:-空}）——请人工检查语音服务状态"; return 0 ;;
+      esac
       ;;
     backend)
       # backend 无宿主机端口映射，进容器内检查
