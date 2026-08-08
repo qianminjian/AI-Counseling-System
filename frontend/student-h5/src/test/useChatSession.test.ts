@@ -189,7 +189,7 @@ describe('useChatSession（UX-006，design/17 §chat/hooks）', () => {
     expect(result.current.messages[2].content).not.toContain('网络出了点问题')
   })
 
-  it('emotion 事件：emotionBus.publish + 波波保持情绪表情（不回落 idle）', async () => {
+  it('emotion 事件：emotionBus.publish + 消息 emotion 同源 + 波波保持情绪表情（不回落 idle）', async () => {
     mockAuthFetch.mockResolvedValue(sseResponse([
       encoder.encode('data:{"type":"emotion","content":"happy"}\n\n'),
       encoder.encode('data:{"type":"token","content":"没事的"}\n\n'),
@@ -201,6 +201,8 @@ describe('useChatSession（UX-006，design/17 §chat/hooks）', () => {
     })
 
     expect(mocks.publish).toHaveBeenCalledWith('happy')
+    // FA-09：气泡与总线同源——消息 emotion 与总线同一标签（design/37 §三.1 三方同源）
+    expect(result.current.messages[2].emotion).toBe('happy')
     expect(bobo.dispatch).not.toHaveBeenCalledWith({ type: 'idle' })
   })
 

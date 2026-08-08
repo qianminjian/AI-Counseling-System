@@ -36,6 +36,8 @@ import { createMicSession, type MicSessionHandle } from '../utils/micSession'
 import { createModelStatusStore, type ModelStatus } from '../utils/modelStatusStore'
 // DC-009：Transformers.js 初始化收敛到共享 loader（SPEC §23）
 import { loadTransformersModel, createProgressHandler, formatModelError } from '../utils/transformersLoader'
+// FA-12：滑窗长度/静音阈值走远程配置（wakeWord.*），本地常量仅作 fallback
+import { getConfigValue } from '../config/remote'
 
 /** Whisper 要求的采样率 */
 const TARGET_SAMPLE_RATE = 16000
@@ -48,10 +50,23 @@ const dbg = (...args: unknown[]) => {
   if (import.meta.env.DEV) console.debug('[WakeWord]', ...args)
 }
 
-/** 滑窗/重叠/积压上限（样本数 @16kHz） */
-const WINDOW_SAMPLES = Math.round(WAKE_WINDOW_SECONDS * TARGET_SAMPLE_RATE)
+/** 滑窗重叠保留（样本数 @16kHz）：本地常量（远程无对应键），每次转写后保留尾部作下一窗前缀 */
 const KEEP_SAMPLES = Math.round(WAKE_KEEP_SECONDS * TARGET_SAMPLE_RATE)
-const MAX_BUFFER_SAMPLES = WINDOW_SAMPLES * 2
+
+/**
+ * FA-12：滑窗长度/静音阈值运行时参数（来自远程配置，挂载时取一次）
+ * 音频帧回调热路径经 ref 读取，避免渲染闭包捕获过期常量；
+ * 远程无值 / 未加载 → getConfigValue fallback 到本地常量，行为与旧版一致
+ */
+function resolveWakeParams() {
+  const windowSeconds = getConfigValue('wakeWord.windowSeconds', WAKE_WINDOW_SECONDS)
+  const windowSamples = Math.round(windowSeconds * TARGET_SAMPLE_RATE)
+  return {
+    windowSamples,
+    maxBufferSamples: windowSamples * 2,
+    silenceRms: getConfigValue('wakeWord.silenceRmsThreshold', SILENCE_RMS_THRESHOLD),
+  }
+}
 
 /** 采集由 utils/micSession 统一管理（createMicSession：约束/错误映射/iOS 兜底/释放单点） */
 // 注：AudioWorklet 优先 / ScriptProcessor 降级逻辑在 createPcmCapture 内部
@@ -211,6 +226,8 @@ export function useWakeWord({ active, paused, onDetected }) {
   const [wakeStatus, setWakeStatus] = useState('idle') // idle | loading | listening | error | detected
   const onDetectedRef = useRef(onDetected)
   const pausedRef = useRef(paused)
+  const wakeParamsRef = useRef(resolveWakeParams())
+  wakeParamsRef.current = resolveWakeParams()
   useEffect(() => { onDetectedRef.current = onDetected })
   useEffect(() => {
     pausedRef.current = paused
@@ -313,12 +330,13 @@ export function useWakeWord({ active, paused, onDetected }) {
       // paused 时不做任何缓冲管理：让音频自然累积到 MAX_BUFFER_SAMPLES 上限，
       // 恢复后下一帧立即满足 >= WINDOW_SAMPLES 条件并提交检测（修复 PC 端唤醒延迟）
       if (pausedRef.current) return
-      if (totalSamples < WINDOW_SAMPLES) return
+      const { windowSamples, silenceRms } = wakeParamsRef.current
+      if (totalSamples < windowSamples) return
       const merged = concatChunks(chunks, totalSamples)
       const keep = merged.slice(-KEEP_SAMPLES)
       chunks = [keep]
       totalSamples = keep.length
-      if (rms(merged) < SILENCE_RMS_THRESHOLD) return
+      if (rms(merged) < silenceRms) return
       analyzeWindow(merged)
     }
 
@@ -429,11 +447,11 @@ export function useWakeWord({ active, paused, onDetected }) {
           chunkCount++
           // 每 50 个 chunk 打一次诊断日志（约 4s@48kHz/4096）
           if (chunkCount % 50 === 1) {
-            dbg(`音频流入: chunks=${chunkCount}, totalSamples=${totalSamples}/${WINDOW_SAMPLES}, paused=${pausedRef.current}, analyzing=${analyzing}, useMainThread=${useMainThread}`)
+            dbg(`音频流入: chunks=${chunkCount}, totalSamples=${totalSamples}/${wakeParamsRef.current.windowSamples}, paused=${pausedRef.current}, analyzing=${analyzing}, useMainThread=${useMainThread}`)
           }
-          if (totalSamples > MAX_BUFFER_SAMPLES) {
+          if (totalSamples > wakeParamsRef.current.maxBufferSamples) {
             const mergedAll = concatChunks(chunks, totalSamples)
-            const keepLatest = mergedAll.slice(-WINDOW_SAMPLES)
+            const keepLatest = mergedAll.slice(-wakeParamsRef.current.windowSamples)
             chunks = [keepLatest]
             totalSamples = keepLatest.length
           }

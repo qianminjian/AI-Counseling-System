@@ -2,6 +2,8 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import { useAudioRecorder } from './useAudioRecorder'
 import { fetchVoiceAnalyze } from '../api'
 import type { VoiceEmotion } from './useChatSession'
+import { createSpeechRecognition } from '../utils/speechRecognition'
+import type { SpeechRecognitionHandle } from '../utils/speechRecognition'
 
 /**
  * 语音输入流水线 Hook（ARCH-006 F-4，doing/66 §3.1）
@@ -81,7 +83,7 @@ export function useVoiceInputPipeline({ onTranscription }: {
   const recordingRef = useRef(false)
   useEffect(() => { recordingRef.current = recording })
 
-  const speechRecRef = useRef<{ stop: () => void } | null>(null)
+  const speechRecRef = useRef<SpeechRecognitionHandle | null>(null)
   /** 浏览器转写（发送用 final 去重结果；interim 仅实时展示） */
   const browserTranscriptRef = useRef('')
   /** 按住起始时间戳（过短判定 <1000ms） */
@@ -101,50 +103,17 @@ export function useVoiceInputPipeline({ onTranscription }: {
   const start = useCallback(() => {
     if (recordingRef.current) return // 防重入：录音中不重复启动
     setError(null)
-    // 并行启动浏览器 SpeechRecognition 作为降级转写 + 录音遮罩实时展示
     browserTranscriptRef.current = ''
     setLiveTranscript('')
     startTimeRef.current = Date.now()
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
-    if (SpeechRecognition) {
-      try {
-        const rec = new SpeechRecognition()
-        rec.lang = 'zh-CN'
-        rec.continuous = true
-        rec.interimResults = true
-        rec.onresult = (e: any) => {
-          // 根因修复：Android Chrome 中文识别 continuous 模式下，
-          // 语句结束后可能在 results 列表中产生内容相同的重复 final 条目。
-          // 修复策略：只拼接 final 结果 + 跳过连续相同文本；interim 仅用于实时展示。
-          let displayTranscript = ''
-          let finalTranscript = ''
-          let interimTranscript = ''
-          let prevFinalText = ''
-          for (let i = 0; i < e.results.length; i++) {
-            const text = e.results[i][0].transcript
-            if (e.results[i].isFinal) {
-              // 跳过与前一个 final result 完全相同的条目（Android 重复 bug）
-              if (text !== prevFinalText) {
-                finalTranscript += text
-                prevFinalText = text
-                displayTranscript += text
-              }
-            } else {
-              interimTranscript += text
-              displayTranscript += text
-            }
-          }
-          // 发送用 final（去重后）；实时展示用 final + 当前 interim
-          browserTranscriptRef.current = finalTranscript || interimTranscript
-          setLiveTranscript(displayTranscript)
-        }
-        rec.onerror = () => {}
-        rec.start()
-        speechRecRef.current = rec
-      } catch (err) {
-        console.warn('浏览器语音识别启动失败', err)
-      }
-    }
+    // 并行启动浏览器 SpeechRecognition（FA-10 共享装配层：语言/连续/去重单点）
+    // 发送用 final（去重后）；实时展示用 final + 当前 interim
+    speechRecRef.current = createSpeechRecognition({
+      onText: (sendText, displayText) => {
+        browserTranscriptRef.current = sendText
+        setLiveTranscript(displayText)
+      },
+    })
     // 启动 MediaRecorder 录音
     startRecording()
   }, [startRecording])

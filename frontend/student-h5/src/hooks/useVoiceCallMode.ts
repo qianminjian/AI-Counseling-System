@@ -18,6 +18,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useWakeWord } from './useWakeWord'
 import { matchesWakeWord } from '../config/wakeWord'
+import { createSpeechRecognition } from '../utils/speechRecognition'
 
 /** 唤醒确认短句（播完后才开始捕捉说话） */
 const WAKE_CONFIRM_TEXT = '我在呢！'
@@ -80,31 +81,18 @@ export function useVoiceCallMode({ enabled, tts, busy, onFinalTranscript }) {
     if (recRef.current) {
       const rec = recRef.current
       recRef.current = null
-      rec.onend = null // 主动停止不触发重启逻辑
-      try { rec.stop() } catch { /* ignore */ }
+      rec.stop(true) // 主动停止不触发重启逻辑（FA-10 装配层 silent）
     }
   }, [])
 
-  /** 开启一轮语音捕捉（continuous + interimResults，防抖判断说完） */
+  /** 开启一轮语音捕捉（FA-10 共享装配层：continuous + interimResults 单点装配，防抖判断说完） */
   const startListeningRound = useCallback(() => {
     stopListening()
     accumulatedTextRef.current = ''
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
-    if (!SpeechRecognition) return
-    try {
-      const rec = new SpeechRecognition()
-      rec.lang = 'zh-CN'
-      // continuous=true：不因停顿自动停止，避免截断长句/思考停顿
-      rec.continuous = true
-      // interimResults=true：实时获取中间结果，用于防抖判断
-      rec.interimResults = true
-      rec.onresult = (e) => {
-        // 拼接所有 result（含 interim + final）
-        let fullText = ''
-        for (let i = 0; i < e.results.length; i++) {
-          fullText += e.results[i][0].transcript
-        }
-        fullText = fullText.trim()
+    recRef.current = createSpeechRecognition({
+      aggregate: 'concat', // 防抖判断依赖完整文本（含 interim）
+      onText: (sendText) => {
+        const fullText = sendText.trim()
         if (!fullText) return
         accumulatedTextRef.current = fullText
   
@@ -128,13 +116,12 @@ export function useVoiceCallMode({ enabled, tts, busy, onFinalTranscript }) {
           const rec = recRef.current
           if (rec) {
             recRef.current = null
-            rec.onend = null
-            try { rec.stop() } catch { /* ignore */ }
+            rec.stop(true) // silent：防 onEnd 触发重启逻辑
           }
           onFinalTranscriptRef.current?.(text)
         }, SPEECH_END_DEBOUNCE_MS)
-      }
-      rec.onend = () => {
+      },
+      onEnd: () => {
         recRef.current = null
         // 如果防抖计时器还在跑（用户刚说完，Chrome 因超时停了），等它自然触发
         if (speechEndTimerRef.current) return
@@ -142,18 +129,14 @@ export function useVoiceCallMode({ enabled, tts, busy, onFinalTranscript }) {
         if (modeRef.current === 'active' && enabledRef.current && !busyRef.current) {
           restartTimerRef.current = setTimeout(() => startListeningRoundRef.current?.(), RESTART_DELAY_MS)
         }
-      }
-      rec.onerror = (e: any) => {
+      },
+      onError: (error) => {
         // no-speech 错误忽略（用户没说话），其他错误记录
-        if (e.error !== 'no-speech') {
-          console.warn('[VoiceCall] 识别错误:', e.error)
+        if (error !== 'no-speech') {
+          console.warn('[VoiceCall] 识别错误:', error)
         }
-      }
-      recRef.current = rec
-      rec.start()
-    } catch (err) {
-      console.warn('[VoiceCall] 语音识别启动失败:', err?.message || err)
-    }
+      },
+    })
   }, [stopListening])
 
   useEffect(() => { startListeningRoundRef.current = startListeningRound })

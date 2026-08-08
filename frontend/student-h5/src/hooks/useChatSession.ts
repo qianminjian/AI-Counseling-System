@@ -103,8 +103,9 @@ export function useChatSession(opts: ChatSessionOptions) {
     // 冷场引导：孩子一说话即重置沉默计时 + 清零连续暖场计数
     onInteraction?.()
     setMessages((prev) => [...prev, { role: 'user', content: text, emotion: msgEmotion }])
-    // AI 回复挂上孩子情绪（语音情绪优先、会话情绪兜底），驱动情感化排印
-    setMessages((prev) => [...prev, { role: 'assistant', content: '', emotion: msgEmotion || emotionTag }])
+    // AI 回复气泡的排印由「AI 回复情绪」驱动（FA-09：与 emotionBus 同源，design/37 §三.1）；
+    // 初始以会话情绪兜底，onEmotion 到达后覆盖为总线同源标签
+    setMessages((prev) => [...prev, { role: 'assistant', content: '', emotion: emotionTag }])
 
     let fullResponse = ''
     let replyEmotionReceived = false
@@ -136,6 +137,15 @@ export function useChatSession(opts: ChatSessionOptions) {
             // 表情状态机/TTS/主题层，禁止各消费方另取信号源
             replyEmotionReceived = true
             emotionBus.publish(label)
+            // FA-09：气泡微动效与总线同源——消息 emotion 与总线同一标签（气泡不另读信号）
+            setMessages((prev) => {
+              const updated = [...prev]
+              const last = updated[updated.length - 1]
+              if (last?.role === 'assistant') {
+                updated[updated.length - 1] = { ...last, emotion: label }
+              }
+              return updated
+            })
           },
           onRisk: (riskLevel, content) => {
             // 风险事件是系统/心理老师的内部处理指令（如"允许继续 CBT 微干预，趋势观察"），

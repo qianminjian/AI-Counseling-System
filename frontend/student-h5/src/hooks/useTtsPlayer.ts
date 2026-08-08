@@ -178,6 +178,35 @@ export function useTtsPlayer({ persona = 'xiaoxing', emotion = 'neutral', speed 
     })
   }, [getAudio])
 
+  /**
+   * 单句播放链（FA-11：四处「synthesize→playBlob→浏览器降级→engine=none」回退链收敛单点）
+   * @param text 句子文本
+   * @param idx 句子序号（UI 逐句展示）
+   * @param precomputedBlob 已并行预合成的音频（speak/speakSentence 传）；未传则内部合成
+   * @returns true = 本次走了浏览器降级（供调用方做引擎恢复判断）
+   */
+  const playSentence = useCallback(async (text: string, idx: number, precomputedBlob?: Blob | null): Promise<boolean> => {
+    if (abortRef.current) return false
+    setCurrentSentenceIdx(idx)
+    const blob = precomputedBlob !== undefined ? precomputedBlob : await synthesizeSentence(text)
+    if (abortRef.current) return false
+    if (blob) {
+      await playBlob(blob)
+      return false
+    }
+    // 后端 TTS 不可用 → 浏览器 speechSynthesis 降级
+    setEngine('browser')
+    await new Promise<void>((resolve) => {
+      const ok = browserSpeak(text, { rate: speed, persona, onEnd: resolve })
+      if (!ok) {
+        // 浏览器 TTS 也不可用（安卓无 Google 语音引擎）
+        setEngine('none')
+        resolve()
+      }
+    })
+    return true
+  }, [synthesizeSentence, playBlob, speed, persona])
+
   /** 播放完整 AI 回复（短句合并 + 全句并行合成，消除句间停顿） */
   const speak = useCallback(async (text) => {
     if (muted) return
@@ -197,23 +226,10 @@ export function useTtsPlayer({ persona = 'xiaoxing', emotion = 'neutral', speed 
     let usedBrowserFallback = false
     for (let i = 0; i < audioPromises.length; i++) {
       if (abortRef.current) break
-      setCurrentSentenceIdx(i)
       const audioBlob = await audioPromises[i]
       if (abortRef.current) break
-      if (audioBlob) {
-        await playBlob(audioBlob)
-      } else {
-        // 后端 TTS 不可用 → 浏览器 speechSynthesis 降级
+      if (await playSentence(sentences[i], i, audioBlob)) {
         usedBrowserFallback = true
-        setEngine('browser')
-        await new Promise<void>((resolve) => {
-          const ok = browserSpeak(sentences[i], { rate: speed, persona, onEnd: resolve })
-          if (!ok) {
-            // 浏览器 TTS 也不可用（安卓无 Google 语音引擎）
-            setEngine('none')
-            resolve()
-          }
-        })
       }
     }
 
@@ -226,7 +242,7 @@ export function useTtsPlayer({ persona = 'xiaoxing', emotion = 'neutral', speed 
     if (usedBrowserFallback && backendFailCount.current < 2) {
       setEngine('backend')
     }
-  }, [muted, synthesizeSentence, playBlob, speed])
+  }, [muted, synthesizeSentence, playBlob, playSentence, speed])
 
   /** 播放单条消息（点击气泡重播）—— 与自动播放相同的分句 + 并行合成逻辑，避免长文本单次合成音质下降 */
   const speakSentence = useCallback(async (text) => {
@@ -245,28 +261,15 @@ export function useTtsPlayer({ persona = 'xiaoxing', emotion = 'neutral', speed 
 
     for (let i = 0; i < audioPromises.length; i++) {
       if (abortRef.current) break
-      setCurrentSentenceIdx(i)
       const audioBlob = await audioPromises[i]
       if (abortRef.current) break
-      if (audioBlob) {
-        await playBlob(audioBlob)
-      } else {
-        // 后端 TTS 不可用 → 浏览器 speechSynthesis 降级
-        setEngine('browser')
-        await new Promise<void>((resolve) => {
-          const ok = browserSpeak(sentences[i], { rate: speed, persona, onEnd: resolve })
-          if (!ok) {
-            setEngine('none')
-            resolve()
-          }
-        })
-      }
+      await playSentence(sentences[i], i, audioBlob)
     }
 
     setPlaying(false)
     setCurrentSentenceIdx(-1)
     setSentences([])
-  }, [muted, synthesizeSentence, playBlob, speed])
+  }, [muted, synthesizeSentence, playBlob, playSentence, speed])
 
   /** 停止播放 */
   const stop = useCallback(() => {
@@ -327,23 +330,9 @@ export function useTtsPlayer({ persona = 'xiaoxing', emotion = 'neutral', speed 
     // 为每个新句子启动合成+播放（串行链保证顺序）
     for (const s of newSentences) {
       const idx = streamIdxRef.current++
-      streamPlayChainRef.current = streamPlayChainRef.current.then(async () => {
-        if (abortRef.current) return
-        setCurrentSentenceIdx(idx)
-        const blob = await synthesizeSentence(s)
-        if (abortRef.current) return
-        if (blob) {
-          await playBlob(blob)
-        } else {
-          setEngine('browser')
-          await new Promise<void>((resolve) => {
-            const ok = browserSpeak(s, { rate: speed, persona, onEnd: resolve })
-            if (!ok) { setEngine('none'); resolve() }
-          })
-        }
-      })
+      streamPlayChainRef.current = streamPlayChainRef.current.then(async () => { await playSentence(s, idx) })
     }
-  }, [muted, synthesizeSentence, playBlob, speed, persona])
+  }, [muted, synthesizeSentence, playBlob, playSentence, speed, persona])
 
   /** 结束流式 TTS：冲刷剩余缓冲，等待播放完毕 */
   const endStreaming = useCallback(async () => {
@@ -358,21 +347,7 @@ export function useTtsPlayer({ persona = 'xiaoxing', emotion = 'neutral', speed 
         setSentences([...streamQueueRef.current])
         for (const s of tailSentences) {
           const idx = streamIdxRef.current++
-          streamPlayChainRef.current = streamPlayChainRef.current.then(async () => {
-            if (abortRef.current) return
-            setCurrentSentenceIdx(idx)
-            const blob = await synthesizeSentence(s)
-            if (abortRef.current) return
-            if (blob) {
-              await playBlob(blob)
-            } else {
-              setEngine('browser')
-              await new Promise<void>((resolve) => {
-                const ok = browserSpeak(s, { rate: speed, persona, onEnd: resolve })
-                if (!ok) { setEngine('none'); resolve() }
-              })
-            }
-          })
+          streamPlayChainRef.current = streamPlayChainRef.current.then(async () => { await playSentence(s, idx) })
         }
       }
     }
@@ -383,7 +358,7 @@ export function useTtsPlayer({ persona = 'xiaoxing', emotion = 'neutral', speed 
       setCurrentSentenceIdx(-1)
       setSentences([])
     }
-  }, [muted, synthesizeSentence, playBlob, speed, persona])
+  }, [muted, synthesizeSentence, playBlob, playSentence, speed, persona])
 
   /** 切换静音（FA-05：同时持久化偏好，供 EmotionSelect 设置面板跨页读取） */
   const toggleMute = useCallback(() => {
