@@ -2,9 +2,13 @@
 
 ### 代码与测试
 
+- feat(deploy): DOC-077 部署计时与监控模型（doing/80）：deploy.sh 12 步骤毫秒计时（precheck/detect/compile-backend/prepare-models/build-*/rsync/build-images/restart/smoke/nginx-check）+ 固定格式汇报（trap EXIT 统一出口，成功/失败均汇报，失败步骤自动推导为最后未完成步骤）+ 结构化日志 logs/deploy/deploy-<ts>.log（统计段 deploy_result/step_*_ms/signal 供基线解析）+ 监控模型（最近 10 次基线 mean/p90/max、绝对+相对阈值、OK/WARN/CRITICAL 信号，失败强制 CRITICAL）+ 自动修复完善（L2 rsync 降速自愈 / L3 builder 清缓存自愈 / L4 失败模式知识库 6 特征指引）+ .deploy-state 统计快照；新库 deploy/scripts/deploy-metrics.sh（独立可测）；tests/unit/scripts/deploy-metrics-test.sh T1-T12 全绿（纳入 CI 七件套自动拾取）
+- feat(deploy): DOC-078 部署日志审计与回归分析（doing/81）：每次部署结束 trap EXIT 链第二步自动审计（与退出码无关，失败部署同样审计）——窗口解析最近 10 次 logs/deploy/deploy-*.log（dm_audit_parse）+ 回归规则表 R1-R6（R1 步骤耗时回归复用 dm_judge 且基线排除本次日志防自污染 / R2 成功率 <80% WARN <60% CRITICAL / R3 失败模式聚类 DM_DIAG_FEATURES 计数 ≥3 / R4 最近 5 次连续 3 次上升趋势变坏预警 / R5 非 OK 信号 ≥50% / R6 有汇报缺统计段 >2 出口链路异常）+ 主动修复（A1 日志轮转上限 50 份 / A2 步骤原因映射+知识库修复指引，不做自动回滚红线不变）+ 固定格式审计报告（全文落盘 logs/deploy/audit-<ts>.md gitignore + 终端摘要 5 行）；新库 deploy/scripts/deploy-audit.sh（依赖 metrics，SRP 独立可测）；deploy-metrics.sh 重构（dm_baseline 第三参 exclude + DM_DIAG_FEATURES 特征表与 dm_diagnose 循环化，dm_audit_cluster 同源消费）；tests/unit/scripts/deploy-audit-test.sh T1-T12 全绿（33 断言，纳入 CI 八件套自动拾取，metrics 38 断言无回归）
 - feat(test): TEST-006 前后端契约测试三层防线（DOC-058）：L1 ContractOpenApiIT（端点全量入 OpenAPI，5 断言）+ L2 gen-openapi-snapshot.sh（快照 123 paths/93 schemas 入库）+ L3 前端契约测试（schemaValidator 22 + apiContract 26 用例）；修复 MoodCheckResult 契约漂移（effect→toolId/preMood/postMood/delta/level/needsAttention 对齐后端）
 
 ### 文档
+
+- docs: doing 子文档合并归档（DOC-078）：doing/81 部署日志审计与回归分析（部署审计标准化）最终态并入 04 §5.9（审计模型/规则表 R1-R6/报告格式/修复分级/测试），归档 design/his/81；DESIGN-OVERVIEW v6.8 + BEACON 演进日志 + TASK-TRACKER 头部登记
 
 - docs: doing 子文档合并归档（DOC-059）：doing/58 O 专题过度设计收敛分主题并入 03 §2.7/04 §6·§8/06 §3.3/10 §2.6·§2.12，doing/59 前后端契约测试并入 05 §8.6，归档 design/his/；DESIGN-OVERVIEW v5.2（新增 §2.3 已合并子文档对照、冻结区扩展至 12 份）+ BEACON 演进日志 2026-08-05 + TASK-TRACKER 登记
 
