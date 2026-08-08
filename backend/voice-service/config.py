@@ -15,6 +15,8 @@ logger = logging.getLogger("voice-service")
 # DOC-073 D1（doing/77 §23）：矩阵类数据（emotion_labels）以 config.yaml 为权威单源，
 # 代码兜底仅保留运行必需字段（asr/ser 模型名，与 tts model 兜底对称）；
 # 避免双源漂移（改 yaml 后代码兜底静默过期）。
+# DA-14：emotion_labels 为 parse_emotion_result 直索引键（EMOTION_LABELS[max_idx]），
+# 空矩阵时“可启动但运行即 500”——兜底补 9 类最小矩阵（与 config.yaml 一致）。
 
 DEFAULT_CONFIG = {
     "asr": {
@@ -25,8 +27,18 @@ DEFAULT_CONFIG = {
     "ser": {
         "model": "iic/emotion2vec_plus_large",
     },
-    # 9 类情绪标签矩阵：权威在 config.yaml（缺失回退为空，SER 降级不展示映射）
-    "emotion_labels": [],
+    # 9 类情绪标签矩阵：权威在 config.yaml，缺失时兜底为最小运行矩阵
+    "emotion_labels": [
+        ["angry", "愤怒"],
+        ["disgusted", "厌恶"],
+        ["fearful", "恐惧"],
+        ["happy", "开心"],
+        ["neutral", "中性"],
+        ["other", "其他"],
+        ["sad", "悲伤"],
+        ["surprised", "惊讶"],
+        ["unknown", "未知"],
+    ],
 }
 
 

@@ -46,15 +46,38 @@ class TestConfigLoading:
         assert "test_persona" in cfg["voice_personas"]
 
     def test_load_config_missing_file_returns_fallback(self):
-        """config.yaml 不存在时返回最小兜底（服务可启动，不再携带全量矩阵）"""
+        """config.yaml 不存在时返回最小兜底（服务可启动：含直索引键的最小运行矩阵）"""
         from app import load_config
 
         cfg = load_config("/nonexistent/path/config.yaml")
-        # 最小兜底：model 必要字段 + 空矩阵骨架
+        # DA-14 最小兜底：model 必要字段 + 直索引键矩阵（xiaoxing persona / neutral 指令）
         assert cfg["model"]["dashscope"] == "cosyvoice-v3-flash"
-        assert cfg["voice_personas"] == {}
+        assert "xiaoxing" in cfg["voice_personas"]
+        assert "neutral" in cfg["emotion_instruct_map"]
         assert cfg["dialects"] == {}
-        assert cfg["emotion_instruct_map"] == {}
+
+    def test_fallback_runtime_contract_pass(self):
+        """DA-14：兜底矩阵通过启动契约校验（synthesize 直索引键齐备）"""
+        from app import load_config, _validate_runtime_contract
+
+        cfg = load_config("/nonexistent/path/config.yaml")
+        _validate_runtime_contract(cfg)  # 不应抛异常
+
+    def test_runtime_contract_rejects_missing_xiaoxing(self):
+        """DA-14：缺默认音色 xiaoxing 的配置被启动校验拒绝（不待运行即 500）"""
+        from app import _validate_runtime_contract
+
+        bad = {"voice_personas": {"bobo": {}}, "emotion_instruct_map": {"neutral": "x"}}
+        with pytest.raises(RuntimeError, match="xiaoxing"):
+            _validate_runtime_contract(bad)
+
+    def test_runtime_contract_rejects_missing_neutral(self):
+        """DA-14：缺 neutral 情感指令的配置被启动校验拒绝"""
+        from app import _validate_runtime_contract
+
+        bad = {"voice_personas": {"xiaoxing": {}}, "emotion_instruct_map": {}}
+        with pytest.raises(RuntimeError, match="neutral"):
+            _validate_runtime_contract(bad)
 
     def test_env_var_overrides_model(self, tmp_path, monkeypatch):
         """环境变量 DASHSCOPE_TTS_MODEL 覆盖 config.yaml 中的模型名"""

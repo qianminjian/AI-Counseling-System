@@ -47,15 +47,19 @@ class TestVoiceConfigLoading:
         assert cfg["asr"]["funasr_model"] == "iic/SenseVoiceSmall"
         assert cfg["asr"]["dashscope_model"] == "paraformer-realtime-v2"
         assert cfg["ser"]["model"] == "iic/emotion2vec_plus_large"
-        assert cfg["emotion_labels"] == []  # DOC-073 D1：矩阵权威在 config.yaml，缺失回退为空
+        # DA-14：矩阵兑底为最小运行矩阵（parse_emotion_result 直索引键，空矩阵运行即 500）
+        assert len(cfg["emotion_labels"]) == 9
 
-    def test_default_emotion_labels_fallback_empty(self):
-        """缺失回退时 emotion_labels 为空矩阵（D1 单源化：权威在 config.yaml，代码不兜底矩阵）"""
+    def test_default_emotion_labels_fallback_minimal(self):
+        """DA-14：缺失回退时 emotion_labels 为 9 类最小运行矩阵（权威仍在 config.yaml）"""
         from config import load_config
 
         cfg = load_config("/nonexistent/config.yaml")
         labels = cfg["emotion_labels"]
-        assert labels == []
+        assert len(labels) == 9
+        assert [en for en, _ in labels] == [
+            "angry", "disgusted", "fearful", "happy", "neutral",
+            "other", "sad", "surprised", "unknown"]
 
     def test_default_asr_vad_model(self):
         """默认 VAD 模型为 fsmn-vad"""
@@ -80,7 +84,7 @@ class TestVoiceConfigLoading:
         assert cfg["asr"]["vad_model"] == "fsmn-vad"
         assert cfg["asr"]["dashscope_model"] == "paraformer-realtime-v2"
         assert cfg["ser"]["model"] == "iic/emotion2vec_plus_large"
-        assert cfg["emotion_labels"] == []  # partial yaml 未覆盖矩阵 → 保持骨架空
+        assert len(cfg["emotion_labels"]) == 9  # partial yaml 未覆盖矩阵 → 保留兑底最小矩阵
 
     def test_nested_partial_merges_with_defaults(self, tmp_path):
         """嵌套 partial：只配 asr.funasr_model → 其余默认字段保留（浅合并缺陷修复）"""
@@ -118,7 +122,7 @@ class TestVoiceConfigLoading:
         cfg = load_config(str(config_file))
         assert cfg["asr"]["funasr_model"] == "iic/SenseVoiceSmall"
         assert cfg["ser"]["model"] == "iic/emotion2vec_plus_large"
-        assert cfg["emotion_labels"] == []
+        assert len(cfg["emotion_labels"]) == 9  # DA-14：损坏 yaml 回退兑底最小矩阵
 
     def test_actual_config_yaml_loads(self):
         """集成测试：实际 config.yaml 文件可正确加载"""
@@ -144,4 +148,4 @@ class TestVoiceConfigLoading:
 
         cfg = load_config(str(config_file))
         assert cfg["asr"]["funasr_model"] == "iic/SenseVoiceSmall"
-        assert cfg["emotion_labels"] == []
+        assert len(cfg["emotion_labels"]) == 9  # DA-14：空 yaml 回退兑底最小矩阵

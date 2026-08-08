@@ -35,6 +35,12 @@ logger = logging.getLogger("voice-service")
 # ===== 配置加载（CFG-007：从 config.yaml 外置，回退内置默认值） =====
 
 _CONFIG = load_config()
+# DA-14：启动契约校验（fail-fast）——emotion_labels 为 parse_emotion_result 直索引键
+# （EMOTION_LABELS[max_idx]），空矩阵时“可启动但运行即 500”；yaml 显式置 null/空 list
+# 时（deep_merge list 整体替换）兜底 9 标签被覆盖，启动期即拒绝而非带病运行。
+if not _CONFIG.get("emotion_labels"):
+    raise RuntimeError(
+        "voice 配置缺失 emotion_labels（parse_emotion_result 直索引键），拒绝启动")
 
 # ===== 引擎选择（环境变量唯一驱动；DA-10：默认值与 entrypoint/compose/.env.example 对齐 dashscope） =====
 ASR_ENGINE = os.environ.get("ASR_ENGINE", "dashscope").lower()

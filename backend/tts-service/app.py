@@ -97,16 +97,48 @@ app.add_middleware(
 
 # 最小兜底配置（config.yaml 缺失时保证服务可启动；完整默认矩阵以 config.yaml 为权威单源，
 # 不再与代码逐字复制——改配置只改 yaml，免重建）
+# DA-14：矩阵类兜底补最小运行项——synthesize 直索引 VOICE_PERSONAS["xiaoxing"]（默认 persona）
+# 与 EMOTION_INSTRUCT_MAP["neutral"]（情感直索引），空矩阵时“可启动但运行即 500”
 _FALLBACK_CONFIG = {
     "model": {
         "dashscope": "cosyvoice-v3-flash",
         "edge_fallback": True,
     },
-    "voice_personas": {},
+    "voice_personas": {
+        "xiaoxing": {
+            "name": "小星",
+            "desc": "温暖的邻家姐姐",
+            "gender": "female",
+            "speed": 1.0,
+            "dashscope_voice": "longxing_v3",
+            "edge_voice": "zh-CN-XiaoxiaoNeural",
+            "dialect_capable": False,
+            "emotion_capable": False,
+        },
+    },
     "dialects": {},
     "native_dialect_voices": {},
-    "emotion_instruct_map": {},
+    "emotion_instruct_map": {
+        "neutral": "你正在进行闲聊互动，你说话的情感是neutral。",
+    },
 }
+
+
+def _validate_runtime_contract(config: dict) -> None:
+    """DA-14：启动契约校验（fail-fast）。
+
+    config.yaml 缺失/损坏时由兜底矩阵兜底；但 yaml 显式置 null 或提供部分矩阵时
+    （deep_merge：list/标量整体替换、dict 深合并）兜底可能被覆盖/缺键——synthesize 直索引
+    键必 KeyError。启动期即拒绝，不做“带病运行”。
+    """
+    personas = config.get("voice_personas") or {}
+    if "xiaoxing" not in personas:
+        raise RuntimeError(
+            "TTS 配置缺失默认音色 xiaoxing（synthesize 默认 persona 直索引键），拒绝启动")
+    instructs = config.get("emotion_instruct_map") or {}
+    if "neutral" not in instructs:
+        raise RuntimeError(
+            "TTS 配置缺失 neutral 情感指令（build_instruction 直索引键），拒绝启动")
 
 
 def load_config(config_path: str = None) -> dict:
@@ -126,6 +158,8 @@ def load_config(config_path: str = None) -> dict:
 
 # 加载配置（模块级，启动时执行一次）
 _CONFIG = load_config()
+# DA-14：启动契约校验（fail-fast，空矩阵拒绝启动而非带病运行）
+_validate_runtime_contract(_CONFIG)
 
 # ===== 引擎装配（DC-011：适配器层 + 降级策略；引擎实现细节见 tts_engines.py / tts_policy.py） =====
 
