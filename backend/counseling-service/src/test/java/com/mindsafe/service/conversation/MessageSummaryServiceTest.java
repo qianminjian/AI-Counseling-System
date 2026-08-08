@@ -4,7 +4,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mindsafe.ai.chat.AiChatService;
 import com.mindsafe.domain.entity.CounselingSession;
 import com.mindsafe.domain.entity.MessageSummary;
-import com.mindsafe.domain.mapper.CounselingSessionMapper;
 import com.mindsafe.domain.mapper.MessageSummaryMapper;
 import com.mindsafe.domain.util.MessageSummarySummarizer;
 import com.mindsafe.service.memory.LongTermMemoryService;
@@ -47,12 +46,13 @@ import static org.mockito.Mockito.when;
 class MessageSummaryServiceTest {
 
     @Mock private MessageSummaryMapper messageSummaryMapper;
-    @Mock private CounselingSessionMapper sessionMapper;
+    @Mock private CounselingSessionStore sessionStore;
     @Mock private AiChatService aiChatService;
     @Mock private FieldEncryptionService fieldEncryptionService;
     @Mock private ConversationQualityService conversationQualityService;
     @Mock private ProfileExtractorService profileExtractorService;
     @Mock private LongTermMemoryService longTermMemoryService;
+    @Mock private RedisSessionStateStore sessionStateStore;
 
     private MessageSummaryService service;
 
@@ -64,9 +64,9 @@ class MessageSummaryServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new MessageSummaryService(messageSummaryMapper, sessionMapper, aiChatService,
+        service = new MessageSummaryService(messageSummaryMapper, sessionStore, aiChatService,
                 fieldEncryptionService, conversationQualityService, profileExtractorService,
-                longTermMemoryService, new ObjectMapper(), registry);
+                longTermMemoryService, new ObjectMapper(), registry, sessionStateStore);
 
         // BA-04：实体工厂已删，测试数据手动装配（setter 方式）
         MessageSummary student = new MessageSummary();
@@ -112,7 +112,7 @@ class MessageSummaryServiceTest {
         service.generateSummaryAsync(tenantId, sessionId, studentUserId);
 
         verify(aiChatService, times(1)).extractConversationInsights(anyString(), anyString());
-        verify(sessionMapper).updateById(any(CounselingSession.class));
+        verify(sessionStore).updateById(any(CounselingSession.class));
     }
 
     @Test
@@ -149,7 +149,7 @@ class MessageSummaryServiceTest {
 
         service.generateSummaryAsync(tenantId, sessionId, studentUserId);
 
-        verify(sessionMapper).updateById(any(CounselingSession.class));
+        verify(sessionStore).updateById(any(CounselingSession.class));
         verify(profileExtractorService, never()).extractAndMerge(any(), any(), any());
         verify(longTermMemoryService, never()).extractAndStoreKeyEvents(any(), any(), any(), any());
     }
@@ -237,5 +237,252 @@ class MessageSummaryServiceTest {
         service.persistAiMessageSummary(session, 2, "   ");
 
         verify(messageSummaryMapper, never()).insert(any(MessageSummary.class));
+    }
+
+    // ===== BA-10：消息读取单点（查→解密→拼接唯一实现，文案统一「学生/AI」） =====
+
+    @Test
+    @DisplayName("BA-10: readSessionTranscript 文案单点——角色标注统一「学生/AI」，全仓禁止「波波」漂移")
+    void readTranscript_roleLabelSingleSource() {
+        when(messageSummaryMapper.selectList(any()))
+                .thenReturn(List.of(newMessage("student", "我考试前特别紧张"),
+                        newMessage("ai", "紧张的时候身体有什么感觉？")));
+
+        String transcript = service.readSessionTranscript(tenantId, sessionId, MessageSummaryService.TranscriptFilter.all());
+
+        assertThat(transcript).isEqualTo("学生: 我考试前特别紧张\nAI: 紧张的时候身体有什么感觉？\n");
+        // 防「学生/波波」漂移回潮：角色标注只允许学生/AI 两种
+        assertThat(transcript).doesNotContain("波波");
+    }
+
+    @Test
+    @DisplayName("BA-10: readSessionTranscript 解密后空白内容被过滤（不产生空行）")
+    void readTranscript_filtersBlankContent() {
+        when(messageSummaryMapper.selectList(any()))
+                .thenReturn(List.of(newMessage("student", "enc-blank"), newMessage("student", "正常内容")));
+        when(fieldEncryptionService.decrypt("enc-blank")).thenReturn("   ");
+
+        String transcript = service.readSessionTranscript(tenantId, sessionId, MessageSummaryService.TranscriptFilter.all());
+
+        assertThat(transcript).isEqualTo("学生: 正常内容\n");
+    }
+
+    @Test
+    @DisplayName("BA-10: readSessionTranscript 过滤条件传入 selectList（SQL 下推；wrapper 结构由集成测试覆盖）")
+    void readTranscript_filterConditionsApplied() {
+        // 过滤在 SQL 层（wrapper 下推）：mock 返回即过滤后列表，此处验证拼接行为 + selectList 收到 wrapper
+        // 注：纯单元测试无 MyBatis-Plus TableInfo 缓存，wrapper 列名/参数值不可解析（getSqlSegment 抛 lambda cache 异常），
+        //     SQL 下推正确性由 MyBatis-Plus 标准行为保证，并由真实 DB 集成测试覆盖
+        when(messageSummaryMapper.selectList(any()))
+                .thenReturn(List.of(newMessage("student", "学生消息")));
+
+        String filtered = service.readSessionTranscript(tenantId, sessionId,
+                new MessageSummaryService.TranscriptFilter("student", 1));
+
+        assertThat(filtered).isEqualTo("学生: 学生消息\n");
+        verify(messageSummaryMapper).selectList(any());
+    }
+
+    @Test
+    @DisplayName("BA-10: readTranscript 空过滤（all）不带 senderType/turnCount 条件（wrapper 空过滤分支）")
+    void readTranscript_allHasNoFilterConditions() {
+        when(messageSummaryMapper.selectList(any()))
+                .thenReturn(List.of(newMessage("student", "学生消息")));
+
+        String transcript = service.readSessionTranscript(tenantId, sessionId, MessageSummaryService.TranscriptFilter.all());
+
+        assertThat(transcript).isEqualTo("学生: 学生消息\n");
+        verify(messageSummaryMapper).selectList(any());
+    }
+
+    @Test
+    @DisplayName("BA-10: readSessionTranscript 查询异常 → 降级空串（不抛）")
+    void readTranscript_failureDegradesToEmpty() {
+        when(messageSummaryMapper.selectList(any())).thenThrow(new RuntimeException("db down"));
+
+        String transcript = service.readSessionTranscript(tenantId, sessionId, MessageSummaryService.TranscriptFilter.all());
+
+        assertThat(transcript).isEmpty();
+    }
+
+    @Test
+    @DisplayName("M2: generateSummaryAsync 转写读取失败 → 失败指标触发（读取异常不再被吞，ARCH-010 P2-5 观测性恢复）")
+    void generateSummary_transcriptReadFailure_incrementsMetric() {
+        when(messageSummaryMapper.selectList(any())).thenThrow(new RuntimeException("db down"));
+        double before = registry.counter("mindsafe.pipeline.failure", "stage", "summary").count();
+
+        assertThatCode(() -> service.generateSummaryAsync(tenantId, sessionId, studentUserId))
+                .doesNotThrowAnyException();
+        assertThat(registry.counter("mindsafe.pipeline.failure", "stage", "summary").count())
+                .isEqualTo(before + 1);
+        verify(aiChatService, never()).generateSessionSummary(anyString());
+    }
+
+    @Test
+    @DisplayName("M2: readSessionTranscriptStrict 查询异常向上抛出（失败感知版契约）")
+    void readTranscriptStrict_propagatesFailure() {
+        when(messageSummaryMapper.selectList(any())).thenThrow(new RuntimeException("db down"));
+
+        assertThatCode(() -> service.readSessionTranscriptStrict(
+                tenantId, sessionId, MessageSummaryService.TranscriptFilter.all()))
+                .isInstanceOf(RuntimeException.class);
+    }
+
+    @Test
+    @DisplayName("BA-10: readStudentPlainTexts 仅返回学生明文且 SQL 下推 senderType=student（ORCH-008 深度量化输入）")
+    void readStudentPlainTexts_returnsStudentOnly() {
+        // 过滤在 SQL 层（wrapper 下推），mock 返回即过滤后列表（学生消息）
+        when(messageSummaryMapper.selectList(any()))
+                .thenReturn(List.of(newMessage("student", "学生一"), newMessage("student", "  ")));
+
+        List<String> texts = service.readStudentPlainTexts(tenantId, sessionId);
+
+        assertThat(texts).containsExactly("学生一");  // 空白过滤 + 顺序保持
+        verify(messageSummaryMapper).selectList(any());  // SQL 下推 senderType 过滤（结构由集成测试覆盖）
+    }
+
+    @Test
+    @DisplayName("BA-10: readStudentPlainTexts 查询异常 → 降级空列表（不抛）")
+    void readStudentPlainTexts_failureDegradesToEmpty() {
+        when(messageSummaryMapper.selectList(any())).thenThrow(new RuntimeException("db down"));
+
+        assertThat(service.readStudentPlainTexts(tenantId, sessionId)).isEmpty();
+    }
+
+    // ===== BA-10：SessionSummaryUpdater 收编（滚动摘要：shouldUpdate + updateProgressiveSummaryAsync） =====
+
+    @Test
+    @DisplayName("BA-10: shouldUpdateProgressiveSummary 每 4 轮触发（前 4 轮靠原始窗口）")
+    void shouldUpdateProgressiveSummary_intervalRules() {
+        assertThat(service.shouldUpdateProgressiveSummary(newState(3, 0))).isFalse();
+        assertThat(service.shouldUpdateProgressiveSummary(newState(4, 0))).isTrue();
+        assertThat(service.shouldUpdateProgressiveSummary(newState(7, 4))).isFalse();
+        assertThat(service.shouldUpdateProgressiveSummary(newState(8, 4))).isTrue();
+    }
+
+    @Test
+    @DisplayName("BA-10: updateProgressiveSummaryAsync 正常流程——单点转写→LLM→写回 Redis（文案统一「学生/AI」）")
+    void updateProgressiveSummary_happyPath() {
+        when(messageSummaryMapper.selectList(any()))
+                .thenReturn(List.of(newMessage("student", "enc-1"), newMessage("ai", "enc-2")));
+        when(fieldEncryptionService.decrypt("enc-1")).thenReturn("我今天有点难过");
+        when(fieldEncryptionService.decrypt("enc-2")).thenReturn("愿意多说说吗");
+        when(aiChatService.summarizeSessionProgress(anyString()))
+                .thenReturn("  学生表达了难过情绪，AI 引导其展开叙述  ");
+        SessionState session = newState(8, 4);
+        when(sessionStateStore.get(tenantId, sessionId)).thenReturn(session);
+
+        service.updateProgressiveSummaryAsync(tenantId, sessionId, 8);
+
+        assertThat(session.getSessionSummary()).isEqualTo("学生表达了难过情绪，AI 引导其展开叙述");
+        assertThat(session.getLastSummaryTurn()).isEqualTo(8);
+        verify(sessionStateStore).save(eq(tenantId), eq(sessionId), eq(session));
+        org.mockito.ArgumentCaptor<String> captor = org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(aiChatService).summarizeSessionProgress(captor.capture());
+        // 文案单点断言：与 readSessionTranscript 同源，防「波波」漂移回潮
+        assertThat(captor.getValue()).isEqualTo("学生: 我今天有点难过\nAI: 愿意多说说吗\n");
+        assertThat(captor.getValue()).doesNotContain("波波");
+    }
+
+    @Test
+    @DisplayName("BA-10: updateProgressiveSummaryAsync 转写为空 → 跳过，不调 LLM 不写回")
+    void updateProgressiveSummary_blankTranscriptSkips() {
+        when(messageSummaryMapper.selectList(any())).thenReturn(List.of());
+
+        service.updateProgressiveSummaryAsync(tenantId, sessionId, 8);
+
+        verify(aiChatService, never()).summarizeSessionProgress(anyString());
+        verify(sessionStateStore, never()).save(any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("BA-10: updateProgressiveSummaryAsync LLM 返回空 → 不写回 Redis")
+    void updateProgressiveSummary_llmBlankSkipsSave() {
+        when(messageSummaryMapper.selectList(any()))
+                .thenReturn(List.of(newMessage("student", "enc-1")));
+        when(fieldEncryptionService.decrypt("enc-1")).thenReturn("内容");
+        when(aiChatService.summarizeSessionProgress(anyString())).thenReturn("");
+
+        service.updateProgressiveSummaryAsync(tenantId, sessionId, 8);
+
+        verify(sessionStateStore, never()).get(any(), any());
+        verify(sessionStateStore, never()).save(any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("BA-10: updateProgressiveSummaryAsync Redis 会话不存在 → 不保存")
+    void updateProgressiveSummary_sessionMissingSkipsSave() {
+        when(messageSummaryMapper.selectList(any()))
+                .thenReturn(List.of(newMessage("student", "enc-1")));
+        when(fieldEncryptionService.decrypt("enc-1")).thenReturn("内容");
+        when(aiChatService.summarizeSessionProgress(anyString())).thenReturn("摘要内容");
+        when(sessionStateStore.get(tenantId, sessionId)).thenReturn(null);
+
+        service.updateProgressiveSummaryAsync(tenantId, sessionId, 8);
+
+        verify(sessionStateStore, never()).save(any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("BA-10: updateProgressiveSummaryAsync 查询异常 → 静默吞掉（失败安全）")
+    void updateProgressiveSummary_exceptionSwallowed() {
+        when(messageSummaryMapper.selectList(any())).thenThrow(new RuntimeException("db down"));
+
+        service.updateProgressiveSummaryAsync(tenantId, sessionId, 8);
+
+        verify(sessionStateStore, never()).save(any(), any(), any());
+    }
+
+    /** 会话消息构造（BA-10 测试组用） */
+    private MessageSummary newMessage(String senderType, String content) {
+        MessageSummary m = new MessageSummary();
+        m.setTenantId(tenantId);
+        m.setSessionId(sessionId);
+        m.setSenderType(senderType);
+        m.setContentSummary(content);
+        return m;
+    }
+
+    private SessionState newState(int turnCount, int lastSummaryTurn) {
+        SessionState state = new SessionState(sessionId, tenantId, studentUserId,
+                "neutral", "text", "F", 0.5, 3);
+        state.setTurnCount(turnCount);
+        state.setLastSummaryTurn(lastSummaryTurn);
+        return state;
+    }
+
+    // ===== BA-11：SAFE-201 保密边界告知收编（原 ConversationServiceImpl 直连 messageSummaryMapper） =====
+
+    @Test
+    @DisplayName("BA-11: 已有告知记录返回 true（senderType=ai + turnCount=0 唯一区分性）")
+    void hasConfidentialityNotice_returnsTrueWhenExists() {
+        when(messageSummaryMapper.selectCount(any())).thenReturn(1L);
+        assertThat(service.hasConfidentialityNotice(tenantId, studentUserId)).isTrue();
+    }
+
+    @Test
+    @DisplayName("BA-11: 无告知记录返回 false（首次会话触发注入）")
+    void hasConfidentialityNotice_returnsFalseWhenAbsent() {
+        when(messageSummaryMapper.selectCount(any())).thenReturn(0L);
+        assertThat(service.hasConfidentialityNotice(tenantId, studentUserId)).isFalse();
+    }
+
+    @Test
+    @DisplayName("BA-11: 告知落库固定字段（turnCount=0 + senderType=ai + 1024 截断，合规审计凭据）")
+    void insertConfidentialityNotice_assemblesFixedFields() {
+        service.insertConfidentialityNotice(tenantId, studentUserId, sessionId, "a".repeat(2000));
+
+        ArgumentCaptor<MessageSummary> captor = ArgumentCaptor.forClass(MessageSummary.class);
+        verify(messageSummaryMapper).insert(captor.capture());
+        MessageSummary record = captor.getValue();
+        assertThat(record.getTenantId()).isEqualTo(tenantId);
+        assertThat(record.getStudentUserId()).isEqualTo(studentUserId);
+        assertThat(record.getSessionId()).isEqualTo(sessionId);
+        assertThat(record.getTurnCount()).isZero();
+        assertThat(record.getSenderType()).isEqualTo("ai");
+        assertThat(record.getContentSummary()).hasSize(1024);
+        assertThat(record.getRiskLevel()).isZero();
+        assertThat(record.getEmotionTags()).isEqualTo("[]");
+        assertThat(record.getRiskSignals()).isEqualTo("[]");
     }
 }

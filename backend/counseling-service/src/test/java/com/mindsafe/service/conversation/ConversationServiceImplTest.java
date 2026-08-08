@@ -19,7 +19,6 @@ import com.mindsafe.common.enums.RiskLevel;
 import com.mindsafe.domain.entity.CounselingSession;
 import com.mindsafe.domain.entity.MessageSummary;
 import com.mindsafe.domain.entity.User;
-import com.mindsafe.domain.mapper.CounselingSessionMapper;
 import com.mindsafe.domain.mapper.MessageSummaryMapper;
 import com.mindsafe.domain.mapper.UserMapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -53,6 +52,7 @@ import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -70,7 +70,7 @@ class ConversationServiceImplTest {
     private AiChatService aiChatService;
     private ConversationRiskProcessor riskProcessor;
     private PiiDesensitizer piiDesensitizer;
-    private CounselingSessionMapper sessionMapper;
+    private CounselingSessionStore sessionStore;
     private MessageSummaryMapper messageSummaryMapper;
     private UserMapper userMapper;
     private StudentProfileService profileService;
@@ -86,7 +86,6 @@ class ConversationServiceImplTest {
     private SessionEndAnalyticsService sessionEndAnalyticsService;
     private RedisSessionStateStore sessionStateStore;
     private ConversationContextAgent contextAgent;
-    private SessionSummaryUpdater sessionSummaryUpdater;
 
     // ARCH-001 C1：新拆分组件（个人信息提取/提示词组装/主题关键词），真实实例走真实接线
     private PersonalInfoExtractor personalInfoExtractor;
@@ -95,6 +94,10 @@ class ConversationServiceImplTest {
 
     /** 测试用内存模拟 Redis 存储 */
     private final Map<UUID, SessionState> testSessionStore = new HashMap<>();
+
+    // BA-09：nudge 真值走 Redis 独立键（内存模拟：计数/时间戳与 SessionState 快照解耦）
+    private final Map<UUID, Integer> testNudgeCounts = new HashMap<>();
+    private final Map<UUID, Instant> testNudgeAts = new HashMap<>();
 
     private ConversationServiceImpl service;
     private MessageSummaryService messageSummaryService;
@@ -107,7 +110,8 @@ class ConversationServiceImplTest {
         aiChatService = mock(AiChatService.class);
         riskProcessor = mock(ConversationRiskProcessor.class);
         piiDesensitizer = mock(PiiDesensitizer.class);
-        sessionMapper = mock(CounselingSessionMapper.class);
+        // BA-11：会话 DB 读写收口仓储（原 3 Mapper 直连降至 UserMapper 单点）
+        sessionStore = mock(CounselingSessionStore.class);
         messageSummaryMapper = mock(MessageSummaryMapper.class);
         userMapper = mock(UserMapper.class);
         profileService = mock(StudentProfileService.class);
@@ -124,7 +128,6 @@ class ConversationServiceImplTest {
         sessionEndAnalyticsService = mock(SessionEndAnalyticsService.class);
         sessionStateStore = mock(RedisSessionStateStore.class);
         contextAgent = mock(ConversationContextAgent.class);
-        sessionSummaryUpdater = mock(SessionSummaryUpdater.class);
         // ARCH-001 C1：真实实例走真实接线（纯规则/组装无副作用）
         personalInfoExtractor = new PersonalInfoExtractor();
         themeEvolutionEngine = new ThemeEvolutionEngine();
@@ -144,8 +147,25 @@ class ConversationServiceImplTest {
             return null;
         }).when(sessionStateStore).remove(any(UUID.class), any(UUID.class));
 
-        // T5：原子护栏默认放行（并发/计数兑底由 RedisSessionStateStoreTest 覆盖；本测试验证编排透传）
-        when(sessionStateStore.tryNudge(any(UUID.class), any(UUID.class))).thenReturn(true);
+        // BA-09：nudge 预判/展示统一读 Redis 独立键（getNudgeCount/getLastNudgeAt）；
+        // tryNudge 模拟 Lua 原子语义（计数+时间戳一并更新）；resetNudgeCounter 模拟清零
+        when(sessionStateStore.getNudgeCount(any(UUID.class), any(UUID.class)))
+                .thenAnswer(inv -> testNudgeCounts.getOrDefault(inv.getArgument(1), 0));
+        when(sessionStateStore.getLastNudgeAt(any(UUID.class), any(UUID.class)))
+                .thenAnswer(inv -> testNudgeAts.get(inv.getArgument(1)));
+        when(sessionStateStore.tryNudge(any(UUID.class), any(UUID.class)))
+                .thenAnswer(inv -> {
+                    UUID sid = inv.getArgument(1);
+                    int count = testNudgeCounts.getOrDefault(sid, 0);
+                    if (count >= new NudgeProperties().getMaxCount()) return false;
+                    testNudgeCounts.put(sid, count + 1);
+                    testNudgeAts.put(sid, Instant.now());
+                    return true;
+                });
+        org.mockito.Mockito.doAnswer(inv -> {
+            testNudgeCounts.put(inv.getArgument(1), 0);
+            return null;
+        }).when(sessionStateStore).resetNudgeCounter(any(UUID.class), any(UUID.class));
 
         // P0-2: ConversationRiskProcessor 默认行为（无风险正常流程）
         when(riskProcessor.detectKeywordRisk(anyString())).thenReturn(RiskDetectionResult.safe());
@@ -171,12 +191,12 @@ class ConversationServiceImplTest {
         com.mindsafe.service.security.FieldEncryptionService plainEnc =
                 new com.mindsafe.service.security.FieldEncryptionService(
                         false, "", 1, "", new org.springframework.core.env.StandardEnvironment());
-        messageSummaryService = new MessageSummaryService(messageSummaryMapper, sessionMapper,
+        messageSummaryService = new MessageSummaryService(messageSummaryMapper, sessionStore,
                 aiChatService, plainEnc, conversationQualityService, profileExtractorService, longTermMemoryService,
-                new ObjectMapper(), new SimpleMeterRegistry());
+                new ObjectMapper(), new SimpleMeterRegistry(), sessionStateStore);
 
         service = new ConversationServiceImpl(aiChatService,
-                riskProcessor, piiDesensitizer, sessionMapper, messageSummaryMapper,
+                riskProcessor, piiDesensitizer, sessionStore,
                 userMapper, profileService,
                 usageTimeLimitService, longTermMemoryService,
                 ragAdvisorService,
@@ -187,7 +207,7 @@ class ConversationServiceImplTest {
                 crisisResourceProvider,
                 allianceEnhancer, cbtStageRouter,
                 sessionEndAnalyticsService, sessionStateStore,
-                contextAgent, sessionSummaryUpdater, new ObjectMapper(),
+                contextAgent, new ObjectMapper(),
                 personalInfoExtractor, promptAssemblyService, themeEvolutionEngine, new NudgeProperties());
     }
 
@@ -207,12 +227,9 @@ class ConversationServiceImplTest {
         return info.sessionId();
     }
 
-    /** 模拟会话未 escalated */
+    /** 模拟会话未 escalated（BA-11：判定收口仓储 isEscalated） */
     private void mockSessionActive(UUID sessionId) {
-        CounselingSession entity = new CounselingSession();
-        entity.setSessionId(sessionId);
-        entity.setSessionStatus("active");
-        when(sessionMapper.selectById(sessionId)).thenReturn(entity);
+        when(sessionStore.isEscalated(sessionId)).thenReturn(false);
     }
 
     // ===== 会话状态工具：直接操作 testSessionStore 中的 SessionState =====
@@ -222,9 +239,8 @@ class ConversationServiceImplTest {
     }
 
     private void forceNudgeState(UUID sessionId, int count, Instant lastNudgeAt) {
-        SessionState state = testSessionStore.get(sessionId);
-        state.setNudgeCount(count);
-        state.setLastNudgeAt(lastNudgeAt);
+        testNudgeCounts.put(sessionId, count);
+        testNudgeAts.put(sessionId, lastNudgeAt);
     }
 
     @Nested
@@ -365,19 +381,19 @@ class ConversationServiceImplTest {
                     new com.mindsafe.service.security.FieldEncryptionService(
                             true, TEST_KEY, 1, "", new org.springframework.core.env.StandardEnvironment());
             ConversationServiceImpl keyedService = new ConversationServiceImpl(aiChatService,
-                    riskProcessor, piiDesensitizer, sessionMapper, messageSummaryMapper,
+                    riskProcessor, piiDesensitizer, sessionStore,
                     userMapper, profileService,
                     usageTimeLimitService, longTermMemoryService,
                     ragAdvisorService,
                     new PromptOrchestrationService(new EntryMoodStrategyResolver(), new EmotionStateMachine()),
-                    new MessageSummaryService(messageSummaryMapper, sessionMapper,
+                    new MessageSummaryService(messageSummaryMapper, sessionStore,
                             aiChatService, keyedEnc, conversationQualityService, profileExtractorService, longTermMemoryService,
-                            new ObjectMapper(), new SimpleMeterRegistry()),
+                            new ObjectMapper(), new SimpleMeterRegistry(), sessionStateStore),
                     keyedEnc,
                     crisisResourceProvider,
                     allianceEnhancer, cbtStageRouter,
                 sessionEndAnalyticsService, sessionStateStore,
-                contextAgent, sessionSummaryUpdater, new ObjectMapper(),
+                contextAgent, new ObjectMapper(),
                 personalInfoExtractor, promptAssemblyService, themeEvolutionEngine, new NudgeProperties());
 
             User user = new User();
@@ -426,10 +442,7 @@ class ConversationServiceImplTest {
         @DisplayName("会话已 escalated（红色风险接管）→ 空流，不做日常暖场")
         void escalated_empty() {
             UUID sessionId = createSession("happy");
-            CounselingSession entity = new CounselingSession();
-            entity.setSessionId(sessionId);
-            entity.setSessionStatus("escalated");
-            when(sessionMapper.selectById(sessionId)).thenReturn(entity);
+            when(sessionStore.isEscalated(sessionId)).thenReturn(true);
 
             List<StreamMessageEvent> events = service
                     .sendNudgeStream(tenantId, studentId, sessionId, 60)
@@ -493,15 +506,18 @@ class ConversationServiceImplTest {
             when(aiChatService.chatProactive(any(), any(), any(), any()))
                     .thenReturn(Flux.just(StreamMessageEvent.token("在呢")));
 
-            // 第一次暖场成功
+            // 第一次暖场成功（Lua 原子计数+时间戳：计数 1、at=now）
             service.sendNudgeStream(tenantId, studentId, sessionId, 30).collectList().block();
-            // 立即第二次 → 间隔不足被拦截
+            // 立即第二次 → 间隔不足被拦截（BA-09：预判读 Redis 真值，非快照）
             List<StreamMessageEvent> second = service
                     .sendNudgeStream(tenantId, studentId, sessionId, 55)
                     .collectList().block();
 
             assertThat(second).isEmpty();
             verify(aiChatService, times(1)).chatProactive(any(), any(), any(), any());
+            // Redis 路径断言：护栏判定读真值键（getNudgeCount + getLastNudgeAt），不读 SessionState 快照
+            verify(sessionStateStore, atLeastOnce()).getNudgeCount(eq(tenantId), eq(sessionId));
+            verify(sessionStateStore, atLeastOnce()).getLastNudgeAt(eq(tenantId), eq(sessionId));
         }
 
         @Test
@@ -624,7 +640,7 @@ class ConversationServiceImplTest {
 
             // 会话状态升级 escalated
             ArgumentCaptor<CounselingSession> captor = ArgumentCaptor.forClass(CounselingSession.class);
-            verify(sessionMapper, times(2)).updateById(captor.capture());
+            verify(sessionStore, times(2)).updateById(captor.capture());
             assertThat(captor.getAllValues())
                     .anyMatch(s -> "escalated".equals(s.getSessionStatus()));
         }
