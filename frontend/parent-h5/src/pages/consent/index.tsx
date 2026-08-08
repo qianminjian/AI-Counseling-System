@@ -31,7 +31,8 @@ export default function ConsentPage() {
     setLoading(true)
     try {
       const res = await withdrawConsent(selectedChild.userId)
-      setResult((res.data || res) as WithdrawResult)
+      // DOC-073 F1（doing/77 §24）：请求器统一 success 契约返回完整信封，删防御双处理
+      setResult(res.data as WithdrawResult)
     } catch (err) {
       setResult({ error: err instanceof Error ? err.message : '操作失败' })
     } finally {

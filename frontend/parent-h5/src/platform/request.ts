@@ -4,7 +4,8 @@
  * - Bearer 注入 + JSON 编解码
  * - 401 → refreshTokens（注入 fetchImpl）成功 → 重放原请求一次（_retried 防环）
  * - 401 刷新失败 → onSessionExpired 统一登出决策点（缺省 = shared handleSessionExpired + locationRedirect）
- * - 非 401 业务错误 → toApiError；网络异常 → 原样 reject
+ * - 成功判定为 success 契约（DOC-073 F1，doing/77 §24）：success!==true → toApiError；HTTP 非 2xx 按状态码兜底 message
+ * - 网络异常 → 原样 reject
  * P1 小程序端：换 Taro.request 实现（同接口），页面层零改动
  */
 import { refreshTokens } from '../../../shared/src/auth-transport/refresh'
@@ -77,11 +78,13 @@ export function createPlatformRequest(deps: PlatformRequestDeps): PlatformReques
       expire()
     }
 
-    if (!res.ok) {
-      const body = (await res.json().catch(() => ({}))) as PlatformApiResponse
+    const body = (await res.json().catch(() => ({}))) as PlatformApiResponse
+    // DOC-073 F1（doing/77 §24）：成功判定统一为 success 契约（对齐 shared apiError 语义）
+    // 后端业务错误 → 4xx/5xx + 信封（success:false + code）；HTTP 非 2xx 且无信封 → 按状态码兜底 message
+    if (!body.success) {
       throw toApiError({ code: body.code, message: body.message || `请求失败 (${res.status})` })
     }
 
-    return res.json() as Promise<PlatformApiResponse<T>>
+    return body as PlatformApiResponse<T>
   }
 }

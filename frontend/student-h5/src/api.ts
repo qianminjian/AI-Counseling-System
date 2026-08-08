@@ -8,7 +8,6 @@
 import { readLocalStorageSafe, writeLocalStorageSafe } from './utils/storage'
 // DC-005：认证传输三端收敛为共享模块（SPEC §19）——token 存取/刷新/authFetch/登出/错误模型
 import { createSessionStorageTokens } from '../../shared/src/auth-transport/tokenStorage'
-import { refreshTokens } from '../../shared/src/auth-transport/refresh'
 import { createAuthFetch } from '../../shared/src/auth-transport/authFetch'
 import { handleSessionExpired } from '../../shared/src/auth-transport/sessionExpired'
 import { ApiError, toApiError } from '../../shared/src/auth-transport/apiError'
@@ -150,43 +149,45 @@ export function isConsentRequired(err: unknown): boolean {
 }
 
 /**
- * 通用 API 请求（自动携带 JWT + 401 自动刷新）
+ * 通用 API 请求（自动携带 JWT + 401 自动刷新；DC-005 认证逻辑在 authFetch 接缝内）
+ * 语义：success!==true → toApiError（shared 错误模型）；成功返回 json.data
  */
 export async function api(path: string, options: RequestInit & { headers?: Record<string, string> } = {}) {
-  const token = getToken()
-  const res = await fetch(`/api/v1${path}`, {
+  const res = await authFetch(`/api/v1${path}`, {
     ...options,
     headers: {
       'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...options.headers,
     },
   })
 
   if (res.status === 401) {
-    // 尝试刷新（DC-005：共享实现，三端零副本）
-    if (await refreshTokens(storage)) {
-      // 重试原请求
-      const newToken = getToken()
-      const retry = await fetch(`/api/v1${path}`, {
-        ...options,
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${newToken}`,
-          ...options.headers,
-        },
-      })
-      const json = await retry.json()
-      if (!json.success) throw toApiError(json)
-      return json.data
-    }
-    // DC-005：统一 401 登出决策点（clear + reload + throw，后续代码不可达）
+    // authFetch 已尝试刷新+重放；仍 401 → 刷新失败 → 统一登出决策点（clear + reload + throw，后续代码不可达）
     handleSessionExpired(storage)
   }
 
   const json = await res.json()
   if (!json.success) {
     throw toApiError(json)
+  }
+  return json.data
+}
+
+/**
+ * 公开端点请求（登录前/无需认证场景，DOC-073 F2，doing/77 §24）
+ * 与 api() 同构但不注入 token、不触发 401 刷新；错误契约一处定义（success!==true → toApiError）
+ */
+async function publicFetch<T = unknown>(path: string, options: RequestInit = {}, fallbackMessage = '请求失败'): Promise<T> {
+  const res = await fetch(`/api/v1${path}`, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  })
+  const json = await res.json()
+  if (!json.success) {
+    throw toApiError({ code: json.code, message: json.message || fallbackMessage })
   }
   return json.data
 }
@@ -219,32 +220,20 @@ export interface AuthResult {
  * 试用注册
  */
 export async function trialRegister(data: TrialRegisterData): Promise<AuthResult> {
-  const res = await fetch('/api/v1/auth/trial/register', {
+  return publicFetch<AuthResult>('/auth/trial/register', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
-  })
-  const json = await res.json()
-  if (!json.success) {
-    throw new Error(json.message || '注册失败')
-  }
-  return json.data
+  }, '注册失败')
 }
 
 /**
  * PIN 码快捷登录（学生用昵称 + 4-6 位数字 PIN）
  */
 export async function pinLogin(pseudonym: string, pin: string): Promise<AuthResult> {
-  const res = await fetch('/api/v1/auth/pin-login', {
+  return publicFetch<AuthResult>('/auth/pin-login', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ pseudonym, pin }),
-  })
-  const json = await res.json()
-  if (!json.success) {
-    throw new Error(json.message || '登录失败')
-  }
-  return json.data
+  }, '登录失败')
 }
 
 /**
@@ -270,16 +259,10 @@ export async function issueVoiceCredential(): Promise<string> {
  * 声纹登录：本地声纹比对通过后，用设备凭证换取正式双 token
  */
 export async function voiceLogin(voiceCredential: string): Promise<AuthResult> {
-  const res = await fetch('/api/v1/auth/voice-login', {
+  return publicFetch<AuthResult>('/auth/voice-login', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ voiceCredential }),
-  })
-  const json = await res.json()
-  if (!json.success) {
-    throw new Error(json.message || '声纹登录失败')
-  }
-  return json.data
+  }, '声纹登录失败')
 }
 
 /**
@@ -314,10 +297,7 @@ export interface VoiceprintConfig {
  * 前端启动时调用，决定走 local 还是 remote 流程
  */
 export async function getVoiceprintConfig(): Promise<VoiceprintConfig> {
-  const res = await fetch('/api/v1/voiceprint/config')
-  const json = await res.json()
-  if (!json.success) throw new Error(json.message || '获取声纹配置失败')
-  return json.data
+  return publicFetch<VoiceprintConfig>('/voiceprint/config', undefined, '获取声纹配置失败')
 }
 
 /**
@@ -328,14 +308,10 @@ export async function getVoiceprintConfig(): Promise<VoiceprintConfig> {
  * tenantId 来源于录入时后端签发（remoteVoiceprintEnroll 响应），本地暂存后在此回传
  */
 export async function remoteVoiceprintVerify(embeddings: number[][], tenantId: string): Promise<AuthResult & { matched: boolean }> {
-  const res = await fetch('/api/v1/voiceprint/verify', {
+  return publicFetch<AuthResult & { matched: boolean }>('/voiceprint/verify', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ tenantId, embeddings }),
-  })
-  const json = await res.json()
-  if (!json.success) throw new Error(json.message || '声纹验证失败')
-  return json.data
+  }, '声纹验证失败')
 }
 
 /**

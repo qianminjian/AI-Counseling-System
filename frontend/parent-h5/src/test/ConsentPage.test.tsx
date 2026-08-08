@@ -130,8 +130,8 @@ describe('ConsentPage', () => {
     expect(screen.getByText('小红（）')).toBeInTheDocument()
   })
 
-  it('撤回返回无 data 形态时兼容（message 兜底）', async () => {
-    vi.mocked(withdrawConsent).mockResolvedValue({ message: '兜底成功' })
+  it('撤回成功 data 携带 message 时透传显示（DOC-073 F1：请求器统一 success 信封）', async () => {
+    vi.mocked(withdrawConsent).mockResolvedValue({ success: true, data: { message: '兜底成功' } })
     const user = userEvent.setup()
     render(<ConsentPage />)
     await user.click(screen.getByText(/小明/))

@@ -122,6 +122,37 @@ describe('createPlatformRequest（PlatformRequest H5 实现）', () => {
     })
   })
 
+  // DOC-073 F1（doing/77 §24）：成功判定统一为 success 契约（对齐 shared apiError 语义）
+  it('HTTP 200 + success:false → toApiError 抛业务错误（不再当成功返回）', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { success: false, code: 4001, message: '邀请码已过期' }))
+    const request = createPlatformRequest(deps)
+    await expect(request('/parent/consent/withdraw', { method: 'POST' })).rejects.toMatchObject({
+      message: '邀请码已过期',
+      code: 4001,
+    })
+  })
+
+  it('HTTP 200 + success:true 无 data → 返回完整信封（message 透传，withdraw 场景）', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, {
+      success: true,
+      code: 0,
+      message: '已撤回同意，孩子账号已冻结。',
+      data: { studentUserId: 'c1', status: 'withdrawn', message: '已撤回同意，孩子账号已冻结。' },
+    }))
+    const request = createPlatformRequest(deps)
+    const res = await request<{ message?: string }>('/parent/consent/withdraw', { method: 'POST' })
+    expect(res.data).toMatchObject({ status: 'withdrawn', message: expect.stringContaining('已撤回同意') })
+    expect(res.success).toBe(true)
+  })
+
+  it('HTTP 200 + 非信封 body（success 缺失）→ 抛请求失败', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { weird: 'body' }))
+    const request = createPlatformRequest(deps)
+    await expect(request('/parent/report?x=1')).rejects.toMatchObject({
+      message: expect.stringContaining('请求失败'),
+    })
+  })
+
   it('非 401 且响应体非法 → 兜底状态码 message', async () => {
     fetchMock.mockResolvedValue(new Response('oops', { status: 500 }))
     const request = createPlatformRequest(deps)
