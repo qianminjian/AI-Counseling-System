@@ -2,7 +2,7 @@ package com.mindsafe.ai.safety;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.mindsafe.common.tenant.TenantContextHolder;
+import com.mindsafe.common.util.TextUtils;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -94,23 +94,10 @@ public class OutputReviewService {
         if (promptTemplate.isBlank() || fullReply == null || fullReply.isBlank()) {
             return;
         }
-        // A1（2026-08-05）：outputReviewExecutor 为手动线程池，不走 TaskDecorator——
-        // 提交时捕获调用线程的租户上下文/系统作用域，子线程执行前恢复、finally 清除；
-        // 否则 OutputSafetyReporterImpl 的 DB 写入（sessionMapper/risk_events）在无上下文下
-        // 触发租户行隔离 fail-fast，被异常兜底吞掉 → Layer2 留痕与 SAFE-202 召回静默失效。
-        UUID tenantId = TenantContextHolder.get();
-        boolean systemScope = TenantContextHolder.isSystemScope();
-        CompletableFuture.runAsync(() -> {
-            try {
-                if (tenantId != null) {
-                    TenantContextHolder.set(tenantId);
-                }
-                TenantContextHolder.setSystemScope(systemScope);
-                review(sessionId, fullReply, emotionTag);
-            } finally {
-                TenantContextHolder.clear();
-            }
-        }, outputReviewExecutor)
+        // BA-15：租户上下文传播由 outputReviewExecutor 的 TenantContextTaskDecorator 统一负责
+        // （历史 A1 手动捕获/恢复已收敛至装饰器；无上下文时租户行隔离 fail-fast 被兜底吞掉的
+        //  问题由装饰器在提交时捕获调用线程上下文解决）。
+        CompletableFuture.runAsync(() -> review(sessionId, fullReply, emotionTag), outputReviewExecutor)
                 .exceptionally(e -> {
                     log.error("Layer2 异步审查任务异常: sessionId={}", sessionId, e);
                     return null;
@@ -186,7 +173,7 @@ public class OutputReviewService {
      */
     ReviewOutcome parseReview(String raw) {
         try {
-            String json = stripCodeFence(raw);
+            String json = TextUtils.stripCodeFence(raw);
             JsonNode node = objectMapper.readTree(json);
             JsonNode decision = node.get("decision");
             if (decision == null) {
@@ -210,22 +197,6 @@ public class OutputReviewService {
     String parseDecision(String raw) {
         ReviewOutcome outcome = parseReview(raw);
         return outcome != null ? outcome.decision() : null;
-    }
-
-    /** 剥离 markdown 代码围栏（```json ... ```） */
-    private String stripCodeFence(String raw) {
-        String s = raw.trim();
-        if (s.startsWith("```")) {
-            int firstNewline = s.indexOf('\n');
-            if (firstNewline > 0) {
-                s = s.substring(firstNewline + 1);
-            }
-            if (s.endsWith("```")) {
-                s = s.substring(0, s.length() - 3);
-            }
-            s = s.trim();
-        }
-        return s;
     }
 
     private static String abbreviate(String s) {

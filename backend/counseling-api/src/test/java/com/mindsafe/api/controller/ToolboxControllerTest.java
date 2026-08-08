@@ -1,12 +1,13 @@
 package com.mindsafe.api.controller;
 
+import com.mindsafe.api.dto.toolbox.MoodCheckRequest;
 import com.mindsafe.api.security.JwtAuthenticationFilter.TenantContext;
 import com.mindsafe.common.dto.ApiResponse;
 import com.mindsafe.common.exception.BizException;
 import com.mindsafe.domain.entity.User;
 import com.mindsafe.service.auth.AuthUserService;
-import com.mindsafe.service.relaxation.RelaxationService;
 import com.mindsafe.service.toolbox.MoodCheckRecorder;
+import com.mindsafe.service.toolbox.MoodCheckService;
 import com.mindsafe.service.toolbox.ToolboxRegistry;
 import com.mindsafe.service.toolbox.ToolboxRegistry.ToolCategory;
 import com.mindsafe.service.toolbox.ToolboxRegistry.ToolDefinition;
@@ -32,12 +33,12 @@ import static org.mockito.Mockito.when;
  * <p>
  * BA-03（DOC-074）：recordMoodCheck 落库练习完成（relaxation_sessions，徽章数据源）；
  * BA-07：年级解析用户查询收敛 AuthUserService。
+ * BA-14：recordMoodCheck 编排下沉 MoodCheckService，Controller 薄壳（请求体 DTO + 错误抛 BizException）。
  */
 class ToolboxControllerTest {
 
     private ToolboxRegistry toolboxRegistry;
-    private MoodCheckRecorder moodCheckRecorder;
-    private RelaxationService relaxationService;
+    private MoodCheckService moodCheckService;
     private AuthUserService authUserService;
     private ToolboxController controller;
 
@@ -50,10 +51,9 @@ class ToolboxControllerTest {
     @BeforeEach
     void setUp() {
         toolboxRegistry = mock(ToolboxRegistry.class);
-        moodCheckRecorder = mock(MoodCheckRecorder.class);
-        relaxationService = mock(RelaxationService.class);
+        moodCheckService = mock(MoodCheckService.class);
         authUserService = mock(AuthUserService.class);
-        controller = new ToolboxController(toolboxRegistry, moodCheckRecorder, relaxationService, authUserService);
+        controller = new ToolboxController(toolboxRegistry, moodCheckService, authUserService);
     }
 
     private Authentication studentAuth(String gradeCode) {
@@ -158,72 +158,58 @@ class ToolboxControllerTest {
     }
 
     @Test
-    @DisplayName("recordMoodCheck 缺参数 → 400")
-    void recordMoodCheck_missingParam() {
-        ApiResponse<Map<String, Object>> resp = controller.recordMoodCheck(
-                Map.of("toolId", "breathing_box", "preMood", 3), studentAuth("G3"));
-
-        assertThat(resp.code()).isEqualTo(400);
-        assertThat(resp.message()).contains("缺少必要参数");
-        verify(moodCheckRecorder, never()).record(anyString(), anyInt(), anyInt());
-        verify(relaxationService, never()).recordSession(anyUuid(), anyUuid(), anyString(), anyInt(), anyBoolean());
-    }
-
-    @Test
-    @DisplayName("recordMoodCheck 未知工具 → 400")
-    void recordMoodCheck_unknownTool() {
-        when(toolboxRegistry.getById("ghost_tool")).thenReturn(Optional.empty());
-
-        ApiResponse<Map<String, Object>> resp = controller.recordMoodCheck(
-                Map.of("toolId", "ghost_tool", "preMood", 3, "postMood", 4), studentAuth("G3"));
-
-        assertThat(resp.code()).isEqualTo(400);
-        assertThat(resp.message()).contains("未知工具");
-    }
-
-    @Test
-    @DisplayName("recordMoodCheck 无认证 → UNAUTHORIZED")
+    @DisplayName("recordMoodCheck 无认证 → UNAUTHORIZED（校验先于编排）")
     void recordMoodCheck_unauthorized() {
         assertThatThrownBy(() -> controller.recordMoodCheck(
-                Map.of("toolId", "breathing_box", "preMood", 3, "postMood", 4), null))
+                new MoodCheckRequest("breathing_box", 3, 4), null))
                 .isInstanceOf(BizException.class);
     }
 
     @Test
-    @DisplayName("recordMoodCheck 成功（改善）→ 效果数据返回 + 落库练习完成")
-    void recordMoodCheck_improved() {
-        when(toolboxRegistry.getById("breathing_box")).thenReturn(Optional.of(TOOL));
-        MoodCheckRecorder.MoodEffect effect =
-                new MoodCheckRecorder.MoodEffect("breathing_box", 3, 5, 2, MoodCheckRecorder.EffectLevel.IMPROVED);
-        when(moodCheckRecorder.record("breathing_box", 3, 5)).thenReturn(effect);
-        when(moodCheckRecorder.needsAttention(effect)).thenReturn(false);
+    @DisplayName("recordMoodCheck 编排失败（缺参数/未知工具）→ 透传 BizException")
+    void recordMoodCheck_serviceRejects() {
+        when(moodCheckService.record(tenantId, studentUserId, "ghost_tool", 3, 4))
+                .thenThrow(new BizException(com.mindsafe.common.dto.ErrorCode.PARAM_INVALID, "未知工具: ghost_tool"));
 
-        ApiResponse<Map<String, Object>> resp = controller.recordMoodCheck(
-                Map.of("toolId", "breathing_box", "preMood", 3, "postMood", 5), studentAuth("G3"));
-
-        assertThat(resp.code()).isEqualTo(0);
-        assertThat(resp.data().get("delta")).isEqualTo(2);
-        assertThat(resp.data().get("level")).isEqualTo("IMPROVED");
-        assertThat(resp.data().get("needsAttention")).isEqualTo(false);
-        verify(moodCheckRecorder).record("breathing_box", 3, 5);
-        verify(relaxationService).recordSession(tenantId, studentUserId, "breathing_box", 150, true);
+        assertThatThrownBy(() -> controller.recordMoodCheck(
+                new MoodCheckRequest("ghost_tool", 3, 4), studentAuth("G3")))
+                .isInstanceOf(BizException.class)
+                .hasMessageContaining("未知工具");
     }
 
     @Test
-    @DisplayName("recordMoodCheck 恶化 → needsAttention=true + 仍落库")
-    void recordMoodCheck_worsened() {
-        when(toolboxRegistry.getById("breathing_box")).thenReturn(Optional.of(TOOL));
+    @DisplayName("recordMoodCheck 成功（改善）→ 效果数据返回（编排透传）")
+    void recordMoodCheck_improved() {
         MoodCheckRecorder.MoodEffect effect =
-                new MoodCheckRecorder.MoodEffect("breathing_box", 5, 2, -3, MoodCheckRecorder.EffectLevel.WORSENED);
-        when(moodCheckRecorder.record("breathing_box", 5, 2)).thenReturn(effect);
-        when(moodCheckRecorder.needsAttention(effect)).thenReturn(true);
+                new MoodCheckRecorder.MoodEffect("breathing_box", 3, 5, 2, MoodCheckRecorder.EffectLevel.IMPROVED);
+        when(moodCheckService.record(tenantId, studentUserId, "breathing_box", 3, 5))
+                .thenReturn(new MoodCheckService.MoodCheckResult(effect, false));
 
         ApiResponse<Map<String, Object>> resp = controller.recordMoodCheck(
-                Map.of("toolId", "breathing_box", "preMood", 5, "postMood", 2), studentAuth("G3"));
+                new MoodCheckRequest("breathing_box", 3, 5), studentAuth("G3"));
+
+        assertThat(resp.code()).isEqualTo(0);
+        assertThat(resp.data().get("toolId")).isEqualTo("breathing_box");
+        assertThat(resp.data().get("delta")).isEqualTo(2);
+        assertThat(resp.data().get("level")).isEqualTo("IMPROVED");
+        assertThat(resp.data().get("needsAttention")).isEqualTo(false);
+        verify(moodCheckService).record(tenantId, studentUserId, "breathing_box", 3, 5);
+    }
+
+    @Test
+    @DisplayName("recordMoodCheck 恶化 → needsAttention=true 透传")
+    void recordMoodCheck_worsened() {
+        MoodCheckRecorder.MoodEffect effect =
+                new MoodCheckRecorder.MoodEffect("breathing_box", 5, 2, -3, MoodCheckRecorder.EffectLevel.WORSENED);
+        when(moodCheckService.record(tenantId, studentUserId, "breathing_box", 5, 2))
+                .thenReturn(new MoodCheckService.MoodCheckResult(effect, true));
+
+        ApiResponse<Map<String, Object>> resp = controller.recordMoodCheck(
+                new MoodCheckRequest("breathing_box", 5, 2), studentAuth("G3"));
 
         assertThat(resp.data().get("needsAttention")).isEqualTo(true);
         assertThat(resp.data().get("level")).isEqualTo("WORSENED");
-        verify(relaxationService).recordSession(tenantId, studentUserId, "breathing_box", 150, true);
+        assertThat(resp.data().get("preMood")).isEqualTo(5);
     }
 
     private static UUID anyUuid() {

@@ -3,6 +3,7 @@ package com.mindsafe.service.conversation;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mindsafe.ai.chat.AiChatService;
+import com.mindsafe.common.util.TextUtils;
 import com.mindsafe.domain.entity.CounselingSession;
 import com.mindsafe.domain.entity.MessageSummary;
 import com.mindsafe.domain.entity.User;
@@ -146,26 +147,11 @@ public class MessageSummaryService {
     private JsonNode parseInsights(String rawJson) {
         if (rawJson == null || rawJson.isBlank()) return null;
         try {
-            return objectMapper.readTree(stripCodeFence(rawJson));
+            return objectMapper.readTree(TextUtils.stripCodeFence(rawJson));
         } catch (Exception e) {
             log.warn("会话提炼 JSON 解析失败（不影响业务）: {}", e.getMessage());
             return null;
         }
-    }
-
-    /** 去除 LLM 可能包裹的 ```json ... ``` 代码块标记 */
-    private String stripCodeFence(String raw) {
-        String s = raw.trim();
-        if (s.startsWith("```")) {
-            int firstNewline = s.indexOf('\n');
-            if (firstNewline > 0) {
-                s = s.substring(firstNewline + 1);
-            }
-            if (s.endsWith("```")) {
-                s = s.substring(0, s.length() - 3);
-            }
-        }
-        return s.trim();
     }
 
     /** 持久化学生消息摘要（fire-and-forget，不影响主流程） */

@@ -16,9 +16,9 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
 import java.util.concurrent.Executor;
-import java.util.concurrent.Executors;
 
 /**
  * AI 模块配置
@@ -133,13 +133,17 @@ public class AiConfig {
      * Layer2 输出审查专用线程池（小线程池：审查为低频异步任务，fire-and-forget）。
      * <p>
      * 与主对话流隔离，确保 SAF-002 异步 LLM 调用绝不阻塞流式输出。
+     * BA-15：ThreadPoolTaskExecutor + TenantContextTaskDecorator 统一传播租户上下文
+     * （历史 A1 手动捕获已收敛至装饰器，业务代码不再内嵌捕获/恢复）。
      */
     @Bean(name = "outputReviewExecutor")
     public Executor outputReviewExecutor() {
-        return Executors.newFixedThreadPool(2, r -> {
-            Thread t = new Thread(r, "output-review");
-            t.setDaemon(true);
-            return t;
-        });
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(2);
+        executor.setMaxPoolSize(2);
+        executor.setThreadNamePrefix("output-review-");
+        executor.setTaskDecorator(new TenantContextTaskDecorator());
+        // ThreadPoolTaskExecutor 实现 InitializingBean，由 Spring 生命周期统一 initialize（避免显式调用产生双池）
+        return executor;
     }
 }

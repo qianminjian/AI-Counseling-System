@@ -1,6 +1,7 @@
 package com.mindsafe.ai.safety;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.mindsafe.ai.config.TenantContextTaskDecorator;
 import com.mindsafe.common.tenant.TenantContextHolder;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -8,12 +9,11 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.mockito.Answers;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -34,7 +34,8 @@ import static org.mockito.Mockito.when;
  * <p>
  * 覆盖：SAF-002 决策 JSON 解析（含 markdown 代码围栏容错）、模板加载、
  * reviewAsync 空操作保护、review 主流程与 SAFE-202 四决策处置分发、
- * A1（2026-08-05）异步子线程租户上下文传播（手动线程池不走 TaskDecorator）。
+ * A1（2026-08-05，BA-15 后）异步子线程租户上下文传播（生产装配：
+ * ThreadPoolTaskExecutor + TenantContextTaskDecorator 端到端验证）。
  */
 class OutputReviewServiceTest {
 
@@ -242,14 +243,15 @@ class OutputReviewServiceTest {
         }
 
         @Test
-        @DisplayName("A1: reviewAsync 异步子线程应继承调用线程的租户上下文（Layer2 留痕/召回不再 fail-fast 静默失效）")
+        @DisplayName("A1(BA-15): reviewAsync 异步子线程应继承调用线程的租户上下文（装饰器线程池生产装配）")
         void reviewAsync_propagatesTenantContextToWorkerThread() throws Exception {
-            // 真实单线程池模拟生产 outputReviewExecutor（手动线程池，不走 TaskDecorator）
-            ExecutorService executor = Executors.newSingleThreadExecutor(r -> {
-                Thread t = new Thread(r, "test-output-review");
-                t.setDaemon(true);
-                return t;
-            });
+            // 生产装配：ThreadPoolTaskExecutor + TenantContextTaskDecorator（与 AiConfig 一致）
+            ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+            executor.setCorePoolSize(2);
+            executor.setMaxPoolSize(2);
+            executor.setThreadNamePrefix("test-output-review-");
+            executor.setTaskDecorator(new TenantContextTaskDecorator());
+            executor.initialize();
             try {
                 service = new OutputReviewService(builder, executor, reporter, new ObjectMapper(),
                         new CrisisHotlineProvider());
@@ -285,7 +287,7 @@ class OutputReviewServiceTest {
                         .isTrue();
                 assertThat(workerError.get()).as("子线程应继承调用线程租户上下文").isNull();
             } finally {
-                executor.shutdownNow();
+                executor.shutdown();
             }
         }
     }
