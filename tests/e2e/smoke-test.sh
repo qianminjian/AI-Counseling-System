@@ -88,10 +88,12 @@ EMPTY_SUCCESS=$(echo "$EMPTY_BODY" | json_field ".get('success','')")
 check "空密码登录被拒" "False" "$EMPTY_SUCCESS"
 
 # 2.3 试用注册流程
+# 注意：注册年龄用 >=14（本人同意即生效），生产环境 trial-auto-grant=false 不走
+# 自动写入；age<14 的监护人 SMS 确认闭环由 GuardianConsentFlowIT 集成测试覆盖
 NICK="smoke_$RANDOM"
 REG_BODY=$(curl -s -X POST "$API/auth/trial/register" \
   -H 'Content-Type: application/json' \
-  -d "{\"inviteCode\":\"DEMO2026\",\"pseudonym\":\"$NICK\",\"age\":9,\"consentVersion\":\"v0.1\",\"guardianPhone\":\"13800138000\"}" || true)
+  -d "{\"inviteCode\":\"DEMO2026\",\"pseudonym\":\"$NICK\",\"age\":14,\"consentVersion\":\"v0.1\",\"guardianPhone\":\"13800138000\"}" || true)
 REG_SUCCESS=$(echo "$REG_BODY" | json_field ".get('success','')")
 check "试用注册成功" "True" "$REG_SUCCESS"
 
@@ -102,7 +104,7 @@ check_not_empty "获取学生 token" "$STUDENT_TOKEN"
 NICK2="smoke_$RANDOM"
 REG2_BODY=$(curl -s -X POST "$API/auth/trial/register" \
   -H 'Content-Type: application/json' \
-  -d "{\"inviteCode\":\"DEMO2026\",\"pseudonym\":\"$NICK2\",\"age\":11,\"consentVersion\":\"v0.1\",\"guardianPhone\":\"13900139000\"}" || true)
+  -d "{\"inviteCode\":\"DEMO2026\",\"pseudonym\":\"$NICK2\",\"age\":15,\"consentVersion\":\"v0.1\",\"guardianPhone\":\"13900139000\"}" || true)
 REG2_SUCCESS=$(echo "$REG2_BODY" | json_field ".get('success','')")
 check "第二个学生注册成功" "True" "$REG2_SUCCESS"
 
@@ -395,8 +397,8 @@ fi
 echo ""
 echo "[9/10] 情绪日记与放松练习"
 if [ -n "${STUDENT_TOKEN:-}" ]; then
-  # 9.1 情绪日记列表
-  DIARY_CODE=$(http_code "$API/emotion-diary" -H "Authorization: Bearer $STUDENT_TOKEN")
+  # 9.1 情绪日记历史（真实路由 /api/v1/diary/history）
+  DIARY_CODE=$(http_code "$API/diary/history" -H "Authorization: Bearer $STUDENT_TOKEN")
   if [ "$DIARY_CODE" = "200" ] || [ "$DIARY_CODE" = "404" ]; then
     green "  ✓ 情绪日记端点可达 ($DIARY_CODE)"
     PASS=$((PASS + 1))

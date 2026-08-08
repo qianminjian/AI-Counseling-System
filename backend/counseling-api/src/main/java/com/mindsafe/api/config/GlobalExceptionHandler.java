@@ -8,10 +8,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 /**
  * 全局异常处理器：统一转为 ApiResponse 格式
@@ -106,6 +108,22 @@ public class GlobalExceptionHandler {
     public ApiResponse<Void> handleIllegalArgument(IllegalArgumentException e) {
         log.warn("非法参数: {}", e.getMessage());
         return ApiResponse.error(ErrorCode.PARAM_INVALID.code(), e.getMessage());
+    }
+
+    /** 请求体 JSON 解析失败（非法 JSON）→ 400，不再落兜底 500 */
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public ApiResponse<Void> handleUnreadable(HttpMessageNotReadableException e) {
+        log.warn("请求体解析失败: {}", e.getMessage());
+        return ApiResponse.error(ErrorCode.PARAM_INVALID.code(), "请求体格式错误");
+    }
+
+    /** 未知路径（Spring Boot 3.2+ NoResourceFoundException）→ 404，不再落兜底 500 */
+    @ExceptionHandler(NoResourceFoundException.class)
+    @ResponseStatus(HttpStatus.NOT_FOUND)
+    public ApiResponse<Void> handleNoResource(NoResourceFoundException e) {
+        log.warn("资源不存在: {}", e.getResourcePath());
+        return ApiResponse.error(ErrorCode.RESOURCE_NOT_FOUND.code(), "资源不存在");
     }
 
     /** 兜底：未预期异常 */
