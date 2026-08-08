@@ -94,7 +94,7 @@ echo ""
 
 # ---- 3. frozen 白名单校验（DESIGN-OVERVIEW 声明：34、38-43、58）----
 FROZEN_DIR="$DESIGN_DIR/frozen"
-FROZEN_WHITELIST="34 38 39 40 41 42 43 58"
+FROZEN_WHITELIST="34 38 39 40 41 42 43 58 59 60 61 62 73 74"
 if [ -d "$FROZEN_DIR" ]; then
   echo "  frozen 白名单: $FROZEN_WHITELIST"
   FROZEN_COUNT=0
