@@ -1,7 +1,8 @@
 # MindSafe 测试/演示环境（轻量版）
 # 适用于阿里云 ECS 经济型 e 实例 (2C2G/2C4G x86_64)
 # 不含 voice-service / tts-service（节省内存）
-# 用法：cp .env.example .env && 编辑 .env && docker compose -f docker-compose.test.yml up -d
+# R-2（DOC-080）：镜像改本地构建 mindsafe/*:local（CD 取消后 GHCR 死链，原 up 必失败）
+# 用法：cp .env.example .env && 编辑 .env && docker compose -f docker-compose.test.yml build && docker compose -f docker-compose.test.yml up -d
 
 services:
   postgres:
@@ -42,7 +43,11 @@ services:
       - internal
 
   backend:
-    image: ghcr.io/${GITHUB_OWNER:-mindsafe}/${GITHUB_REPOSITORY:-AI-Counseling-System-dev}/backend:latest
+    # R-2：本地构建（与 prod.yml 同模式）；需外部镜像时在 .env 设 BACKEND_IMAGE 后 docker compose pull
+    image: ${BACKEND_IMAGE:-mindsafe/backend:local}
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
     container_name: mindsafe-backend
     restart: unless-stopped
     environment:
@@ -115,9 +120,12 @@ services:
     networks:
       - internal
 
-  # 前端静态文件容器（CI 构建后 copy 到 volume）
+  # 前端静态文件容器（本地构建 frontend/Dockerfile 三端静态镜像后 copy 到 volume）
   frontend-init:
-    image: ghcr.io/${GITHUB_OWNER:-mindsafe}/${GITHUB_REPOSITORY:-AI-Counseling-System-dev}/frontend:latest
+    image: ${FRONTEND_IMAGE:-mindsafe/frontend:local}
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
     container_name: mindsafe-frontend-init
     volumes:
       - student-dist:/export/student

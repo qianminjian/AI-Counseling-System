@@ -11,7 +11,7 @@ echo "===== MindSafe Server Setup ====="
 
 # 1. 安装 Docker（使用阿里云镜像源加速）
 if ! command -v docker &> /dev/null; then
-    echo "[1/6] Installing Docker (aliyun mirror)..."
+    echo "[1/7] Installing Docker (aliyun mirror)..."
     apt-get update -qq
     apt-get install -y -qq ca-certificates curl gnupg
     install -m 0755 -d /etc/apt/keyrings
@@ -24,32 +24,35 @@ if ! command -v docker &> /dev/null; then
     usermod -aG docker $USER 2>/dev/null || true
     echo "  Docker installed ✓"
 else
-    echo "[1/6] Docker already installed ✓"
+    echo "[1/7] Docker already installed ✓"
 fi
 
-# 2. 配置 Docker 镜像加速（拉取基础镜像用）
-echo "[2/6] Configuring Docker registry mirror..."
+# 2. 配置 Docker 镜像加速（拉取基础镜像用；D-21 步骤号统一 + R-1：改为阿里云 ACR 官方加速地址）
+#    ALIYUN_MIRROR_ID = 阿里云容器镜像服务「镜像加速器」专属 ID（cr.console.aliyun.com → 镜像工具 → 镜像加速器）
+#    未配置 ID 时跳过镜像加速（不写入任何第三方源），基础镜像直接走 Docker Hub 官方
+echo "[2/7] Configuring Docker registry mirror..."
 mkdir -p /etc/docker
 if [ ! -f /etc/docker/daemon.json ] || ! grep -q "registry-mirrors" /etc/docker/daemon.json; then
-    cat > /etc/docker/daemon.json <<'EOF'
+    if [ -n "${ALIYUN_MIRROR_ID:-}" ]; then
+        cat > /etc/docker/daemon.json <<EOF
 {
-  "registry-mirrors": [
-    "https://docker.1ms.run",
-    "https://docker.xuanyuan.me"
-  ],
+  "registry-mirrors": ["https://${ALIYUN_MIRROR_ID}.mirror.aliyuncs.com"],
   "log-driver": "json-file",
   "log-opts": { "max-size": "10m", "max-file": "3" }
 }
 EOF
-    systemctl daemon-reload
-    systemctl restart docker
-    echo "  Registry mirror configured ✓"
+        systemctl daemon-reload
+        systemctl restart docker
+        echo "  Registry mirror configured (aliyun ACR) ✓"
+    else
+        echo "  ⚠️ ALIYUN_MIRROR_ID 未设置，跳过镜像加速（可直接用 Docker Hub；需加速时 export ALIYUN_MIRROR_ID=<ID> 后重跑本脚本）"
+    fi
 else
     echo "  daemon.json already exists, skipping ✓"
 fi
 
 # 3. 开启 swap（2C2G 实例兜底）
-echo "[3/6] Configuring swap (2GB)..."
+echo "[3/7] Configuring swap (2GB)..."
 if [ ! -f /swapfile ]; then
     fallocate -l 2G /swapfile
     chmod 600 /swapfile
@@ -65,7 +68,7 @@ else
 fi
 
 # 4. 创建部署目录（AUD-002：与 deploy.sh / service-manager.sh / cd.yml 的 $REMOTE_DIR/deploy 路径对齐）
-echo "[4/6] Creating /guju/mindsafe/deploy..."
+echo "[4/7] Creating /guju/mindsafe/deploy..."
 mkdir -p /guju/mindsafe/deploy
 mkdir -p /guju/mindsafe/frontend
 chown -R $USER:$USER /guju/mindsafe 2>/dev/null || true
@@ -101,7 +104,7 @@ echo "  Configs synced to /guju/mindsafe/deploy/"
 #    DC-002：cron 必须指向 deploy/ 整目录内的 backup.sh（该目录由本脚本第 5 步完整同步，
 #    恒存在）；历史故障是 cron 指向 deploy/ 目录之外的备份脚本路径——该路径从不被
 #    任何脚本创建，导致每日备份静默失败；写入前 fail-fast 校验脚本文件存在。
-echo "[6/6] Configuring backup cron..."
+echo "[6/7] Configuring backup cron..."
 # DC-002 fail-fast：备份脚本缺失时拒绝写入 cron，避免 cron 指向不存在的文件（历史故障）
 [ -f "$SCRIPT_DIR/backup.sh" ] || { echo "❌ 未找到 $SCRIPT_DIR/backup.sh——备份脚本缺失，拒绝写入 cron"; exit 1; }
 CRON_LINE="0 2 * * * /guju/mindsafe/deploy/backup.sh >> /guju/mindsafe/logs/backup.log 2>&1"

@@ -212,7 +212,6 @@ services:
 volumes:
   pgdata:
   redisdata:
-  dbbackups:
 
 networks:
   internal:

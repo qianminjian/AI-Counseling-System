@@ -93,6 +93,13 @@ if [ -n "$ROLLBACK_TARGET" ]; then
       exit 1
       ;;
   esac
+  # D-13：回滚后健康检查（复用 service-manager.sh health，与主路径 restart 的健康检查同一套判定）
+  if ! ssh "${SSH_OPTS[@]}" "$SERVER" "cd $REMOTE_DIR && bash service-manager.sh health $ROLLBACK_TARGET"; then
+    echo "❌ $ROLLBACK_TARGET 回滚后健康检查失败，请检查：ssh $SERVER 'cd $REMOTE_DIR && bash service-manager.sh status'"
+    echo "   部署状态未更新，下次 deploy.sh 将重新部署"
+    exit 1
+  fi
+  echo "✅ $ROLLBACK_TARGET 已重建且健康检查通过"
   exit 0
 fi
 
