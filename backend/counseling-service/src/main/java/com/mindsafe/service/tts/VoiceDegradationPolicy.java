@@ -29,13 +29,6 @@ public class VoiceDegradationPolicy {
         SILENT            // 静默（S0 转热线后）
     }
 
-    /** 降级链层级 */
-    public enum FallbackTier {
-        COSYVOICE2,   // 主合成
-        EDGE_TTS,     // 降级
-        TEXT_ONLY     // 最终兜底（纯文字+动画）
-    }
-
     /** 语音决策结果 */
     public record VoiceDecision(
             VoiceMode mode,
@@ -67,27 +60,6 @@ public class VoiceDegradationPolicy {
                     VoiceMode.NORMAL, emotion, false,
                     "正常合成");
         };
-    }
-
-    /**
-     * 合成失败时的降级链。
-     *
-     * @param currentTier 当前失败层级
-     * @return 下一层级（null=无更多降级）
-     */
-    public FallbackTier nextFallback(FallbackTier currentTier) {
-        return switch (currentTier) {
-            case COSYVOICE2 -> FallbackTier.EDGE_TTS;
-            case EDGE_TTS -> FallbackTier.TEXT_ONLY;
-            case TEXT_ONLY -> null;
-        };
-    }
-
-    /**
-     * 判断是否使用预合成音频。
-     */
-    public boolean usePreSynthesized(VoiceDecision decision) {
-        return decision.preSynthesized();
     }
 
     /**

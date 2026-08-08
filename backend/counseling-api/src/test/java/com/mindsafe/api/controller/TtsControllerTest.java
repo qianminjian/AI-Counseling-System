@@ -3,8 +3,6 @@ package com.mindsafe.api.controller;
 import com.mindsafe.ai.voice.TtsService;
 import com.mindsafe.api.security.JwtAuthenticationFilter.TenantContext;
 import com.mindsafe.service.tts.VoiceDegradationPolicy;
-import com.mindsafe.service.tts.VoiceEffectivenessTracker;
-import com.mindsafe.service.tts.TtsPipelineScheduler;
 import com.mindsafe.service.voice.VoicePersonaResolver;
 import com.mindsafe.service.voice.VoiceRenderProfile;
 import org.junit.jupiter.api.BeforeEach;
@@ -30,15 +28,13 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
- * TtsController 单元测试（P1 覆盖率冲刺：合成/风险降级/声纹引导/流水线/效果回收）
+ * TtsController 单元测试（P1 覆盖率冲刺：合成/风险降级/声纹引导）
  */
 class TtsControllerTest {
 
     private TtsService ttsService;
     private VoicePersonaResolver personaResolver;
     private VoiceDegradationPolicy degradationPolicy;
-    private TtsPipelineScheduler pipelineScheduler;
-    private VoiceEffectivenessTracker effectivenessTracker;
     private TtsController controller;
 
     private final UUID tenantId = UUID.randomUUID();
@@ -49,11 +45,8 @@ class TtsControllerTest {
         ttsService = mock(TtsService.class);
         personaResolver = mock(VoicePersonaResolver.class);
         degradationPolicy = mock(VoiceDegradationPolicy.class);
-        pipelineScheduler = mock(TtsPipelineScheduler.class);
-        effectivenessTracker = mock(VoiceEffectivenessTracker.class);
-        // personaMatcher 构造注入但当前控制器未消费（僵死依赖，保持原签名）
-        controller = new TtsController(ttsService, personaResolver, degradationPolicy, null,
-                pipelineScheduler, effectivenessTracker);
+        // personaMatcher 测试路径未消费，传 null
+        controller = new TtsController(ttsService, personaResolver, degradationPolicy, null);
     }
 
     private Authentication auth() {
@@ -315,60 +308,4 @@ class TtsControllerTest {
         assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
     }
 
-    // ===== 流水线调度 =====
-
-    @Test
-    @DisplayName("schedulePipeline 默认参数 → 首句任务")
-    void schedule_default() {
-        when(pipelineScheduler.schedule(new TtsPipelineScheduler.SentenceTask(0, "", true, false)))
-                .thenReturn(new TtsPipelineScheduler.ScheduleResult(0, true, false, "immediate"));
-
-        var resp = controller.schedulePipeline(Map.of());
-
-        assertThat(resp.code()).isEqualTo(0);
-        assertThat(resp.data().get("immediatePlay")).isEqualTo(true);
-        assertThat(resp.data().get("strategy")).isEqualTo("immediate");
-    }
-
-    @Test
-    @DisplayName("schedulePipeline 自定义 sentenceIndex + isLast")
-    void schedule_custom() {
-        when(pipelineScheduler.schedule(new TtsPipelineScheduler.SentenceTask(2, "第二句", false, false)))
-                .thenReturn(new TtsPipelineScheduler.ScheduleResult(2, false, true, "parallel"));
-
-        var resp = controller.schedulePipeline(Map.of(
-                "text", "第二句", "sentenceIndex", 2, "isLast", true));
-
-        assertThat(resp.data().get("parallelSynth")).isEqualTo(true);
-    }
-
-    // ===== 效果回收 =====
-
-    @Test
-    @DisplayName("evaluateEffectiveness 默认 voiceId=default")
-    void effectiveness_default() {
-        when(effectivenessTracker.evaluate(new VoiceEffectivenessTracker.VoiceMetrics(
-                "default", 0, 0, 0, 0, 0)))
-                .thenReturn(new VoiceEffectivenessTracker.EffectivenessVerdict("default", true, "表现良好", false));
-
-        var resp = controller.evaluateEffectiveness(Map.of());
-
-        assertThat(resp.data().get("effective")).isEqualTo(true);
-        assertThat(resp.data().get("suggestRuleChange")).isEqualTo(false);
-    }
-
-    @Test
-    @DisplayName("evaluateEffectiveness 自定义指标透传 + 建议换音色")
-    void effectiveness_custom() {
-        when(effectivenessTracker.evaluate(new VoiceEffectivenessTracker.VoiceMetrics(
-                "bobo", 20, 0.85, 6, 0, 0)))
-                .thenReturn(new VoiceEffectivenessTracker.EffectivenessVerdict("bobo", false, "切换率过高", true));
-
-        var resp = controller.evaluateEffectiveness(Map.of(
-                "voiceId", "bobo", "totalSessions", 20, "avgCompletionRate", 0.85, "manualSwitchCount", 6));
-
-        assertThat(resp.data().get("effective")).isEqualTo(false);
-        assertThat(resp.data().get("reason")).isEqualTo("切换率过高");
-        assertThat(resp.data().get("suggestRuleChange")).isEqualTo(true);
-    }
 }

@@ -50,19 +50,4 @@ class VoiceDegradationPolicyTest {
         assertThat(d.mode()).isEqualTo(VoiceMode.SILENT);
         assertThat(d.preSynthesized()).isTrue();
     }
-
-    @Test
-    @DisplayName("降级链：CosyVoice2 → edge-tts → 纯文字 → null")
-    void fallbackChain() {
-        assertThat(policy.nextFallback(FallbackTier.COSYVOICE2)).isEqualTo(FallbackTier.EDGE_TTS);
-        assertThat(policy.nextFallback(FallbackTier.EDGE_TTS)).isEqualTo(FallbackTier.TEXT_ONLY);
-        assertThat(policy.nextFallback(FallbackTier.TEXT_ONLY)).isNull();
-    }
-
-    @Test
-    @DisplayName("usePreSynthesized 判断")
-    void usePreSynthesized() {
-        assertThat(policy.usePreSynthesized(policy.decide("S1", "x"))).isTrue();
-        assertThat(policy.usePreSynthesized(policy.decide("S3", "x"))).isFalse();
-    }
 }

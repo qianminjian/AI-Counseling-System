@@ -4,8 +4,6 @@ import com.mindsafe.ai.orchestrator.EmotionOrchestrationEvaluator;
 import com.mindsafe.ai.orchestrator.EmotionOrchestrationEvaluator.*;
 import com.mindsafe.service.casemanage.CaseLifecycleService;
 import com.mindsafe.service.casemanage.CaseLifecycleService.*;
-import com.mindsafe.service.tts.TtsPipelineScheduler;
-import com.mindsafe.service.tts.TtsPipelineScheduler.*;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -105,80 +103,6 @@ class P2FinalBatchTest {
             List<FollowupTodo> todos = service.getDueFollowups(cases, now);
             assertThat(todos).hasSize(1);
             assertThat(todos.get(0).caseId()).isEqualTo("c1");
-        }
-    }
-
-    // ==================== TTSFX-003 延迟流水线 ====================
-
-    @Nested
-    @DisplayName("TTSFX-003 延迟流水线+降级")
-    class TTSFX003 {
-
-        private final TtsPipelineScheduler scheduler = new TtsPipelineScheduler();
-
-        @Test
-        @DisplayName("首句：立即播放")
-        void firstSentence() {
-            ScheduleResult r = scheduler.schedule(new SentenceTask(0, "你好呀", true, false));
-            assertThat(r.immediatePlay()).isTrue();
-            assertThat(r.parallelSynth()).isFalse();
-        }
-
-        @Test
-        @DisplayName("后续句：并行合成")
-        void subsequentSentence() {
-            ScheduleResult r = scheduler.schedule(new SentenceTask(2, "第三句", false, false));
-            assertThat(r.immediatePlay()).isFalse();
-            assertThat(r.parallelSynth()).isTrue();
-        }
-
-        @Test
-        @DisplayName("缓存命中：零延迟")
-        void cacheHit() {
-            ScheduleResult r = scheduler.schedule(new SentenceTask(0, "危机话术", true, true));
-            assertThat(r.immediatePlay()).isTrue();
-            assertThat(r.strategy()).contains("零延迟");
-        }
-
-        @Test
-        @DisplayName("首音频预算")
-        void budget() {
-            assertThat(scheduler.isFirstAudioWithinBudget(1200)).isTrue();
-            assertThat(scheduler.isFirstAudioWithinBudget(1600)).isFalse();
-        }
-
-        @Test
-        @DisplayName("帧率正常→全效果")
-        void fullPerformance() {
-            DegradeDecision d = scheduler.evaluatePerformance(List.of(30, 29, 30, 28, 30), false);
-            assertThat(d.level()).isEqualTo(DegradeLevel.FULL);
-            assertThat(d.lottieEnabled()).isTrue();
-        }
-
-        @Test
-        @DisplayName("帧率连续低→自动降级")
-        void autoDegrade() {
-            DegradeDecision d = scheduler.evaluatePerformance(List.of(20, 18, 22, 20, 19), false);
-            assertThat(d.level()).isEqualTo(DegradeLevel.DEGRADED);
-            assertThat(d.lottieEnabled()).isFalse();
-            assertThat(d.particlesEnabled()).isFalse();
-        }
-
-        @Test
-        @DisplayName("用户手动关闭")
-        void userDisabled() {
-            DegradeDecision d = scheduler.evaluatePerformance(List.of(60, 60, 60, 60, 60), true);
-            assertThat(d.level()).isEqualTo(DegradeLevel.DEGRADED);
-            assertThat(d.reason()).contains("手动");
-        }
-
-        @Test
-        @DisplayName("降级替代方案")
-        void fallbacks() {
-            assertThat(scheduler.getFallback("lottie", true)).isEqualTo("static_first_frame");
-            assertThat(scheduler.getFallback("particle", true)).isEqualTo("disabled");
-            assertThat(scheduler.getFallback("breathing_guide", true)).isEqualTo("countdown_numeric");
-            assertThat(scheduler.getFallback("lottie", false)).isEqualTo("lottie");
         }
     }
 

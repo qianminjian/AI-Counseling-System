@@ -8,8 +8,6 @@ import com.mindsafe.service.profile.ProfileEffectivenessTracker;
 import com.mindsafe.service.profile.ProfileEffectivenessTracker.*;
 import com.mindsafe.service.prompt.PromptEvalGovernance;
 import com.mindsafe.service.prompt.PromptEvalGovernance.*;
-import com.mindsafe.service.tts.VoiceEffectivenessTracker;
-import com.mindsafe.service.tts.VoiceEffectivenessTracker.*;
 import com.mindsafe.service.voice.TrendAnomalySignaler;
 import com.mindsafe.service.voice.TrendAnomalySignaler.*;
 import org.junit.jupiter.api.DisplayName;
@@ -261,72 +259,6 @@ class P2RemainingBatchTest {
         void adaptInsufficient() {
             ThresholdConfig c = signaler.adaptThreshold("angry", 0.6, 0.5, 5);
             assertThat(c.threshold()).isEqualTo(0.6);
-        }
-    }
-
-    // ==================== TMATCH-003 音色效果 ====================
-
-    @Nested
-    @DisplayName("TMATCH-003 音色效果回收")
-    class TMATCH003 {
-
-        private final VoiceEffectivenessTracker tracker = new VoiceEffectivenessTracker();
-
-        @Test
-        @DisplayName("效果正常")
-        void effective() {
-            VoiceMetrics m = new VoiceMetrics("gentle-female", 20, 0.85, 2, 300, 0.75);
-            EffectivenessVerdict v = tracker.evaluate(m);
-            assertThat(v.effective()).isTrue();
-            assertThat(v.suggestRuleChange()).isFalse();
-        }
-
-        @Test
-        @DisplayName("切换率过高→建议改规则")
-        void highSwitch() {
-            VoiceMetrics m = new VoiceMetrics("warm-male", 20, 0.8, 10, 300, 0.7);
-            EffectivenessVerdict v = tracker.evaluate(m);
-            assertThat(v.effective()).isFalse();
-            assertThat(v.suggestRuleChange()).isTrue();
-        }
-
-        @Test
-        @DisplayName("会话内非手动不切")
-        void noSwitchInSession() {
-            StabilityDecision d = tracker.canSwitchInSession(false, false, 0, "v1");
-            assertThat(d.allowSwitch()).isFalse();
-        }
-
-        @Test
-        @DisplayName("安全场景强制允许")
-        void safetyOverride() {
-            StabilityDecision d = tracker.canSwitchInSession(false, true, 0, "v1");
-            assertThat(d.allowSwitch()).isTrue();
-            assertThat(d.reason()).contains("安全");
-        }
-
-        @Test
-        @DisplayName("跨会话演进：画像变+间隔够")
-        void evolve() {
-            assertThat(tracker.canEvolveAcrossSessions(6, true)).isTrue();
-            assertThat(tracker.canEvolveAcrossSessions(3, true)).isFalse();
-            assertThat(tracker.canEvolveAcrossSessions(10, false)).isFalse();
-        }
-
-        @Test
-        @DisplayName("A/B 进化建议")
-        void ruleEvolution() {
-            EvolutionSuggestion s = tracker.suggestRuleEvolution(
-                    "female_grade3", "gentle-female", 8, 20, "warm-male");
-            assertThat(s).isNotNull();
-            assertThat(s.suggestedDefault()).isEqualTo("warm-male");
-            assertThat(s.switchAwayRate()).isEqualTo(0.4);
-        }
-
-        @Test
-        @DisplayName("样本不足→无建议")
-        void noSuggestion() {
-            assertThat(tracker.suggestRuleEvolution("seg", "v1", 3, 5, "v2")).isNull();
         }
     }
 
