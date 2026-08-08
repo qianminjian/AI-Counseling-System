@@ -16,6 +16,7 @@ COMMON="$ROOT/deploy/backup-common.sh"
 SETUP="$ROOT/deploy/setup-server.sh"
 BACKUP_SH="$ROOT/deploy/backup.sh"
 RESTORE_SH="$ROOT/deploy/restore.sh"
+GUIDE="$ROOT/DEPLOY-GUIDE.md"
 
 FAILURES=0
 ok()   { echo "ok   - $1"; }
@@ -75,6 +76,16 @@ for f in "$BACKUP_SH" "$RESTORE_SH"; do
     grep -qE '^BACKUP_VOLUME=' "$f" && fail "$(basename "$f") 仍自建 BACKUP_VOLUME 探测副本" \
         || ok "$(basename "$f") 无 BACKUP_VOLUME 探测副本"
 done
+
+# ===== 4b. DEPLOY-GUIDE.md cron 路径防回潮（D-03：运维排查第一入口） =====
+if [ -f "$GUIDE" ]; then
+    grep -q '0 2 \* \* \* /guju/mindsafe/deploy/backup\.sh' "$GUIDE" && ok "DEPLOY-GUIDE cron 指向 /guju/mindsafe/deploy/backup.sh" \
+        || fail "DEPLOY-GUIDE cron 路径缺失或未指向 deploy/ 前缀"
+    grep -q '/guju/mindsafe/backup.sh' "$GUIDE" && fail "DEPLOY-GUIDE 仍残留旧 cron 路径（/guju/mindsafe/backup.sh）" \
+        || ok "DEPLOY-GUIDE 无旧路径残留"
+else
+    fail "DEPLOY-GUIDE.md 不存在"
+fi
 
 # ===== 5. 语法检查 =====
 for f in "$COMMON" "$BACKUP_SH" "$RESTORE_SH" "$SETUP"; do

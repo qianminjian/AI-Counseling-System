@@ -216,8 +216,8 @@ jobs:
         run: python -m pytest -q
 
   shell-tools-test:
-    # DA-05：tests/unit/scripts 六件套 CI 入口（此前覆盖运维关键路径的测试存在但永不执行，等于没测）
-    # check-commit/db-rollback-drill/gen-changelog/gen-openapi-snapshot/prepare-funasr/verify-doc-numbers + backup-common
+    # DA-05 + D-10 + DA-09 + DA-11：tests/unit/scripts 九件套 CI 入口（此前覆盖运维关键路径的测试存在但永不执行，等于没测）
+    # check-commit/db-rollback-drill/gen-changelog/gen-openapi-snapshot/prepare-funasr/verify-doc-numbers/verify-config-passthrough/verify-model-names/deploy-lib + backup-common
     # 自带 temp repo/mock docker，无需额外依赖，<2min
     name: Shell Tools Test (scripts)
     runs-on: ubuntu-latest
@@ -251,6 +251,11 @@ jobs:
       # 改一份忘另一份 → 两服务指标渲染行为静默分叉；diff 硬性拦截
       - name: Check metrics_common copies in sync
         run: diff backend/tts-service/metrics_common.py backend/voice-service/metrics_common.py
+
+      # DA-08：config_loader.py 同为双份复制共享（深合并语义：空 dict 保守保留/None 显式置空），
+      # 单边修改即静默分叉；与 metrics_common 同款一行门禁
+      - name: Check config_loader copies in sync
+        run: diff backend/tts-service/config_loader.py backend/voice-service/config_loader.py
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
