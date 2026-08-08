@@ -293,14 +293,14 @@
 | DA-14 | tts/voice 兜底补最小运行矩阵 + fail-fast（二选一，建议 a 补矩阵 + b 启动校验双做） |
 | FA-12 | RemoteConfig 删未消费键（或真接线），加「每声明键有消费点」测试 |
 | BA-14 | recordMoodCheck 下沉 MoodCheckService + 请求体 DTO |
-| BA-12 | abComparison 加时间窗/分页，报表语义拆统计域 |
+| BA-12 | abComparison 加时间窗/分页，报表语义拆统计域（**承接 R-5，DOC-080 已议决**） |
 | FA-10 | 抽 SpeechRecognition 共享装配层（去重策略单点） |
 | DA-13 | 议决 a/b：建议 b（宿主 nginx 版本化入库 + deploy.sh 上传 + nginx -t） |
 | DA-12 | $REMOTE_DIR 统一拼接 + 根路径一致性 shell 测试 |
 | FA-14 | 状态→文案映射收敛单一描述函数 |
 | FA-15 | 端点收敛常量表，apiContract 直接校验常量 |
-| BA-13 | 统一统计读取层（时间窗/分页/班级下推），先于 B-03/B-15 修复落地防回潮 |
-| FA-16 | 删除 emotionLabels.ts 垫片 |
+| BA-13 | 统一统计读取层（时间窗/分页/班级下推），先于 B-03/B-15 修复落地防回潮（**承接 R-5，DOC-080 已议决**） |
+| FA-16 | 删除 emotionLabels.ts 垫片（**承接 R-3，DOC-080 已议决**） |
 
 ### 批次 C（Speculative 议决）
 
@@ -319,7 +319,7 @@
 - 日期：2026-08-08
 - Strong×7 全部主 agent 代码级复核实锤，0 处失实
 - 排除区：AUD/DC/T/B·F·D/BA·FA·DA/ARCH 系列 + 取消 CD + doing/80（B/F/D 问题点）
-- 状态：候选清单 + SPEC 登记完成（doing/81），批次 A~C 待排期；**2026-08-08 批次 A 实施完成（BA-09/10/11 + DA-08~11，DOC-079），批次 B/C 待议决**
+- 状态：候选清单 + SPEC 登记完成（doing/81），批次 A~C 待排期；**2026-08-08 批次 A 实施完成（BA-09/10/11 + DA-08~11，DOC-079）；批次 B/C 待排期（DOC-080 已议决：R-3 合并 FA-16、R-5 合并 BA-12/BA-13 一并跟踪）**
 
 ---
 

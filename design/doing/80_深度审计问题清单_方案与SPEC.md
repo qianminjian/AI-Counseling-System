@@ -246,14 +246,14 @@
 
 | 编号 | 实施要点 |
 |---|---|
-| B-02 | TTS synthesize 加文本上限（≤500 字）+ 频率限流（并入 RateLimitInterceptor 或独立注册） |
+| B-02 | TTS synthesize 加文本上限（≤500 字）+ 频率限流（并入 RateLimitInterceptor 或独立注册）+ **R-6 合并项**（D-22 tts 全局异常 handler + dashscope 显式超时） |
 | B-03 | 统计日边界统一 `Asia/Shanghai`（抽取时区工具类，趋势日期序列化同步） |
 | B-04 | exportSession HTML 转义 contentSummary（复用 CSV 转义模式或模板引擎自动转义） |
 | B-05 | enroll/verify 加 embedding 维度（256）与范数下限校验，拒绝退化向量；design/06 补契约 |
 | B-08 | 导出路径独立上限 + 显式截断提示（不再静默） |
 | F-03 | noImplicitAny:true 分端推进：先 api.ts 泛型 + VO 接口，再页面组件 props（LoginPage/BoBoPet/useTtsPlayer/useWakeWord/BigScreen） |
 | F-04 | parent request() 收敛为 data 解包（信封 success 已抛错，解包安全），删 verify 页防御兜底 |
-| F-05 | npm workspaces + `@mindsafe/shared` 包收编 12 处相对路径引用（**待议决 R-3**） |
+| F-05 | npm workspaces + `@mindsafe/shared` 包收编 12 处相对路径引用（**R-3 已议决 DOC-080：选 B 改良，工作项合并入 FA-16 跟踪**） |
 | F-06 | BigScreen/LoginPage/SpeechBubble 硬编码 hex 收编 token（--ms-* 暗色 token / THEMES[].vars） |
 | F-07 | teacher 端复用/镜像 storage.ts 安全封装（替换 App.tsx 裸 localStorage） |
 | F-08 | JWT 解码兼容 UTF-8（decodeURIComponent(escape(atob)) 或 jose），抽 utils/jwt.ts |
@@ -267,15 +267,15 @@ B-10~B-19（.last LIMIT 收敛或注释修正/DataRetention Javadoc/僵死方法
 
 ## §12 待议决项（需项目负责人拍板）
 
-| 编号 | 议题 | 选项 |
-|---|---|---|
-| R-1（D-09） | 第三方镜像加速源（docker.1ms.run/docker.xuanyuan.me，供应链风险 + 文档失实） | A 改阿里云官方 ACR 地址（推荐）；B 保持现状 + 文档如实登记 + 供应链评审 |
-| R-2（D-07） | test compose 拉 GHCR 死链（CD 取消后无人推送，up 必失败） | A 改 `mindsafe/*:local` 本地构建（推荐）；B 删除 test compose |
-| R-3（F-05） | shared 无构建边界（相对路径跨包耦合） | A npm workspaces 收编（成本中等）；B 维持相对路径 + shared 补自测 |
-| R-4（D-23） | Playwright 半成品（有配置无执行） | A 删 specs+config 减负；B 登记「预留态」保留（推荐，规划有 E2E 需求） |
-| R-5（B-09） | TeacherService 925 行上帝类 | A 拆 3 Service（预警处置/学生档案/看板统计）；B 维持观察（推荐，拆分需配套回归） |
-| R-6（D-22） | tts-service 异常处理单薄 | A 补全局异常 handler + dashscope 超时（推荐）；B 随发布迭代 |
-| R-7（B-14） | 教师端 7 条干预话术硬编码 Controller | A 迁配置/DB；B 维持 + B4 覆盖范围标注 |
+| 编号 | 议题 | 选项 | 议决（DOC-080，2026-08-08） |
+|---|---|---|---|
+| R-1（D-09） | 第三方镜像加速源（docker.1ms.run/docker.xuanyuan.me，供应链风险 + 文档失实） | A 改阿里云官方 ACR 地址（推荐）；B 保持现状 + 文档如实登记 + 供应链评审 | **选 A**：改阿里云官方 ACR 加速地址（setup-server.sh + 服务器 daemon.json 现场同步）；独立任务待排期（S） |
+| R-2（D-07） | test compose 拉 GHCR 死链（CD 取消后无人推送，up 必失败） | A 改 `mindsafe/*:local` 本地构建（推荐）；B 删除 test compose | **选 A**：镜像改 `mindsafe/*:local` 本地构建（先 build 后 up，顺带查 AUD-003 容器名冲突）；独立任务待排期（S） |
+| R-3（F-05） | shared 无构建边界（相对路径跨包耦合） | A npm workspaces 收编（ 成本中等）；B 维持相对路径 + shared 补自测 | **选 B 改良**：维持相对路径（单仓同版本发布）+ 删 emotionLabels.ts 垫片 + shared 测试入 CI；**合并 FA-16** |
+| R-4（D-23） | Playwright 半成品（有配置无执行） | A 删 specs+config 减负；B 登记「预留态」保留（推荐，规划有 E2E 需求） | **选 B**：预留态登记保留（审计结论过时——smoke-test.sh 已按 DA-04 接线发布后置门禁）；待排期（S） |
+| R-5（B-09） | TeacherService 925 行上帝类 | A 拆 3 Service（预警处置/学生档案/看板统计）；B 维持观察（推荐，拆分需配套回归） | **选 B 有条件**：维持观察（无行为缺陷证据），统计域改造时顺势拆 DashboardStatsService；**合并 BA-12/BA-13** |
+| R-6（D-22） | tts-service 异常处理单薄 | A 补全局异常 handler + dashscope 超时（推荐）；B 随发布迭代 | **选 A**：全局异常 handler + dashscope 显式超时（成本极低，TTS 主链路收益真实）；**合并 B-02** |
+| R-7（B-14） | 教师端 7 条干预话术硬编码 Controller | A 迁配置/DB；B 维持 + B4 覆盖范围标注 | **选 B 改良**：维持代码内维护（心理干预话术属预审核合规内容，走发布评审更可控），TEMPLATES 下沉 service 层；独立任务待排期（S） |
 
 ---
 
@@ -284,4 +284,4 @@ B-10~B-19（.last LIMIT 收敛或注释修正/DataRetention Javadoc/僵死方法
 - 审计方式：3 路并行独立 agent（GeneralPurpose，只读），交叉印证后主 agent 汇总，证据均文件:行号双源核实
 - 审计日期：2026-08-08
 - 排除区：AUD-001~071（his/71）、DC-001~012（his/72）、T1-T5（his/76）、B/F/D 系列（his/77+78）、BA/FA/DA 系列（his/79）、ARCH-001~010（his/61~70）、取消 CD（his/72_取消CD）
-- 状态：报告 + SPEC 登记完成（doing/80），修复批次 A~D 待排期，待议决项 R-1~R-7 待项目负责人拍板；**2026-08-08 实施完成：批次 A（SPEC-A1~A6）+ 批次 B（SPEC-B1~B7）闭环（DOC-079），批次 C/D（P2/P3）与 R-1~R-7 待议决**
+- 状态：报告 + SPEC 登记完成（doing/80），修复批次 A~D 待排期；**2026-08-08 实施完成：批次 A（SPEC-A1~A6）+ 批次 B（SPEC-B1~B7）闭环（DOC-079）；R-1~R-7 已议决（DOC-080）——R-3 合并 FA-16、R-6 合并 B-02，R-1/R-2/R-4/R-7 独立任务待排期（S）；批次 C/D（P2/P3）待排期**
