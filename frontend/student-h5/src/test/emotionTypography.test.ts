@@ -1,13 +1,21 @@
 import { describe, it, expect } from 'vitest'
 import { EMOTION_TYPO, getEmotionTypo } from '../theme/emotionTypography'
+import { REPLY_EMOTIONS } from '../../../shared/src/replyEmotion'
 
 describe('theme/emotionTypography', () => {
   describe('EMOTION_TYPO 配置完整性', () => {
-    it('包含 6 种情绪配置', () => {
-      expect(Object.keys(EMOTION_TYPO)).toHaveLength(6)
+    it('包含孩子情绪 6 类 + AI 回复情绪 5 类（happy 交集，共 11 键）', () => {
+      expect(Object.keys(EMOTION_TYPO)).toHaveLength(11)
       expect(Object.keys(EMOTION_TYPO)).toEqual(
-        expect.arrayContaining(['happy', 'sad', 'angry', 'scared', 'nervous', 'neutral'])
+        expect.arrayContaining(['happy', 'sad', 'angry', 'scared', 'nervous', 'neutral',
+          'gentle', 'encourage', 'calm', 'serious', 'soothe'])
       )
+    })
+
+    it('FA-09：EMOTION_TYPO 键集覆盖 REPLY_EMOTIONS 全 6 类（气泡接总线后不静默落 neutral）', () => {
+      for (const emo of REPLY_EMOTIONS) {
+        expect(Object.keys(EMOTION_TYPO)).toContain(emo)
+      }
     })
 
     it('每种配置包含 scale/weight/accent/tint/anim 五字段', () => {

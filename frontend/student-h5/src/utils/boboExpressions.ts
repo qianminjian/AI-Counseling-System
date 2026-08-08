@@ -8,7 +8,7 @@
  * 与 BoBoPet 既有交互态（idle/listening/thinking/speaking）的关系：
  * 交互态管"姿态容器"，表情层管"脸部+情绪动效"，两层正交叠加。
  */
-import { normalizeEmotion, type ReplyEmotion } from './emotionBus'
+import { normalizeReplyEmotion, type ReplyEmotion } from '../../../shared/src/replyEmotion'
 
 export type BoboExpression =
   | 'idle'     // 呼吸感微动（唯一允许的常驻动画）
@@ -69,7 +69,7 @@ export function boboExpressionReducer(
       return { expression: 'hug', locked: lock }
     }
     case 'reply-emotion': {
-      const emotion = normalizeEmotion(event.emotion)
+      const emotion = normalizeReplyEmotion(event.emotion)
       return {
         expression: emotion ? EMOTION_TO_EXPRESSION[emotion] : 'idle',
         locked: false,
