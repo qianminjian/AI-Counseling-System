@@ -11,7 +11,7 @@ import java.time.Duration;
 import java.util.UUID;
 
 /**
- * 基于 Redis 的滑动窗口限流器（对齐计划 Phase 2.5）
+ * 基于 Redis 的固定窗口限流器（对齐计划 Phase 2.5；窗口语义与实现一致，B-19 修正）
  * <p>
  * 策略：
  * - 每用户 30 次/分钟（对话消息）

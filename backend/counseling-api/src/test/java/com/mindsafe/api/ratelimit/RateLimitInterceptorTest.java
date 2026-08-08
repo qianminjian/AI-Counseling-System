@@ -72,6 +72,28 @@ class RateLimitInterceptorTest {
     }
 
     @Test
+    @DisplayName("POST /api/v1/tts/synthesize 命中 tts_synthesize 限流（B-02 成本防护）")
+    void ttsSynthesizeHitsRateLimit() throws Exception {
+        MockHttpServletRequest req = new MockHttpServletRequest("POST", "/api/v1/tts/synthesize");
+        MockHttpServletResponse resp = new MockHttpServletResponse();
+
+        assertThat(interceptor.preHandle(req, resp, new Object())).isTrue();
+
+        verify(rateLimiter).tryAcquire(eq(userId), eq("tts_synthesize"));
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/tts/login-prompt 不触发限流（公开端点白名单）")
+    void ttsLoginPromptNotRateLimited() throws Exception {
+        MockHttpServletRequest req = new MockHttpServletRequest("POST", "/api/v1/tts/login-prompt");
+        MockHttpServletResponse resp = new MockHttpServletResponse();
+
+        assertThat(interceptor.preHandle(req, resp, new Object())).isTrue();
+
+        verify(rateLimiter, never()).tryAcquire(any(UUID.class), any(String.class));
+    }
+
+    @Test
     @DisplayName("GET 请求不触发限流（仅 POST）")
     void getNotRateLimited() throws Exception {
         MockHttpServletRequest req = new MockHttpServletRequest("GET", "/api/v1/chat/sessions");

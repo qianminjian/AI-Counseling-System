@@ -25,6 +25,12 @@ def client(mock_dashscope):
     return TestClient(mock_dashscope.app)
 
 
+@pytest.fixture
+def client_no_raise(mock_dashscope):
+    """500 场景专用：不重新抛出服务器异常，便于断言响应体"""
+    return TestClient(mock_dashscope.app, raise_server_exceptions=False)
+
+
 # ===== 音色配置测试 =====
 
 class TestVoicePersonas:
@@ -234,6 +240,31 @@ class TestBuildInstruction:
         instruction, voice = mock_dashscope.build_instruction(cfg, None, "neutral")
         assert instruction is None
         assert voice is None
+
+
+# ===== 全局异常 handler（R-6：未捕获异常结构化 500，不泄漏内部细节） =====
+
+class TestGlobalExceptionHandler:
+    """R-6 全局兜底 handler 契约"""
+
+    def test_unhandled_exception_returns_500_json(self, client_no_raise, mock_dashscope, monkeypatch):
+        """非 TTSSynthesisFailed 的未捕获异常 → 500 结构化 JSON，不泄漏异常详情"""
+        async def boom(*args, **kwargs):
+            raise RuntimeError("内部密钥: sk-xxx")
+
+        monkeypatch.setattr(mock_dashscope._TTS_POLICY, "synthesize_with_degradation", boom)
+        resp = client_no_raise.post("/api/v1/tts/synthesize", json={"text": "你好"})
+        assert resp.status_code == 500
+        assert resp.json()["detail"] == "TTS 服务内部错误"
+        # 异常细节（含疑似敏感信息）不得回显给调用方
+        assert "sk-xxx" not in resp.text
+        assert "RuntimeError" not in resp.text
+
+    def test_http_exception_preserved(self, client):
+        """显式 HTTPException（400/503）不被全局 handler 吞掉"""
+        resp = client.post("/api/v1/tts/synthesize", json={"text": ""})
+        assert resp.status_code == 400
+        assert resp.json()["detail"] == "文本不能为空"
 
 
 # ===== Health 端点 =====

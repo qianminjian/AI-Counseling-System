@@ -71,6 +71,10 @@ public class RateLimitInterceptor implements HandlerInterceptor {
         if (uri.contains("/chat/sessions") && "POST".equalsIgnoreCase(method)) {
             return "create_session";
         }
+        // B-02：TTS 合成按用户限流（与 TtsController 文本长度上限双层防护）
+        if (uri.contains("/tts/synthesize")) {
+            return "tts_synthesize";
+        }
         return null;
     }
 }

@@ -18,7 +18,7 @@ import httpx
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response, StreamingResponse
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel
 
 from tts_engines import DashScopeBackend, EdgeBackend
@@ -44,6 +44,14 @@ async def _lifespan(_: FastAPI):
 
 
 app = FastAPI(title="MindSafe TTS Service", version="4.0.0", lifespan=_lifespan)
+
+
+@app.exception_handler(Exception)
+async def _unhandled_exception_handler(request, exc: Exception):
+    """R-6：全局兑底 handler——未捕获异常返回结构化 500，不泄漏内部细节（防敏感信息回显）"""
+    logger.error("未捕获异常: %s %s -> %s: %s", request.method, request.url.path,
+                 type(exc).__name__, exc, exc_info=True)
+    return JSONResponse(status_code=500, content={"detail": "TTS 服务内部错误"})
 
 # ===== Prometheus 指标（P1-10：手写文本格式，零新增依赖，供监控栈 internal 网络抓取） =====
 # DA-03：counter+summary 公共结构复用 metrics_common（与 voice-service 复制共享），

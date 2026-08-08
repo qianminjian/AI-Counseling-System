@@ -35,6 +35,9 @@ public class TtsController {
 
     private static final Logger log = LoggerFactory.getLogger(TtsController.class);
 
+    /** 合成文本长度上限（字符，B-02：超长文本烧 edge-tts/CosyVoice 配额与算力，限流拦截器兜底） */
+    private static final int MAX_TEXT_LENGTH = 500;
+
     private final TtsService ttsService;
     private final VoicePersonaResolver personaResolver;
     private final VoiceDegradationPolicy degradationPolicy;
@@ -67,6 +70,11 @@ public class TtsController {
                 ? ((Number) request.get("speed")).doubleValue() : 1.0;
 
         if (text == null || text.isBlank()) {
+            return ResponseEntity.badRequest().build();
+        }
+        // B-02：文本长度上限校验（与 RateLimitInterceptor tts_synthesize 限流双层防护）
+        if (text.length() > MAX_TEXT_LENGTH) {
+            log.warn("TTS 文本超长已拒绝: 长度={}, 上限={}", text.length(), MAX_TEXT_LENGTH);
             return ResponseEntity.badRequest().build();
         }
 

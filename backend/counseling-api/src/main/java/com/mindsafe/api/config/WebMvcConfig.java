@@ -20,6 +20,6 @@ public class WebMvcConfig implements WebMvcConfigurer {
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
         registry.addInterceptor(rateLimitInterceptor)
-                .addPathPatterns("/api/v1/chat/**");
+                .addPathPatterns("/api/v1/chat/**", "/api/v1/tts/synthesize");
     }
 }

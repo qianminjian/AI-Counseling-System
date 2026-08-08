@@ -24,6 +24,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -104,6 +105,28 @@ class TtsControllerTest {
         ResponseEntity<byte[]> resp = controller.synthesize(Map.of("text", "   "), auth());
 
         assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+
+    @Test
+    @DisplayName("synthesize 文本超 500 字上限 → 400 且不调合成（B-02 成本防护）")
+    void synthesize_tooLongText() {
+        ResponseEntity<byte[]> resp = controller.synthesize(Map.of("text", "好".repeat(501)), auth());
+
+        assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        verify(ttsService, never()).synthesize(anyString(), anyString(), anyString(), anyDouble(), anyDouble(),
+                anyInt(), any());
+    }
+
+    @Test
+    @DisplayName("synthesize 文本恰好 500 字 → 正常合成（边界）")
+    void synthesize_atLimitText() {
+        when(personaResolver.resolve(tenantId, userId, null, "neutral", "chat", null)).thenReturn(profile());
+        when(ttsService.synthesize(anyString(), anyString(), anyString(), anyDouble(), anyDouble(),
+                anyInt(), any())).thenReturn(mp3());
+
+        ResponseEntity<byte[]> resp = controller.synthesize(Map.of("text", "好".repeat(500)), auth());
+
+        assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.OK);
     }
 
     @Test
