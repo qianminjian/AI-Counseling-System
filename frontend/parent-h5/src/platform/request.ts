@@ -5,6 +5,7 @@
  * - 401 → refreshTokens（注入 fetchImpl）成功 → 重放原请求一次（_retried 防环）
  * - 401 刷新失败 → onSessionExpired 统一登出决策点（缺省 = shared handleSessionExpired + locationRedirect）
  * - 成功判定为 success 契约（DOC-073 F1，doing/77 §24）：success!==true → toApiError；HTTP 非 2xx 按状态码兜底 message
+ * - F-04（doing/80 批次 C）：收敛为 data 解包——信封 success 已抛错，解包安全，页面零二次解包
  * - 网络异常 → 原样 reject
  * P1 小程序端：换 Taro.request 实现（同接口），页面层零改动
  */
@@ -31,7 +32,7 @@ export interface PlatformApiResponse<T = unknown> {
 export type PlatformRequest = <T = unknown>(
   path: string,
   options?: PlatformRequestOptions
-) => Promise<PlatformApiResponse<T>>
+) => Promise<T>
 
 export interface PlatformRequestDeps {
   /** 认证 token 存取（parent 用 createPlatformTokens('parent_', sessionStorageImpl)） */
@@ -52,7 +53,7 @@ export function createPlatformRequest(deps: PlatformRequestDeps): PlatformReques
   return async function request<T = unknown>(
     path: string,
     options: PlatformRequestOptions = {}
-  ): Promise<PlatformApiResponse<T>> {
+  ): Promise<T> {
     // 调用时解析 fetch 实现（非工厂创建时）：测试 stubGlobal 全局 fetch 可生效，生产语义不变
     const doFetch = fetchImpl ?? fetch
     const token = storage.getToken()
@@ -85,6 +86,7 @@ export function createPlatformRequest(deps: PlatformRequestDeps): PlatformReques
       throw toApiError({ code: body.code, message: body.message || `请求失败 (${res.status})` })
     }
 
-    return body as PlatformApiResponse<T>
+    // F-04：直接解包 data（信封 success 已抛错，解包安全；与 student/teacher 端 api() 语义一致）
+    return body.data as T
   }
 }

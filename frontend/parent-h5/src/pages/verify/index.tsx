@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { View, Text, Button, Input, Form } from '@tarojs/components'
 import { parentRegister, parentLogin } from '../../services/index'
 import type { AuthResult } from '../../services/index'
@@ -26,8 +26,14 @@ export default function VerifyPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
+  // F-11：已登录跳转从 render 期副作用移入 effect（避免渲染阶段触发导航）
+  useEffect(() => {
+    if (isAuthenticated()) {
+      redirectTo('/report')
+    }
+  }, [])
+
   if (isAuthenticated()) {
-    redirectTo('/report')
     return null
   }
 
@@ -70,7 +76,8 @@ export default function VerifyPage() {
         })
       }
 
-      const data = (res.data ?? res) as AuthResult
+      // F-04：request 已解包 data，删二次解包防御兜底
+      const data = res as AuthResult
       setToken(data.token)
       if (data.refreshToken) setRefreshToken(data.refreshToken)
       setUser({

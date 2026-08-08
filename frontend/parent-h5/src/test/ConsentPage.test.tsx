@@ -38,7 +38,7 @@ const mockUser = {
 describe('ConsentPage', () => {
   beforeEach(() => {
     vi.mocked(getUser).mockReturnValue(mockUser)
-    vi.mocked(withdrawConsent).mockResolvedValue({ data: { message: '已成功撤回授权' } })
+    vi.mocked(withdrawConsent).mockResolvedValue({ message: '已成功撤回授权' })
     mockedTaro.redirectTo.mockClear()
     mockedTaro.navigateTo.mockClear()
   })
@@ -131,7 +131,7 @@ describe('ConsentPage', () => {
   })
 
   it('撤回成功 data 携带 message 时透传显示（DOC-073 F1：请求器统一 success 信封）', async () => {
-    vi.mocked(withdrawConsent).mockResolvedValue({ success: true, data: { message: '兜底成功' } })
+    vi.mocked(withdrawConsent).mockResolvedValue({ message: '兜底成功' })
     const user = userEvent.setup()
     render(<ConsentPage />)
     await user.click(screen.getByText(/小明/))
@@ -155,7 +155,7 @@ describe('ConsentPage', () => {
   })
 
   it('撤回成功无 message 时显示默认文案', async () => {
-    vi.mocked(withdrawConsent).mockResolvedValue({ data: {} })
+    vi.mocked(withdrawConsent).mockResolvedValue({})
     const user = userEvent.setup()
     render(<ConsentPage />)
     await user.click(screen.getByText(/小明/))

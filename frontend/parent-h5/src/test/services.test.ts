@@ -37,7 +37,7 @@ describe('services 业务 API（平台化 request）', () => {
         body: JSON.stringify({ phone: '13800138000', password: 'secret1' }),
       })
     )
-    expect(res.data).toEqual({ parentId: 'p1' })
+    expect(res).toEqual({ parentId: 'p1' })
   })
 
   it('parentRegister 调注册端点', async () => {
@@ -57,7 +57,7 @@ describe('services 业务 API（平台化 request）', () => {
       '/api/v1/parent/report?studentUserId=c1',
       expect.objectContaining({ method: 'GET' })
     )
-    expect(res.data).toEqual({ sessionCount: 3 })
+    expect(res).toEqual({ sessionCount: 3 })
   })
 
   it('withdrawConsent 调撤回端点', async () => {
@@ -79,7 +79,7 @@ describe('services 业务 API（平台化 request）', () => {
       .mockResolvedValueOnce(jsonResponse(200, { success: true, data: { sessionCount: 5 } }))
     const res = await getReport('c1')
     expect(fetchMock).toHaveBeenCalledTimes(3)
-    expect(res.data).toEqual({ sessionCount: 5 })
+    expect(res).toEqual({ sessionCount: 5 })
     // 新 token 已写回存储
     expect(getToken()).toBe('nt')
   })

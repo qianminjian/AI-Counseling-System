@@ -55,7 +55,7 @@ describe('createPlatformRequest（PlatformRequest H5 实现）', () => {
       '/api/v1/parent/report?studentUserId=1',
       expect.objectContaining({ method: 'GET', headers: expect.objectContaining({ Authorization: 'Bearer t1' }) })
     )
-    expect(res.data).toEqual({ n: 3 })
+    expect(res).toEqual({ n: 3 })
   })
 
   it('POST 序列化 JSON body + Content-Type', async () => {
@@ -91,7 +91,7 @@ describe('createPlatformRequest（PlatformRequest H5 实现）', () => {
     expect(fetchMock).toHaveBeenCalledTimes(3) // 原请求 + refresh + 重放
     expect(storage.getToken()).toBe('nt')
     expect(onSessionExpired).not.toHaveBeenCalled()
-    expect(res.data).toEqual({ ok: 1 })
+    expect(res).toEqual({ ok: 1 })
     const replayInit = fetchMock.mock.calls[2][1] as RequestInit
     expect((replayInit.headers as Record<string, string>).Authorization).toBe('Bearer nt')
   })
@@ -132,7 +132,8 @@ describe('createPlatformRequest（PlatformRequest H5 实现）', () => {
     })
   })
 
-  it('HTTP 200 + success:true 无 data → 返回完整信封（message 透传，withdraw 场景）', async () => {
+  // F-04：request 收敛为 data 解包（信封 success 已抛错，解包安全）
+  it('HTTP 200 + success:true → 返回解包 data（message 透传，withdraw 场景）', async () => {
     fetchMock.mockResolvedValue(jsonResponse(200, {
       success: true,
       code: 0,
@@ -141,8 +142,7 @@ describe('createPlatformRequest（PlatformRequest H5 实现）', () => {
     }))
     const request = createPlatformRequest(deps)
     const res = await request<{ message?: string }>('/parent/consent/withdraw', { method: 'POST' })
-    expect(res.data).toMatchObject({ status: 'withdrawn', message: expect.stringContaining('已撤回同意') })
-    expect(res.success).toBe(true)
+    expect(res).toMatchObject({ status: 'withdrawn', message: expect.stringContaining('已撤回同意') })
   })
 
   it('HTTP 200 + 非信封 body（success 缺失）→ 抛请求失败', async () => {

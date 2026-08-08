@@ -66,11 +66,10 @@ describe('VerifyPage', () => {
   })
 
   it('登录成功：提交表单 → 写入认证 → 跳转周报页', async () => {
+    // F-04 契约：request 已解包 data，mock 直接返回 AuthResult（不再带 data 包装）
     vi.mocked(parentLogin).mockResolvedValue({
-      data: {
-        token: 'tk1', refreshToken: 'rt1', parentId: 'p1',
-        displayName: '家长', children: []
-      }
+      token: 'tk1', refreshToken: 'rt1', parentId: 'p1',
+      displayName: '家长', children: []
     })
     const { container } = render(<VerifyPage />)
     fireEvent.input(screen.getByPlaceholderText(/手机号/), { target: { value: '13800138000' } })
@@ -132,11 +131,10 @@ describe('VerifyPage', () => {
   })
 
   it('注册成功：提交表单 → parentRegister 参数 → 写入认证 → 跳转周报页', async () => {
+    // F-04 契约：request 已解包 data，mock 直接返回 AuthResult（不再带 data 包装）
     vi.mocked(parentRegister).mockResolvedValue({
-      data: {
-        token: 'tk2', refreshToken: 'rt2', parentId: 'p2',
-        displayName: '家长', children: [{ id: 'c1', name: '小明' }]
-      }
+      token: 'tk2', refreshToken: 'rt2', parentId: 'p2',
+      displayName: '家长', children: [{ id: 'c1', name: '小明' }]
     })
     const { container } = render(<VerifyPage />)
     switchToRegister()

@@ -47,7 +47,7 @@ const mockReport = {
 describe('ReportPage', () => {
   beforeEach(() => {
     vi.mocked(getUser).mockReturnValue(mockUser)
-    vi.mocked(getReport).mockResolvedValue({ data: mockReport })
+    vi.mocked(getReport).mockResolvedValue(mockReport)
     vi.mocked(clearAuth).mockImplementation(() => {})
     vi.mocked(isAuthenticated).mockImplementation(() => true)
     mockedTaro.redirectTo.mockClear()
@@ -104,7 +104,7 @@ describe('ReportPage', () => {
 
   it('0 次对话时显示空状态提示', async () => {
     vi.mocked(getReport).mockResolvedValue({
-      data: { ...mockReport, sessionCount: 0, totalTurns: 0 }
+      ...mockReport, sessionCount: 0, totalTurns: 0
     })
     render(<ReportPage />)
     await waitFor(() => {

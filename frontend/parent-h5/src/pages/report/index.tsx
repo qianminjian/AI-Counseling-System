@@ -40,8 +40,8 @@ export default function ReportPage() {
     setError('')
     try {
       const res = await getReport(studentUserId)
-      // DOC-073 F1（doing/77 §24）：请求器统一 success 契约返回完整信封，删防御双处理
-      setReport(res.data as ReportData)
+      // F-04：request 已解包 data，直接使用返回值
+      setReport(res)
     } catch (err) {
       setError(err instanceof Error ? err.message : '加载失败')
     } finally {
