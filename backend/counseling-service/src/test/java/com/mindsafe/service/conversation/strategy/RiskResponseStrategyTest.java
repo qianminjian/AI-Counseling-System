@@ -75,4 +75,25 @@ class RiskResponseStrategyTest {
             assertThat(RiskResponseStrategy.resolveSafetyReply(null, true, 3, provider)).isNotBlank();
         }
     }
+
+    @Nested
+    @DisplayName("buildTimeLimitGuidance 时长超限引导语（AUTH-030）")
+    class TimeLimitGuidance {
+
+        @Test
+        @DisplayName("引导语含调用方传入的热线号码（DOC-073 B1：不再内嵌硬编码 12355）")
+        void guidanceUsesPassedHotline() {
+            String guidance = RiskResponseStrategy.buildTimeLimitGuidance("0571-12345678");
+
+            assertThat(guidance).contains("0571-12345678")
+                    .doesNotContain("12355")
+                    .doesNotContain("400-161-9995");
+        }
+
+        @Test
+        @DisplayName("引导语始终非空（防止空回复静默）")
+        void guidanceNeverBlank() {
+            assertThat(RiskResponseStrategy.buildTimeLimitGuidance("0571-12345678")).isNotBlank();
+        }
+    }
 }

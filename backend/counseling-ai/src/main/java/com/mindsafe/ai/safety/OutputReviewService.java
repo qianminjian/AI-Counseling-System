@@ -51,18 +51,22 @@ public class OutputReviewService {
     private final OutputSafetyReporter reporter;
     // ARCH-010 P2-2：注入唯一 ObjectMapper（此前 new，配置不统一）
     private final ObjectMapper objectMapper;
+    // DOC-073 B1：召回话术热线经单一事实源渲染（doing/77 §22）
+    private final CrisisHotlineProvider crisisHotlineProvider;
 
     private String promptTemplate = "";
 
     public OutputReviewService(ChatClient.Builder chatClientBuilder,
                                @Qualifier("outputReviewExecutor") Executor outputReviewExecutor,
                                OutputSafetyReporter reporter,
-                               ObjectMapper objectMapper) {
+                               ObjectMapper objectMapper,
+                               CrisisHotlineProvider crisisHotlineProvider) {
         // 独立 ChatClient 实例：审查调用与主对话互不干扰
         this.reviewClient = chatClientBuilder.build();
         this.outputReviewExecutor = outputReviewExecutor;
         this.reporter = reporter;
         this.objectMapper = objectMapper;
+        this.crisisHotlineProvider = crisisHotlineProvider;
     }
 
     @PostConstruct
@@ -169,7 +173,8 @@ public class OutputReviewService {
                 }
             }
             case DECISION_BLOCK -> reporter.applyLayer2Recall(sessionId, decision, RecallPhrases.BLOCK_RECALL, raw);
-            case DECISION_ESCALATE -> reporter.applyLayer2Recall(sessionId, decision, RecallPhrases.ESCALATE_RECALL, raw);
+            case DECISION_ESCALATE -> reporter.applyLayer2Recall(sessionId, decision,
+                    crisisHotlineProvider.render(RecallPhrases.ESCALATE_RECALL), raw);
             default -> reporter.reportLayer2Violation(sessionId, decision, raw);
         }
     }

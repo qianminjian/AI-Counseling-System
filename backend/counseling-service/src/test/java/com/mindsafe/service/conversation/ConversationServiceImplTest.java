@@ -8,6 +8,7 @@ import com.mindsafe.ai.orchestrator.EntryMoodStrategyResolver;
 import com.mindsafe.ai.orchestrator.PromptOrchestrationService;
 import com.mindsafe.ai.prompt.PromptTemplateService;
 import com.mindsafe.ai.safety.ConfidentialityNotice;
+import com.mindsafe.ai.safety.CrisisHotlineProvider;
 import com.mindsafe.ai.safety.CrisisResourceProvider;
 import com.mindsafe.ai.safety.CrisisResources;
 import com.mindsafe.ai.safety.PiiDesensitizer;
@@ -603,7 +604,7 @@ class ConversationServiceImplTest {
             assertThat(events).hasSize(3);
             assertThat(events.get(0).type()).isEqualTo("risk");
             assertThat(events.get(1).type()).isEqualTo("token");
-            assertThat(events.get(1).content()).isEqualTo(CrisisResources.RED_SAFETY_REPLY);
+            assertThat(events.get(1).content()).isEqualTo(new CrisisHotlineProvider().render(CrisisResources.RED_SAFETY_REPLY));
             assertThat(events.get(2).type()).isEqualTo("done");
 
             // 硬短路：绝不调用 LLM 自由生成
@@ -644,7 +645,27 @@ class ConversationServiceImplTest {
                     .sendMessageStream(tenantId, studentId, sessionId, "我不想活了")
                     .collectList().block();
 
-            assertThat(events.get(1).content()).isEqualTo(CrisisResources.RED_SAFETY_REPLY_LOWER_GRADE);
+            assertThat(events.get(1).content()).isEqualTo(new CrisisHotlineProvider().render(CrisisResources.RED_SAFETY_REPLY_LOWER_GRADE));
+        }
+
+        @Test
+        @DisplayName("AUTH-030 每日时长超限 → 引导休息话术含热线 Provider 号码（接线锁定）")
+        void timeLimitExceeded_guidanceRenderedWithHotline() {
+            UUID sessionId = createSession("happy");
+            mockPipeline();
+            // 覆盖通用 mock：时长超限 → 引导休息分支（4.5）
+            when(usageTimeLimitService.isExceeded(any(), any())).thenReturn(true);
+
+            List<StreamMessageEvent> events = service
+                    .sendMessageStream(tenantId, studentId, sessionId, "我想聊天")
+                    .collectList().block();
+
+            // 接线锁定：buildTimeLimitGuidance(crisisResourceProvider.getHotlineNumber())
+            assertThat(events).anyMatch(e -> "token".equals(e.type())
+                    && e.content().contains("心理援助热线")
+                    && e.content().contains(CrisisResources.NATIONAL_PSYCHOLOGICAL_AID)
+                    && !e.content().contains("12355"));
+            verify(aiChatService, never()).chatWithPrompt(any(), any(), any(), any(), anyInt(), anyString());
         }
 
         @Test
@@ -697,13 +718,13 @@ class ConversationServiceImplTest {
         @DisplayName("resolveSafetyReply: RED 分年级选版（1-2 短句版 / 3-6 标准版）")
         void resolveSafetyReply_redGradeVariants() {
             assertThat(RiskResponseStrategy.resolveSafetyReply(RiskLevel.RED, false, 1, crisisResourceProvider))
-                    .isEqualTo(CrisisResources.RED_SAFETY_REPLY_LOWER_GRADE);
+                    .isEqualTo(new CrisisHotlineProvider().render(CrisisResources.RED_SAFETY_REPLY_LOWER_GRADE));
             assertThat(RiskResponseStrategy.resolveSafetyReply(RiskLevel.RED, false, 2, crisisResourceProvider))
-                    .isEqualTo(CrisisResources.RED_SAFETY_REPLY_LOWER_GRADE);
+                    .isEqualTo(new CrisisHotlineProvider().render(CrisisResources.RED_SAFETY_REPLY_LOWER_GRADE));
             assertThat(RiskResponseStrategy.resolveSafetyReply(RiskLevel.RED, false, 3, crisisResourceProvider))
-                    .isEqualTo(CrisisResources.RED_SAFETY_REPLY);
+                    .isEqualTo(new CrisisHotlineProvider().render(CrisisResources.RED_SAFETY_REPLY));
             assertThat(RiskResponseStrategy.resolveSafetyReply(RiskLevel.RED, false, 6, crisisResourceProvider))
-                    .isEqualTo(CrisisResources.RED_SAFETY_REPLY);
+                    .isEqualTo(new CrisisHotlineProvider().render(CrisisResources.RED_SAFETY_REPLY));
         }
     }
 
@@ -744,7 +765,7 @@ class ConversationServiceImplTest {
             // 语义升级后走 RISK-201 同一条硬短路链路：risk → 安全文案 → done
             assertThat(events).hasSize(3);
             assertThat(events.get(0).type()).isEqualTo("risk");
-            assertThat(events.get(1).content()).isEqualTo(CrisisResources.RED_SAFETY_REPLY);
+            assertThat(events.get(1).content()).isEqualTo(new CrisisHotlineProvider().render(CrisisResources.RED_SAFETY_REPLY));
             assertThat(events.get(2).type()).isEqualTo("done");
             verify(aiChatService, never()).chatWithPrompt(any(), any(), any(), any(), anyInt(), anyString());
             verify(riskProcessor).persistRiskEvent(any(SessionState.class), any(RiskDetectionResult.class));

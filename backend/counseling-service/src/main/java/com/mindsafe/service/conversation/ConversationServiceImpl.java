@@ -346,7 +346,7 @@ public class ConversationServiceImpl implements ConversationService {
             log.info("每日使用时长已达上限，引导休息: sessionId={}, student={}, usedSec={}",
                     sessionId, session.getStudentUserId(),
                     usageTimeLimitService.getUsedSeconds(session.getTenantId(), session.getStudentUserId()));
-            String guidance = RiskResponseStrategy.buildTimeLimitGuidance();
+            String guidance = RiskResponseStrategy.buildTimeLimitGuidance(crisisResourceProvider.getHotlineNumber());
             return riskEvents.concatWith(Flux.just(
                     StreamMessageEvent.token(guidance),
                     StreamMessageEvent.done("")

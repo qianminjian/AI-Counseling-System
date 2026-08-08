@@ -87,7 +87,7 @@ class OutputContentFilterTest {
             // "怎么割腕" 被切分为 "我来教你怎么" + "割腕"
             StepVerifier.create(filter.apply(Flux.just("我来教你怎么", "割腕", "吧"), sessionId))
                     .expectNextMatches(evt -> isToken(evt, "我来教你怎么"))
-                    .expectNextMatches(evt -> isToken(evt) && evt.content().contains(OutputContentFilter.CRISIS_HOTLINE))
+                    .expectNextMatches(evt -> isToken(evt) && evt.content().contains(CrisisHotlineProvider.DEFAULT_HOTLINE))
                     .verifyComplete();
 
             // 命中后的 token "吧" 不应被发射
@@ -98,7 +98,7 @@ class OutputContentFilterTest {
         @DisplayName("单 token 内命中 → 仅输出安全模板")
         void should_block_keyword_within_single_token() {
             StepVerifier.create(filter.apply(Flux.just("自杀的方法", "我不能说"), sessionId))
-                    .expectNextMatches(evt -> isToken(evt) && evt.content().contains(OutputContentFilter.CRISIS_HOTLINE))
+                    .expectNextMatches(evt -> isToken(evt) && evt.content().contains(CrisisHotlineProvider.DEFAULT_HOTLINE))
                     .verifyComplete();
 
             verify(reporter).reportLayer1Block(eq(sessionId), eq("self_harm_method"), eq("自杀的方法"), anyString());
@@ -110,17 +110,17 @@ class OutputContentFilterTest {
             String template = filter.safeTemplate(
                     new SafetyKeywordLibrary.KeywordHit("self_harm_method", "自伤/伤人方法", "怎么割腕", "block"));
 
-            assertThat(template).contains(OutputContentFilter.CRISIS_HOTLINE);
+            assertThat(template).contains(CrisisHotlineProvider.DEFAULT_HOTLINE);
         }
 
         @Test
         @DisplayName("配置注入自定义热线 → 安全模板使用配置值（SAFE-203）")
         void should_use_configured_hotline() {
-            OutputContentFilter configured = new OutputContentFilter(library, reporter, "12345");
+            OutputContentFilter configured = new OutputContentFilter(library, reporter, new CrisisHotlineProvider("12345"));
             String template = configured.safeTemplate(
                     new SafetyKeywordLibrary.KeywordHit("self_harm_method", "自伤/伤人方法", "怎么割腕", "block"));
 
-            assertThat(template).contains("12345").doesNotContain(OutputContentFilter.CRISIS_HOTLINE);
+            assertThat(template).contains("12345").doesNotContain(CrisisHotlineProvider.DEFAULT_HOTLINE);
         }
 
         @Test
@@ -129,7 +129,7 @@ class OutputContentFilterTest {
             // 2 参构造器 = 无配置注入路径，等价 @Value 默认值场景
             assertThat(filter.safeTemplate(
                     new SafetyKeywordLibrary.KeywordHit("self_harm_method", "自伤/伤人方法", "怎么割腕", "block")))
-                    .contains(OutputContentFilter.CRISIS_HOTLINE);
+                    .contains(CrisisHotlineProvider.DEFAULT_HOTLINE);
         }
 
         @Test
@@ -138,7 +138,7 @@ class OutputContentFilterTest {
             StepVerifier.create(filter.apply(Flux.just("放心，只有我能帮你"), sessionId))
                     .expectNextMatches(evt -> isToken(evt)
                             && evt.content().contains("换个话题")
-                            && !evt.content().contains(OutputContentFilter.CRISIS_HOTLINE))
+                            && !evt.content().contains(CrisisHotlineProvider.DEFAULT_HOTLINE))
                     .verifyComplete();
 
             verify(reporter).reportLayer1Block(eq(sessionId), eq("dependency_isolation"), eq("只有我能帮你"), anyString());
@@ -160,7 +160,7 @@ class OutputContentFilterTest {
 
             StepVerifier.create(filter.apply(Flux.just("我来教你怎么", "割腕"), sessionId))
                     .expectNextMatches(evt -> isToken(evt, "我来教你怎么"))
-                    .expectNextMatches(evt -> isToken(evt) && evt.content().contains(OutputContentFilter.CRISIS_HOTLINE))
+                    .expectNextMatches(evt -> isToken(evt) && evt.content().contains(CrisisHotlineProvider.DEFAULT_HOTLINE))
                     .verifyComplete();
         }
     }

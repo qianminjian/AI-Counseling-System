@@ -49,7 +49,8 @@ class OutputReviewServiceTest {
         reviewClient = mock(ChatClient.class, Answers.RETURNS_DEEP_STUBS);
         reporter = mock(OutputSafetyReporter.class);
         when(builder.build()).thenReturn(reviewClient);
-        service = new OutputReviewService(builder, Runnable::run, reporter, new ObjectMapper());
+        service = new OutputReviewService(builder, Runnable::run, reporter, new ObjectMapper(),
+                new CrisisHotlineProvider());
     }
 
     /** 设置已加载模板 + 打桩 LLM 审查返回 */
@@ -179,7 +180,8 @@ class OutputReviewServiceTest {
 
             service.review(sessionId, "回复", "crisis");
 
-            verify(reporter).applyLayer2Recall(eq(sessionId), eq("escalate"), eq(RecallPhrases.ESCALATE_RECALL), anyString());
+            verify(reporter).applyLayer2Recall(eq(sessionId), eq("escalate"),
+                    eq(new CrisisHotlineProvider().render(RecallPhrases.ESCALATE_RECALL)), anyString());
         }
 
         @Test
@@ -249,7 +251,8 @@ class OutputReviewServiceTest {
                 return t;
             });
             try {
-                service = new OutputReviewService(builder, executor, reporter, new ObjectMapper());
+                service = new OutputReviewService(builder, executor, reporter, new ObjectMapper(),
+                        new CrisisHotlineProvider());
                 ReflectionTestUtils.setField(service, "promptTemplate", "审查：{candidate_reply} / {context}");
                 when(reviewClient.prompt().user(anyString()).call().content())
                         .thenReturn("{\"decision\":\"block\"}");

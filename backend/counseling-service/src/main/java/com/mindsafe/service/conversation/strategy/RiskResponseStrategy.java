@@ -9,6 +9,9 @@ import com.mindsafe.common.enums.RiskLevel;
  * <p>
  * 从 ConversationServiceImpl 编排层下沉的纯静态决策：RED 硬短路文案（年级适配）与
  * AUTH-030 时长超限引导语。零 Spring 依赖，可独立单测。
+ * <p>
+ * 热线号码不在此类持有：话术模板经 CrisisHotlineProvider 渲染（DOC-073 B1，doing/77 §22），
+ * 引导语由调用方传入当前生效号码。
  */
 public final class RiskResponseStrategy {
 
@@ -36,9 +39,11 @@ public final class RiskResponseStrategy {
 
     /**
      * AUTH-030：每日使用时长超限引导语（含心理援助热线，文案预审核不可由 LLM 生成）。
+     *
+     * @param hotline 当前生效危机热线号码（来自 CrisisHotlineProvider，缺省回退常量）
      */
-    public static String buildTimeLimitGuidance() {
+    public static String buildTimeLimitGuidance(String hotline) {
         return "今天我们聊了不少啦，你已经很棒了。为了让眼睛和心情都休息一下，今天就先到这里好吗？"
-                + "明天我还在这里等你。\uD83C\uDF19 如果现在有紧急的事情，可以告诉老师，或拨打心理援助热线 12355。";
+                + "明天我还在这里等你。\uD83C\uDF19 如果现在有紧急的事情，可以告诉老师，或拨打心理援助热线 " + hotline + "。";
     }
 }

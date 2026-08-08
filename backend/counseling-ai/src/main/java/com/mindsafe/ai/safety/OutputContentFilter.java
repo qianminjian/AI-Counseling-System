@@ -4,7 +4,6 @@ import com.mindsafe.common.dto.chat.StreamMessageEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
 
@@ -33,10 +32,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class OutputContentFilter {
 
     private static final Logger log = LoggerFactory.getLogger(OutputContentFilter.class);
-
-    /** 缺省危机热线（SAFE-203 第一阶段：配置注入，缺省回退常量；危机干预资源绝不交给 LLM 决定，遵 design/14 铁律） */
-    static final String CRISIS_HOTLINE = "400-161-9995";
-
+    
     /** 自伤/伤人方法类目（命中时追加危机热线） */
     private static final String CATEGORY_SELF_HARM = "self_harm_method";
 
@@ -45,20 +41,20 @@ public class OutputContentFilter {
 
     private final SafetyKeywordLibrary library;
     private final OutputSafetyReporter reporter;
-    /** 危机热线（mindsafe.safety.crisis-hotline 注入；配置缺失回退 CRISIS_HOTLINE——安全组件不允许 fail-fast 阻断危机响应） */
-    private final String crisisHotline;
+    /** 危机热线单一事实源（DOC-073 B1：配置注入统一收敛至 Provider，缺省回退常量——安全组件不允许 fail-fast 阻断危机响应） */
+    private final CrisisHotlineProvider hotlineProvider;
 
-    /** 缺省路径（测试/无配置场景）：使用编译期常量热线 */
+    /** 缺省路径（测试/无配置场景）：使用兜底热线 */
     public OutputContentFilter(SafetyKeywordLibrary library, OutputSafetyReporter reporter) {
-        this(library, reporter, CRISIS_HOTLINE);
+        this(library, reporter, new CrisisHotlineProvider());
     }
 
     @Autowired
     public OutputContentFilter(SafetyKeywordLibrary library, OutputSafetyReporter reporter,
-                               @Value("${mindsafe.safety.crisis-hotline:" + CRISIS_HOTLINE + "}") String crisisHotline) {
+                               CrisisHotlineProvider hotlineProvider) {
         this.library = library;
         this.reporter = reporter;
-        this.crisisHotline = crisisHotline;
+        this.hotlineProvider = hotlineProvider;
     }
 
     /**
@@ -112,13 +108,13 @@ public class OutputContentFilter {
     /**
      * 按命中类目返回安全话术。
      * <p>
-     * 自伤/伤人类：温和打断 + 危机热线（配置注入，缺省回退常量）；
+     * 自伤/伤人类：温和打断 + 危机热线（经 Provider 配置注入，缺省回退常量）；
      * 其他类目：温和打断 + 话题转移。
      */
     String safeTemplate(SafetyKeywordLibrary.KeywordHit hit) {
         if (CATEGORY_SELF_HARM.equals(hit.category())) {
             return "\n\n我很担心你的安全。如果你正在经历很难受的时刻，请拨打24小时心理援助热线 "
-                    + crisisHotline + "，会有专业的老师帮助你。你不是一个人。💙";
+                    + hotlineProvider.hotline() + "，会有专业的老师帮助你。你不是一个人。💙";
         }
         return "\n\n我们换个话题聊聊好吗？你可以和我说说现在的心情。🌈";
     }
