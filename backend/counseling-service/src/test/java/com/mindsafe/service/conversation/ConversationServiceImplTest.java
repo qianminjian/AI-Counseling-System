@@ -188,7 +188,7 @@ class ConversationServiceImplTest {
                 allianceEnhancer, cbtStageRouter,
                 sessionEndAnalyticsService, sessionStateStore,
                 contextAgent, sessionSummaryUpdater, new ObjectMapper(),
-                personalInfoExtractor, promptAssemblyService, themeEvolutionEngine);
+                personalInfoExtractor, promptAssemblyService, themeEvolutionEngine, new NudgeProperties());
     }
 
     /** createSession 并捕获内部生成的 sessionId */
@@ -378,7 +378,7 @@ class ConversationServiceImplTest {
                     allianceEnhancer, cbtStageRouter,
                 sessionEndAnalyticsService, sessionStateStore,
                 contextAgent, sessionSummaryUpdater, new ObjectMapper(),
-                personalInfoExtractor, promptAssemblyService, themeEvolutionEngine);
+                personalInfoExtractor, promptAssemblyService, themeEvolutionEngine, new NudgeProperties());
 
             User user = new User();
             user.setPseudonym("小明");
@@ -393,7 +393,7 @@ class ConversationServiceImplTest {
                     .thenReturn(new PromptVersionService.ResolvedPrompt("【暖场指令】强度=2", "TSK_004:v0:classpath", "control"));
             when(profileService.buildProfilePrompt(eq(tenantId), eq(studentId), any(Integer.class), any()))
                     .thenReturn(null);
-            when(aiChatService.chatProactive(eq(sessionId), eq("happy"), eq("male"), any(), contains("【暖场指令】强度=2"), any(Integer.class)))
+            when(aiChatService.chatProactive(eq(sessionId), eq("happy"), any(), contains("【暖场指令】强度=2")))
                     .thenReturn(Flux.just(StreamMessageEvent.token("波波在呢"), StreamMessageEvent.token("～")));
 
             keyedService.sendNudgeStream(tenantId, studentId, sessionId, 30).collectList().block();
@@ -419,7 +419,7 @@ class ConversationServiceImplTest {
                     .sendNudgeStream(tenantId, studentId, UUID.randomUUID(), 30)
                     .collectList().block();
             assertThat(events).isEmpty();
-            verify(aiChatService, never()).chatProactive(any(), any(), any(), any(), any(), anyInt());
+            verify(aiChatService, never()).chatProactive(any(), any(), any(), any());
         }
 
         @Test
@@ -436,7 +436,7 @@ class ConversationServiceImplTest {
                     .collectList().block();
 
             assertThat(events).isEmpty();
-            verify(aiChatService, never()).chatProactive(any(), any(), any(), any(), any(), anyInt());
+            verify(aiChatService, never()).chatProactive(any(), any(), any(), any());
         }
 
         @Test
@@ -451,7 +451,7 @@ class ConversationServiceImplTest {
                     .collectList().block();
 
             assertThat(events).isEmpty();
-            verify(aiChatService, never()).chatProactive(any(), any(), any(), any(), any(), anyInt());
+            verify(aiChatService, never()).chatProactive(any(), any(), any(), any());
         }
 
         @Test
@@ -464,7 +464,7 @@ class ConversationServiceImplTest {
                     .thenReturn(new PromptVersionService.ResolvedPrompt("【暖场指令】强度=2", "TSK_004:v0:classpath", "control"));
             when(profileService.buildProfilePrompt(eq(tenantId), eq(studentId), any(Integer.class), any()))
                     .thenReturn(null);
-            when(aiChatService.chatProactive(eq(sessionId), eq("happy"), eq("male"), any(), contains("【暖场指令】强度=2"), any(Integer.class)))
+            when(aiChatService.chatProactive(eq(sessionId), eq("happy"), any(), contains("【暖场指令】强度=2")))
                     .thenReturn(Flux.just(StreamMessageEvent.token("波波在呢"), StreamMessageEvent.token("～")));
 
             // happy(+1) + 30s(B+1) + 前期(D+1) = 3 → 引导破冰
@@ -478,7 +478,7 @@ class ConversationServiceImplTest {
             assertThat(events.get(2).type()).isEqualTo("done");
 
             // 走 chatProactive（不污染记忆）；systemPromptContent 含版本路由渲染的暖场指令
-            verify(aiChatService).chatProactive(eq(sessionId), eq("happy"), eq("male"), any(), contains("【暖场指令】强度=2"), any(Integer.class));
+            verify(aiChatService).chatProactive(eq(sessionId), eq("happy"), any(), contains("【暖场指令】强度=2"));
             // TSK_004 走版本路由（ARCH-001 C1：路由收敛 PromptAssemblyService 内部）
             verify(promptVersionService).resolve(eq(tenantId), eq("TSK_004"), eq(studentId), anyMap());
             // AI 暖场回复落库（孩子看到的连续性保留）
@@ -490,7 +490,7 @@ class ConversationServiceImplTest {
         void intervalGuard_empty() {
             UUID sessionId = createSession("happy");
             mockSessionActive(sessionId);
-            when(aiChatService.chatProactive(any(), any(), any(), any(), any(), any(Integer.class)))
+            when(aiChatService.chatProactive(any(), any(), any(), any()))
                     .thenReturn(Flux.just(StreamMessageEvent.token("在呢")));
 
             // 第一次暖场成功
@@ -501,7 +501,7 @@ class ConversationServiceImplTest {
                     .collectList().block();
 
             assertThat(second).isEmpty();
-            verify(aiChatService, times(1)).chatProactive(any(), any(), any(), any(), any(), any(Integer.class));
+            verify(aiChatService, times(1)).chatProactive(any(), any(), any(), any());
         }
 
         @Test
@@ -516,7 +516,7 @@ class ConversationServiceImplTest {
                     .collectList().block();
 
             assertThat(events).isEmpty();
-            verify(aiChatService, never()).chatProactive(any(), any(), any(), any(), any(), any(Integer.class));
+            verify(aiChatService, never()).chatProactive(any(), any(), any(), any());
         }
 
         @Test
@@ -534,7 +534,7 @@ class ConversationServiceImplTest {
             when(usageTimeLimitService.isExceeded(any(), any())).thenReturn(false);
             when(profileService.buildProfilePrompt(eq(tenantId), eq(studentId), any(Integer.class), any()))
                     .thenReturn(null);
-            when(aiChatService.chatWithPrompt(any(), any(), any(), any(), anyInt(), anyString()))
+            when(aiChatService.chatWithPrompt(any(), any(), any(), anyString()))
                     .thenReturn(Flux.just(StreamMessageEvent.token("你好呀")));
 
             List<StreamMessageEvent> chatEvents = service
@@ -543,14 +543,14 @@ class ConversationServiceImplTest {
             assertThat(chatEvents).isNotEmpty();
 
             // 计数已清零 + 间隔足够 → 暖场恢复
-            when(aiChatService.chatProactive(any(), any(), any(), any(), any(), any(Integer.class)))
+            when(aiChatService.chatProactive(any(), any(), any(), any()))
                     .thenReturn(Flux.just(StreamMessageEvent.token("在呢")));
             List<StreamMessageEvent> nudgeEvents = service
                     .sendNudgeStream(tenantId, studentId, sessionId, 40)
                     .collectList().block();
 
             assertThat(nudgeEvents).isNotEmpty();
-            verify(aiChatService, times(1)).chatProactive(any(), any(), any(), any(), any(), any(Integer.class));
+            verify(aiChatService, times(1)).chatProactive(any(), any(), any(), any());
         }
 
         @Test
@@ -560,7 +560,7 @@ class ConversationServiceImplTest {
             mockSessionActive(sessionId);
             when(profileService.buildProfilePrompt(eq(tenantId), eq(studentId), any(Integer.class), any()))
                     .thenReturn(null);
-            when(aiChatService.chatProactive(any(), any(), any(), any(), any(), any(Integer.class)))
+            when(aiChatService.chatProactive(any(), any(), any(), any()))
                     .thenReturn(Flux.error(new RuntimeException("LLM 超时")));
 
             List<StreamMessageEvent> events = service
@@ -608,7 +608,7 @@ class ConversationServiceImplTest {
             assertThat(events.get(2).type()).isEqualTo("done");
 
             // 硬短路：绝不调用 LLM 自由生成
-            verify(aiChatService, never()).chatWithPrompt(any(), any(), any(), any(), anyInt(), anyString());
+            verify(aiChatService, never()).chatWithPrompt(any(), any(), any(), anyString());
         }
 
         @Test
@@ -665,7 +665,7 @@ class ConversationServiceImplTest {
                     && e.content().contains("心理援助热线")
                     && e.content().contains(CrisisResources.NATIONAL_PSYCHOLOGICAL_AID)
                     && !e.content().contains("12355"));
-            verify(aiChatService, never()).chatWithPrompt(any(), any(), any(), any(), anyInt(), anyString());
+            verify(aiChatService, never()).chatWithPrompt(any(), any(), any(), anyString());
         }
 
         @Test
@@ -686,7 +686,7 @@ class ConversationServiceImplTest {
             assertThat(events.get(0).type()).isEqualTo("token");
             assertThat(events.get(0).content()).isEqualTo(CrisisResources.SAFETY_MODE_COMPANION_REPLY);
             assertThat(events.get(1).type()).isEqualTo("done");
-            verify(aiChatService, never()).chatWithPrompt(any(), any(), any(), any(), anyInt(), anyString());
+            verify(aiChatService, never()).chatWithPrompt(any(), any(), any(), anyString());
         }
 
         @Test
@@ -702,14 +702,14 @@ class ConversationServiceImplTest {
             when(usageTimeLimitService.isExceeded(any(), any())).thenReturn(false);
             when(profileService.buildProfilePrompt(eq(tenantId), eq(studentId), any(Integer.class), any()))
                     .thenReturn(null);
-            when(aiChatService.chatWithPrompt(any(), any(), any(), any(), anyInt(), anyString()))
+            when(aiChatService.chatWithPrompt(any(), any(), any(), anyString()))
                     .thenReturn(Flux.just(StreamMessageEvent.token("我在听")));
 
             List<StreamMessageEvent> events = service
                     .sendMessageStream(tenantId, studentId, sessionId, "我在学校被打了")
                     .collectList().block();
 
-            verify(aiChatService).chatWithPrompt(any(), any(), any(), any(), anyInt(), anyString());
+            verify(aiChatService).chatWithPrompt(any(), any(), any(), anyString());
             assertThat(events).anyMatch(e -> "risk".equals(e.type()));
             assertThat(events).anyMatch(e -> "token".equals(e.type()) && "我在听".equals(e.content()));
         }
@@ -742,7 +742,7 @@ class ConversationServiceImplTest {
         private void mockLlmReply() {
             when(profileService.buildProfilePrompt(eq(tenantId), eq(studentId), any(Integer.class), any()))
                     .thenReturn(null);
-            when(aiChatService.chatWithPrompt(any(), any(), any(), any(), anyInt(), anyString()))
+            when(aiChatService.chatWithPrompt(any(), any(), any(), anyString()))
                     .thenReturn(Flux.just(StreamMessageEvent.token("我在听")));
         }
 
@@ -767,7 +767,7 @@ class ConversationServiceImplTest {
             assertThat(events.get(0).type()).isEqualTo("risk");
             assertThat(events.get(1).content()).isEqualTo(new CrisisHotlineProvider().render(CrisisResources.RED_SAFETY_REPLY));
             assertThat(events.get(2).type()).isEqualTo("done");
-            verify(aiChatService, never()).chatWithPrompt(any(), any(), any(), any(), anyInt(), anyString());
+            verify(aiChatService, never()).chatWithPrompt(any(), any(), any(), anyString());
             verify(riskProcessor).persistRiskEvent(any(SessionState.class), any(RiskDetectionResult.class));
         }
 
@@ -784,7 +784,7 @@ class ConversationServiceImplTest {
                     .collectList().block();
 
             verify(riskProcessor).applySemanticRisk(any(RiskDetectionResult.class), anyString(), anyInt());
-            verify(aiChatService).chatWithPrompt(any(), any(), any(), any(), anyInt(), anyString());
+            verify(aiChatService).chatWithPrompt(any(), any(), any(), anyString());
             assertThat(events).noneMatch(e -> "risk".equals(e.type()));
         }
 
@@ -823,7 +823,7 @@ class ConversationServiceImplTest {
                     .collectList().block();
 
             assertThat(events).anyMatch(e -> "risk".equals(e.type()));
-            verify(aiChatService).chatWithPrompt(any(), any(), any(), any(), anyInt(), anyString());
+            verify(aiChatService).chatWithPrompt(any(), any(), any(), anyString());
             verify(riskProcessor).persistRiskEvent(any(SessionState.class), any(RiskDetectionResult.class));
         }
 
@@ -850,7 +850,7 @@ class ConversationServiceImplTest {
             when(usageTimeLimitService.isExceeded(any(), any())).thenReturn(false);
             when(profileService.buildProfilePrompt(eq(tenantId), eq(studentId), any(Integer.class), any()))
                     .thenReturn(null);
-            when(aiChatService.chatWithPrompt(any(), any(), any(), any(), anyInt(), anyString()))
+            when(aiChatService.chatWithPrompt(any(), any(), any(), anyString()))
                     .thenReturn(Flux.just(StreamMessageEvent.token("我在听")));
         }
 
@@ -866,7 +866,7 @@ class ConversationServiceImplTest {
             service.sendMessageStream(tenantId, studentId, sessionId, "我考试考砸了很难过").collectList().block();
 
             ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
-            verify(aiChatService).chatWithPrompt(any(), any(), any(), any(), anyInt(), promptCaptor.capture());
+            verify(aiChatService).chatWithPrompt(any(), any(), any(), promptCaptor.capture());
             // Fix 3: RAG 拼在系统 Prompt 之后，ContextBrief 追加在最尾部（recency bias）
             assertThat(promptCaptor.getValue())
                     .startsWith("mock-system-prompt")
@@ -883,7 +883,7 @@ class ConversationServiceImplTest {
             service.sendMessageStream(tenantId, studentId, sessionId, "波波你在吗").collectList().block();
 
             ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
-            verify(aiChatService).chatWithPrompt(any(), any(), any(), any(), anyInt(), promptCaptor.capture());
+            verify(aiChatService).chatWithPrompt(any(), any(), any(), promptCaptor.capture());
             // ORCH-002：组装链 SYS → LANG → EMO + Fix 3: ContextBrief 追加在尾部
             assertThat(promptCaptor.getValue())
                     .startsWith("mock-system-prompt\n\nmock-lang-rules\n\nmock-system-prompt")
@@ -973,7 +973,7 @@ class ConversationServiceImplTest {
             when(usageTimeLimitService.isExceeded(any(), any())).thenReturn(false);
             when(profileService.buildProfilePrompt(eq(tenantId), eq(studentId), any(Integer.class), any()))
                     .thenReturn(null);
-            when(aiChatService.chatWithPrompt(any(), any(), any(), any(), anyInt(), anyString()))
+            when(aiChatService.chatWithPrompt(any(), any(), any(), anyString()))
                     .thenReturn(Flux.just(StreamMessageEvent.token("我在听")));
         }
 

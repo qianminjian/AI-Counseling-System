@@ -54,7 +54,7 @@ class RedisSessionStateStoreTest {
     @BeforeEach
     void setUp() {
         lenient().when(redisTemplate.opsForValue()).thenReturn(valueOperations);
-        store = new RedisSessionStateStore(redisTemplate, objectMapper);
+        store = new RedisSessionStateStore(redisTemplate, objectMapper, new NudgeProperties());
     }
 
     private SessionState newState() {
@@ -87,7 +87,7 @@ class RedisSessionStateStoreTest {
         ObjectMapper failingMapper = org.mockito.Mockito.mock(ObjectMapper.class);
         when(failingMapper.writeValueAsString(any()))
                 .thenThrow(new JsonProcessingException("boom") {});
-        RedisSessionStateStore failingStore = new RedisSessionStateStore(redisTemplate, failingMapper);
+        RedisSessionStateStore failingStore = new RedisSessionStateStore(redisTemplate, failingMapper, new NudgeProperties());
 
         assertThatCode(() -> failingStore.save(tenantId, sessionId, newState())).doesNotThrowAnyException();
         verify(valueOperations, never()).set(anyString(), anyString(), any(Duration.class));
@@ -232,6 +232,28 @@ class RedisSessionStateStoreTest {
         when(redisTemplate.execute(any(), anyList(), any(Object[].class))).thenReturn(0L);
 
         assertThat(store.tryNudge(tenantId, sessionId)).isFalse();
+    }
+
+    @Test
+    @DisplayName("tryNudge：阈值取自 NudgeProperties 配置（Lua ARGV 注入，与快照同源）")
+    void tryNudgeUsesConfiguredThresholds() {
+        // 默认值契约：maxCount=2 / minIntervalSeconds=20（与 yml mindsafe.conversation.nudge 默认一致）
+        assertThat(new NudgeProperties().getMaxCount()).isEqualTo(2);
+        assertThat(new NudgeProperties().getMinIntervalSeconds()).isEqualTo(20L);
+
+        NudgeProperties props = new NudgeProperties();
+        props.setMaxCount(5);
+        props.setMinIntervalSeconds(60);
+        RedisSessionStateStore configuredStore = new RedisSessionStateStore(redisTemplate, objectMapper, props);
+        when(redisTemplate.execute(any(), anyList(), any(Object[].class))).thenReturn(1L);
+
+        assertThat(configuredStore.tryNudge(tenantId, sessionId)).isTrue();
+
+        // ARGV 顺序：now / ttl / maxCount / minIntervalSeconds（Lua 内 ARGV[3]/ARGV[4] 取阈值）
+        org.mockito.ArgumentCaptor<Object[]> argvCaptor = org.mockito.ArgumentCaptor.forClass(Object[].class);
+        verify(redisTemplate).execute(any(), anyList(), argvCaptor.capture());
+        assertThat(argvCaptor.getValue()[2]).isEqualTo("5");
+        assertThat(argvCaptor.getValue()[3]).isEqualTo("60");
     }
 
     @Test

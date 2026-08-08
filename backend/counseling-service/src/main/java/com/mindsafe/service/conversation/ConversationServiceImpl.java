@@ -86,6 +86,9 @@ public class ConversationServiceImpl implements ConversationService {
     /** 主题演化引擎（话题关键词表单一源，ARCH-001 C1 收敛） */
     private final ThemeEvolutionEngine themeEvolutionEngine;
 
+    /** 暖场护栏配置（B2：阈值单一源，Lua 判定与快照判定同源） */
+    private final NudgeProperties nudgeProperties;
+
     /** 冷场决策模型（无状态纯计算，design/28 §三） */
     private final NudgeDecisionModel nudgeDecisionModel = new NudgeDecisionModel();
 
@@ -118,7 +121,8 @@ public class ConversationServiceImpl implements ConversationService {
                                    ObjectMapper objectMapper,
                                    PersonalInfoExtractor personalInfoExtractor,
                                    PromptAssemblyService promptAssemblyService,
-                                   ThemeEvolutionEngine themeEvolutionEngine) {
+                                   ThemeEvolutionEngine themeEvolutionEngine,
+                                   NudgeProperties nudgeProperties) {
         this.aiChatService = aiChatService;
         this.riskProcessor = riskProcessor;
         this.piiDesensitizer = piiDesensitizer;
@@ -143,6 +147,7 @@ public class ConversationServiceImpl implements ConversationService {
         this.personalInfoExtractor = personalInfoExtractor;
         this.promptAssemblyService = promptAssemblyService;
         this.themeEvolutionEngine = themeEvolutionEngine;
+        this.nudgeProperties = nudgeProperties;
     }
 
     @Transactional
@@ -398,7 +403,7 @@ public class ConversationServiceImpl implements ConversationService {
         }
         PromptAssemblyService.AssembledPrompt assembled = promptAssemblyService.assembleMainPrompt(
                 session.getTenantId(), session.getStudentUserId(), effectiveGrade, session.getEmotionTag(),
-                promptOrchestrationService.toTemplateVariables(strategy), stageMark, ragContext);
+                promptOrchestrationService.toTemplateVariables(strategy), stageMark, ragContext, session.getGender());
         String systemPromptContent = assembled.content();
 
         CounselingSession dbSession = sessionMapper.selectById(sessionId);
@@ -421,7 +426,7 @@ public class ConversationServiceImpl implements ConversationService {
         String finalSystemPrompt = systemPromptContent + "\n\n" + contextBrief;
 
         StringBuilder aiResponseCollector = new StringBuilder();
-        Flux<StreamMessageEvent> aiStream = aiChatService.chatWithPrompt(sessionId, session.getEmotionTag(), safeContent, session.getGender(), effectiveGrade, finalSystemPrompt)
+        Flux<StreamMessageEvent> aiStream = aiChatService.chatWithPrompt(sessionId, session.getEmotionTag(), safeContent, finalSystemPrompt)
                 .doOnNext(event -> {
                     if (event.type() != null && event.type().equals("token") && event.content() != null) {
                         aiResponseCollector.append(event.content());
@@ -474,8 +479,8 @@ public class ConversationServiceImpl implements ConversationService {
             return Flux.empty();
         }
 
-        // 护栏 2：连续暖场次数（≤2）/ 间隔（≥20s），孩子说话即清零
-        if (!session.canNudge()) {
+        // 护栏 2：连续暖场次数（≤上限）/ 间隔（≥最小间隔），孩子说话即清零（B2：阈值取 NudgeProperties 单一配置源）
+        if (!session.canNudge(nudgeProperties.getMaxCount(), nudgeProperties.getMinIntervalSeconds())) {
             log.debug("nudge: 护栏拦截（次数/间隔），返回空流: sessionId={}, nudgeCount={}",
                     sessionId, session.getNudgeCount());
             return Flux.empty();
@@ -524,7 +529,7 @@ public class ConversationServiceImpl implements ConversationService {
                         "silence_seconds", String.valueOf(silenceSeconds),
                         "warmth_level", String.valueOf(decision.warmthLevel()),
                         "direction", decision.direction()
-                ));
+                ), session.getGender());
 
         // T5：原子护栏放行 + 计数（Redis 独立键 Lua；并发下防双发/丢失更新，真值以 Lua 判定为准）
         if (!sessionStateStore.tryNudge(tenantId, sessionId)) {
@@ -536,7 +541,7 @@ public class ConversationServiceImpl implements ConversationService {
         log.info("nudge: 决策=暖场: sessionId={}, warmthLevel={}, direction={}, silenceSeconds={}",
                 sessionId, decision.warmthLevel(), decision.direction(), silenceSeconds);
 
-        return aiChatService.chatProactive(sessionId, session.getEmotionTag(), session.getGender(), nudgeContextBrief, systemPromptContent, effectiveGrade)
+        return aiChatService.chatProactive(sessionId, session.getEmotionTag(), nudgeContextBrief, systemPromptContent)
                 .doOnNext(event -> {
                     if (event.type() != null && event.type().equals("token") && event.content() != null) {
                         aiResponseCollector.append(event.content());

@@ -47,7 +47,17 @@ public class PromptVersionService {
             Map.entry("TSK_002", PromptTemplateService.TSK_002),
             Map.entry("TSK_003", PromptTemplateService.TSK_003),
             Map.entry("TSK_004", PromptTemplateService.TSK_004),
-            Map.entry("EMO_001", PromptTemplateService.EMO_001)
+            Map.entry("EMO_001", PromptTemplateService.EMO_001),
+            // B4：性别×年级沟通风格（PROF-014）——与其余模板同一版本路由机制
+            Map.entry("GENDER_STYLE_MALE_LOW", PromptTemplateService.GENDER_STYLE_MALE_LOW),
+            Map.entry("GENDER_STYLE_MALE_MID", PromptTemplateService.GENDER_STYLE_MALE_MID),
+            Map.entry("GENDER_STYLE_MALE_HIGH", PromptTemplateService.GENDER_STYLE_MALE_HIGH),
+            Map.entry("GENDER_STYLE_FEMALE_LOW", PromptTemplateService.GENDER_STYLE_FEMALE_LOW),
+            Map.entry("GENDER_STYLE_FEMALE_MID", PromptTemplateService.GENDER_STYLE_FEMALE_MID),
+            Map.entry("GENDER_STYLE_FEMALE_HIGH", PromptTemplateService.GENDER_STYLE_FEMALE_HIGH),
+            Map.entry("GENDER_STYLE_NEUTRAL_LOW", PromptTemplateService.GENDER_STYLE_NEUTRAL_LOW),
+            Map.entry("GENDER_STYLE_NEUTRAL_MID", PromptTemplateService.GENDER_STYLE_NEUTRAL_MID),
+            Map.entry("GENDER_STYLE_NEUTRAL_HIGH", PromptTemplateService.GENDER_STYLE_NEUTRAL_HIGH)
     );
 
     private final PromptVersionMapper promptVersionMapper;

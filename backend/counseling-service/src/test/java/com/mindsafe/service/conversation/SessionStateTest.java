@@ -3,6 +3,7 @@ package com.mindsafe.service.conversation;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.time.Instant;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -55,5 +56,24 @@ class SessionStateTest {
 
         s.updatePersonalInfo("realName", "小波");
         assertThat(s.getPersonalInfo().get("realName")).isEqualTo("小波");
+    }
+
+    @Test
+    @DisplayName("B2: canNudge 阈值由调用方传入——次数超限/间隔不足拦截，重置后可放行")
+    void canNudge_usesInjectedThresholds() {
+        SessionState s = newState();
+        assertThat(s.canNudge(2, 20)).as("初始未 nudge 过 → 放行").isTrue();
+
+        s.markNudged();
+        s.markNudged();
+        assertThat(s.canNudge(2, 20)).as("连续 nudge 达 maxCount=2 → 拦截").isFalse();
+        assertThat(s.canNudge(5, 20))
+                .as("放宽 maxCount=5 → 次数未超限，但距上次 nudge 不足 20s → 仍拦截").isFalse();
+
+        s.setLastNudgeAt(Instant.now().minusSeconds(21));
+        assertThat(s.canNudge(5, 20)).as("距上次 nudge 已超 20s → 放行").isTrue();
+
+        s.setLastNudgeAt(Instant.now().minusSeconds(19));
+        assertThat(s.canNudge(5, 20)).as("距上次 nudge 不足 20s → 拦截").isFalse();
     }
 }

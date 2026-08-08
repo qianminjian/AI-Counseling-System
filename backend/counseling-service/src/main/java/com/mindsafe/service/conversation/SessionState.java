@@ -159,11 +159,11 @@ public class SessionState {
         return Duration.between(lastStudentMessageAt, Instant.now()).getSeconds();
     }
 
-    /** 暖场护栏：连续 ≤2 次 且 距上次暖场 ≥20s */
-    public boolean canNudge() {
-        if (nudgeCount >= 2) return false;
+    /** 暖场护栏：连续 ≤maxCount 次 且 距上次 ≥minIntervalSeconds（B2：阈值由 NudgeProperties 单一配置源注入，与 Lua 真值路径同源） */
+    public boolean canNudge(int maxCount, long minIntervalSeconds) {
+        if (nudgeCount >= maxCount) return false;
         Instant last = lastNudgeAt;
-        return last == null || Duration.between(last, Instant.now()).getSeconds() >= 20;
+        return last == null || Duration.between(last, Instant.now()).getSeconds() >= minIntervalSeconds;
     }
 
     public void markNudged() {

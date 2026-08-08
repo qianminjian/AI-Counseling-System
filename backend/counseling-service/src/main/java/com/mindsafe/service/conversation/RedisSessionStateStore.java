@@ -39,14 +39,11 @@ public class RedisSessionStateStore {
 
     /** nudge 独立计数器键前缀（T5：与主对象键分离，原子化并发敏感字段） */
     private static final String NUDGE_KEY_PREFIX = "session:nudge:";
-    /** 暖场护栏上限（对齐 SessionState.canNudge 快速路径；真值以 Lua 判定为准） */
-    private static final int NUDGE_MAX_COUNT = 2;
-    /** 暖场最小间隔秒（对齐 SessionState.canNudge） */
-    private static final long NUDGE_MIN_INTERVAL_SECONDS = 20;
 
     /**
      * Lua 原子暖场护栏：count&lt;上限 且 距上次≥间隔 才 INCR+SET 时间戳（T5：消除 get→改→save 非原子丢失更新与并发双发）。
      * ARGV：1=当前 epoch 秒 2=TTL 秒 3=次数上限 4=最小间隔秒；返回 1=放行 0=拦截。
+     * 阈值由 {@link NudgeProperties} 注入（B2：单一配置源，与 SessionState.canNudge 快照路径同源）。
      */
     private static final RedisScript<Long> TRY_NUDGE_SCRIPT = new DefaultRedisScript<>("""
             local count = tonumber(redis.call('GET', KEYS[1]) or '0')
@@ -62,10 +59,12 @@ public class RedisSessionStateStore {
 
     private final StringRedisTemplate redisTemplate;
     private final ObjectMapper objectMapper;
+    private final NudgeProperties nudgeProperties;
 
-    public RedisSessionStateStore(StringRedisTemplate redisTemplate, ObjectMapper objectMapper) {
+    public RedisSessionStateStore(StringRedisTemplate redisTemplate, ObjectMapper objectMapper, NudgeProperties nudgeProperties) {
         this.redisTemplate = redisTemplate;
         this.objectMapper = objectMapper;
+        this.nudgeProperties = nudgeProperties;
     }
 
     /**
@@ -157,8 +156,8 @@ public class RedisSessionStateStore {
                     List.of(nudgeCountKey(tenantId, sessionId), nudgeAtKey(tenantId, sessionId)),
                     String.valueOf(Instant.now().getEpochSecond()),
                     String.valueOf(SESSION_TTL.getSeconds()),
-                    String.valueOf(NUDGE_MAX_COUNT),
-                    String.valueOf(NUDGE_MIN_INTERVAL_SECONDS));
+                    String.valueOf(nudgeProperties.getMaxCount()),
+                    String.valueOf(nudgeProperties.getMinIntervalSeconds()));
             return Long.valueOf(1L).equals(result);
         } catch (Exception e) {
             log.error("nudge 原子计数失败（保守拦截本次暖场）: sessionId={}", sessionId, e);
