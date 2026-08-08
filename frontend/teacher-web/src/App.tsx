@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { ConfigProvider, theme } from 'antd'
 import zhCN from 'antd/locale/zh_CN'
 import Login from './pages/Login'
@@ -19,8 +19,21 @@ function setMustChange(val) {
   else localStorage.removeItem(MUST_CHANGE_KEY)
 }
 
+// L2（CodeReview）：初始渲染前同步 <html data-theme>——useEffect 首帧后写入太晚，
+// 深色偏好用户刷新会先渲染浅色再闪成深色（FOUC）；useState 初始化阶段即写 dataset，首帧即正确
+function getInitialDarkMode(): boolean {
+  const dark = localStorage.getItem(DARK_MODE_KEY) === 'true'
+  document.documentElement.dataset.theme = dark ? 'dark' : 'light'
+  return dark
+}
+
 export default function App() {
-  const [darkMode, setDarkMode] = useState(() => localStorage.getItem(DARK_MODE_KEY) === 'true')
+  const [darkMode, setDarkMode] = useState<boolean>(getInitialDarkMode)
+
+  // F-01：暗色模式同步 <html data-theme>（--ms-* token 覆盖层生效面；切换时与初始同步双保险）
+  useEffect(() => {
+    document.documentElement.dataset.theme = darkMode ? 'dark' : 'light'
+  }, [darkMode])
 
   const toggleDark = () => {
     setDarkMode(prev => {
