@@ -215,6 +215,26 @@ jobs:
       - name: Run pytest
         run: python -m pytest -q
 
+  shell-tools-test:
+    # DA-05：tests/unit/scripts 六件套 CI 入口（此前覆盖运维关键路径的测试存在但永不执行，等于没测）
+    # check-commit/db-rollback-drill/gen-changelog/gen-openapi-snapshot/prepare-funasr/verify-doc-numbers + backup-common
+    # 自带 temp repo/mock docker，无需额外依赖，<2min
+    name: Shell Tools Test (scripts)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run scripts unit tests
+        run: |
+          set -euo pipefail
+          for t in tests/unit/scripts/*-test.sh; do
+            echo "== $t =="
+            bash "$t"
+          done
+          echo "== tests/unit/backup-common.sh =="
+          bash tests/unit/backup-common.sh
+
   docker-build-smoke:
     # DA-01+DA-07：Python 双服务镜像构建冒烟（此前零构建验证，COPY 漏拷 tts_engines/asr_engines 存活 3 周）
     # 只 build 不推送；构建后容器内 import 冒烟，镜像缺陷在 CI 暴露而非部署现场

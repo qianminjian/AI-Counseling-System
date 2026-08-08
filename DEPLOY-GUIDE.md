@@ -187,7 +187,7 @@ MINDSAFE_CONSENT_TRIAL_AUTO_GRANT=false
 
 > 原 CD secrets（`DEPLOY_HOST` / `DEPLOY_USER` / `DEPLOY_SSH_KEY` / `DEPLOY_KNOWN_HOSTS` / `SMOKE_URL`）已随 CD 停用（DOC-063），保留定义仅防误用。
 
-> 冒烟测试（可选）：`tests/e2e/smoke-test.sh` 需要教师/管理员账号，从首次部署种子数据获取；缺少账号时相关用例告警跳过。
+> 冒烟测试（DA-04 议决：自动门禁）：后端部署时 deploy.sh 自动上传并执行 `tests/e2e/smoke-test.sh`（服务器现场，默认路径断言，BASE_URL=http://localhost:18082）；失败中止部署（部署状态不更新），可 `SKIP_SMOKE=1 ./deploy.sh` 显式跳过（逃生口）。自动门禁不跑教师/管理员链路（凭据不进 ssh 命令行，由后端 `*IT.java` 覆盖）；手动补充：`ssh $SERVER 'cd /guju/mindsafe && TEACHER_USER=x TEACHER_PASS=x ADMIN_USER=x ADMIN_PASS=x BASE_URL=http://localhost:18082 bash tests/e2e/smoke-test.sh'`。
 
 ### Step 7：首次部署（生产）
 
@@ -221,8 +221,8 @@ bash ../service-manager.sh status   # 全部服务健康检查
 > deploy.sh 侧已做兜底（service-manager.sh 重启前幂等清理同名应用容器，不触碰数据库/Redis），
 > 但首次人工部署仍建议按上述步骤手动清理，避免 up 阶段报错。
 
-> 2026-08-06 切换后生产统一走 `/guju/mindsafe/deploy/`（prod profile）；`docker-compose.test.yml` 仅用于轻量测试环境（不含 voice/tts），nginx 配置以宿主 nginx 为准。
-> 部署完成后可手动跑冒烟（`tests/e2e/smoke-test.sh`，需教师/管理员账号）。
+> 2026-08-06 切换后生产统一走 `/guju/mindsafe/deploy/`（prod profile）；`docker-compose.test.yml` 仅用于轻量测试环境（不含 voice/tts），nginx 配置以宿主 nginx  为准。
+> 部署后冒烟已由 deploy.sh 自动执行（DA-04，默认路径断言）；手动重跑：`ssh $SERVER 'cd /guju/mindsafe && BASE_URL=http://localhost:18082 bash tests/e2e/smoke-test.sh'`（教师/管理员链路需额外携带 `TEACHER_USER/TEACHER_PASS/ADMIN_USER/ADMIN_PASS` 环境变量，账号从首次部署种子数据获取）。
 
 ---
 

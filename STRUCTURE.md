@@ -128,7 +128,6 @@ frontend/
 |------|------|------|----------|
 | 单元测试 | 各模块 `src/test/java/` | JUnit 5 + Mockito | 每次 commit 前 |
 | 集成测试 | 各模块 `src/test/java/`（`*IT.java` 后缀区分） | Testcontainers + Spring Boot Test | merge 前 / CI |
-| 跨模块集成 | `tests/integration/` | 同上 | M 里程碑验收 |
 | E2E | `tests/e2e/` | Playwright | 发布前 |
 | 前端单元/组件 | `frontend/*/src/test/`（就近放置） | Vitest + React Testing Library | 每次 commit 前 |
 
@@ -178,7 +177,7 @@ frontend/
 
 #### 2.7.6 跨模块测试（`tests/`）
 
-- `tests/integration/`：跨 Maven 模块协作验证（租户路由 + 对话链路 + 预警链路联合）
+- 跨模块集成：位于 backend/counseling-app/src/test/java/（`*IT.java`，如 AuthFlowIT/ConversationRiskFlowIT；`tests/integration/` 空壳已删除，DA-05）
 - `tests/e2e/`：Playwright 驱动浏览器的完整用户场景
 - `tests/unit/`：仅作备用，常规单元测试必须在模块内
 - `tests/` 不含可构建代码，仅为脚本/配置/fixture 容器

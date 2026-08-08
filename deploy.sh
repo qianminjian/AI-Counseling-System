@@ -15,6 +15,7 @@
 #   ./deploy.sh --tts        强制部署 TTS 服务
 #   ./deploy.sh --voice      强制部署 Voice 服务（ASR+SER）
 #   ./deploy.sh --rollback backend   回滚后端到上一版本
+#   SKIP_SMOKE=1 ./deploy.sh  跳过发布后置冒烟（DA-04 逃生口，仅后端部署时生效）
 # 前置条件：已 commit + push，CI 通过（与 CD 相同的门禁）
 set -eo pipefail
 
@@ -357,6 +358,38 @@ if [ -n "$RESTART_TARGETS" ]; then
   echo "✅ 服务重启 + 健康检查通过"
 else
   echo "ℹ️  仅前端变更时也应重载 nginx（已纳入重启目标）"
+fi
+
+# ===== 发布后置冒烟（DA-04 议决：方案 B——deploy 现场 E2E 门禁，恢复 309909ed 冒烟能力） =====
+# smoke-test.sh 31 断言（注册/SSE 对话/风险识别/TTS 音色/并发/稳定性）在服务器现场执行：
+#   - 服务器具备完整真实环境（DB/真实 LLM/TTS），正是脚本设计用途（design/04 §部署后冒烟）
+#   - CI 全栈 e2e 曾在 8983862a 因不可持续移除；API 契约层由 *IT.java + openapi 快照（BA-01）覆盖，不重复
+#   - 后端宿主端口 18082（compose 映射），nginx 入口层已由 service-manager 健康检查覆盖
+#   - 逃生口：SKIP_SMOKE=1 显式跳过（日志留痕）；失败门禁中止（部署状态不更新，下次重跑）
+#   - 自动门禁跑默认路径断言（认证/注册/SSE 对话/风险/安全/TTS 音色/并发/稳定性）；
+#     教师/管理员链路（需凭据）不在此执行——密码不进 ssh 命令行（ps 暴露），由后端 *IT.java 覆盖；
+#     手动补充：ssh $SERVER 'cd $REMOTE_DIR && TEACHER_USER=x TEACHER_PASS=x ADMIN_USER=x ADMIN_PASS=x BASE_URL=http://localhost:18082 bash tests/e2e/smoke-test.sh'
+if [ "$DEPLOY_BACKEND" = "true" ]; then
+  if [ "${SKIP_SMOKE:-}" = "1" ]; then
+    echo "ℹ️  SKIP_SMOKE=1 已设置，跳过发布后置冒烟"
+  else
+    echo "🧪 发布后置冒烟（tests/e2e/smoke-test.sh，默认路径断言）..."
+    ssh "${SSH_OPTS[@]}" "$SERVER" "mkdir -p $REMOTE_DIR/tests/e2e"
+    if ! retry 3 0 rsync -avz "$PROJECT_ROOT/tests/e2e/smoke-test.sh" "$SERVER:$REMOTE_DIR/tests/e2e/smoke-test.sh"; then
+      echo "❌ smoke-test.sh 上传失败，部署中止"
+      echo "   确认服务器可达后显式跳过重跑: SKIP_SMOKE=1 ./deploy.sh"
+      exit 1
+    fi
+    if ! ssh "${SSH_OPTS[@]}" "$SERVER" "cd $REMOTE_DIR && BASE_URL=http://localhost:18082 bash tests/e2e/smoke-test.sh"; then
+      echo "❌ 冒烟测试失败——后端已部署但业务链路未验证通过"
+      echo "   排查: ssh $SERVER 'cd $REMOTE_DIR && BASE_URL=http://localhost:18082 bash tests/e2e/smoke-test.sh'"
+      echo "   确认服务正常后显式跳过重跑: SKIP_SMOKE=1 ./deploy.sh"
+      exit 1
+    fi
+    echo "✅ 冒烟测试通过（断言数以上方脚本汇总为准）"
+  fi
+else
+  echo "ℹ️  本次未部署后端，跳过冒烟测试"
 fi
 
 # ===== 更新部署状态（仅在部署成功后） =====

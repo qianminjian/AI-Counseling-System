@@ -5,6 +5,8 @@ const FRONTEND = '../../frontend'
 export default defineConfig({
   testDir: './specs',
   fullyParallel: true,
+  // DA-04 议决（2026-08-08）：CI 不跑 Playwright E2E（全栈成本高，8983862a 已移除）；
+  // 部署现场冒烟走 smoke-test.sh（deploy.sh 后置门禁），以下 CI 分支为本地/未来恢复预留配置
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   workers: process.env.CI ? 1 : undefined,
