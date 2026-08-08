@@ -42,7 +42,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 # 挂载点：/home/appuser/.cache/modelscope（由 docker-compose volumes 配置）
 
 # 应用代码 + 配置 + 启动脚本
-COPY app.py config.py config.yaml entrypoint.sh ./
+COPY app.py config.py config_loader.py config.yaml entrypoint.sh ./
 RUN chmod +x entrypoint.sh
 
 # 非 root 运行（审计 P3-31）

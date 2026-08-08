@@ -17,7 +17,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     && pip install -r requirements-lite.txt
 
 # 应用代码 + 配置文件（CFG-004：config.yaml 外置，修改无需重建镜像）
-COPY app.py config.yaml ./
+COPY app.py config_loader.py config.yaml ./
 
 # 非 root 运行（审计 P3-31）
 RUN useradd -m -u 1000 appuser

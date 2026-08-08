@@ -1,10 +1,11 @@
 """
-TTS 配置加载测试（CFG-004 配置外置）
+TTS 配置加载测试（CFG-004 配置外置 + DOC-073 D1 深合并单源化）
 覆盖：
-- config.yaml 存在时从中加载配置
-- config.yaml 不存在时回退到内置默认值
+- config.yaml 存在时从中加载配置（yaml 为权威默认矩阵单源）
+- config.yaml 不存在时回退到最小兜底（服务可启动）
 - 环境变量覆盖 config.yaml 中的模型名
-- 配置结构完整性（7 音色 / 8 方言 / 10 情感）
+- 配置结构完整性（7 音色 / 8 方言 / 10 情感，验证 yaml 权威源）
+- partial persona 深合并（只配一个方言 → 默认矩阵保留）
 """
 import os
 import tempfile
@@ -44,16 +45,16 @@ class TestConfigLoading:
         assert cfg["model"]["dashscope"] == "test-model"
         assert "test_persona" in cfg["voice_personas"]
 
-    def test_load_config_missing_file_returns_defaults(self):
-        """config.yaml 不存在时返回内置默认值"""
+    def test_load_config_missing_file_returns_fallback(self):
+        """config.yaml 不存在时返回最小兜底（服务可启动，不再携带全量矩阵）"""
         from app import load_config
 
         cfg = load_config("/nonexistent/path/config.yaml")
-        # 应回退到内置默认值
-        assert len(cfg["voice_personas"]) == 7
-        assert "xiaoxing" in cfg["voice_personas"]
-        assert len(cfg["dialects"]) == 8
-        assert len(cfg["emotion_instruct_map"]) == 10
+        # 最小兜底：model 必要字段 + 空矩阵骨架
+        assert cfg["model"]["dashscope"] == "cosyvoice-v3-flash"
+        assert cfg["voice_personas"] == {}
+        assert cfg["dialects"] == {}
+        assert cfg["emotion_instruct_map"] == {}
 
     def test_env_var_overrides_model(self, tmp_path, monkeypatch):
         """环境变量 DASHSCOPE_TTS_MODEL 覆盖 config.yaml 中的模型名"""
@@ -69,6 +70,32 @@ class TestConfigLoading:
         cfg = load_config(str(config_file))
         assert cfg["model"]["dashscope"] == "env-override-model"
 
+    def test_partial_persona_deep_merges(self, tmp_path):
+        """partial yaml 深合并：只配一个方言 instruct → 其余默认矩阵保留（D1 验收场景）"""
+        from app import load_config
+
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text(yaml.dump({
+            "dialects": {"sichuan": {"instruct": "请用四川话表达，带点辣椒味。"}},
+        }, allow_unicode=True))
+
+        # 模拟生产：defaults 注入完整矩阵（config.yaml 权威源），yaml 只覆盖指定项
+        from config_loader import load_config as loader_load_config
+        defaults = loader_load_config(
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.yaml"))
+
+        cfg = load_config(str(config_file))
+        merged = loader_load_config(str(config_file), defaults=defaults)
+
+        # 兜底路径（无 defaults）：partial yaml 直接生效
+        assert cfg["dialects"]["sichuan"]["instruct"] == "请用四川话表达，带点辣椒味。"
+        # 深合并路径：覆盖项生效 + 权威矩阵保留
+        assert merged["dialects"]["sichuan"]["instruct"] == "请用四川话表达，带点辣椒味。"
+        assert merged["dialects"]["sichuan"]["label"] == "四川话"
+        assert "cantonese" in merged["dialects"]
+        assert "bobo" in merged["voice_personas"]
+        assert len(merged["emotion_instruct_map"]) == 10
+
     def test_default_model_is_v3_flash(self):
         """默认模型为 cosyvoice-v3-flash（非 v3.5，后者已 418）"""
         from app import load_config
@@ -78,12 +105,13 @@ class TestConfigLoading:
 
 
 class TestConfigStructure:
-    """配置结构完整性"""
+    """配置结构完整性（验证 config.yaml 权威单源，D1 后矩阵不再存在于代码）"""
 
     @pytest.fixture
     def config(self):
         from app import load_config
-        return load_config("/nonexistent/config.yaml")
+        actual = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.yaml")
+        return load_config(actual)
 
     def test_seven_personas(self, config):
         """默认配置包含 7 个音色"""

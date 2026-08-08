@@ -16,7 +16,6 @@ import time
 from typing import Optional
 
 import httpx
-import yaml
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -25,6 +24,7 @@ from pydantic import BaseModel
 
 from tts_engines import DashScopeBackend, EdgeBackend
 from tts_policy import DegradationPolicy, TTSSynthesisFailed
+from config_loader import load_config as loader_load_config
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("tts-service")
@@ -99,77 +99,28 @@ app.add_middleware(
     allow_headers=["Content-Type"],
 )
 
-# ===== 配置加载（CFG-004：从 config.yaml 外置，回退内置默认值） =====
+# ===== 配置加载（CFG-004：config.yaml 外置，回退内置默认值；DOC-073 D1 深合并单源化） =====
 
-# 内置默认配置（config.yaml 不存在时的 fallback）
-_DEFAULT_CONFIG = {
+# 最小兜底配置（config.yaml 缺失时保证服务可启动；完整默认矩阵以 config.yaml 为权威单源，
+# 不再与代码逐字复制——改配置只改 yaml，免重建）
+_FALLBACK_CONFIG = {
     "model": {
         "dashscope": "cosyvoice-v3-flash",
         "edge_fallback": True,
     },
-    "voice_personas": {
-        "xiaoxing": {"name": "小星", "desc": "温暖的邻家姐姐", "gender": "female", "speed": 1.0, "dashscope_voice": "longxing_v3", "edge_voice": "zh-CN-XiaoxiaoNeural", "dialect_capable": False, "emotion_capable": False},
-        "bobo": {"name": "波波老师", "desc": "温柔的女老师", "gender": "female", "speed": 0.95, "dashscope_voice": "longyingling_v3", "edge_voice": "zh-CN-XiaohanNeural", "dialect_capable": False, "emotion_capable": False},
-        "yueliang": {"name": "月亮", "desc": "轻声讲故事", "gender": "female", "speed": 0.92, "dashscope_voice": "longwan_v3", "edge_voice": "zh-CN-XiaohanNeural", "dialect_capable": False, "emotion_capable": False},
-        "xiaotaiyang": {"name": "小太阳", "desc": "阳光大哥哥", "gender": "male", "speed": 1.05, "dashscope_voice": "longanyang", "edge_voice": "zh-CN-YunxiNeural", "dialect_capable": False, "emotion_capable": True},
-        "dashu": {"name": "大树", "desc": "暖心大叔", "gender": "male", "speed": 0.95, "dashscope_voice": "longanyun_v3", "edge_voice": "zh-CN-YunyangNeural", "dialect_capable": False, "emotion_capable": False},
-        "doudou": {"name": "豆豆", "desc": "同龄小伙伴", "gender": "male", "speed": 1.05, "dashscope_voice": "longjielidou_v3", "edge_voice": "zh-CN-YunxiaNeural", "dialect_capable": False, "emotion_capable": False},
-        "qiqiu": {"name": "方言", "desc": "方言伙伴", "speed": 1.05, "dashscope_voice": "longanhuan_v3", "edge_voice": "zh-CN-XiaoyiNeural", "dialect_capable": True, "emotion_capable": False},
-    },  # AUD-006：gender 由 persona 配置推导（qiqiu 无明确性别可缺省）
-    "dialects": {
-        "cantonese": {"label": "粤语", "mode": "native", "edge_voice": None},
-        "minnan": {"label": "闽南话", "mode": "native", "edge_voice": None},
-        "northeastern": {"label": "东北话", "mode": "instruct", "instruct": "请用东北话表达。", "edge_voice": "zh-CN-liaoning-XiaobeiNeural"},
-        "sichuan": {"label": "四川话", "mode": "instruct", "instruct": "请用四川话表达。", "edge_voice": None},
-        "henan": {"label": "河南话", "mode": "instruct", "instruct": "请用河南话表达。", "edge_voice": None},
-        "shandong": {"label": "山东话", "mode": "instruct", "instruct": "请用山东话表达。", "edge_voice": None},
-        "hunan": {"label": "湖南话", "mode": "instruct", "instruct": "请用湖南话表达。", "edge_voice": None},
-        "shaanxi": {"label": "陕西话", "mode": "instruct", "instruct": "请用陕西话表达。", "edge_voice": "zh-CN-shaanxi-XiaoniNeural"},
-    },
-    "native_dialect_voices": {
-        "cantonese": {"female": "longjiayi_v3", "male": "longanyue_v3"},
-        "minnan": {"male": "longanmin_v3"},
-    },
-    "emotion_instruct_map": {
-        "neutral": "你正在进行闲聊互动，你说话的情感是neutral。",
-        "happy": "你正在进行闲聊互动，你说话的情感是happy。",
-        "sad": "你正在进行闲聊互动，你说话的情感是sad。",
-        "angry": "你正在进行闲聊互动，你说话的情感是angry。",
-        "fearful": "你正在进行闲聊互动，你说话的情感是fearful。",
-        "surprised": "你正在进行闲聊互动，你说话的情感是surprised。",
-        "disgusted": "你正在进行闲聊互动，你说话的情感是disgusted。",
-        "calm": "你正在进行闲聊互动，你说话的情感是neutral。",
-        "anxious": "你正在进行闲聊互动，你说话的情感是fearful。",
-        "excited": "你正在进行闲聊互动，你说话的情感是happy。",
-    },
+    "voice_personas": {},
+    "dialects": {},
+    "native_dialect_voices": {},
+    "emotion_instruct_map": {},
 }
 
 
 def load_config(config_path: str = None) -> dict:
     """
-    加载 TTS 配置（CFG-004）
-    优先级：环境变量 > config.yaml > 内置默认值
+    加载 TTS 配置（CFG-004 + DOC-073 D1）
+    优先级：环境变量 > config.yaml > 代码兜底（深合并：嵌套结构部分配置仅覆盖指定项）
     """
-    import copy
-    config = copy.deepcopy(_DEFAULT_CONFIG)
-
-    # 尝试从 config.yaml 加载
-    if config_path is None:
-        config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.yaml")
-
-    if os.path.isfile(config_path):
-        try:
-            with open(config_path, "r", encoding="utf-8") as f:
-                file_cfg = yaml.safe_load(f) or {}
-            # 深度合并（文件值覆盖默认值）
-            for key, value in file_cfg.items():
-                if isinstance(value, dict) and key in config and isinstance(config[key], dict):
-                    config[key].update(value)
-                else:
-                    config[key] = value
-            logger.info("✅ 配置已从 %s 加载", config_path)
-        except Exception as e:
-            logger.warning("配置加载失败，使用内置默认值: %s", e)
+    config = loader_load_config(config_path, defaults=_FALLBACK_CONFIG)
 
     # 环境变量覆盖（12-Factor：敏感/部署相关参数由环境变量注入）
     env_model = os.environ.get("DASHSCOPE_TTS_MODEL")

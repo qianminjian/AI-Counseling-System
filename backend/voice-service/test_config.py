@@ -1,9 +1,10 @@
 """
-Voice 服务配置加载测试（CFG-007 配置外置）
+Voice 服务配置加载测试（CFG-007 配置外置 + DOC-073 D1 深合并）
 覆盖：
 - config.yaml 存在时从中加载
 - config.yaml 不存在时回退内置默认值
-- 配置结构完整性（9 类情绪标签 / ASR 模型名 / SER 模型名）
+- 配置结构完整性（ASR 模型名 / SER 模型名；emotion_labels 矩阵权威在 config.yaml）
+- 深合并语义（嵌套 partial 覆盖 / list 整体替换）
 """
 import os
 import pytest
@@ -46,19 +47,15 @@ class TestVoiceConfigLoading:
         assert cfg["asr"]["funasr_model"] == "iic/SenseVoiceSmall"
         assert cfg["asr"]["dashscope_model"] == "paraformer-realtime-v2"
         assert cfg["ser"]["model"] == "iic/emotion2vec_plus_large"
-        assert len(cfg["emotion_labels"]) == 9
+        assert cfg["emotion_labels"] == []  # DOC-073 D1：矩阵权威在 config.yaml，缺失回退为空
 
-    def test_default_emotion_labels_structure(self):
-        """默认情绪标签包含 9 类，每项为 (en, cn) 二元组"""
+    def test_default_emotion_labels_fallback_empty(self):
+        """缺失回退时 emotion_labels 为空矩阵（D1 单源化：权威在 config.yaml，代码不兜底矩阵）"""
         from config import load_config
 
         cfg = load_config("/nonexistent/config.yaml")
         labels = cfg["emotion_labels"]
-        assert len(labels) == 9
-        for item in labels:
-            assert len(item) == 2
-            assert isinstance(item[0], str)  # 英文标签
-            assert isinstance(item[1], str)  # 中文标签
+        assert labels == []
 
     def test_default_asr_vad_model(self):
         """默认 VAD 模型为 fsmn-vad"""
@@ -83,7 +80,33 @@ class TestVoiceConfigLoading:
         assert cfg["asr"]["vad_model"] == "fsmn-vad"
         assert cfg["asr"]["dashscope_model"] == "paraformer-realtime-v2"
         assert cfg["ser"]["model"] == "iic/emotion2vec_plus_large"
-        assert len(cfg["emotion_labels"]) == 9
+        assert cfg["emotion_labels"] == []  # partial yaml 未覆盖矩阵 → 保持骨架空
+
+    def test_nested_partial_merges_with_defaults(self, tmp_path):
+        """嵌套 partial：只配 asr.funasr_model → 其余默认字段保留（浅合并缺陷修复）"""
+        from config import load_config
+
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text(yaml.dump({
+            "asr": {"funasr_model": "custom/Model"},
+        }, allow_unicode=True))
+
+        cfg = load_config(str(config_file))
+        assert cfg["asr"]["funasr_model"] == "custom/Model"
+        assert cfg["asr"]["vad_model"] == "fsmn-vad"
+        assert cfg["asr"]["dashscope_model"] == "paraformer-realtime-v2"
+
+    def test_list_replaced_wholesale(self, tmp_path):
+        """emotion_labels 为 list → 整体替换（非合并）"""
+        from config import load_config
+
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text(yaml.dump({
+            "emotion_labels": [["custom", "自定义"]],
+        }, allow_unicode=True))
+
+        cfg = load_config(str(config_file))
+        assert cfg["emotion_labels"] == [["custom", "自定义"]]
 
     def test_corrupt_yaml_falls_back_to_defaults(self, tmp_path):
         """损坏的 YAML 文件降级为内置默认值"""
@@ -95,7 +118,7 @@ class TestVoiceConfigLoading:
         cfg = load_config(str(config_file))
         assert cfg["asr"]["funasr_model"] == "iic/SenseVoiceSmall"
         assert cfg["ser"]["model"] == "iic/emotion2vec_plus_large"
-        assert len(cfg["emotion_labels"]) == 9
+        assert cfg["emotion_labels"] == []
 
     def test_actual_config_yaml_loads(self):
         """集成测试：实际 config.yaml 文件可正确加载"""
@@ -121,4 +144,4 @@ class TestVoiceConfigLoading:
 
         cfg = load_config(str(config_file))
         assert cfg["asr"]["funasr_model"] == "iic/SenseVoiceSmall"
-        assert len(cfg["emotion_labels"]) == 9
+        assert cfg["emotion_labels"] == []
