@@ -1,6 +1,6 @@
 # doing/79 架构深化候选清单（第三轮·未覆盖区）方案与 SPEC
 
-> 状态：🔄 部分实施（2026-08-08 完成 16/23：批次A BA-02/DA-01/DA-06/DA-07、批次B FA-01/02/03/04/05/08、批次C BA-01/03/04/05/07/08；剩余 BA-06/FA-06/FA-07/DA-02~05 待议决；实施记录见 §32）
+> 状态：✅ 已实施（2026-08-08，全部 23 候选完成；实施记录见 §32）；剩余 BA-06 随 frozen/38 议决、DA-04/DA-05 独立议决（待议决项，非本清单实施缺口）
 > 登记编号：DOC-074（2026-08-08，接续 DOC-073）
 > 触发方式：/improve-codebase-architecture（参数：已经审计过的部分排除在外，剩余部分审计）
 > 基线去重：DC-001~012（his/72）、B1~B6/F1~F6/D1~D6（his/77，13 候选在 doing/78 待议决）、AUD-001~071（his/71）、DOC-072 T1-T5（his/76）、ARCH-001~010（his/61~70）——以下 22 候选全部为**未覆盖的新摩擦点**
@@ -438,7 +438,7 @@
 
 ## §32 实施记录（2026-08-08，/implement 批次A/B/C）
 
-> 范围：16/23 候选已完成（批次A/B/C，全部「独立小批/随批」候选闭环）；剩余 7 项待议决——BA-06 随 frozen/38、DA-04/DA-05 独立议决、FA-06/FA-07/DA-02/DA-03 未排期。全部候选闭环后并入主文档并归档 his。
+> 范围：23 候选全部闭环（批次A/B/C + 批次D 收尾 FA-06/DA-02/DA-03）；BA-06 随 frozen/38 议决、DA-04/DA-05 独立议决（议决项不阻塞清单闭环）。全部闭环后并入主文档并归档 his。
 
 | 批次 | 候选 | 结果 | 证据 |
 |---|---|---|---|
@@ -459,5 +459,13 @@
 | C | BA-07 ToolboxService | ✅ | 浅模块删除，用户查询收敛 AuthUserService.findById（ToolboxController 依赖既有服务，分层纪律保持） |
 | C | BA-08 告警/分析 | ✅ | RiskNotifyOutboxService.markDead 接入 AlertService（WARNING，企微 webhook 或日志降级，外呼失败不影响状态标记）；WeComAlertService 构造器注入（去测试反射 setField，删零消费 mentionedList + 3 处配置）；DataAnalytics 三端点 javadoc 冻结声明；双 trend 合并 buildWeeklySessionTrend（统一 key sessions） |
 | 待议决 | BA-06 EntitlementFilter | ⏳ | 随 frozen/38 议决（映射对齐或冻结删 filter） |
-| 待议决 | FA-06/FA-07/DA-02/DA-03 | ⏳ | 未排期（FA-06 神组件治理延续、FA-07 随 shared 迭代、DA-02/03 可见性主题） |
 | 待议决 | DA-04/DA-05 | ⏳ | 独立议决（E2E 门禁成本/收益权衡） |
+
+### 32.1 批次 D（2026-08-08，/implement 收尾：FA-06/DA-02/DA-03）
+
+| 候选 | 结果 | 证据 |
+|---|---|---|
+| FA-06 ChatRoom 神组件 | ✅ | useChatRoomPanels hook 抽离（7 个面板/弹窗状态收敛：settings/toolbox/sos/speakingMsgIdx/voiceNotice/cancelArmed/confirmSwitch）+ ChatRoomHeader 子组件拆分；ChatRoom 595→529 行；useChatRoomPanels.test.ts 6 用例（含定时器清理 AUD-017） |
+| DA-02 voice 就绪消费 | ✅ | /health 纳入模型就绪判定（UP/DEGRADED/DOWN 三态 + asr_ready/ser_ready 字段，与 tts D5 语义同构）；/metrics 新增 voice_ser_enabled gauge（与 ready 解耦——显式禁用不告警）；alert-rules.yml 新增 MindsafeVoiceAsrNotReady（critical）/MindsafeVoiceSerNotReady（warning，表达式排除显式禁用）；service-manager voice 分支读 /health body 消费 status（SER 降级告警但健康、ASR 未就绪判不健康）；Grafana 新增 services-overview.json 服务总览（up/引擎就绪/速率/耗时 7 面板）；voice test_app.py 新建（7 用例：三态 + ser_enabled 契约） |
+| DA-03 metrics 共享 | ✅ | metrics_common.py 复制共享（Metrics：线程安全 counter+summary + render；gauge 附加行保留各服务语义），tts/voice 两处替换（~60 行去重）；**voice Dockerfile 显式 COPY 清单补 metrics_common.py**（新增模块漏拷 = DA-01 同款隐患，DA-07 构建冒烟 job 结构性拦截）；tts test_app.py 新增 /metrics 契约测试（MindsafeTtsAllEnginesDown/HighFailureRate 硬依赖指标名回归） |
+| 批次 D 验证 | ✅ | Python：voice 40+1skip / tts 78 全过；前端 student 884 全过 + tsc 0 错误 + oxlint 0 errors；bash -n service-manager；alert-rules.yml YAML + dashboard JSON 语法校验通过 |
