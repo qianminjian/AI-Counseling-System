@@ -478,3 +478,12 @@
 | DA-04 E2E 冒烟门禁 | ✅ | deploy.sh 发布后置冒烟：后端部署时自动 rsync 上传 smoke-test.sh → ssh 现场执行（BASE_URL=http://localhost:18082，默认路径断言；教师/管理员链路凭据不进 ssh 命令行，由 *IT.java 覆盖）→ 失败门禁中止部署（部署状态不更新）+ SKIP_SMOKE=1 逃生口；playwright.config.ts CI 分支注释声明为预留；DEPLOY-GUIDE 冒烟登记从「可选手动」改「自动门禁」 |
 | DA-05 shell 测试入口 | ✅ | ci.yml 新增 shell-tools-test job（tests/unit/scripts 六件套 + backup-common.sh，本地实测全 PASS <2min）；**删 tests/integration 空壳目录**（.gitkeep + STRUCTURE.md/repowiki 引用同步修正——真正集成测试在 backend/counseling-app *IT.java） |
 | 批次 E 验证 | ✅ | bash -n deploy.sh/smoke-test.sh + ci.yml YAML 语法 + 六件套本地实测全 PASS |
+
+---
+
+## §33 台账修正记录（2026-08-08，B-06，DOC-064 模式：不改历史结论，仅追加）
+
+- **原声明**（§30 L455 / §32）：BA-01 已删除「TtsPipelineScheduler/VoiceEffectivenessTracker/**VoiceDegradationPolicy** 三类」
+- **核实事实**：实际删除 **TtsPipelineScheduler + VoiceEffectivenessTracker 两类**；**VoiceDegradationPolicy 保留在用**——TtsController 构造器注入（`TtsController.java:40-44`）且 `/tts/voice-decision` 运行时 `decide(riskLevel, emotion)`（L75，TTSFX-002/S0 静默、S1 预合成、S2 强制安抚，TtsControllerTest 4 用例在测）
+- **风险**：照原档案执行将误删真实安全功能（风险场景语音降级）
+- **正确落点**：design/10 §6.9（TTSFX-001 🟩 在用 / TTSFX-002 ❌ 已删）；design/03 已补 BA-01 最终态落点（见 2026-08-08 B-06 修正）
