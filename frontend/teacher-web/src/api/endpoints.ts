@@ -1,54 +1,76 @@
 /**
- * teacher-web 前端端点清单（ARCH-008 F-7 契约防线，单一事实源）
+ * teacher-web 前端端点常量表（FA-15，单一事实源）
  *
- * 形态约定（与 apiContract.test.ts 的规范化规则一致）：
- * - 全路径（/api/v1 开头），路径参数占位符剥离（{id} → 无），query 剥离
- * - 方法为 HTTP 方法小写
- * - 新增/修改端点时必须同步本清单，测试断言源码全部 API 路径 ⊆ 本清单
+ * 此前端点路径三处镜像：api.ts 函数内硬编码 + 本清单 + apiContract 正则扫源码断言，
+ * 新增端点必双改且模板拼路径形态漏检。现在：
+ * - api()/callEndpoint()/downloadBlob 全部消费本表，路径只在本文件出现一次
+ * - path 为全路径模板（/api/v1 开头），路径参数用 {name} 占位（fillPath 替换）
+ * - method 一并登记，callEndpoint 免去调用方重复写 method
+ * - FRONTEND_ENDPOINTS 由本表派生（占位符剥离），apiContract 测试直接校验常量表
  */
-export const FRONTEND_ENDPOINTS: Array<[path: string, method: string]> = [
+export const ENDPOINTS = {
   // 认证
-  ['/api/v1/auth/refresh', 'post'],
+  getWecomAuthUrl: { path: '/api/v1/auth/wecom/auth-url', method: 'get' },
+  login: { path: '/api/v1/auth/login', method: 'post' },
+  changePassword: { path: '/api/v1/auth/change-password', method: 'post' },
+  authRefresh: { path: '/api/v1/auth/refresh', method: 'post' }, // 消费在 shared authFetch，清单登记供测试知晓
   // 工作台
-  ['/api/v1/teacher/dashboard', 'get'],
-  ['/api/v1/teacher/stats', 'get'],
-  ['/api/v1/teacher/satisfaction', 'get'],
+  getDashboard: { path: '/api/v1/teacher/dashboard', method: 'get' },
+  getStats: { path: '/api/v1/teacher/stats', method: 'get' },
+  getSatisfaction: { path: '/api/v1/teacher/satisfaction', method: 'get' },
   // 平台管理
-  ['/api/v1/platform/overview', 'get'],
-  ['/api/v1/platform/tenants', 'get'],
+  getPlatformOverview: { path: '/api/v1/platform/overview', method: 'get' },
+  getPlatformTenants: { path: '/api/v1/platform/tenants', method: 'get' },
   // 质量监控
-  ['/api/v1/teacher/quality/stats', 'get'],
-  ['/api/v1/teacher/quality/flagged', 'get'],
-  ['/api/v1/teacher/sessions/export', 'get'],
+  getQualityStats: { path: '/api/v1/teacher/quality/stats', method: 'get' },
+  getFlaggedSessions: { path: '/api/v1/teacher/quality/flagged', method: 'get' },
+  exportSessionPdf: { path: '/api/v1/teacher/sessions/{sessionId}/export', method: 'get' },
   // 预警队列
-  ['/api/v1/alerts', 'get'],
-  ['/api/v1/alerts/claim', 'post'],
-  ['/api/v1/alerts/false-positive', 'patch'],
-  ['/api/v1/alerts/pending-followups', 'get'],
-  ['/api/v1/alerts/resolve', 'post'],
+  getAlerts: { path: '/api/v1/alerts', method: 'get' },
+  claimAlert: { path: '/api/v1/alerts/{id}/claim', method: 'post' },
+  markFalsePositive: { path: '/api/v1/alerts/{id}/false-positive', method: 'patch' },
+  getPendingFollowups: { path: '/api/v1/alerts/pending-followups', method: 'get' },
+  resolveAlert: { path: '/api/v1/alerts/{id}/resolve', method: 'post' },
   // 学生管理
-  ['/api/v1/teacher/students', 'get'],
-  ['/api/v1/teacher/students/high-risk', 'get'],
-  ['/api/v1/teacher/students/radar', 'get'],
-  ['/api/v1/teacher/students/notes', 'post'],
+  getStudents: { path: '/api/v1/teacher/students', method: 'get' },
+  getHighRiskStudents: { path: '/api/v1/teacher/students/high-risk', method: 'get' },
+  getStudentProfile: { path: '/api/v1/teacher/students/{id}', method: 'get' },
+  getStudentRadar: { path: '/api/v1/teacher/students/{id}/radar', method: 'get' },
+  addStudentNote: { path: '/api/v1/teacher/students/{id}/notes', method: 'post' },
   // 通知
-  ['/api/v1/teacher/notifications', 'get'],
-  ['/api/v1/teacher/notifications/unread-count', 'get'],
-  ['/api/v1/teacher/notifications/read', 'put'],
+  getNotifications: { path: '/api/v1/teacher/notifications', method: 'get' },
+  getUnreadCount: { path: '/api/v1/teacher/notifications/unread-count', method: 'get' },
+  markNotificationRead: { path: '/api/v1/teacher/notifications/{id}/read', method: 'put' },
   // 对话摘要
-  ['/api/v1/teacher/sessions/messages', 'get'],
-  ['/api/v1/teacher/sessions/summary', 'get'],
-  ['/api/v1/teacher/sessions/takeover', 'post'],
+  getSessionMessages: { path: '/api/v1/teacher/sessions/{sessionId}/messages', method: 'get' },
+  getSessionSummary: { path: '/api/v1/teacher/sessions/{sessionId}/summary', method: 'get' },
+  takeoverSession: { path: '/api/v1/teacher/sessions/{sessionId}/takeover', method: 'post' },
   // 管理控制台（admin）
-  ['/api/v1/admin/invite-codes', 'get'],
-  ['/api/v1/admin/invite-codes', 'post'],
-  ['/api/v1/admin/invite-codes/deactivate', 'patch'],
-  ['/api/v1/admin/invite-codes', 'delete'],
-  ['/api/v1/admin/invite-codes/audit-logs', 'get'],
+  getInviteCodes: { path: '/api/v1/admin/invite-codes', method: 'get' },
+  createInviteCode: { path: '/api/v1/admin/invite-codes', method: 'post' },
+  deactivateInviteCode: { path: '/api/v1/admin/invite-codes/{codeId}/deactivate', method: 'patch' },
+  deleteInviteCode: { path: '/api/v1/admin/invite-codes/{codeId}', method: 'delete' },
+  getAuditLogs: { path: '/api/v1/admin/invite-codes/audit-logs', method: 'get' },
   // 数据导出 / 批量导入
-  ['/api/v1/teacher/report/weekly', 'get'],
-  ['/api/v1/teacher/export/alerts', 'get'],
-  ['/api/v1/teacher/export/students', 'get'],
-  ['/api/v1/admin/invite-codes/import-template', 'get'],
-  ['/api/v1/admin/invite-codes/import-students', 'post'],
-]
+  openWeeklyReport: { path: '/api/v1/teacher/report/weekly', method: 'get' },
+  exportAlertsCsv: { path: '/api/v1/teacher/export/alerts', method: 'get' },
+  exportStudentsCsv: { path: '/api/v1/teacher/export/students', method: 'get' },
+  downloadImportTemplate: { path: '/api/v1/admin/invite-codes/import-template', method: 'get' },
+  importStudents: { path: '/api/v1/admin/invite-codes/import-students', method: 'post' },
+} as const
+
+export type EndpointKey = keyof typeof ENDPOINTS
+
+/** 路径参数替换：'/api/v1/.../{id}' + { id: 'x' } → '/api/v1/.../x'；未提供参数按空串（测试期望） */
+export function fillPath(template: string, params: Record<string, string>): string {
+  return template.replace(/\{(\w+)\}/g, (_, name: string) => params[name] ?? '')
+}
+
+/**
+ * 契约清单（FA-15：从常量表派生，占位符剥离，供 apiContract 测试直接校验）
+ * 新增端点只需登记 ENDPOINTS 一处，本清单自动跟随
+ */
+export const FRONTEND_ENDPOINTS: Array<[path: string, method: string]> = Object.values(ENDPOINTS).map((e) => [
+  e.path.replace(/\{\w+\}/g, '').replace(/\/+$/, ''),
+  e.method,
+])

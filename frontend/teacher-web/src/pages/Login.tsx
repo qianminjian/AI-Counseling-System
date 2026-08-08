@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Card, Form, Input, Button, message, Divider } from 'antd'
 import { UserOutlined, LockOutlined, WechatOutlined } from '@ant-design/icons'
-import { api, setToken, setRefreshToken } from '../api'
+import { callEndpoint, setToken, setRefreshToken } from '../api'
 
 export default function Login({ onLogin }: {
   onLogin: (userData: { userId: string; userType: string; displayName: string; mustChangePassword: boolean }) => void
@@ -10,7 +10,7 @@ export default function Login({ onLogin }: {
   const [wecomUrl, setWecomUrl] = useState<string | null>(null)
 
   useEffect(() => {
-    api('/auth/wecom/auth-url').then(d => {
+    callEndpoint('getWecomAuthUrl').then(d => {
       if (d.enabled) setWecomUrl(d.authUrl)
     }).catch((e) => {
       // F-09：企业微信未配置/不可用时静默降级为账密登录（合理降级），但仍留痕便于排查
@@ -21,8 +21,7 @@ export default function Login({ onLogin }: {
   const handleSubmit = async (values: { username: string; password: string }) => {
     setLoading(true)
     try {
-      const data = await api('/auth/login', {
-        method: 'POST',
+      const data = await callEndpoint('login', {
         body: JSON.stringify(values),
       })
       setToken(data.token)

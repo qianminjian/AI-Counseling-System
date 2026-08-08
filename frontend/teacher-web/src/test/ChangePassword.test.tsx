@@ -9,16 +9,16 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
  * - 渲染用户名为提示文案
  */
 
-const mockApi = vi.fn();
+const mockCallEndpoint = vi.fn();
 vi.mock('../api', () => ({
-  api: (path: string, options?: unknown) => mockApi(path, options),
+  callEndpoint: (key: string, options?: unknown) => mockCallEndpoint(key, options),
 }));
 
 import ChangePassword from '../pages/ChangePassword';
 
 describe('ChangePassword 强制改密页', () => {
   beforeEach(() => {
-    mockApi.mockReset();
+    mockCallEndpoint.mockReset();
   });
 
   it('渲染表单与用户提示', () => {
@@ -38,12 +38,12 @@ describe('ChangePassword 强制改密页', () => {
     fireEvent.change(screen.getByLabelText('确认新密码'), { target: { value: 'different1' } });
     fireEvent.click(screen.getByRole('button', { name: '确认修改' }));
 
-    await waitFor(() => expect(mockApi).not.toHaveBeenCalled());
+    await waitFor(() => expect(mockCallEndpoint).not.toHaveBeenCalled());
     expect(onChanged).not.toHaveBeenCalled();
   });
 
   it('提交成功调用 onChanged', async () => {
-    mockApi.mockResolvedValue(null);
+    mockCallEndpoint.mockResolvedValue(null);
     const onChanged = vi.fn();
     render(<ChangePassword userName="李老师" onChanged={onChanged} />);
 
@@ -52,10 +52,9 @@ describe('ChangePassword 强制改密页', () => {
     fireEvent.change(screen.getByLabelText('确认新密码'), { target: { value: 'newpass12' } });
     fireEvent.click(screen.getByRole('button', { name: '确认修改' }));
 
-    await waitFor(() => expect(mockApi).toHaveBeenCalledWith(
-      '/auth/change-password',
+    await waitFor(() => expect(mockCallEndpoint).toHaveBeenCalledWith(
+      'changePassword',
       expect.objectContaining({
-        method: 'POST',
         body: JSON.stringify({ oldPassword: 'tmp12345', newPassword: 'newpass12' }),
       })
     ));
@@ -63,7 +62,7 @@ describe('ChangePassword 强制改密页', () => {
   });
 
   it('接口失败不回调 onChanged', async () => {
-    mockApi.mockRejectedValue(new Error('修改失败'));
+    mockCallEndpoint.mockRejectedValue(new Error('修改失败'));
     const onChanged = vi.fn();
     render(<ChangePassword userName="李老师" onChanged={onChanged} />);
 

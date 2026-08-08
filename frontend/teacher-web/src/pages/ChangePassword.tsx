@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Card, Form, Input, Button, message } from 'antd'
 import { LockOutlined, KeyOutlined } from '@ant-design/icons'
-import { api } from '../api'
+import { callEndpoint } from '../api'
 
 /**
  * 首次登录强制改密页（方案 B：临时密码 + 首次改密）
@@ -17,8 +17,7 @@ export default function ChangePassword({ userName, onChanged }: { userName: stri
     }
     setLoading(true)
     try {
-      await api('/auth/change-password', {
-        method: 'POST',
+      await callEndpoint('changePassword', {
         body: JSON.stringify({
           oldPassword: values.oldPassword,
           newPassword: values.newPassword,

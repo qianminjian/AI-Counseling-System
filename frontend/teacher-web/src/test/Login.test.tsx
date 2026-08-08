@@ -9,9 +9,9 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
  * - 提交失败 → 不调用 onLogin（message.error 兜底）
  */
 
-const mockApi = vi.fn();
+const mockCallEndpoint = vi.fn();
 vi.mock('../api', () => ({
-  api: (path: string, options?: unknown) => mockApi(path, options),
+  callEndpoint: (key: string, options?: unknown) => mockCallEndpoint(key, options),
   setToken: (t: string) => { sessionStorage.setItem('mindsafe_token', t); },
   setRefreshToken: (t: string) => { sessionStorage.setItem('mindsafe_refresh', t); },
 }));
@@ -25,12 +25,12 @@ const wecomBtn = () => screen.queryByText('企业微信登录');
 
 describe('Login 登录页', () => {
   beforeEach(() => {
-    mockApi.mockReset();
+    mockCallEndpoint.mockReset();
     sessionStorage.clear();
   });
 
   it('渲染登录表单与标题', () => {
-    mockApi.mockResolvedValue({ enabled: false });
+    mockCallEndpoint.mockResolvedValue({ enabled: false });
     render(<Login onLogin={vi.fn()} />);
     expect(screen.getByText('MindSafe 教师工作台')).toBeInTheDocument();
     expect(screen.getByPlaceholderText(/用户名/)).toBeInTheDocument();
@@ -39,14 +39,14 @@ describe('Login 登录页', () => {
   });
 
   it('企业微信未启用时不展示企业微信按钮', async () => {
-    mockApi.mockResolvedValue({ enabled: false });
+    mockCallEndpoint.mockResolvedValue({ enabled: false });
     render(<Login onLogin={vi.fn()} />);
-    await waitFor(() => expect(mockApi).toHaveBeenCalledWith('/auth/wecom/auth-url', undefined));
+    await waitFor(() => expect(mockCallEndpoint).toHaveBeenCalledWith('getWecomAuthUrl', undefined));
     expect(wecomBtn()).not.toBeInTheDocument();
   });
 
   it('企业微信启用时展示登录按钮并跳转', async () => {
-    mockApi.mockResolvedValue({ enabled: true, authUrl: 'https://wecom.example.com/oauth' });
+    mockCallEndpoint.mockResolvedValue({ enabled: true, authUrl: 'https://wecom.example.com/oauth' });
     // jsdom 不支持 location.href 赋值导航，替换为普通可写对象
     Object.defineProperty(window, 'location', {
       value: { href: 'http://localhost:3000/' },
@@ -59,8 +59,8 @@ describe('Login 登录页', () => {
   });
 
   it('提交成功：写入 token 并回调 onLogin', async () => {
-    mockApi.mockImplementation((path: string) => {
-      if (path === '/auth/wecom/auth-url') return Promise.resolve({ enabled: false });
+    mockCallEndpoint.mockImplementation((key: string) => {
+      if (key === 'getWecomAuthUrl') return Promise.resolve({ enabled: false });
       return Promise.resolve({
         token: 'tk-1', refreshToken: 'rt-1', userId: 'u-1',
         userType: 'psych_teacher', displayName: '李老师', mustChangePassword: false,
@@ -78,12 +78,14 @@ describe('Login 登录页', () => {
     }));
     expect(sessionStorage.getItem('mindsafe_token')).toBe('tk-1');
     expect(sessionStorage.getItem('mindsafe_refresh')).toBe('rt-1');
-    expect(mockApi).toHaveBeenCalledWith('/auth/login', expect.objectContaining({ method: 'POST' }));
+    expect(mockCallEndpoint).toHaveBeenCalledWith('login', expect.objectContaining({
+      body: JSON.stringify({ username: 'teacher1', password: 'pass1234' }),
+    }));
   });
 
   it('提交失败：不回调 onLogin', async () => {
-    mockApi.mockImplementation((path: string) => {
-      if (path === '/auth/wecom/auth-url') return Promise.resolve({ enabled: false });
+    mockCallEndpoint.mockImplementation((key: string) => {
+      if (key === 'getWecomAuthUrl') return Promise.resolve({ enabled: false });
       return Promise.reject(new Error('用户名或密码错误'));
     });
     const onLogin = vi.fn();

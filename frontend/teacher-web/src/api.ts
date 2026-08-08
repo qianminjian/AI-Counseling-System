@@ -5,6 +5,9 @@ import { createSessionStorageTokens } from '../../shared/src/auth-transport/toke
 import { createAuthFetch } from '../../shared/src/auth-transport/authFetch'
 import { handleSessionExpired } from '../../shared/src/auth-transport/sessionExpired'
 import { toApiError } from '../../shared/src/auth-transport/apiError'
+// FA-15：端点常量表单一事实源——路径/方法只登记 ENDPOINTS 一处，此处全部消费
+import { ENDPOINTS, fillPath } from './api/endpoints'
+import type { EndpointKey } from './api/endpoints'
 
 const storage = createSessionStorageTokens('mindsafe_')
 
@@ -26,6 +29,48 @@ export const clearToken = () => storage.clear()
  * 401 语义：内部尝试刷新并重放一次；仍 401 则原样返回（登出决策交调用方）。
  */
 export const authFetch = createAuthFetch(storage)
+
+/**
+ * 端点请求入口（FA-15）：path/method 一律来自 ENDPOINTS 常量表，调用方不得手写路径
+ * - pathParams：模板 {name} 占位符替换；query：直接拼在 path 尾部（调用方自行编码）
+ */
+export async function api<T = any>(path: string, options: RequestInit & { headers?: Record<string, string> } = {}): Promise<T> {
+  let res: Response
+  try {
+    res = await authFetch(path, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        ...options.headers,
+      },
+    })
+  } catch {
+    // 网络层失败（后端未启动 / 代理不可达）
+    throw new Error('后端服务不可达，请确认服务已启动')
+  }
+  if (res.status === 401) {
+    // authFetch 已尝试刷新+重放；仍 401 → 刷新失败 → 统一登出决策点（clear + reload + throw）
+    handleSessionExpired(storage)
+  }
+  const json = await res.json()
+  if (!json.success) {
+    throw toApiError(json)
+  }
+  return json.data
+}
+
+/**
+ * 按常量表 key 发起请求（FA-15）：method 从常量表取，调用方无需重复写
+ * GET 端点省去 method 参数即天然正确；新增端点只需登记 ENDPOINTS
+ */
+export function callEndpoint<T = any>(
+  key: EndpointKey,
+  options: RequestInit & { headers?: Record<string, string>; pathParams?: Record<string, string>; query?: string } = {},
+): Promise<T> {
+  const { pathParams, query, ...rest } = options
+  const path = fillPath(ENDPOINTS[key].path, pathParams ?? {}) + (query ?? '')
+  return api(path, { ...rest, method: ENDPOINTS[key].method.toUpperCase() })
+}
 
 // ===== DTO 类型（与后端 TeacherService VO record 一一对齐） =====
 
@@ -146,51 +191,27 @@ export interface FollowUpItem {
 /** 会话 AI 摘要（后端 Map 输出） */
 export interface SessionAiSummary { summary: string; status: 'ready' | 'pending' | 'not_found' }
 
-export async function api<T = any>(path: string, options: RequestInit & { headers?: Record<string, string> } = {}): Promise<T> {
-  let res: Response
-  try {
-    res = await authFetch(`/api/v1${path}`, {
-      ...options,
-      headers: {
-        'Content-Type': 'application/json',
-        ...options.headers,
-      },
-    })
-  } catch {
-    // 网络层失败（后端未启动 / 代理不可达）
-    throw new Error('后端服务不可达，请确认服务已启动')
-  }
-  if (res.status === 401) {
-    // authFetch 已尝试刷新+重放；仍 401 → 刷新失败 → 统一登出决策点（clear + reload + throw）
-    handleSessionExpired(storage)
-  }
-  const json = await res.json()
-  if (!json.success) {
-    throw toApiError(json)
-  }
-  return json.data
-}
-
 // ===== 工作台 =====
-export const getDashboard = (): Promise<DashboardVO> => api('/teacher/dashboard')
-export const getStats = (): Promise<StatsVO> => api('/teacher/stats')
-export const getSatisfaction = (): Promise<SatisfactionStatsVO> => api('/teacher/satisfaction')
+export const getDashboard = (): Promise<DashboardVO> => callEndpoint('getDashboard')
+export const getStats = (): Promise<StatsVO> => callEndpoint('getStats')
+export const getSatisfaction = (): Promise<SatisfactionStatsVO> => callEndpoint('getSatisfaction')
 
 // ===== 平台管理 =====
-export const getPlatformOverview = () => api('/platform/overview')
-export const getPlatformTenants = () => api('/platform/tenants')
+export const getPlatformOverview = () => callEndpoint('getPlatformOverview')
+export const getPlatformTenants = () => callEndpoint('getPlatformTenants')
 
 // ===== 质量监控 =====
-export const getQualityStats = () => api('/teacher/quality/stats')
-export const getFlaggedSessions = () => api('/teacher/quality/flagged')
+export const getQualityStats = () => callEndpoint('getQualityStats')
+export const getFlaggedSessions = () => callEndpoint('getFlaggedSessions')
 
 /**
  * AUD-018：blob 下载统一封装（收敛 5 处重复的 401 处理 + 下载逻辑）
  * - 401 → 统一登出决策点（clear + reload，与 authFetch 语义一致）
  * - 统一 <a download> 触发下载：window.open 在 async 之后调用会失去用户激活被弹窗拦截
+ * - FA-15：端点 key 从常量表取，路径参数经 pathParams 传入
  */
-async function downloadBlob(path: string, filename: string) {
-  const res = await authFetch(`/api/v1${path}`)
+async function downloadBlob(key: EndpointKey, filename: string, pathParams?: Record<string, string>) {
+  const res = await authFetch(fillPath(ENDPOINTS[key].path, pathParams ?? {}))
   if (res.status === 401) { handleSessionExpired(storage) }
   const blob = await res.blob()
   const a = document.createElement('a')
@@ -202,7 +223,7 @@ async function downloadBlob(path: string, filename: string) {
 }
 
 export const exportSessionPdf = (sessionId: string) =>
-  downloadBlob(`/teacher/sessions/${sessionId}/export`, `session_${sessionId.slice(0, 8)}.pdf`)
+  downloadBlob('exportSessionPdf', `session_${sessionId.slice(0, 8)}.pdf`, { sessionId })
 
 // ===== 预警队列 =====
 export const getAlerts = (params: { status?: AlertStatus; minLevel?: number; limit?: number } = {}): Promise<AlertVO[]> => {
@@ -211,66 +232,65 @@ export const getAlerts = (params: { status?: AlertStatus; minLevel?: number; lim
   if (params.minLevel != null) qs.set('minLevel', String(params.minLevel))
   if (params.limit) qs.set('limit', String(params.limit))
   const query = qs.toString()
-  return api(`/alerts${query ? '?' + query : ''}`)
+  return callEndpoint('getAlerts', { query: query ? '?' + query : '' })
 }
-export const claimAlert = (id: string) => api(`/alerts/${id}/claim`, { method: 'POST' })
-export const markFalsePositive = (id: string) => api(`/alerts/${id}/false-positive`, { method: 'PATCH' })
-export const getPendingFollowups = (): Promise<FollowUpItem[]> => api('/alerts/pending-followups')
+export const claimAlert = (id: string) => callEndpoint('claimAlert', { pathParams: { id } })
+export const markFalsePositive = (id: string) => callEndpoint('markFalsePositive', { pathParams: { id } })
+export const getPendingFollowups = (): Promise<FollowUpItem[]> => callEndpoint('getPendingFollowups')
 export const resolveAlert = (id: string, resolutionNote?: string) =>
-  api(`/alerts/${id}/resolve`, {
-    method: 'POST',
+  callEndpoint('resolveAlert', {
+    pathParams: { id },
     body: JSON.stringify({ resolutionNote }),
   })
 
 // ===== 学生管理 =====
-export const getStudents = (): Promise<StudentVO[]> => api('/teacher/students')
-export const getHighRiskStudents = (): Promise<HighRiskStudentVO[]> => api('/teacher/students/high-risk')
-export const getStudentProfile = (id: string): Promise<StudentProfileVO> => api(`/teacher/students/${id}`)
+export const getStudents = (): Promise<StudentVO[]> => callEndpoint('getStudents')
+export const getHighRiskStudents = (): Promise<HighRiskStudentVO[]> => callEndpoint('getHighRiskStudents')
+export const getStudentProfile = (id: string): Promise<StudentProfileVO> => callEndpoint('getStudentProfile', { pathParams: { id } })
 /** 后端返回 Map（6 维度 + 里程碑），结构见 ProfileRadarService */
-export const getStudentRadar = (id: string): Promise<Record<string, any>> => api(`/teacher/students/${id}/radar`)
+export const getStudentRadar = (id: string): Promise<Record<string, any>> => callEndpoint('getStudentRadar', { pathParams: { id } })
 export const addStudentNote = (id: string, content: string, noteType = 'general') =>
-  api(`/teacher/students/${id}/notes`, {
-    method: 'POST',
+  callEndpoint('addStudentNote', {
+    pathParams: { id },
     body: JSON.stringify({ content, noteType }),
   })
 
 // ===== 通知 =====
-export const getNotifications = (limit = 50) => api(`/teacher/notifications?limit=${limit}`)
+export const getNotifications = (limit = 50) => callEndpoint('getNotifications', { query: `?limit=${limit}` })
 /** 未读数量（后端 Long） */
-export const getUnreadCount = (): Promise<number> => api('/teacher/notifications/unread-count')
-export const markNotificationRead = (id: string) => api(`/teacher/notifications/${id}/read`, { method: 'PUT' })
+export const getUnreadCount = (): Promise<number> => callEndpoint('getUnreadCount')
+export const markNotificationRead = (id: string) => callEndpoint('markNotificationRead', { pathParams: { id } })
 
 // ===== 对话摘要 =====
-export const getSessionMessages = (sessionId: string): Promise<MessageSummaryVO[]> => api(`/teacher/sessions/${sessionId}/messages`)
-export const getSessionSummary = (sessionId: string): Promise<SessionAiSummary> => api(`/teacher/sessions/${sessionId}/summary`)
-export const takeoverSession = (sessionId: string): Promise<Record<string, any>> => api(`/teacher/sessions/${sessionId}/takeover`, { method: 'POST' })
+export const getSessionMessages = (sessionId: string): Promise<MessageSummaryVO[]> => callEndpoint('getSessionMessages', { pathParams: { sessionId } })
+export const getSessionSummary = (sessionId: string): Promise<SessionAiSummary> => callEndpoint('getSessionSummary', { pathParams: { sessionId } })
+export const takeoverSession = (sessionId: string): Promise<Record<string, any>> => callEndpoint('takeoverSession', { pathParams: { sessionId } })
 
 // ===== 管理控制台（admin） =====
-export const getInviteCodes = () => api('/admin/invite-codes')
+export const getInviteCodes = () => callEndpoint('getInviteCodes')
 export const createInviteCode = (maxUses: number, expireDays: number) =>
-  api('/admin/invite-codes', {
-    method: 'POST',
+  callEndpoint('createInviteCode', {
     body: JSON.stringify({ maxUses, expireDays }),
   })
 export const deactivateInviteCode = (codeId: string) =>
-  api(`/admin/invite-codes/${codeId}/deactivate`, { method: 'PATCH' })
+  callEndpoint('deactivateInviteCode', { pathParams: { codeId } })
 export const deleteInviteCode = (codeId: string) =>
-  api(`/admin/invite-codes/${codeId}`, { method: 'DELETE' })
+  callEndpoint('deleteInviteCode', { pathParams: { codeId } })
 
 // ===== 数据导出（CSV/PDF 下载，AUD-018 收敛至 downloadBlob） =====
-export const openWeeklyReport = () => downloadBlob('/teacher/report/weekly', 'weekly_report.pdf')
-export const exportAlertsCsv = () => downloadBlob('/teacher/export/alerts', 'alerts_export.csv')
-export const exportStudentsCsv = () => downloadBlob('/teacher/export/students', 'students_export.csv')
+export const openWeeklyReport = () => downloadBlob('openWeeklyReport', 'weekly_report.pdf')
+export const exportAlertsCsv = () => downloadBlob('exportAlertsCsv', 'alerts_export.csv')
+export const exportStudentsCsv = () => downloadBlob('exportStudentsCsv', 'students_export.csv')
 
 // ===== 批量导入（admin） =====
 export const downloadImportTemplate = () =>
-  downloadBlob('/admin/invite-codes/import-template', 'student_import_template.csv')
+  downloadBlob('downloadImportTemplate', 'student_import_template.csv')
 
 export async function importStudentsCsv(file: File) {
   const formData = new FormData()
   formData.append('file', file)
   // authFetch 已内置 401 刷新+重放；仍 401 → 刷新失败 → 登出
-  const res = await authFetch('/api/v1/admin/invite-codes/import-students', {
+  const res = await authFetch(ENDPOINTS.importStudents.path, {
     method: 'POST',
     body: formData,
   })
@@ -286,5 +306,5 @@ export async function importStudentsCsv(file: File) {
 // ===== 审计日志（admin） =====
 export const getAuditLogs = (action?: string) => {
   const qs = action ? `?action=${action}` : ''
-  return api(`/admin/invite-codes/audit-logs${qs}`)
+  return callEndpoint('getAuditLogs', { query: qs })
 }
