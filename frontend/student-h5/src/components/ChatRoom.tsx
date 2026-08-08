@@ -10,6 +10,8 @@ import SosPanel from './SosPanel'
 import BoBoPet from './BoBoPet'
 import DraggableVoiceButton from './DraggableVoiceButton'
 import MessageBubble from './MessageBubble'
+// FA-14：语音状态 → 文案/指示器单一映射（mainHint/subHint/VoiceStatusChip）
+import { mainHint, subHint, VoiceStatusChip } from './VoiceStatusHint'
 import { useTheme } from '../theme/ThemeProvider'
 import { useVoicePersona } from '../hooks/useVoicePersona'
 import { useTtsPlayer } from '../hooks/useTtsPlayer'
@@ -330,23 +332,11 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: Se
               : analyzing ? '我在感受你的情绪...'
               : streaming ? '让我想想...'
               : tts.playing ? '我在说给你听...'
-              : voiceCall.wakeStatus === 'detected' ? '听到了！🎉'
-              : voiceCall.wakeStatus === 'loading' ? '语音引擎加载中...'
-              : voiceCall.wakeStatus === 'error' ? '语音引擎未就绪'
-              : voiceCall.mode === 'standby' ? '叫我“哈喽波波”'
-              : voiceCall.mode === 'active' ? '我在听，直接说吧'
-              : '想说什么就说什么吧'}
+              : mainHint(voiceCall)}
           </p>
           <p className="mt-3 text-sm text-gray-400">
             {recording ? '松开手指发送，上滑取消'
-              : voiceCall.wakeStatus === 'detected' ? '正在准备听你说话...'
-              : voiceCall.mode === 'standby'
-                ? (voiceCall.wakeStatus === 'loading' ? '正在加载语音引擎...' :
-                   voiceCall.wakeStatus === 'listening' ? '我在这里安静地等你叫我' :
-                   voiceCall.wakeStatus === 'error' ? '语音引擎加载失败，请关闭再开启' :
-                   '我在这里安静地等你叫我')
-              : voiceCall.mode === 'active' ? '不用按，直接说就行'
-              : '按住波波，跟它说说话'}
+              : subHint(voiceCall)}
           </p>
         </aside>
 
@@ -372,43 +362,7 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: Se
             {/* 手机端语音唤醒状态指示器（Pad 在左栏已有，手机无左栏故需单独展示） */}
             {wakeEnabled && wakeConsent.hasConsent() && voiceCall.mode !== 'off' && !recording && !analyzing && (
               <div className="flex lg:hidden items-center justify-center gap-2 mb-3 text-xs">
-                {voiceCall.wakeStatus === 'loading' && (
-                  <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-blue-50 text-blue-500">
-                    <span className="relative flex h-2 w-2">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
-                    </span>
-                    语音引擎加载中...
-                  </span>
-                )}
-                {voiceCall.wakeStatus === 'listening' && voiceCall.mode === 'standby' && (
-                  <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-green-50 text-green-600">
-                    <span className="relative flex h-2 w-2">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
-                    </span>
-                    说“哈喽波波”唤醒我
-                  </span>
-                )}
-                {voiceCall.wakeStatus === 'detected' && (
-                  <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-50 text-amber-600">
-                    🎉 听到了！正在准备听你说话...
-                  </span>
-                )}
-                {voiceCall.mode === 'active' && voiceCall.wakeStatus !== 'detected' && (
-                  <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-green-50 text-green-600">
-                    <span className="relative flex h-2 w-2">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
-                    </span>
-                    我在听，直接说吧
-                  </span>
-                )}
-                {voiceCall.wakeStatus === 'error' && (
-                  <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-red-50 text-red-500">
-                    语音引擎加载失败，可在设置中重试
-                  </span>
-                )}
+                <VoiceStatusChip voiceCall={voiceCall} />
               </div>
             )}
             {/* 语音降级提示 */}
