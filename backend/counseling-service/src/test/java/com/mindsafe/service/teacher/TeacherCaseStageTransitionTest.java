@@ -1,6 +1,7 @@
 package com.mindsafe.service.teacher;
 
 import com.baomidou.mybatisplus.core.conditions.Wrapper;
+import com.mindsafe.common.exception.BizException;
 import com.mindsafe.domain.entity.TeacherNote;
 import com.mindsafe.domain.entity.User;
 import com.mindsafe.domain.mapper.*;
@@ -164,7 +165,7 @@ class TeacherCaseStageTransitionTest {
     void studentNotFound_rejected() {
         when(userMapper.selectById(studentId)).thenReturn(null);
 
-        assertThrows(IllegalArgumentException.class, () -> teacherService.transitionCaseStage(
+        assertThrows(BizException.class, () -> teacherService.transitionCaseStage(
                 tenantId, studentId, teacherId, CaseLifecycleService.CaseStage.ASSESSMENT));
         verify(teacherNoteMapper, never()).insert(any(TeacherNote.class));
     }
@@ -177,7 +178,7 @@ class TeacherCaseStageTransitionTest {
         student.setTenantId(UUID.randomUUID());
         when(userMapper.selectById(studentId)).thenReturn(student);
 
-        assertThrows(IllegalArgumentException.class, () -> teacherService.transitionCaseStage(
+        assertThrows(BizException.class, () -> teacherService.transitionCaseStage(
                 tenantId, studentId, teacherId, CaseLifecycleService.CaseStage.ASSESSMENT));
     }
 

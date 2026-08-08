@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -35,6 +36,15 @@ class VoiceprintEnrollServiceTest {
         service = new VoiceprintEnrollService(mapper, 8);
     }
 
+    /** 256 维有效向量（B-05：维度契约 256，归一化填充值） */
+    private List<Double> validEmb(double fill) {
+        List<Double> v = new ArrayList<>();
+        for (int i = 0; i < 256; i++) {
+            v.add(fill);
+        }
+        return v;
+    }
+
     @Nested
     @DisplayName("enroll 录入")
     class Enroll {
@@ -46,7 +56,7 @@ class VoiceprintEnrollServiceTest {
             UUID tenantId = UUID.randomUUID();
 
             int count = service.enroll(userId, tenantId,
-                    List.of(List.of(1.0, 0.0), List.of(0.5, 0.5)));
+                    List.of(validEmb(1.0), validEmb(0.5)));
 
             assertThat(count).isEqualTo(2);
             ArgumentCaptor<VoiceprintEmbedding> captor = ArgumentCaptor.forClass(VoiceprintEmbedding.class);
@@ -56,7 +66,7 @@ class VoiceprintEnrollServiceTest {
             assertThat(written).allMatch(e -> tenantId.equals(e.getTenantId()));
             assertThat(written.get(0).getSampleIndex()).isEqualTo(0);
             assertThat(written.get(1).getSampleIndex()).isEqualTo(1);
-            assertThat(written.get(0).getEmbedding()).isEqualTo("[1.0,0.0]");
+            assertThat(written.get(0).getEmbedding()).isEqualTo(VoiceprintDomain.toJson(validEmb(1.0)));
         }
 
         @Test
@@ -66,7 +76,7 @@ class VoiceprintEnrollServiceTest {
             UUID tenantId = UUID.randomUUID();
             java.util.List<List<Double>> tooMany = new java.util.ArrayList<>();
             for (int i = 0; i < 10; i++) {
-                tooMany.add(List.of(i * 1.0, 0.0));
+                tooMany.add(validEmb(0.1 * (i + 1)));
             }
 
             int count = service.enroll(userId, tenantId, tooMany);
@@ -88,10 +98,37 @@ class VoiceprintEnrollServiceTest {
         @DisplayName("删除条件按 userId 而非 tenantId（重新录入语义：覆盖该用户全部旧模板）")
         void deleteScopedByUser() {
             UUID userId = UUID.randomUUID();
-            service.enroll(userId, UUID.randomUUID(), List.of(List.of(1.0, 0.0)));
+            service.enroll(userId, UUID.randomUUID(), List.of(validEmb(1.0)));
 
             // 删除必然发生（用户重录覆盖旧模板）
             verify(mapper).delete(any());
+        }
+
+        @Test
+        @DisplayName("B-05：无效 embedding（零向量/维度不符）跳过不写入，有效段正常写入")
+        void rejectsInvalidEmbeddings() {
+            UUID userId = UUID.randomUUID();
+            UUID tenantId = UUID.randomUUID();
+            List<Double> zeroVec = new ArrayList<>();
+            for (int i = 0; i < 256; i++) {
+                zeroVec.add(0.0);
+            }
+
+            int count = service.enroll(userId, tenantId,
+                    List.of(zeroVec, List.of(1.0, 0.0), validEmb(0.1)));
+
+            assertThat(count).isEqualTo(1);
+            verify(mapper, times(1)).insert(any(VoiceprintEmbedding.class));
+        }
+
+        @Test
+        @DisplayName("B-05：全部无效 → 返回 0 不写入")
+        void allInvalidNoWrite() {
+            int count = service.enroll(UUID.randomUUID(), UUID.randomUUID(),
+                    List.of(List.of(1.0, 0.0), List.of(0.0, 0.0)));
+
+            assertThat(count).isZero();
+            verify(mapper, never()).insert(any(VoiceprintEmbedding.class));
         }
     }
 }

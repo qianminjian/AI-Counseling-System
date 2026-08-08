@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -35,11 +36,21 @@ class VoiceprintVerifyServiceTest {
         service = new VoiceprintVerifyService(mapper, 0.70);
     }
 
-    private VoiceprintEmbedding record(UUID userId, UUID tenantId, double v, int index) {
+    /** 256 维方向向量：前 keep 维 +fill、其余 -fill（B-05 维度契约后保持夹角可构造） */
+    private List<Double> dirVec(int keep, double fill) {
+        List<Double> v = new ArrayList<>();
+        for (int i = 0; i < VoiceprintDomain.EMBEDDING_DIMENSION; i++) {
+            v.add(i < keep ? fill : -fill);
+        }
+        return v;
+    }
+
+    /** 存储记录：256 维模板（keep=256 全同向，余弦 1） */
+    private VoiceprintEmbedding record(UUID userId, UUID tenantId, int keep, int index) {
         VoiceprintEmbedding rec = new VoiceprintEmbedding();
         rec.setUserId(userId);
         rec.setTenantId(tenantId);
-        rec.setEmbedding("[" + v + "," + v + "]");
+        rec.setEmbedding(VoiceprintDomain.toJson(dirVec(keep, 1.0)));
         rec.setSampleIndex(index);
         rec.setCreatedAt(Instant.now());
         return rec;
@@ -55,10 +66,10 @@ class VoiceprintVerifyServiceTest {
             UUID tenantA = UUID.randomUUID();
             UUID tenantB = UUID.randomUUID();
             // 模拟最坏情况：mock 的 selectList 不过滤（返回租户 B 的模板）
-            when(mapper.selectList(any())).thenReturn(List.of(record(UUID.randomUUID(), tenantB, 1.0, 0)));
+            when(mapper.selectList(any())).thenReturn(List.of(record(UUID.randomUUID(), tenantB, 256, 0)));
 
             VoiceprintVerifyService.VerifyOutcome outcome =
-                    service.verify(tenantA, List.of(List.of(1.0, 1.0)));
+                    service.verify(tenantA, List.of(dirVec(256, 1.0)));
 
             assertThat(outcome.matched()).isFalse();
             assertThat(outcome.hasCandidate()).isFalse();
@@ -70,9 +81,9 @@ class VoiceprintVerifyServiceTest {
         void queryScopedByTenant() {
             UUID tenantId = UUID.randomUUID();
             when(mapper.selectList(any())).thenReturn(
-                    List.of(record(UUID.randomUUID(), tenantId, 1.0, 0)));
+                    List.of(record(UUID.randomUUID(), tenantId, 256, 0)));
 
-            service.verify(tenantId, List.of(List.of(1.0, 1.0)));
+            service.verify(tenantId, List.of(dirVec(256, 1.0)));
 
             // LambdaQueryWrapper 的条件断言成本高，此处验证查询被调用且结果正确即可（过滤语义见跨租户用例）
             org.mockito.Mockito.verify(mapper).selectList(any());
@@ -89,7 +100,7 @@ class VoiceprintVerifyServiceTest {
             when(mapper.selectList(any())).thenReturn(List.of());
 
             VoiceprintVerifyService.VerifyOutcome outcome =
-                    service.verify(UUID.randomUUID(), List.of(List.of(1.0, 1.0)));
+                    service.verify(UUID.randomUUID(), List.of(dirVec(256, 1.0)));
 
             assertThat(outcome.matched()).isFalse();
             assertThat(outcome.hasCandidate()).isFalse();
@@ -100,10 +111,10 @@ class VoiceprintVerifyServiceTest {
         void aboveThresholdMatched() {
             UUID userId = UUID.randomUUID();
             UUID tenantId = UUID.randomUUID();
-            when(mapper.selectList(any())).thenReturn(List.of(record(userId, tenantId, 1.0, 0)));
+            when(mapper.selectList(any())).thenReturn(List.of(record(userId, tenantId, 256, 0)));
 
             VoiceprintVerifyService.VerifyOutcome outcome =
-                    service.verify(tenantId, List.of(List.of(1.0, 1.0)));
+                    service.verify(tenantId, List.of(dirVec(256, 1.0)));
 
             assertThat(outcome.matched()).isTrue();
             assertThat(outcome.userId()).isEqualTo(userId);
@@ -116,11 +127,11 @@ class VoiceprintVerifyServiceTest {
         void belowThresholdHasCandidate() {
             UUID userId = UUID.randomUUID();
             UUID tenantId = UUID.randomUUID();
-            // 存储 [0.5,0.5]，输入 [0.4,-0.2]：余弦≈0.316 ∈ (0, 0.55)
-            when(mapper.selectList(any())).thenReturn(List.of(record(userId, tenantId, 0.5, 0)));
+            // 存储前 168 维同向（其余反向，余弦=(168*2-256)/256≈0.3125 ∈ (0, 0.55)），输入全同向
+            when(mapper.selectList(any())).thenReturn(List.of(record(userId, tenantId, 168, 0)));
 
             VoiceprintVerifyService.VerifyOutcome outcome =
-                    service.verify(tenantId, List.of(List.of(0.4, -0.2)));
+                    service.verify(tenantId, List.of(dirVec(256, 1.0)));
 
             assertThat(outcome.matched()).isFalse();
             assertThat(outcome.hasCandidate()).isTrue();
@@ -132,17 +143,11 @@ class VoiceprintVerifyServiceTest {
         void scoreBetweenOldAndNewThresholdRejected() {
             UUID userId = UUID.randomUUID();
             UUID tenantId = UUID.randomUUID();
-            // 存储 [1.0, 0.0]，输入 [0.6, 0.8]：余弦相似度 = 0.6 ∈ (0.55, 0.70)
-            VoiceprintEmbedding rec = new VoiceprintEmbedding();
-            rec.setUserId(userId);
-            rec.setTenantId(tenantId);
-            rec.setEmbedding("[1.0, 0.0]");
-            rec.setSampleIndex(0);
-            rec.setCreatedAt(Instant.now());
-            when(mapper.selectList(any())).thenReturn(List.of(rec));
+            // 存储前 205 维同向（余弦=(205*2-256)/256≈0.602 ∈ (0.55, 0.70)），输入全同向
+            when(mapper.selectList(any())).thenReturn(List.of(record(userId, tenantId, 205, 0)));
 
             VoiceprintVerifyService.VerifyOutcome outcome =
-                    service.verify(tenantId, List.of(List.of(0.6, 0.8)));
+                    service.verify(tenantId, List.of(dirVec(256, 1.0)));
 
             assertThat(outcome.matched()).isFalse();
             assertThat(outcome.hasCandidate()).isTrue();
@@ -154,19 +159,13 @@ class VoiceprintVerifyServiceTest {
             UUID lowUserId = UUID.randomUUID();
             UUID highUserId = UUID.randomUUID();
             UUID tenantId = UUID.randomUUID();
-            // lowUser 模板 [0.6,-0.6] 与输入 [1.0,1.0] 正交（相似度 0），与 highUser 的 1.0 拉开明确差距
-            VoiceprintEmbedding lowRec = new VoiceprintEmbedding();
-            lowRec.setUserId(lowUserId);
-            lowRec.setTenantId(tenantId);
-            lowRec.setEmbedding("[0.6, -0.6]");
-            lowRec.setSampleIndex(0);
-            lowRec.setCreatedAt(Instant.now());
+            // lowUser 前 128 维同向（与全同向输入正交，余弦 0），highUser 全同向（余弦 1.0）
             when(mapper.selectList(any())).thenReturn(List.of(
-                    lowRec,
-                    record(highUserId, tenantId, 1.0, 1)));
+                    record(lowUserId, tenantId, 128, 0),
+                    record(highUserId, tenantId, 256, 1)));
 
             VoiceprintVerifyService.VerifyOutcome outcome =
-                    service.verify(tenantId, List.of(List.of(1.0, 1.0)));
+                    service.verify(tenantId, List.of(dirVec(256, 1.0)));
 
             assertThat(outcome.matched()).isTrue();
             assertThat(outcome.userId()).isEqualTo(highUserId);
@@ -178,10 +177,10 @@ class VoiceprintVerifyServiceTest {
         void multiSegmentInput() {
             UUID userId = UUID.randomUUID();
             UUID tenantId = UUID.randomUUID();
-            when(mapper.selectList(any())).thenReturn(List.of(record(userId, tenantId, 1.0, 0)));
+            when(mapper.selectList(any())).thenReturn(List.of(record(userId, tenantId, 256, 0)));
 
             VoiceprintVerifyService.VerifyOutcome outcome =
-                    service.verify(tenantId, List.of(List.of(-1.0, -1.0), List.of(1.0, 1.0)));
+                    service.verify(tenantId, List.of(dirVec(0, 1.0), dirVec(256, 1.0)));
 
             assertThat(outcome.matched()).isTrue();
             assertThat(outcome.userId()).isEqualTo(userId);
@@ -204,10 +203,10 @@ class VoiceprintVerifyServiceTest {
             corrupted.setSampleIndex(0);
             corrupted.setCreatedAt(Instant.now());
             when(mapper.selectList(any()))
-                    .thenReturn(List.of(corrupted, record(goodUserId, tenantId, 1.0, 1)));
+                    .thenReturn(List.of(corrupted, record(goodUserId, tenantId, 256, 1)));
 
             VoiceprintVerifyService.VerifyOutcome outcome =
-                    service.verify(tenantId, List.of(List.of(1.0, 1.0)));
+                    service.verify(tenantId, List.of(dirVec(256, 1.0)));
 
             assertThat(outcome.matched()).isTrue();
             assertThat(outcome.userId()).isEqualTo(goodUserId);
@@ -226,7 +225,7 @@ class VoiceprintVerifyServiceTest {
             when(mapper.selectList(any())).thenReturn(List.of(corrupted));
 
             VoiceprintVerifyService.VerifyOutcome outcome =
-                    service.verify(tenantId, List.of(List.of(1.0, 1.0)));
+                    service.verify(tenantId, List.of(dirVec(256, 1.0)));
 
             assertThat(outcome.matched()).isFalse();
             assertThat(outcome.hasCandidate()).isFalse();

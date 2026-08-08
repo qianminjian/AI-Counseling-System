@@ -2,6 +2,7 @@ package com.mindsafe.service.teacher;
 
 import com.baomidou.mybatisplus.core.conditions.Wrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.mindsafe.common.exception.BizException;
 import com.mindsafe.domain.entity.RiskEvent;
 import com.mindsafe.domain.entity.TeacherNote;
 import com.mindsafe.domain.entity.User;
@@ -106,7 +107,7 @@ class TeacherCaseTrackingTest {
     void 学生不存在_拒绝设置() {
         when(userMapper.selectById(studentId)).thenReturn(null);
 
-        assertThrows(IllegalArgumentException.class,
+        assertThrows(BizException.class,
                 () -> teacherService.setCaseTracking(tenantId, studentId, teacherId, true));
         verify(teacherNoteMapper, never()).insert(any(TeacherNote.class));
     }
@@ -118,7 +119,7 @@ class TeacherCaseTrackingTest {
         student.setTenantId(UUID.randomUUID());
         when(userMapper.selectById(studentId)).thenReturn(student);
 
-        assertThrows(IllegalArgumentException.class,
+        assertThrows(BizException.class,
                 () -> teacherService.setCaseTracking(tenantId, studentId, teacherId, true));
     }
 

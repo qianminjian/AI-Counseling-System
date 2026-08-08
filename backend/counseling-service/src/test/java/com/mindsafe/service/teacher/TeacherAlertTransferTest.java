@@ -1,5 +1,6 @@
 package com.mindsafe.service.teacher;
 
+import com.mindsafe.common.exception.BizException;
 import com.mindsafe.domain.entity.RiskEvent;
 import com.mindsafe.domain.entity.TeacherNote;
 import com.mindsafe.domain.entity.User;
@@ -118,7 +119,7 @@ class TeacherAlertTransferTest {
         givenOpenEvent();
         when(userMapper.selectById(targetTeacherId)).thenReturn(null);
 
-        assertThrows(IllegalArgumentException.class,
+        assertThrows(BizException.class,
                 () -> teacherService.transferAlert(tenantId, eventId, fromTeacherId, targetTeacherId, null));
         verify(riskEventMapper, never()).updateById(any(RiskEvent.class));
     }
@@ -128,7 +129,7 @@ class TeacherAlertTransferTest {
         givenOpenEvent();
         givenTargetTeacher(UUID.randomUUID()); // 其他租户
 
-        assertThrows(IllegalArgumentException.class,
+        assertThrows(BizException.class,
                 () -> teacherService.transferAlert(tenantId, eventId, fromTeacherId, targetTeacherId, null));
         verify(riskEventMapper, never()).updateById(any(RiskEvent.class));
     }
@@ -137,7 +138,7 @@ class TeacherAlertTransferTest {
     void 预警不存在_拒绝转派() {
         when(riskEventMapper.selectById(eventId)).thenReturn(null);
 
-        assertThrows(IllegalArgumentException.class,
+        assertThrows(BizException.class,
                 () -> teacherService.transferAlert(tenantId, eventId, fromTeacherId, targetTeacherId, null));
     }
 }

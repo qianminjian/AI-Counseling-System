@@ -1,6 +1,7 @@
 package com.mindsafe.service.teacher;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.mindsafe.common.exception.BizException;
 import com.mindsafe.domain.entity.RiskEvent;
 import com.mindsafe.domain.entity.TeacherNote;
 import com.mindsafe.domain.entity.User;
@@ -174,7 +175,7 @@ class TeacherAlertWorkflowTest {
         RiskEvent foreign = RiskEvent.fromDetection(UUID.randomUUID(), studentId, UUID.randomUUID(), "self_harm", 3);
         when(riskEventMapper.selectById(eventId)).thenReturn(foreign);
 
-        assertThrows(IllegalArgumentException.class,
+        assertThrows(BizException.class,
                 () -> teacherService.claimAlert(tenantId, eventId, teacherUserId));
         verify(riskEventMapper, never()).updateById(any(RiskEvent.class));
     }
@@ -184,7 +185,7 @@ class TeacherAlertWorkflowTest {
     void eventNotFound_rejected() {
         when(riskEventMapper.selectById(eventId)).thenReturn(null);
 
-        assertThrows(IllegalArgumentException.class,
+        assertThrows(BizException.class,
                 () -> teacherService.resolveAlert(tenantId, eventId, teacherUserId, null));
     }
 

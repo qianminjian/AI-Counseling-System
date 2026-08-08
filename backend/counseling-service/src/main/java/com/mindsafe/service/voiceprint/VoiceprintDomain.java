@@ -25,7 +25,37 @@ public final class VoiceprintDomain {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
+    /** B-05（doing/80）：声纹 embedding 契约——维度 256（wespeaker ONNX，design/06 §3.3） */
+    public static final int EMBEDDING_DIMENSION = 256;
+    /** 范数下限：拒绝零向量/近零退化向量（归一化 embedding 范数≈1） */
+    public static final double MIN_EMBEDDING_NORM = 0.01;
+
     private VoiceprintDomain() {
+    }
+
+    /**
+     * 向量欧氏范数（null/空 → 0）。
+     */
+    public static double norm(List<Double> v) {
+        if (v == null) {
+            return 0;
+        }
+        double sum = 0;
+        for (double x : v) {
+            sum += x * x;
+        }
+        return Math.sqrt(sum);
+    }
+
+    /**
+     * embedding 有效性校验（B-05）：维度必须 256 且范数 ≥ 下限——
+     * 拒绝零向量/维度不符的退化模板（1:N 匹配退化风险）。
+     */
+    public static boolean isValidEmbedding(List<Double> v) {
+        if (v == null || v.size() != EMBEDDING_DIMENSION) {
+            return false;
+        }
+        return norm(v) >= MIN_EMBEDDING_NORM;
     }
 
     /**

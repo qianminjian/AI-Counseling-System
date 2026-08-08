@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletRequest;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -149,6 +150,51 @@ class VoiceprintDomainTest {
             MockHttpServletRequest req = request("172.17.0.2");
             req.addHeader("X-Forwarded-For", "1.2.3.4,");
             assertThat(VoiceprintDomain.resolveClientIp(req)).isEqualTo("1.2.3.4");
+        }
+    }
+
+    @Nested
+    @DisplayName("isValidEmbedding / norm 校验（B-05：拒绝退化向量）")
+    class EmbeddingValidation {
+
+        private List<Double> vec(int dim, double fill) {
+            List<Double> v = new ArrayList<>();
+            for (int i = 0; i < dim; i++) {
+                v.add(fill);
+            }
+            return v;
+        }
+
+        @Test
+        @DisplayName("归一化 256 维向量（范数≈1）→ 通过")
+        void acceptsNormalized256() {
+            assertThat(VoiceprintDomain.isValidEmbedding(vec(256, 1.0 / 16.0))).isTrue();
+        }
+
+        @Test
+        @DisplayName("维度不符（128 维）→ 拒绝")
+        void rejectsWrongDimension() {
+            assertThat(VoiceprintDomain.isValidEmbedding(vec(128, 1.0))).isFalse();
+            assertThat(VoiceprintDomain.isValidEmbedding(List.of(1.0, 0.0))).isFalse();
+        }
+
+        @Test
+        @DisplayName("零向量（范数 0）→ 拒绝")
+        void rejectsZeroVector() {
+            assertThat(VoiceprintDomain.isValidEmbedding(vec(256, 0.0))).isFalse();
+        }
+
+        @Test
+        @DisplayName("null → 拒绝")
+        void rejectsNull() {
+            assertThat(VoiceprintDomain.isValidEmbedding(null)).isFalse();
+        }
+
+        @Test
+        @DisplayName("norm 计算（3/4/5 直角三角形）")
+        void normComputes() {
+            assertThat(VoiceprintDomain.norm(List.of(3.0, 4.0))).isEqualTo(5.0);
+            assertThat(VoiceprintDomain.norm(List.of(0.0, 0.0))).isZero();
         }
     }
 

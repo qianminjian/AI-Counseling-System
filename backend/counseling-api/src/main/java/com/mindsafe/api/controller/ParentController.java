@@ -189,11 +189,6 @@ public class ParentController {
 
     private record ParentTokenInfo(UUID studentUserId, UUID tenantId) {}
 
-    /** @deprecated 由 {@link #resolveParentToken} 替代，保留兼容性注释 */
-    private UUID resolveStudentUserId(String authHeader) {
-        return resolveParentToken(authHeader).studentUserId();
-    }
-
     // ===== AUTH-013 手机验证 =====
 
     /**

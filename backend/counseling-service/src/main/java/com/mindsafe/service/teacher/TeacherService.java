@@ -4,8 +4,11 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.mindsafe.common.dto.ErrorCode;
+import com.mindsafe.common.exception.BizException;
 import com.mindsafe.domain.entity.*;
 import com.mindsafe.domain.mapper.*;
+import com.mindsafe.service.common.CounselingTimeZone;
 import com.mindsafe.service.casemanage.CaseLifecycleService;
 import com.mindsafe.service.security.FieldEncryptionService;
 import com.mindsafe.service.audit.AuditLogService;
@@ -51,6 +54,20 @@ public class TeacherService {
 
     /** 个案阶段推进的备注类型（复用 teacher_notes 免 schema 变更，content=阶段名） */
     private static final String CASE_STAGE_NOTE_TYPE = "case_stage";
+
+    /** 干预话术模板（7 条，R-7：自 Controller 下沉 service 层；心理干预话术属预审核合规内容，变更走发布评审） */
+    public static final List<Map<String, String>> TEMPLATES = List.of(
+            Map.of("id", "t1", "category", "预警处理", "content", "已与学生进行一对一谈话，学生情绪稳定，表示只是随口说说。已告知班主任关注。"),
+            Map.of("id", "t2", "category", "预警处理", "content", "已联系家长沟通，家长表示近期家庭有变动，会配合关注学生情绪变化。"),
+            Map.of("id", "t3", "category", "预警处理", "content", "误报。学生是在讨论课文内容/新闻事件，非自身情绪表达。"),
+            Map.of("id", "t4", "category", "个案备注", "content", "学生近期情绪低落，已安排每周一次心理辅导，持续跟踪。"),
+            Map.of("id", "t5", "category", "个案备注", "content", "学生状态明显好转，主动参与课堂活动，建议降低关注等级。"),
+            Map.of("id", "t6", "category", "家长沟通", "content", "建议家长多关注孩子情绪变化，保持开放沟通，避免过度施压。如持续异常请联系学校心理老师。"),
+            Map.of("id", "t7", "category", "转介建议", "content", "学生情况超出学校辅导能力，建议转介至专业心理机构进一步评估。")
+    );
+
+    /** 数据看板风险统计时间窗（B-15：近 90 天，覆盖学期活动窗口，避免全量历史加载内存） */
+    private static final int STATS_RISK_WINDOW_DAYS = 90;
 
     // 个案生命周期纯函数（无状态，同 AlertTodoMutePolicy 内联实例化先例）
     private final CaseLifecycleService caseLifecycleService = new CaseLifecycleService();
@@ -165,7 +182,7 @@ public class TeacherService {
 
     public DashboardVO getDashboard(UUID tenantId, UUID teacherUserId) {
         Instant now = Instant.now();
-        Instant todayStart = now.truncatedTo(ChronoUnit.DAYS);
+        Instant todayStart = CounselingTimeZone.startOfDay(now); // B-03：上海日边界（UTC 截断会在 08:00 前漂移前一天）
         Instant weekAgo = now.minus(7, ChronoUnit.DAYS);
 
         // 待处理预警数
@@ -204,8 +221,8 @@ public class TeacherService {
         );
         
         // 周趋势（最近 7 天每天的风险事件数）：单次查询 + 内存分桶，替代 7 次循环 count
-        Instant weekStart = now.minus(6, ChronoUnit.DAYS).truncatedTo(ChronoUnit.DAYS);
-        Instant tomorrowStart = now.truncatedTo(ChronoUnit.DAYS).plus(1, ChronoUnit.DAYS);
+        Instant weekStart = CounselingTimeZone.truncateToDay(now.minus(6, ChronoUnit.DAYS));
+        Instant tomorrowStart = CounselingTimeZone.startOfNextDay(now);
         List<RiskEvent> weekEvents = riskEventMapper.selectList(
                 new LambdaQueryWrapper<RiskEvent>()
                         .eq(RiskEvent::getTenantId, tenantId)
@@ -215,11 +232,11 @@ public class TeacherService {
         Map<Instant, Long> eventsByDay = weekEvents.stream()
                 .map(RiskEvent::getDetectedAt)
                 .filter(Objects::nonNull)
-                .collect(Collectors.groupingBy(t -> t.truncatedTo(ChronoUnit.DAYS), Collectors.counting()));
+                .collect(Collectors.groupingBy(CounselingTimeZone::truncateToDay, Collectors.counting()));
         List<DailyCount> weeklyTrend = new ArrayList<>();
         for (int i = 6; i >= 0; i--) {
-            Instant dayStart = now.minus(i, ChronoUnit.DAYS).truncatedTo(ChronoUnit.DAYS);
-            weeklyTrend.add(new DailyCount(dayStart.toString().substring(0, 10),
+            Instant dayStart = CounselingTimeZone.truncateToDay(now.minus(i, ChronoUnit.DAYS));
+            weeklyTrend.add(new DailyCount(CounselingTimeZone.dateKey(dayStart),
                     eventsByDay.getOrDefault(dayStart, 0L)));
         }
 
@@ -327,10 +344,10 @@ public class TeacherService {
         // 目标教师必须存在且同租户（防止跨租户转派泄露学生数据）
         User target = userMapper.selectById(targetTeacherId);
         if (target == null || !tenantId.equals(target.getTenantId())) {
-            throw new IllegalArgumentException("目标教师不存在: " + targetTeacherId);
+            throw new BizException(ErrorCode.RESOURCE_NOT_FOUND, "目标教师不存在: " + targetTeacherId);
         }
 
-                event.setStatus(RiskEvent.STATUS_OPEN);
+        event.setStatus(RiskEvent.STATUS_OPEN);
         event.setAssignedUserId(targetTeacherId);
         event.setUpdatedAt(Instant.now());
         riskEventMapper.updateById(event);
@@ -349,10 +366,11 @@ public class TeacherService {
      * 设置学生“已在个案跟踪中”标志（design/35 §4.2 降噪第 3 条）。
      * 落地为 teacher_notes（type=case_tracking）最新一条，避免 schema 变更。
      */
+    @Transactional
     public void setCaseTracking(UUID tenantId, UUID studentUserId, UUID teacherUserId, boolean enabled) {
         User student = userMapper.selectById(studentUserId);
         if (student == null || !tenantId.equals(student.getTenantId())) {
-            throw new IllegalArgumentException("学生不存在: " + studentUserId);
+            throw new BizException(ErrorCode.RESOURCE_NOT_FOUND, "学生不存在: " + studentUserId);
         }
         TeacherNote note = TeacherNote.create(
                 tenantId, studentUserId, teacherUserId,
@@ -399,6 +417,7 @@ public class TeacherService {
     }
 
     /** 认领预警 */
+    @Transactional
     public void claimAlert(UUID tenantId, UUID riskEventId, UUID teacherUserId) {
         RiskEvent event = getEventWithTenantCheck(tenantId, riskEventId);
         event.setStatus(RiskEvent.STATUS_CLAIMED);
@@ -409,6 +428,7 @@ public class TeacherService {
     }
 
     /** 标记误报 */
+    @Transactional
     public void markFalsePositive(UUID tenantId, UUID riskEventId, UUID teacherUserId) {
         RiskEvent event = getEventWithTenantCheck(tenantId, riskEventId);
         event.setStatus("false_positive");
@@ -444,6 +464,7 @@ public class TeacherService {
     }
 
     /** DATA-004：安排回访（处置后不直接关闭，而是计划回访确认效果） */
+    @Transactional
     public void scheduleFollowUp(UUID tenantId, UUID riskEventId, UUID teacherUserId, String followUpAtIso) {
         RiskEvent event = getEventWithTenantCheck(tenantId, riskEventId);
         event.setStatus("follow_up_scheduled");
@@ -494,7 +515,7 @@ public class TeacherService {
     private RiskEvent getEventWithTenantCheck(UUID tenantId, UUID riskEventId) {
         RiskEvent event = riskEventMapper.selectById(riskEventId);
         if (event == null || !event.getTenantId().equals(tenantId)) {
-            throw new IllegalArgumentException("预警不存在: " + riskEventId);
+            throw new BizException(ErrorCode.ALERT_NOT_FOUND, "预警不存在: " + riskEventId);
         }
         return event;
     }
@@ -545,7 +566,7 @@ public class TeacherService {
             CaseLifecycleService.CaseStage targetStage) {
         User student = userMapper.selectById(studentUserId);
         if (student == null || !tenantId.equals(student.getTenantId())) {
-            throw new IllegalArgumentException("学生不存在: " + studentUserId);
+            throw new BizException(ErrorCode.RESOURCE_NOT_FOUND, "学生不存在: " + studentUserId);
         }
 
         CaseLifecycleService.CaseStage current = getCurrentCaseStage(tenantId, studentUserId);
@@ -568,7 +589,7 @@ public class TeacherService {
     public StudentProfileVO getStudentProfile(UUID tenantId, UUID studentUserId, String userType) {
         User student = userMapper.selectById(studentUserId);
         if (student == null || !student.getTenantId().equals(tenantId)) {
-            throw new IllegalArgumentException("学生不存在: " + studentUserId);
+            throw new BizException(ErrorCode.RESOURCE_NOT_FOUND, "学生不存在: " + studentUserId);
         }
 
         // 班主任（class_teacher）只见沟通建议，不见风险轨迹与对话摘要（design/35 §3.3/§六：服务端裁剪）
@@ -649,7 +670,7 @@ public class TeacherService {
         List<RiskEvent> openEvents = riskEventMapper.selectList(
                 new LambdaQueryWrapper<RiskEvent>()
                         .eq(RiskEvent::getTenantId, tenantId)
-                                                .in(RiskEvent::getStatus, RiskEvent.STATUS_OPEN, RiskEvent.STATUS_CLAIMED)
+                        .in(RiskEvent::getStatus, RiskEvent.STATUS_OPEN, RiskEvent.STATUS_CLAIMED)
                         .orderByDesc(RiskEvent::getRiskLevel)
         );
 
@@ -688,6 +709,13 @@ public class TeacherService {
         })
         .sorted(Comparator.comparingInt(HighRiskStudentVO::maxRiskLevel).reversed())
         .toList();
+    }
+
+    // ===== 干预话术模板（R-7：下沉 service 层维护） =====
+
+    /** 获取干预话术模板列表（不可变常量，调用方直接透传） */
+    public List<Map<String, String>> getTemplates() {
+        return TEMPLATES;
     }
 
     // ===== 备注管理 =====
@@ -734,9 +762,10 @@ public class TeacherService {
             scopeStudentIds = classStudents.stream().map(User::getUserId).collect(Collectors.toSet());
         }
 
-        // 1. 风险等级分布
+        // 1. 风险等级分布（B-15：近 STATS_RISK_WINDOW_DAYS 天时间窗，不再全量历史加载内存）
         LambdaQueryWrapper<RiskEvent> eventWrapper = new LambdaQueryWrapper<RiskEvent>()
-                .eq(RiskEvent::getTenantId, tenantId);
+                .eq(RiskEvent::getTenantId, tenantId)
+                .ge(RiskEvent::getDetectedAt, now.minus(STATS_RISK_WINDOW_DAYS, ChronoUnit.DAYS));
         if (scopeStudentIds != null && !scopeStudentIds.isEmpty()) {
             eventWrapper.in(RiskEvent::getStudentUserId, scopeStudentIds);
         } else if (scopeStudentIds != null) {
@@ -774,8 +803,8 @@ public class TeacherService {
                 .toList();
 
         // 3. 近 30 天会话趋势：单次查询 + 内存分桶（替代 30 次循环 selectCount）
-        Instant trendStart = now.minus(29, ChronoUnit.DAYS).truncatedTo(ChronoUnit.DAYS);
-        Instant tomorrowStart = now.truncatedTo(ChronoUnit.DAYS).plus(1, ChronoUnit.DAYS);
+        Instant trendStart = CounselingTimeZone.truncateToDay(now.minus(29, ChronoUnit.DAYS));
+        Instant tomorrowStart = CounselingTimeZone.startOfNextDay(now);
         List<CounselingSession> trendSessions = sessionMapper.selectList(
                 new LambdaQueryWrapper<CounselingSession>()
                         .eq(CounselingSession::getTenantId, tenantId)
@@ -785,11 +814,11 @@ public class TeacherService {
         Map<Instant, Long> sessionsByDay = trendSessions.stream()
                 .map(CounselingSession::getStartedAt)
                 .filter(Objects::nonNull)
-                .collect(Collectors.groupingBy(t -> t.truncatedTo(ChronoUnit.DAYS), Collectors.counting()));
+                .collect(Collectors.groupingBy(CounselingTimeZone::truncateToDay, Collectors.counting()));
         List<DailyCount> sessionTrend = new ArrayList<>();
         for (int i = 29; i >= 0; i--) {
-            Instant dayStart = now.minus(i, ChronoUnit.DAYS).truncatedTo(ChronoUnit.DAYS);
-            sessionTrend.add(new DailyCount(dayStart.toString().substring(0, 10),
+            Instant dayStart = CounselingTimeZone.truncateToDay(now.minus(i, ChronoUnit.DAYS));
+            sessionTrend.add(new DailyCount(CounselingTimeZone.dateKey(dayStart),
                     sessionsByDay.getOrDefault(dayStart, 0L)));
         }
 

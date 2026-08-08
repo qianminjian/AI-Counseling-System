@@ -1,6 +1,7 @@
 package com.mindsafe.service.teacher;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.mindsafe.common.exception.BizException;
 import com.mindsafe.domain.entity.CounselingSession;
 import com.mindsafe.domain.entity.MessageSummary;
 import com.mindsafe.domain.entity.RiskEvent;
@@ -129,14 +130,14 @@ class TeacherArchiveNoteTest {
     @DisplayName("getStudentProfile：学生不存在或跨租户 → 拒绝")
     void studentProfile_studentNotFound() {
         when(userMapper.selectById(studentId)).thenReturn(null);
-        assertThrows(IllegalArgumentException.class,
+        assertThrows(BizException.class,
                 () -> teacherService.getStudentProfile(tenantId, studentId, "teacher"));
 
         User foreign = new User();
         foreign.setUserId(studentId);
         foreign.setTenantId(UUID.randomUUID());
         when(userMapper.selectById(studentId)).thenReturn(foreign);
-        assertThrows(IllegalArgumentException.class,
+        assertThrows(BizException.class,
                 () -> teacherService.getStudentProfile(tenantId, studentId, "teacher"));
     }
 

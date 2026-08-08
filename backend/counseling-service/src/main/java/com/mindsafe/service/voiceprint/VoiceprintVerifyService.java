@@ -88,6 +88,12 @@ public class VoiceprintVerifyService {
 
         for (Map.Entry<UUID, List<VoiceprintEmbedding>> entry : byUser.entrySet()) {
             for (List<Double> inputEmb : inputEmbeddings) {
+                // B-05：输入段同样做维度/范数校验——退化向量对任何模板余弦相似度均为 0，无比对价值
+                if (!VoiceprintDomain.isValidEmbedding(inputEmb)) {
+                    log.warn("声纹输入段无效已跳过: 维度={}, 范数={}",
+                            inputEmb == null ? 0 : inputEmb.size(), VoiceprintDomain.norm(inputEmb));
+                    continue;
+                }
                 for (VoiceprintEmbedding stored : entry.getValue()) {
                     List<Double> storedEmb = VoiceprintDomain.parseEmbedding(stored.getEmbedding());
                     if (storedEmb == null) {

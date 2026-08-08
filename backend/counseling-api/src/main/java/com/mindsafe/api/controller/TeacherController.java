@@ -91,20 +91,10 @@ public class TeacherController {
 
     // ===== 干预话术模板 =====
 
-    private static final java.util.List<java.util.Map<String, String>> TEMPLATES = java.util.List.of(
-        java.util.Map.of("id", "t1", "category", "预警处理", "content", "已与学生进行一对一谈话，学生情绪稳定，表示只是随口说说。已告知班主任关注。"),
-        java.util.Map.of("id", "t2", "category", "预警处理", "content", "已联系家长沟通，家长表示近期家庭有变动，会配合关注学生情绪变化。"),
-        java.util.Map.of("id", "t3", "category", "预警处理", "content", "误报。学生是在讨论课文内容/新闻事件，非自身情绪表达。"),
-        java.util.Map.of("id", "t4", "category", "个案备注", "content", "学生近期情绪低落，已安排每周一次心理辅导，持续跟踪。"),
-        java.util.Map.of("id", "t5", "category", "个案备注", "content", "学生状态明显好转，主动参与课堂活动，建议降低关注等级。"),
-        java.util.Map.of("id", "t6", "category", "家长沟通", "content", "建议家长多关注孩子情绪变化，保持开放沟通，避免过度施压。如持续异常请联系学校心理老师。"),
-        java.util.Map.of("id", "t7", "category", "转介建议", "content", "学生情况超出学校辅导能力，建议转介至专业心理机构进一步评估。")
-    );
-
-    /** 获取干预话术模板列表 */
+    /** 获取干预话术模板列表（R-7：模板下沉 service 层维护，见 TeacherService.TEMPLATES） */
     @GetMapping("/teacher/templates")
-    public ApiResponse<java.util.List<java.util.Map<String, String>>> getTemplates() {
-        return ApiResponse.ok(TEMPLATES);
+    public ApiResponse<List<Map<String, String>>> getTemplates() {
+        return ApiResponse.ok(teacherService.getTemplates());
     }
 
     // ===== 学生管理 =====
@@ -320,6 +310,13 @@ public class TeacherController {
         return value;
     }
 
+    /** HTML 字段转义（B-04：导出 HTML 防 XSS——& < > 引号全量转义） */
+    private static String html(String value) {
+        if (value == null) return "";
+        return value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                .replace("\"", "&quot;").replace("'", "&#39;");
+    }
+
     /** 学生视图对象 */
     public record StudentVO(UUID userId, String displayName, String gradeCode, String classCode) {}
 
@@ -399,7 +396,7 @@ public class TeacherController {
         // 班级对比表
         html.append("<h3>班级对比</h3><table><tr><th>班级</th><th>预警数</th><th>学生数</th></tr>");
         for (var item : stats.classComparison()) {
-            html.append("<tr><td>").append(item.classCode()).append("</td><td>")
+            html.append("<tr><td>").append(html(item.classCode())).append("</td><td>")
                 .append(item.alertCount()).append("</td><td>").append(item.studentCount()).append("</td></tr>");
         }
         html.append("</table>");
@@ -446,7 +443,7 @@ public class TeacherController {
             html.append("<div class='meta'>").append(isStudent ? "🧒 学生" : "🤖 AI");
             if (msg.emotionLabel() != null) html.append(" · ").append(emotionZh(msg.emotionLabel()));
             html.append("</div>");
-            html.append("<div>").append(msg.contentSummary() != null ? msg.contentSummary() : "").append("</div>");
+            html.append("<div>").append(html(msg.contentSummary())).append("</div>");
             html.append("</div>");
         }
 

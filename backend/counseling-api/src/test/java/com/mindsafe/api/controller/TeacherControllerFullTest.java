@@ -124,6 +124,9 @@ class TeacherControllerFullTest {
     @Test
     @DisplayName("getTemplates 返回 7 个干预话术模板")
     void templates() {
+        // R-7：模板下沉 TeacherService.TEMPLATES（预审核合规内容），controller 仅透传
+        when(teacherService.getTemplates()).thenReturn(TeacherService.TEMPLATES);
+
         var resp = controller.getTemplates();
 
         assertThat(resp.code()).isEqualTo(0);
@@ -386,6 +389,47 @@ class TeacherControllerFullTest {
         assertThat(html).contains("中风险");
         assertThat(html).contains("CLASS_1");
         assertThat(html).contains("难过");
+    }
+
+    @Test
+    @DisplayName("exportSession HTML 转义 contentSummary（B-04 XSS 防护）")
+    void exportSession_escapesHtml() throws IOException {
+        UUID sessionId = UUID.randomUUID();
+        when(teacherService.getSessionMessages(tenantId, sessionId))
+                .thenReturn(List.of(
+                        new TeacherService.MessageSummaryVO(UUID.randomUUID(), "student", 1,
+                                "<img src=x onerror=alert(1)>", null, 0, Instant.now())));
+        HttpServletResponse response = mock(HttpServletResponse.class);
+        StringWriter sw = new StringWriter();
+        when(response.getWriter()).thenReturn(new PrintWriter(sw));
+
+        controller.exportSession(sessionId, teacherAuth("psych_teacher"), response);
+
+        String html = sw.toString();
+        assertThat(html).doesNotContain("<img src=x onerror=alert(1)>");
+        assertThat(html).contains("&lt;img src=x onerror=alert(1)&gt;");
+    }
+
+    @Test
+    @DisplayName("weeklyReport 班级名 HTML 转义（B-04 同源风险）")
+    void weeklyReport_escapesClassCode() throws IOException {
+        // StatsVO 为 final record，不能 mock——用真实实例（其余列表置空，仅验证 classCode 转义）
+        TeacherService.StatsVO stats = new TeacherService.StatsVO(
+                List.of(),
+                List.of(new TeacherService.ClassRiskItem("<script>alert(1)</script>", 1L, 2L)),
+                List.of(),
+                List.of());
+        when(teacherService.resolveClassScope(any(), any(), any())).thenReturn(null);
+        when(teacherService.getStats(tenantId, null)).thenReturn(stats);
+        HttpServletResponse response = mock(HttpServletResponse.class);
+        StringWriter sw = new StringWriter();
+        when(response.getWriter()).thenReturn(new PrintWriter(sw));
+
+        controller.weeklyReport(teacherAuth("psych_teacher"), response);
+
+        String html = sw.toString();
+        assertThat(html).doesNotContain("<script>alert(1)</script>");
+        assertThat(html).contains("&lt;script&gt;alert(1)&lt;/script&gt;");
     }
 
     @Test
