@@ -80,14 +80,9 @@ class AiChatServiceImplLlmCallTest {
         when(requestSpec.stream()).thenReturn(streamSpec);
         when(requestSpec.call()).thenReturn(callSpec);
 
-        PromptTemplateService promptTemplateService = mock(PromptTemplateService.class);
-        when(promptTemplateService.render(anyString(), org.mockito.ArgumentMatchers.anyMap()))
-                .thenReturn("SYS_001 系统提示");
-        when(promptTemplateService.getTemplate(anyString())).thenReturn("# 语言规则");
-
         service = new AiChatServiceImpl(builder, chatMemory, outputContentFilter,
-                outputReviewService, promptTemplateService,
-                new LlmStreamEnhancer(3000, 60000, 1, 10, new SimpleMeterRegistry()),
+                outputReviewService,
+                new LlmStreamEnhancer(3000, 60000, 1, 10, new SimpleMeterRegistry(), new PromptTemplateService()),
                 modelCallLogMapper, new SimpleMeterRegistry());
     }
 
@@ -98,22 +93,21 @@ class AiChatServiceImplLlmCallTest {
     class ChatWithPromptTests {
 
         @Test
-        @DisplayName("成功路径：system 含预解析 prompt+性别风格；记忆双写；审计 success")
+        @DisplayName("成功路径：system 原样透传预解析 prompt；记忆双写；审计 success")
         @SuppressWarnings("unchecked")
         void successPath() {
             when(chatMemory.get(conversationId)).thenReturn(List.of());
             when(streamSpec.content()).thenReturn(Flux.just("你好呀"));
 
-            // ARCH-004：profilePrompt 僵尸参数已删除（生产恒传 null）
-            service.chatWithPrompt(sessionId, "happy", "你好", "female", 3,
-                            "预解析的SYS_001+语言模板")
+            // ARCH-004：profilePrompt 僵尸参数已删除（生产恒传 null）；B4：gender/grade 随性别风格上移调用方
+            service.chatWithPrompt(sessionId, "happy", "你好",
+                            "预解析的SYS_001+语言模板+性别风格")
                     .collectList().block();
 
             ArgumentCaptor<String> sysCaptor = ArgumentCaptor.forClass(String.class);
             verify(requestSpec).system(sysCaptor.capture());
             assertThat(sysCaptor.getValue())
-                    .contains("预解析的SYS_001+语言模板")
-                    .contains("女生·中年级");
+                    .contains("预解析的SYS_001+语言模板+性别风格");
 
             ArgumentCaptor<List<Message>> memCaptor = ArgumentCaptor.forClass(List.class);
             verify(chatMemory, times(2)).add(eq(conversationId), memCaptor.capture());
@@ -135,7 +129,7 @@ class AiChatServiceImplLlmCallTest {
             when(streamSpec.content()).thenReturn(Flux.error(new RuntimeException("LLM down")));
 
             List<StreamMessageEvent> events = service
-                    .chatWithPrompt(sessionId, "sad", "难过", "male", 5, "预解析prompt")
+                    .chatWithPrompt(sessionId, "sad", "难过", "预解析prompt")
                     .collectList().block();
 
             // 降级话术兜底（重试 1 次后耗尽），下游正常完成不抛异常

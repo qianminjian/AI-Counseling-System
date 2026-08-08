@@ -1,5 +1,6 @@
 package com.mindsafe.ai.chat;
 
+import com.mindsafe.ai.prompt.PromptTemplateService;
 import com.mindsafe.common.dto.chat.StreamMessageEvent;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -44,20 +45,28 @@ public class LlmStreamEnhancer {
     private final Counter fallbackCounter;
     private final Timer firstTokenTimer;
 
-    /** 降级安全话术（面向小学生，温和不突兀） */
-    private static final String FALLBACK_MESSAGE =
-            "波波现在有点忙不过来，你先深呼吸三次，等一等波波好不好？我马上就回来陪你～";
+    /** 降级话术模板 classpath 路径（B4：文案下沉 prompts/，改文案不改代码） */
+    private static final String FALLBACK_TEMPLATE_PATH =
+            "prompts/fallback/llm_unavailable_zh-CN_v1.0.0.md";
+
+    /**
+     * 降级安全话术（面向小学生，温和不突兀）。
+     * B4：文案下沉 prompts/fallback/ 模板（启动时加载，配置缺失即启动失败——降级话术不可静默丢失）。
+     */
+    private final String fallbackMessage;
 
     public LlmStreamEnhancer(
             @Value("${mindsafe.llm.first-token-timeout-ms:15000}") long firstTokenMs,
             @Value("${mindsafe.llm.overall-timeout-ms:60000}") long overallMs,
             @Value("${mindsafe.llm.retry-max:1}") int retryMax,
             @Value("${mindsafe.llm.retry-backoff-ms:2000}") long retryBackoffMs,
-            MeterRegistry meterRegistry) {
+            MeterRegistry meterRegistry,
+            PromptTemplateService promptTemplateService) {
         this.firstTokenTimeout = Duration.ofMillis(firstTokenMs);
         this.overallTimeout = Duration.ofMillis(overallMs);
         this.maxRetries = retryMax;
         this.retryBackoff = Duration.ofMillis(retryBackoffMs);
+        this.fallbackMessage = promptTemplateService.getTemplate(FALLBACK_TEMPLATE_PATH);
 
         this.retryCounter = Counter.builder("mindsafe.llm.retry")
                 .description("LLM 流式调用重试次数")
@@ -163,7 +172,7 @@ public class LlmStreamEnhancer {
      */
     private Flux<StreamMessageEvent> fallbackStream(UUID sessionId, String reason) {
         log.info("LLM 降级触发: sessionId={}, reason={}", sessionId, reason);
-        StreamMessageEvent tokenEvt = new StreamMessageEvent("token", FALLBACK_MESSAGE, null);
+        StreamMessageEvent tokenEvt = new StreamMessageEvent("token", fallbackMessage, null);
         StreamMessageEvent doneEvt = new StreamMessageEvent("done", null, null);
         return Flux.just(tokenEvt, doneEvt);
     }

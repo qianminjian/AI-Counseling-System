@@ -442,10 +442,12 @@ class ConversationRiskProcessorTest {
         @Test
         @DisplayName("各情绪类型返回对应建议")
         void returnsAppropriateSuggestion() {
-            assertThat(processor.buildEmotionSuggestion("sad")).contains("低落");
+            // B6 收编后以 DC-008 权威词表（EmotionVocabulary.ZH_LABELS）为准：
+            // sad→难过、angry→生气（原本地 switch 文案已废弃）；unknown→未知（补齐码值）
+            assertThat(processor.buildEmotionSuggestion("sad")).contains("难过");
             assertThat(processor.buildEmotionSuggestion("fearful")).contains("恐惧");
-            assertThat(processor.buildEmotionSuggestion("angry")).contains("激动");
-            assertThat(processor.buildEmotionSuggestion("unknown")).contains("异常");
+            assertThat(processor.buildEmotionSuggestion("angry")).contains("生气");
+            assertThat(processor.buildEmotionSuggestion("unknown")).contains("未知");
         }
     }
 }

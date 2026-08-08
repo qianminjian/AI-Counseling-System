@@ -20,13 +20,10 @@ public interface AiChatService {
      * @param sessionId           会话 ID
      * @param emotionTag          当前情绪标签
      * @param message             学生消息
-     * @param gender              学生性别
-     * @param grade               学生年级
-     * @param systemPromptContent 预解析的 System Prompt 全文（已渲染变量，含语言模板）
+     * @param systemPromptContent 预解析的 System Prompt 全文（已渲染变量，含语言模板与性别风格）
      * @return 流式事件
      */
     Flux<StreamMessageEvent> chatWithPrompt(UUID sessionId, String emotionTag, String message,
-                                            String gender, int grade,
                                             String systemPromptContent);
 
     /**
@@ -41,18 +38,16 @@ public interface AiChatService {
      * </ul>
      * <p>
      * ARCH-010 D4：systemPromptContent 由调用方经 PromptVersionService 版本路由预渲染
-     * （SYS_001 + LANG + TSK_004，DB 优先 + A/B 灰度），与主链路同一加载路径。
+     * （SYS_001 + LANG + GENDER_STYLE + TSK_004，DB 优先 + A/B 灰度），与主链路同一加载路径。
      *
      * @param sessionId           会话 ID
      * @param emotionTag          当前情绪标签
-     * @param gender              学生性别（male/female，可为 null）
      * @param contextBrief        CTX-Agent 上下文简报（追加到 system 层尾部，recency bias）
-     * @param systemPromptContent 预解析的 System Prompt 全文（含暖场指令，已走版本路由）
-     * @param grade               学生年级（1-6，解析失败默认 4）
+     * @param systemPromptContent 预解析的 System Prompt 全文（含暖场指令与性别风格，已走 版本路由）
      * @return 流式事件
      */
-    Flux<StreamMessageEvent> chatProactive(UUID sessionId, String emotionTag, String gender,
-                                           String contextBrief, String systemPromptContent, int grade);
+    Flux<StreamMessageEvent> chatProactive(UUID sessionId, String emotionTag,
+                                           String contextBrief, String systemPromptContent);
 
     /**
      * 清除会话记忆（会话结束时调用）

@@ -286,15 +286,16 @@ public class ConversationRiskProcessor {
         return keywords.stream().anyMatch(candidates::contains);
     }
     /**
-     * 构建语音情绪风险建议文案。
+     * 语音情绪异常建议文案（B6：收编 DC-008 权威词表——labelOf 覆盖全码值，
+     * 替代本地 switch 只覆盖 3 码值的实现；新增码值自动获得正确标签）。
+     * 未知码值兜底「未知」：labelOf 对未收录码值原样返回（供排查），展示层在此统一替换为友好标签（与 voice-service 中文 label 对齐）。
      */
     public String buildEmotionSuggestion(String voiceEmotion) {
-        return switch (voiceEmotion) {
-            case "sad" -> "学生语音情绪持续低落，建议关注";
-            case "fearful" -> "学生语音中检测到恐惧情绪，建议关注";
-            case "angry" -> "学生语音情绪激动，建议关注";
-            default -> "学生语音情绪异常，建议关注";
-        };
+        String label = EmotionVocabulary.labelOf(voiceEmotion);
+        if (label.isBlank() || label.equals(voiceEmotion)) {
+            label = "未知";
+        }
+        return "学生语音情绪「" + label + "」，建议关注";
     }
 
     private boolean isNegativeEmotion(String emotion) {

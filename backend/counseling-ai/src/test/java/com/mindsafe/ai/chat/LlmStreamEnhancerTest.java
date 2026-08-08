@@ -1,5 +1,6 @@
 package com.mindsafe.ai.chat;
 
+import com.mindsafe.ai.prompt.PromptTemplateService;
 import com.mindsafe.common.dto.chat.StreamMessageEvent;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.DisplayName;
@@ -22,7 +23,8 @@ class LlmStreamEnhancerTest {
     private final UUID sessionId = UUID.randomUUID();
 
     private LlmStreamEnhancer enhancer(long firstTokenMs, long overallMs, int retryMax, long backoffMs) {
-        return new LlmStreamEnhancer(firstTokenMs, overallMs, retryMax, backoffMs, new SimpleMeterRegistry());
+        return new LlmStreamEnhancer(firstTokenMs, overallMs, retryMax, backoffMs,
+                new SimpleMeterRegistry(), new PromptTemplateService());
     }
 
     private StreamMessageEvent token(String content) {

@@ -1,6 +1,5 @@
 package com.mindsafe.ai.chat;
 
-import com.mindsafe.ai.prompt.PromptTemplateService;
 import com.mindsafe.ai.safety.OutputContentFilter;
 import com.mindsafe.ai.safety.OutputReviewService;
 import com.mindsafe.common.dto.chat.StreamMessageEvent;
@@ -38,20 +37,18 @@ public class AiChatServiceImpl implements AiChatService {
     private final ChatMemory chatMemory;
     private final OutputContentFilter outputContentFilter;
     private final OutputReviewService outputReviewService;
-    private final PromptTemplateService promptTemplateService;
     private final LlmStreamEnhancer llmStreamEnhancer;
     private final ModelCallLogMapper modelCallLogMapper;
     private final MeterRegistry meterRegistry;
 
     public AiChatServiceImpl(ChatClient.Builder chatClientBuilder, ChatMemory chatMemory,
                              OutputContentFilter outputContentFilter, OutputReviewService outputReviewService,
-                             PromptTemplateService promptTemplateService, LlmStreamEnhancer llmStreamEnhancer,
+                             LlmStreamEnhancer llmStreamEnhancer,
                              ModelCallLogMapper modelCallLogMapper, MeterRegistry meterRegistry) {
         this.chatClient = chatClientBuilder.build();
         this.chatMemory = chatMemory;
         this.outputContentFilter = outputContentFilter;
         this.outputReviewService = outputReviewService;
-        this.promptTemplateService = promptTemplateService;
         this.llmStreamEnhancer = llmStreamEnhancer;
         this.modelCallLogMapper = modelCallLogMapper;
         this.meterRegistry = meterRegistry;
@@ -67,10 +64,9 @@ public class AiChatServiceImpl implements AiChatService {
 
     @Override
     public Flux<StreamMessageEvent> chatWithPrompt(UUID sessionId, String emotionTag, String message,
-                                                   String gender, int grade,
                                                    String systemPromptContent) {
         String conversationId = sessionId.toString();
-        log.debug("AI 对话请求(AI-005): sessionId={}, emotion={}, grade={}, msgLength={}", sessionId, emotionTag, grade, message.length());
+        log.debug("AI 对话请求(AI-005): sessionId={}, emotion={}, msgLength={}", sessionId, emotionTag, message.length());
 
         // 1. 保存用户消息到记忆
         chatMemory.add(conversationId, List.of(new UserMessage(message)));
@@ -78,9 +74,8 @@ public class AiChatServiceImpl implements AiChatService {
         // 2. 获取历史消息构建上下文
         List<Message> history = chatMemory.get(conversationId);
 
-        // 3. 使用预解析的 System Prompt（SYS_001 + 语言模板）+ 性别风格
-        String fullSystem = systemPromptContent + "\n\n" + buildGenderStyle(gender, grade);
-        final String sysPrompt = fullSystem;
+        // 3. 使用预解析的 System Prompt（SYS_001 + 语言模板 + 性别风格，B4：文案下沉 prompts/ 由调用方组装）
+        final String sysPrompt = systemPromptContent;
 
         // 4. 流式调用 LLM
         long streamStart = System.currentTimeMillis();
@@ -111,19 +106,19 @@ public class AiChatServiceImpl implements AiChatService {
     }
 
     @Override
-    public Flux<StreamMessageEvent> chatProactive(UUID sessionId, String emotionTag, String gender,
-                                                  String contextBrief, String systemPromptContent, int grade) {
+    public Flux<StreamMessageEvent> chatProactive(UUID sessionId, String emotionTag,
+                                                  String contextBrief, String systemPromptContent) {
         String conversationId = sessionId.toString();
-        log.debug("主动暖场请求: sessionId={}, emotion={}, gender={}, grade={}", sessionId, emotionTag, gender, grade);
+        log.debug("主动暖场请求: sessionId={}, emotion={}", sessionId, emotionTag);
 
         // 1. 关键：不向 ChatMemory 写入伪造的学生消息（不污染对话记忆，design/28 §三 3.4）
         //    仅读取历史作为上下文
         List<Message> history = chatMemory.get(conversationId);
 
         // 2. 预解析 System Prompt（ARCH-010 D4：调用方已走 PromptVersionService 版本路由，
-        //    含 SYS_001 + 语言模板 + TSK_004 暖场指令）；这里仅追加性别风格 + 上下文简报
+        //    含 SYS_001 + 语言模板 + GENDER_STYLE + TSK_004 暖场指令）；这里仅追加上下文简报
         //    （contextBrief 追加尾部，利用 recency bias，与主链路同一组装方式）
-        String fullSystem = systemPromptContent + "\n\n" + buildGenderStyle(gender, grade);
+        String fullSystem = systemPromptContent;
         if (contextBrief != null && !contextBrief.isBlank()) {
             fullSystem = fullSystem + "\n\n" + contextBrief;
         }
@@ -389,82 +384,10 @@ public class AiChatServiceImpl implements AiChatService {
     }
 
     /**
-     * PROF-014：性别×年龄交叉策略
-     * <p>
-     * 根据性别 + 年级段生成差异化沟通风格 Prompt 片段。
-     * 矩阵来源：design/29 §3.10
+     * PROF-014 性别×年龄沟通风格（B4）：文案已下沉 prompts/style/ 模板并经 PromptVersionService
+     * 版本路由（GENDER_STYLE_{MALE|FEMALE|NEUTRAL}_{LOW|MID|HIGH}），由调用方组装入
+     * systemPromptContent，本类不再持有 Java 硬编码文案。
      */
-    private String buildGenderStyle(String gender, int grade) {
-        String gradeBand = grade <= 2 ? "low" : grade <= 4 ? "mid" : "high";
-
-        if ("male".equals(gender)) {
-            return switch (gradeBand) {
-                case "low" -> """
-                        # 沟通风格（男生·低年级）
-                        - 用动物/超级英雄比喻："像小勇士一样""小狮子也会害怕哦"
-                        - 行动先于感受："我们先做个小任务好不好？"
-                        - 句子极短、带画面感，语气活泼
-                        - 鼓励方向：勇敢、试试看
-                        """;
-                case "mid" -> """
-                        # 沟通风格（男生·中年级）
-                        - 用运动/游戏比喻："想个战术""像闯关一样，一关一关来"
-                        - 简短有力，少问多做："咱们试一个办法？"
-                        - CBT 切入：情境 → 行动 → 感受
-                        - 鼓励方向：坚持、想办法、你已经很厉害了
-                        """;
-                default -> """
-                        # 沟通风格（男生·高年级）
-                        - 用解谜/侦探比喻："像解谜一样，我们找找线索"
-                        - 可以给选择权："你觉得 A 还是 B 更适合你？"
-                        - 可引入证据检验："有没有什么证据说明不一定是那样？"
-                        - 尊重自主性，语气平等、不居高临下
-                        """;
-            };
-        } else if ("female".equals(gender)) {
-            return switch (gradeBand) {
-                case "low" -> """
-                        # 沟通风格（女生·低年级）
-                        - 用颜色/花朵/小动物比喻："心情像什么颜色的小花？"
-                        - 温柔命名感受："你是不是有点委屈呀？"
-                        - 句子极短、语气柔和、有耐心
-                        - 鼓励方向：愿意说出来就很棒、你的感受很重要
-                        """;
-                case "mid" -> """
-                        # 沟通风格（女生·中年级）
-                        - 用故事/日记比喻："像跟好朋友聊天一样""写进心情日记里"
-                        - 情感反射优先："听起来你心里有点委屈对吗？"
-                        - CBT 切入：感受 → 情境 → 行动
-                        - 鼓励方向：表达、自我关怀、你并不孤单
-                        """;
-                default -> """
-                        # 沟通风格（女生·高年级）
-                        - 赋能导向："你比你想的更有力量"
-                        - 自我关怀："对自己温柔一点也没关系"
-                        - 平等讨论，不居高临下："你觉得哪个办法更舒服？"
-                        - 可以引入认知三角，但用生活化语言解释
-                        """;
-            };
-        }
-        // 未指定性别时使用通用风格（仍区分年级段）
-        return switch (gradeBand) {
-            case "low" -> """
-                    # 沟通风格
-                    - 说话温和、有耐心，用身体感受和颜色比喻
-                    - 每次只问一个选择题，等小朋友回答
-                    """;
-            case "mid" -> """
-                    # 沟通风格
-                    - 说话温和、有耐心，用温度计/小声音比喻
-                    - 先共情，再帮助说出感受，再给一个小行动
-                    """;
-            default -> """
-                    # 沟通风格
-                    - 说话温和、平等、有耐心
-                    - 先共情，再一起探索，尊重孩子的节奏
-                    """;
-        };
-    }
 
     /**
      * 模型调用审计日志（降级不影响业务）。
