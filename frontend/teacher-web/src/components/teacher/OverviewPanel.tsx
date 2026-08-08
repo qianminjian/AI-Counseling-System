@@ -1,10 +1,11 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { Card, Row, Col, Statistic, Spin, Tag, Button, Alert } from 'antd'
 import {
   AlertOutlined, ClockCircleOutlined, MessageOutlined, RiseOutlined, SmileOutlined, FileTextOutlined,
 } from '@ant-design/icons'
 import { getDashboard, getHighRiskStudents, getStats, openWeeklyReport, getSatisfaction } from '../../api'
 import { SessionTrendChart, RiskPieChart, ClassBarChart, EmotionBarChart } from './StatsCharts'
+import { riskColor, riskLabel } from '../../utils/riskLevel'
 import TodayTodoPanel from './TodayTodoPanel'
 
 /** 轻量 CSS 柱状图（7 天趋势） */
@@ -42,42 +43,28 @@ export default function OverviewPanel({ onNavigate }) {
   const [stats, setStats] = useState(null)
 
   // AUD-019：加载失败不再静默留白——置错误态 + 重试（与 BigScreen 错误态一致）
+  // FA-08：单一 load（初次挂载与错误重试共用），mountedRef 守卫防卸载后 setState
+  const mountedRef = useRef(true)
+  useEffect(() => () => { mountedRef.current = false }, [])
+
   const load = useCallback(async () => {
     setLoading(true)
     setLoadError(false)
     try {
       const [dash, hr, st] = await Promise.all([getDashboard(), getHighRiskStudents(), getStats()])
+      if (!mountedRef.current) return
       setDashboard(dash)
       setHighRisk(hr)
       setStats(st)
     } catch (e) {
       console.error('加载工作台数据失败', e)
-      setLoadError(true)
+      if (mountedRef.current) setLoadError(true)
     } finally {
-      setLoading(false)
+      if (mountedRef.current) setLoading(false)
     }
   }, [])
 
-  useEffect(() => {
-    let cancelled = false
-    async function loadOnce() {
-      try {
-        const [dash, hr, st] = await Promise.all([getDashboard(), getHighRiskStudents(), getStats()])
-        if (!cancelled) {
-          setDashboard(dash)
-          setHighRisk(hr)
-          setStats(st)
-        }
-      } catch (e) {
-        console.error('加载工作台数据失败', e)
-        if (!cancelled) setLoadError(true)
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    }
-    loadOnce()
-    return () => { cancelled = true }
-  }, [])
+  useEffect(() => { load() }, [load])
 
   if (loading) {
     return <div className="ms-empty-lg"><Spin size="large" /></div>
@@ -96,10 +83,6 @@ export default function OverviewPanel({ onNavigate }) {
       </div>
     )
   }
-
-  const RISK_COLORS = { 3: 'red', 2: 'orange', 1: 'gold' }
-  const RISK_LABELS = { 3: '红色', 2: '橙色', 1: '黄色' }
-
   return (
     <div>
       {/* 今日待办（行动驱动首屏，WB-001） */}
@@ -211,7 +194,7 @@ export default function OverviewPanel({ onNavigate }) {
                   }}>
                     <span>{s.displayName}</span>
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                      <Tag color={RISK_COLORS[s.maxRiskLevel]}>{RISK_LABELS[s.maxRiskLevel]}</Tag>
+                      <Tag color={riskColor(s.maxRiskLevel)}>{riskLabel(s.maxRiskLevel)}</Tag>
                       <span className="ms-hint">{s.openAlertCount} 条预警</span>
                     </div>
                   </div>

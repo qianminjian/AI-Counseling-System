@@ -33,7 +33,7 @@ const statsMock = {
     { emotion: 'sad', count: 12 },
   ],
   riskDistribution: [
-    { level: 0, label: '安全', count: 4 },
+    { level: 0, label: '绿色', count: 4 },
     { level: 2, label: '橙色', count: 6 },
   ],
   classComparison: [
@@ -77,7 +77,7 @@ describe('BigScreen 数据大屏', () => {
 
     expect(await screen.findByText('开心')).toBeInTheDocument();
     expect(screen.getByText('难过')).toBeInTheDocument();
-    expect(screen.getByText('安全')).toBeInTheDocument();
+    expect(screen.getByText('绿色')).toBeInTheDocument();
     expect(screen.getByText('橙色')).toBeInTheDocument();
     expect(screen.getByText('301班')).toBeInTheDocument();
     expect(screen.getByText('302班')).toBeInTheDocument();

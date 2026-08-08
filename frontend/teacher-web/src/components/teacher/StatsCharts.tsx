@@ -1,6 +1,8 @@
-import { useRef, useEffect } from 'react'
+import { useRef } from 'react'
 import * as echarts from 'echarts/core'
 import { emotionLabel } from '../../utils/emotionLabels'
+import { riskHex } from '../../utils/riskLevel'
+import { useECharts } from '../../hooks/useECharts'
 import { LineChart, PieChart, BarChart } from 'echarts/charts'
 import {
   TitleComponent, TooltipComponent, LegendComponent,
@@ -14,25 +16,10 @@ echarts.use([
   GridComponent, DatasetComponent, CanvasRenderer,
 ])
 
-/** 通用 ECharts 容器 */
+/** 通用 ECharts 容器（生命周期统一走 useECharts，FA-03） */
 function ChartBox({ option, height = 260 }) {
   const ref = useRef(null)
-  const chartRef = useRef(null)
-
-  useEffect(() => {
-    if (!ref.current) return
-    chartRef.current = echarts.init(ref.current)
-    const ro = new ResizeObserver(() => chartRef.current?.resize())
-    ro.observe(ref.current)
-    return () => { ro.disconnect(); chartRef.current?.dispose() }
-  }, [])
-
-  useEffect(() => {
-    if (chartRef.current && option) {
-      chartRef.current.setOption(option, true)
-    }
-  }, [option])
-
+  useECharts(ref, option)
   return <div ref={ref} style={{ width: '100%', height }} />
 }
 
@@ -46,7 +33,7 @@ const MS = {
   danger: '#D9534F',
 }
 
-const RISK_COLORS = { 1: MS.warning, 2: MS.warning, 3: MS.danger }
+// 风险等级色：FA-01 收敛到 utils/riskLevel 单源（1 黄 / 2 橙 / 3 红，此前 1/2 同色）
 
 /** 30 天会话趋势折线图 */
 export function SessionTrendChart({ data }) {
@@ -86,7 +73,7 @@ export function RiskPieChart({ data }) {
       data: (data || []).map(d => ({
         name: d.label,
         value: d.count,
-        itemStyle: { color: RISK_COLORS[d.level] },
+        itemStyle: { color: riskHex(d.level) },
       })),
     }],
   }

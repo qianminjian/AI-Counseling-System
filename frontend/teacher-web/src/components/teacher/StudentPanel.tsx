@@ -1,78 +1,11 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Table, Tag, Card, Button, message, Input, List, Descriptions, Timeline, Space, Empty, Spin, Drawer } from 'antd'
+import { Table, Tag, Card, Button, message, Input, List, Descriptions, Timeline, Space, Empty, Spin } from 'antd'
 import { ArrowLeftOutlined, PlusOutlined, MessageOutlined, DownloadOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
-import { getStudents, getHighRiskStudents, getStudentProfile, addStudentNote, getSessionMessages, exportStudentsCsv, type AlertVO, type NoteVO, type StudentProfileVO } from '../../api'
-import SessionSummaryCard from './SessionSummaryCard'
-import { emotionLabel } from '../../utils/emotionLabels'
+import { getStudents, getHighRiskStudents, getStudentProfile, addStudentNote, exportStudentsCsv, type AlertVO, type NoteVO, type StudentProfileVO } from '../../api'
+import SessionMessagesDrawer from './SessionMessagesDrawer'
 import ProfileRadarChart from './ProfileRadarChart'
-
-const RISK_COLORS = { 3: 'red', 2: 'orange', 1: 'gold', 0: 'default' }
-const RISK_LABELS = { 3: '红色', 2: '橙色', 1: '黄色', 0: '绿色' }
-
-/** 对话摘要抽屉 */
-function SessionMessagesDrawer({ sessionId, onClose }) {
-  const [messages, setMessages] = useState([])
-  const [loading, setLoading] = useState(false)
-
-  useEffect(() => {
-    if (!sessionId) return
-    let cancelled = false
-    setLoading(true)
-    getSessionMessages(sessionId)
-      .then((data) => { if (!cancelled) setMessages(data) })
-      .catch((e) => message.error('加载对话摘要失败: ' + e.message))
-      .finally(() => { if (!cancelled) setLoading(false) })
-    return () => { cancelled = true }
-  }, [sessionId])
-
-  return (
-    <Drawer
-      title="对话摘要"
-      open={!!sessionId}
-      onClose={onClose}
-      width={420}
-      styles={{ body: { padding: '12px 16px' } }}
-    >
-      {/* AI 会话摘要卡片 */}
-      <div style={{ marginBottom: 12 }}>
-        <SessionSummaryCard sessionId={sessionId} />
-      </div>
-
-      {loading ? (
-        <div className="ms-empty"><Spin /></div>
-      ) : messages.length === 0 ? (
-        <Empty description="暂无对话摘要记录" />
-      ) : (
-        <List
-          size="small"
-          dataSource={messages}
-          renderItem={(msg) => (
-            <List.Item style={{ display: 'block', padding: '8px 0' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-                {/* 学生：青屿主色软底（替换 antd 默认蓝）；AI：语义绿 */}
-                <Tag
-                  className={msg.senderType === 'student' ? 'ms-tag-claim' : 'ms-m-0'}
-                  color={msg.senderType === 'student' ? undefined : 'green'}
-                >
-                  {msg.senderType === 'student' ? '学生' : 'AI'}
-                </Tag>
-                <span style={{ fontSize: 11, color: 'var(--ms-text-muted)' }}>第 {msg.turnCount} 轮</span>
-                {msg.emotionLabel && <Tag className="ms-tag-sm">{emotionLabel(msg.emotionLabel)}</Tag>}
-                {msg.riskLevel > 0 && (
-                  <Tag color={RISK_COLORS[msg.riskLevel]} className="ms-tag-sm">
-                    {RISK_LABELS[msg.riskLevel]}
-                  </Tag>
-                )}
-              </div>
-              <div className="ms-text-sm" style={{ color: 'var(--ms-text)', lineHeight: 1.5 }}>{msg.contentSummary}</div>
-            </List.Item>
-          )}
-        />
-      )}
-    </Drawer>
-  )
-}
+import { riskColor, riskLabel } from '../../utils/riskLevel'
 
 /** 学生档案详情 */
 function StudentProfile({ studentId, onBack }) {
@@ -128,7 +61,7 @@ function StudentProfile({ studentId, onBack }) {
           <Descriptions.Item label="班级">{profile.classCode || '-'}</Descriptions.Item>
           <Descriptions.Item label="最高风险等级">
             {profile.maxRiskLevel != null ? (
-              <Tag color={RISK_COLORS[profile.maxRiskLevel]}>{RISK_LABELS[profile.maxRiskLevel]}</Tag>
+              <Tag color={riskColor(profile.maxRiskLevel)}>{riskLabel(profile.maxRiskLevel)}</Tag>
             ) : (
               <span style={{ color: 'var(--ms-text-muted)' }}>无权查看</span>
             )}
@@ -164,7 +97,7 @@ function StudentProfile({ studentId, onBack }) {
                       </Button>
                     </div>
                     <div className="ms-hint">
-                      状态: {s.status} | 风险: {RISK_LABELS[s.riskLevel] || '无'}
+                      状态: {s.status} | 风险: {riskLabel(s.riskLevel) || '无'}
                       {s.satisfactionRating && (
                         <span style={{ marginLeft: 8, color: s.satisfactionRating >= 4 ? 'var(--ms-success)' : 'var(--ms-warning)' }}>
                           满意度: {'⭐'.repeat(s.satisfactionRating)}
@@ -187,7 +120,7 @@ function StudentProfile({ studentId, onBack }) {
               renderItem={(item: AlertVO) => (
                 <List.Item>
                   <Space>
-                    <Tag color={RISK_COLORS[item.riskLevel]}>{RISK_LABELS[item.riskLevel]}</Tag>
+                    <Tag color={riskColor(item.riskLevel)}>{riskLabel(item.riskLevel)}</Tag>
                     <span>{item.riskType}</span>
                     <span className="ms-hint">
                       {dayjs(item.detectedAt).format('MM-DD')}
@@ -306,7 +239,7 @@ export default function StudentPanel() {
             {highRisk.map((s) => (
               <Tag
                 key={s.studentUserId}
-                color={RISK_COLORS[s.maxRiskLevel]}
+                color={riskColor(s.maxRiskLevel)}
                 style={{ cursor: 'pointer' }}
                 onClick={() => setSelectedStudent(s.studentUserId)}
               >

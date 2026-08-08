@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { getStats, getDashboard, getSatisfaction } from '../api'
 import { emotionLabel } from '../utils/emotionLabels'
+import { riskHex, riskLabel } from '../utils/riskLevel'
 import { usePolling } from '../hooks/usePolling'
 
 const REFRESH_INTERVAL = 30000
@@ -160,9 +161,6 @@ function EmotionBars({ data }) {
   )
 }
 
-const RISK_COLORS = { 0: '#4caf50', 1: '#ffd54f', 2: '#ff9800', 3: '#f44336' }
-const RISK_LABELS = { 0: '安全', 1: '黄色', 2: '橙色', 3: '红色' }
-
 function RiskDonut({ data }) {
   const total = data.reduce((s, d) => s + (d.count || 0), 0) || 1
   return (
@@ -170,8 +168,8 @@ function RiskDonut({ data }) {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {data.map((d, i) => (
           <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <div style={{ width: 12, height: 12, borderRadius: 3, background: RISK_COLORS[d.level] || '#666' }} />
-            <span style={{ fontSize: 12, color: '#ccc' }}>{RISK_LABELS[d.level] || d.label}</span>
+            <div style={{ width: 12, height: 12, borderRadius: 3, background: riskHex(d.level) }} />
+            <span style={{ fontSize: 12, color: '#ccc' }}>{riskLabel(d.level) || d.label}</span>
             <span style={{ fontSize: 12, color: '#888' }}>{d.count} ({Math.round((d.count || 0) / total * 100)}%)</span>
           </div>
         ))}

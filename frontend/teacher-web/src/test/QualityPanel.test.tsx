@@ -22,6 +22,8 @@ vi.mock('../api', () => ({
   ])),
   getSessionMessages: (sid: string) => mockGetSessionMessages(sid),
   exportSessionPdf: (sid: string) => mockExportSessionPdf(sid),
+  // FA-04：共享抽屉内嵌 SessionSummaryCard，补 mock 避免真实请求
+  getSessionSummary: () => Promise.resolve({ status: 'not_found' }),
 }));
 
 import QualityPanel from '../components/teacher/QualityPanel';

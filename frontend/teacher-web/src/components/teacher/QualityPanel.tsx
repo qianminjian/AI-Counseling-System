@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
-import { Card, Row, Col, Statistic, Table, Tag, Button, Drawer, Spin, Empty } from 'antd'
+import { Card, Row, Col, Statistic, Table, Tag, Button, Spin, Empty } from 'antd'
 import { WarningOutlined, StarOutlined, EyeOutlined } from '@ant-design/icons'
-import { getQualityStats, getFlaggedSessions, getSessionMessages, exportSessionPdf } from '../../api'
-import { emotionLabel } from '../../utils/emotionLabels'
+import { getQualityStats, getFlaggedSessions, exportSessionPdf } from '../../api'
+import SessionMessagesDrawer from './SessionMessagesDrawer'
 
 /** AI 对话质量监控面板 */
 export default function QualityPanel() {
@@ -11,8 +11,6 @@ export default function QualityPanel() {
   const [loading, setLoading] = useState(true)
   const [replayOpen, setReplayOpen] = useState(false)
   const [currentSessionId, setCurrentSessionId] = useState(null)
-  const [messages, setMessages] = useState([])
-  const [replayLoading, setReplayLoading] = useState(false)
 
   useEffect(() => {
     Promise.all([getQualityStats(), getFlaggedSessions()])
@@ -21,16 +19,10 @@ export default function QualityPanel() {
       .finally(() => setLoading(false))
   }, [])
 
-  const openReplay = async (sessionId) => {
+  // FA-04：消息加载与渲染统一走共享 SessionMessagesDrawer（含 cancelled 守卫）
+  const openReplay = (sessionId) => {
     setCurrentSessionId(sessionId)
     setReplayOpen(true)
-    setReplayLoading(true)
-    setMessages([])
-    try {
-      const msgs = await getSessionMessages(sessionId)
-      setMessages(msgs || [])
-    } catch { /* ignore */ }
-    setReplayLoading(false)
   }
 
   if (loading) return <div className="ms-empty-lg"><Spin size="large" /></div>
@@ -80,30 +72,17 @@ export default function QualityPanel() {
         )}
       </Card>
 
-      {/* 会话回放抽屉 */}
-      <Drawer title="会话回放" open={replayOpen} onClose={() => setReplayOpen(false)} width={480}
-        extra={<Button size="small" icon={<EyeOutlined />} onClick={() => {
-          // P1-FE-3：导出当前回放的会话；曾误用 flagged.find 取列表第一条 → 张冠李戴
-          if (currentSessionId) exportSessionPdf(currentSessionId)
-        }}>导出 PDF</Button>}>
-        {replayLoading ? <Spin /> : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {messages.map((msg, i) => (
-              <div key={i} style={{
-                padding: '8px 12px', borderRadius: 8, maxWidth: '85%',
-                alignSelf: msg.senderType === 'student' ? 'flex-end' : 'flex-start',
-                background: msg.senderType === 'student' ? 'var(--ms-primary-soft)' : 'var(--ms-success-soft)',
-              }}>
-                <div style={{ fontSize: 11, color: 'var(--ms-text-muted)', marginBottom: 4 }}>
-                  {msg.senderType === 'student' ? '🧒 学生' : '🤖 AI'} · {emotionLabel(msg.emotionLabel)}
-                </div>
-                <div className="ms-text-sm">{msg.contentSummary || msg.messageContent || ''}</div>
-              </div>
-            ))}
-            {messages.length === 0 && <Empty description="无消息记录" />}
-          </div>
+      {/* 会话回放抽屉（FA-04：共享组件，含 cancelled 守卫；导出 PDF 保持当前会话） */}
+      <SessionMessagesDrawer
+        sessionId={currentSessionId}
+        onClose={() => setReplayOpen(false)}
+        extra={(
+          <Button size="small" icon={<EyeOutlined />} onClick={() => {
+            // P1-FE-3：导出当前回放的会话；曾误用 flagged.find 取列表第一条 → 张冠李戴
+            if (currentSessionId) exportSessionPdf(currentSessionId)
+          }}>导出 PDF</Button>
         )}
-      </Drawer>
+      />
     </div>
   )
 }

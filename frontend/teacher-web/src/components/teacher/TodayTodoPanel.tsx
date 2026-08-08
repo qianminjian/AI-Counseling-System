@@ -8,9 +8,8 @@ import dayjs from 'dayjs'
 import { getAlerts, claimAlert, getPendingFollowups } from '../../api'
 import { evaluateSla, urgencyWeight } from '../../utils/sla'
 import { usePolling } from '../../hooks/usePolling'
+import { riskColor, riskLabel } from '../../utils/riskLevel'
 
-const RISK_COLORS = { 3: 'red', 2: 'orange', 1: 'gold', 0: 'default' }
-const RISK_LABELS = { 3: '红色', 2: '橙色', 1: '黄色', 0: '绿色' }
 const RISK_DOT = { 3: 'var(--ms-danger)', 2: 'var(--ms-warning)', 1: 'var(--ms-warning)', 0: 'var(--ms-success)' }
 
 /** SLA 倒计时徽标（逾期红色闪烁提示） */
@@ -138,7 +137,7 @@ export default function TodayTodoPanel({ onNavigate }) {
                     }} />
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                        <Tag color={RISK_COLORS[a.riskLevel]} className="ms-m-0">{RISK_LABELS[a.riskLevel]}</Tag>
+                        <Tag color={riskColor(a.riskLevel)} className="ms-m-0">{riskLabel(a.riskLevel)}</Tag>
                         <span style={{ fontWeight: 500 }}>{a.studentName}</span>
                         <span className="ms-hint">{a.riskType}</span>
                       </div>
@@ -195,7 +194,7 @@ export default function TodayTodoPanel({ onNavigate }) {
                   <div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                       <span className="ms-hint">{dayjs(a.detectedAt).format('MM-DD HH:mm')}</span>
-                      <Tag color={RISK_COLORS[a.riskLevel]} className="ms-tag-sm">{RISK_LABELS[a.riskLevel]}</Tag>
+                      <Tag color={riskColor(a.riskLevel)} className="ms-tag-sm">{riskLabel(a.riskLevel)}</Tag>
                       <span className="ms-text-sm">{a.studentName}</span>
                     </div>
                     <div className="ms-hint" style={{ marginTop: 2 }}>

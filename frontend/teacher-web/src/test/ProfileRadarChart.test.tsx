@@ -14,9 +14,14 @@ const mockSetOption = vi.fn();
 const mockResize = vi.fn();
 const mockDispose = vi.fn();
 
-vi.mock('echarts', () => ({
+// FA-03：按需注册后组件改 import 'echarts/core'，mock 必须对齐子路径（同 StatsCharts.test 模式）
+vi.mock('echarts/core', () => ({
   init: vi.fn(() => ({ setOption: mockSetOption, resize: mockResize, dispose: mockDispose })),
+  use: vi.fn(),
 }));
+vi.mock('echarts/charts', () => ({ RadarChart: class {} }));
+vi.mock('echarts/components', () => ({ TooltipComponent: class {}, RadarComponent: class {} }));
+vi.mock('echarts/renderers', () => ({ CanvasRenderer: class {} }));
 vi.mock('../api', () => ({
   getStudentRadar: (id: string) => mockGetRadar(id),
 }));
@@ -62,9 +67,10 @@ describe('ProfileRadarChart 心理画像', () => {
     expect(screen.getByText('完成第一次倾诉')).toBeInTheDocument();
     // React 18 passive effect（useEffect）经 scheduler 异步执行：findByText 返回时
     // setOption 可能尚未运行（慢环境更明显），必须 waitFor 轮询断言
+    // FA-03：useECharts 统一生命周期，setOption 带 notMerge 第二参数
     await waitFor(() => expect(mockSetOption).toHaveBeenCalledWith(expect.objectContaining({
       series: [expect.objectContaining({ type: 'radar' })],
-    })));
+    }), true));
   });
 
   it('接口失败时降级为空态', async () => {

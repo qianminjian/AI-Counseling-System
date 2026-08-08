@@ -4,9 +4,8 @@ import { CheckOutlined, StopOutlined, UserOutlined, CheckCircleOutlined, Downloa
 import dayjs from 'dayjs'
 import { getAlerts, claimAlert, markFalsePositive, resolveAlert, exportAlertsCsv } from '../../api'
 import { evaluateSla } from '../../utils/sla'
+import { riskColor, riskLabel } from '../../utils/riskLevel'
 
-const RISK_COLORS = { 3: 'red', 2: 'orange', 1: 'gold', 0: 'default' }
-const RISK_LABELS = { 3: '红色', 2: '橙色', 1: '黄色', 0: '绿色' }
 const STATUS_MAP = {
   open: { text: '待处理', color: 'red' },
   // claimed 由 render 特判为青屿主色软底（antd preset 无对应色）
@@ -81,7 +80,7 @@ export default function AlertQueue() {
     },
     {
       title: '等级', dataIndex: 'riskLevel', width: 80,
-      render: (v) => <Tag color={RISK_COLORS[v]}>{RISK_LABELS[v]}</Tag>,
+      render: (v) => <Tag color={riskColor(v)}>{riskLabel(v)}</Tag>,
       sorter: (a, b) => a.riskLevel - b.riskLevel,
     },
     {

@@ -1,14 +1,20 @@
 import { useState, useEffect, useRef } from 'react'
 import { Card, Empty, Spin, Tag, Timeline } from 'antd'
-import * as echarts from 'echarts'
+import { RadarChart } from 'echarts/charts'
+import { TooltipComponent, RadarComponent } from 'echarts/components'
+import { CanvasRenderer } from 'echarts/renderers'
+import * as echarts from 'echarts/core'
 import { getStudentRadar } from '../../api'
+import { useECharts } from '../../hooks/useECharts'
+
+// FA-03：按需注册（替代全量导入 ~1MB），与 StatsCharts 同模式
+echarts.use([RadarChart, TooltipComponent, RadarComponent, CanvasRenderer])
 
 /** 画像雷达图 + 成长里程碑（PROF-004，对齐 design/23 §6） */
 export default function ProfileRadarChart({ studentId }) {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const chartRef = useRef(null)
-  const chartInstance = useRef(null)
 
   useEffect(() => {
     if (!studentId) return
@@ -21,57 +27,30 @@ export default function ProfileRadarChart({ studentId }) {
     return () => { cancelled = true }
   }, [studentId])
 
-  // 渲染 ECharts 雷达图
-  useEffect(() => {
-    if (!data?.dimensions || !chartRef.current) return
-
-    if (!chartInstance.current) {
-      chartInstance.current = echarts.init(chartRef.current)
-    }
-    const chart = chartInstance.current
-
-    const indicators = data.dimensions.map((d) => ({ name: d.name, max: 100 }))
-    const values = data.dimensions.map((d) => d.score)
-
-    chart.setOption({
-      tooltip: { trigger: 'item' },
-      radar: {
-        indicator: indicators,
-        shape: 'polygon',
-        radius: '65%',
-        // ECharts canvas 绘制不支持 CSS var()，用 token 对应色值（doing/75 方案 A）
-        axisName: { color: '#5C6B76', fontSize: 12 },
-        splitArea: { areaStyle: { color: ['#F4F7F6', '#FFFFFF'] } },
-      },
-      series: [{
-        type: 'radar',
-        data: [{
-          value: values,
-          name: '心理画像',
-          // 青屿主色（替换 antd 默认蓝；canvas 不支持 var()，用真实色值）
-          areaStyle: { color: 'rgba(43, 168, 160, 0.2)' },
-          lineStyle: { color: '#2BA8A0', width: 2 },
-          itemStyle: { color: '#2BA8A0' },
-        }],
+  // 渲染 ECharts 雷达图（生命周期统一走 useECharts，FA-03）
+  const option = data?.dimensions ? {
+    tooltip: { trigger: 'item' },
+    radar: {
+      indicator: data.dimensions.map((d) => ({ name: d.name, max: 100 })),
+      shape: 'polygon',
+      radius: '65%',
+      // ECharts canvas 绘制不支持 CSS var()，用 token 对应色值（doing/75 方案 A）
+      axisName: { color: '#5C6B76', fontSize: 12 },
+      splitArea: { areaStyle: { color: ['#F4F7F6', '#FFFFFF'] } },
+    },
+    series: [{
+      type: 'radar',
+      data: [{
+        value: data.dimensions.map((d) => d.score),
+        name: '心理画像',
+        // 青屿主色（替换 antd 默认蓝；canvas 不支持 var()，用真实色值）
+        areaStyle: { color: 'rgba(43, 168, 160, 0.2)' },
+        lineStyle: { color: '#2BA8A0', width: 2 },
+        itemStyle: { color: '#2BA8A0' },
       }],
-    })
-
-    const handleResize = () => chart.resize()
-    window.addEventListener('resize', handleResize)
-    return () => {
-      window.removeEventListener('resize', handleResize)
-    }
-  }, [data])
-
-  // 组件卸载时销毁图表
-  useEffect(() => {
-    return () => {
-      if (chartInstance.current) {
-        chartInstance.current.dispose()
-        chartInstance.current = null
-      }
-    }
-  }, [])
+    }],
+  } : null
+  useECharts(chartRef, option)
 
   if (loading) {
     return (
