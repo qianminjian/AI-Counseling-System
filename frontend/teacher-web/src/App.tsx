@@ -7,22 +7,26 @@ import BigScreen from './pages/BigScreen'
 import ChangePassword from './pages/ChangePassword'
 import { getToken, clearToken } from './api'
 import { defaultLandingFor, type LandingPage } from './utils/landing'
+// F-07：失败安全读写（隐私模式/禁用存储下不抛 SecurityError）
+import { readLocalStorageSafe, writeLocalStorageSafe, removeLocalStorageSafe } from './utils/storage'
+// F-08：JWT 解码兼容 UTF-8 + base64url（裸 atob 会丢中文 displayName / 静默丢登录态）
+import { decodeJwtPayload } from './utils/jwt'
 
 const MUST_CHANGE_KEY = 'mindsafe_must_change_password'
 const DARK_MODE_KEY = 'mindsafe_dark_mode'
 
 function getMustChange() {
-  return localStorage.getItem(MUST_CHANGE_KEY) === 'true'
+  return readLocalStorageSafe(MUST_CHANGE_KEY, 'false') === 'true'
 }
-function setMustChange(val) {
-  if (val) localStorage.setItem(MUST_CHANGE_KEY, 'true')
-  else localStorage.removeItem(MUST_CHANGE_KEY)
+function setMustChange(val: boolean) {
+  if (val) writeLocalStorageSafe(MUST_CHANGE_KEY, 'true')
+  else removeLocalStorageSafe(MUST_CHANGE_KEY)
 }
 
 // L2（CodeReview）：初始渲染前同步 <html data-theme>——useEffect 首帧后写入太晚，
 // 深色偏好用户刷新会先渲染浅色再闪成深色（FOUC）；useState 初始化阶段即写 dataset，首帧即正确
 function getInitialDarkMode(): boolean {
-  const dark = localStorage.getItem(DARK_MODE_KEY) === 'true'
+  const dark = readLocalStorageSafe(DARK_MODE_KEY, 'false') === 'true'
   document.documentElement.dataset.theme = dark ? 'dark' : 'light'
   return dark
 }
@@ -38,7 +42,7 @@ export default function App() {
   const toggleDark = () => {
     setDarkMode(prev => {
       const next = !prev
-      localStorage.setItem(DARK_MODE_KEY, String(next))
+      writeLocalStorageSafe(DARK_MODE_KEY, String(next))
       return next
     })
   }
@@ -76,16 +80,13 @@ export default function App() {
   const [user, setUser] = useState(() => {
     const token = getToken()
     if (!token) return null
-    try {
-      const payload = JSON.parse(atob(token.split('.')[1]))
-      return {
-        userId: payload.sub,
-        userType: payload.userType,
-        displayName: payload.displayName || '',
-        mustChangePassword: getMustChange(),
-      }
-    } catch {
-      return null
+    const payload = decodeJwtPayload(token)
+    if (!payload) return null
+    return {
+      userId: payload.sub,
+      userType: String(payload.userType ?? ''),
+      displayName: String(payload.displayName ?? ''),
+      mustChangePassword: getMustChange(),
     }
   })
 
@@ -97,7 +98,12 @@ export default function App() {
     return <ConfigProvider locale={zhCN} theme={{ algorithm: theme.darkAlgorithm }}><BigScreen /></ConfigProvider>
   }
 
-  const handleLogin = (userData) => {
+  const handleLogin = (userData: {
+    userId: string
+    userType: string
+    displayName: string
+    mustChangePassword: boolean
+  }) => {
     // 持久化 mustChangePassword 标记（刷新页面后仍需强制改密）
     setMustChange(userData.mustChangePassword)
     setUser(userData)

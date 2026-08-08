@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react'
+import type { ReactNode } from 'react'
 import { Tag, List, Spin, Empty, Drawer, message } from 'antd'
 import { getSessionMessages } from '../../api'
 import SessionSummaryCard from './SessionSummaryCard'
-import { emotionLabel } from '../../utils/emotionLabels'
+import { emotionLabel } from '../../../../shared/src/emotionMeta'
 import { riskColor, riskLabel } from '../../utils/riskLevel'
 
 /**
@@ -11,7 +12,11 @@ import { riskColor, riskLabel } from '../../utils/riskLevel'
  * QualityPanel 复用后统一补上守卫，消除快速切换会话时的竞态。
  * extra 供调用方在抽屉头部附加操作（如 QualityPanel 的「导出 PDF」）。
  */
-export default function SessionMessagesDrawer({ sessionId, onClose, extra = null }) {
+export default function SessionMessagesDrawer({ sessionId, onClose, extra = null }: {
+  sessionId: string | null
+  onClose: () => void
+  extra?: ReactNode
+}) {
   const [messages, setMessages] = useState([])
   const [loading, setLoading] = useState(false)
 

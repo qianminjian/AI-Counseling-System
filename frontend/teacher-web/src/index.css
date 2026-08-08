@@ -28,6 +28,37 @@
   --ms-shadow-tab: 0 2px 6px rgba(43, 168, 160, 0.12);
   /* 框架 token（doing/75 方案 A） */
   --ms-sider-bg: #163B38;             /* 工作台深青侧边栏 */
+  /* 数据大屏 token（F-06：BigScreen 常驻暗色大屏，独立于工作台亮/暗主题，图表系列色统一收编） */
+  --ms-bs-bg-start: #0a1628;          /* 大屏背景渐变起 */
+  --ms-bs-bg-end: #0d2137;            /* 大屏背景渐变止 */
+  --ms-bs-text: #e0e0e0;              /* 主文字 */
+  --ms-bs-text-strong: #ffffff;       /* 标题/高亮 */
+  --ms-bs-text-muted: #aaa;           /* 图表数值 */
+  --ms-bs-text-dim: #888;             /* 弱文字（时钟/计数/班级名） */
+  --ms-bs-text-faint: #666;           /* 图表 x 轴日期 */
+  --ms-bs-text-fainter: #ccc;         /* 图表标签 */
+  --ms-bs-text-weak: #999;            /* 指标卡 label */
+  --ms-bs-watermark: #444;            /* 底部水印 */
+  --ms-bs-track: #1e2a3a;             /* 情绪条轨道 */
+  --ms-bs-error: #ff8a80;             /* 错误条文字/按钮 */
+  --ms-bs-exit-bg: rgba(79, 195, 247, 0.12);      /* 返回按钮底 */
+  --ms-bs-exit-border: rgba(79, 195, 247, 0.4);   /* 返回按钮边 */
+  --ms-bs-error-bg: rgba(244, 67, 54, 0.12);       /* 错误条底 */
+  --ms-bs-error-border: rgba(244, 67, 54, 0.4);    /* 错误条边 */
+  --ms-bs-error-btn-bg: rgba(244, 67, 54, 0.2);    /* 重试按钮底 */
+  --ms-bs-error-btn-border: rgba(244, 67, 54, 0.5); /* 重试按钮边 */
+  --ms-bs-card-bg: rgba(255, 255, 255, 0.04);      /* 指标卡底 */
+  --ms-bs-chart-bg: rgba(255, 255, 255, 0.03);     /* 图表卡底 */
+  --ms-bs-card-border: rgba(255, 255, 255, 0.06);  /* 卡片边 */
+  --ms-chart-1: #4fc3f7;              /* 图表系列 1：青蓝（今日会话/趋势/强调） */
+  --ms-chart-2: #81c784;              /* 图表系列 2：绿（活跃学生） */
+  --ms-chart-3: #ff8a65;              /* 图表系列 3：橙（待处理预警/班级预警） */
+  --ms-chart-4: #ffd54f;              /* 图表系列 4：黄（满意度/开心） */
+  --ms-chart-5: #ce93d8;              /* 图表系列 5：紫（累计会话/害怕） */
+  --ms-chart-6: #64b5f6;              /* 图表系列 6：蓝（悲伤） */
+  --ms-chart-7: #ef5350;              /* 图表系列 7：红（愤怒） */
+  --ms-chart-8: #ffb74d;              /* 图表系列 8：橙黄（紧张） */
+  --ms-chart-9: #90a4ae;              /* 图表系列 9：灰蓝（中性） */
 }
 
 /* ===== 暗色模式覆盖层（F-01：antd darkAlgorithm 仅覆盖 antd 组件，--ms-* 自定义 token 需显式变体） ===== */

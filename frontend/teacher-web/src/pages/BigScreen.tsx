@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from 'react'
+import type { CSSProperties } from 'react'
 import { getStats, getDashboard, getSatisfaction } from '../api'
-import { emotionLabel } from '../utils/emotionLabels'
+import type { DailyCount, RiskDistItem, ClassRiskItem, EmotionItem } from '../api'
+import { emotionLabel } from '../../../shared/src/emotionMeta'
 import { riskHex, riskLabel } from '../utils/riskLevel'
 import { usePolling } from '../hooks/usePolling'
 
@@ -68,11 +70,11 @@ export default function BigScreen({ onExit }: { onExit?: () => void }) {
 
       {/* 核心指标 */}
       <div style={styles.metricsRow}>
-        <MetricCard label="今日会话" value={d.todaySessions || 0} unit="次" color="#4fc3f7" />
-        <MetricCard label="活跃学生" value={d.activeStudents || 0} unit="人" color="#81c784" />
-        <MetricCard label="待处理预警" value={d.pendingAlerts || 0} unit="条" color="#ff8a65" />
-        <MetricCard label="平均满意度" value={satisfaction?.avgRating || '-'} unit="/ 5" color="#ffd54f" />
-        <MetricCard label="累计会话" value={d.totalSessions || 0} unit="次" color="#ce93d8" />
+        <MetricCard label="今日会话" value={d.todaySessions || 0} unit="次" color="var(--ms-chart-1)" />
+        <MetricCard label="活跃学生" value={d.activeStudents || 0} unit="人" color="var(--ms-chart-2)" />
+        <MetricCard label="待处理预警" value={d.pendingAlerts || 0} unit="条" color="var(--ms-chart-3)" />
+        <MetricCard label="平均满意度" value={satisfaction?.avgRating || '-'} unit="/ 5" color="var(--ms-chart-4)" />
+        <MetricCard label="累计会话" value={d.totalSessions || 0} unit="次" color="var(--ms-chart-5)" />
       </div>
 
       {/* 图表区域 */}
@@ -80,7 +82,7 @@ export default function BigScreen({ onExit }: { onExit?: () => void }) {
         {/* 7 天会话趋势 */}
         <div style={styles.chartCard}>
           <h3 style={styles.chartTitle}>📈 近 7 天会话趋势</h3>
-          <BarChart data={s.sessionTrend || []} dataKey="count" labelKey="date" color="#4fc3f7" />
+          <BarChart data={s.sessionTrend || []} dataKey="count" labelKey="date" color="var(--ms-chart-1)" />
         </div>
 
         {/* 情绪分布 */}
@@ -110,7 +112,7 @@ export default function BigScreen({ onExit }: { onExit?: () => void }) {
   )
 }
 
-function MetricCard({ label, value, unit, color }) {
+function MetricCard({ label, value, unit, color }: { label: string; value: React.ReactNode; unit: string; color: string }) {
   return (
     <div style={styles.metricCard}>
       <div style={{ ...styles.metricValue, color }}>{value}<span style={styles.metricUnit}>{unit}</span></div>
@@ -119,49 +121,55 @@ function MetricCard({ label, value, unit, color }) {
   )
 }
 
-function BarChart({ data, dataKey, labelKey, color }) {
-  const max = Math.max(...data.map(d => d[dataKey] || 0), 1)
+function BarChart({ data, dataKey, labelKey, color }: {
+  data: DailyCount[]; dataKey: keyof DailyCount; labelKey: keyof DailyCount; color: string
+}) {
+  const max = Math.max(...data.map(d => Number(d[dataKey]) || 0), 1)
   return (
     <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, height: 140, padding: '0 8px' }}>
       {data.map((d, i) => (
         <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-          <span style={{ fontSize: 11, color: '#aaa' }}>{d[dataKey] || 0}</span>
+          <span style={{ fontSize: 11, color: 'var(--ms-bs-text-muted)' }}>{Number(d[dataKey]) || 0}</span>
           <div style={{
             width: '70%', borderRadius: 4, background: color, opacity: 0.85,
-            height: `${Math.max((d[dataKey] || 0) / max * 100, 4)}px`,
+            height: `${Math.max((Number(d[dataKey]) || 0) / max * 100, 4)}px`,
             transition: 'height 0.6s ease',
           }} />
-          <span style={{ fontSize: 10, color: '#666' }}>{(d[labelKey] || '').slice(5)}</span>
+          <span style={{ fontSize: 10, color: 'var(--ms-bs-text-faint)' }}>{String(d[labelKey] ?? '').slice(5)}</span>
         </div>
       ))}
     </div>
   )
 }
 
-const EMOTION_COLORS = { happy: '#ffd54f', sad: '#64b5f6', angry: '#ef5350', scared: '#ce93d8', nervous: '#ffb74d', neutral: '#90a4ae' }
+// F-06：情绪图表色收编 --ms-chart-* 系列（与指标卡/柱图同 token 体系）
+const EMOTION_COLORS: Record<string, string> = {
+  happy: 'var(--ms-chart-4)', sad: 'var(--ms-chart-6)', angry: 'var(--ms-chart-7)',
+  scared: 'var(--ms-chart-5)', nervous: 'var(--ms-chart-8)', neutral: 'var(--ms-chart-9)',
+}
 
-function EmotionBars({ data }) {
+function EmotionBars({ data }: { data: EmotionItem[] }) {
   const max = Math.max(...data.map(d => d.count || 0), 1)
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '8px 0' }}>
       {data.slice(0, 6).map((d, i) => (
         <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ width: 48, fontSize: 12, color: '#ccc', textAlign: 'right' }}>{emotionLabel(d.emotion)}</span>
-          <div style={{ flex: 1, height: 16, background: '#1e2a3a', borderRadius: 8, overflow: 'hidden' }}>
+          <span style={{ width: 48, fontSize: 12, color: 'var(--ms-bs-text-fainter)', textAlign: 'right' }}>{emotionLabel(d.emotion)}</span>
+          <div style={{ flex: 1, height: 16, background: 'var(--ms-bs-track)', borderRadius: 8, overflow: 'hidden' }}>
             <div style={{
               height: '100%', borderRadius: 8, transition: 'width 0.6s ease',
               width: `${(d.count || 0) / max * 100}%`,
-              background: EMOTION_COLORS[d.emotion] || '#4fc3f7',
+              background: EMOTION_COLORS[d.emotion] || 'var(--ms-chart-1)',
             }} />
           </div>
-          <span style={{ width: 32, fontSize: 11, color: '#888' }}>{d.count}</span>
+          <span style={{ width: 32, fontSize: 11, color: 'var(--ms-bs-text-dim)' }}>{d.count}</span>
         </div>
       ))}
     </div>
   )
 }
 
-function RiskDonut({ data }) {
+function RiskDonut({ data }: { data: RiskDistItem[] }) {
   const total = data.reduce((s, d) => s + (d.count || 0), 0) || 1
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 24, padding: '16px 0' }}>
@@ -169,8 +177,8 @@ function RiskDonut({ data }) {
         {data.map((d, i) => (
           <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <div style={{ width: 12, height: 12, borderRadius: 3, background: riskHex(d.level) }} />
-            <span style={{ fontSize: 12, color: '#ccc' }}>{riskLabel(d.level) || d.label}</span>
-            <span style={{ fontSize: 12, color: '#888' }}>{d.count} ({Math.round((d.count || 0) / total * 100)}%)</span>
+            <span style={{ fontSize: 12, color: 'var(--ms-bs-text-fainter)' }}>{riskLabel(d.level) || d.label}</span>
+            <span style={{ fontSize: 12, color: 'var(--ms-bs-text-dim)' }}>{d.count} ({Math.round((d.count || 0) / total * 100)}%)</span>
           </div>
         ))}
       </div>
@@ -178,62 +186,62 @@ function RiskDonut({ data }) {
   )
 }
 
-function ClassBars({ data }) {
+function ClassBars({ data }: { data: ClassRiskItem[] }) {
   const max = Math.max(...data.map(d => d.alertCount || 0), 1)
   return (
     <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12, height: 100, padding: '0 16px' }}>
       {data.slice(0, 8).map((d, i) => (
         <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-          <span style={{ fontSize: 11, color: '#ff8a65' }}>{d.alertCount}</span>
+          <span style={{ fontSize: 11, color: 'var(--ms-chart-3)' }}>{d.alertCount}</span>
           <div style={{
-            width: '60%', borderRadius: 4, background: '#ff8a65', opacity: 0.8,
+            width: '60%', borderRadius: 4, background: 'var(--ms-chart-3)', opacity: 0.8,
             height: `${Math.max((d.alertCount || 0) / max * 70, 4)}px`,
           }} />
-          <span style={{ fontSize: 10, color: '#888' }}>{d.classCode}</span>
+          <span style={{ fontSize: 10, color: 'var(--ms-bs-text-dim)' }}>{d.classCode}</span>
         </div>
       ))}
     </div>
   )
 }
 
-const styles: Record<string, React.CSSProperties> = {
+const styles: Record<string, CSSProperties> = {
   root: {
-    minHeight: '100vh', background: 'linear-gradient(180deg, #0a1628 0%, #0d2137 100%)',
-    color: '#e0e0e0', fontFamily: '-apple-system, sans-serif', padding: '20px 32px',
+    minHeight: '100vh', background: 'linear-gradient(180deg, var(--ms-bs-bg-start) 0%, var(--ms-bs-bg-end) 100%)',
+    color: 'var(--ms-bs-text)', fontFamily: '-apple-system, sans-serif', padding: '20px 32px',
     display: 'flex', flexDirection: 'column', gap: 20,
   },
   header: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
   headerLeft: { display: 'flex', alignItems: 'center', gap: 12 },
-  title: { fontSize: 22, fontWeight: 700, color: '#fff', letterSpacing: 2 },
-  headerRight: { fontSize: 13, color: '#888', display: 'flex', gap: 16 },
+  title: { fontSize: 22, fontWeight: 700, color: 'var(--ms-bs-text-strong)', letterSpacing: 2 },
+  headerRight: { fontSize: 13, color: 'var(--ms-bs-text-dim)', display: 'flex', gap: 16 },
   exitButton: {
-    background: 'rgba(79,195,247,0.12)', color: '#4fc3f7', border: '1px solid rgba(79,195,247,0.4)',
+    background: 'var(--ms-bs-exit-bg)', color: 'var(--ms-chart-1)', border: '1px solid var(--ms-bs-exit-border)',
     borderRadius: 6, padding: '4px 12px', fontSize: 12, cursor: 'pointer',
   },
   errorBar: {
     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12,
-    background: 'rgba(244,67,54,0.12)', border: '1px solid rgba(244,67,54,0.4)',
-    color: '#ff8a80', borderRadius: 8, padding: '8px 16px', fontSize: 13,
+    background: 'var(--ms-bs-error-bg)', border: '1px solid var(--ms-bs-error-border)',
+    color: 'var(--ms-bs-error)', borderRadius: 8, padding: '8px 16px', fontSize: 13,
   },
   retryButton: {
-    background: 'rgba(244,67,54,0.2)', color: '#ff8a80', border: '1px solid rgba(244,67,54,0.5)',
+    background: 'var(--ms-bs-error-btn-bg)', color: 'var(--ms-bs-error)', border: '1px solid var(--ms-bs-error-btn-border)',
     borderRadius: 6, padding: '2px 12px', fontSize: 12, cursor: 'pointer',
   },
-  clock: { fontSize: 18, color: '#4fc3f7', fontWeight: 600 },
+  clock: { fontSize: 18, color: 'var(--ms-chart-1)', fontWeight: 600 },
   metricsRow: { display: 'flex', gap: 16 },
   metricCard: {
-    flex: 1, background: 'rgba(255,255,255,0.04)', borderRadius: 12,
-    padding: '20px 16px', textAlign: 'center', border: '1px solid rgba(255,255,255,0.06)',
+    flex: 1, background: 'var(--ms-bs-card-bg)', borderRadius: 12,
+    padding: '20px 16px', textAlign: 'center', border: '1px solid var(--ms-bs-card-border)',
   },
   metricValue: { fontSize: 36, fontWeight: 700 },
   metricUnit: { fontSize: 14, marginLeft: 4, opacity: 0.6 },
-  metricLabel: { fontSize: 13, color: '#999', marginTop: 6 },
+  metricLabel: { fontSize: 13, color: 'var(--ms-bs-text-weak)', marginTop: 6 },
   chartsRow: { display: 'flex', gap: 16, flex: 1 },
   chartCard: {
-    flex: 1, background: 'rgba(255,255,255,0.03)', borderRadius: 12,
-    padding: '16px 20px', border: '1px solid rgba(255,255,255,0.06)',
+    flex: 1, background: 'var(--ms-bs-chart-bg)', borderRadius: 12,
+    padding: '16px 20px', border: '1px solid var(--ms-bs-card-border)',
   },
-  chartTitle: { fontSize: 14, color: '#ccc', marginBottom: 12, fontWeight: 500 },
+  chartTitle: { fontSize: 14, color: 'var(--ms-bs-text-fainter)', marginBottom: 12, fontWeight: 500 },
   bottomRow: { display: 'flex', gap: 16 },
-  watermark: { textAlign: 'center', fontSize: 11, color: '#444', marginTop: 8 },
+  watermark: { textAlign: 'center', fontSize: 11, color: 'var(--ms-bs-watermark)', marginTop: 8 },
 }

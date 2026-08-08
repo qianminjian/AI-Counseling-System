@@ -7,10 +7,10 @@ import { api } from '../api'
  * 首次登录强制改密页（方案 B：临时密码 + 首次改密）
  * mustChangePassword=true 时由 App.jsx 路由到此页，不可跳过
  */
-export default function ChangePassword({ userName, onChanged }) {
+export default function ChangePassword({ userName, onChanged }: { userName: string; onChanged: () => void }) {
   const [loading, setLoading] = useState(false)
 
-  const handleSubmit = async (values) => {
+  const handleSubmit = async (values: { oldPassword: string; newPassword: string; confirmPassword: string }) => {
     if (values.newPassword !== values.confirmPassword) {
       message.error('两次输入的新密码不一致')
       return

@@ -1,9 +1,11 @@
 import { useRef } from 'react'
 import * as echarts from 'echarts/core'
-import { emotionLabel } from '../../utils/emotionLabels'
+import type { EChartsOption } from 'echarts'
+import { emotionLabel } from '../../../../shared/src/emotionMeta'
 import { riskHex } from '../../utils/riskLevel'
 import { useECharts } from '../../hooks/useECharts'
 import { LineChart, PieChart, BarChart } from 'echarts/charts'
+import type { DailyCount, RiskDistItem, ClassRiskItem, EmotionItem } from '../../api'
 import {
   TitleComponent, TooltipComponent, LegendComponent,
   GridComponent, DatasetComponent,
@@ -17,8 +19,8 @@ echarts.use([
 ])
 
 /** 通用 ECharts 容器（生命周期统一走 useECharts，FA-03） */
-function ChartBox({ option, height = 260 }) {
-  const ref = useRef(null)
+function ChartBox({ option, height = 260 }: { option: EChartsOption; height?: number }) {
+  const ref = useRef<HTMLDivElement | null>(null)
   useECharts(ref, option)
   return <div ref={ref} style={{ width: '100%', height }} />
 }
@@ -36,8 +38,8 @@ const MS = {
 // 风险等级色：FA-01 收敛到 utils/riskLevel 单源（1 黄 / 2 橙 / 3 红，此前 1/2 同色）
 
 /** 30 天会话趋势折线图 */
-export function SessionTrendChart({ data }) {
-  const option = {
+export function SessionTrendChart({ data }: { data: DailyCount[] | undefined }) {
+  const option: EChartsOption = {
     tooltip: { trigger: 'axis' },
     grid: { left: 40, right: 16, top: 32, bottom: 28 },
     xAxis: {
@@ -60,8 +62,8 @@ export function SessionTrendChart({ data }) {
 }
 
 /** 风险等级分布饼图 */
-export function RiskPieChart({ data }) {
-  const option = {
+export function RiskPieChart({ data }: { data: RiskDistItem[] | undefined }) {
+  const option: EChartsOption = {
     tooltip: { trigger: 'item', formatter: '{b}: {c} 次 ({d}%)' },
     legend: { bottom: 0, itemWidth: 12, itemHeight: 12 },
     series: [{
@@ -81,8 +83,8 @@ export function RiskPieChart({ data }) {
 }
 
 /** 班级对比柱状图 */
-export function ClassBarChart({ data }) {
-  const option = {
+export function ClassBarChart({ data }: { data: ClassRiskItem[] | undefined }) {
+  const option: EChartsOption = {
     tooltip: { trigger: 'axis' },
     grid: { left: 60, right: 16, top: 32, bottom: 28 },
     xAxis: {
@@ -114,9 +116,9 @@ export function ClassBarChart({ data }) {
 }
 
 /** 情绪分布横向柱状图 */
-export function EmotionBarChart({ data }) {
+export function EmotionBarChart({ data }: { data: EmotionItem[] | undefined }) {
   const sorted = [...(data || [])].reverse()
-  const option = {
+  const option: EChartsOption = {
     tooltip: { trigger: 'axis' },
     grid: { left: 72, right: 24, top: 12, bottom: 12 },
     xAxis: { type: 'value', minInterval: 1 },

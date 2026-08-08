@@ -20,9 +20,16 @@ const { Header, Sider, Content } = Layout
 
 const POLL_INTERVAL = 15000
 
+// F-10：AudioContext 单例复用（预警高频触发时避免每次 new + 不 close 的泄漏）
+let alertAudioCtx: AudioContext | null = null
+
 function playAlertSound() {
   try {
-    const ctx = new (window.AudioContext || (window as any).webkitAudioContext)()
+    const Ctor = window.AudioContext || (window as any).webkitAudioContext
+    if (!alertAudioCtx) {
+      alertAudioCtx = new Ctor()
+    }
+    const ctx = alertAudioCtx
     const osc = ctx.createOscillator()
     const gain = ctx.createGain()
     osc.connect(gain)
@@ -33,10 +40,10 @@ function playAlertSound() {
     gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.5)
     osc.start(ctx.currentTime)
     osc.stop(ctx.currentTime + 0.5)
-  } catch { /* silent */ }
+  } catch { /* 音频不可用环境静默降级 */ }
 }
 
-function sendDesktopNotification(title, body) {
+function sendDesktopNotification(title: string, body: string) {
   // 桌面通知不可用或未授权时，降级为页内通知（不静默丢弃）
   if ('Notification' in window && Notification.permission === 'granted') {
     try {
@@ -60,7 +67,12 @@ const ADMIN_MENU_ITEMS = [
   { key: 'admin', icon: <SettingOutlined />, label: '管理控制台' },
 ]
 
-export default function Dashboard({ user, onLogout, darkMode, toggleDark }) {
+export default function Dashboard({ user, onLogout, darkMode, toggleDark }: {
+  user: { userType: string; displayName: string }
+  onLogout: () => void
+  darkMode: boolean
+  toggleDark: () => void
+}) {
   const [tab, setTab] = useState('overview')
   const [unreadCount, setUnreadCount] = useState(0)
   const prevUnreadRef = useRef(0)
@@ -142,7 +154,7 @@ export default function Dashboard({ user, onLogout, darkMode, toggleDark }) {
     ...(isAdmin ? ADMIN_MENU_ITEMS : []),
   ], [unreadCount, isAdmin])
 
-  const TITLES = {
+  const TITLES: Record<string, string> = {
     overview: '工作台',
     alerts: '预警队列',
     students: '学生管理',

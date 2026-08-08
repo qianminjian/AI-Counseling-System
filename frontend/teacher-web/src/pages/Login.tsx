@@ -3,17 +3,22 @@ import { Card, Form, Input, Button, message, Divider } from 'antd'
 import { UserOutlined, LockOutlined, WechatOutlined } from '@ant-design/icons'
 import { api, setToken, setRefreshToken } from '../api'
 
-export default function Login({ onLogin }) {
+export default function Login({ onLogin }: {
+  onLogin: (userData: { userId: string; userType: string; displayName: string; mustChangePassword: boolean }) => void
+}) {
   const [loading, setLoading] = useState(false)
-  const [wecomUrl, setWecomUrl] = useState(null)
+  const [wecomUrl, setWecomUrl] = useState<string | null>(null)
 
   useEffect(() => {
     api('/auth/wecom/auth-url').then(d => {
       if (d.enabled) setWecomUrl(d.authUrl)
-    }).catch(() => {})
+    }).catch((e) => {
+      // F-09：企业微信未配置/不可用时静默降级为账密登录（合理降级），但仍留痕便于排查
+      console.error('[Login] 获取企业微信登录地址失败:', e)
+    })
   }, [])
 
-  const handleSubmit = async (values) => {
+  const handleSubmit = async (values: { username: string; password: string }) => {
     setLoading(true)
     try {
       const data = await api('/auth/login', {
