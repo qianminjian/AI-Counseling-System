@@ -119,7 +119,15 @@ fetch_model() {
     log "处理模型: ${repo}"
     local listing
     if ! listing=$(curl -fsSL "${MIRROR}/api/models/${repo}/tree/main?recursive=true"); then
-        log "ERROR: 无法获取 ${repo} 文件清单（镜像源 ${MIRROR} 不可达？）"
+        # 网络容错（2026-08-08：hf-mirror 全路径 308 → huggingface.co 且不可达）：
+        # 清单获取失败但本地模型已完整（MANIFEST 校验通过）时跳过下载，不阻断发布；
+        # 发布链路的 fail-closed 由 deploy.sh 上传前置 --verify 硬校验兜底（DA-06）
+        log "WARNING: 无法获取 ${repo} 文件清单（镜像源 ${MIRROR} 不可达？）"
+        if [ -s "${MANIFEST}" ] && (cd "${TARGET_DIR}" && ${HASH_CMD} -c "${MANIFEST}" --quiet 2>/dev/null); then
+            log "  ✅ 本地模型已完整（MANIFEST 校验通过），跳过下载"
+            return 0
+        fi
+        log "ERROR: 本地模型不完整且无法下载，请修复网络后重试"
         return 1
     fi
 
