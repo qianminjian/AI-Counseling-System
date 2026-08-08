@@ -85,7 +85,6 @@ mindsafe:
   alert:
     wecom:
       webhook-url: ${MINDSAFE_ALERT_WECOM_WEBHOOK_URL:}
-      mentioned-list: ${MINDSAFE_ALERT_WECOM_MENTIONED:}
 
 # 容器化部署：日志走 stdout 由 Docker 收集（镜像以非 root 用户运行，/var/log 不可写）
 logging:

@@ -20,7 +20,7 @@ vi.mock('../api', () => ({
 
 const TOOLS = [
   { toolId: 'breathing_box', title: '深呼吸', emoji: '🫧', durationSec: 150, minGrade: 1, preMoodCheck: true, postMoodCheck: true, rewardBadge: null, category: 'BREATHING' },
-  { toolId: 'grounding_54321', title: '找一找', emoji: '🔍', durationSec: 180, minGrade: 1, preMoodCheck: true, postMoodCheck: true, rewardBadge: 'grounding_master', category: 'GROUNDING' },
+  { toolId: 'grounding_54321', title: '找一找', emoji: '🔍', durationSec: 180, minGrade: 1, preMoodCheck: true, postMoodCheck: true, rewardBadge: null, category: 'GROUNDING' },
   { toolId: 'mood_thermometer', title: '心情温度计', emoji: '🌡️', durationSec: 60, minGrade: 1, preMoodCheck: false, postMoodCheck: false, rewardBadge: null, category: 'EMOTION_CHECK' },
 ]
 

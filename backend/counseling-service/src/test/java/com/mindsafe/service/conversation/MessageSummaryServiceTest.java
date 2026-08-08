@@ -6,6 +6,7 @@ import com.mindsafe.domain.entity.CounselingSession;
 import com.mindsafe.domain.entity.MessageSummary;
 import com.mindsafe.domain.mapper.CounselingSessionMapper;
 import com.mindsafe.domain.mapper.MessageSummaryMapper;
+import com.mindsafe.domain.util.MessageSummarySummarizer;
 import com.mindsafe.service.memory.LongTermMemoryService;
 import com.mindsafe.service.profile.ProfileExtractorService;
 import com.mindsafe.service.quality.ConversationQualityService;
@@ -15,6 +16,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
@@ -66,12 +68,25 @@ class MessageSummaryServiceTest {
                 fieldEncryptionService, conversationQualityService, profileExtractorService,
                 longTermMemoryService, new ObjectMapper(), registry);
 
-        MessageSummary student = MessageSummary.studentMessage(
-                tenantId, sessionId, studentUserId, 1, "我考试前特别紧张", "anxious", 1);
-        MessageSummary ai = MessageSummary.aiMessage(
-                tenantId, sessionId, studentUserId, 2, "紧张的时候身体有什么感觉？");
+        // BA-04：实体工厂已删，测试数据手动装配（setter 方式）
+        MessageSummary student = new MessageSummary();
+        student.setTenantId(tenantId);
+        student.setSessionId(sessionId);
+        student.setStudentUserId(studentUserId);
+        student.setTurnCount(1);
+        student.setSenderType("student");
+        student.setContentSummary("我考试前特别紧张");
+        student.setEmotionTags("[\"anxious\"]");
+        MessageSummary ai = new MessageSummary();
+        ai.setTenantId(tenantId);
+        ai.setSessionId(sessionId);
+        ai.setStudentUserId(studentUserId);
+        ai.setTurnCount(2);
+        ai.setSenderType("ai");
+        ai.setContentSummary("紧张的时候身体有什么感觉？");
         when(messageSummaryMapper.selectList(any())).thenReturn(List.of(student, ai));
         when(fieldEncryptionService.decrypt(anyString())).thenAnswer(inv -> inv.getArgument(0));
+        when(fieldEncryptionService.encrypt(anyString())).thenAnswer(inv -> inv.getArgument(0));
         when(aiChatService.generateSessionSummary(anyString())).thenReturn("{\"mainTopic\":\"考试焦虑\"}");
     }
 
@@ -137,5 +152,90 @@ class MessageSummaryServiceTest {
         verify(sessionMapper).updateById(any(CounselingSession.class));
         verify(profileExtractorService, never()).extractAndMerge(any(), any(), any());
         verify(longTermMemoryService, never()).extractAndStoreKeyEvents(any(), any(), any(), any());
+    }
+
+    // ===== BA-04（DOC-074）：D-7 两级摘要策略上移 service 单一入口 =====
+
+    @Test
+    @DisplayName("BA-04: 学生消息 risk≥2 原文保真，超长截断至 1024（非提炼）")
+    void persistStudent_highRiskKeepsFullText() {
+        SessionState session = new SessionState(sessionId, tenantId, studentUserId, "焦虑", "web", null, null, 0);
+
+        service.persistStudentMessageSummary(session, 1, "a".repeat(2000), "焦虑", 2);
+
+        verify(fieldEncryptionService).encrypt("a".repeat(1024));
+        ArgumentCaptor<MessageSummary> captor = ArgumentCaptor.forClass(MessageSummary.class);
+        verify(messageSummaryMapper).insert(captor.capture());
+        assertThat(captor.getValue().getRiskSignals()).isEqualTo("[{\"level\":2}]");
+    }
+
+    @Test
+    @DisplayName("BA-04: 学生消息 risk<2 语义提炼至 ≤200 字（去除句尾语气词）")
+    void persistStudent_normalRiskSummarized() {
+        SessionState session = new SessionState(sessionId, tenantId, studentUserId, "平静", "web", null, null, 0);
+        String text = "嗯嗯。我今天考试没考好呀。好烦啊。";
+
+        service.persistStudentMessageSummary(session, 1, text, null, 1);
+
+        ArgumentCaptor<String> captor = ArgumentCaptor.forClass(String.class);
+        verify(fieldEncryptionService).encrypt(captor.capture());
+        assertThat(captor.getValue().length()).isLessThanOrEqualTo(MessageSummarySummarizer.MAX_SUMMARY_LENGTH);
+        assertThat(captor.getValue()).contains("我今天考试没考好").doesNotContain("嗯嗯");
+    }
+
+    @Test
+    @DisplayName("BA-04: JSON 字段经 ObjectMapper 装配（emotionTags/riskSignals/topicTags）")
+    void persistStudent_jsonFieldsAssembled() {
+        SessionState session = new SessionState(sessionId, tenantId, studentUserId, "焦虑", "web", null, null, 0);
+
+        service.persistStudentMessageSummary(session, 3, "内容", "焦虑", 2);
+
+        ArgumentCaptor<MessageSummary> captor = ArgumentCaptor.forClass(MessageSummary.class);
+        verify(messageSummaryMapper).insert(captor.capture());
+        MessageSummary m = captor.getValue();
+        assertThat(m.getSenderType()).isEqualTo("student");
+        assertThat(m.getTurnCount()).isEqualTo(3);
+        assertThat(m.getEmotionTags()).isEqualTo("[\"焦虑\"]");
+        assertThat(m.getTopicTags()).isEqualTo("[]");
+        assertThat(m.getStudentUserId()).isEqualTo(studentUserId);
+    }
+
+    @Test
+    @DisplayName("BA-04: risk=0 学生消息 riskSignals 空数组")
+    void persistStudent_zeroRiskEmptySignals() {
+        SessionState session = new SessionState(sessionId, tenantId, studentUserId, "开心", "web", null, null, 0);
+
+        service.persistStudentMessageSummary(session, 1, "今天很开心", "开心", 0);
+
+        ArgumentCaptor<MessageSummary> captor = ArgumentCaptor.forClass(MessageSummary.class);
+        verify(messageSummaryMapper).insert(captor.capture());
+        assertThat(captor.getValue().getRiskSignals()).isEqualTo("[]");
+    }
+
+    @Test
+    @DisplayName("BA-04: AI 摘要恒 risk=0，超长截断 1024，JSON 字段空数组")
+    void persistAi_truncatesAndEmptyJson() {
+        SessionState session = new SessionState(sessionId, tenantId, studentUserId, "平静", "web", null, null, 0);
+
+        service.persistAiMessageSummary(session, 2, "b".repeat(2000));
+
+        verify(fieldEncryptionService).encrypt("b".repeat(1024));
+        ArgumentCaptor<MessageSummary> captor = ArgumentCaptor.forClass(MessageSummary.class);
+        verify(messageSummaryMapper).insert(captor.capture());
+        MessageSummary m = captor.getValue();
+        assertThat(m.getSenderType()).isEqualTo("ai");
+        assertThat(m.getRiskLevel()).isZero();
+        assertThat(m.getEmotionTags()).isEqualTo("[]");
+        assertThat(m.getRiskSignals()).isEqualTo("[]");
+    }
+
+    @Test
+    @DisplayName("BA-04: AI 回复空白 → 不落库")
+    void persistAi_blankSkipsInsert() {
+        SessionState session = new SessionState(sessionId, tenantId, studentUserId, "平静", "web", null, null, 0);
+
+        service.persistAiMessageSummary(session, 2, "   ");
+
+        verify(messageSummaryMapper, never()).insert(any(MessageSummary.class));
     }
 }

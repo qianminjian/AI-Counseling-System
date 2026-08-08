@@ -400,22 +400,6 @@ class P2RemainingBatchTest {
         }
 
         @Test
-        @DisplayName("groundedness：高利用")
-        void groundedHigh() {
-            GroundednessResult r = service.evaluateGroundedness("sess-1", 5, 4);
-            assertThat(r.groundednessScore()).isEqualTo(0.8);
-            assertThat(r.effective()).isTrue();
-        }
-
-        @Test
-        @DisplayName("groundedness：低利用→反哺")
-        void groundedLow() {
-            GroundednessResult r = service.evaluateGroundedness("sess-1", 5, 1);
-            assertThat(r.effective()).isFalse();
-            assertThat(r.feedback()).contains("反哺");
-        }
-
-        @Test
         @DisplayName("内容缺口识别")
         void contentGaps() {
             List<String> missed = List.of(

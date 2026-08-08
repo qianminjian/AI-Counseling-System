@@ -79,7 +79,7 @@ services:
       MINDSAFE_ENCRYPTION_KEY_VERSION: ${ENCRYPTION_KEY_VERSION:-1}
       MINDSAFE_ENCRYPTION_PREVIOUS_KEYS: ${ENCRYPTION_PREVIOUS_KEYS:-}
       MINDSAFE_ALERT_WECOM_WEBHOOK_URL: ${ALERT_WECOM_WEBHOOK_URL:-}
-      MINDSAFE_ALERT_WECOM_MENTIONED: ${ALERT_WECOM_MENTIONED:-}
+      # BA-08：MINDSAFE_ALERT_WECOM_MENTIONED 零消费环境变量已删（WeComAlertService 不再读取）
       # SMS provider（P1 审计修复：未配置 aliyun 凭证时默认 logging，避免 fail-closed 卡部署）
       # 设计修正（2026-08-06）：原设计 M5（fix-13）强制 prod=aliyun，但试点期 SMS 未启用，无凭证；改为 logging
       # 等正式启用短信时再在 .env 设置 SMS_PROVIDER=aliyun 并补齐 MINDSAFE_SMS_ALIYUN_* 凭证。

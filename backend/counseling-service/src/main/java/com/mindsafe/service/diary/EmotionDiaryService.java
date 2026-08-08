@@ -3,19 +3,18 @@ package com.mindsafe.service.diary;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.mindsafe.domain.entity.EmotionDiary;
 import com.mindsafe.domain.mapper.EmotionDiaryMapper;
+import com.mindsafe.service.achievement.BadgeService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 
 /**
- * 情绪日记服务（T4 批次B/C：打卡 upsert / 查询 / streak / 徽章下沉，Controller 不再直查 Mapper）。
+ * 情绪日记服务（T4 批次B/C：打卡 upsert / 查询 / streak，Controller 不再直查 Mapper）。
  * <p>
+ * 徽章评估已收敛至 {@link BadgeService} 统一入口（BA-03，DOC-074）。
  * 租户 + 学生条件强制内置在查询条件中。
  */
 @Service
@@ -84,48 +83,10 @@ public class EmotionDiaryService {
                         .eq(EmotionDiary::getStudentUserId, studentUserId)
                         .orderByDesc(EmotionDiary::getDiaryDate)
         );
-        return new StreakInfo(computeStreak(all), all.size());
-    }
-
-    /** 成就徽章列表（根据打卡数据计算） */
-    public List<DiaryBadge> getAchievements(UUID tenantId, UUID studentUserId) {
-        List<EmotionDiary> all = diaryMapper.selectList(
-                new LambdaQueryWrapper<EmotionDiary>()
-                        .eq(EmotionDiary::getTenantId, tenantId)
-                        .eq(EmotionDiary::getStudentUserId, studentUserId)
-                        .orderByDesc(EmotionDiary::getDiaryDate)
-        );
-        long diaryCount = all.size();
-        int streak = computeStreak(all);
-
-        List<DiaryBadge> badges = new ArrayList<>();
-        badges.add(new DiaryBadge("first_diary", "🌱", "初次记录", "完成第一次情绪打卡", diaryCount >= 1));
-        badges.add(new DiaryBadge("streak_3", "🔥", "三天坚持", "连续打卡 3 天", streak >= 3));
-        badges.add(new DiaryBadge("streak_7", "⭐", "一周达人", "连续打卡 7 天", streak >= 7));
-        badges.add(new DiaryBadge("diary_10", "📚", "记录达人", "累计打卡 10 天", diaryCount >= 10));
-        badges.add(new DiaryBadge("diary_30", "🏆", "月度之星", "累计打卡 30 天", diaryCount >= 30));
-        return badges;
-    }
-
-    private int computeStreak(List<EmotionDiary> all) {
-        int streak = 0;
-        LocalDate expected = LocalDate.now();
-        for (EmotionDiary d : all) {
-            if (d.getDiaryDate().equals(expected)) {
-                streak++;
-                expected = expected.minusDays(1);
-            } else if (d.getDiaryDate().isBefore(expected)) {
-                break;
-            }
-        }
-        return streak;
+        return new StreakInfo(BadgeService.computeStreak(all), all.size());
     }
 
     /** 连续打卡信息 */
     public record StreakInfo(int streak, int total) {
-    }
-
-    /** 成就徽章 */
-    public record DiaryBadge(String id, String emoji, String title, String desc, boolean unlocked) {
     }
 }

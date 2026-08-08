@@ -3,8 +3,9 @@ package com.mindsafe.api.controller;
 import com.mindsafe.api.security.JwtAuthenticationFilter.TenantContext;
 import com.mindsafe.common.exception.BizException;
 import com.mindsafe.domain.entity.EmotionDiary;
+import com.mindsafe.service.achievement.BadgeService;
+import com.mindsafe.service.achievement.BadgeService.Badge;
 import com.mindsafe.service.diary.EmotionDiaryService;
-import com.mindsafe.service.diary.EmotionDiaryService.DiaryBadge;
 import com.mindsafe.service.diary.EmotionDiaryService.StreakInfo;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -27,11 +28,12 @@ import static org.mockito.Mockito.when;
  * EmotionDiaryController 单元测试（T4 批次B/C 改造版：SQL 下沉 EmotionDiaryService，Controller 仅 HTTP 层职责）
  * <p>
  * 覆盖：打卡参数解析与默认值 / 今日状态 / 历史 / streak / 徽章展示转换。
- * 域语义（upsert / streak 计算 / 徽章解锁规则）由 EmotionDiaryService 测试覆盖。
+ * 域语义（upsert / streak 计算 / 徽章解锁规则）由 BadgeService 测试覆盖。
  */
 class EmotionDiaryControllerTest {
 
     private EmotionDiaryService diaryService;
+    private BadgeService badgeService;
     private EmotionDiaryController controller;
 
     private final UUID tenantId = UUID.randomUUID();
@@ -40,7 +42,8 @@ class EmotionDiaryControllerTest {
     @BeforeEach
     void setUp() {
         diaryService = mock(EmotionDiaryService.class);
-        controller = new EmotionDiaryController(diaryService);
+        badgeService = mock(BadgeService.class);
+        controller = new EmotionDiaryController(diaryService, badgeService);
     }
 
     private Authentication studentAuth() {
@@ -191,19 +194,19 @@ class EmotionDiaryControllerTest {
 
     // ===== 徽章 =====
 
-    private List<DiaryBadge> badges(boolean first, boolean streak3, boolean streak7, boolean diary10, boolean diary30) {
+    private List<Badge> badges(boolean first, boolean streak3, boolean streak7, boolean diary10, boolean diary30) {
         return List.of(
-                new DiaryBadge("first_diary", "🌱", "初次记录", "完成第一次情绪打卡", first),
-                new DiaryBadge("streak_3", "🔥", "三天坚持", "连续打卡 3 天", streak3),
-                new DiaryBadge("streak_7", "⭐", "一周达人", "连续打卡 7 天", streak7),
-                new DiaryBadge("diary_10", "📚", "记录达人", "累计打卡 10 天", diary10),
-                new DiaryBadge("diary_30", "🏆", "月度之星", "累计打卡 30 天", diary30));
+                new Badge("first_diary", "🌱", "初次记录", "完成第一次情绪打卡", first),
+                new Badge("streak_3", "🔥", "三天坚持", "连续打卡 3 天", streak3),
+                new Badge("streak_7", "⭐", "一周达人", "连续打卡 7 天", streak7),
+                new Badge("diary_10", "📚", "记录达人", "累计打卡 10 天", diary10),
+                new Badge("diary_30", "🏆", "月度之星", "累计打卡 30 天", diary30));
     }
 
     @Test
-    @DisplayName("getAchievements 无记录 → 全部未解锁（Service 计算，展示层转换）")
+    @DisplayName("getAchievements 无记录 → 全部未解锁（BadgeService 计算，展示层转换）")
     void achievements_empty() {
-        when(diaryService.getAchievements(tenantId, studentUserId)).thenReturn(badges(false, false, false, false, false));
+        when(badgeService.evaluate(tenantId, studentUserId)).thenReturn(badges(false, false, false, false, false));
 
         var resp = controller.getAchievements(studentAuth());
 
@@ -214,7 +217,7 @@ class EmotionDiaryControllerTest {
     @Test
     @DisplayName("getAchievements 10 天 + 连续 3 天 → 徽章解锁状态透传")
     void achievements_unlocked() {
-        when(diaryService.getAchievements(tenantId, studentUserId))
+        when(badgeService.evaluate(tenantId, studentUserId))
                 .thenReturn(badges(true, true, false, true, false));
 
         var resp = controller.getAchievements(studentAuth());

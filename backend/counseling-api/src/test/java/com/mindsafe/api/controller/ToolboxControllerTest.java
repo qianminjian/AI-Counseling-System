@@ -1,12 +1,15 @@
 package com.mindsafe.api.controller;
 
+import com.mindsafe.api.security.JwtAuthenticationFilter.TenantContext;
 import com.mindsafe.common.dto.ApiResponse;
+import com.mindsafe.common.exception.BizException;
 import com.mindsafe.domain.entity.User;
+import com.mindsafe.service.auth.AuthUserService;
+import com.mindsafe.service.relaxation.RelaxationService;
 import com.mindsafe.service.toolbox.MoodCheckRecorder;
 import com.mindsafe.service.toolbox.ToolboxRegistry;
 import com.mindsafe.service.toolbox.ToolboxRegistry.ToolCategory;
 import com.mindsafe.service.toolbox.ToolboxRegistry.ToolDefinition;
-import com.mindsafe.service.toolbox.ToolboxService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -18,6 +21,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -25,14 +29,19 @@ import static org.mockito.Mockito.when;
 
 /**
  * ToolboxController 单元测试（P1 覆盖率冲刺：工具箱列表/分类/SOS/心情记录）
+ * <p>
+ * BA-03（DOC-074）：recordMoodCheck 落库练习完成（relaxation_sessions，徽章数据源）；
+ * BA-07：年级解析用户查询收敛 AuthUserService。
  */
 class ToolboxControllerTest {
 
     private ToolboxRegistry toolboxRegistry;
     private MoodCheckRecorder moodCheckRecorder;
-    private ToolboxService toolboxService;
+    private RelaxationService relaxationService;
+    private AuthUserService authUserService;
     private ToolboxController controller;
 
+    private final UUID tenantId = UUID.randomUUID();
     private final UUID studentUserId = UUID.randomUUID();
 
     private static final ToolDefinition TOOL = new ToolDefinition(
@@ -42,17 +51,19 @@ class ToolboxControllerTest {
     void setUp() {
         toolboxRegistry = mock(ToolboxRegistry.class);
         moodCheckRecorder = mock(MoodCheckRecorder.class);
-        toolboxService = mock(ToolboxService.class);
-        controller = new ToolboxController(toolboxRegistry, moodCheckRecorder, toolboxService);
+        relaxationService = mock(RelaxationService.class);
+        authUserService = mock(AuthUserService.class);
+        controller = new ToolboxController(toolboxRegistry, moodCheckRecorder, relaxationService, authUserService);
     }
 
     private Authentication studentAuth(String gradeCode) {
         Authentication auth = mock(Authentication.class);
         when(auth.getPrincipal()).thenReturn(studentUserId);
+        when(auth.getDetails()).thenReturn(new TenantContext(tenantId, studentUserId, "student"));
         User u = new User();
         u.setUserId(studentUserId);
         u.setGradeCode(gradeCode);
-        when(toolboxService.findUserById(studentUserId)).thenReturn(u);
+        when(authUserService.findById(studentUserId)).thenReturn(u);
         return auth;
     }
 
@@ -77,7 +88,7 @@ class ToolboxControllerTest {
 
         assertThat(resp.data()).isEmpty();
         verify(toolboxRegistry).listForGrade(4);
-        verify(toolboxService, never()).findUserById(anyUuid());
+        verify(authUserService, never()).findById(anyUuid());
     }
 
     @Test
@@ -97,7 +108,7 @@ class ToolboxControllerTest {
     void listTools_userNotFound() {
         Authentication auth = mock(Authentication.class);
         when(auth.getPrincipal()).thenReturn(studentUserId);
-        when(toolboxService.findUserById(studentUserId)).thenReturn(null);
+        when(authUserService.findById(studentUserId)).thenReturn(null);
         when(toolboxRegistry.listForGrade(4)).thenReturn(List.of());
 
         controller.listTools(auth);
@@ -155,6 +166,7 @@ class ToolboxControllerTest {
         assertThat(resp.code()).isEqualTo(400);
         assertThat(resp.message()).contains("缺少必要参数");
         verify(moodCheckRecorder, never()).record(anyString(), anyInt(), anyInt());
+        verify(relaxationService, never()).recordSession(anyUuid(), anyUuid(), anyString(), anyInt(), anyBoolean());
     }
 
     @Test
@@ -170,7 +182,15 @@ class ToolboxControllerTest {
     }
 
     @Test
-    @DisplayName("recordMoodCheck 成功（改善）→ 效果数据返回 + needsAttention=false")
+    @DisplayName("recordMoodCheck 无认证 → UNAUTHORIZED")
+    void recordMoodCheck_unauthorized() {
+        assertThatThrownBy(() -> controller.recordMoodCheck(
+                Map.of("toolId", "breathing_box", "preMood", 3, "postMood", 4), null))
+                .isInstanceOf(BizException.class);
+    }
+
+    @Test
+    @DisplayName("recordMoodCheck 成功（改善）→ 效果数据返回 + 落库练习完成")
     void recordMoodCheck_improved() {
         when(toolboxRegistry.getById("breathing_box")).thenReturn(Optional.of(TOOL));
         MoodCheckRecorder.MoodEffect effect =
@@ -186,10 +206,11 @@ class ToolboxControllerTest {
         assertThat(resp.data().get("level")).isEqualTo("IMPROVED");
         assertThat(resp.data().get("needsAttention")).isEqualTo(false);
         verify(moodCheckRecorder).record("breathing_box", 3, 5);
+        verify(relaxationService).recordSession(tenantId, studentUserId, "breathing_box", 150, true);
     }
 
     @Test
-    @DisplayName("recordMoodCheck 恶化 → needsAttention=true")
+    @DisplayName("recordMoodCheck 恶化 → needsAttention=true + 仍落库")
     void recordMoodCheck_worsened() {
         when(toolboxRegistry.getById("breathing_box")).thenReturn(Optional.of(TOOL));
         MoodCheckRecorder.MoodEffect effect =
@@ -202,6 +223,7 @@ class ToolboxControllerTest {
 
         assertThat(resp.data().get("needsAttention")).isEqualTo(true);
         assertThat(resp.data().get("level")).isEqualTo("WORSENED");
+        verify(relaxationService).recordSession(tenantId, studentUserId, "breathing_box", 150, true);
     }
 
     private static UUID anyUuid() {
@@ -214,5 +236,9 @@ class ToolboxControllerTest {
 
     private static int anyInt() {
         return 0;
+    }
+
+    private static boolean anyBoolean() {
+        return false;
     }
 }

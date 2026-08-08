@@ -53,7 +53,7 @@ public class ToolboxRegistry {
         register(new ToolDefinition("mindful_frog", "安静小青蛙", "🐸",
                 180, 2, true, true, "mindful_frog", ToolCategory.MINDFULNESS));
         register(new ToolDefinition("grounding_54321", "找一找", "🔍",
-                180, 1, true, true, "grounding_master", ToolCategory.GROUNDING));
+                180, 1, true, true, null, ToolCategory.GROUNDING));
         register(new ToolDefinition("mood_thermometer", "心情温度计", "🌡️",
                 60, 1, false, false, null, ToolCategory.EMOTION_CHECK));
         register(new ToolDefinition("safe_island", "我的安全小岛", "🏝️",

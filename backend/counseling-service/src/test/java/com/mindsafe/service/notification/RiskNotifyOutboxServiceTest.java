@@ -2,6 +2,7 @@ package com.mindsafe.service.notification;
 
 import com.mindsafe.domain.entity.RiskEvent;
 import com.mindsafe.domain.mapper.RiskEventMapper;
+import com.mindsafe.service.alert.AlertService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -15,6 +16,8 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
@@ -32,12 +35,13 @@ class RiskNotifyOutboxServiceTest {
 
     @Mock private RiskEventMapper riskEventMapper;
     @Mock private NotificationService notificationService;
+    @Mock private AlertService alertService;
 
     private RiskNotifyOutboxService outbox;
 
     @BeforeEach
     void setUp() {
-        outbox = new RiskNotifyOutboxService(riskEventMapper, notificationService);
+        outbox = new RiskNotifyOutboxService(riskEventMapper, notificationService, alertService);
     }
 
     private RiskEvent event(int attempts) {
@@ -72,13 +76,14 @@ class RiskNotifyOutboxServiceTest {
         }
 
         @Test
-        @DisplayName("markDead → 更新 dead + 次数+1（人工兜底）")
+        @DisplayName("markDead → 更新 dead + 次数+1 + 统一告警出口（人工兜底信号）")
         void markDead_updatesStatus() {
             RiskEvent e = event(RiskNotifyOutboxService.MAX_NOTIFY_ATTEMPTS);
 
             outbox.markDead(e);
 
             verify(riskEventMapper).updateById(argEventWith(6, RiskNotifyOutboxService.STATUS_DEAD));
+            verify(alertService).sendAlert(eq(AlertService.AlertLevel.WARNING), anyString(), anyString());
         }
 
         @Test
@@ -146,6 +151,7 @@ class RiskNotifyOutboxServiceTest {
             assertThat(succeeded).isZero();
             verify(notificationService, never()).notifyRiskEvent(e);
             verify(riskEventMapper).updateById(argEventWith(6, RiskNotifyOutboxService.STATUS_DEAD));
+            verify(alertService).sendAlert(eq(AlertService.AlertLevel.WARNING), anyString(), anyString());
         }
 
         @Test

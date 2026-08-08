@@ -32,13 +32,14 @@ public class WeComAlertService implements AlertService {
     private static final DateTimeFormatter FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
             .withZone(ZoneId.of("Asia/Shanghai"));
 
-    @Value("${mindsafe.alert.wecom.webhook-url}")
-    private String webhookUrl;
-
-    @Value("${mindsafe.alert.wecom.mentioned-list:}")
-    private String mentionedList;
+    private final String webhookUrl;
 
     private final RestTemplate restTemplate = buildRestTemplate();
+
+    // BA-08（DOC-074）：@Value 私有字段改构造器注入（消除测试反射 setField；mentionedList 字段零消费已删）
+    public WeComAlertService(@Value("${mindsafe.alert.wecom.webhook-url}") String webhookUrl) {
+        this.webhookUrl = webhookUrl;
+    }
 
     /** 告警外呼必须带超时：企微不可达时不能无限占用 @Async 线程 */
     private static RestTemplate buildRestTemplate() {

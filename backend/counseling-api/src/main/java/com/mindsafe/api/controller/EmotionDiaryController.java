@@ -5,8 +5,9 @@ import com.mindsafe.common.dto.ApiResponse;
 import com.mindsafe.common.dto.ErrorCode;
 import com.mindsafe.common.exception.BizException;
 import com.mindsafe.domain.entity.EmotionDiary;
+import com.mindsafe.service.achievement.BadgeService;
+import com.mindsafe.service.achievement.BadgeService.Badge;
 import com.mindsafe.service.diary.EmotionDiaryService;
-import com.mindsafe.service.diary.EmotionDiaryService.DiaryBadge;
 import com.mindsafe.service.diary.EmotionDiaryService.StreakInfo;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
@@ -23,9 +24,11 @@ import java.util.Map;
 public class EmotionDiaryController {
 
     private final EmotionDiaryService diaryService;
+    private final BadgeService badgeService;
 
-    public EmotionDiaryController(EmotionDiaryService diaryService) {
+    public EmotionDiaryController(EmotionDiaryService diaryService, BadgeService badgeService) {
         this.diaryService = diaryService;
+        this.badgeService = badgeService;
     }
 
     /** 今日打卡（每天仅一次，重复提交覆盖；T4 批次B：upsert 下沉 Service） */
@@ -68,15 +71,15 @@ public class EmotionDiaryController {
         return ApiResponse.ok(Map.of("streak", info.streak(), "total", info.total()));
     }
 
-    /** 成就徽章列表（T4 批次C：基于打卡数据计算，下沉 Service） */
+    /** 成就徽章列表（BA-03：BadgeService 统一评估入口：日记徽章 + 工具徽章） */
     @GetMapping("/achievements")
     public ApiResponse<List<Map<String, Object>>> getAchievements(Authentication auth) {
         TenantContext ctx = extractContext(auth);
-        return ApiResponse.ok(diaryService.getAchievements(ctx.tenantId(), ctx.userId())
+        return ApiResponse.ok(badgeService.evaluate(ctx.tenantId(), ctx.userId())
                 .stream().map(EmotionDiaryController::toBadgeMap).toList());
     }
 
-    private static Map<String, Object> toBadgeMap(DiaryBadge b) {
+    private static Map<String, Object> toBadgeMap(Badge b) {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("id", b.id());
         m.put("emoji", b.emoji());

@@ -1151,9 +1151,22 @@ class ConversationServiceImplTest {
         @DisplayName("摘要流程触发质量评估：对话文本传给 evaluateSessionAsync")
         void summaryFlow_triggersQualityEvaluation() {
             UUID sessionId = UUID.randomUUID();
-            when(messageSummaryMapper.selectList(any())).thenReturn(List.of(
-                    MessageSummary.studentMessage(tenantId, sessionId, studentId, 1, "我今天很难过", "sad", 0),
-                    MessageSummary.aiMessage(tenantId, sessionId, studentId, 1, "我在听")));
+            // BA-04：实体工厂已删，测试数据手动装配
+            MessageSummary student = new MessageSummary();
+            student.setTenantId(tenantId);
+            student.setSessionId(sessionId);
+            student.setStudentUserId(studentId);
+            student.setTurnCount(1);
+            student.setSenderType("student");
+            student.setContentSummary("我今天很难过");
+            MessageSummary ai = new MessageSummary();
+            ai.setTenantId(tenantId);
+            ai.setSessionId(sessionId);
+            ai.setStudentUserId(studentId);
+            ai.setTurnCount(1);
+            ai.setSenderType("ai");
+            ai.setContentSummary("我在听");
+            when(messageSummaryMapper.selectList(any())).thenReturn(List.of(student, ai));
             when(aiChatService.generateSessionSummary(anyString())).thenReturn("会话摘要");
 
             messageSummaryService.generateSummaryAsync(tenantId, sessionId, studentId);

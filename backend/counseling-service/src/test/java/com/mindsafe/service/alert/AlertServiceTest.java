@@ -5,7 +5,6 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.springframework.test.util.ReflectionTestUtils;
 
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
@@ -46,10 +45,8 @@ class AlertServiceTest {
         server.start();
         port = server.getAddress().getPort();
 
-        weComAlertService = new WeComAlertService();
-        ReflectionTestUtils.setField(weComAlertService, "webhookUrl",
-                "http://127.0.0.1:" + port + "/webhook");
-        ReflectionTestUtils.setField(weComAlertService, "mentionedList", "");
+        // BA-08：构造器注入（webhookUrl 已 final，测试直接传本地地址）
+        weComAlertService = new WeComAlertService("http://127.0.0.1:" + port + "/webhook");
     }
 
     @AfterEach
@@ -89,7 +86,7 @@ class AlertServiceTest {
     @Test
     @DisplayName("webhook 不可达 → 降级为日志，不抛异常（告警链不因外呼失败中断）")
     void unreachableWebhookDegradesGracefully() {
-        ReflectionTestUtils.setField(weComAlertService, "webhookUrl", "http://127.0.0.1:1/webhook");
+        weComAlertService = new WeComAlertService("http://127.0.0.1:1/webhook");
 
         assertThatCode(() -> weComAlertService.sendAlert(
                 AlertService.AlertLevel.CRITICAL, "测试降级", "webhook 不可达"))

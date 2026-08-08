@@ -224,8 +224,7 @@ mindsafe:
   # 告警体系（OPS-004）
   alert:
     wecom:
-      webhook-url: ${MINDSAFE_ALERT_WECOM_WEBHOOK_URL:}  # 空 = 降级为日志告警
-      mentioned-list: ${MINDSAFE_ALERT_WECOM_MENTIONED:}  # @指定人手机号，逗号分隔
+      webhook-url: ${MINDSAFE_ALERT_WECOM_WEBHOOK_URL:}  # 空 = 降级为日志告警（BA-08：mentioned-list 零消费配置已删）
   # 字段加密（COMP-005：AES-256-GCM + ENCRYPTION_ENABLED 系统级开关，默认关闭）
   encryption:
     enabled: ${ENCRYPTION_ENABLED:false}  # 系统级开关：false=明文透传（默认，可不配密钥）；true=启动必须配置合法密钥并执行加解密

@@ -3,6 +3,8 @@ package com.mindsafe.service.notification;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.mindsafe.domain.entity.RiskEvent;
 import com.mindsafe.domain.mapper.RiskEventMapper;
+import com.mindsafe.service.alert.AlertService;
+import com.mindsafe.service.alert.AlertService.AlertLevel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -40,11 +42,14 @@ public class RiskNotifyOutboxService {
 
     private final RiskEventMapper riskEventMapper;
     private final NotificationService notificationService;
+    private final AlertService alertService;
 
     public RiskNotifyOutboxService(RiskEventMapper riskEventMapper,
-                                   NotificationService notificationService) {
+                                   NotificationService notificationService,
+                                   AlertService alertService) {
         this.riskEventMapper = riskEventMapper;
         this.notificationService = notificationService;
+        this.alertService = alertService;
     }
 
     /** 通知成功：标记 sent（独立事务） */
@@ -69,7 +74,7 @@ public class RiskNotifyOutboxService {
         riskEventMapper.updateById(update);
     }
 
-    /** 超限放弃：标记 dead + 错误日志（人工兜底信号，运维告警由 alert 体系承接） */
+    /** 超限放弃：标记 dead + 统一告警出口（BA-08 接入 AlertService，原仅 log.error） + 错误日志 */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void markDead(RiskEvent event) {
         RiskEvent update = new RiskEvent();
@@ -78,6 +83,11 @@ public class RiskNotifyOutboxService {
         update.setNotifyAttempts((event.getNotifyAttempts() == null ? 0 : event.getNotifyAttempts()) + 1);
         update.setLastNotifyAttemptAt(Instant.now());
         riskEventMapper.updateById(update);
+        // 人工兜底信号走统一告警出口（企微 webhook 或日志降级，外呼失败不影响状态标记）
+        alertService.sendAlert(AlertLevel.WARNING, "风险通知持续失败转人工兜底",
+                "riskEventId=" + event.getRiskEventId()
+                        + ", level=" + event.getRiskLevel()
+                        + ", attempts=" + (event.getNotifyAttempts() == null ? 0 : event.getNotifyAttempts()));
         log.error("风险通知持续失败转人工兜底: riskEventId={}, level={}, attempts={}",
                 event.getRiskEventId(), event.getRiskLevel(),
                 event.getNotifyAttempts() == null ? 0 : event.getNotifyAttempts());

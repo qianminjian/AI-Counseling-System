@@ -1,6 +1,5 @@
 package com.mindsafe.domain.entity;
 
-import com.mindsafe.domain.util.MessageSummarySummarizer;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -12,7 +11,7 @@ import static org.junit.jupiter.api.Assertions.*;
 /**
  * 领域实体工厂方法单测（覆盖率补缺：counseling-domain 实体层）
  * <p>
- * 覆盖：全部 13 个带静态工厂方法的实体 + Notification 状态流转 + MessageSummary 截断。
+ * 覆盖：全部 12 个带静态工厂方法的实体 + Notification 状态流转（BA-04 删 MessageSummary 工厂，策略上移 MessageSummaryService）。
  */
 class DomainEntityFactoryTest {
 
@@ -86,64 +85,6 @@ class DomainEntityFactoryTest {
         n.markRead();
         assertEquals("read", n.getDeliveryStatus());
         assertNotNull(n.getReadAt());
-    }
-
-    // ===== MessageSummary =====
-
-    @Test
-    @DisplayName("studentMessage 初始化摘要字段并生成 emotion/risk JSON")
-    void studentMessage_setsFields() {
-        MessageSummary m = MessageSummary.studentMessage(tenantId, UUID.randomUUID(), userId, 3, "内容", "焦虑", 2);
-        assertEquals("student", m.getSenderType());
-        assertEquals(3, m.getTurnCount());
-        assertEquals("内容", m.getContentSummary());
-        assertEquals("焦虑", m.getEmotionLabel());
-        assertEquals(2, m.getRiskLevel());
-        assertEquals("[\"焦虑\"]", m.getEmotionTags());
-        assertEquals("[{\"level\":2}]", m.getRiskSignals());
-    }
-
-    @Test
-    @DisplayName("studentMessage 常规消息（risk<2）语义提炼至 ≤200 字，null 内容保留")
-    void studentMessage_truncatesLongContent() {
-        // D-7 路径 C：GREEN/YELLOW 消息走 MessageSummarySummarizer 语义提炼（≤200 字），非原文切片
-        String longText = "x".repeat(2000);
-        MessageSummary m = MessageSummary.studentMessage(tenantId, UUID.randomUUID(), userId, 1, longText, null, 0);
-        assertEquals(MessageSummarySummarizer.MAX_SUMMARY_LENGTH, m.getContentSummary().length());
-        assertEquals("[]", m.getEmotionTags());
-        MessageSummary n = MessageSummary.studentMessage(tenantId, UUID.randomUUID(), userId, 1, null, null, 0);
-        assertNull(n.getContentSummary());
-    }
-
-    @Test
-    @DisplayName("studentMessage 风险消息（risk≥2 ORANGE/RED）原文保真，超长截断至 1024")
-    void studentMessage_highRiskKeepsFullText() {
-        // D-7 路径 C：安全证据 > 数据最小化，L3+ 消息不提炼
-        String longText = "a".repeat(2000);
-        MessageSummary m = MessageSummary.studentMessage(tenantId, UUID.randomUUID(), userId, 1, longText, "害怕", 2);
-        assertEquals(1024, m.getContentSummary().length());
-        MessageSummary n = MessageSummary.studentMessage(tenantId, UUID.randomUUID(), userId, 1, longText, null, 3);
-        assertEquals(1024, n.getContentSummary().length());
-    }
-
-    @Test
-    @DisplayName("studentMessage 常规消息去噪提炼（去除句尾语气词）")
-    void studentMessage_normalRiskSummarized() {
-        String text = "嗯嗯。我今天考试没考好呀。好烦啊。";
-        MessageSummary m = MessageSummary.studentMessage(tenantId, UUID.randomUUID(), userId, 1, text, null, 1);
-        assertTrue(m.getContentSummary().contains("我今天考试没考好"));
-        assertFalse(m.getContentSummary().contains("嗯嗯"));
-        assertFalse(m.getContentSummary().contains("啊"));
-    }
-
-    @Test
-    @DisplayName("aiMessage 初始化 AI 摘要字段（risk=0）")
-    void aiMessage_setsFields() {
-        MessageSummary m = MessageSummary.aiMessage(tenantId, UUID.randomUUID(), userId, 2, "AI 总结");
-        assertEquals("ai", m.getSenderType());
-        assertEquals(0, m.getRiskLevel());
-        assertEquals("[]", m.getEmotionTags());
-        assertEquals("[]", m.getRiskSignals());
     }
 
     // ===== CounselingSession =====

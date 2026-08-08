@@ -8,6 +8,7 @@ import com.mindsafe.domain.entity.MessageSummary;
 import com.mindsafe.domain.entity.User;
 import com.mindsafe.domain.mapper.CounselingSessionMapper;
 import com.mindsafe.domain.mapper.MessageSummaryMapper;
+import com.mindsafe.domain.util.MessageSummarySummarizer;
 import com.mindsafe.service.memory.LongTermMemoryService;
 import com.mindsafe.service.profile.ProfileExtractorService;
 import com.mindsafe.service.quality.ConversationQualityService;
@@ -21,6 +22,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -48,6 +50,12 @@ public class MessageSummaryService {
     private final ObjectMapper objectMapper;
     // ARCH-010 P2-5：会话摘要失败 metrics（失败率告警依据）
     private final Counter summaryFailureCounter;
+
+    /** 原文保真风险阈值：riskLevel ≥ 2（ORANGE/RED）不提炼（design/09 §3.3 接线表，BA-04 由实体上移） */
+    private static final int FULL_FIDELITY_RISK_LEVEL = 2;
+
+    /** 内容截断上限（字符；密文经 AES-256-GCM 膨胀，V32 起列类型 TEXT，AUDIT-P0-3） */
+    private static final int MAX_CONTENT_LENGTH = 1024;
 
     public MessageSummaryService(MessageSummaryMapper messageSummaryMapper,
                                  CounselingSessionMapper sessionMapper,
@@ -169,11 +177,28 @@ public class MessageSummaryService {
     public void persistStudentMessageSummary(SessionState session, int turn,
                                              String content, String emotionLabel, int riskLevel) {
         try {
-            MessageSummary summary = MessageSummary.studentMessage(
-                    session.getTenantId(), session.getSessionId(), session.getStudentUserId(),
-                    turn, content, emotionLabel, riskLevel
-            );
-            // R-01：学生消息内容字段级加密后落库（D-7 两级：risk≥2 原文保真截断 1024 / risk<2 语义提炼 ≤200 字，再对结果明文加密）
+            // BA-04（DOC-074）：D-7 两级策略收敛到 service 单一入口——risk ≥ 2 原文保真截断 1024；risk < 2 语义提炼 ≤200 字（再截断兜底）
+            String summarized = riskLevel >= FULL_FIDELITY_RISK_LEVEL
+                    ? truncate(content, MAX_CONTENT_LENGTH)
+                    : truncate(MessageSummarySummarizer.summarize(content), MAX_CONTENT_LENGTH);
+
+            MessageSummary summary = new MessageSummary();
+            summary.setSummaryId(UUID.randomUUID());
+            summary.setTenantId(session.getTenantId());
+            summary.setSessionId(session.getSessionId());
+            summary.setStudentUserId(session.getStudentUserId());
+            summary.setTurnCount(turn);
+            summary.setSenderType("student");
+            summary.setContentSummary(summarized);
+            summary.setEmotionLabel(emotionLabel);
+            summary.setRiskLevel(riskLevel);
+            // JSON 拼串经 ObjectMapper（JsonbTypeHandler 消费合法 JSON，绕过手工拼串）
+            summary.setEmotionTags(toJsonArray(emotionLabel));
+            summary.setRiskSignals(riskLevel > 0 ? toRiskSignalsJson(riskLevel) : "[]");
+            summary.setTopicTags("[]");
+            summary.setCreatedAt(Instant.now());
+
+            // R-01：学生消息内容字段级加密后落库
             summary.setContentSummary(fieldEncryptionService.encrypt(summary.getContentSummary()));
             messageSummaryMapper.insert(summary);
         } catch (Exception e) {
@@ -185,15 +210,52 @@ public class MessageSummaryService {
     public void persistAiMessageSummary(SessionState session, int turn, String aiResponse) {
         try {
             if (aiResponse == null || aiResponse.isBlank()) return;
-            MessageSummary summary = MessageSummary.aiMessage(
-                    session.getTenantId(), session.getSessionId(), session.getStudentUserId(),
-                    turn, aiResponse
-            );
+            MessageSummary summary = new MessageSummary();
+            summary.setSummaryId(UUID.randomUUID());
+            summary.setTenantId(session.getTenantId());
+            summary.setSessionId(session.getSessionId());
+            summary.setStudentUserId(session.getStudentUserId());
+            summary.setTurnCount(turn);
+            summary.setSenderType("ai");
+            summary.setContentSummary(truncate(aiResponse, MAX_CONTENT_LENGTH));
+            summary.setRiskLevel(0);
+            summary.setEmotionTags("[]");
+            summary.setRiskSignals("[]");
+            summary.setTopicTags("[]");
+            summary.setCreatedAt(Instant.now());
             // R-01：AI 回复内容字段级加密后落库
             summary.setContentSummary(fieldEncryptionService.encrypt(summary.getContentSummary()));
             messageSummaryMapper.insert(summary);
         } catch (Exception e) {
             log.warn("AI 回复摘要持久化失败: sessionId={}, turn={}", session.getSessionId(), turn, e);
+        }
+    }
+
+    // ===== BA-04：摘要装配私有工具（策略单一入口） =====
+
+    private static String truncate(String s, int maxLen) {
+        if (s == null) return null;
+        return s.length() <= maxLen ? s : s.substring(0, maxLen);
+    }
+
+    /** 单元素 JSON 数组（null → "[]"）；序列化失败兜底 "[]" 不阻断落库 */
+    private String toJsonArray(String value) {
+        if (value == null) return "[]";
+        try {
+            return objectMapper.writeValueAsString(List.of(value));
+        } catch (Exception e) {
+            log.warn("情绪标签 JSON 序列化失败，降级空数组: {}", e.getMessage());
+            return "[]";
+        }
+    }
+
+    /** 风险信号 JSON：[{"level":N}]；序列化失败兜底 "[]" */
+    private String toRiskSignalsJson(int level) {
+        try {
+            return objectMapper.writeValueAsString(List.of(Map.of("level", level)));
+        } catch (Exception e) {
+            log.warn("风险信号 JSON 序列化失败，降级空数组: {}", e.getMessage());
+            return "[]";
         }
     }
 }

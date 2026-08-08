@@ -1,6 +1,6 @@
 # doing/79 架构深化候选清单（第三轮·未覆盖区）方案与 SPEC
 
-> 状态：⏳ 候选登记（BA-02/DA-01+DA-07/FA-01 已定深度 SPEC §22-§24，待议决实施；其余候选待议决）
+> 状态：🔄 部分实施（2026-08-08 完成 16/23：批次A BA-02/DA-01/DA-06/DA-07、批次B FA-01/02/03/04/05/08、批次C BA-01/03/04/05/07/08；剩余 BA-06/FA-06/FA-07/DA-02~05 待议决；实施记录见 §32）
 > 登记编号：DOC-074（2026-08-08，接续 DOC-073）
 > 触发方式：/improve-codebase-architecture（参数：已经审计过的部分排除在外，剩余部分审计）
 > 基线去重：DC-001~012（his/72）、B1~B6/F1~F6/D1~D6（his/77，13 候选在 doing/78 待议决）、AUD-001~071（his/71）、DOC-072 T1-T5（his/76）、ARCH-001~010（his/61~70）——以下 22 候选全部为**未覆盖的新摩擦点**
@@ -436,6 +436,28 @@
 
 ---
 
-## §32 实施记录（议决后填写）
+## §32 实施记录（2026-08-08，/implement 批次A/B/C）
 
-> 范围：待项目负责人议决。选定后按项目惯例落本表或 TASK-TRACKER，实施完成并入主文档并归档 his。
+> 范围：16/23 候选已完成（批次A/B/C，全部「独立小批/随批」候选闭环）；剩余 7 项待议决——BA-06 随 frozen/38、DA-04/DA-05 独立议决、FA-06/FA-07/DA-02/DA-03 未排期。全部候选闭环后并入主文档并归档 his。
+
+| 批次 | 候选 | 结果 | 证据 |
+|---|---|---|---|
+| A | BA-02 导出/周报越权 | ✅ | TeacherController exportStudents/weeklyReport 接入 resolveClassScope（null=全校路径消除）；测试扩展覆盖班级范围收敛 |
+| A | DA-01 tts Dockerfile | ✅ | COPY 补拷 tts_engines/tts_policy 引擎模块；voice Dockerfile 核对无同类遗漏 |
+| A | DA-06 prepare-models | ✅ | deploy.sh 部署前置 --verify 模型投放校验 + 失败门禁 |
+| A | DA-07 CI 构建冒烟 | ✅ | ci.yml 新增 docker-build-smoke job（Dockerfile 构建验证） |
+| B | FA-01 风险等级单源 | ✅ | teacher-web utils/riskLevel.ts 单一导出（0-3 级色/label）+ 6 处替换；OverviewPanel 补 0 级、BigScreen 标签统一、StatsCharts 1/2 级拆两色；riskLevel.test.ts 新增 |
+| B | FA-08 OverviewPanel | ✅ | 双 load 合并单一 load + mountedRef 守卫（重试路径） |
+| B | FA-03 ECharts 集成 | ✅ | useECharts hook 统一生命周期；ProfileRadarChart 改 echarts/core 按需注册（radar） |
+| B | FA-04 回放抽屉 | ✅ | SessionMessagesDrawer 共享（含 SessionSummaryCard）；QualityPanel 复用并补 cancelled 守卫 |
+| B | FA-02 主题色板 | ✅ | student-h5 theme/immersiveStyles.ts 单源（THEME_STYLES + isDarkTheme）；EmotionDiary/RelaxationExercises/Achievements 替换 |
+| B | FA-05 muted 持久化 | ✅ | muted 走 readLocalStorageSafe/writeLocalStorageSafe；useTtsPlayer 初始值读取，跨页生效 |
+| C | BA-01 TTS 假 API | ✅ | 删 /pipeline/schedule + /effectiveness/evaluate 端点及 TtsPipelineScheduler/VoiceEffectivenessTracker/VoiceDegradationPolicy；openapi 契约快照同步 |
+| C | BA-03 mood-check 落库 | ✅ | mood-check 落库 RelaxationSession（ToolboxController）+ 徽章评估收敛 BadgeService 统一入口（日记徽章从 EmotionDiaryService 移入，grounding_master 零消费 badge 清理） |
+| C | BA-04 MessageSummary | ✅ | 策略上移 MessageSummaryService 单一入口（D-7 两级：riskLevel≥2 原文 1024 / <2 语义提炼 ≤200）；JSON 改注入 ObjectMapper；删实体工厂与零消费字段（suggestedNextAction/cbtFields，DB 列保留无迁移）；测试 6 用例平移 |
+| C | BA-05 groundedness | ✅ | 删 evaluateGroundedness 伪信号（请求/返回条数 ≠ 检索/引用数，score 恒 {0,0.33,0.67,1}）与阈值常量；**identifyContentGaps 保留**——代码核实有真实消费（EditorialWorkflowService.operationalReport → GET /editorial/report），§6.1「零调用」分析过时 |
+| C | BA-07 ToolboxService | ✅ | 浅模块删除，用户查询收敛 AuthUserService.findById（ToolboxController 依赖既有服务，分层纪律保持） |
+| C | BA-08 告警/分析 | ✅ | RiskNotifyOutboxService.markDead 接入 AlertService（WARNING，企微 webhook 或日志降级，外呼失败不影响状态标记）；WeComAlertService 构造器注入（去测试反射 setField，删零消费 mentionedList + 3 处配置）；DataAnalytics 三端点 javadoc 冻结声明；双 trend 合并 buildWeeklySessionTrend（统一 key sessions） |
+| 待议决 | BA-06 EntitlementFilter | ⏳ | 随 frozen/38 议决（映射对齐或冻结删 filter） |
+| 待议决 | FA-06/FA-07/DA-02/DA-03 | ⏳ | 未排期（FA-06 神组件治理延续、FA-07 随 shared 迭代、DA-02/03 可见性主题） |
+| 待议决 | DA-04/DA-05 | ⏳ | 独立议决（E2E 门禁成本/收益权衡） |

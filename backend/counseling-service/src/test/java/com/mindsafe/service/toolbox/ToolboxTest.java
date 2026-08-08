@@ -73,7 +73,9 @@ class ToolboxTest {
             assertThat(grounding.durationSec()).isEqualTo(180);
             assertThat(grounding.preMoodCheck()).isTrue();
             assertThat(grounding.postMoodCheck()).isTrue();
-            assertThat(grounding.rewardBadge()).isEqualTo("grounding_master");
+            // BA-03：接地练习无 relaxation 数据源（mood-check 不落库），不声明徽章
+            assertThat(grounding.rewardBadge()).isNull();
+            assertThat(registry.getById("breathing_box").orElseThrow().rewardBadge()).isEqualTo("breathing_star");
         }
     }
 

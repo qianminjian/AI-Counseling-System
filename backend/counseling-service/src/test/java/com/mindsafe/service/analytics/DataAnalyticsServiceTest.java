@@ -192,9 +192,9 @@ class DataAnalyticsServiceTest {
         assertThat(curve.get(0).get("negativeRatio")).isEqualTo(0.5);
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> freq = (List<Map<String, Object>>) result.get("sessionFrequency");
-        // 10 个会话集中在一周内 → 单周分组，会话数不丢失
+        // 10 个会话集中在一周内 → 单周分组，会话数不丢失（BA-08：key 统一为 sessions）
         assertThat(freq).hasSize(1);
-        assertThat(freq.get(0).get("sessionCount")).isEqualTo(10L);
+        assertThat(freq.get(0).get("sessions")).isEqualTo(10L);
     }
 
     @Test

@@ -148,8 +148,8 @@ public class DataAnalyticsService {
         }).collect(Collectors.toList());
         result.put("riskTimeline", riskTimeline);
 
-        // 4. 会话频率趋势（按周）
-        result.put("sessionFrequency", buildSessionFrequency(sessions, start));
+        // 4. 会话频率趋势（按周，BA-08：与 buildWeeklySessionTrend 去重合并）
+        result.put("sessionFrequency", buildWeeklySessionTrend(sessions));
 
         return result;
     }
@@ -233,7 +233,7 @@ public class DataAnalyticsService {
         }
 
         // 月度趋势（按周分组会话数）
-        report.put("weeklyTrend", buildWeeklySessionTrend(allSessions, start));
+        report.put("weeklyTrend", buildWeeklySessionTrend(allSessions));
 
         return report;
     }
@@ -393,21 +393,8 @@ public class DataAnalyticsService {
         return m;
     }
 
-    private List<Map<String, Object>> buildSessionFrequency(List<CounselingSession> sessions, Instant start) {
-        Map<String, Long> byWeek = sessions.stream()
-                .collect(Collectors.groupingBy(
-                        s -> s.getStartedAt().atZone(ZONE_CN).toLocalDate()
-                                .with(java.time.DayOfWeek.MONDAY).toString(),
-                        Collectors.counting()));
-        return byWeek.entrySet().stream().sorted(Map.Entry.comparingByKey()).map(e -> {
-            Map<String, Object> m = new LinkedHashMap<>();
-            m.put("weekStart", e.getKey());
-            m.put("sessionCount", e.getValue());
-            return m;
-        }).collect(Collectors.toList());
-    }
-
-    private List<Map<String, Object>> buildWeeklySessionTrend(List<CounselingSession> sessions, Instant start) {
+    /** BA-08：按周分组会话数（weekStart → sessions），DATA-002/003 共用（原 buildSessionFrequency 重复实现已删） */
+    private List<Map<String, Object>> buildWeeklySessionTrend(List<CounselingSession> sessions) {
         Map<String, Long> byWeek = sessions.stream()
                 .collect(Collectors.groupingBy(
                         s -> s.getStartedAt().atZone(ZONE_CN).toLocalDate()

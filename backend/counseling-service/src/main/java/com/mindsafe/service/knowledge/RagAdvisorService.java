@@ -101,9 +101,6 @@ public class RagAdvisorService {
                 return "";
             }
 
-            // KB-103：groundedness 回收评估（检索有效性日志，低分反哺内容补全）
-            evaluateRetrievalEffectiveness(tenantId, message, chunks);
-
             return format(chunks);
         } catch (Exception e) {
             // 失败安全：RAG 属增强能力，检索异常不影响对话主线
@@ -135,25 +132,6 @@ public class RagAdvisorService {
                 .map(f -> byChunkId.get(f.docId()))
                 .filter(Objects::nonNull)
                 .toList();
-    }
-
-    /**
-     * KB-103 检索有效性评估（groundedness 回收）。
-     * 当前简化：以命中数/请求 topK 作为 groundedness 近似，低分记录日志供运营分析。
-     */
-    private void evaluateRetrievalEffectiveness(UUID tenantId, String query, List<KnowledgeChunk> chunks) {
-        try {
-            // 简化 groundedness：命中数 / 最终注入条数上限
-            int requestedTopK = FINAL_TOP_K;
-            HybridRetrievalService.GroundednessResult result = hybridRetrievalService.evaluateGroundedness(
-                    tenantId.toString(), requestedTopK, chunks.size());
-            if (!result.effective()) {
-                log.info("KB-103 检索低效: tenant={}, groundedness={}, feedback={}",
-                        tenantId, String.format("%.2f", result.groundednessScore()), result.feedback());
-            }
-        } catch (Exception e) {
-            log.debug("KB-103 groundedness 评估失败（不影响业务）: {}", e.getMessage());
-        }
     }
 
     /** 场景触发判定：寒暄闲聊不检索，情绪困扰/求助提问/成长场景才检索 */

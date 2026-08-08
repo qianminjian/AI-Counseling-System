@@ -9,14 +9,16 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 混合检索 RRF 与 groundedness 回收（KB-103，design/49 P2/P3）
+ * 混合检索 RRF 与内容缺口识别（KB-103，design/49 P2/P3）
  * <p>
  * <ul>
  *   <li>混合检索：向量(0.6) + 关键词(0.4) → RRF 融合排序</li>
- *   <li>groundedness 回收：回复是否基于检索内容，低分反哺内容补全</li>
- *   <li>未命中查询日志：高频未命中 → 内容缺口清单</li>
+ *   <li>未命中查询日志：高频未命中 → 内容缺口清单（EditorialWorkflowService 运营报表消费）</li>
  * </ul>
- * 纯函数实现。接线时由 RagAdvisorService 检索流程 + 会话结束异步任务消费。
+ * 纯函数实现。
+ * <p>
+ * BA-05（DOC-074）：groundedness 评估已删除——调用点把「请求条数/返回条数」当「检索数/引用数」，
+ * score 恒 {0,0.33,0.67,1} 伪信号且无看板/metrics 消费者；真计算需回复文本引用分析（无消费方，YAGNI）。
  */
 @Component
 public class HybridRetrievalService {
@@ -29,12 +31,6 @@ public class HybridRetrievalService {
 
     /** RRF 常数 k（标准值 60） */
     public static final int RRF_K = 60;
-
-    /** groundedness 低分阈值（低于此值视为检索没帮上） */
-    public static final double LOW_GROUNDEDNESS_THRESHOLD = 0.4;
-
-    /** C2：groundedness 充分使用阈值（达到即视为检索内容被充分利用） */
-    public static final double FULL_GROUNDEDNESS_THRESHOLD = 0.7;
 
     /** 未命中查询频率阈值（达到即列入缺口清单） */
     public static final int MISS_FREQUENCY_THRESHOLD = 3;
@@ -108,47 +104,6 @@ public class HybridRetrievalService {
                             e.getValue(), src[0], src[1]);
                 })
                 .toList();
-    }
-
-    // ==================== groundedness 回收 ====================
-
-    /** groundedness 评估结果 */
-    public record GroundednessResult(
-            String sessionId,
-            double groundednessScore,
-            boolean effective,
-            String feedback
-    ) {
-    }
-
-    /**
-     * 评估 RAG 注入的 groundedness（回复是否基于检索内容）。
-     * 简化实现：基于检索片段被引用比例。
-     *
-     * @param sessionId       会话 ID
-     * @param retrievedChunks 检索到的片段数
-     * @param citedChunks     回复中实际引用/体现的片段数
-     * @return groundedness 结果
-     */
-    public GroundednessResult evaluateGroundedness(String sessionId,
-                                                   int retrievedChunks, int citedChunks) {
-        if (retrievedChunks == 0) {
-            return new GroundednessResult(sessionId, 0, false, "无检索结果");
-        }
-
-        double score = (double) citedChunks / retrievedChunks;
-        boolean effective = score >= LOW_GROUNDEDNESS_THRESHOLD;
-
-        String feedback;
-        if (score >= FULL_GROUNDEDNESS_THRESHOLD) {
-            feedback = "检索内容被充分利用";
-        } else if (effective) {
-            feedback = "检索内容部分被使用";
-        } else {
-            feedback = "检索没帮上/被忽略，反哺内容补全与检索调优";
-        }
-
-        return new GroundednessResult(sessionId, score, effective, feedback);
     }
 
     // ==================== 未命中查询日志 ====================

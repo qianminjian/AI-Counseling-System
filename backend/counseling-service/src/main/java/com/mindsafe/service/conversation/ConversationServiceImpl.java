@@ -174,7 +174,21 @@ public class ConversationServiceImpl implements ConversationService {
         if (!hasConfidentialityNotice(tenantId, studentUserId)) {
             String notice = ConfidentialityNotice.forGrade(grade);
             greeting = greeting + "\n\n" + notice;
-            messageSummaryMapper.insert(MessageSummary.aiMessage(tenantId, sessionId, studentUserId, 0, notice));
+            // BA-04（DOC-074）：实体工厂删除，AI 消息装配就地收敛（固定字段，合规审计凭据）
+            MessageSummary noticeRecord = new MessageSummary();
+            noticeRecord.setSummaryId(UUID.randomUUID());
+            noticeRecord.setTenantId(tenantId);
+            noticeRecord.setSessionId(sessionId);
+            noticeRecord.setStudentUserId(studentUserId);
+            noticeRecord.setTurnCount(0);
+            noticeRecord.setSenderType("ai");
+            noticeRecord.setContentSummary(notice.length() > 1024 ? notice.substring(0, 1024) : notice);
+            noticeRecord.setRiskLevel(0);
+            noticeRecord.setEmotionTags("[]");
+            noticeRecord.setRiskSignals("[]");
+            noticeRecord.setTopicTags("[]");
+            noticeRecord.setCreatedAt(Instant.now());
+            messageSummaryMapper.insert(noticeRecord);
             log.info("保密边界告知已注入并落库: sessionId={}, student={}, grade={}", sessionId, studentUserId, grade);
         }
 

@@ -20,8 +20,10 @@ import java.util.UUID;
  * <p>
  * 权限：教师/管理员可访问
  * <p>
- * AUD-013：三端点输出个人级数据（studentUserId/里程碑/风险时间线），必须留审计日志；
- * 前端当前未接线（仅 OpenAPI 快照登记），保留服务端能力供后续接入。
+ * AUD-013：三端点输出个人级数据（studentUserId/里程碑/风险时间线），必须留审计日志。
+ * BA-08（DOC-074）：显式冻结——前端当前未接线（仅 OpenAPI 快照登记），服务端能力保留供
+ * teacher-web 后续排期接入；冻结期间禁止删除端点或变更响应结构（DataAnalyticsService 双 trend
+ * 已合并为 buildWeeklySessionTrend，sessionFrequency 响应 key 统一为 sessions）。
  */
 @RestController
 @RequestMapping("/api/v1/analytics")
