@@ -9,7 +9,7 @@
 #
 # 用法：
 #   bash deploy/scripts/prepare-models.sh            # 下载缺失文件（已存在且校验和匹配则跳过）并生成 MANIFEST.sha256
-#   bash deploy/scripts/prepare-models.sh --verify   # 只校验（manifest 比对 + 关键文件冒烟），不下载；CI 门禁用
+#   bash deploy/scripts/prepare-models.sh --verify   # 只校验（manifest 比对 + 关键文件冒烟），不下载；deploy.sh 发布门禁用
 #   MIRROR=https://hf-mirror.com bash ...            # 覆盖镜像源（默认 hf-mirror.com）
 #
 # 依赖：curl、python3、sha256sum/shasum（Linux/macOS 均可）
@@ -17,7 +17,7 @@
 # ARCH-009 E-5：
 # - 每次下载后生成 MANIFEST.sha256（<sha256>  <相对路径>，sha256sum -c 兼容）
 # - 已存在文件按 manifest 校验和匹配才跳过（损坏文件自动重新下载）
-# - --verify 模式供 CI/发布链路做完整性门禁（失败即红）
+# - --verify 模式供发布链路做完整性门禁（失败即红）：deploy.sh DEPLOY_STUDENT 上传前置校验（DA-06）
 
 set -euo pipefail
 

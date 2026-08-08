@@ -208,6 +208,9 @@ if $DEPLOY_BACKEND; then
 fi
 
 if $DEPLOY_STUDENT; then
+  # DA-06：构建前投放端侧模型（whisper-tiny + wespeaker ONNX），缺文件自动下载，失败即阻断
+  echo "📦 端侧模型投放（deploy/scripts/prepare-models.sh）..."
+  bash "$PROJECT_ROOT/deploy/scripts/prepare-models.sh" || { echo "❌ 模型投放失败，中止部署"; exit 1; }
   echo "📦 构建学生端..."
   cd "$PROJECT_ROOT/frontend/student-h5"
   npm run build --silent
@@ -265,7 +268,23 @@ if $DEPLOY_BACKEND; then
   # 同步 backend 根 Dockerfile（context=backend）
 fi
 
-$DEPLOY_STUDENT && retry 3 0 rsync -avz --delete --exclude 'models/' "$PROJECT_ROOT/frontend/student-h5/dist/" "$SERVER:$REMOTE_DIR/frontend/student-h5/dist/"
+# ===== 端侧模型门禁（DA-06：design/04 §模型投放自动化 E-5 随 deploy.sh 通道生效） =====
+# 此前 --verify 声称「CI 门禁用」却零自动消费方；且上传排除 models/ 导致 SAME_ORIGIN 404 静默失效。
+# 现在：本地校验 fail-closed（缺模型阻断发布）+ 模型随 dist 上传（与 design/10 §模型下载一致）。
+if $DEPLOY_STUDENT; then
+  if ! bash "$PROJECT_ROOT/deploy/scripts/prepare-models.sh" --verify; then
+    echo "❌ 端侧模型校验失败（前端 SAME_ORIGIN 依赖 dist/models，缺模型 → 唤醒/声纹 404）"
+    echo "   首次投放请先执行: bash deploy/scripts/prepare-models.sh（下载 whisper-tiny + wespeaker ONNX）"
+    exit 1
+  fi
+  if [ ! -d "$PROJECT_ROOT/frontend/student-h5/dist/models" ]; then
+    echo "❌ dist 缺少 models/ —— 模型投放后需重新构建 student-h5（Vite 复制 public/ → dist/）"
+    echo "   请执行: cd frontend/student-h5 && npm run build"
+    exit 1
+  fi
+fi
+
+$DEPLOY_STUDENT && retry 3 0 rsync -avz --delete "$PROJECT_ROOT/frontend/student-h5/dist/" "$SERVER:$REMOTE_DIR/frontend/student-h5/dist/"
 $DEPLOY_TEACHER && retry 3 0 rsync -avz --delete "$PROJECT_ROOT/frontend/teacher-web/dist/" "$SERVER:$REMOTE_DIR/frontend/teacher-web/dist/"
 $DEPLOY_PARENT && retry 3 0 rsync -avz --delete "$PROJECT_ROOT/frontend/parent-h5/dist/" "$SERVER:$REMOTE_DIR/frontend/parent-h5/dist/"
 
