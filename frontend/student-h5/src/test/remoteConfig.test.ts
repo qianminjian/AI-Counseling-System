@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { readdirSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
 
 /**
  * config/remote.ts 单元测试（CFG-002 前端运行时配置注入）
@@ -116,7 +118,7 @@ describe('config/remote', () => {
       const config = remote.getRemoteConfig()
       expect(config).not.toBeNull()
       expect(config!.voiceprint.verifyThreshold).toBe(0.70)
-      expect(config!.tts.personas).toHaveLength(7)
+      expect(config!.wakeWord.windowSeconds).toBe(2.0)
     })
   })
 
@@ -130,13 +132,13 @@ describe('config/remote', () => {
 
       expect(remote.getConfigValue('voiceprint.verifyThreshold', 0.55)).toBe(0.70)
       expect(remote.getConfigValue('voiceprint.maxTemplates', 5)).toBe(8)
-      expect(remote.getConfigValue('tts.defaultPersona', 'bobo')).toBe('xiaoxing')
+      expect(remote.getConfigValue('wakeWord.windowSeconds', 1.0)).toBe(2.0)
     })
 
     it('远程配置不存在时返回 fallback 值', () => {
       // 未初始化，应返回 fallback
       expect(remote.getConfigValue('voiceprint.verifyThreshold', 0.55)).toBe(0.55)
-      expect(remote.getConfigValue('tts.defaultPersona', 'bobo')).toBe('bobo')
+      expect(remote.getConfigValue('wakeWord.windowSeconds', 1.0)).toBe(1.0)
     })
 
     it('路径不存在时返回 fallback 值', async () => {
@@ -150,15 +152,15 @@ describe('config/remote', () => {
       expect(remote.getConfigValue('voiceprint.nonexistent', 42)).toBe(42)
     })
 
-    it('支持数组类型取值', async () => {
+    it('支持数值类型取值（wakeWord.silenceRmsThreshold）', async () => {
       ;(fetch as any).mockResolvedValue({
         ok: true,
         json: () => Promise.resolve(MOCK_CONFIG),
       })
       await remote.initRemoteConfig()
 
-      const personas = remote.getConfigValue('tts.personas', [])
-      expect(personas).toEqual(['xiaoxing', 'bobo', 'yueliang', 'xiaotaiyang', 'dashu', 'doudou', 'qiqiu'])
+      const threshold = remote.getConfigValue('wakeWord.silenceRmsThreshold', 0.05)
+      expect(threshold).toBe(0.03)
     })
 
     it('支持嵌套对象取值（guideScripts.verify）', async () => {
@@ -198,4 +200,51 @@ describe('config/remote', () => {
       vi.useRealTimers()
     })
   })
+})
+
+/**
+ * FA-12：RemoteConfig 声明/消费面一致
+ * - 声明键清单与 config/remote.ts 的 RemoteConfig 接口同步维护（新增键须两处同步）
+ * - 断言每声明键在 src 非测试代码中存在 getConfigValue 消费点
+ * - 防止「运维改配置静默失效」回潮（声明键无消费点即契约失效）
+ */
+const DECLARED_KEYS = [
+  'voiceprint.verifyThreshold',
+  'voiceprint.maxTemplates',
+  'wakeWord.windowSeconds',
+  'wakeWord.silenceRmsThreshold',
+  'guideScripts.verify',
+  'guideScripts.enroll',
+]
+
+/** 递归扫描 src（排除 test 目录）中所有 getConfigValue('...') 消费引用 */
+function collectConfigRefs(dir: string): string[] {
+  const refs: string[] = []
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = join(dir, entry.name)
+    if (entry.isDirectory()) {
+      if (entry.name === 'test') continue // 排除测试自引用
+      refs.push(...collectConfigRefs(full))
+    } else if (entry.name.endsWith('.ts') || entry.name.endsWith('.tsx')) {
+      const src = readFileSync(full, 'utf8')
+      const re = /getConfigValue\(\s*[`'"]([^`'"]+)[`'"]/g
+      let m: RegExpExecArray | null
+      while ((m = re.exec(src))) refs.push(m[1])
+    }
+  }
+  return refs
+}
+
+describe('RemoteConfig 声明/消费面一致（FA-12）', () => {
+  // 归一化：模板字符串（如 guideScripts.${mode}）→ 静态前缀
+  const normalized = collectConfigRefs(join(process.cwd(), 'src')).map((r) =>
+    r.replace(/\$\{[^}]*\}/g, '').replace(/\.$/, '')
+  )
+
+  for (const key of DECLARED_KEYS) {
+    it(`声明键 ${key} 有消费点`, () => {
+      const hasConsumer = normalized.some((ref) => ref === key || key.startsWith(ref + '.'))
+      expect(hasConsumer, `声明键 ${key} 无 getConfigValue 消费点`).toBe(true)
+    })
+  }
 })

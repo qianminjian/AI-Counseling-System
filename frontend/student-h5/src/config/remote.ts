@@ -15,22 +15,23 @@
 
 import { fetchSystemConfig } from '../api'
 
-/** 远程配置结构（对应后端 SystemConfigProperties） */
+/**
+ * 远程配置结构（对应后端 SystemConfigProperties）
+ *
+ * FA-12 契约收敛：仅声明有前端消费点的键，其余键由后端下发但前端忽略：
+ * - voiceprint.enrollSegments/verifySegments：声纹轮数由 guideScripts 动态决定，无独立消费
+ * - wakeWord.modelId：模型加载走本地 WAKE_MODEL_ID（worker 配置链路），远程改无意义
+ * - tts.defaultPersona/personas：前端默认音色走性别匹配（男→小太阳/女→小星）与
+ *   VOICE_PERSONAS 内置字典，远程配置会覆盖性别匹配造成行为变更，故不声明
+ */
 export interface RemoteConfig {
   voiceprint?: {
     verifyThreshold?: number
     maxTemplates?: number
-    enrollSegments?: number
-    verifySegments?: number
   }
   wakeWord?: {
-    modelId?: string
     windowSeconds?: number
     silenceRmsThreshold?: number
-  }
-  tts?: {
-    defaultPersona?: string
-    personas?: string[]
   }
   guideScripts?: {
     verify?: Array<{ prompt: string; hint: string; duration: number }>
@@ -99,7 +100,7 @@ export function getRemoteConfig(): RemoteConfig | null {
  *
  * @example
  * getConfigValue('voiceprint.verifyThreshold', VP_VERIFY_THRESHOLD)
- * getConfigValue('tts.personas', ['xiaoxing'])
+ * getConfigValue('wakeWord.windowSeconds', 2.0)
  */
 export function getConfigValue<T>(path: string, fallback: T): T {
   if (!cachedConfig) return fallback
