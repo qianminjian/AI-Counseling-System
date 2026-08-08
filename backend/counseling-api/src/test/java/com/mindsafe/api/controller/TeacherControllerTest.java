@@ -130,31 +130,31 @@ class TeacherControllerTest {
     // ===== ③ 数据范围接线（班主任 scope 透传） =====
 
     @Test
-    @DisplayName("exportAlerts 班主任 → getAlerts 携带本班 scope（不再全校）")
+    @DisplayName("exportAlerts 班主任 → getAlertsForExport 携带本班 scope（不再全校）")
     void exportAlerts_classTeacher_passesScope() throws IOException {
         when(teacherService.resolveClassScope(tenantId, teacherUserId, "class_teacher")).thenReturn("CLASS_1");
-        when(teacherService.getAlerts(any(), any(), any(), any(), anyInt())).thenReturn(List.of());
+        when(teacherService.getAlertsForExport(any(), any(), any(), any(), anyInt())).thenReturn(List.of());
         HttpServletResponse response = mock(HttpServletResponse.class);
         when(response.getOutputStream()).thenReturn(mock(ServletOutputStream.class));
         when(response.getWriter()).thenReturn(new PrintWriter(new StringWriter()));
 
         controller.exportAlerts(teacherAuth("class_teacher"), response);
 
-        verify(teacherService).getAlerts(tenantId, "CLASS_1", null, null, 500);
+        verify(teacherService).getAlertsForExport(tenantId, "CLASS_1", null, null, 5000);
     }
 
     @Test
-    @DisplayName("exportAlerts 心理老师 → getAlerts 全校（scope=null）")
+    @DisplayName("exportAlerts 心理老师 → getAlertsForExport 全校（scope=null）")
     void exportAlerts_psychTeacher_passesNullScope() throws IOException {
         when(teacherService.resolveClassScope(tenantId, teacherUserId, "psych_teacher")).thenReturn(null);
-        when(teacherService.getAlerts(any(), any(), any(), any(), anyInt())).thenReturn(List.of());
+        when(teacherService.getAlertsForExport(any(), any(), any(), any(), anyInt())).thenReturn(List.of());
         HttpServletResponse response = mock(HttpServletResponse.class);
         when(response.getOutputStream()).thenReturn(mock(ServletOutputStream.class));
         when(response.getWriter()).thenReturn(new PrintWriter(new StringWriter()));
 
         controller.exportAlerts(teacherAuth("psych_teacher"), response);
 
-        verify(teacherService).getAlerts(tenantId, null, null, null, 500);
+        verify(teacherService).getAlertsForExport(tenantId, null, null, null, 5000);
     }
 
     @Test

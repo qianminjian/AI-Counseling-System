@@ -152,16 +152,55 @@ class TeacherClassScopeTest {
     void getAlerts_withScope_filtersByClass() {
         UUID inClass = UUID.randomUUID();
         UUID otherClass = UUID.randomUUID();
-        // 班级学生查询（DB 已按 classCode 过滤，B5 下沉 SessionAccessService）→ 仅本班学生；事件列表含他班 → 内存过滤剔除
+        // 班级学生查询（DB 已按 classCode 过滤，B5 下沉 SessionAccessService）→ 仅本班学生；
+        // B-01：IN 条件已 SQL 下推，selectPage 返回即本班数据（不再全校分页+内存过滤）
         when(sessionAccessService.listClassStudents(tenantId, "CLASS_1")).thenReturn(List.of(student(inClass, "CLASS_1")));
         when(riskEventMapper.selectPage(any(), any())).thenReturn(new Page<RiskEvent>().setRecords(
-                List.of(alert(inClass), alert(otherClass))));
+                List.of(alert(inClass))));
         when(teacherNoteMapper.selectList(any(Wrapper.class))).thenReturn(List.of());
 
         List<TeacherService.AlertVO> alerts = teacherService.getAlerts(tenantId, "CLASS_1", null, null, 50);
 
         assertEquals(1, alerts.size());
         assertEquals(inClass, alerts.get(0).studentUserId());
+    }
+
+    @Test
+    @DisplayName("getAlerts 带 classScope → 本班学生 ID 作为 IN 条件 SQL 下推（不再内存过滤）")
+    void getAlerts_withScope_pushDownInCondition() {
+        UUID inClass = UUID.randomUUID();
+        UUID otherClass = UUID.randomUUID();
+        when(sessionAccessService.listClassStudents(tenantId, "CLASS_1"))
+                .thenReturn(List.of(student(inClass, "CLASS_1")));
+        when(riskEventMapper.selectPage(any(), any())).thenReturn(new Page<RiskEvent>().setRecords(
+                List.of(alert(inClass))));
+        when(teacherNoteMapper.selectList(any(Wrapper.class))).thenReturn(List.of());
+
+        teacherService.getAlerts(tenantId, "CLASS_1", null, null, 50);
+
+        ArgumentCaptor<LambdaQueryWrapper<RiskEvent>> captor = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(riskEventMapper).selectPage(any(), captor.capture());
+        captor.getValue().getSqlSegment(); // 触发条件参数惰性初始化（MyBatis-Plus 延迟拼参）
+        assertTrue(captor.getValue().getParamNameValuePairs().containsValue(inClass),
+                "本班学生 ID 应作为 IN 条件传入分页查询（SQL 下推，防全校窗口漏报）");
+        assertFalse(captor.getValue().getParamNameValuePairs().containsValue(otherClass),
+                "他班学生 ID 不应出现在查询条件");
+    }
+
+    @Test
+    @DisplayName("getAlertsForExport 导出上限 5000（不被列表 100 钳制静默截断）")
+    void getAlertsForExport_usesExportHardLimit() {
+        UUID s1 = UUID.randomUUID();
+        when(riskEventMapper.selectPage(any(), any())).thenReturn(new Page<RiskEvent>().setRecords(
+                List.of(alert(s1))));
+        when(teacherNoteMapper.selectList(any(Wrapper.class))).thenReturn(List.of());
+
+        List<TeacherService.AlertVO> alerts = teacherService.getAlertsForExport(tenantId, null, null, null, 500);
+
+        assertEquals(1, alerts.size());
+        ArgumentCaptor<Page<RiskEvent>> pageCaptor = ArgumentCaptor.forClass(Page.class);
+        verify(riskEventMapper).selectPage(pageCaptor.capture(), any());
+        assertEquals(500, pageCaptor.getValue().getSize(), "导出路径请求 500 不应被钳为 100");
     }
 
     @Test

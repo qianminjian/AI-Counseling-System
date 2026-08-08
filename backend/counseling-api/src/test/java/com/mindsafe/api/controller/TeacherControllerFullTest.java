@@ -417,7 +417,7 @@ class TeacherControllerFullTest {
     @DisplayName("exportAlerts CSV 含转义（逗号字段加引号）+ 审计")
     void exportAlerts_csvEscape() throws IOException {
         when(teacherService.resolveClassScope(tenantId, teacherUserId, "psych_teacher")).thenReturn(null);
-        when(teacherService.getAlerts(tenantId, null, null, null, 500))
+        when(teacherService.getAlertsForExport(tenantId, null, null, null, 5000))
                 .thenReturn(List.of(new TeacherService.AlertVO(
                         UUID.randomUUID(), studentUserId, "小星", "自伤,高风险", 3, "open",
                         Instant.now(), teacherUserId, false)));

@@ -243,7 +243,7 @@ public class TeacherService {
     // ===== 预警队列 =====
 
     public List<AlertVO> getAlerts(UUID tenantId, String status, Integer minLevel, int limit) {
-        return getAlerts(tenantId, null, status, minLevel, limit);
+        return getAlerts(tenantId, null, status, minLevel, limit, 100);
     }
 
     /**
@@ -252,6 +252,18 @@ public class TeacherService {
      * @param classScope 班级范围（null=全校；空串=无可见范围，返回空列表）
      */
     public List<AlertVO> getAlerts(UUID tenantId, String classScope, String status, Integer minLevel, int limit) {
+        return getAlerts(tenantId, classScope, status, minLevel, limit, 100);
+    }
+
+    /**
+     * 预警导出路径（B-01：独立上限 5000，不再被列表 100 钳制静默截断；超限时由调用方显式提示）。
+     */
+    public List<AlertVO> getAlertsForExport(UUID tenantId, String classScope, String status, Integer minLevel, int limit) {
+        return getAlerts(tenantId, classScope, status, minLevel, limit, 5000);
+    }
+
+    private List<AlertVO> getAlerts(UUID tenantId, String classScope, String status, Integer minLevel,
+                                    int limit, int hardLimit) {
         // 班级范围解析：先确认该班存在学生，空班/未绑定班级直接返回空列表（B5：查询下沉 SessionAccessService）
         Set<UUID> classStudentIds = null;
         if (classScope != null) {
@@ -271,19 +283,17 @@ public class TeacherService {
         if (minLevel != null) {
             wrapper.ge(RiskEvent::getRiskLevel, minLevel);
         }
+        // B-01：班级范围下推 SQL（in 本班学生集合），不再先全校分页再内存过滤——
+        // 否则本班低风险/较旧事件滑出前 100 窗口即漏报
+        if (classStudentIds != null) {
+            wrapper.in(RiskEvent::getStudentUserId, classStudentIds);
+        }
         wrapper.orderByDesc(RiskEvent::getRiskLevel)
                 .orderByDesc(RiskEvent::getDetectedAt);
 
         // AUD-043：分页插件安全化，替代 .last("LIMIT ...") 字符串拼接
-        Page<RiskEvent> pageResult = riskEventMapper.selectPage(new Page<>(1, Math.min(limit, 100), false), wrapper);
+        Page<RiskEvent> pageResult = riskEventMapper.selectPage(new Page<>(1, Math.min(limit, hardLimit), false), wrapper);
         List<RiskEvent> events = pageResult.getRecords();
-        // 班级过滤（内存过滤，与 getHighRiskStudents 同模式，避免 inSql 注入面）
-        if (classStudentIds != null) {
-            Set<UUID> finalIds = classStudentIds;
-            events = events.stream()
-                    .filter(e -> finalIds.contains(e.getStudentUserId()))
-                    .toList();
-        }
         Set<UUID> caseTrackedStudents = getCaseTrackedStudentIds(tenantId);
 
         // 批量查询学生信息（避免 N+1）

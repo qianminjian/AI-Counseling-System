@@ -253,6 +253,9 @@ public class TeacherController {
     private static final DateTimeFormatter CSV_DATE_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
             .withZone(ZoneId.of("Asia/Shanghai"));
 
+    /** 预警导出上限（B-01：导出路径独立上限，与列表 100 钳制解耦；超限显式提示截断） */
+    private static final int EXPORT_ALERTS_HARD_LIMIT = 5000;
+
     /** 导出预警记录 CSV */
     @GetMapping("/teacher/export/alerts")
     public void exportAlerts(Authentication auth, HttpServletResponse response) throws IOException {
@@ -260,8 +263,11 @@ public class TeacherController {
         UUID userId = (UUID) auth.getPrincipal();
         auditLogService.log(ctx.tenantId(), userId, "EXPORT_ALERTS", "export");
         // P1 审计修复：导出跟随数据范围（班主任仅导出本班，不再全校可见）
+        // B-01：导出路径独立上限 5000（不再被列表 100 钳制静默截断）
+        // M1（CodeReview）：limit 传 EXPORT_ALERTS_HARD_LIMIT——分页大小 = min(limit, 5000)，
+        // 若传 500 则最多取 500 条，下方截断提示永不触发（死代码）
         String classScope = teacherService.resolveClassScope(ctx.tenantId(), ctx.userId(), ctx.userType());
-        List<TeacherService.AlertVO> alerts = teacherService.getAlerts(ctx.tenantId(), classScope, null, null, 500);
+        List<TeacherService.AlertVO> alerts = teacherService.getAlertsForExport(ctx.tenantId(), classScope, null, null, EXPORT_ALERTS_HARD_LIMIT);
 
         response.setContentType("text/csv; charset=UTF-8");
         response.setHeader("Content-Disposition", "attachment; filename=alerts_export.csv");
@@ -269,6 +275,10 @@ public class TeacherController {
         response.getOutputStream().write(new byte[]{(byte) 0xEF, (byte) 0xBB, (byte) 0xBF});
 
         PrintWriter w = response.getWriter();
+        // B-01：显式截断提示（不再静默）
+        if (alerts.size() >= EXPORT_ALERTS_HARD_LIMIT) {
+            w.println("# 提示：预警记录达到导出上限 " + EXPORT_ALERTS_HARD_LIMIT + " 条，数据已截断，请缩小范围后分批导出");
+        }
         w.println("学生,风险类型,风险等级,状态,检测时间,处理人");
         for (var a : alerts) {
             w.printf("%s,%s,%d,%s,%s,%s%n",
