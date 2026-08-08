@@ -11,13 +11,12 @@ MindSafe 语音分析微服务
 
 import io
 import logging
-import re
 import subprocess
 import tempfile
 import threading
 import os
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 
 import numpy as np
@@ -28,6 +27,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel
 
 from config import load_config
+from asr_engines import ASRBackendError, DashScopeASRBackend, FunASRBackend
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("voice-service")
@@ -138,7 +138,6 @@ if ASR_ENGINE == "funasr":
 
 elif ASR_ENGINE == "dashscope":
     import dashscope
-    from dashscope.audio.asr import Recognition, RecognitionCallback, RecognitionResult
 
     dashscope.api_key = DASHSCOPE_API_KEY
     logger.info("DashScope Paraformer-V2 ASR 就绪")
@@ -160,6 +159,15 @@ else:
     logger.info("SER 已通过 SER_ENABLED=false 显式禁用")
 
 logger.info(f"✅ 语音分析服务就绪 [ASR={ASR_ENGINE}, SER={'emotion2vec+' if emotion_model else 'disabled'}]，端口 10095")
+
+# ===== ASR 引擎装配（D2：适配器 seam，实现与测试见 asr_engines.py / test_asr_engines.py） =====
+if ASR_ENGINE == "dashscope":
+    _ASR_BACKEND = DashScopeASRBackend(
+        model=_CONFIG["asr"]["dashscope_model"],
+        api_key=DASHSCOPE_API_KEY,
+    )
+else:
+    _ASR_BACKEND = FunASRBackend(model=asr_model)
 
 
 # ===== 数据模型 =====
@@ -210,42 +218,7 @@ def health():
     return {"status": "UP", "asr_engine": ASR_ENGINE, "asr_model": asr_model_name, "ser_model": ser_model_name}
 
 
-# ===== DashScope ASR 实现 =====
-
-
-def _dashscope_asr(wav_path: str) -> str:
-    """通过 DashScope Recognition SDK 进行语音转写（Paraformer-V2，WebSocket 协议，同步模式）"""
-    recognition = Recognition(
-        model=_CONFIG["asr"]["dashscope_model"],
-        format="wav",
-        sample_rate=16000,
-        callback=RecognitionCallback(),  # no-op callback, call() 模式同步返回
-    )
-    result = recognition.call(file=wav_path)
-
-    if result.status_code != 200:
-        logger.error(f"DashScope ASR 调用失败: status={result.status_code}, code={result.code}, msg={result.message}")
-        raise HTTPException(status_code=502, detail=f"DashScope ASR 服务错误: {result.message}")
-
-    # 提取所有句子文本拼接
-    sentences = result.get_sentence() if hasattr(result, 'get_sentence') else []
-    if isinstance(sentences, dict):
-        sentences = [sentences]
-    text = "".join(s.get("text", "") for s in (sentences or []))
-    logger.info(f"DashScope ASR 转写完成: text_len={len(text)}, sentences={len(sentences or [])}")
-    return text.strip()
-
-
-# ===== FunASR 本地实现 =====
-
-def _funasr_asr(wav_path: str) -> str:
-    """本地 FunASR SenseVoiceSmall 转写"""
-    result = asr_model.generate(input=wav_path, language="zh", use_itn=True)
-    text = ""
-    if result and len(result) > 0:
-        text = result[0].get("text", "")
-    # 清洗 SenseVoice 特殊标记
-    return re.sub(r"<\|[^|]*\|>", "", text).strip()
+# ===== ASR 实现（D2：已收敛至 asr_engines.py 适配器层，端点经 _ASR_BACKEND.transcribe 调用） =====
 
 
 def _funasr_ser(wav_path: str) -> EmotionResult:
@@ -301,7 +274,7 @@ async def analyze_voice(file: UploadFile = File(...)):
         duration = len(audio_data) / sample_rate if sample_rate > 0 else 0.0
 
         # ===== ASR + SER 并行执行 =====
-        asr_fn = _dashscope_asr if ASR_ENGINE == "dashscope" else _funasr_asr
+        asr_fn = _ASR_BACKEND.transcribe
 
         if emotion_model is not None:
             # ASR 和 SER 并行（ASR 可能是网络IO或CPU，SER 是CPU，并行提升响应速度）
@@ -344,9 +317,14 @@ async def analyze_voice(file: UploadFile = File(...)):
         _record_voice_request("timeout", time.time() - t_start)
         logger.error(f"ASR/SER 分析超时 ({VOICE_ANALYZE_TIMEOUT}s)")
         raise HTTPException(status_code=504, detail="语音分析超时")
+    except ASRBackendError as e:
+        # D2：上游 DashScope ASR 错误（非 200 / SDK 缺失）→ 502（原 _dashscope_asr 语义）
+        _record_voice_request("error", time.time() - t_start)
+        logger.error(f"DashScope ASR 服务错误: {e}")
+        raise HTTPException(status_code=502, detail=f"DashScope ASR 服务错误: {e}")
     except HTTPException:
         _record_voice_request("error", time.time() - t_start)
-        raise  # DashScope 502 等已包装的异常直接抛出
+        raise  # 已包装的异常直接抛出
     except Exception as e:
         _record_voice_request("error", time.time() - t_start)
         logger.error(f"语音分析失败: {e}", exc_info=True)

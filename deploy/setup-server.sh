@@ -101,7 +101,7 @@ echo "  Configs synced to /guju/mindsafe/deploy/"
 #    DC-002：cron 必须指向 deploy/ 整目录内的 backup.sh（该目录由本脚本第 5 步完整同步，
 #    恒存在）；历史故障是 cron 指向 deploy/ 目录之外的备份脚本路径——该路径从不被
 #    任何脚本创建，导致每日备份静默失败；写入前 fail-fast 校验脚本文件存在。
-echo "[6/7] Configuring backup cron..."
+echo "[6/6] Configuring backup cron..."
 # DC-002 fail-fast：备份脚本缺失时拒绝写入 cron，避免 cron 指向不存在的文件（历史故障）
 [ -f "$SCRIPT_DIR/backup.sh" ] || { echo "❌ 未找到 $SCRIPT_DIR/backup.sh——备份脚本缺失，拒绝写入 cron"; exit 1; }
 CRON_LINE="0 2 * * * /guju/mindsafe/deploy/backup.sh >> /guju/mindsafe/logs/backup.log 2>&1"
@@ -112,19 +112,14 @@ else
     echo "  backup cron 已写入: $CRON_LINE"
 fi
 
-# 7. GHCR 登录提示
-echo "[7/7] Docker GHCR login..."
-echo "  Run manually: docker login ghcr.io -u <your-github-username>"
-echo "  Use a GitHub Personal Access Token (read:packages) as password"
-
+# 7. 收尾（D6：取消 CD 后（DOC-063）镜像在服务器本地构建（deploy.sh → docker compose build），GHCR login / GitHub Secrets 已无用）
+echo "[7/7] Setup complete"
 echo ""
 echo "===== Setup Complete ====="
 echo ""
 echo "Next steps:"
 echo "  1. Edit /guju/mindsafe/deploy/.env (DB_PASSWORD, REDIS_PASSWORD, LLM_API_KEY, JWT_SECRET)"
-echo "  2. docker login ghcr.io -u <github-username>"
-echo "  3. cd /guju/mindsafe/deploy && docker compose -f docker-compose.prod.yml up -d"
-echo "  4. Configure GitHub Secrets: DEPLOY_HOST, DEPLOY_USER, DEPLOY_SSH_KEY, DEPLOY_KNOWN_HOSTS, SMOKE_URL"
+echo "  2. cd /guju/mindsafe/deploy && docker compose -f docker-compose.prod.yml up -d"
 echo ""
 echo "阿里云注意事项:"
 echo "  - 安全组需开放 80/443 端口（ECS → 安全组 → 配置规则）"

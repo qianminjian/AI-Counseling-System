@@ -15,6 +15,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/backup-common.sh"
 
+# 验证 schema 参数化（D6：多租户库默认 tenant_template，可用 TENANT_SCHEMA 环境变量覆盖）
+TENANT_SCHEMA="${TENANT_SCHEMA:-tenant_template}"
+
 usage() {
     echo "用法: $0 <备份路径> [--force]"
     echo ""
@@ -98,8 +101,8 @@ log "恢复完成"
 
 # 验证
 log "验证数据库连接..."
-# fix-deploy：users 表在 tenant_template schema 中，需限定 schema
-docker exec "${CONTAINER_NAME}" psql -U "${DB_USER}" -d "${DB_NAME}" -c "SELECT count(*) AS user_count FROM tenant_template.users;" 2>/dev/null && \
+# fix-deploy：users 表在 tenant_template schema 中，需限定 schema（D6：schema 已参数化）
+docker exec "${CONTAINER_NAME}" psql -U "${DB_USER}" -d "${DB_NAME}" -c "SELECT count(*) AS user_count FROM ${TENANT_SCHEMA}.users;" 2>/dev/null && \
     log "验证通过" || log "WARNING: 验证查询失败，请手动检查"
 
 log "===== 恢复任务结束 ====="

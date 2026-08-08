@@ -228,19 +228,27 @@ if $DEPLOY_PARENT; then
   echo "✅ 家长端构建完成"
 fi
 
-# ===== rsync 重试封装 =====
-rsync_retry() {
-  local max_attempts=3
+# ===== 带重试的统一执行器（D4：收敛 rsync/build/nginx 三处重试变体） =====
+# 用法: retry <最大次数> <重试间隔秒> <命令...>
+# 间隔传 0 时使用递增退避（1s, 2s, 3s...）；警告走 stderr（不污染命令 stdout 捕获）
+retry() {
+  local max_attempts="$1" delay="$2"
+  shift 2
   local attempt=1
-  while [ $attempt -le $max_attempts ]; do
-    if rsync "$@"; then
+  while [ "$attempt" -le "$max_attempts" ]; do
+    if "$@"; then
       return 0
     fi
-    echo "⚠️  rsync 第 $attempt 次失败，${attempt}s 后重试..."
-    sleep $attempt
+    if [ "$attempt" -eq "$max_attempts" ]; then
+      break
+    fi
+    local wait_secs="$delay"
+    [ "$delay" -eq 0 ] && wait_secs="$attempt"
+    echo "⚠️  第 ${attempt} 次失败，${wait_secs}s 后重试: $*" >&2
+    sleep "$wait_secs"
     attempt=$((attempt + 1))
   done
-  echo "❌ rsync 重试 $max_attempts 次后仍失败"
+  echo "❌ 重试 ${max_attempts} 次后仍失败: $*" >&2
   return 1
 }
 
@@ -250,32 +258,32 @@ echo "🚀 部署到服务器..."
 
 if $DEPLOY_BACKEND; then
   # backend compose build context = ../backend（多阶段源码构建），排除构建产物与大文件
-  rsync_retry -avz --delete \
+  retry 3 0 rsync -avz --delete \
     --exclude 'target/' --exclude '.git/' \
     --exclude 'tts-service/wheels/' \
     "$PROJECT_ROOT/backend/" "$SERVER:$REMOTE_DIR/backend/"
   # 同步 backend 根 Dockerfile（context=backend）
 fi
 
-$DEPLOY_STUDENT && rsync_retry -avz --delete --exclude 'models/' "$PROJECT_ROOT/frontend/student-h5/dist/" "$SERVER:$REMOTE_DIR/frontend/student-h5/dist/"
-$DEPLOY_TEACHER && rsync_retry -avz --delete "$PROJECT_ROOT/frontend/teacher-web/dist/" "$SERVER:$REMOTE_DIR/frontend/teacher-web/dist/"
-$DEPLOY_PARENT && rsync_retry -avz --delete "$PROJECT_ROOT/frontend/parent-h5/dist/" "$SERVER:$REMOTE_DIR/frontend/parent-h5/dist/"
+$DEPLOY_STUDENT && retry 3 0 rsync -avz --delete --exclude 'models/' "$PROJECT_ROOT/frontend/student-h5/dist/" "$SERVER:$REMOTE_DIR/frontend/student-h5/dist/"
+$DEPLOY_TEACHER && retry 3 0 rsync -avz --delete "$PROJECT_ROOT/frontend/teacher-web/dist/" "$SERVER:$REMOTE_DIR/frontend/teacher-web/dist/"
+$DEPLOY_PARENT && retry 3 0 rsync -avz --delete "$PROJECT_ROOT/frontend/parent-h5/dist/" "$SERVER:$REMOTE_DIR/frontend/parent-h5/dist/"
 
 
 if $DEPLOY_TTS; then
   # 审计 P2-24：wheels/ 为可再生的本地构建产物，不再随 rsync 上传（Dockerfile 已改在线安装）
-  rsync_retry -avz --delete --exclude 'wheels/' "$PROJECT_ROOT/backend/tts-service/" "$SERVER:$REMOTE_DIR/backend/tts-service/"
+  retry 3 0 rsync -avz --delete --exclude 'wheels/' "$PROJECT_ROOT/backend/tts-service/" "$SERVER:$REMOTE_DIR/backend/tts-service/"
 fi
 
 if $DEPLOY_VOICE; then
-  rsync_retry -avz --delete "$PROJECT_ROOT/backend/voice-service/" "$SERVER:$REMOTE_DIR/backend/voice-service/"
+  retry 3 0 rsync -avz --delete "$PROJECT_ROOT/backend/voice-service/" "$SERVER:$REMOTE_DIR/backend/voice-service/"
 fi
 
 # 同步 deploy/ 目录（compose + nginx 配置 + 运维脚本），变更检测命中 deploy/ 时为全量部署
-rsync_retry -avz --exclude '.env' "$PROJECT_ROOT/deploy/" "$SERVER:$REMOTE_DIR/deploy/"
+retry 3 0 rsync -avz --exclude '.env' "$PROJECT_ROOT/deploy/" "$SERVER:$REMOTE_DIR/deploy/"
 
 # ===== 上传 service-manager.sh（确保服务器有最新版本） =====
-rsync_retry -avz "$PROJECT_ROOT/service-manager.sh" "$SERVER:$REMOTE_DIR/service-manager.sh"
+retry 3 0 rsync -avz "$PROJECT_ROOT/service-manager.sh" "$SERVER:$REMOTE_DIR/service-manager.sh"
 ssh "${SSH_OPTS[@]}" "$SERVER" "chmod +x $REMOTE_DIR/service-manager.sh"
 
 # ===== 清理 CD 残留（DOC-063，2026-08-07） =====
@@ -304,17 +312,8 @@ $DEPLOY_VOICE && BUILD_TARGETS="$BUILD_TARGETS voice-service"
 
 if [ -n "$BUILD_TARGETS" ]; then
   echo "🔨 构建镜像:$BUILD_TARGETS"
-  # build 重试 3 次（对齐 CD pull 重试教训 doing/72 §2.2：服务器在线下载依赖同样受网络抖动影响）
-  BUILD_OK=false
-  for attempt in 1 2 3; do
-    if ssh "${SSH_OPTS[@]}" "$SERVER" "cd $REMOTE_DIR/deploy && docker compose -f docker-compose.prod.yml build $BUILD_TARGETS"; then
-      BUILD_OK=true
-      break
-    fi
-    echo "⚠️ 镜像构建第 $attempt 次失败，60s 后重试（网络抖动兜底）..."
-    sleep 60
-  done
-  if [ "$BUILD_OK" != true ]; then
+  # build 重试 3 次、固定间隔 60s（对齐 CD pull 重试教训 doing/72 §2.2：服务器在线下载依赖同样受网络抖动影响）
+  if ! retry 3 60 ssh "${SSH_OPTS[@]}" "$SERVER" "cd $REMOTE_DIR/deploy && docker compose -f docker-compose.prod.yml build $BUILD_TARGETS"; then
     echo "❌ 镜像构建重试 3 次仍失败，部署中止（服务仍运行旧版本）"
     exit 1
   fi
@@ -356,25 +355,18 @@ echo "DEPLOYED_AT=$(date -Iseconds)" >> "$STATE_FILE"
 check_nginx_paths() {
   # $1 = 空格分隔的 app:path 列表（如 "student:/guju/.../student-h5/dist/"）
   local specs="$1"
-  local attempt=1 rc=0 out=""
+  local out=""
   local cmd="" spec app dir
   for spec in $specs; do
     app="${spec%%:*}"
     dir="${spec#*:}"
     cmd="${cmd} if grep -q '${dir}' /etc/nginx/nginx.conf; then echo 'OK:${app}'; else echo 'MISS:${app}'; fi;"
   done
-  while [ "$attempt" -le 3 ]; do
-    out=$(ssh -o ConnectTimeout=10 -o BatchMode=yes "$SERVER" "$cmd" 2>&1)
-    rc=$?
-    [ "$rc" -eq 0 ] && break
-    echo "⚠️  ssh 连接失败（第 ${attempt} 次），5s 后重试..."
-    sleep 5
-    attempt=$((attempt + 1))
-  done
-  if [ "$rc" -ne 0 ]; then
+  # D4：复用 retry 执行器 + SSH_OPTS（追加 BatchMode 防交互挂起）；警告走 stderr，成功时 stdout 仅含校验行
+  out=$(retry 3 5 ssh "${SSH_OPTS[@]}" -o BatchMode=yes "$SERVER" "$cmd" 2>&1) || {
     echo "⚠️  ssh 连接失败 3 次，无法校验 nginx 路径——请人工确认 nginx 配置后重跑"
     return 1
-  fi
+  }
   local miss="" line
   while read -r line; do
     case "$line" in

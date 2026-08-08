@@ -25,12 +25,16 @@ HEALTH_MAX_RETRIES=3
 HEALTH_POLL_INTERVAL=5
 HEALTH_MAX_POLLS=12  # 每个服务最多等 60s
 
-# 健康检查需要的密钥变量（仅按需加载 REDIS_PASSWORD，其他变量不暴露给本脚本环境）
-# 2026-08-06 切换后：生产 .env 位于 $COMPOSE_DIR/deploy/.env（老套 /guju/mindsafe/.env 已停用）
-if [ -f /guju/mindsafe/deploy/.env ]; then
-  REDIS_PASSWORD=$(grep '^REDIS_PASSWORD=' /guju/mindsafe/deploy/.env | head -1 | cut -d= -f2-)
-  export REDIS_PASSWORD
-fi
+# ===== .env 读取单点（D4：收敛散落 grep；仅按需加载密钥变量，其他变量不暴露给本脚本环境） =====
+# 2026-08-06 切换后：生产 .env 位于 $COMPOSE_DIR/.env（老套 /guju/mindsafe/.env 已停用）
+ENV_FILE="$COMPOSE_DIR/.env"
+load_env_var() {
+  # $1 = 变量名；echo 变量值（文件缺失或未定义时输出空）
+  [ -f "$ENV_FILE" ] || { echo ""; return 0; }
+  grep "^$1=" "$ENV_FILE" | head -1 | cut -d= -f2- || true
+}
+export REDIS_PASSWORD
+REDIS_PASSWORD="$(load_env_var REDIS_PASSWORD)"
 
 # 颜色（终端友好）
 RED='\033[0;31m'
@@ -83,7 +87,23 @@ check_health() {
       docker exec -e REDIS_PASSWORD="$REDIS_PASSWORD" "${CONTAINER_NAME[redis]}" redis-cli -a "$REDIS_PASSWORD" --no-auth-warning ping 2>/dev/null | grep -q PONG
       ;;
     tts)
-      docker exec "${CONTAINER_NAME[tts]}" python -c "import urllib.request; urllib.request.urlopen('http://localhost:10096/health')" >/dev/null 2>&1
+      # D5：消费 /health 的 DEGRADED 语义（降级 ≠ 宕机，不因引擎降级判服务不健康）
+      #   cosyvoice-cloud=一级引擎可用；edge-tts/none=降级（告警但仍视为健康）
+      local engine
+      engine=$(docker exec "${CONTAINER_NAME[tts]}" python -c "
+import json, urllib.request
+try:
+    data = json.load(urllib.request.urlopen('http://localhost:10096/health', timeout=5))
+    print(data.get('engine', ''))
+except Exception:
+    raise SystemExit(2)  # 接口不可达/解析失败 → 非 0 退出（判不健康，与原语义一致）
+" 2>/dev/null) || { log_warn "tts /health 读取失败（视为不健康）"; return 1; }
+      case "$engine" in
+        cosyvoice-cloud) return 0 ;;
+        edge-tts) log_warn "TTS 降级运行（engine=edge-tts，云端 CosyVoice 不可用），请关注上游 API Key/配额"; return 0 ;;
+        none)     log_warn "TTS 引擎全部不可用（engine=none），合成请求将 503——请检查服务配置"; return 0 ;;
+        *)        log_warn "tts /health engine 未知（engine=${engine:-空}）——请人工检查 TTS 状态"; return 0 ;;
+      esac
       ;;
     voice)
       docker exec "${CONTAINER_NAME[voice]}" python -c "import urllib.request; urllib.request.urlopen('http://localhost:10095/health')" >/dev/null 2>&1
