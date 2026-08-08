@@ -96,7 +96,28 @@ if [ -n "$ROLLBACK_TARGET" ]; then
   exit 0
 fi
 
+# ===== 部署计时与监控 + 日志审计（DOC-077/078，doing/80/81） =====
+# 库提供：步骤计时/历史基线/阈值判定/信号汇总/固定格式汇报/失败模式知识库
+#        + 日志回归分析（R1-R6）/固定审计报告/主动修复（A1 轮转）
+# shellcheck disable=SC1090
+source "$PROJECT_ROOT/deploy/scripts/deploy-metrics.sh"
+# shellcheck disable=SC1090
+source "$PROJECT_ROOT/deploy/scripts/deploy-audit.sh"
+LOG_DIR="$PROJECT_ROOT/logs/deploy"
+mkdir -p "$LOG_DIR"
+LOG_FILE="$LOG_DIR/deploy-$(date +%Y%m%d-%H%M%S).log"
+# 全量输出 tee 到日志（bash 3.2 进程替换；日志为基线数据源）
+exec > >(tee -a "$LOG_FILE") 2>&1
+# 部署流程标志：门禁拦截/参数错误（DM_IN_FLOW=0）不输出汇报/审计，保持快速失败
+DM_IN_FLOW=0
+# 部署结束统一出口（trap 链两段式，DOC-078）：
+#   1) dm_finish_deploy：补 end 未完成步骤 → 汇报 → 统计段 → 快照
+#   2) dm_audit_run：日志回归分析（R1-R6）→ A1 轮转 → 审计报告
+#      （仅进入部署流程时审计；失败部署同样审计——失败是最需要分析的样本）
+trap 'rc=$?; dm_finish_deploy "$rc" "${COMPONENTS:-}" "$STATE_FILE" "$LOG_DIR" "$LOG_FILE"; if [ "${DM_IN_FLOW:-0}" = "1" ]; then dm_audit_run "$LOG_DIR" "$LOG_FILE"; fi' EXIT
+
 # ===== 前置检查 =====
+dm_start precheck
 echo "🔍 前置检查..."
 
 if [ -n "$(git status --porcelain)" ]; then
@@ -127,8 +148,10 @@ if [ -d "$MIGRATION_DIR" ]; then
   fi
   echo "✅ Flyway 迁移脚本版本号无冲突"
 fi
+dm_end precheck
 
 # ===== 变更检测 =====
+dm_start detect
 DEPLOY_BACKEND=$FORCE_BACKEND
 DEPLOY_STUDENT=$FORCE_STUDENT
 DEPLOY_TEACHER=$FORCE_TEACHER
@@ -162,6 +185,7 @@ elif ! $FORCE_BACKEND && ! $FORCE_STUDENT && ! $FORCE_TEACHER && ! $FORCE_PARENT
     CHANGED=$(git diff --name-only "$LAST_COMMIT" HEAD)
 
     if [ -z "$CHANGED" ]; then
+      dm_end detect
       echo "✅ 无变更，无需部署"
       exit 0
     fi
@@ -190,6 +214,7 @@ $DEPLOY_TTS && COMPONENTS="$COMPONENTS tts"
 $DEPLOY_VOICE && COMPONENTS="$COMPONENTS voice"
 
 if [ -z "$COMPONENTS" ]; then
+  dm_end detect
   echo "✅ 无需部署的组件变更"
   # 仍更新状态文件（可能有 design/ 等无需部署的变更）
   echo "LAST_DEPLOYED_COMMIT=$LOCAL" > "$STATE_FILE"
@@ -198,37 +223,50 @@ if [ -z "$COMPONENTS" ]; then
 fi
 
 echo "🎯 待部署组件:$COMPONENTS"
+dm_end detect
 echo ""
+# 进入部署流程：此后所有失败路径由 trap 统一输出汇报与统计段
+DM_IN_FLOW=1
 
 # ===== 选择性构建 =====
 if $DEPLOY_BACKEND; then
   echo "📦 后端：本地预检编译（服务器 compose build 会重新打包）..."
+  dm_start compile-backend
   cd "$PROJECT_ROOT/backend"
   mvn -q compile -DskipTests -pl counseling-app -am || { echo "❌ 后端编译失败，中止部署"; exit 1; }
+  dm_end compile-backend
   echo "✅ 后端编译通过"
 fi
 
 if $DEPLOY_STUDENT; then
   # DA-06：构建前投放端侧模型（whisper-tiny + wespeaker ONNX），缺文件自动下载，失败即阻断
   echo "📦 端侧模型投放（deploy/scripts/prepare-models.sh）..."
+  dm_start prepare-models
   bash "$PROJECT_ROOT/deploy/scripts/prepare-models.sh" || { echo "❌ 模型投放失败，中止部署"; exit 1; }
+  dm_end prepare-models
   echo "📦 构建学生端..."
+  dm_start build-student
   cd "$PROJECT_ROOT/frontend/student-h5"
   npm run build --silent
+  dm_end build-student
   echo "✅ 学生端构建完成"
 fi
 
 if $DEPLOY_TEACHER; then
   echo "📦 构建教师端..."
+  dm_start build-teacher
   cd "$PROJECT_ROOT/frontend/teacher-web"
   npm run build --silent
+  dm_end build-teacher
   echo "✅ 教师端构建完成"
 fi
 
 if $DEPLOY_PARENT; then
   echo "📦 构建家长端..."
+  dm_start build-parent
   cd "$PROJECT_ROOT/frontend/parent-h5"
   npm run build --silent
+  dm_end build-parent
   echo "✅ 家长端构建完成"
 fi
 
@@ -256,13 +294,24 @@ retry() {
   return 1
 }
 
+# ===== rsync 降速自愈（DOC-077 L2） =====
+# 3Mbps 上行带宽下常规速率重传易失败（doing/72 教训）；常规 2 次失败后自动降速重试
+rsync_deploy() {
+  if retry 2 0 rsync "$@"; then
+    return 0
+  fi
+  echo "⚠️ rsync 常规速率失败，自动降速 --bwlimit=4096 重试（L2 自愈）" >&2
+  retry 2 0 rsync --bwlimit=4096 "$@"
+}
+
 # ===== 选择性上传（路径与 deploy/docker-compose.prod.yml 挂载/构建上下文对齐） =====
 echo ""
 echo "🚀 部署到服务器..."
+dm_start rsync
 
 if $DEPLOY_BACKEND; then
   # backend compose build context = ../backend（多阶段源码构建），排除构建产物与大文件
-  retry 3 0 rsync -avz --delete \
+  rsync_deploy -avz --delete \
     --exclude 'target/' --exclude '.git/' \
     --exclude 'tts-service/wheels/' \
     "$PROJECT_ROOT/backend/" "$SERVER:$REMOTE_DIR/backend/"
@@ -285,25 +334,25 @@ if $DEPLOY_STUDENT; then
   fi
 fi
 
-$DEPLOY_STUDENT && retry 3 0 rsync -avz --delete "$PROJECT_ROOT/frontend/student-h5/dist/" "$SERVER:$REMOTE_DIR/frontend/student-h5/dist/"
-$DEPLOY_TEACHER && retry 3 0 rsync -avz --delete "$PROJECT_ROOT/frontend/teacher-web/dist/" "$SERVER:$REMOTE_DIR/frontend/teacher-web/dist/"
-$DEPLOY_PARENT && retry 3 0 rsync -avz --delete "$PROJECT_ROOT/frontend/parent-h5/dist/" "$SERVER:$REMOTE_DIR/frontend/parent-h5/dist/"
+$DEPLOY_STUDENT && rsync_deploy -avz --delete "$PROJECT_ROOT/frontend/student-h5/dist/" "$SERVER:$REMOTE_DIR/frontend/student-h5/dist/"
+$DEPLOY_TEACHER && rsync_deploy -avz --delete "$PROJECT_ROOT/frontend/teacher-web/dist/" "$SERVER:$REMOTE_DIR/frontend/teacher-web/dist/"
+$DEPLOY_PARENT && rsync_deploy -avz --delete "$PROJECT_ROOT/frontend/parent-h5/dist/" "$SERVER:$REMOTE_DIR/frontend/parent-h5/dist/"
 
 
 if $DEPLOY_TTS; then
   # 审计 P2-24：wheels/ 为可再生的本地构建产物，不再随 rsync 上传（Dockerfile 已改在线安装）
-  retry 3 0 rsync -avz --delete --exclude 'wheels/' "$PROJECT_ROOT/backend/tts-service/" "$SERVER:$REMOTE_DIR/backend/tts-service/"
+  rsync_deploy -avz --delete --exclude 'wheels/' "$PROJECT_ROOT/backend/tts-service/" "$SERVER:$REMOTE_DIR/backend/tts-service/"
 fi
 
 if $DEPLOY_VOICE; then
-  retry 3 0 rsync -avz --delete "$PROJECT_ROOT/backend/voice-service/" "$SERVER:$REMOTE_DIR/backend/voice-service/"
+  rsync_deploy -avz --delete "$PROJECT_ROOT/backend/voice-service/" "$SERVER:$REMOTE_DIR/backend/voice-service/"
 fi
 
 # 同步 deploy/ 目录（compose + nginx 配置 + 运维脚本），变更检测命中 deploy/ 时为全量部署
-retry 3 0 rsync -avz --exclude '.env' "$PROJECT_ROOT/deploy/" "$SERVER:$REMOTE_DIR/deploy/"
+rsync_deploy -avz --exclude '.env' "$PROJECT_ROOT/deploy/" "$SERVER:$REMOTE_DIR/deploy/"
 
 # ===== 上传 service-manager.sh（确保服务器有最新版本） =====
-retry 3 0 rsync -avz "$PROJECT_ROOT/service-manager.sh" "$SERVER:$REMOTE_DIR/service-manager.sh"
+rsync_deploy -avz "$PROJECT_ROOT/service-manager.sh" "$SERVER:$REMOTE_DIR/service-manager.sh"
 ssh "${SSH_OPTS[@]}" "$SERVER" "chmod +x $REMOTE_DIR/service-manager.sh"
 
 # ===== 清理 CD 残留（DOC-063，2026-08-07） =====
@@ -323,6 +372,7 @@ ssh "${SSH_OPTS[@]}" "$SERVER" "cd $REMOTE_DIR/deploy && if grep -qE '^(BACKEND|
 else
   echo '✅ .env 无 CD 残留'
 fi"
+dm_end rsync
 
 # ===== 构建镜像（源码变更类组件需先 build，再经 service-manager 重启） =====
 BUILD_TARGETS=""
@@ -332,11 +382,18 @@ $DEPLOY_VOICE && BUILD_TARGETS="$BUILD_TARGETS voice-service"
 
 if [ -n "$BUILD_TARGETS" ]; then
   echo "🔨 构建镜像:$BUILD_TARGETS"
+  dm_start build-images
   # build 重试 3 次、固定间隔 60s（对齐 CD pull 重试教训 doing/72 §2.2：服务器在线下载依赖同样受网络抖动影响）
   if ! retry 3 60 ssh "${SSH_OPTS[@]}" "$SERVER" "cd $REMOTE_DIR/deploy && docker compose -f docker-compose.prod.yml build $BUILD_TARGETS"; then
-    echo "❌ 镜像构建重试 3 次仍失败，部署中止（服务仍运行旧版本）"
-    exit 1
+    # L3 自愈：清 builder 缓存后重试（幂等，无业务风险；2026-08-07 部署 Maven 408s 缓存膨胀教训）
+    echo "⚠️ 镜像构建失败，清理 docker builder 缓存后重试（L3 自愈）"
+    ssh "${SSH_OPTS[@]}" "$SERVER" "docker builder prune -f" >/dev/null 2>&1 || true
+    if ! retry 2 60 ssh "${SSH_OPTS[@]}" "$SERVER" "cd $REMOTE_DIR/deploy && docker compose -f docker-compose.prod.yml build $BUILD_TARGETS"; then
+      echo "❌ 镜像构建清理缓存后仍失败，部署中止（服务仍运行旧版本）"
+      exit 1
+    fi
   fi
+  dm_end build-images
   echo "✅ 镜像构建完成"
 fi
 
@@ -350,11 +407,13 @@ $DEPLOY_VOICE && RESTART_TARGETS="$RESTART_TARGETS voice"
 
 if [ -n "$RESTART_TARGETS" ]; then
   echo "🔄 重启服务:$RESTART_TARGETS"
+  dm_start restart
   if ! ssh "${SSH_OPTS[@]}" "$SERVER" "cd $REMOTE_DIR && bash service-manager.sh restart $RESTART_TARGETS"; then
     echo "❌ 服务重启失败，请检查：ssh $SERVER 'cd $REMOTE_DIR && bash service-manager.sh status'"
     echo "   部署状态未更新，下次 deploy.sh 将重新部署"
     exit 1
   fi
+  dm_end restart
   echo "✅ 服务重启 + 健康检查通过"
 else
   echo "ℹ️  仅前端变更时也应重载 nginx（已纳入重启目标）"
@@ -374,8 +433,9 @@ if [ "$DEPLOY_BACKEND" = "true" ]; then
     echo "ℹ️  SKIP_SMOKE=1 已设置，跳过发布后置冒烟"
   else
     echo "🧪 发布后置冒烟（tests/e2e/smoke-test.sh，默认路径断言）..."
+    dm_start smoke
     ssh "${SSH_OPTS[@]}" "$SERVER" "mkdir -p $REMOTE_DIR/tests/e2e"
-    if ! retry 3 0 rsync -avz "$PROJECT_ROOT/tests/e2e/smoke-test.sh" "$SERVER:$REMOTE_DIR/tests/e2e/smoke-test.sh"; then
+    if ! rsync_deploy -avz "$PROJECT_ROOT/tests/e2e/smoke-test.sh" "$SERVER:$REMOTE_DIR/tests/e2e/smoke-test.sh"; then
       echo "❌ smoke-test.sh 上传失败，部署中止"
       echo "   确认服务器可达后显式跳过重跑: SKIP_SMOKE=1 ./deploy.sh"
       exit 1
@@ -386,6 +446,7 @@ if [ "$DEPLOY_BACKEND" = "true" ]; then
       echo "   确认服务正常后显式跳过重跑: SKIP_SMOKE=1 ./deploy.sh"
       exit 1
     fi
+    dm_end smoke
     echo "✅ 冒烟测试通过（断言数以上方脚本汇总为准）"
   fi
 else
@@ -435,11 +496,13 @@ check_nginx_paths() {
 }
 NGINX_PATH_FAIL=false
 if $DEPLOY_STUDENT || $DEPLOY_TEACHER || $DEPLOY_PARENT; then
+  dm_start nginx-check
   NGINX_SPECS=""
   $DEPLOY_STUDENT && NGINX_SPECS="${NGINX_SPECS} student:/guju/mindsafe/frontend/student-h5/dist/"
   $DEPLOY_TEACHER && NGINX_SPECS="${NGINX_SPECS} teacher:/guju/mindsafe/frontend/teacher-web/dist/"
   $DEPLOY_PARENT && NGINX_SPECS="${NGINX_SPECS} parent:/guju/mindsafe/frontend/parent-h5/dist/"
   ! check_nginx_paths "$NGINX_SPECS" && NGINX_PATH_FAIL=true
+  dm_end nginx-check
 fi
 if [ "$NGINX_PATH_FAIL" = "true" ]; then
   echo "❌ 前端已部署但 nginx 路径未对齐，部署状态已更新；请按上方提示修复后重试"

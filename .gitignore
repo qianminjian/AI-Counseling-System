@@ -52,6 +52,8 @@ tests/e2e/blob-report/
 
 # ===== 日志 =====
 *.log
+logs/deploy/
+logs/deploy/audit-*.md   # DOC-078 部署审计报告（运行时产物，不提交）
 frontend/parent-h5/.swc/
 .deploy-state
 
