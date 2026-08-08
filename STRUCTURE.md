@@ -204,7 +204,8 @@ deploy/
 ├── docker-compose.test.yml     # 轻量测试/演示环境（不含 voice/tts）
 ├── docker-compose.monitoring.yml # Prometheus + Grafana 监控栈
 ├── nginx/                      # default.conf（HTTP）/ default-ssl.conf（TLS）
-├── scripts/                    # prepare-funasr.sh / prepare-models.sh（模型投放）
+├── scripts/                    # deploy-metrics.sh / deploy-audit.sh（部署计时监控与日志审计，DOC-077/078）
+│                               # prepare-funasr.sh / prepare-models.sh（模型投放）
 ├── backup.sh / restore.sh      # 宿主机备份/恢复（dbbackups volume）
 ├── setup-server.sh             # 服务器一键初始化
 ├── init-school.sh              # 学校租户初始化
@@ -238,6 +239,7 @@ deploy/
 | 覆盖率报告 | `target/site/jacoco/` | ✅ | JaCoCo |
 | 前端覆盖率 | `frontend/*/coverage/` | ✅ | Vitest c8 |
 | E2E 报告 | `tests/e2e/playwright-report/` | ✅ | Playwright HTML 报告 |
+| 部署日志与审计 | `logs/deploy/deploy-<ts>.log`、`audit-<ts>.md`、`.deploy-state`（项目根） | ✅ | deploy.sh 内建计时/监控/审计（04 §5.8/§5.9） |
 | 汇总报告 | `reports/`（项目根） | ✅ | CI 聚合产物、手工分析报告暂存 |
 
 - `reports/` 仅存机器生成产物，人工分析文档归 `design/` 或 `tmp/`

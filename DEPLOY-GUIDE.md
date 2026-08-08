@@ -226,6 +226,20 @@ bash ../service-manager.sh status   # 全部服务健康检查
 
 ---
 
+### Step 8：部署可观测性与审计输出（DOC-077/078，deploy.sh 内建自动能力）
+
+deploy.sh 内建部署计时、监控与审计（设计见 design/04 §5.8/§5.9），无需额外配置，每次部署自动产出：
+
+1. **固定格式汇报**：组件/结果（含失败步骤自动推导）/总耗时/步骤明细条形图/信号/建议/日志路径——成功与失败均输出，失败时按失败模式知识库自动给出修复指引
+2. **结构化日志与快照**：全量输出 `logs/deploy/deploy-<ts>.log`（本地工作区，gitignore 不入库，ts=YYYYMMDD-HHMMSS），日志末尾含统计段（`deploy_result=`/`signal=`/`step_*_ms=`）供基线解析；部署成功时 `.deploy-state` 追加快照（LAST_DEPLOY_DURATION_MS 等）
+3. **监控信号分级**：OK / WARN / CRITICAL——基于最近 10 次部署基线（mean/p90/max）与绝对+相对阈值判定，**部署失败强制 CRITICAL**
+4. **自动修复（幂等安全边界内，红线不破）**：L2 rsync 常规失败自动 `--bwlimit=4096` 降速重试；L3 镜像构建失败自动 `docker builder prune -f` 清缓存重试；不自动回滚/审批（发布红线不变）
+5. **部署后自动审计**：每次部署结束（含失败）自动执行回归分析——窗口最近 10 次日志 → R1-R6 规则（步骤耗时回归/成功率 <80% WARN、<60% CRITICAL/失败模式聚类/连续 3 次上升趋势/信号漂移 ≥50%/日志完整性）→ 审计报告全文落盘 `logs/deploy/audit-<ts>.md` + 终端 5 行摘要（结论/样本/修复/报告）；部署日志自动轮转（上限 50 份）
+
+**CRITICAL 处置**：查看终端修复指引或 `logs/deploy/audit-<ts>.md` 问题清单（[Pn][LEVEL] 编号 + 按步骤原因映射的修复建议，如 build-images→磁盘/网络、rsync→上行带宽、smoke→LLM/TTS、restart→voice 模型）→ 修复后重跑 `./deploy.sh`；历史基线随部署次数自动更新（基线排除本次日志防自污染）。
+
+---
+
 ## 四、域名配置（可选）
 
 | 端 | 域名示例 | 说明 |

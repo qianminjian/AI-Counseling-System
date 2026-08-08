@@ -112,7 +112,7 @@
 | 73 | 实体机器人硬件适配方案（DOC-070） | 🔒 远期任务（Pad 稳定 + 学校需求后议决） | **12** 前端形态 |
 | 74 | 无屏交互终端多形态产品方案（DOC-071，toB 第四端 + toC 家庭版） | 🔒 远期任务（方案定稿待立项） | **12** 前端形态 |
 
-### 2.3 已合并子文档（doing 区开发完成归档，2026-08-05；ARCH 系列 2026-08-06；main 线 63~65 2026-08-06；doing/72、doing/71 2026-08-07；doing/72 取消CD 2026-08-07 DOC-069；doing/73、doing/75 2026-08-07 DOC-070/071；doing/76 2026-08-08 DOC-072；doing/77 2026-08-08 DOC-073；doing/78 2026-08-08 DOC-075；doing/80 2026-08-08 DOC-077）
+### 2.3 已合并子文档（doing 区开发完成归档，2026-08-05；ARCH 系列 2026-08-06；main 线 63~65 2026-08-06；doing/72、doing/71 2026-08-07；doing/72 取消CD 2026-08-07 DOC-069；doing/73、doing/75 2026-08-07 DOC-070/071；doing/76 2026-08-08 DOC-072；doing/77 2026-08-08 DOC-073；doing/78 2026-08-08 DOC-075；doing/80 2026-08-08 DOC-077、doing/81 2026-08-08 DOC-078（main 线部署专题））
 
 | doing 文件 | 主题 | 合并至 |
 |------|------|--------|
@@ -140,7 +140,10 @@
 | doing/77 架构深化候选清单 | DOC-073 B1 危机热线五源收敛 + D1 配置深合并单源化 + F1+F2 三端请求语义收敛（其余 13 候选拆出 doing/78 待议决） | **03** §2.7.3（F1+F2）/ **06** §4.0（D1）/ **09** §3.11·§5.14.3（B1）；未议决候选决策入口 doing/78 |
 | doing/78 架构深化候选清单续 | DOC-073 拆出 13 未议决候选（B2-B6/F3-F6/D2-D6） 七批 14 候选全部实施（nudge 配置单源/RedisChatMemory 收编/文案模板化/分页安全化/情绪词表收编/usePolling/emotionMeta 共享/browserSpeak 复用/麦克风会话/透传契约/ 部署收敛） | 决策入口归档溯源（his/78；实施记录见 his/78 §5，各候选均为局部重构 无新主文档落点） |
 | doing/79 架构深化候选清单第三轮 | DOC-074，23 候选闭环（批次 A：BA-02 导出越权收敛 + DA-01 tts 镜像修复 + DA-06 prepare-models 前置校验 + DA-07 CI 构建冒烟；批次 B：FA-01 风险等级单源 + FA-08/FA-03/FA-04/FA-02/FA-05；批次 C：BA-01 TTS 假 API 删除 + BA-03 mood-check 落库 + BA-04 摘要策略单点化 + BA-05 groundedness 伪信号删除 + BA-07 浅模块收敛 + BA-08 告警接线；批次 D：FA-06 ChatRoom 面板抽离 + DA-02 voice 就绪消费 + DA-03 metrics 共享；批次 E 议决：DA-04 发布后置冒烟门禁 + DA-05 shell 测试入 CI；BA-06 并入 frozen/38 不再单独跟踪） | **03** §2.3.3·§4.2.1（FA-06/BA-01~08）/ **04** §5.2·§5.6·§9.2~9.3（DA 系列）/ **08** §2.5·§2.6·§4.1·§5.5（BA-02~04/FA-01~02）；文件归档 his/79（DOC-076） |
-| doing/80 部署计时与监控模型 | DOC-077 部署可观测性：12 部署步骤毫秒计时（dm_start/dm_end，python3 取时）+ 固定格式汇报（组件/结果/总耗时/步骤明细条形图/信号/建议/日志路径，trap EXIT 统一出口成功失败均输出，失败步骤自动推导）+ 结构化日志 logs/deploy/deploy-<ts>.log（统计段 deploy_result/step_*_ms/signal 供基线解析）+ 监控模型（最近 10 次基线 mean/p90/max → 绝对+相对阈值判定 → OK/WARN/CRITICAL 信号，失败强制 CRITICAL）+ 自动修复完善（L2 rsync 降速自愈 --bwlimit=4096 / L3 builder 清缓存自愈 / L4 失败模式知识库 6 特征指引）+ .deploy-state 统计快照（LAST_DEPLOY_*） | **04** §5.8；新库 deploy/scripts/deploy-metrics.sh + tests/unit/scripts/deploy-metrics-test.sh（T1-T12 全绿，CI 七件套）；文件归档 his/80（DOC-077） |
+| doing/80 部署计时与监控模型 | DOC-077 部署可观测性：12 部署步骤毫秒计时（dm_start/dm_end，python3 取时）+ 固定格式汇报（组件/结果/总耗时/步骤明细条形图/信号/建议/日志路径，trap EXIT 统一出口成功失败均输出，失败步骤自动推导）+ 结构化日志 logs/deploy/deploy-<ts>.log（统计段 deploy_result/step_*_ms/signal 供基线解析）+ 监控模型（最近 10 次基线 mean/p90/max → 绝对+相对阈值判定 → OK/WARN/CRITICAL 信号，失败强制 CRITICAL）+ 自动修复完善（L2 rsync 降速自愈 --bwlimit=4096 / L3 builder 清缓存自愈 / L4 失败模式知识库 6 特征指引）+ .deploy-state 统计快照（LAST_DEPLOY_*） | **04** §5.8；新库 deploy/scripts/deploy-metrics.sh + tests/unit/scripts/deploy-metrics-test.sh（T1-T12 全绿，CI 七件套）；文件归档 his/80（DOC-077，main 线） |
+| doing/81 部署日志审计与回归分析（main 线） | DOC-078 部署过程审计标准化：每次部署后自动回归分析（窗口最近 10 次 deploy-*.log）+ 回归规则表 R1-R6（R1 耗时回归复用 dm_judge 且基线排除本次日志防自污染 / R2 成功率 <80% WARN、<60% CRITICAL / R3 失败模式聚类 DM_DIAG_FEATURES ≥3 / R4 最近 5 次连续 3 次上升 / R5 非 OK ≥50% / R6 有汇报缺统计段 >2）+ 固定格式审计报告 logs/deploy/audit-<ts>.md + 终端 5 行摘要 + 主动修复（A1 日志轮转上限 50 份 / A2 修复指引）；新库 deploy/scripts/deploy-audit.sh（依赖 metrics）+ tests/unit/scripts/deploy-audit-test.sh（T1-T12 全绿，CI 八件套） | **04** §5.9；文件归档 his/81（DOC-078，main 线） |
+| doing/80 深度审计问题清单（develop 线，待排期） | 第四轮交叉审计（3 路独立 agent）：P0×0/P1×6/P2×24/P3×27 + 台账失实/假闭环专项 7 处 + 僵死资产 6 项 + 过度设计质疑 6 点；评分后端 7.3/前端 6.7/工程化 6.7（综合 6.9，发布就绪 7.2）；修复批次 A（P1 必做 6 项）/B（台账失实群）/C（P2）/D（P3） | doing 区待归档；**与 his/80 部署计时文档同号异题**（develop 线 DOC-077，文件名可区分） |
+| doing/81 架构深化候选清单第四轮（develop 线，待排期） | 排除全部已审计区后 25 新候选（BA-09~16/FA-09~17/DA-08~15，Strong×7 全部代码级实锤 0 失实）；Top 3 SPEC：BA-09 nudge 双真值 / BA-10 摘要三处重复 / DA-08 config_loader 双份 | doing 区待归档；**与 his/81 部署审计文档同号异题**（develop 线 DOC-078，文件名可区分） |
 
 ---
 
