@@ -43,8 +43,9 @@ STATE_FILE="$PROJECT_ROOT/.deploy-state"
 # 服务器上 compose 位于 $REMOTE_DIR/deploy/，挂载/构建上下文为仓库镜像结构：
 #   ../frontend/<app>/dist、../backend/<svc>（compose build context）
 # ⚠️ 前端静态文件由【宿主 nginx 直接 alias】（/etc/nginx/nginx.conf，443 主入口）；
-#   compose 的 nginx 服务未启用（容器 Created），勿改其配置期望生效（2026-08-06 切换教训）
-# 与 service-manager.sh 的 COMPOSE_DIR 保持一致
+#   compose nginx 服务已删除（DA-13 议决 a+b），deploy/nginx/*.conf 容器配置死资产已清除
+# 宿主 nginx 配置版本化：deploy/nginx/host/ 为仓库唯一事实源，部署时同步 + nginx -t 门禁（见 sync_host_nginx）
+# 与 service-manager.sh 的 REMOTE_DIR 保持一致（DA-12：verify-remote-dir-test.sh 兜底）
 
 # ===== 参数解析 =====
 FORCE_ALL=false
@@ -343,6 +344,33 @@ rsync_deploy -avz --exclude '.env' "$PROJECT_ROOT/deploy/" "$SERVER:$REMOTE_DIR/
 rsync_deploy -avz "$PROJECT_ROOT/service-manager.sh" "$SERVER:$REMOTE_DIR/service-manager.sh"
 ssh "${SSH_OPTS[@]}" "$SERVER" "chmod +x $REMOTE_DIR/service-manager.sh"
 
+# ===== 宿主 nginx 配置版本化同步（DA-13 议决 b：deploy/nginx/host/ → 宿主 /etc/nginx/） =====
+# 生产 80/443 由宿主 nginx 承载（2026-08-06 切换）；compose nginx 服务已删（议决 a），
+# deploy/nginx/host/ 为仓库唯一事实源。仅含 README 时 no-op；有配置时：备份 → 上传 →
+# nginx -t 门禁（失败中止，备份可回滚）→ 通过后 reload。
+sync_host_nginx() {
+  local host_dir="$PROJECT_ROOT/deploy/nginx/host"
+  [ -d "$host_dir" ] || return 0
+  local confs
+  confs=$(ls -A "$host_dir" 2>/dev/null | grep -v '^README' || true)
+  if [ -z "$confs" ]; then
+    echo "ℹ️  deploy/nginx/host/ 仅含说明文档，跳过宿主 nginx 同步（配置回填后自动生效）"
+    return 0
+  fi
+  echo "🔄 同步宿主 nginx 配置（deploy/nginx/host/ → /etc/nginx/）..."
+  # 备份当前生效配置（回滚点）
+  ssh "${SSH_OPTS[@]}" "$SERVER" "cp /etc/nginx/nginx.conf /etc/nginx/nginx.conf.bak-\$(date +%s) && echo '✅ 已备份宿主 nginx.conf'"
+  # 覆盖同步（不 --delete：不动宿主其他配置如 frp）
+  rsync_deploy -avz --exclude 'README*' "$host_dir/" "$SERVER:/etc/nginx/"
+  if ! ssh "${SSH_OPTS[@]}" "$SERVER" "nginx -t"; then
+    echo "❌ 宿主 nginx -t 校验失败——配置未 reload，请人工检查 /etc/nginx/（备份 nginx.conf.bak-* 可回滚）"
+    exit 1
+  fi
+  echo "✅ nginx -t 通过"
+  ssh "${SSH_OPTS[@]}" "$SERVER" "nginx -s reload && echo '✅ 宿主 nginx 已 reload'"
+}
+sync_host_nginx
+
 # ===== 清理 CD 残留（DOC-063，2026-08-07） =====
 # 取消 CD 后，服务器 .env 中可能残留 CD 写入的 *_IMAGE 变量（ghcr.io tag），
 # 会污染 compose 默认 tag（mindsafe/*:local）语义；检测到即告警并幂等清理。
@@ -390,7 +418,7 @@ RESTART_TARGETS=""
 $DEPLOY_BACKEND && RESTART_TARGETS="$RESTART_TARGETS backend"
 $DEPLOY_TTS && RESTART_TARGETS="$RESTART_TARGETS tts"
 $DEPLOY_VOICE && RESTART_TARGETS="$RESTART_TARGETS voice"
-# 前端 dist 由【宿主 nginx】直接 alias 提供（非 compose nginx 容器挂载）；静态文件更新后需 reload 宿主 nginx 才生效
+# 前端 dist 由【宿主 nginx】直接 alias 提供（compose nginx 服务已删，DA-13）；静态文件更新后无需 reload
 { $DEPLOY_STUDENT || $DEPLOY_TEACHER || $DEPLOY_PARENT; } && RESTART_TARGETS="$RESTART_TARGETS nginx"
 
 if [ -n "$RESTART_TARGETS" ]; then
@@ -475,9 +503,9 @@ NGINX_PATH_FAIL=false
 if $DEPLOY_STUDENT || $DEPLOY_TEACHER || $DEPLOY_PARENT; then
   dm_start nginx-check
   NGINX_SPECS=""
-  $DEPLOY_STUDENT && NGINX_SPECS="${NGINX_SPECS} student:/guju/mindsafe/frontend/student-h5/dist/"
-  $DEPLOY_TEACHER && NGINX_SPECS="${NGINX_SPECS} teacher:/guju/mindsafe/frontend/teacher-web/dist/"
-  $DEPLOY_PARENT && NGINX_SPECS="${NGINX_SPECS} parent:/guju/mindsafe/frontend/parent-h5/dist/"
+  $DEPLOY_STUDENT && NGINX_SPECS="${NGINX_SPECS} student:${REMOTE_DIR}/frontend/student-h5/dist/"
+  $DEPLOY_TEACHER && NGINX_SPECS="${NGINX_SPECS} teacher:${REMOTE_DIR}/frontend/teacher-web/dist/"
+  $DEPLOY_PARENT && NGINX_SPECS="${NGINX_SPECS} parent:${REMOTE_DIR}/frontend/parent-h5/dist/"
   ! check_nginx_paths "$NGINX_SPECS" && NGINX_PATH_FAIL=true
   dm_end nginx-check
 fi

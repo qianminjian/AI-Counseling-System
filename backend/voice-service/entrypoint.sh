@@ -10,6 +10,9 @@
 set -e
 
 ASR_ENGINE="${ASR_ENGINE:-dashscope}"
+# DA-15：SER_ENABLED 默认 true（与 app.py 默认值对齐）；false 时剔除 emotion2vec 模型检查。
+# 大小写归一化后比较（与 app.py 的 .lower() 语义一致），TRUE/True 与 true 同判定
+SER_ENABLED="$(printf '%s' "${SER_ENABLED:-true}" | tr '[:upper:]' '[:lower:]')"
 
 if [ "$ASR_ENGINE" = "funasr" ]; then
     echo "🔍 FunASR 模式：检查模型文件..."
@@ -17,10 +20,12 @@ if [ "$ASR_ENGINE" = "funasr" ]; then
     # ModelScope 缓存路径（对应 docker-compose volume 挂载点；非 root 用户 HOME=/home/appuser）
     MODEL_BASE="${HOME}/.cache/modelscope/hub"
 
-    REQUIRED_MODELS=(
-        "iic/SenseVoiceSmall"
-        "iic/emotion2vec_plus_large"
-    )
+    # 必需模型：ASR 模型始终要求；SER 模型仅在 SER_ENABLED=true 时要求——
+    # 显式禁用 SER（SER_ENABLED=false）时 emotion2vec 不应阻断部署（与 app.py 加载面一致）
+    REQUIRED_MODELS=("iic/SenseVoiceSmall")
+    if [ "$SER_ENABLED" = "true" ]; then
+        REQUIRED_MODELS+=("iic/emotion2vec_plus_large")
+    fi
 
     MISSING=()
     for model in "${REQUIRED_MODELS[@]}"; do

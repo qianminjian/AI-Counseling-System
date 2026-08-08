@@ -252,16 +252,18 @@ DNS 设置：A 记录 → 阿里云 ECS 公网 IP
 > ⚠️ **ICP 备案**：国内服务器绑定域名必须完成 ICP 备案（阿里云有备案入口，约 7-15 个工作日）。
 > 测试阶段直接用公网 IP 访问即可，无需备案。
 
-修改教师端域名（宿主 nginx，D-19：compose nginx 未启用，配置修改走宿主机文件）：
+修改教师端域名（宿主 nginx，D-19 + DA-13：配置走仓库 `deploy/nginx/host/` 版本化位，发布走 ./deploy.sh）：
 ```bash
+# 修改 deploy/nginx/host/nginx.conf 的 server_name 后提交，执行 ./deploy.sh 自动：
+#   备份 → 上传 /etc/nginx/ → nginx -t 门禁 → nginx -s reload
+# 紧急情况下直接改宿主文件（下次部署会被仓库配置覆盖）：
 vim /etc/nginx/nginx.conf
-# 将 server_name teacher.mindsafe.app 改为你的域名
 nginx -t && nginx -s reload
 ```
 
 ### HTTPS 证书（生产必做，宿主 nginx 承载 443）
 
-⚠️ **2026-08-06 切换后的架构事实**：80/443 由**宿主 nginx**（`/etc/nginx/nginx.conf`）直接监听，`deploy/docker-compose.prod.yml` 的 nginx 服务**未启用**（容器 Created）。所有 nginx 配置修改走宿主机文件 + `nginx -t && nginx -s reload`，不要改 compose nginx 配置期望生效。
+⚠️ **2026-08-06 切换后的架构事实（DA-13 更新）**：80/443 由**宿主 nginx**（`/etc/nginx/nginx.conf`）直接监听，prod compose 的 nginx 服务**已删除**（2026-08-08，DA-13 议决 a+b）。宿主配置版本化于仓库 `deploy/nginx/host/`，每次部署由 deploy.sh 同步（备份 → 上传 → `nginx -t` 门禁 → reload）。首次需从宿主机回填：`scp $MINDSAFE_SERVER:/etc/nginx/nginx.conf deploy/nginx/host/`（详见 deploy/nginx/host/README.md）。
 
 证书签发（certbot，证书目录 `/etc/nginx/ssl/`，nginx.conf 引用 `ssl_certificate`）：
 

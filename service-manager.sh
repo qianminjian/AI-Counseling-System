@@ -19,8 +19,10 @@
 set -eo pipefail
 
 # ===== 配置 =====
+# 部署根路径与 deploy.sh 的 REMOTE_DIR 同源（DA-12：一致性由 tests/unit/scripts/verify-remote-dir-test.sh 兜底）
+REMOTE_DIR="/guju/mindsafe"
 # compose 文件位于仓库 deploy/ 目录，服务器上镜像仓库结构（见 deploy.sh）
-COMPOSE_DIR="/guju/mindsafe/deploy"
+COMPOSE_DIR="${REMOTE_DIR}/deploy"
 HEALTH_MAX_RETRIES=3
 HEALTH_POLL_INTERVAL=5
 HEALTH_MAX_POLLS=12  # 每个服务最多等 60s
@@ -62,7 +64,7 @@ declare -A COMPOSE_NAME=(
   [nginx]="nginx"
 )
 
-# ⚠️ 注意：nginx 为【宿主 nginx】（/etc/nginx/nginx.conf，443 主入口），compose 的 nginx 服务未启用（容器 Created）
+# ⚠️ 注意：nginx 为【宿主 nginx】（/etc/nginx/nginx.conf，443 主入口）；compose nginx 服务已删除（DA-13 议决 a+b）
 #   service-manager 的 nginx 健康检查（curl 127.0.0.1）实际探测的是宿主 nginx（2026-08-06 切换教训）
 
 # 容器名映射（与 compose container_name 一致，用于 status/残留检查）
@@ -172,8 +174,8 @@ start_service() {
   local compose_svc="${COMPOSE_NAME[$svc]}"
 
   # nginx 特判（2026-08-07 修复，DOC-063 实测）：宿主 nginx 为 443 主入口，
-  # compose 的 nginx 服务未启用（容器 Created）；不执行 compose up（443 必被宿主
-  # nginx 占用 → bind 冲突报错 + 残留 mindsafe-nginx 容器），直接健康探测宿主 443
+  # compose nginx 服务已删除（DA-13 议决 a+b）；不执行 compose up（避免 443 bind 冲突），
+  # 直接健康探测宿主 443
   if [ "$svc" = "nginx" ]; then
     if wait_healthy nginx; then
       log_info "nginx 健康检查通过 ✓（宿主 nginx）"
@@ -260,12 +262,12 @@ parse_services() {
   fi
 }
 
-# AUD-034：prod compose 的 nginx 服务挂载 ../frontend/*/dist（相对 $COMPOSE_DIR = /guju/mindsafe/frontend/*/dist），
-# 目录缺失时 docker 会静默创建空目录 → 前端空白无 fail-fast；启动 nginx 前显式检查
+# AUD-034：宿主 nginx 直接 alias 前端口/目录（$REMOTE_DIR/frontend/*/dist，compose nginx 已删，DA-13），
+# 目录缺失时前端直接 404 无 fail-fast；启动 nginx 前显式检查
 check_frontend_dist() {
   local missing=""
   for app in student-h5 teacher-web parent-h5; do
-    if [ ! -d "/guju/mindsafe/frontend/$app/dist" ]; then
+    if [ ! -d "${REMOTE_DIR}/frontend/$app/dist" ]; then
       missing="$missing $app"
     fi
   done
