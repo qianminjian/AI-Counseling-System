@@ -162,7 +162,7 @@ mindsafe:
   # 输出安全（Layer1 内容过滤参数，SAFE-203 第一阶段：全局配置化；缺省回退全国心理援助热线，租户级待租户配置体系）
   safety:
     crisis-hotline: ${MINDSAFE_CRISIS_HOTLINE:400-161-9995}  # 危机热线（危机干预资源不交给 LLM，白名单演进见 SAFE-203）
-  # 冷场暖场护栏（B2 收编：nudge 阈值单一配置源，Lua 原子判定与 SessionState 快照判定同源；改阈值只改此处）
+  # 冷场暖场护栏（B2 收编：nudge 阈值单一配置源，Lua 原子判定唯一裁决（BA-09），预判读 Redis 真值键；改阈值只改此处）
   conversation:
     nudge:
       max-count: ${MINDSAFE_NUDGE_MAX_COUNT:2}                # 单会话连续暖场次数上限

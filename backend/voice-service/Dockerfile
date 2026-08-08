@@ -1,14 +1,12 @@
 # syntax=docker/dockerfile:1
 FROM python:3.11-slim
 
-# 构建参数保留但不再控制依赖安装——始终安装全量依赖
 # 运行时通过 ASR_ENGINE 环境变量控制 ASR 引擎，SER_ENABLED 控制情感分析
 # 镜像体积 ~2GB（含 torch+funasr），运行内存：
 #   - ASR=dashscope + SER=on: ~1.5GB（仅 emotion2vec）
 #   - ASR=funasr + SER=on: ~4GB（SenseVoice + emotion2vec）
 #   - SER=off: ~200MB（仅 dashscope SDK 运行时）
-# ⚡ 模型不打入镜像 — 通过 volume 从宿主机挂载
-ARG ASR_ENGINE=dashscope
+# ⚡ 模型不打入镜像 — 通过 volume 从宿主机挂载（DA-10：假 ARG 已删，环境变量唯一驱动）
 
 WORKDIR /app
 

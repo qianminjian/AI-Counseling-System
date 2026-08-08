@@ -36,8 +36,8 @@ logger = logging.getLogger("voice-service")
 
 _CONFIG = load_config()
 
-# ===== 引擎选择（环境变量驱动） =====
-ASR_ENGINE = os.environ.get("ASR_ENGINE", "funasr").lower()
+# ===== 引擎选择（环境变量唯一驱动；DA-10：默认值与 entrypoint/compose/.env.example 对齐 dashscope） =====
+ASR_ENGINE = os.environ.get("ASR_ENGINE", "dashscope").lower()
 SER_ENABLED = os.environ.get("SER_ENABLED", "true").lower() == "true"
 DASHSCOPE_API_KEY = os.environ.get("DASHSCOPE_API_KEY", "")
 

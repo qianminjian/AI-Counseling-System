@@ -59,8 +59,6 @@ services:
     build:
       context: ../backend/voice-service
       dockerfile: Dockerfile
-      args:
-        ASR_ENGINE: ${ASR_ENGINE:-dashscope}
     environment:
       # ASR 引擎：funasr=本地 / dashscope=云端
       ASR_ENGINE: ${ASR_ENGINE:-dashscope}
