@@ -284,7 +284,9 @@ public class TeacherController {
     @GetMapping("/teacher/export/students")
     public void exportStudents(Authentication auth, HttpServletResponse response) throws IOException {
         TenantContext ctx = (TenantContext) auth.getDetails();
-        List<User> students = teacherService.listActiveStudents(ctx.tenantId(), null);
+        // P1 审计修复：导出跟随数据范围（班主任仅导出本班，不再全校可见）
+        String classScope = teacherService.resolveClassScope(ctx.tenantId(), ctx.userId(), ctx.userType());
+        List<User> students = teacherService.listActiveStudents(ctx.tenantId(), classScope);
 
         response.setContentType("text/csv; charset=UTF-8");
         response.setHeader("Content-Disposition", "attachment; filename=students_export.csv");
@@ -350,7 +352,9 @@ public class TeacherController {
         UUID userId = (UUID) auth.getPrincipal();
         auditLogService.log(ctx.tenantId(), userId, "EXPORT_WEEKLY_REPORT", "report");
 
-        var stats = teacherService.getStats(ctx.tenantId(), null);
+        // P1 审计修复：周报跟随数据范围（班主任仅统计本班，不再全校可见）
+        String classScope = teacherService.resolveClassScope(ctx.tenantId(), ctx.userId(), ctx.userType());
+        var stats = teacherService.getStats(ctx.tenantId(), classScope);
         String now = java.time.LocalDate.now().toString();
 
         StringBuilder html = new StringBuilder();
