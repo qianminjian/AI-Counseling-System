@@ -99,6 +99,10 @@ fi
 # ===== 部署计时与监控 + 日志审计（DOC-077/078，doing/80/81） =====
 # 库提供：步骤计时/历史基线/阈值判定/信号汇总/固定格式汇报/失败模式知识库
 #        + 日志回归分析（R1-R6）/固定审计报告/主动修复（A1 轮转）
+# DA-11：deploy-lib.sh 提供纯函数（路径映射/retry 执行器/nginx 校验解析），
+#        deploy.sh 不再内嵌实现（规则单一事实源，可测）
+# shellcheck disable=SC1090
+source "$PROJECT_ROOT/deploy/scripts/deploy-lib.sh"
 # shellcheck disable=SC1090
 source "$PROJECT_ROOT/deploy/scripts/deploy-metrics.sh"
 # shellcheck disable=SC1090
@@ -190,17 +194,17 @@ elif ! $FORCE_BACKEND && ! $FORCE_STUDENT && ! $FORCE_TEACHER && ! $FORCE_PARENT
       exit 0
     fi
 
-    # 路径映射
-    echo "$CHANGED" | grep -q '^backend/tts-service/' && DEPLOY_TTS=true
-    echo "$CHANGED" | grep -q '^backend/voice-service/' && DEPLOY_VOICE=true
-    echo "$CHANGED" | grep '^backend/' | grep -v '^backend/tts-service/' | grep -qv '^backend/voice-service/' && DEPLOY_BACKEND=true
-    echo "$CHANGED" | grep -q '^frontend/student-h5/' && DEPLOY_STUDENT=true
-    echo "$CHANGED" | grep -q '^frontend/teacher-web/' && DEPLOY_TEACHER=true
-    echo "$CHANGED" | grep -q '^frontend/parent-h5/' && DEPLOY_PARENT=true
-    # deploy.sh / docker-compose 变更 → 全量
-    echo "$CHANGED" | grep -qE '^(deploy\.sh|deploy/)' && {
-      DEPLOY_BACKEND=true; DEPLOY_TTS=true; DEPLOY_VOICE=true
-    }
+    # 路径映射（DA-11：逻辑在 deploy/scripts/deploy-lib.sh，deploy.sh 仅消费）
+    for c in $(deploy_map_changes "$CHANGED"); do
+      case "$c" in
+        backend) DEPLOY_BACKEND=true ;;
+        student) DEPLOY_STUDENT=true ;;
+        teacher) DEPLOY_TEACHER=true ;;
+        parent)  DEPLOY_PARENT=true ;;
+        tts)     DEPLOY_TTS=true ;;
+        voice)   DEPLOY_VOICE=true ;;
+      esac
+    done
   fi
 fi
 
@@ -270,31 +274,8 @@ if $DEPLOY_PARENT; then
   echo "✅ 家长端构建完成"
 fi
 
-# ===== 带重试的统一执行器（D4：收敛 rsync/build/nginx 三处重试变体） =====
-# 用法: retry <最大次数> <重试间隔秒> <命令...>
-# 间隔传 0 时使用递增退避（1s, 2s, 3s...）；警告走 stderr（不污染命令 stdout 捕获）
-retry() {
-  local max_attempts="$1" delay="$2"
-  shift 2
-  local attempt=1
-  while [ "$attempt" -le "$max_attempts" ]; do
-    if "$@"; then
-      return 0
-    fi
-    if [ "$attempt" -eq "$max_attempts" ]; then
-      break
-    fi
-    local wait_secs="$delay"
-    [ "$delay" -eq 0 ] && wait_secs="$attempt"
-    echo "⚠️  第 ${attempt} 次失败，${wait_secs}s 后重试: $*" >&2
-    sleep "$wait_secs"
-    attempt=$((attempt + 1))
-  done
-  echo "❌ 重试 ${max_attempts} 次后仍失败: $*" >&2
-  return 1
-}
-
 # ===== rsync 降速自愈（DOC-077 L2） =====
+# retry 执行器由 deploy-lib.sh 提供（DA-11 抽取，deploy.sh 不再内嵌）
 # 3Mbps 上行带宽下常规速率重传易失败（doing/72 教训）；常规 2 次失败后自动降速重试
 rsync_deploy() {
   if retry 2 0 rsync "$@"; then
@@ -469,26 +450,15 @@ check_nginx_paths() {
   # $1 = 空格分隔的 app:path 列表（如 "student:/guju/.../student-h5/dist/"）
   local specs="$1"
   local out=""
-  local cmd="" spec app dir
-  for spec in $specs; do
-    app="${spec%%:*}"
-    dir="${spec#*:}"
-    cmd="${cmd} if grep -q '${dir}' /etc/nginx/nginx.conf; then echo 'OK:${app}'; else echo 'MISS:${app}'; fi;"
-  done
+  local cmd=""
+  # DA-11：命令构建与输出解析由 deploy-lib.sh 提供（可单测）
+  cmd=$(nginx_build_cmd "$specs")
   # D4：复用 retry 执行器 + SSH_OPTS（追加 BatchMode 防交互挂起）；警告走 stderr，成功时 stdout 仅含校验行
   out=$(retry 3 5 ssh "${SSH_OPTS[@]}" -o BatchMode=yes "$SERVER" "$cmd" 2>&1) || {
     echo "⚠️  ssh 连接失败 3 次，无法校验 nginx 路径——请人工确认 nginx 配置后重跑"
     return 1
   }
-  local miss="" line
-  while read -r line; do
-    case "$line" in
-      OK:*)   echo "✅ nginx ${line#OK:} 路径指向校验通过" ;;
-      MISS:*) miss="${miss} ${line#MISS:}" ;;
-    esac
-  done <<< "$out"
-  if [ -n "$miss" ]; then
-    echo "⚠️  nginx 未指向部署目标：${miss}——前端可能仍在服务旧目录！"
+  if ! nginx_parse_out "$out"; then
     echo "   修复: ssh ${SERVER} 修改 /etc/nginx/nginx.conf 对应 location 的 root/alias 后 nginx -t && nginx -s reload"
     return 1
   fi

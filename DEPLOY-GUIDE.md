@@ -373,7 +373,7 @@ sudo systemctl restart docker
 1. **2C2G 内存紧张**：建议开启 swap（setup-server.sh 已自动配置 2GB swap）
 2. **~~GHCR 私有镜像~~**：已随 CD 停用（DOC-063），服务器无需 docker login ghcr.io
 3. **x86_64 架构**：阿里云经济型为 x86，CI 构建无需指定 platform（默认 amd64）
-4. **数据备份**：备份统一走 `deploy/backup.sh`（AUD-032：cron 已由 setup-server.sh 幂等接线 `0 2 * * * /guju/mindsafe/backup.sh >> /guju/mindsafe/logs/backup.log 2>&1`，脚本内部分层保留日 7/周 4/月 3）+ `deploy/restore.sh` 恢复。OD-007（2026-08-05）已移除原 docker-compose.prod.yml 中的 `db-backup` 定时容器（与 backup.sh 双写同一 volume 为真冗余）。**恢复演练**：在非生产库或低峰期执行 `./restore.sh daily/<备份名>.dump`（脚本会自动先打 safety snapshot，失败不覆盖原库），演练后核对 `pg_restore --list` 输出与关键表行数；每季度至少一次，演练记录追加到本文件「运维记录」节
+4. **数据备份**：备份统一走 `deploy/backup.sh`（AUD-032：cron 已由 setup-server.sh 幂等接线 `0 2 * * * /guju/mindsafe/deploy/backup.sh >> /guju/mindsafe/logs/backup.log 2>&1`（D-03：路径含 deploy/ 前缀，服务器实际部署位置，勿写成无前缀形态），脚本内部分层保留日 7/周 4/月 3）+ `deploy/restore.sh` 恢复。OD-007（2026-08-05）已移除原 docker-compose.prod.yml 中的 `db-backup` 定时容器（与 backup.sh 双写同一 volume 为真冗余）。**恢复演练**：在非生产库或低峰期执行 `./restore.sh daily/<备份名>.dump`（脚本会自动先打 safety snapshot，失败不覆盖原库），演练后核对 `pg_restore --list` 输出与关键表行数；每季度至少一次，演练记录追加到本文件「运维记录」节
 5. **HTTPS**：测试阶段（docker-compose.test.yml）用 HTTP 即可；生产（docker-compose.prod.yml）已强制 TLS，首次部署先按「HTTPS 证书」节签发证书
 6. **安全组**：SSH 端口建议限制来源 IP，避免暴力破解
 7. **续费**：经济型 e 实例首购 99元/年，续费同价（阿里云活动期）；关注续费提醒

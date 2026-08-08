@@ -71,6 +71,10 @@ docker exec "${CONTAINER_NAME}" pg_dump -U "${DB_USER}" -d "${DB_NAME}" --format
         sh -c 'mkdir -p daily && cat > daily/'"${SNAPSHOT_NAME}"
 
 # 执行恢复（--exit-on-error 防止半途而废留下不一致库）
+# D-02：恢复前停 backend——pg_restore --clean 需独占，活跃连接会阻塞 DROP，灾难恢复路径在需要时必须可用
+log "停止 backend 服务（避免活跃连接阻塞恢复）..."
+docker compose -f "${SCRIPT_DIR}/docker-compose.prod.yml" stop backend \
+    || log "WARNING: backend 停止失败，继续尝试恢复（可能被活跃连接阻塞）"
 log "开始恢复: ${BACKUP_PATH} → ${DB_NAME}"
 if [ "${SOURCE}" = "volume" ]; then
     docker run --rm -v "${BACKUP_VOLUME}:/backups" -w /backups "${PG_IMAGE}" \
@@ -104,6 +108,13 @@ log "验证数据库连接..."
 # fix-deploy：users 表在 tenant_template schema 中，需限定 schema（D6：schema 已参数化）
 docker exec "${CONTAINER_NAME}" psql -U "${DB_USER}" -d "${DB_NAME}" -c "SELECT count(*) AS user_count FROM ${TENANT_SCHEMA}.users;" 2>/dev/null && \
     log "验证通过" || log "WARNING: 验证查询失败，请手动检查"
+
+# D-02：恢复校验通过后重启 backend（若 pg_restore 失败脚本已由 set -e 中止，backend 保持停止，
+# 需用恢复前快照回滚后手动 up：docker compose -f deploy/docker-compose.prod.yml up -d backend）
+# L1（CodeReview）：重启失败必须 ERROR+exit 1（恢复成功而服务未归位 = 半途而废，与 set -e 语义对齐）
+log "重启 backend 服务..."
+docker compose -f "${SCRIPT_DIR}/docker-compose.prod.yml" up -d backend \
+    || { log "ERROR: backend 重启失败，请手动执行 docker compose up -d backend"; exit 1; }
 
 log "===== 恢复任务结束 ====="
 log "如需回滚，使用恢复前快照: daily/${SNAPSHOT_NAME}（dbbackups volume 内）"
