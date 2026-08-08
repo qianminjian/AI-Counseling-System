@@ -178,6 +178,38 @@ public class RedisSessionStateStore {
         }
     }
 
+    // ===== BA-09：nudge 真值读接口（预判/展示统一走 Redis 独立键，快照字段降级） =====
+
+    /**
+     * 读取 nudge 计数真值（独立键 {@code session:nudge:{tenantId}:{sessionId}}）。
+     * <p>
+     * 键不存在或 Redis 异常返回 0（预判宽松降级——最终裁决在 {@link #tryNudge} 的 Lua 原子脚本）。
+     */
+    public int getNudgeCount(UUID tenantId, UUID sessionId) {
+        try {
+            String v = redisTemplate.opsForValue().get(nudgeCountKey(tenantId, sessionId));
+            return v == null ? 0 : Integer.parseInt(v);
+        } catch (Exception e) {
+            log.error("nudge 计数读取失败: sessionId={}", sessionId, e);
+            return 0;
+        }
+    }
+
+    /**
+     * 读取上次暖场时间戳真值（独立键 {@code session:nudge:{tenantId}:{sessionId}:at}，epoch 秒）。
+     * <p>
+     * 键不存在或 Redis 异常返回 null（预判宽松降级——最终裁决在 {@link #tryNudge} 的 Lua 原子脚本）。
+     */
+    public Instant getLastNudgeAt(UUID tenantId, UUID sessionId) {
+        try {
+            String v = redisTemplate.opsForValue().get(nudgeAtKey(tenantId, sessionId));
+            return v == null ? null : Instant.ofEpochSecond(Long.parseLong(v));
+        } catch (Exception e) {
+            log.error("nudge 时间戳读取失败: sessionId={}", sessionId, e);
+            return null;
+        }
+    }
+
     private static String nudgeCountKey(UUID tenantId, UUID sessionId) {
         return NUDGE_KEY_PREFIX + tenantId + ":" + sessionId;
     }

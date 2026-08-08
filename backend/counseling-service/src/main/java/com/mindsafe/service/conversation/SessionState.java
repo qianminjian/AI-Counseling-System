@@ -20,7 +20,8 @@ import java.util.UUID;
  * <p>
  * 序列化方式：Jackson JSON（由 RedisSessionStateStore 负责）。
  * 线程安全说明：nudgeCount/lastNudgeAt 真值已原子化至 Redis 独立计数器键
- * （RedisSessionStateStore.tryNudge/resetNudgeCounter，Lua 原子，T5 整改），本类字段为读取快照；
+ * （RedisSessionStateStore.tryNudge/resetNudgeCounter/getNudgeCount/getLastNudgeAt，Lua 原子，T5/BA-09）；
+ * 本类字段仅保留为序列化兼容的展示快照（canNudge/markNudged 已删，BA-09 单一真值源）；
  * 其余复合字段保留整对象读写（同一会话单写入路径的既有语义）。
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -157,18 +158,6 @@ public class SessionState {
 
     public long secondsSinceLastStudentMessage() {
         return Duration.between(lastStudentMessageAt, Instant.now()).getSeconds();
-    }
-
-    /** 暖场护栏：连续 ≤maxCount 次 且 距上次 ≥minIntervalSeconds（B2：阈值由 NudgeProperties 单一配置源注入，与 Lua 真值路径同源） */
-    public boolean canNudge(int maxCount, long minIntervalSeconds) {
-        if (nudgeCount >= maxCount) return false;
-        Instant last = lastNudgeAt;
-        return last == null || Duration.between(last, Instant.now()).getSeconds() >= minIntervalSeconds;
-    }
-
-    public void markNudged() {
-        nudgeCount++;
-        lastNudgeAt = Instant.now();
     }
 
     // ===== 思考型问题判断（复用原逻辑） =====

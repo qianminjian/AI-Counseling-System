@@ -22,10 +22,7 @@ import com.mindsafe.common.dto.risk.RiskDetectionResult;
 import com.mindsafe.common.enums.RiskLevel;
 import com.mindsafe.common.exception.BizException;
 import com.mindsafe.domain.entity.CounselingSession;
-import com.mindsafe.domain.entity.MessageSummary;
 import com.mindsafe.domain.entity.User;
-import com.mindsafe.domain.mapper.CounselingSessionMapper;
-import com.mindsafe.domain.mapper.MessageSummaryMapper;
 import com.mindsafe.domain.mapper.UserMapper;
 import com.mindsafe.service.knowledge.RagAdvisorService;
 import com.mindsafe.service.memory.LongTermMemoryService;
@@ -41,8 +38,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import reactor.core.publisher.Flux;
 
+import java.time.Duration;
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -59,8 +56,8 @@ public class ConversationServiceImpl implements ConversationService {
     private final AiChatService aiChatService;
     private final ConversationRiskProcessor riskProcessor;
     private final PiiDesensitizer piiDesensitizer;
-    private final CounselingSessionMapper sessionMapper;
-    private final MessageSummaryMapper messageSummaryMapper;
+    // BA-11：会话表读写收口仓储（编排器不再直连 Mapper；摘要域查询归 MessageSummaryService）
+    private final CounselingSessionStore sessionStore;
     private final UserMapper userMapper;
     private final StudentProfileService profileService;
     private final LongTermMemoryService longTermMemoryService;
@@ -75,7 +72,6 @@ public class ConversationServiceImpl implements ConversationService {
     private final SessionEndAnalyticsService sessionEndAnalyticsService;
     private final RedisSessionStateStore sessionStateStore;
     private final ConversationContextAgent contextAgent;
-    private final SessionSummaryUpdater sessionSummaryUpdater;
 
     /** 会话级个人信息提取器（纯正则，ARCH-001 C1 拆分） */
     private final PersonalInfoExtractor personalInfoExtractor;
@@ -101,8 +97,7 @@ public class ConversationServiceImpl implements ConversationService {
     public ConversationServiceImpl(AiChatService aiChatService,
                                    ConversationRiskProcessor riskProcessor,
                                    PiiDesensitizer piiDesensitizer,
-                                   CounselingSessionMapper sessionMapper,
-                                   MessageSummaryMapper messageSummaryMapper,
+                                   CounselingSessionStore sessionStore,
                                    UserMapper userMapper,
                                    StudentProfileService profileService,
                                    UsageTimeLimitService usageTimeLimitService,
@@ -117,7 +112,6 @@ public class ConversationServiceImpl implements ConversationService {
                                    SessionEndAnalyticsService sessionEndAnalyticsService,
                                    RedisSessionStateStore sessionStateStore,
                                    ConversationContextAgent contextAgent,
-                                   SessionSummaryUpdater sessionSummaryUpdater,
                                    ObjectMapper objectMapper,
                                    PersonalInfoExtractor personalInfoExtractor,
                                    PromptAssemblyService promptAssemblyService,
@@ -126,8 +120,7 @@ public class ConversationServiceImpl implements ConversationService {
         this.aiChatService = aiChatService;
         this.riskProcessor = riskProcessor;
         this.piiDesensitizer = piiDesensitizer;
-        this.sessionMapper = sessionMapper;
-        this.messageSummaryMapper = messageSummaryMapper;
+        this.sessionStore = sessionStore;
         this.userMapper = userMapper;
         this.profileService = profileService;
         this.usageTimeLimitService = usageTimeLimitService;
@@ -142,7 +135,6 @@ public class ConversationServiceImpl implements ConversationService {
         this.sessionEndAnalyticsService = sessionEndAnalyticsService;
         this.sessionStateStore = sessionStateStore;
         this.contextAgent = contextAgent;
-        this.sessionSummaryUpdater = sessionSummaryUpdater;
         this.objectMapper = objectMapper;
         this.personalInfoExtractor = personalInfoExtractor;
         this.promptAssemblyService = promptAssemblyService;
@@ -155,7 +147,7 @@ public class ConversationServiceImpl implements ConversationService {
     public SessionInfo createSession(UUID tenantId, UUID studentUserId, String emotionTag, String channel) {
         // 1. 持久化会话到 DB
         CounselingSession entity = CounselingSession.create(tenantId, studentUserId, emotionTag, channel);
-        sessionMapper.insert(entity);
+        sessionStore.insert(entity);
 
         UUID sessionId = entity.getSessionId();
 
@@ -170,25 +162,11 @@ public class ConversationServiceImpl implements ConversationService {
 
         // 3.5 SAFE-201：首次会话注入保密边界告知（design/14 §12.3，预审核模板）。
         // 告知完成标记复用 message_summary：senderType='ai' + turnCount=0（正常 AI 摘要 turn>=1，具唯一区分性），
-        // 该记录同时作为合规审计凭据，不新增 DB 字段。
-        if (!hasConfidentialityNotice(tenantId, studentUserId)) {
+        // 该记录同时作为合规审计凭据，不新增 DB 字段。BA-11：查询与落库收编 MessageSummaryService。
+        if (!messageSummaryService.hasConfidentialityNotice(tenantId, studentUserId)) {
             String notice = ConfidentialityNotice.forGrade(grade);
             greeting = greeting + "\n\n" + notice;
-            // BA-04（DOC-074）：实体工厂删除，AI 消息装配就地收敛（固定字段，合规审计凭据）
-            MessageSummary noticeRecord = new MessageSummary();
-            noticeRecord.setSummaryId(UUID.randomUUID());
-            noticeRecord.setTenantId(tenantId);
-            noticeRecord.setSessionId(sessionId);
-            noticeRecord.setStudentUserId(studentUserId);
-            noticeRecord.setTurnCount(0);
-            noticeRecord.setSenderType("ai");
-            noticeRecord.setContentSummary(notice.length() > 1024 ? notice.substring(0, 1024) : notice);
-            noticeRecord.setRiskLevel(0);
-            noticeRecord.setEmotionTags("[]");
-            noticeRecord.setRiskSignals("[]");
-            noticeRecord.setTopicTags("[]");
-            noticeRecord.setCreatedAt(Instant.now());
-            messageSummaryMapper.insert(noticeRecord);
+            messageSummaryService.insertConfidentialityNotice(tenantId, studentUserId, sessionId, notice);
             log.info("保密边界告知已注入并落库: sessionId={}, student={}, grade={}", sessionId, studentUserId, grade);
         }
 
@@ -203,17 +181,6 @@ public class ConversationServiceImpl implements ConversationService {
                 sessionId, studentUserId, emotionTag, grade, expressionDepth);
 
         return new SessionInfo(sessionId, greeting, Instant.now());
-    }
-
-    /** SAFE-201：该学生是否已完成保密边界告知（存在 senderType='ai' + turnCount=0 的告知记录） */
-    private boolean hasConfidentialityNotice(UUID tenantId, UUID studentUserId) {
-        Long count = messageSummaryMapper.selectCount(
-                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<MessageSummary>()
-                        .eq(MessageSummary::getTenantId, tenantId)
-                        .eq(MessageSummary::getStudentUserId, studentUserId)
-                        .eq(MessageSummary::getSenderType, "ai")
-                        .eq(MessageSummary::getTurnCount, 0));
-        return count != null && count > 0;
     }
 
     @Override
@@ -292,7 +259,7 @@ public class ConversationServiceImpl implements ConversationService {
             update.setSessionId(sessionId);
             update.setRiskLevelSnapshot(fusedLevel.severity());
             update.setUpdatedAt(Instant.now());
-            sessionMapper.updateById(update);
+            sessionStore.updateById(update);
 
             // 发送风险事件给前端
             riskEvents = Flux.just(
@@ -306,7 +273,7 @@ public class ConversationServiceImpl implements ConversationService {
                 escalate.setSessionId(sessionId);
                 escalate.setSessionStatus("escalated");
                 escalate.setUpdatedAt(Instant.now());
-                sessionMapper.updateById(escalate);
+                sessionStore.updateById(escalate);
 
                 log.error("🚨 红色风险预警(已升级+安全响应模式): sessionId={}, student={}, category={}",
                         sessionId, session.getStudentUserId(), category);
@@ -393,7 +360,8 @@ public class ConversationServiceImpl implements ConversationService {
         String currentEmotion = (voiceEmotion != null && voiceEmotionConfidence != null && voiceEmotionConfidence > 0.6)
                 ? promptOrchestrationService.mapVoiceEmotion(voiceEmotion) : null;
         ProfileSignals profileSignals = profileService.getProfileSignals(session.getTenantId(), session.getStudentUserId());
-        boolean nudgeActive = session.getNudgeCount() > 0;
+        // ORCH-005 冷场信号（BA-09：nudgeActive 读 Redis 计数真值，快照字段已降级不再消费）
+        boolean nudgeActive = sessionStateStore.getNudgeCount(tenantId, sessionId) > 0;
         PromptOrchestrationService.Result orchResult = promptOrchestrationService.resolveWithTransition(
                 new OrchestrationContext(session.getGrade(), effectiveGrade, session.getEmotionTag(),
                         currentEmotion, fusedLevel, profileSignals,
@@ -420,7 +388,7 @@ public class ConversationServiceImpl implements ConversationService {
                 promptOrchestrationService.toTemplateVariables(strategy), stageMark, ragContext, session.getGender());
         String systemPromptContent = assembled.content();
 
-        CounselingSession dbSession = sessionMapper.selectById(sessionId);
+        CounselingSession dbSession = sessionStore.findById(sessionId);
         String statePath = appendStatePath(dbSession != null ? dbSession.getStatePath() : null, turn, stageMark);
         log.debug("CBT 阶段标记: sessionId={}, turn={}, stage={}, strategy={}, allowCbt={}",
                 sessionId, turn, cbtStage, stageMark.ageStrategy(), allowCbt);
@@ -434,7 +402,7 @@ public class ConversationServiceImpl implements ConversationService {
         versionUpdate.setPromptVersion(versionTag);
         versionUpdate.setStatePath(statePath);
         versionUpdate.setUpdatedAt(Instant.now());
-        sessionMapper.updateById(versionUpdate);
+        sessionStore.updateById(versionUpdate);
 
         // Fix 3: ContextBrief 追加到 systemPromptContent 尾部（利用 recency bias，AI 最后读到 = 注意力最高）
         String finalSystemPrompt = systemPromptContent + "\n\n" + contextBrief;
@@ -454,10 +422,10 @@ public class ConversationServiceImpl implements ConversationService {
                     session.recordAiReply(fullReply);
                     sessionStateStore.save(tenantId, sessionId, session);
 
-                    // CTX-Agent Phase 3：每 4 轮异步更新滚动摘要（不阻塞当前轮响应）
-                    if (sessionSummaryUpdater.shouldUpdate(session)) {
-                        sessionSummaryUpdater.updateSummaryAsync(
-                                session.getTenantId(), sessionId, session.getStudentUserId(), turn);
+                    // CTX-Agent Phase 3：每 4 轮异步更新滚动摘要（不阻塞当前轮响应；BA-10 收编至 MessageSummaryService）
+                    if (messageSummaryService.shouldUpdateProgressiveSummary(session)) {
+                        messageSummaryService.updateProgressiveSummaryAsync(
+                                session.getTenantId(), sessionId, turn);
                     }
 
                     return Flux.just(StreamMessageEvent.done(""));
@@ -488,15 +456,20 @@ public class ConversationServiceImpl implements ConversationService {
         }
 
         // 护栏 1：会话已 escalated（红色风险）→ 不做日常暖场（安全流程接管）
-        if (isSessionEscalated(sessionId)) {
+        if (sessionStore.isEscalated(sessionId)) {
             log.debug("nudge: 会话已 escalated，返回空流: sessionId={}", sessionId);
             return Flux.empty();
         }
 
         // 护栏 2：连续暖场次数（≤上限）/ 间隔（≥最小间隔），孩子说话即清零（B2：阈值取 NudgeProperties 单一配置源）
-        if (!session.canNudge(nudgeProperties.getMaxCount(), nudgeProperties.getMinIntervalSeconds())) {
+        // BA-09：预判读 Redis 真值键（非原子，仅省 prompt/LLM 组装；最终裁决为下方 tryNudge Lua）
+        int nudgeCount = sessionStateStore.getNudgeCount(tenantId, sessionId);
+        Instant lastNudgeAt = sessionStateStore.getLastNudgeAt(tenantId, sessionId);
+        if (nudgeCount >= nudgeProperties.getMaxCount()
+                || (lastNudgeAt != null
+                    && Duration.between(lastNudgeAt, Instant.now()).getSeconds() < nudgeProperties.getMinIntervalSeconds())) {
             log.debug("nudge: 护栏拦截（次数/间隔），返回空流: sessionId={}, nudgeCount={}",
-                    sessionId, session.getNudgeCount());
+                    sessionId, nudgeCount);
             return Flux.empty();
         }
 
@@ -545,12 +518,12 @@ public class ConversationServiceImpl implements ConversationService {
                         "direction", decision.direction()
                 ), session.getGender());
 
-        // T5：原子护栏放行 + 计数（Redis 独立键 Lua；并发下防双发/丢失更新，真值以 Lua 判定为准）
+        // T5/BA-09：原子护栏放行 + 计数（Redis 独立键 Lua；并发下防双发/丢失更新，真值以 Lua 判定为准）
+        // 快照 markNudged 已删（BA-09：快照字段降级展示，不再参与真值写入）
         if (!sessionStateStore.tryNudge(tenantId, sessionId)) {
             log.debug("nudge: 原子护栏拦截（并发暖场/计数超限），放弃本次: sessionId={}", sessionId);
             return Flux.empty();
         }
-        session.markNudged();
         sessionStateStore.save(tenantId, sessionId, session);
         log.info("nudge: 决策=暖场: sessionId={}, warmthLevel={}, direction={}, silenceSeconds={}",
                 sessionId, decision.warmthLevel(), decision.direction(), silenceSeconds);
@@ -573,17 +546,6 @@ public class ConversationServiceImpl implements ConversationService {
                     log.error("nudge: AI 调用异常，返回空流: sessionId={}", sessionId, e);
                     return Flux.empty();
                 });
-    }
-
-    /** 查询会话是否已 escalated（红色风险接管）；查询失败返回 false（决策模型层有风险信号兜底） */
-    private boolean isSessionEscalated(UUID sessionId) {
-        try {
-            CounselingSession entity = sessionMapper.selectById(sessionId);
-            return entity != null && "escalated".equals(entity.getSessionStatus());
-        } catch (Exception e) {
-            log.warn("nudge: 查询会话状态失败: sessionId={}", sessionId, e);
-            return false;
-        }
     }
 
     @Override
@@ -627,7 +589,7 @@ public class ConversationServiceImpl implements ConversationService {
             update.setSessionStatus(CounselingSession.STATUS_COMPLETED);
             update.setTurnCount(session.getTurnCount());
             update.setUpdatedAt(Instant.now());
-            sessionMapper.updateById(update);
+            sessionStore.updateById(update);
 
             sessionStateStore.remove(tenantId, sessionId);
 
@@ -662,28 +624,15 @@ public class ConversationServiceImpl implements ConversationService {
 
     @Override
     public List<CounselingSession> getSessionHistory(UUID tenantId, UUID studentUserId, int limit) {
-        // T4 批次C：租户+学生双重条件内置（原 SessionController 直查 selectPage 下沉）
-        com.baomidou.mybatisplus.extension.plugins.pagination.Page<CounselingSession> pageResult =
-                sessionMapper.selectPage(
-                        new com.baomidou.mybatisplus.extension.plugins.pagination.Page<>(1, Math.min(limit, 50), false),
-                        new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<CounselingSession>()
-                                .eq(CounselingSession::getTenantId, tenantId)
-                                .eq(CounselingSession::getStudentUserId, studentUserId)
-                                .orderByDesc(CounselingSession::getStartedAt)
-                );
-        return pageResult.getRecords();
+        // BA-11：租户+学生双重条件与 limit 上限 50 收口仓储（原 selectPage 直查下沉）
+        return sessionStore.findHistory(tenantId, studentUserId, limit);
     }
 
     @Transactional
     @Override
     public void rateSession(UUID tenantId, UUID studentUserId, UUID sessionId, int rating, String comment) {
-        // SEC-001：归属校验（租户+学生双重条件，非持有人拒绝评价）——T4 批次B 下沉
-        CounselingSession existing = sessionMapper.selectOne(
-                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<CounselingSession>()
-                        .eq(CounselingSession::getTenantId, tenantId)
-                        .eq(CounselingSession::getStudentUserId, studentUserId)
-                        .eq(CounselingSession::getSessionId, sessionId)
-        );
+        // SEC-001：归属校验（租户+学生双重条件，非持有人拒绝评价）——BA-11 收口仓储 findOwned
+        CounselingSession existing = sessionStore.findOwned(tenantId, studentUserId, sessionId);
         if (existing == null) {
             log.warn("rateSession: 会话归属校验失败，拒绝: sessionId={}, tenantId={}, userId={}", sessionId, tenantId, studentUserId);
             throw new BizException(ErrorCode.FORBIDDEN);
@@ -693,7 +642,7 @@ public class ConversationServiceImpl implements ConversationService {
         update.setSatisfactionRating(rating);
         update.setSatisfactionComment(comment);
         update.setUpdatedAt(Instant.now());
-        sessionMapper.updateById(update);
+        sessionStore.updateById(update);
     }
 
     /**
@@ -702,32 +651,10 @@ public class ConversationServiceImpl implements ConversationService {
      * 修复前调用方传 {@code List.of()} 占位，measureDepth 恒为 0，深度量化形同虚设。
      * 消息摘要逐轮同步落库（见 MessageSummaryService.persistStudentMessageSummary），
      * 会话结束时 DB 中数据已完整，此处查询并解密即可；失败降级为空列表（分析本身异步可降级）。
+     * BA-10：实现收编至 MessageSummaryService.readStudentPlainTexts（查→解密单点）。
      */
     private List<String> loadStudentMessages(UUID tenantId, UUID sessionId) {
-        try {
-            List<MessageSummary> messages = messageSummaryMapper.selectList(
-                    new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<MessageSummary>()
-                            .eq(MessageSummary::getTenantId, tenantId)
-                            .eq(MessageSummary::getSessionId, sessionId)
-                            .eq(MessageSummary::getSenderType, User.USER_TYPE_STUDENT)
-                            .orderByAsc(MessageSummary::getTurnCount)
-                            .orderByAsc(MessageSummary::getCreatedAt)
-            );
-            if (messages.isEmpty()) {
-                return List.of();
-            }
-            List<String> texts = new ArrayList<>(messages.size());
-            for (MessageSummary m : messages) {
-                String plain = fieldEncryptionService.decrypt(m.getContentSummary());
-                if (plain != null && !plain.isBlank()) {
-                    texts.add(plain);
-                }
-            }
-            return texts;
-        } catch (Exception e) {
-            log.debug("会话结束分析加载学生消息失败，降级为空列表: {}", e.getMessage());
-            return List.of();
-        }
+        return messageSummaryService.readStudentPlainTexts(tenantId, sessionId);
     }
 
     /**
