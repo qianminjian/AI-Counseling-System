@@ -128,6 +128,8 @@ export interface StudentProfileVO {
   displayName: string
   gradeCode: string
   classCode: string
+  /** BUG-UI-03：账号状态（active/withdrawn 冻结等） */
+  status: string
   maxRiskLevel: number | null
   totalSessions: number
   recentSessions: SessionSummaryVO[]
@@ -149,6 +151,8 @@ export interface StudentVO {
   displayName: string
   gradeCode: string
   classCode: string
+  /** BUG-UI-03：账号状态（active/withdrawn 冻结等），教师端展示冻结标识 */
+  status: string
 }
 
 export interface MessageSummaryVO {

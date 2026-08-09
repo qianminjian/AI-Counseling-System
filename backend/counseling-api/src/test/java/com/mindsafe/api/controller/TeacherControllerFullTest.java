@@ -156,7 +156,7 @@ class TeacherControllerFullTest {
     void studentProfile() {
         when(teacherService.getStudentProfile(tenantId, studentUserId, "psych_teacher"))
                 .thenReturn(new TeacherService.StudentProfileVO(
-                        studentUserId, "小星", "GRADE_6", "CLASS_1", 3, 5,
+                        studentUserId, "小星", "GRADE_6", "CLASS_1", "active", 3, 5,
                         List.of(), List.of(), List.of()));
 
         var resp = controller.getStudentProfile(studentUserId, teacherAuth("psych_teacher"));
@@ -299,10 +299,10 @@ class TeacherControllerFullTest {
     // ===== 学生列表 =====
 
     @Test
-    @DisplayName("getStudents 心理老师（scope=null）→ 全校学生")
+    @DisplayName("getStudents 心理老师（scope=null）→ 全校学生（含冻结，BUG-UI-03）")
     void students_schoolWide() {
         when(teacherService.resolveClassScope(tenantId, teacherUserId, "psych_teacher")).thenReturn(null);
-        when(teacherService.listActiveStudents(tenantId, null)).thenReturn(List.of(student()));
+        when(teacherService.listVisibleStudents(tenantId, null)).thenReturn(List.of(student()));
 
         ApiResponse<List<TeacherController.StudentVO>> resp = controller.getStudents(teacherAuth("psych_teacher"));
 
@@ -314,11 +314,11 @@ class TeacherControllerFullTest {
     @DisplayName("getStudents 班主任（scope=CLASS_1）→ 本班过滤")
     void students_classScope() {
         when(teacherService.resolveClassScope(tenantId, teacherUserId, "class_teacher")).thenReturn("CLASS_1");
-        when(teacherService.listActiveStudents(tenantId, "CLASS_1")).thenReturn(List.of(student()));
+        when(teacherService.listVisibleStudents(tenantId, "CLASS_1")).thenReturn(List.of(student()));
 
         controller.getStudents(teacherAuth("class_teacher"));
 
-        verify(teacherService).listActiveStudents(tenantId, "CLASS_1");
+        verify(teacherService).listVisibleStudents(tenantId, "CLASS_1");
     }
 
     // ===== 通知 =====

@@ -191,14 +191,15 @@ public class TeacherController {
         return ApiResponse.ok(Map.of("link", link, "expiresIn", "7天"));
     }
 
-    /** 获取学生列表（同租户，班主任仅看本班；T4 批次C：查询下沉 TeacherService） */
+    /** 获取学生列表（同租户，班主任仅看本班；T4 批次C：查询下沉 TeacherService）
+     * BUG-UI-03：改用 listVisibleStudents——冻结（withdrawn）学生须可见并带状态标识 */
     @GetMapping("/teacher/students")
     public ApiResponse<List<StudentVO>> getStudents(Authentication auth) {
         TenantContext ctx = (TenantContext) auth.getDetails();
         String classScope = teacherService.resolveClassScope(ctx.tenantId(), ctx.userId(), ctx.userType());
-        List<User> students = teacherService.listActiveStudents(ctx.tenantId(), classScope);
+        List<User> students = teacherService.listVisibleStudents(ctx.tenantId(), classScope);
         List<StudentVO> voList = students.stream()
-                .map(s -> new StudentVO(s.getUserId(), s.getPseudonym(), s.getGradeCode(), s.getClassCode()))
+                .map(s -> new StudentVO(s.getUserId(), s.getPseudonym(), s.getGradeCode(), s.getClassCode(), s.getStatus()))
                 .toList();
         return ApiResponse.ok(voList);
     }
@@ -315,8 +316,8 @@ public class TeacherController {
                 .replace("\"", "&quot;").replace("'", "&#39;");
     }
 
-    /** 学生视图对象 */
-    public record StudentVO(UUID userId, String displayName, String gradeCode, String classCode) {}
+    /** 学生视图对象（BUG-UI-03：+ status 账号状态，前端展示冻结标识） */
+    public record StudentVO(UUID userId, String displayName, String gradeCode, String classCode, String status) {}
 
     // ===== 个案管理（WB-003，design/35 M3） =====
 

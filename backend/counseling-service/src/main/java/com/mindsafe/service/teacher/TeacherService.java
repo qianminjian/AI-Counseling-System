@@ -167,6 +167,22 @@ public class TeacherService {
         return userMapper.selectList(wrapper);
     }
 
+    /**
+     * BUG-UI-03：教师端学生列表可见学生（active + withdrawn 冻结等全部非删除学生）——撤回同意冻结的
+     * 学生须在列表可见并带状态标识（教师端可识别），导出/统计仍走 active 过滤的 listActiveStudents。
+     */
+    public List<User> listVisibleStudents(UUID tenantId, String classScope) {
+        LambdaQueryWrapper<User> wrapper = new LambdaQueryWrapper<User>()
+                .eq(User::getTenantId, tenantId)
+                .eq(User::getUserType, User.USER_TYPE_STUDENT)
+                .orderByAsc(User::getGradeCode)
+                .orderByAsc(User::getClassCode);
+        if (classScope != null) {
+            wrapper.eq(User::getClassCode, classScope);
+        }
+        return userMapper.selectList(wrapper);
+    }
+
     /** 风险事件列表（同租户，最近 limit 条；AUD-043 分页插件安全化） */
     public List<RiskEvent> pageRiskEvents(UUID tenantId, int limit) {
         Page<RiskEvent> pageResult = riskEventMapper.selectPage(
@@ -608,7 +624,7 @@ public class TeacherService {
             return new StudentProfileVO(
                     student.getUserId(), student.getPseudonym(),
                     student.getGradeCode(), student.getClassCode(),
-                    null, 0,
+                    student.getStatus(), null, 0,
                     null, null,
                     notes.stream().map(n -> new NoteVO(
                             n.getNoteId(), n.getTeacherUserId(), fieldEncryptionService.decrypt(n.getContent()),
@@ -646,7 +662,7 @@ public class TeacherService {
         return new StudentProfileVO(
                 student.getUserId(), student.getPseudonym(),
                 student.getGradeCode(), student.getClassCode(),
-                maxRisk, recentSessions.size(),
+                student.getStatus(), maxRisk, recentSessions.size(),
                 recentSessions.stream().map(s -> new SessionSummaryVO(
                         s.getSessionId(), s.getStartedAt(), s.getSessionStatus(),
                         s.getRiskLevelSnapshot(), s.getSatisfactionRating()
@@ -871,7 +887,7 @@ public class TeacherService {
     public record StudentProfileVO(
             UUID studentUserId, String displayName,
             String gradeCode, String classCode,
-            Integer maxRiskLevel, int totalSessions,
+            String status, Integer maxRiskLevel, int totalSessions,
             List<SessionSummaryVO> recentSessions,
             List<AlertVO> alertHistory,
             List<NoteVO> notes

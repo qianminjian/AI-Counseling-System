@@ -4,6 +4,7 @@ import {
   AlertOutlined, ClockCircleOutlined, MessageOutlined, RiseOutlined, SmileOutlined, FileTextOutlined,
 } from '@ant-design/icons'
 import { getDashboard, getHighRiskStudents, getStats, openWeeklyReport, getSatisfaction } from '../../api'
+import { usePolling } from '../../hooks/usePolling'
 import { SessionTrendChart, RiskPieChart, ClassBarChart, EmotionBarChart } from './StatsCharts'
 import { riskColor, riskLabel } from '../../utils/riskLevel'
 import TodayTodoPanel from './TodayTodoPanel'
@@ -74,6 +75,9 @@ export default function OverviewPanel({ onNavigate }: { onNavigate: (tab: string
   }, [])
 
   useEffect(() => { load() }, [load])
+
+  // BUG-UI-05：工作台数据 30s 轮询刷新——认领/处置预警后计数与今日待办自动更新，不依赖手动刷新
+  usePolling(load, 30000, { immediate: false })
 
   if (loading) {
     return <div className="ms-empty-lg"><Spin size="large" /></div>

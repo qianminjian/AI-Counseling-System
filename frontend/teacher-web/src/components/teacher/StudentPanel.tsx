@@ -60,6 +60,10 @@ function StudentProfile({ studentId, onBack }: { studentId: string; onBack: () =
           <Descriptions.Item label="姓名">{profile.displayName}</Descriptions.Item>
           <Descriptions.Item label="年级">{profile.gradeCode || '-'}</Descriptions.Item>
           <Descriptions.Item label="班级">{profile.classCode || '-'}</Descriptions.Item>
+          {/* BUG-UI-03：账号状态（withdrawn=家长撤回冻结） */}
+          <Descriptions.Item label="账号状态">
+            {profile.status === 'withdrawn' ? <Tag color="default">冻结</Tag> : <Tag color="green">正常</Tag>}
+          </Descriptions.Item>
           <Descriptions.Item label="最高风险等级">
             {profile.maxRiskLevel != null ? (
               <Tag color={riskColor(profile.maxRiskLevel)}>{riskLabel(profile.maxRiskLevel)}</Tag>
@@ -217,11 +221,17 @@ export default function StudentPanel() {
         <Space>
           <a onClick={() => setSelectedStudent(record.userId)}>{v}</a>
           {highRiskIds.has(record.userId) && <Tag color="red">高风险</Tag>}
+          {/* BUG-UI-03：冻结学生可见并带标识（撤回同意） */}
+          {record.status === 'withdrawn' && <Tag>冻结</Tag>}
         </Space>
       ),
     },
     { title: '年级', dataIndex: 'gradeCode', width: 100 },
     { title: '班级', dataIndex: 'classCode', width: 100 },
+    {
+      title: '状态', dataIndex: 'status', width: 90,
+      render: (s: string) => s === 'withdrawn' ? <Tag>冻结</Tag> : <span className="ms-hint">正常</span>,
+    },
     {
       title: '操作', width: 100,
       render: (_, record) => (
