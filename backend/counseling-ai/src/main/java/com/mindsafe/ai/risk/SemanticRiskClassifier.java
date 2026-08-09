@@ -101,6 +101,9 @@ public class SemanticRiskClassifier {
                 "risk_history_summary", riskHistorySummary != null ? riskHistorySummary : "无历史记录",
                 "grade_level", String.valueOf(gradeLevel)
         ));
+        // D5 决策暂未实施：spring-ai 1.0.0 OpenAiChatOptions 不开放 customBody/extraBody API
+        // （社区已确认 spring-projects/spring-ai#4324，1.0.x 无法通过 options 注入 enable_thinking）
+        // 跟踪上游修复后实施；当前全局 false 接受（语义风险分类出错降级为 null，由硬规则兜底）
         String response = chatClient.prompt()
                 .user(prompt)
                 .call()
