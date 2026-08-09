@@ -413,7 +413,12 @@ export function useWakeWord({ active, paused, onDetected }) {
             // 旧代码只更新 modelStatus，而 Worker 先发的 loading 消息已把 wakeStatus
             // 覆盖为 loading 且无人改回 → UI 永远"语音引擎加载中"（实测：进度 100%
             // 后关闭但界面仍加载中、呼叫无反应）。
-            setWakeStatus('listening')
+            // F-14（2026-08-09 用户实测）：UI"准备好"瞬间呼叫无响应、约 2s 后第二遍才成功
+            // ——Worker ready 消息发出后推理器仍须 ~2s 收尾/预热。延迟 2.5s 再提示 standby，
+            // 期间保持"加载中"文案，避免用户过早呼叫（用户建议：界面延迟提示好了）。
+            setTimeout(() => {
+              if (!cancelled) setWakeStatus('listening')
+            }, 2500)
           } else if (status === 'error') {
             if (workerTimeout) clearTimeout(workerTimeout)
             fallbackToMainThread(event.data.message || 'Worker 模型加载失败')
