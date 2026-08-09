@@ -430,4 +430,48 @@ describe('hooks/useTtsPlayer', () => {
       expect(result.current.playing).toBe(false)
     })
   })
+
+  describe('BUG-TTS-02 流式并行预合成', () => {
+    it('feedToken 切出多句时立即并行发起全部合成请求（不串行等待）', async () => {
+      const mockBlob = new Blob(['audio'], { type: 'audio/mp3' })
+      mockFetchTtsSynthesize.mockResolvedValue({
+        ok: true,
+        status: 200,
+        blob: () => Promise.resolve(mockBlob),
+      })
+      const { result } = renderHook(() => useTtsPlayer())
+
+      await act(async () => {
+        result.current.startStreaming()
+        // 一次 feed 两句（同一缓冲区内切出）
+        result.current.feedToken('第一句完整的话。第二句完整的话。')
+        // 同步断言：两句合成请求应立即发出（并行预取），无需等待播放完成
+        expect(mockFetchTtsSynthesize).toHaveBeenCalledTimes(2)
+        await result.current.endStreaming()
+        await new Promise(r => setTimeout(r, 30))
+      })
+      expect(result.current.playing).toBe(false)
+    })
+
+    it('分次 feedToken 时新句子合成请求在轮到播放前已发出', async () => {
+      const mockBlob = new Blob(['audio'], { type: 'audio/mp3' })
+      mockFetchTtsSynthesize.mockResolvedValue({
+        ok: true,
+        status: 200,
+        blob: () => Promise.resolve(mockBlob),
+      })
+      const { result } = renderHook(() => useTtsPlayer())
+
+      await act(async () => {
+        result.current.startStreaming()
+        result.current.feedToken('第一句。')
+        expect(mockFetchTtsSynthesize).toHaveBeenCalledTimes(1)
+        // 播放第一句期间到达第二句 → 第二句合成立即发起（不排队等句一播完）
+        result.current.feedToken('第二句。')
+        expect(mockFetchTtsSynthesize).toHaveBeenCalledTimes(2)
+        await result.current.endStreaming()
+        await new Promise(r => setTimeout(r, 30))
+      })
+    })
+  })
 })

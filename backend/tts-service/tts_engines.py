@@ -138,7 +138,7 @@ class DashScopeBackend(TTSBackend):
         q: Queue = Queue()
         errors = []
 
-        class _Callback(sdk.ResultCallback):
+        class _Callback(ResultCallback):
             def on_data(self, data: bytes):
                 q.put(("data", data))
 
@@ -156,7 +156,10 @@ class DashScopeBackend(TTSBackend):
             kwargs = dict(
                 model=self._model,
                 voice=voice_id,
-                format=sdk.AudioFormat.MP3_22050HZ_MONO_256KBPS,
+                # BUG-TTS-01：dashscope 顶层模块无 ResultCallback/AudioFormat 属性，
+                # 必须用 tts_v2 子模块导入的符号（旧写法 sdk.ResultCallback 恒抛
+                # AttributeError → CosyVoice 每次降级 edge-tts → 播放句间停顿 1.5s+）
+                format=AudioFormat.MP3_22050HZ_MONO_256KBPS,
                 speech_rate=max(0.5, min(2.0, speed)),
                 callback=_Callback(),
             )

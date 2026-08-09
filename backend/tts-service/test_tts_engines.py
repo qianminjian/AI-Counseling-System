@@ -129,7 +129,8 @@ class TestDashScopeBackend:
         run(backend.synthesize("你好", "longxing_v3", 1.0))
         assert captured["model"] == "cosyvoice-v3-flash"
         assert captured["voice"] == "longxing_v3"
-        assert captured["format"] == "MP3_22050HZ_MONO_256KBPS"
+        # BUG-TTS-01 修复后：format 传 tts_v2 导入的 AudioFormat 枚举（.value 是 tuple，用 .name 比较）
+        assert getattr(captured["format"], "name", captured["format"]) == "MP3_22050HZ_MONO_256KBPS"
         assert captured["speech_rate"] == 1.0
 
     def test_speech_rate_clamped(self):
