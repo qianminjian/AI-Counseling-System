@@ -138,7 +138,17 @@ if [ -n "$(git status --porcelain)" ]; then
   exit 1
 fi
 
-git fetch origin main --quiet
+# Git 同步校验：fetch 带 8s 超时，失败降级用本地 origin/main 缓存 ref（不访问网络）。
+# 背景（2026-08-09）：SSH 间歇性断连时 `git fetch` 挂死导致部署无法进行；
+# 单人项目 + 部署前已 push 的流程下，本地缓存 ref 即"已推送版本"，未 push 的 commit
+# 会使 HEAD != origin/main 被检出。
+if ! timeout 8 git fetch origin main --quiet 2>/dev/null; then
+  echo "⚠️ 远端 fetch 超时/失败，降级使用本地 origin/main 缓存 ref 校验"
+  if ! git rev-parse origin/main >/dev/null 2>&1; then
+    echo "❌ 本地无 origin/main 缓存（首次部署需网络连通），中止部署"
+    exit 1
+  fi
+fi
 LOCAL=$(git rev-parse HEAD)
 REMOTE=$(git rev-parse origin/main)
 if [ "$LOCAL" != "$REMOTE" ]; then
