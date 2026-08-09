@@ -63,6 +63,7 @@
 | BUG-UI-01 | 教师端摘要弹窗泄露对话原文 | Drawer 展示 getSessionMessages 逐轮原文 | 默认仅摘要卡片；质量监控质控场景显式开启 | ✅ 重验无原文 |
 | BUG-UI-03 | 教师端无冻结状态展示 | 学生 VO 无 status + 列表过滤 active | listVisibleStudents + VO status + 前端冻结标识 | ✅ 重验冻结可见 |
 | BUG-UI-05 | 工作台计数不自动刷新 | OverviewPanel 仅挂载加载 | 30s usePolling 轮询 | ✅ 认领后自动 1→0 |
+| BUG-AUDIT-01 | 审计 detail 非 JSON 致 json 列落库失败（监护人同意/撤回/知识库等 8 处调用，审计静默丢失） | 调用方传普通文本，audit_logs.detail 为 json 类型 | AuditLogService 防御性归一化（普通文本包装 {"message":...}） | ✅ 生产验证 GUARDIAN_CONSENT 落库为 JSON |
 
 ### 待处理发现项
 
@@ -70,7 +71,6 @@
 |---|---|---|---|
 | F-1 | P2 | 冻结账号登录仅提示"昵称或 PIN 码错误"，无"账号已冻结"专属文案（学生困惑） | 后端 pin-login/login 对 withdrawn 状态返回专属提示，前端展示 |
 | F-2 | P2 | 风险硬规则关键词机械匹配（"被欺负"不命中"被同学欺负"）；语义分类 800ms 门禁频繁超时降级硬规则 | 关键词扩充（如"被同学欺负/被朋友欺负"）；评估语义分类门禁/超时配置 |
-| F-3 | P1 | BUG-AUDIT-01：监护人同意审计 detail 非 JSON 致 audit_logs 落库失败（审计静默丢失） | GuardianConsentService 审计 detail 改为 JSON 序列化 |
 | F-4 | P2 | 企微告警 webhook 未配置（`URI is not absolute` 降级日志），SLA 升级/提醒仅落日志 | 配置 ALERT_WECOM_WEBHOOK_URL |
 | D-1 | 设计 | 学校邀请码（admin 生成）无注册通道（试用注册仅认 TRIAL 租户）；L-06「教师可见」断言与 TRIAL 隔离架构不符 | 设计决策：学校邀请码注册通道（注册进邀请码租户）或明确学校学生仅走教师导入 |
 
