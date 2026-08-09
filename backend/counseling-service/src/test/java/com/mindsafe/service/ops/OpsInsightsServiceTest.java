@@ -32,9 +32,12 @@ class OpsInsightsServiceTest {
     private final NotificationMapper notificationMapper = mock(NotificationMapper.class);
     private final RiskEventMapper riskEventMapper = mock(RiskEventMapper.class);
     private final QualityScoreMapper qualityScoreMapper = mock(QualityScoreMapper.class);
+    private final ConsentRecordMapper consentRecordMapper = mock(ConsentRecordMapper.class);
+    private final org.springframework.jdbc.core.JdbcTemplate jdbcTemplate =
+            mock(org.springframework.jdbc.core.JdbcTemplate.class);
     private final OpsInsightsService service =
             new OpsInsightsService(notificationMapper, riskEventMapper, qualityScoreMapper,
-                    mock(ConsentRecordMapper.class), mock(org.springframework.jdbc.core.JdbcTemplate.class));
+                    consentRecordMapper, jdbcTemplate);
 
     @Test
     @DisplayName("渠道统计：按 channel 分组计数")
@@ -104,5 +107,87 @@ class OpsInsightsServiceTest {
         // 最后一条（LinkedHashMap 插入序：6 天前 → 今天）为今天
         Object todayEntry = trend.values().stream().reduce((first, second) -> second).orElseThrow();
         assertThat(((Map<?, ?>) todayEntry).get("samples")).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("dead 台账：仅脱敏字段（无 studentUserId/schoolId，R-7）+ limit 钳制")
+    void deadLedgerMasked() {
+        RiskEvent e = new RiskEvent();
+        e.setRiskEventId(UUID.randomUUID());
+        e.setTenantId(UUID.randomUUID());
+        e.setRiskLevel(3);
+        e.setRiskType("CRISIS");
+        e.setStatus(RiskEvent.STATUS_OPEN);
+        e.setDetectedAt(Instant.now());
+        e.setNotifyStatus("dead");
+        e.setStudentUserId(UUID.randomUUID());
+        when(riskEventMapper.selectList(any(Wrapper.class))).thenReturn(List.of(e));
+
+        List<OpsInsightsService.DeadLedgerEntry> ledger = service.deadLedger(0);
+
+        assertThat(ledger).hasSize(1);
+        OpsInsightsService.DeadLedgerEntry entry = ledger.get(0);
+        assertThat(entry.riskEventId()).isEqualTo(e.getRiskEventId());
+        assertThat(entry.tenantId()).isEqualTo(e.getTenantId());
+        assertThat(entry.notifyStatus()).isEqualTo("dead");
+    }
+
+    @Test
+    @DisplayName("租户健康度：按租户聚合 total/unhandled/overdue + 健康档位")
+    void tenantHealthAggregates() {
+        Instant now = Instant.now();
+        UUID tenantA = UUID.randomUUID();
+        RiskEvent open = new RiskEvent();
+        open.setTenantId(tenantA);
+        open.setStatus(RiskEvent.STATUS_OPEN);
+        open.setDetectedAt(now.minus(2, ChronoUnit.HOURS));   // 逾期（>60min）
+        RiskEvent resolved = new RiskEvent();
+        resolved.setTenantId(tenantA);
+        resolved.setStatus(RiskEvent.STATUS_RESOLVED);
+        resolved.setDetectedAt(now.minus(1, ChronoUnit.DAYS));
+        when(riskEventMapper.selectList(any(Wrapper.class))).thenReturn(List.of(open, resolved));
+
+        List<Map<String, Object>> health = service.tenantHealth();
+
+        assertThat(health).hasSize(1);
+        Map<String, Object> row = health.get(0);
+        assertThat(row.get("tenantId")).isEqualTo(tenantA);
+        assertThat(row.get("total")).isEqualTo(2);
+        assertThat(row.get("unhandled")).isEqualTo(1L);
+        assertThat(row.get("overdue")).isEqualTo(1L);
+        assertThat(row.get("health")).isEqualTo("red");
+    }
+
+    @Test
+    @DisplayName("用量报表：按 metric 聚合 + 窗口天数钳制（1~90）")
+    void usageSummaryAggregates() {
+        when(jdbcTemplate.queryForList(org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.<Object>any())).thenReturn(List.of(
+                java.util.Map.of("metric", "llm_call", "total", 100L),
+                java.util.Map.of("metric", "active_student_snapshot", "total", 42L)));
+
+        Map<String, Object> summary = service.usageSummary(0);
+
+        assertThat(summary.get("windowDays")).isEqualTo(1);
+        assertThat(summary.get("llm_call")).isEqualTo(100L);
+        assertThat(summary.get("active_student_snapshot")).isEqualTo(42L);
+    }
+
+    @Test
+    @DisplayName("合规视图：总数 + 近 7 天新增 + 类型分布")
+    void consentStatsAggregates() {
+        com.mindsafe.domain.entity.ConsentRecord recent = new com.mindsafe.domain.entity.ConsentRecord();
+        recent.setConsentType("VOICEPRINT");
+        recent.setConsentedAt(Instant.now());
+        com.mindsafe.domain.entity.ConsentRecord old = new com.mindsafe.domain.entity.ConsentRecord();
+        old.setConsentType("VOICEPRINT");
+        old.setConsentedAt(Instant.now().minus(30, ChronoUnit.DAYS));
+        when(consentRecordMapper.selectList(any())).thenReturn(List.of(recent, old));
+
+        Map<String, Object> stats = service.consentStats();
+
+        assertThat(stats.get("total")).isEqualTo(2);
+        assertThat(stats.get("last7d")).isEqualTo(1L);
+        assertThat(((Map<?, ?>) stats.get("byType")).get("VOICEPRINT")).isEqualTo(2L);
     }
 }

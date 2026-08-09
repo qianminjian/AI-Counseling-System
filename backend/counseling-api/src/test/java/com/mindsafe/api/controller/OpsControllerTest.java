@@ -117,4 +117,215 @@ class OpsControllerTest {
         // 参数透传验证：直接用 mock 交互确认（上面 when 已断言参数匹配）
         org.mockito.Mockito.verify(opsService).auditLogs(eq(tenantId), isNull(), eq(start), isNull(), eq(50));
     }
+
+    // ===== 补测批次（覆盖率回归 2026-08-09）：M8 风险/M3 降级/M9 知识/M10·M12 洞察/M4 用量/M11 合规 =====
+
+    @Test
+    @DisplayName("GET /risk/overview → 风险全景（tenantId 可空）")
+    void riskOverview() {
+        when(riskOverviewService.overview(isNull())).thenReturn(Map.of("total", 5));
+
+        var response = controller.riskOverview(null);
+
+        assertThat(response.data()).containsEntry("total", 5);
+    }
+
+    @Test
+    @DisplayName("GET /risk/sla-stats → 时效统计透传")
+    void riskSlaStats() {
+        when(riskOverviewService.slaStats(isNull())).thenReturn(List.of(Map.of("riskLevel", 3)));
+
+        var response = controller.riskSlaStats(null);
+
+        assertThat(response.data()).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("GET /risk/overdue → 脱敏逾期清单（OverdueEntry，R-7）")
+    void riskOverdue() {
+        when(riskOverviewService.overdueList(isNull())).thenReturn(List.of());
+
+        var response = controller.riskOverdue(null);
+
+        assertThat(response.data()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("POST /risk/{id}/transfer → 缺 X-Confirm 拒绝（二次确认）")
+    void transferRejectsWithoutConfirm() {
+        var response = controller.transfer(UUID.randomUUID(), null,
+                new OpsController.RiskTransferRequest(UUID.randomUUID(), "转派给班主任"));
+
+        assertThat(response.code()).isNotEqualTo(0);
+        org.mockito.Mockito.verifyNoInteractions(riskOverviewService);
+    }
+
+    @Test
+    @DisplayName("POST /risk/{id}/transfer → 带 X-Confirm 转派成功（reason 必填）")
+    void transferWithConfirm() {
+        UUID riskId = UUID.randomUUID();
+        UUID assignTo = UUID.randomUUID();
+        org.springframework.security.authentication.UsernamePasswordAuthenticationToken auth =
+                new org.springframework.security.authentication.UsernamePasswordAuthenticationToken("ops-1", null, List.of());
+        org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(auth);
+        try {
+            var response = controller.transfer(riskId, "CONFIRM",
+                    new OpsController.RiskTransferRequest(assignTo, "转派给班主任"));
+
+            assertThat(response.code()).isEqualTo(0);
+            org.mockito.Mockito.verify(riskOverviewService).transfer(riskId, assignTo, "ops-1", "转派给班主任");
+        } finally {
+            org.springframework.security.core.context.SecurityContextHolder.clearContext();
+        }
+    }
+
+    @Test
+    @DisplayName("POST /risk/{id}/force-close → 带 X-Confirm 强制关闭成功")
+    void forceCloseWithConfirm() {
+        UUID riskId = UUID.randomUUID();
+        org.springframework.security.authentication.UsernamePasswordAuthenticationToken auth =
+                new org.springframework.security.authentication.UsernamePasswordAuthenticationToken("super-1", null, List.of());
+        org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(auth);
+        try {
+            var response = controller.forceClose(riskId, "CONFIRM", new OpsController.RiskCloseRequest("处置完毕"));
+
+            assertThat(response.code()).isEqualTo(0);
+            org.mockito.Mockito.verify(riskOverviewService).forceClose(riskId, "super-1", "处置完毕");
+        } finally {
+            org.springframework.security.core.context.SecurityContextHolder.clearContext();
+        }
+    }
+
+    @Test
+    @DisplayName("GET /degradation/matrix → 降级矩阵透传")
+    void degradationMatrix() {
+        when(degradationMatrixService.matrix()).thenReturn(List.of(Map.of("point", "tts")));
+
+        var response = controller.degradationMatrix();
+
+        assertThat(response.data()).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("POST /degradation/{point}/override → 手动切换（X-Confirm + reason）")
+    void degradationOverride() {
+        org.springframework.security.authentication.UsernamePasswordAuthenticationToken auth =
+                new org.springframework.security.authentication.UsernamePasswordAuthenticationToken("ops-1", null, List.of());
+        org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(auth);
+        try {
+            var response = controller.override("tts", "CONFIRM",
+                    new OpsController.DegradationOverrideRequest("edge_tts", "主引擎故障切换"));
+
+            assertThat(response.code()).isEqualTo(0);
+            org.mockito.Mockito.verify(degradationMatrixService).override("tts", "edge_tts", "ops-1", "主引擎故障切换");
+        } finally {
+            org.springframework.security.core.context.SecurityContextHolder.clearContext();
+        }
+    }
+
+    @Test
+    @DisplayName("POST /degradation/{point}/override/cancel → 取消覆盖")
+    void degradationCancelOverride() {
+        org.springframework.security.authentication.UsernamePasswordAuthenticationToken auth =
+                new org.springframework.security.authentication.UsernamePasswordAuthenticationToken("ops-1", null, List.of());
+        org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(auth);
+        try {
+            var response = controller.cancelOverride("tts", "CONFIRM", new OpsController.RiskCloseRequest("恢复默认"));
+
+            assertThat(response.code()).isEqualTo(0);
+            org.mockito.Mockito.verify(degradationMatrixService).cancelOverride("tts", "ops-1", "恢复默认");
+        } finally {
+            org.springframework.security.core.context.SecurityContextHolder.clearContext();
+        }
+    }
+
+    @Test
+    @DisplayName("GET /degradation/events → 事件时间线（point 过滤 + limit）")
+    void degradationEvents() {
+        when(degradationMatrixService.events("tts", 50)).thenReturn(List.of());
+
+        var response = controller.degradationEvents("tts", 50);
+
+        assertThat(response.data()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("GET /knowledge/stats → 知识库平台统计")
+    void knowledgeStats() {
+        when(knowledgeBaseService.platformStats(isNull())).thenReturn(Map.of("total", 10));
+
+        var response = controller.knowledgeStats(null);
+
+        assertThat(response.data()).containsEntry("total", 10);
+    }
+
+    @Test
+    @DisplayName("GET /insights/channel-stats → 渠道统计")
+    void channelStats() {
+        when(opsInsightsService.channelStats()).thenReturn(Map.of("total", 88));
+
+        var response = controller.channelStats();
+
+        assertThat(response.data()).containsEntry("total", 88);
+    }
+
+    @Test
+    @DisplayName("GET /insights/dead-ledger → 脱敏台账（limit 透传）")
+    void deadLedger() {
+        when(opsInsightsService.deadLedger(50)).thenReturn(List.of());
+
+        var response = controller.deadLedger(50);
+
+        assertThat(response.data()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("GET /insights/quality-trend → 质量趋势")
+    void qualityTrend() {
+        when(opsInsightsService.qualityTrend()).thenReturn(Map.of("trend", 1));
+
+        var response = controller.qualityTrend();
+
+        assertThat(response.data()).containsEntry("trend", 1);
+    }
+
+    @Test
+    @DisplayName("GET /insights/alert-funnel → 预警漏斗")
+    void alertFunnel() {
+        when(opsInsightsService.alertFunnel()).thenReturn(Map.of("detected", 100));
+
+        var response = controller.alertFunnel();
+
+        assertThat(response.data()).containsEntry("detected", 100);
+    }
+
+    @Test
+    @DisplayName("GET /insights/tenant-health → 租户健康度")
+    void tenantHealth() {
+        when(opsInsightsService.tenantHealth()).thenReturn(List.of(Map.of("tenantId", "t1")));
+
+        var response = controller.tenantHealth();
+
+        assertThat(response.data()).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("GET /usage/summary → 用量报表（days 透传）")
+    void usageSummary() {
+        when(opsInsightsService.usageSummary(30)).thenReturn(Map.of("llm_call", 100));
+
+        var response = controller.usageSummary(30);
+
+        assertThat(response.data()).containsEntry("llm_call", 100);
+    }
+
+    @Test
+    @DisplayName("GET /compliance/consent-stats → 合规视图")
+    void consentStats() {
+        when(opsInsightsService.consentStats()).thenReturn(Map.of("total", 42));
+
+        var response = controller.consentStats();
+
+        assertThat(response.data()).containsEntry("total", 42);
+    }
 }
