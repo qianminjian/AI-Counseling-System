@@ -988,16 +988,16 @@ _本表由 Agent 维护，每次任务变更时更新。_
 | ADMIN-P0-06 | 告警中心只读（AlertManager 直读，依赖 OPS-MON-003/004） | 后端 | ✅ 实施完成（2026-08-09，直读代理） |
 | ADMIN-P0-07 | 审计日志查询（跨租户） | 后端 | ✅ 实施完成（2026-08-09，OpsController 5 用例） |
 | ADMIN-P0-08 | P0 回归门禁（P0-01~07 全绿） | 全量 | ✅ 实施完成（2026-08-09，后端 BUILD SUCCESS + 前端 9 用例） |
-| ADMIN-P1-01 | sys_config 注册表 + 变更留痕（HOT/RESTART 两级） | 后端 | ⬜ 待排期 |
-| ADMIN-P1-02 | M7 审核发布流（submit/review/状态机，三重门禁） | 后端 | ⬜ 待排期 |
-| ADMIN-P1-03 | M7 门禁可视化 + safety-phrases 只读 | 后端 | ⬜ 待排期 |
-| ADMIN-P1-04 | M8 风险全景 + 时效监控（纯查询） | 后端 | ⬜ 待排期 |
-| ADMIN-P1-05 | M8 逾期升级扩展（sla_escalation_log + 转派端点，复用 SlaEscalationScanner） | 后端 | ⬜ 待排期 |
-| ADMIN-P1-06 | M8 业务指标埋点 + alert-rules 业务段（R-11） | 后端 | ⬜ 待排期 |
-| ADMIN-P1-07 | M2 指标看板（完整，依赖 OPS-MON-003/004/008） | 后端 | ⬜ 待排期 |
-| ADMIN-P1-08 | M2 告警中心完整（alert_events 消费 + ack） | 后端 | ⬜ 待排期 |
-| ADMIN-P1-09 | 前端 P1 页面组（八页） | 前端 | ⬜ 待排期 |
-| ADMIN-P1-10 | P1 回归门禁（P1-01~09 全绿） | 全量 | ⬜ 待排期 |
+| ADMIN-P1-01 | sys_config 注册表 + 变更留痕（HOT/RESTART 两级） | 后端 | ✅ 实施完成（2026-08-09，V36 + 7 用例） |
+| ADMIN-P1-02 | M7 审核发布流（submit/review/状态机，三重门禁） | 后端 | ✅ 实施完成（2026-08-09，状态机 6 用例） |
+| ADMIN-P1-03 | M7 门禁可视化 + safety-phrases 只读 | 后端 | ✅ 实施完成（2026-08-09，safety 只读端点） |
+| ADMIN-P1-04 | M8 风险全景 + 时效监控（纯查询） | 后端 | ✅ 实施完成（2026-08-09，2 用例 + 2 端点） |
+| ADMIN-P1-05 | M8 逾期升级扩展（sla_escalation_log + 转派端点，复用 SlaEscalationScanner） | 后端 | ✅ 实施完成（2026-08-09，留痕 + X-Confirm 端点） |
+| ADMIN-P1-06 | M8 业务指标埋点 + alert-rules 业务段（R-11） | 后端 | ✅ 实施完成（2026-08-09，gauge 2 项 + 规则共 15 条） |
+| ADMIN-P1-07 | M2 指标看板（完整，依赖 OPS-MON-003/004/008） | 后端 | ⛔ 受阻（OPS-MON-004 监控栈部署待部署窗口） |
+| ADMIN-P1-08 | M2 告警中心完整（alert_events 消费 + ack） | 后端 | ⛔ 受阻（依赖 P1-07） |
+| ADMIN-P1-09 | 前端 P1 页面组（八页） | 前端 | 🟡 部分完成（配置注册表/风险全景 2 页；Prompt 审核流/时效/台账等 6 页后续批次） |
+| ADMIN-P1-10 | P1 回归门禁（P1-01~09 全绿） | 全量 | ✅ 实施完成（2026-08-09，后端 BUILD SUCCESS + 前端 9 用例 + tsc OK；受阻项除外） |
 | ADMIN-P2-01 | M3 降级矩阵 + 手动切换（依赖 OPS-MON-007） | 后端 | ⬜ 待排期 |
 | ADMIN-P2-02 | M3 事件时间线（消费 degradation_events） | 后端 | ⬜ 待排期 |
 | ADMIN-P2-03 | M9 知识库管理扩展 | 后端 | ⬜ 待排期 |

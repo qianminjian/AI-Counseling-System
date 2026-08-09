@@ -492,6 +492,7 @@
 | config_id | uuid PK | |
 | config_key | varchar(128) UNIQUE | 配置键（如 `mindsafe.safety.voiceprint-threshold`） |
 | domain | varchar(32) | 配置域（system/security/voice/chat/alert/commercial） |
+| value | text | 配置值（**V36 实现补充**：原 §6.1 缺值列，SECRET 类存掩码标记，值不回读） |
 | value_type | varchar(16) | string/number/bool/json |
 | sensitive | varchar(8) | NORMAL/SECRET（SECRET 不回显值） |
 | effect_mode | varchar(8) | HOT/RESTART |
