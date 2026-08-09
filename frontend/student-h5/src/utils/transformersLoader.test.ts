@@ -74,9 +74,9 @@ describe('checkWasmEnvironment', () => {
 })
 
 describe('buildRemoteHost', () => {
-  it("SAME_ORIGIN → base + 'models/'", () => {
-    expect(buildRemoteHost('/', 'SAME_ORIGIN')).toBe('/models/')
-    expect(buildRemoteHost('/sub/', 'SAME_ORIGIN')).toBe('/sub/models/')
+  it("SAME_ORIGIN → origin + base + 'models/'（绝对 URL，F-15 与 8.2 对齐）", () => {
+    expect(buildRemoteHost('/', 'SAME_ORIGIN')).toBe('http://localhost:3000/models/')
+    expect(buildRemoteHost('/sub/', 'SAME_ORIGIN')).toBe('http://localhost:3000/sub/models/')
   })
 
   it('相对路径 → origin 拼接', () => {
@@ -109,7 +109,7 @@ describe('loadTransformersModel', () => {
     const r = await loadTransformersModel({ modelHost: 'SAME_ORIGIN', load })
     expect(r).toBe('ok')
     expect(load).toHaveBeenCalledTimes(1)
-    expect(mockEnv.remoteHost).toBe('/models/')
+    expect(mockEnv.remoteHost).toBe('http://localhost:3000/models/')
     expect(mockEnv.remotePathTemplate).toBe('{model}/')
     expect(mockEnv.allowLocalModels).toBe(false)
     expect(mockEnv.useWasmCache).toBe(false)
@@ -139,11 +139,11 @@ describe('loadTransformersModel', () => {
 })
 
 describe('createProgressHandler', () => {
-  it('progress_total 优先：直接取总百分比', () => {
+  it('progress_total 事件不处理（并行多模型时互相覆盖，F-16 弃用）', () => {
     const cb = vi.fn()
     const h = createProgressHandler(cb)
     h({ status: 'progress_total', progress: 37 })
-    expect(cb).toHaveBeenLastCalledWith(37)
+    expect(cb).not.toHaveBeenCalled()
   })
 
   it('progress 文件事件：按文件平均聚合', () => {
@@ -152,6 +152,24 @@ describe('createProgressHandler', () => {
     h({ status: 'progress', file: 'a.onnx', progress: 40 })
     h({ status: 'progress', file: 'b.onnx', progress: 60 })
     expect(cb).toHaveBeenLastCalledWith(50)
+  })
+
+  it('F-16 单调保护：新文件加入拉低平均值时不回调（进度不回跳）', () => {
+    const cb = vi.fn()
+    const h = createProgressHandler(cb)
+    h({ status: 'progress', file: 'a.onnx', progress: 80 })
+    expect(cb).toHaveBeenLastCalledWith(80)
+    // 新文件 b 从 0 开始 → 平均 (80+0)/2=40 < 80 → 不回调（防 80%→40% 回跳）
+    h({ status: 'progress', file: 'b.onnx', progress: 0 })
+    expect(cb).toHaveBeenCalledTimes(1)
+    // a 90 + b 50 → 平均 70 < 80 → 仍不回调
+    h({ status: 'progress', file: 'a.onnx', progress: 90 })
+    h({ status: 'progress', file: 'b.onnx', progress: 50 })
+    expect(cb).toHaveBeenCalledTimes(1)
+    // a 100 + b 80 → 平均 90 >= 80 → 回调 90
+    h({ status: 'progress', file: 'a.onnx', progress: 100 })
+    h({ status: 'progress', file: 'b.onnx', progress: 80 })
+    expect(cb).toHaveBeenLastCalledWith(90)
   })
 
   it('无 progress 数值的事件不触发回调', () => {

@@ -67,12 +67,14 @@ function getModelBundle() {
       load: async ({ AutoModel, AutoFeatureExtractor }) => {
         // WeSpeaker 是音频模型，不能用 pipeline('feature-extraction')（那是文本模型专用）。
         // 正确方式：AutoModel + AutoFeatureExtractor 分别加载，手动编排推理。
-        // 并行加载模型和特征提取器——两个 progress_callback 合并到平均值
-        // （否则两者互不感知，各自 setVpModelStatus 导致进度回退，如 95%→90%）
+        // F-17（2026-08-09 用户要求"各管各的，各自通道"）：两个模型各自独立进度通道——
+        // progress.model（模型文件）与 progress.feature（特征提取器）互不覆盖；
+        // 合成规则 = 分段加权（model 0-50% + feature 50-100%），通道内 createProgressHandler
+        // 已做单调保护（F-16），合成结果天然单调不回跳。不再做文件级平均值共享。
         const progress = { model: 0, feature: 0 }
         const updateCombined = () => {
-          const avg = Math.round((progress.model + progress.feature) / 2)
-          setVpModelStatus('loading', avg)
+          const total = Math.round(progress.model / 2 + progress.feature / 2)
+          setVpModelStatus('loading', total)
         }
         const featureCallback = createProgressHandler((p) => {
           progress.feature = p
