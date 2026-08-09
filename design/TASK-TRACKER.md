@@ -920,6 +920,8 @@ _本表由 Agent 维护，每次任务变更时更新。_
 
 > 25. **DOC-085 登记**（2026-08-09）：Browser Agent 三端 Web 界面自动化遍历测试设计登记——方案与提示词单一事实源落 `design/doing/82_BrowserAgent三端Web界面自动化遍历测试设计.md`（承接 R-4 Playwright 预留态，DOC-082）：30 场景案例（S-01~10 学生端 / T-01~08 教师端 / P-01~06 家长端 / L-01~06 三端联动）+ 每场景可执行 Browser Agent 提示词（环境/步骤/断言/截图记录四要素）+ 问题登记规范（reports/browser-test/ISSUES-<端>.md，按端+场景汇总，BUG 条目 P0-P3 分级 + OPEN→FIXED→VERIFIED→REGRESSION 状态机）+ 修复-部署-复测闭环（每端测试完→自动修复（TDD）→自动部署（deploy.sh/compose）→自动复测，3 轮上限，收敛定义 P0=0 且 P1=0 且 P2/P3 未关闭 ≤3，超限升级人工）；语音类（声纹 remote/ASR/TTS 真实链路）因 test compose 不含 voice/tts 标记 SKIP-语音，断言降级路径照常；执行顺序：环境准备→学生端→教师端→家长端→联动场景→汇总归档；ticket 见 §二十九。
 
+> 26. **DOC-086 登记**（2026-08-09）：服务降级监控与告警设计登记（BUG-TTS-01 事故复盘：CosyVoice 主引擎 100% 失败静默降级 edge-tts 长期运行无告警）——方案与 SPEC 单一事实源落 `design/doing/83_服务降级监控与告警设计.md`：**TTS 降级事件指标** `tts_degraded_events_total{direction="cosyvoice->edge_tts"}`（独立 Metrics 实例适配单 label 结构，判定 engine≠首选且非 retried）+ **LLM 主备切换指标零改动复用**（`ResilientChatModel` 已有 `mindsafe.llm.model_fallback{from,to}`，仅补规则）+ **alert-rules 新增 3 条**（TtsPrimaryEngineDegraded 成功计数推导 / TtsDegradeRatioHigh 降级率 30% / LlmPrimaryFailing 引用 `mindsafe_llm_model_fallback_total`）+ 生产部署 monitoring 栈（.env 补 WECOM_* 4 项 + GRAFANA_PASSWORD）+ 降级演练（断 DASHSCOPE key → 指标 +1 → 企微 ≤5 分钟触达）；ticket OPS-MON-001~006 见 §三十，验收标准 AC-1~8。
+
 ---
 
 ## 二十九、Browser Agent Web 界面自动化遍历测试（2026-08-09）
@@ -940,3 +942,20 @@ _本表由 Agent 维护，每次任务变更时更新。_
 > 执行顺序：UI-TEST-002 → 003（学生端 S-01~10）→ 008（对话窗口 C-01~07）→ 004 → 005 → 006 → 007（UI-TEST-008 与 003 同批次优先，其问题并入学生端修复循环）；依赖：003~006 各自完成后立即触发修复-部署-复测闭环（3 轮上限），L 场景依赖 S/T/P 收敛后环境。
 
 > 问题登记：各端问题清单落 `reports/browser-test/ISSUES-<端>.md`（BUG-<端>-<场景>-<序号> [P0-P3]），修复后状态流转 OPEN→FIXED→VERIFIED→REGRESSION；每端收敛定义 P0=0 且 P1=0 且 P2/P3 未关闭 ≤3，达 3 轮上限未收敛升级人工。
+
+---
+
+## 三十、服务降级监控与告警（2026-08-09）
+
+> 登记说明：本专题承接 BUG-TTS-01 事故复盘（CosyVoice 主引擎 100% 失败静默降级 edge-tts 长期运行，无告警触达管理员）。方案与 SPEC 单一事实源：`design/doing/83_服务降级监控与告警设计.md`（doing 子文档，编号 83，开发期状态）。
+
+| Ticket | 内容 | 范围 | 状态 |
+|--------|------|------|------|
+| OPS-MON-001 | doing/83 设计文档生成（方案 + SPEC：TTS 降级指标 / 复用 LLM 指标 / 3 条规则 / 部署 / 演练，AC-1~8） | 全量 | ✅ 本次完成（2026-08-09） |
+| OPS-MON-002 | TTS 降级指标埋点（app.py 独立 Metrics 实例 + direction 标签 + test_app.py 用例） | tts-service | ⬜ 待排期 |
+| OPS-MON-003 | alert-rules 新增 3 条规则（TtsPrimaryEngineDegraded / TtsDegradeRatioHigh / LlmPrimaryFailing） | monitoring | ⬜ 待排期 |
+| OPS-MON-004 | 生产部署 monitoring 栈（.env 补 WECOM_* 4 项 + GRAFANA_PASSWORD → compose up） | 部署 | ⬜ 待排期 |
+| OPS-MON-005 | 降级演练 + 验证（断 DASHSCOPE key → 指标 +1 → 企微 ≤5 分钟触达 → 恢复） | 验证 | ⬜ 待排期 |
+| OPS-MON-006 | 合并归档（doing/83 最终态并入 design/04 §9 监控 / 06 §配置章节 → 归档 his/83） | 全量 | ⬜ 待排期 |
+
+> 执行顺序：OPS-MON-002 → 003 → 004 → 005 → 006（005 演练通过后 006 归档）；AC-6 演练为归档前置门禁。
