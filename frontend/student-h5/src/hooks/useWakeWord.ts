@@ -175,7 +175,8 @@ function getTranscriber() {
  * F-19（2026-08-10 用户要求"转写器提前启动"）：模块级 Worker 单例预启动。
  * 模型文件预加载（preloadWakeModel）同时预创建+init 转写 Worker（不启动麦克风，隐私合规
  * design/28 §1.4——监听仍只在对话内），进对话时复用已就绪 Worker → standby 无等待。
- * init 前等待主线程模型下载完成（复用 hasWakeModelInCache/waitForMainThreadModel），避免双下载。
+ * F-26（2026-08-10）：前置依赖（模型文件）由 Worker 自行满足——transformers.js 内部
+ * 缓存命中→读缓存、未命中→自下载，不等待主线程；主线程 getTranscriber 仅降级时启用。
  */
 let wakeWorkerPromise: Promise<Worker> | null = null
 function buildWorkerConfig() {
@@ -265,56 +266,6 @@ export function preloadWakeModel() {
   // 单一下载者避免双下载抢带宽；Worker 下载与页面其它操作并发（不等待主线程）。
   tslog('preloadWakeModel 调用（仅 getWakeWorker，Worker 独立下载+初始化）')
   getWakeWorker().catch(() => {}) // Worker 预启动失败时 active 降级主线程
-}
-
-/**
- * F-6/F-9（2026-08-09）：检查唤醒模型是否已完整写入 transformers-cache（Cache API）。
- * encoder + decoder 双文件校验（decoder 30M 是瓶颈文件）。缓存完整时 Worker 可直接
- * init 秒加载，避免与主线程并行下载（4.7Mbps 下双下载必然超时）。
- */
-async function hasWakeModelInCache(): Promise<boolean> {
-  try {
-    if (!('caches' in self)) return false
-    const base = import.meta.env.BASE_URL || '/'
-    const cache = await caches.open('transformers-cache')
-    const files = [
-      'onnx/encoder_model_quantized.onnx',
-      'onnx/decoder_model_merged_quantized.onnx',
-    ]
-    for (const f of files) {
-      const url = `${self.location.origin}${base}models/onnx-community/whisper-tiny/${f}`
-      const hit = await cache.match(url)
-      if (!hit) return false
-    }
-    return true
-  } catch {
-    return false
-  }
-}
-
-/**
- * 等待主线程预加载结束（下载的文件已写入 Cache API），供 Worker 复用缓存，避免双下载。
- * 超时 120s（F-9b）：覆盖 4.7Mbps 带宽下 110MB 模型全量下载耗时。
- */
-function waitForMainThreadModel(timeoutMs = 120000): Promise<boolean> {
-  return new Promise((resolve) => {
-    const st = wakeModelStore.getStatus()
-    if (st !== 'loading') {
-      resolve(true)
-      return
-    }
-    const start = Date.now()
-    const timer = setInterval(() => {
-      const s = wakeModelStore.getStatus()
-      if (s !== 'loading') {
-        clearInterval(timer)
-        resolve(true)
-      } else if (Date.now() - start >= timeoutMs) {
-        clearInterval(timer)
-        resolve(false)
-      }
-    }, 300)
-  })
 }
 
 /**

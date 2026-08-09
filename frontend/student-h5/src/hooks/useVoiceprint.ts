@@ -26,6 +26,11 @@ import { createModelStatusStore, type ModelStatus } from '../utils/modelStatusSt
 // DC-009：Transformers.js 初始化收敛到共享 loader（SPEC §23）
 import { loadTransformersModel, createProgressHandler, formatModelError } from '../utils/transformersLoader'
 
+/** F-25 轨迹时间戳日志：与 useWakeWord 同格式，所有关键动作带相对/绝对时间（生产可见，诊断用） */
+const tslog = (...args: unknown[]) => {
+  console.info(`[TS ${(performance.now() / 1000).toFixed(2)}s ${new Date().toLocaleTimeString('zh-CN', { hour12: false })}]`, ...args)
+}
+
 // ===== 全局模型加载状态（ARCH-006 收敛 A：复用 createModelStatusStore 基座） =====
 
 /** 声纹模型状态（类型复用 ModelStatus 基座） */
@@ -49,6 +54,7 @@ let modelBundlePromise = null
  * 返回 Promise 供顺序编排（登录页先声纹完成再启动唤醒模型下载，避免双路抢带宽）。
  */
 export function preloadVoiceprintModel(): Promise<unknown> {
+  tslog('preloadVoiceprintModel 调用（getModelBundle 启动下载+初始化）')
   return getModelBundle().catch(() => {}) // 静默失败，实际使用时会重试
 }
 
@@ -60,6 +66,7 @@ export function preloadVoiceprintModel(): Promise<unknown> {
  */
 function getModelBundle() {
   if (!modelBundlePromise) {
+    tslog('getModelBundle 首次调用：开始加载声纹模型')
     setVpModelStatus('loading')
     modelBundlePromise = loadTransformersModel({
       modelHost: VP_MODEL_REMOTE_HOST,
@@ -93,6 +100,7 @@ function getModelBundle() {
           }),
           AutoFeatureExtractor.from_pretrained(VP_MODEL_ID, { progress_callback: featureCallback }),
         ])
+        tslog('声纹模型加载完成（AutoModel + AutoFeatureExtractor 均已就绪）')
         setVpModelStatus('ready', 100)
         return { model, featureExtractor }
       },
@@ -116,6 +124,7 @@ function getModelBundle() {
     })
       .catch((err) => {
         modelBundlePromise = null
+        tslog('声纹模型加载失败:', (err as Error)?.message || String(err))
         // 环境不支持（SAB/SIMD）→ 静默降级，不报错；其余错误已由 onError 置 error 态
         if (err?.unsupported) {
           setVpModelStatus('unsupported')

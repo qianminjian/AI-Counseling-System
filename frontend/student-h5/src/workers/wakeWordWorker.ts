@@ -10,6 +10,11 @@
 
 const TAG = '[WakeWordWorker]'
 
+/** F-25 轨迹时间戳日志：Worker 内 performance.now() 与主线程同时间轴（页面启动后相对秒） */
+const tslog = (...args: unknown[]) => {
+  console.info(`[TS ${(performance.now() / 1000).toFixed(2)}s ${new Date().toLocaleTimeString('zh-CN', { hour12: false })}]`, ...args)
+}
+
 // 捕获所有未处理错误（诊断用）
 self.onerror = (e: any) => {
   console.error(TAG, '未捕获错误:', e.message, e.filename, e.lineno)
@@ -26,6 +31,7 @@ async function ensureModel(config) {
   if (initPromise) return initPromise
 
   initPromise = (async () => {
+    tslog('Worker ensureModel 开始（loading 消息已发送）')
     self.postMessage({ type: 'status', status: 'loading' })
 
     // ━━ 环境前置检查：SharedArrayBuffer 是 ORT WASM 的硬性依赖 ━━
@@ -58,6 +64,7 @@ async function ensureModel(config) {
 
     // F-8-Worker 诊断：埋点 ORT session_create 耗时（生产环境 console 可见，便于排查加载慢问题）
     const t0Session = Date.now()
+    tslog('Worker ORT session_create 开始')
     console.info(TAG, `开始 ORT session_create（numThreads=${env.backends.onnx.wasm.numThreads}）`)
     const t = await pipeline('automatic-speech-recognition', config.modelId, {
       // 禁用高级图优化：ORT 1.26.0 TransposeDQWeightsForMatMulNBits bug
@@ -69,10 +76,12 @@ async function ensureModel(config) {
       },
     })
     const sessionCreateMs = Date.now() - t0Session
+    tslog(`Worker ORT session_create 完成，耗时 ${sessionCreateMs}ms`)
     console.info(TAG, `✅ ORT session_create 完成，耗时 ${sessionCreateMs}ms`)
     self.postMessage({ type: 'session_created', durationMs: sessionCreateMs })
 
     transcriberInstance = t
+    tslog('Worker ready 消息已发送')
     self.postMessage({ type: 'status', status: 'ready' })
     return t
   })().catch((err) => {
@@ -92,6 +101,7 @@ self.onmessage = async (event) => {
   console.debug(TAG, '收到消息:', type)
 
   if (type === 'init') {
+    tslog('Worker 收到 init 消息，开始模型加载')
     try {
       await ensureModel(event.data.config)
     } catch {
@@ -102,10 +112,12 @@ self.onmessage = async (event) => {
 
   if (type === 'transcribe') {
     const { audio, id } = event.data
+    tslog(`Worker 收到 transcribe id=${id}, 音频长度=${audio?.length}`)
     console.debug(TAG, `转写请求 id=${id}, 音频长度=${audio?.length}`)
     try {
       const transcriber = await ensureModel(event.data.config)
       const output = await transcriber(audio, { language: 'chinese', task: 'transcribe' })
+      tslog(`Worker 转写完成 id=${id}:`, output?.text)
       console.debug(TAG, `转写完成 id=${id}:`, output?.text)
       self.postMessage({ type: 'result', id, text: output?.text || '' })
     } catch (err) {
