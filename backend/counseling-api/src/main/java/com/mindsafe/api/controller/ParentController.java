@@ -51,27 +51,30 @@ public class ParentController {
     /**
      * 获取学生情绪周报（家长只读）
      * Header: Authorization: Bearer <parent_token>
+     * Query: studentUserId（前端从 children 列表传入，BUG-P-BASE-04：
+     * 新登录 token sub=parentId，不再从 token 推断学生）
      */
     @GetMapping("/report")
-    public ApiResponse<Map<String, Object>> getWeeklyReport(@RequestHeader("Authorization") String authHeader) {
-        ParentTokenInfo info = resolveParentToken(authHeader);
-        TenantContextHolder.set(info.tenantId());
+    public ApiResponse<Map<String, Object>> getWeeklyReport(
+            @RequestHeader("Authorization") String authHeader,
+            @RequestParam UUID studentUserId) {
+        ParentIdentity identity = resolveParentIdentity(authHeader);
+        TenantContextHolder.set(identity.tenantId());
         try {
-            return doGetWeeklyReport(info);
+            requireLinkedStudent(identity, studentUserId, true);
+            return doGetWeeklyReport(identity.tenantId(), studentUserId);
         } finally {
             TenantContextHolder.clear();
         }
     }
 
-    private ApiResponse<Map<String, Object>> doGetWeeklyReport(ParentTokenInfo info) {
-        UUID studentUserId = info.studentUserId();
+    private ApiResponse<Map<String, Object>> doGetWeeklyReport(UUID tenantId, UUID studentUserId) {
         // T4 批次C：查询下沉 ParentService（租户 + 学生双条件）
-        User student = parentService.getStudent(info.tenantId(), studentUserId);
+        User student = parentService.getStudent(tenantId, studentUserId);
         if (student == null) {
             throw new BizException(ErrorCode.RESOURCE_NOT_FOUND, "学生不存在");
         }
 
-        UUID tenantId = student.getTenantId();
         Instant weekAgo = Instant.now().minus(7, ChronoUnit.DAYS);
 
         // 近 7 天会话
@@ -118,25 +121,27 @@ public class ParentController {
      * Header: Authorization: Bearer <parent_token>
      */
     @PostMapping("/consent/withdraw")
-    public ApiResponse<Map<String, Object>> withdrawConsent(@RequestHeader("Authorization") String authHeader) {
-        ParentTokenInfo info = resolveParentToken(authHeader);
-        TenantContextHolder.set(info.tenantId());
+    public ApiResponse<Map<String, Object>> withdrawConsent(
+            @RequestHeader("Authorization") String authHeader,
+            @RequestParam UUID studentUserId) {
+        ParentIdentity identity = resolveParentIdentity(authHeader);
+        TenantContextHolder.set(identity.tenantId());
         try {
-            return doWithdrawConsent(info);
+            requireLinkedStudent(identity, studentUserId, true);
+            return doWithdrawConsent(identity.tenantId(), studentUserId);
         } finally {
             TenantContextHolder.clear();
         }
     }
 
-    private ApiResponse<Map<String, Object>> doWithdrawConsent(ParentTokenInfo info) {
-        UUID studentUserId = info.studentUserId();
+    private ApiResponse<Map<String, Object>> doWithdrawConsent(UUID tenantId, UUID studentUserId) {
         // T4 批次C：查询下沉 ParentService（租户 + 学生双条件）
-        User student = parentService.getStudent(info.tenantId(), studentUserId);
+        User student = parentService.getStudent(tenantId, studentUserId);
         if (student == null) {
             throw new BizException(ErrorCode.RESOURCE_NOT_FOUND, "学生不存在");
         }
 
-        consentWithdrawalService.withdrawConsent(info.tenantId(), studentUserId);
+        consentWithdrawalService.withdrawConsent(tenantId, studentUserId);
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("studentUserId", studentUserId);
@@ -198,21 +203,25 @@ public class ParentController {
      * 撤回后家长仍需能查询到"已撤回"状态，否则页面永远只显示"链接已失效"。
      */
     @GetMapping("/consent/status")
-    public ApiResponse<Map<String, Object>> getConsentStatus(@RequestHeader("Authorization") String authHeader) {
-        ParentTokenInfo info = resolveParentTokenLoose(authHeader);
-        TenantContextHolder.set(info.tenantId());
+    public ApiResponse<Map<String, Object>> getConsentStatus(
+            @RequestHeader("Authorization") String authHeader,
+            @RequestParam UUID studentUserId) {
+        ParentIdentity identity = resolveParentIdentity(authHeader);
+        TenantContextHolder.set(identity.tenantId());
         try {
-            return ApiResponse.ok(consentWithdrawalService.getConsentStatus(info.tenantId(), info.studentUserId()));
+            // 宽松校验：撤回后仍需可查（checkWithdrawn=false）
+            requireLinkedStudent(identity, studentUserId, false);
+            return ApiResponse.ok(consentWithdrawalService.getConsentStatus(identity.tenantId(), studentUserId));
         } finally {
             TenantContextHolder.clear();
         }
     }
 
     /**
-     * 解析 parent_report token（宽松版）：仅校验签名/类型，不检查学生撤回状态。
-     * 用于 consent/status 等"撤回后仍需可见"的只读端点。
+     * 解析家长身份（BUG-P-BASE-04：新登录 token sub=parentId，
+     * 仅校验签名/类型，学生归属由 requireLinkedStudent 按绑定关系校验）。
      */
-    private ParentTokenInfo resolveParentTokenLoose(String authHeader) {
+    private ParentIdentity resolveParentIdentity(String authHeader) {
         String token = authHeader.replace("Bearer ", "");
         try {
             if (!jwtTokenProvider.validateToken(token)
@@ -221,7 +230,7 @@ public class ParentController {
                     || !"parent".equals(jwtTokenProvider.getUserType(token))) {
                 throw new BizException(ErrorCode.UNAUTHORIZED, "链接已过期或无效");
             }
-            return new ParentTokenInfo(
+            return new ParentIdentity(
                     jwtTokenProvider.getUserId(token),
                     jwtTokenProvider.getTenantId(token));
         } catch (BizException e) {
@@ -231,6 +240,28 @@ public class ParentController {
         }
     }
 
+    /**
+     * 校验家长-学生绑定关系（防越权）+ 可选撤回拦截。
+     *
+     * @param checkWithdrawn true=同意已撤回时抛 410（数据端点）；false=仅校验绑定（状态端点）
+     */
+    private void requireLinkedStudent(ParentIdentity identity, UUID studentUserId, boolean checkWithdrawn) {
+        if (!parentService.isLinked(identity.parentId(), studentUserId)) {
+            throw new BizException(ErrorCode.UNAUTHORIZED, "链接已过期或无效");
+        }
+        User student = parentService.getStudent(identity.tenantId(), studentUserId);
+        if (student == null) {
+            throw new BizException(ErrorCode.UNAUTHORIZED, "链接已过期或无效");
+        }
+        if (checkWithdrawn && ConsentWithdrawalService.STATUS_WITHDRAWN.equals(student.getStatus())) {
+            // BUG-P-P03-01/P05-02：撤回是业务终态而非认证失败，须用 20011→410 而非 20001→401
+            throw new BizException(ErrorCode.CONSENT_WITHDRAWN, "监护人同意已撤回，链接已失效");
+        }
+    }
+
+    private record ParentIdentity(UUID parentId, UUID tenantId) {}
+
+    /** 旧链接流程（send-code/verify-phone）：parent_report token 的 sub=studentUserId */
     private record ParentTokenInfo(UUID studentUserId, UUID tenantId) {}
 
     // ===== AUTH-013 手机验证 =====

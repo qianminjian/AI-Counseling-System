@@ -48,6 +48,7 @@ class ParentControllerTest {
     private ParentController controller;
 
     private final UUID tenantId = UUID.randomUUID();
+    private final UUID parentId = UUID.randomUUID();
     private final UUID studentUserId = UUID.randomUUID();
     private static final String VALID_PARENT_TOKEN = "parent-token-valid";
 
@@ -61,13 +62,15 @@ class ParentControllerTest {
         controller = new ParentController(jwtTokenProvider, parentService,
                 consentWithdrawalService, phoneVerificationService);
 
-        // 默认：有效 parent token
+        // 默认：有效 parent token（sub=parentId，BUG-P-BASE-04 语义）
         when(jwtTokenProvider.validateToken(VALID_PARENT_TOKEN)).thenReturn(true);
         when(jwtTokenProvider.isRefreshToken(VALID_PARENT_TOKEN)).thenReturn(false);
         when(jwtTokenProvider.isVoiceCredential(VALID_PARENT_TOKEN)).thenReturn(false);
         when(jwtTokenProvider.getUserType(VALID_PARENT_TOKEN)).thenReturn("parent");
-        when(jwtTokenProvider.getUserId(VALID_PARENT_TOKEN)).thenReturn(studentUserId);
+        when(jwtTokenProvider.getUserId(VALID_PARENT_TOKEN)).thenReturn(parentId);
         when(jwtTokenProvider.getTenantId(VALID_PARENT_TOKEN)).thenReturn(tenantId);
+        // BUG-P-BASE-04：默认家长-学生已绑定（requireLinkedStudent 通过）
+        when(parentService.isLinked(parentId, studentUserId)).thenReturn(true);
     }
 
     @AfterEach
@@ -100,7 +103,7 @@ class ParentControllerTest {
             return student;
         });
 
-        ApiResponse<Map<String, Object>> resp = controller.getWeeklyReport("Bearer " + VALID_PARENT_TOKEN);
+        ApiResponse<Map<String, Object>> resp = controller.getWeeklyReport("Bearer " + VALID_PARENT_TOKEN, studentUserId);
 
         assertThat(resp.code()).isEqualTo(0);
         assertNull(TenantContextHolder.get(), "请求结束后 TenantContextHolder 必须为 null");
@@ -117,7 +120,7 @@ class ParentControllerTest {
             return student;
         });
 
-        ApiResponse<Map<String, Object>> resp = controller.withdrawConsent("Bearer " + VALID_PARENT_TOKEN);
+        ApiResponse<Map<String, Object>> resp = controller.withdrawConsent("Bearer " + VALID_PARENT_TOKEN, studentUserId);
 
         assertThat(resp.code()).isEqualTo(0);
         verify(consentWithdrawalService).withdrawConsent(tenantId, studentUserId);
@@ -138,7 +141,7 @@ class ParentControllerTest {
         @Test
         @DisplayName("getWeeklyReport student token → UNAUTHORIZED")
         void reportRejected() {
-            assertThatThrownBy(() -> controller.getWeeklyReport("Bearer " + VALID_PARENT_TOKEN))
+            assertThatThrownBy(() -> controller.getWeeklyReport("Bearer " + VALID_PARENT_TOKEN, studentUserId))
                     .isExactlyInstanceOf(BizException.class)
                     .extracting("code")
                     .isEqualTo(ErrorCode.UNAUTHORIZED.code());
@@ -147,7 +150,7 @@ class ParentControllerTest {
         @Test
         @DisplayName("withdrawConsent student token → UNAUTHORIZED")
         void withdrawRejected() {
-            assertThatThrownBy(() -> controller.withdrawConsent("Bearer " + VALID_PARENT_TOKEN))
+            assertThatThrownBy(() -> controller.withdrawConsent("Bearer " + VALID_PARENT_TOKEN, studentUserId))
                     .isExactlyInstanceOf(BizException.class)
                     .extracting("code")
                     .isEqualTo(ErrorCode.UNAUTHORIZED.code());
@@ -170,7 +173,7 @@ class ParentControllerTest {
         String bad = "Bearer invalid.token.here";
         when(jwtTokenProvider.validateToken(anyString())).thenReturn(false);
 
-        assertThatThrownBy(() -> controller.getWeeklyReport(bad))
+        assertThatThrownBy(() -> controller.getWeeklyReport(bad, studentUserId))
                 .isExactlyInstanceOf(BizException.class)
                 .extracting("code")
                 .isEqualTo(ErrorCode.UNAUTHORIZED.code());
@@ -193,7 +196,7 @@ class ParentControllerTest {
         void reportRejected() {
             mockWithdrawnStudent();
 
-            assertThatThrownBy(() -> controller.getWeeklyReport("Bearer " + VALID_PARENT_TOKEN))
+            assertThatThrownBy(() -> controller.getWeeklyReport("Bearer " + VALID_PARENT_TOKEN, studentUserId))
                     .isExactlyInstanceOf(BizException.class)
                     .extracting("code")
                     .isEqualTo(ErrorCode.CONSENT_WITHDRAWN.code());
@@ -206,7 +209,7 @@ class ParentControllerTest {
         void withdrawRejected() {
             mockWithdrawnStudent();
 
-            assertThatThrownBy(() -> controller.withdrawConsent("Bearer " + VALID_PARENT_TOKEN))
+            assertThatThrownBy(() -> controller.withdrawConsent("Bearer " + VALID_PARENT_TOKEN, studentUserId))
                     .isExactlyInstanceOf(BizException.class)
                     .extracting("code")
                     .isEqualTo(ErrorCode.CONSENT_WITHDRAWN.code());
@@ -216,6 +219,8 @@ class ParentControllerTest {
         @Test
         @DisplayName("verifyPhone 撤回后 → CONSENT_WITHDRAWN（不签发新 token）")
         void verifyPhoneRejected() {
+            // 旧链接流程：parent_report token 的 sub=studentUserId
+            when(jwtTokenProvider.getUserId(VALID_PARENT_TOKEN)).thenReturn(studentUserId);
             mockWithdrawnStudent();
 
             assertThatThrownBy(() -> controller.verifyPhone(
@@ -231,7 +236,7 @@ class ParentControllerTest {
         void missingStudentRejected() {
             when(parentService.getStudent(tenantId, studentUserId)).thenReturn(null);
 
-            assertThatThrownBy(() -> controller.getWeeklyReport("Bearer " + VALID_PARENT_TOKEN))
+            assertThatThrownBy(() -> controller.getWeeklyReport("Bearer " + VALID_PARENT_TOKEN, studentUserId))
                     .isExactlyInstanceOf(BizException.class)
                     .extracting("code")
                     .isEqualTo(ErrorCode.UNAUTHORIZED.code());
@@ -247,6 +252,7 @@ class ParentControllerTest {
         @Test
         @DisplayName("正常返回授权状态并绑定租户上下文")
         void returnsStatus() {
+            when(parentService.getStudent(tenantId, studentUserId)).thenReturn(studentUser());
             Map<String, Object> expected = new java.util.LinkedHashMap<>();
             expected.put("status", "active");
             expected.put("consentVersion", "v1.0");
@@ -257,7 +263,7 @@ class ParentControllerTest {
                         return expected;
                     });
 
-            ApiResponse<Map<String, Object>> resp = controller.getConsentStatus("Bearer " + VALID_PARENT_TOKEN);
+            ApiResponse<Map<String, Object>> resp = controller.getConsentStatus("Bearer " + VALID_PARENT_TOKEN, studentUserId);
 
             assertThat(resp.code()).isEqualTo(0);
             assertThat(resp.data().get("status")).isEqualTo("active");
@@ -267,12 +273,14 @@ class ParentControllerTest {
         @Test
         @DisplayName("撤回状态下仍可查询（宽松校验，不拦截 withdrawn）")
         void worksAfterWithdrawn() {
-            // 不 mock parentService.getStudent —— 宽松路径不检查学生状态；
-            // 只需证明没有触发严格校验的 UNAUTHORIZED/CONSENT_WITHDRAWN
+            // 撤回后绑定关系仍在（link 未删除），状态端点不拦截 withdrawn
+            User student = studentUser();
+            student.setStatus("withdrawn");
+            when(parentService.getStudent(tenantId, studentUserId)).thenReturn(student);
             Map<String, Object> expected = Map.of("status", "withdrawn");
             when(consentWithdrawalService.getConsentStatus(tenantId, studentUserId)).thenReturn(expected);
 
-            ApiResponse<Map<String, Object>> resp = controller.getConsentStatus("Bearer " + VALID_PARENT_TOKEN);
+            ApiResponse<Map<String, Object>> resp = controller.getConsentStatus("Bearer " + VALID_PARENT_TOKEN, studentUserId);
 
             assertThat(resp.code()).isEqualTo(0);
             assertThat(resp.data().get("status")).isEqualTo("withdrawn");
@@ -280,11 +288,24 @@ class ParentControllerTest {
         }
 
         @Test
+        @DisplayName("未绑定学生 → UNAUTHORIZED（BUG-P-BASE-04 越权防护）")
+        void unlinkedStudentRejected() {
+            when(parentService.isLinked(parentId, studentUserId)).thenReturn(false);
+
+            assertThatThrownBy(() -> controller.getConsentStatus("Bearer " + VALID_PARENT_TOKEN, studentUserId))
+                    .isExactlyInstanceOf(BizException.class)
+                    .extracting("code")
+                    .isEqualTo(ErrorCode.UNAUTHORIZED.code());
+            verify(consentWithdrawalService, org.mockito.Mockito.never())
+                    .getConsentStatus(any(), any());
+        }
+
+        @Test
         @DisplayName("student token → UNAUTHORIZED")
         void studentTokenRejected() {
             when(jwtTokenProvider.getUserType(VALID_PARENT_TOKEN)).thenReturn("student");
 
-            assertThatThrownBy(() -> controller.getConsentStatus("Bearer " + VALID_PARENT_TOKEN))
+            assertThatThrownBy(() -> controller.getConsentStatus("Bearer " + VALID_PARENT_TOKEN, studentUserId))
                     .isExactlyInstanceOf(BizException.class)
                     .extracting("code")
                     .isEqualTo(ErrorCode.UNAUTHORIZED.code());
@@ -296,6 +317,8 @@ class ParentControllerTest {
     @Test
     @DisplayName("verifyPhone 验证通过后签发正式 parent_report token")
     void verifyPhoneIssuesToken() {
+        // 旧链接流程：parent_report token 的 sub=studentUserId
+        when(jwtTokenProvider.getUserId(VALID_PARENT_TOKEN)).thenReturn(studentUserId);
         User student = studentUser();
         when(parentService.getStudent(tenantId, studentUserId)).thenReturn(student);
         when(phoneVerificationService.verifyCode("13800000001", "123456")).thenReturn(true);
