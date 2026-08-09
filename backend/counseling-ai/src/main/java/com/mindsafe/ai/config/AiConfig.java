@@ -99,7 +99,7 @@ public class AiConfig {
     private OpenAiChatModel buildChatModel(String apiKey, String baseUrl, String model,
                                            double temperature, int maxTokens) {
         OpenAiApi api = OpenAiApi.builder()
-                .baseUrl(baseUrl)
+                .baseUrl(normalizeBaseUrl(baseUrl))
                 .apiKey(apiKey)
                 .build();
 
@@ -113,6 +113,20 @@ public class AiConfig {
                 .openAiApi(api)
                 .defaultOptions(options)
                 .build();
+    }
+
+    /**
+     * BUG-LLM-01：规整供应商 base-url——Spring AI 1.0.0 的 {@code OpenAiApi} 默认
+     * {@code completionsPath="/v1/chat/completions"}，baseUrl 已含 {@code /v1}（MiniMax/DashScope
+     * 官方 OpenAI 兼容端点均带）时会拼出 {@code /v1/v1/...} 双前缀 → 生产实证 404 page not found
+     * （备用模型降级全部失败）；DeepSeek（不带 /v1）不受影响。统一剥离尾部 /v1，由框架补全。
+     */
+    static String normalizeBaseUrl(String baseUrl) {
+        if (baseUrl == null || baseUrl.isBlank()) {
+            return baseUrl;
+        }
+        String trimmed = baseUrl.endsWith("/") ? baseUrl.substring(0, baseUrl.length() - 1) : baseUrl;
+        return trimmed.endsWith("/v1") ? trimmed.substring(0, trimmed.length() - 3) : trimmed;
     }
 
     @Bean

@@ -8,6 +8,7 @@ import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 
@@ -53,5 +54,26 @@ class AiConfigTest {
         ReflectionTestUtils.setField(config, "backupApiKey", "sk-backup");
         ChatModel model = config.resilientChatModel(meterRegistry);
         assertInstanceOf(ResilientChatModel.class, model);
+    }
+
+    @Test
+    @DisplayName("BUG-LLM-01: base-url 含尾部 /v1（MiniMax/DashScope 形态）剥离，避免 /v1/v1 双前缀 404")
+    void normalizeBaseUrl_stripsTrailingV1() {
+        assertThat(AiConfig.normalizeBaseUrl("https://api.minimaxi.com/v1"))
+                .isEqualTo("https://api.minimaxi.com");
+        assertThat(AiConfig.normalizeBaseUrl("https://dashscope.aliyuncs.com/compatible-mode/v1"))
+                .isEqualTo("https://dashscope.aliyuncs.com/compatible-mode");
+        assertThat(AiConfig.normalizeBaseUrl("https://api.minimaxi.com/v1/"))
+                .isEqualTo("https://api.minimaxi.com");
+    }
+
+    @Test
+    @DisplayName("BUG-LLM-01: base-url 不含 /v1（DeepSeek 形态）原样保留，尾斜杠去除")
+    void normalizeBaseUrl_keepsRootUrl() {
+        assertThat(AiConfig.normalizeBaseUrl("https://api.deepseek.com"))
+                .isEqualTo("https://api.deepseek.com");
+        assertThat(AiConfig.normalizeBaseUrl("https://api.deepseek.com/"))
+                .isEqualTo("https://api.deepseek.com");
+        assertThat(AiConfig.normalizeBaseUrl(null)).isNull();
     }
 }
