@@ -94,8 +94,13 @@ export default function App() {
   const [view, setView] = useState<LandingPage>(() => defaultLandingFor(user?.userType))
 
   // 数据大屏路由（全屏展示，需已登录）
+  // BUG-T-BASE-04：路径模式须传 onExit（改路径回主界面）——原无 onExit 致"返回工作台"按钮点击无效
   if (window.location.pathname === '/bigscreen' && getToken()) {
-    return <ConfigProvider locale={zhCN} theme={{ algorithm: theme.darkAlgorithm }}><BigScreen /></ConfigProvider>
+    return (
+      <ConfigProvider locale={zhCN} theme={{ algorithm: theme.darkAlgorithm }}>
+        <BigScreen onExit={() => { window.location.href = '/teacher/' }} />
+      </ConfigProvider>
+    )
   }
 
   const handleLogin = (userData: {

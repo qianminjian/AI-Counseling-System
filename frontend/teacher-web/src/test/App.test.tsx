@@ -125,13 +125,14 @@ describe('App 落地页差异化路由', () => {
     expect(screen.getByText('模拟登录')).toBeInTheDocument();
   });
 
-  it('已登录时 /bigscreen 路径直达全屏且无返回按钮', () => {
+  it('已登录时 /bigscreen 路径直达全屏，返回工作台按钮可退出（BUG-T-BASE-04）', () => {
     mockToken = makeToken('psych_teacher');
     window.history.replaceState({}, '', '/bigscreen');
     render(<App />);
 
     expect(screen.getByText('数据大屏页面')).toBeInTheDocument();
-    expect(screen.queryByText('返回工作台')).not.toBeInTheDocument();
+    // BUG-T-BASE-04：路径模式须有返回按钮（onExit 跳回 /teacher/），原缺失致点击无效
+    expect(screen.getByText('返回工作台')).toBeInTheDocument();
   });
 
   it('暗色模式切换持久化', () => {
