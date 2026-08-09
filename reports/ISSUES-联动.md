@@ -66,6 +66,8 @@
 | BUG-AUDIT-01 | 审计 detail 非 JSON 致 json 列落库失败（监护人同意/撤回/知识库等 8 处调用，审计静默丢失） | 调用方传普通文本，audit_logs.detail 为 json 类型 | AuditLogService 防御性归一化（普通文本包装 {"message":...}） | ✅ 生产验证 GUARDIAN_CONSENT 落库为 JSON |
 | F-1 | 冻结账号登录提示笼统（"昵称或 PIN 码错误"，学生无法理解） | 登录链路过滤 withdrawn 状态，无专属提示 | 查询放宽含 withdrawn + 冻结专属提示（PIN/密码双通道，User.STATUS_WITHDRAWN 收敛） | ✅ 生产验证小明登录显示"账号已冻结" |
 | F-2 | 风险硬规则关键词漏报（"被同学欺负"不命中"被欺负"） | 关键词中间插词变体未覆盖 | ORANGE/霸凌分类词典扩充 4 个高频变体 | ✅ 生产验证原漏报语句硬规则命中 ORANGE |
+| F-8 | OnnxRuntime session_create 极慢（主线程+Worker 单线程 30-60s）| numThreads=1 受限主线程 pthread Worker | F-8 主线程 numThreads=1→2（commit 8a8ae59）+ F-8-Worker 同步（commit 4d5b4bd）+ 双埋点（commit acbdc47）| ✅ 实测 声纹主线程 261-474ms / 唤醒 Worker 557ms（加速 50-100×） |
+| BUG-SW-01 | workbox 导航 fetch 失败→ SW 接管→ 唤醒引擎重置 | vite-plugin-pwa 强制 autoUpdate 强制注册 SW | 学生端 vite.config `VitePWA({ disable: true })`（commit 9d8e566）| ✅ 部署后 nav fetch 不再被 SW 拦截 |
 
 ### 待处理发现项
 
@@ -101,3 +103,5 @@
 | 14:10 | backend | d087407（BUG-KB-02） | 32/32 |
 | 14:25 | backend | f3feb57（BUG-KB-03） | 32/32 |
 | 15:00 | backend + teacher | 21a7864（BUG-UI-03/05） | 32/32 ×2 |
+| 19:30 | backend | 8c72b55（BUG-AUDIT-01）+ 6364be7（F-1/F-2） | 32/32 |
+| 20:30 | student | 5f73d23（声纹进度修复）+ 4d5b4bd（F-8-Worker）+ acbdc47（session_create 埋点）+ 0c61f96（prepare-models retry）+ 9d8e566（BUG-SW-01 禁 PWA） | nginx 校验 |
