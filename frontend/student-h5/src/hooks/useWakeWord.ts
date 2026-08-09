@@ -215,6 +215,25 @@ function waitForMainThreadModel(timeoutMs = 60000): Promise<boolean> {
 }
 
 /**
+ * F-6：检查唤醒模型是否已完整写入 transformers-cache（Cache API）。
+ * 缓存完整时 Worker 可直接 init（从缓存秒加载），无需等主线程——
+ * 主线程 ORT 初始化（40MB 模型会话创建）即使缓存命中也可能 >60s，
+ * 旧逻辑无条件等 60s → 超时降级主线程 → 主线程推理慢致唤醒不可靠。
+ */
+async function hasWakeModelInCache(): Promise<boolean> {
+  try {
+    if (!('caches' in self)) return false
+    const base = import.meta.env.BASE_URL || '/'
+    const url = `${self.location.origin}${base}models/onnx-community/whisper-tiny/onnx/encoder_model_quantized.onnx`
+    const cache = await caches.open('transformers-cache')
+    const hit = await cache.match(url)
+    return !!hit
+  } catch {
+    return false
+  }
+}
+
+/**
  * @param {object} opts
  * @param {boolean} opts.active      是否启动引擎（加载模型 + 启动麦克风）——仅对话内且处于待唤醒态时为 true
  * @param {boolean} opts.paused      暂停检测（AI 忙碌时防自听回声，但保持模型 + 麦克风就绪，忙碌结束立即恢复检测）
@@ -412,8 +431,9 @@ export function useWakeWord({ active, paused, onDetected }) {
       setModelStatus('loading')
       ;(async () => {
         // 关键：主线程预加载进行中时先等它结束（文件进 Cache API 后 Worker 可复用），
-        // 避免主线程与 Worker 并行下载同一模型 → 流量翻倍 + 进度反复（用户反馈“下载 2 次、50% 又重来”）
-        if (wakeModelStore.getStatus() === 'loading') {
+        // 避免主线程与 Worker 并行下载同一模型 → 流量翻倍 + 进度反复（用户反馈“下载 2 次、50% 又 重来”）
+        // F-6：缓存已完整时跳过等待（Worker 直接从 Cache API 秒加载），主线程 ORT 初始化慢不再拖累 Worker
+        if (wakeModelStore.getStatus() === 'loading' && !(await hasWakeModelInCache())) {
           const preloadDone = await waitForMainThreadModel()
           if (cancelled || useMainThread) return
           if (!preloadDone) {
