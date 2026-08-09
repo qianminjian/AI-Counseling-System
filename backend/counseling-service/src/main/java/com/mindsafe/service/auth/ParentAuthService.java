@@ -148,6 +148,8 @@ public class ParentAuthService {
 
     /**
      * 查询家长绑定的所有学生
+     * BUG-P-P06-01：放宽至含 withdrawn（撤回同意冻结）——家长端须能看到冻结孩子
+     * （同意管理页展示"已撤回"状态、周报返回业务拒绝），而非孩子凭空消失。
      */
     public List<User> getLinkedStudents(UUID parentId) {
         // 注册/登录响应内调用时无租户上下文（家长租户跨校不定）：系统作用域 + parentId 显式过滤
@@ -158,7 +160,7 @@ public class ParentAuthService {
             );
             return links.stream()
                     .map(link -> userMapper.selectById(link.getStudentUserId()))
-                    .filter(u -> u != null && User.STATUS_ACTIVE.equals(u.getStatus()))
+                    .filter(u -> u != null)
                     .toList();
         });
     }

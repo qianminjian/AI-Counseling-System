@@ -83,7 +83,14 @@ export default function ReportPage() {
         </View>
       )}
 
-      {loading && <View className="loading-area">加载中...</View>}
+      {/* BUG-P-P06-01：无绑定孩子时展示空态（原永久"加载中"） */}
+      {!loading && children.length === 0 && (
+        <View className="card empty-card">
+          <Text>📭 暂无绑定孩子，请先在学校端完成孩子绑定</Text>
+        </View>
+      )}
+
+      {loading && children.length > 0 && <View className="loading-area">加载中...</View>}
       {error && <View className="error-area">{error}</View>}
 
       {report && !loading && (

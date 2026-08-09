@@ -169,7 +169,7 @@ class ParentAuthServiceTest {
     // ===== getLinkedStudents =====
 
     @Test
-    @DisplayName("查询绑定学生：过滤已注销账号")
+    @DisplayName("查询绑定学生：撤回冻结（withdrawn）学生保留可见，已删除/不存在过滤（BUG-P-P06-01）")
     void linkedStudentsFilterInactive() {
         UUID parentId = UUID.randomUUID();
         ParentStudentLink link1 = new ParentStudentLink();
@@ -178,18 +178,16 @@ class ParentAuthServiceTest {
         link2.setStudentUserId(UUID.randomUUID());
         when(parentStudentLinkMapper.selectList(any())).thenReturn(List.of(link1, link2));
 
-        User active = new User();
-        active.setUserId(link1.getStudentUserId());
-        active.setStatus("active");
-        User archived = new User();
-        archived.setUserId(link2.getStudentUserId());
-        archived.setStatus("archived");
-        when(userMapper.selectById(link1.getStudentUserId())).thenReturn(active);
-        when(userMapper.selectById(link2.getStudentUserId())).thenReturn(archived);
+        User withdrawn = new User();
+        withdrawn.setUserId(link1.getStudentUserId());
+        withdrawn.setStatus(User.STATUS_WITHDRAWN);
+        when(userMapper.selectById(link1.getStudentUserId())).thenReturn(withdrawn);
+        when(userMapper.selectById(link2.getStudentUserId())).thenReturn(null);
 
         List<User> result = service.getLinkedStudents(parentId);
 
         assertEquals(1, result.size());
         assertEquals(link1.getStudentUserId(), result.get(0).getUserId());
+        assertEquals(User.STATUS_WITHDRAWN, result.get(0).getStatus());
     }
 }
