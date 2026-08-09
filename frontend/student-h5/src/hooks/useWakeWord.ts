@@ -202,10 +202,17 @@ function getWakeWorker(): Promise<Worker> {
       // Worker 内 transformers.js 检查缓存（有则读、无则下载），不等待主线程（并发）。
       // 下载 43MB@4.7Mbps≈73s，超时放宽 180s 覆盖。
       tslog('getWakeWorker 立即创建 Worker（Worker 自行下载/读缓存）')
-      const w = new Worker(
-        new URL('../workers/wakeWordWorker.ts', import.meta.url),
-        { type: 'module' },
-      )
+      let w: Worker
+      try {
+        w = new Worker(
+          new URL('../workers/wakeWordWorker.ts', import.meta.url),
+          { type: 'module' },
+        )
+        tslog('Worker 创建成功')
+      } catch (err) {
+        tslog('Worker 创建失败:', (err as Error)?.message || String(err))
+        throw err
+      }
       // F-22（2026-08-10 设计落地）：等 Worker 自身 ready（挂临时 onmessage），
       // 而非轮询主线程 wakeModelStore——主线程 getTranscriber 与 Worker 独立，
       // 用主线程状态判 Worker 就绪会导致：主线程失败时 Worker 误超时降级、
@@ -217,6 +224,7 @@ function getWakeWorker(): Promise<Worker> {
         }, 180000)
         w.onmessage = (e) => {
           const { type } = e.data
+          tslog('Worker 消息:', type, JSON.stringify(e.data)?.slice(0, 100))
           if (type === 'status' && e.data.status === 'ready') {
             clearTimeout(timer)
             resolve()
@@ -227,6 +235,7 @@ function getWakeWorker(): Promise<Worker> {
         }
         w.onerror = (err) => {
           clearTimeout(timer)
+          tslog('Worker onerror:', err.message, 'filename=', err.filename, 'lineno=', err.lineno, 'colno=', err.colno)
           reject(new Error(err.message || 'Worker onerror'))
         }
       })
