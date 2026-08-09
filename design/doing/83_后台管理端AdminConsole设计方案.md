@@ -526,6 +526,7 @@
 |------|------|------|
 | event_id | uuid PK | |
 | source | varchar(16) | alertmanager/alertservice |
+| fingerprint | varchar(64) | AlertManager 告警指纹（V34 实现补充：source=alertmanager 时非空，UNIQUE(source,fingerprint) 支撑采集 upsert 去重） |
 | rule_name / severity | | 规则名/级别（CRITICAL/WARNING/INFO） |
 | status | varchar(16) | firing/resolved/ack/closed |
 | summary / detail | text | 摘要与详情 |

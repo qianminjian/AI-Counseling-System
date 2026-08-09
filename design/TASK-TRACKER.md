@@ -921,6 +921,7 @@ _本表由 Agent 维护，每次任务变更时更新。_
 
 > 25. **DOC-085 登记**（2026-08-09）：Browser Agent 三端 Web 界面自动化遍历测试设计登记——方案与提示词单一事实源落 `design/doing/82_BrowserAgent三端Web界面自动化遍历测试设计.md`（承接 R-4 Playwright 预留态，DOC-082）：30 场景案例（S-01~10 学生端 / T-01~08 教师端 / P-01~06 家长端 / L-01~06 三端联动）+ 每场景可执行 Browser Agent 提示词（环境/步骤/断言/截图记录四要素）+ 问题登记规范（reports/browser-test/ISSUES-<端>.md，按端+场景汇总，BUG 条目 P0-P3 分级 + OPEN→FIXED→VERIFIED→REGRESSION 状态机）+ 修复-部署-复测闭环（每端测试完→自动修复（TDD）→自动部署（deploy.sh/compose）→自动复测，3 轮上限，收敛定义 P0=0 且 P1=0 且 P2/P3 未关闭 ≤3，超限升级人工）；语音类（声纹 remote/ASR/TTS 真实链路）因 test compose 不含 voice/tts 标记 SKIP-语音，断言降级路径照常；执行顺序：环境准备→学生端→教师端→家长端→联动场景→汇总归档；ticket 见 §二十九。
 
+> 31. **DOC-091 登记**（2026-08-09）：无屏交互终端配置体系专题——doing/84 方案与 SPEC 生成 + frozen/74 解冻至 doing/74（仅加引用）。doing/84（设计单一事实源 = `design/doing/84_无屏交互终端配置体系_方案与SPEC.md`）：承接 doing/74 §2.4/§3.1/§4.1/§4.5/§8.4 配置面页面级落地——21 项同类产品调研（开源生态 7 / 消费级 IoT 7 / 儿童陪伴硬件 7，含小智 6 位码绑定、华为回连检查状态机、萤石机身标签、微信 scene 短码等）+ 6 类配置页面（扫码入口/配网页/绑定/声纹录入/状态/管理台 M13）+ 机身二维码三层规范（静态码 URL+deviceCode / 绑定验证码 / P2 动态码）+ 配置状态机（扫码→连热点→配网→回连检查→绑定）+ device 域 API 与 4 表 + P0/P1/P2 路线（CFG-001~012）+ EARS AC-84-01~28；frozen/74 解冻（2026-08-09，文件迁移 design/doing/74，主体 §1-14 零改动，仅头部状态/关联/下一步 3 处加 doing/84 引用）；DESIGN-OVERVIEW v6.13 同步；ticket 见 §三十二。
 > 30. **DOC-090 登记**（2026-08-09）：doing/83 双文档 ticket 去冗余整合（项目负责人指令：ticket 不冗余保存在设计文档）——删除降级监控文档 §九（ticket 工作包 7 片）与后台管理端文档 §十五（ticket 工作包 29 片），降级监控 §六 任务表压缩为引用行（内容已在 §三十）；设计文档仅保留设计规格（方案/表/API/风格/AC 定义），**ticket 单一事实源 = TASK-TRACKER §三十/§三十一**；§三十 执行顺序更新（002→003→004→005→007→008→006）；§三十一 说明更新（唯一跟踪表，AC 定义见设计文档 §13）；两文档残留引用清理完毕。
 > 29. **DOC-089 登记**（2026-08-09）：ticket 跟踪表补登记（修正 DOC-087/088 遗漏）——OPS-MON-007/008 补入 §三十（原仅降级监控文档任务表）；**新增 §三十一 后台管理端 AdminConsole ticket 表（29 行 ADMIN-P0-01~P3-04，状态⬜ 待排期，含归属与跨专题依赖）**；原文档 §九/§十五 标注「执行跟踪见 TASK-TRACKER，本表为 ticket 设计定义」，确立「定义在文档、跟踪在台账」双层结构（对齐 OPS-MON 先例）；frontier：ADMIN-P0-01 与 OPS-MON-002 可立即启动。
 > 28. **DOC-088 登记**（2026-08-09）：doing/83 双文档深度审计 + SPEC 开发计划——审计结论（代码实态核对）：① `SlaEscalationScanner`（P-05/WB-001：RED 5min/ORANGE 15min ESCALATE/冷却去重）**已实现**，M8 逾期扫描由「新增」改「复用 + 扩展」（sla_escalation_log 留痕/平台清单与转派端点/业务指标）；② `ModelCallLog.tenantId` 已存在，**R-4 关闭**（无需补列）；③ admin-web 页面数台账修正（24/14 → 实际 25，§八 清单）；④ M7 `prompt_versions` 无 status 字段（6.10 真新增）；⑤ 定时任务用 `@Scheduled` 先例 4 处（OPS-MON-007/008 组件落点据此定）；⑥ M2/M3/M5/M7/M9 Controller 端点/指标/规则全部核对通过（AdminPrompt 8 端点/KB 7 端点/Platform 4 端点/alert-rules 10 条/service-manager 根目录/tts metrics 单 label）；产出：后台管理端文档新增 **§13 SPEC 开发计划**（ADMIN-P0-01~08/P1-01~10/P2-01~07/P3-01~04 共 29 ticket + §13.5 开发准备清单 6 项），降级监控文档补组件落点与执行顺序（OPS-MON-002→003→004→005→007→008）与审计核对注；为启动开发就绪。
@@ -958,13 +959,13 @@ _本表由 Agent 维护，每次任务变更时更新。_
 | Ticket | 内容 | 范围 | 状态 |
 |--------|------|------|------|
 | OPS-MON-001 | doing/83 设计文档生成（方案 + SPEC：TTS 降级指标 / 复用 LLM 指标 / 3 条规则 / 部署 / 演练，AC-1~8） | 全量 | ✅ 本次完成（2026-08-09） |
-| OPS-MON-002 | TTS 降级指标埋点（app.py 独立 Metrics 实例 + direction 标签 + test_app.py 用例） | tts-service | ⬜ 待排期 |
-| OPS-MON-003 | alert-rules 新增 3 条规则（TtsPrimaryEngineDegraded / TtsDegradeRatioHigh / LlmPrimaryFailing） | monitoring | ⬜ 待排期 |
-| OPS-MON-004 | 生产部署 monitoring 栈（.env 补 WECOM_* 4 项 + GRAFANA_PASSWORD → compose up） | 部署 | ⬜ 待排期 |
+| OPS-MON-002 | TTS 降级指标埋点（app.py 独立 Metrics 实例 + direction 标签 + test_app.py 用例） | tts-service | ✅ 实施完成（2026-08-09，89 pytest 全绿） |
+| OPS-MON-003 | alert-rules 新增 3 条规则（TtsPrimaryEngineDegraded / TtsDegradeRatioHigh / LlmPrimaryFailing） | monitoring | ✅ 实施完成（2026-08-09，YAML 13 条验证通过） |
+| OPS-MON-004 | 生产部署 monitoring 栈（.env 补 WECOM_* 4 项 + GRAFANA_PASSWORD → compose up） | 部署 | ⬜ 待部署窗口（.env 红线，人工执行） |
 | OPS-MON-005 | 降级演练 + 验证（断 DASHSCOPE key → 指标 +1 → 企微 ≤5 分钟触达 → 恢复） | 验证 | ⬜ 待排期 |
 | OPS-MON-006 | 合并归档（doing/83 最终态并入 design/04 §9 监控 / 06 §配置章节 → 归档 his/83） | 全量 | ⬜ 待排期 |
-| OPS-MON-007 | 降级事件检测器（30s 轮询指标增量 → degradation_events auto/恢复事件落库，last_value 防抖 + 跳过 manual 覆盖点 + SETNX 锁，AC-9；定义见降级监控文档 §3.5） | counseling-api ops | ⬜ 待排期 |
-| OPS-MON-008 | 告警采集器（60s 拉取 AlertManager → alert_events upsert + AlertService 同步，resolved 流转 + 30 天清理，AC-10；定义见降级监控文档 §3.6） | counseling-api ops | ⬜ 待排期 |
+| OPS-MON-007 | 降级事件检测器（30s 轮询指标增量 → degradation_events auto/恢复事件落库，last_value 防抖 + 跳过 manual 覆盖点 + SETNX 锁，AC-9；定义见降级监控文档 §3.5） | counseling-service monitoring | ✅ 实施完成（2026-08-09，6 用例全绿） |
+| OPS-MON-008 | 告警采集器（60s 拉取 AlertManager → alert_events upsert + AlertService 同步，resolved 流转 + 30 天清理，AC-10；定义见降级监控文档 §3.6） | counseling-service monitoring | ✅ 实施完成（2026-08-09，5 用例全绿） |
 
 > 执行顺序：OPS-MON-002 → 003 → 004 → 005 → 007 → 008 → 006（007 依赖 002/004，008 依赖 004；005 演练通过后 006 归档）；AC-6 演练为归档前置门禁。
 
@@ -1005,3 +1006,26 @@ _本表由 Agent 维护，每次任务变更时更新。_
 | ADMIN-P3-02 | 用量报表（计量预览标注） | 前端 | ⬜ 待排期 |
 | ADMIN-P3-03 | M11 合规视图 | 后端 | ⬜ 待排期 |
 | ADMIN-P3-04 | P3 回归门禁（P3-01~03 全绿，冻结项不实施） | 全量 | ⬜ 待排期 |
+
+---
+
+## 三十二、无屏交互终端配置体系 ticket（2026-08-09，DOC-091 登记）
+
+> 登记说明：doing/84 无屏交互终端配置体系（方案与 SPEC）的 CFG ticket **本表为唯一执行跟踪表**（状态/排期/归属）；AC 定义（验收标准断言 AC-84-01~28）见设计文档 §四~§八（唯一 AC 定义处，DRY）。跨专题依赖：CFG-008 → doing/83 M13 挂载点（ADMIN 系列排期）；CFG-011 → frozen/43 W-1 企业主体认证；CFG-012 → NST-HW-02 §3.6 二期。frontier：P0 阶段（CFG-001~005）待立项启动。
+
+| Ticket | 任务 | 阶段 | 归属 | 状态 |
+|--------|------|------|------|------|
+| CFG-001 | device 域 4 表 + 设备上报/心跳端点（§六） | P0 | 后端 | ⬜ 待立项 |
+| CFG-002 | 扫码入口页（parent-h5 `/p/:v/:deviceCode` + 离线兜底 + 步骤条） | P0 | 前端 | ⬜ 待立项 |
+| CFG-003 | 配网引导层 + 回连检查轮询（复用原生 captive portal） | P0 | 前端 | ⬜ 待立项 |
+| CFG-004 | 设备绑定页 + 绑定验证码会话（语音播报） | P0 | 前后端 | ⬜ 待立项 |
+| CFG-005 | 二维码印制规范落地（机身铭牌 + 包装 300×300） | P0 | 产品/硬件 | ⬜ 待立项 |
+| CFG-006 | 声纹录入引导页 + 编排 API | P1 | 前后端 | ⬜ 待立项 |
+| CFG-007 | 设备信息与状态页（toB/toC 双视图） | P1 | 前端 | ⬜ 待立项 |
+| CFG-008 | 管理台配置页（挂 doing/83 M13） | P1 | 前后端 | ⬜ 待立项 |
+| CFG-009 | 固件定制配网页（热点名/服务器地址/JSON API，可选） | P1 | 固件 | ⬜ 待立项 |
+| CFG-010 | toC 家长端配置引导（家庭/孩子归属 + 远程管理） | P2 | 前后端 | ⬜ 待立项 |
+| CFG-011 | 小程序通道（scene 短码，前置 43 号 W-1） | P2 | 前端 | ⬜ 待立项 |
+| CFG-012 | L3 动态码 + L1 加密配网（Security 1 / WeXin-BLE-Provision） | P2 | 固件/后端 | ⬜ 待立项 |
+
+> 执行顺序：P0（CFG-001 → 002 → 003 → 004 → 005）→ P1（006 → 007 → 008，009 可选）→ P2（010 → 011 → 012）；CFG-008 依赖 doing/83 M13 挂载点落地；归档门禁：P0 真机全链路验收（配网成功率 ≥90%）+ doing/84 合并归档（最终态并入 doing/74 与 12 号主文档）。
