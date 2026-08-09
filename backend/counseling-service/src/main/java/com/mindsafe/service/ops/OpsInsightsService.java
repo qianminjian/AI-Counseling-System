@@ -5,9 +5,11 @@ import com.mindsafe.common.tenant.TenantContextHolder;
 import com.mindsafe.domain.entity.Notification;
 import com.mindsafe.domain.entity.QualityScore;
 import com.mindsafe.domain.entity.RiskEvent;
+import com.mindsafe.domain.mapper.ConsentRecordMapper;
 import com.mindsafe.domain.mapper.NotificationMapper;
 import com.mindsafe.domain.mapper.QualityScoreMapper;
 import com.mindsafe.domain.mapper.RiskEventMapper;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -33,13 +35,19 @@ public class OpsInsightsService {
     private final NotificationMapper notificationMapper;
     private final RiskEventMapper riskEventMapper;
     private final QualityScoreMapper qualityScoreMapper;
+    private final ConsentRecordMapper consentRecordMapper;
+    private final JdbcTemplate jdbcTemplate;
 
     public OpsInsightsService(NotificationMapper notificationMapper,
                               RiskEventMapper riskEventMapper,
-                              QualityScoreMapper qualityScoreMapper) {
+                              QualityScoreMapper qualityScoreMapper,
+                              ConsentRecordMapper consentRecordMapper,
+                              JdbcTemplate jdbcTemplate) {
         this.notificationMapper = notificationMapper;
         this.riskEventMapper = riskEventMapper;
         this.qualityScoreMapper = qualityScoreMapper;
+        this.consentRecordMapper = consentRecordMapper;
+        this.jdbcTemplate = jdbcTemplate;
     }
 
     /** 通知渠道统计（近 30 天，按 channel 计数） */
@@ -174,5 +182,46 @@ public class OpsInsightsService {
 
     private long DurationBetween(Instant start, Instant end) {
         return java.time.Duration.between(start, end).toMinutes();
+    }
+
+    // ===== M4 用量报表（ADMIN-P3-02，计量非计费） =====
+
+    /** 用量汇总（近 N 天：按 metric 聚合 value；另附最近活跃学生数） */
+    public Map<String, Object> usageSummary(int days) {
+        int safeDays = Math.min(Math.max(days, 1), 90);
+        Instant since = Instant.now().minus(safeDays, ChronoUnit.DAYS);
+        List<Map<String, Object>> rows = TenantContextHolder.callAsSystem(() ->
+                jdbcTemplate.queryForList("""
+                        SELECT metric, COALESCE(SUM(value), 0) AS total, unit
+                        FROM tenant_template.usage_events
+                        WHERE event_time >= ?
+                        GROUP BY metric, unit
+                        ORDER BY metric
+                        """, since));
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("windowDays", safeDays);
+        for (Map<String, Object> row : rows) {
+            result.put(String.valueOf(row.get("metric")), row.get("total"));
+        }
+        return result;
+    }
+
+    // ===== M11 合规视图（ADMIN-P3-03） =====
+
+    /** 告知同意覆盖统计：总数/最近 7 天新增/类型分布 */
+    public Map<String, Object> consentStats() {
+        List<com.mindsafe.domain.entity.ConsentRecord> all = TenantContextHolder.callAsSystem(() ->
+                consentRecordMapper.selectList(null));
+        Instant weekAgo = Instant.now().minus(7, ChronoUnit.DAYS);
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("total", all.size());
+        result.put("last7d", all.stream()
+                .filter(c -> c.getConsentedAt() != null && !c.getConsentedAt().isBefore(weekAgo))
+                .count());
+        Map<String, Long> byType = all.stream()
+                .collect(Collectors.groupingBy(
+                        c -> c.getConsentType() == null ? "unknown" : c.getConsentType(), Collectors.counting()));
+        result.put("byType", byType);
+        return result;
     }
 }

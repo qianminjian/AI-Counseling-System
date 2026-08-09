@@ -221,4 +221,16 @@ public class OpsController {
     public ApiResponse<List<Map<String, Object>>> tenantHealth() {
         return ApiResponse.ok(opsInsightsService.tenantHealth());
     }
+
+    // ===== M4 用量报表 + M11 合规视图（ADMIN-P3-02/03） =====
+
+    @GetMapping("/usage/summary")
+    public ApiResponse<Map<String, Object>> usageSummary(@RequestParam(defaultValue = "30") int days) {
+        return ApiResponse.ok(opsInsightsService.usageSummary(days));
+    }
+
+    @GetMapping("/compliance/consent-stats")
+    public ApiResponse<Map<String, Object>> consentStats() {
+        return ApiResponse.ok(opsInsightsService.consentStats());
+    }
 }

@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.Wrapper;
 import com.mindsafe.domain.entity.Notification;
 import com.mindsafe.domain.entity.QualityScore;
 import com.mindsafe.domain.entity.RiskEvent;
+import com.mindsafe.domain.mapper.ConsentRecordMapper;
 import com.mindsafe.domain.mapper.NotificationMapper;
 import com.mindsafe.domain.mapper.QualityScoreMapper;
 import com.mindsafe.domain.mapper.RiskEventMapper;
@@ -32,7 +33,8 @@ class OpsInsightsServiceTest {
     private final RiskEventMapper riskEventMapper = mock(RiskEventMapper.class);
     private final QualityScoreMapper qualityScoreMapper = mock(QualityScoreMapper.class);
     private final OpsInsightsService service =
-            new OpsInsightsService(notificationMapper, riskEventMapper, qualityScoreMapper);
+            new OpsInsightsService(notificationMapper, riskEventMapper, qualityScoreMapper,
+                    mock(ConsentRecordMapper.class), mock(org.springframework.jdbc.core.JdbcTemplate.class));
 
     @Test
     @DisplayName("渠道统计：按 channel 分组计数")
