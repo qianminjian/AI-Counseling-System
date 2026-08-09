@@ -82,15 +82,20 @@ class _BoundedDaemonExecutor:
 # ===== Level 1：阿里云百炼 CosyVoice（DashScope SDK WebSocket 流式） =====
 
 _dashscope = None
+_SpeechSynthesizerV2 = None
 try:
     import dashscope as _dashscope  # noqa: F401
     from dashscope.audio.tts_v2 import (  # noqa: F401
         AudioFormat,
         ResultCallback,
-        SpeechSynthesizer,
+        # BUG-TTS-03：必须保存 tts_v2 子模块的 SpeechSynthesizer 别名——
+        # dashscope 顶层属性指向旧版 tts 兼容壳 (self, /, *args, **kwargs)，
+        # 直接 sdk.SpeechSynthesizer(...) 恒抛 "takes no arguments"
+        SpeechSynthesizer as _SpeechSynthesizerV2,
     )
 except ImportError:
     _dashscope = None
+    _SpeechSynthesizerV2 = None
 
 
 class DashScopeBackend(TTSBackend):
@@ -135,6 +140,15 @@ class DashScopeBackend(TTSBackend):
         sdk = self._get_sdk()
         if sdk is None:
             raise TTSBackendError("dashscope SDK 未安装")
+        # BUG-TTS-03：合成类必须取 tts_v2 子模块符号（sdk 顶层 SpeechSynthesizer 是
+        # 旧版 tts 兼容壳，恒抛 "takes no arguments" → CosyVoice 每次降级 edge-tts）；
+        # 与 BUG-TTS-01（ResultCallback/AudioFormat 顶层缺失）同模式修复。
+        # 测试注入 fake sdk（sdk is not _dashscope）时沿用其自定义类。
+        synth_cls = _SpeechSynthesizerV2
+        if sdk is not _dashscope:
+            synth_cls = getattr(sdk, "SpeechSynthesizer", None) or _SpeechSynthesizerV2
+        if synth_cls is None:
+            raise TTSBackendError("dashscope SDK 未安装（tts_v2 不可用）")
         q: Queue = Queue()
         errors = []
 
@@ -165,7 +179,7 @@ class DashScopeBackend(TTSBackend):
             )
             if instruction:
                 kwargs["instruction"] = instruction
-            sdk.SpeechSynthesizer(**kwargs).call(text)
+            synth_cls(**kwargs).call(text)
         except Exception as e:  # SDK call() 抛错（可能无任何回调事件）
             errors.append(str(e))
             q.put(("end", None))  # 解除收集循环死等
