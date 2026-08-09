@@ -212,7 +212,8 @@ function PinLoginForm({ themeId, onLogin }) {
     if (key === 'del') {
       setPin((p) => p.slice(0, -1))
     } else {
-      if (pin.length < 6) setPin((p) => p + key)
+      // 修复 BUG-S-S01-02：上限 5→6，与文案「4-6 位」对齐
+      if (pin.length < 7) setPin((p) => p + key)
     }
   }
 
@@ -360,10 +361,11 @@ function RegisterForm({ themeId, onRegister }) {
     setPinError('')
     if (pinStep === 'input') {
       if (key === 'del') setPin((p) => p.slice(0, -1))
-      else if (pin.length < 6) setPin((p) => p + key)
+      // 修复 BUG-S-S01-02：上限 5→6，与文案「4-6 位」对齐
+      else if (pin.length < 7) setPin((p) => p + key)
     } else {
       if (key === 'del') setPinConfirm((p) => p.slice(0, -1))
-      else if (pinConfirm.length < 6) setPinConfirm((p) => p + key)
+      else if (pinConfirm.length < 7) setPinConfirm((p) => p + key)
     }
   }
 

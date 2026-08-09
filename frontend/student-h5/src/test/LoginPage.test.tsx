@@ -327,6 +327,32 @@ describe('LoginPage', () => {
       expect(setPin).toHaveBeenCalledWith('1234')
     })
 
+    // DOC-086 / BUG-S-S01-02 回归：PIN 应能录入 6 位，与文案「4-6 位」一致
+    it('PIN 可录入 6 位（回归 BUG-S-S01-02）', async () => {
+      ;(trialRegister as any).mockResolvedValue({
+        token: 'tk', userId: 'u1', userType: 'student', pseudonym: '花花',
+      })
+      ;(setPin as any).mockResolvedValue({})
+      render(<LoginPage onLogin={vi.fn()} onRegister={vi.fn()} onNeedConsent={vi.fn()} initialTab="register" />)
+      fireEvent.change(screen.getByPlaceholderText('老师发的邀请码'), { target: { value: 'DEMO2026' } })
+      fireEvent.change(screen.getByPlaceholderText('给自己取个名字吧'), { target: { value: '花花' } })
+      fireEvent.click(screen.getByText('👧 女生'))
+      fireEvent.change(screen.getByPlaceholderText('你的年龄'), { target: { value: '15' } })
+      fireEvent.click(screen.getByText('注册 🚀'))
+      fireEvent.click(screen.getByText('没错，注册！'))
+      await waitFor(() => expect(screen.getByText('设置你的秘密数字')).toBeTruthy())
+      // 输入 6 位 PIN：654321（之前会被 length<6 静默拒绝）
+      ;['6','5','4','3','2','1'].forEach((d) => fireEvent.click(screen.getByText(d)))
+      fireEvent.click(screen.getByText('下一步'))
+      expect(screen.getByText('再输入一次确认')).toBeTruthy()
+      ;['6','5','4','3','2','1'].forEach((d) => fireEvent.click(screen.getByText(d)))
+      fireEvent.click(screen.getByText('确认设置'))
+      await waitFor(() => {
+        expect(screen.getByText('要录入你的声音吗？')).toBeTruthy()
+      })
+      expect(setPin).toHaveBeenCalledWith('654321')
+    })
+
     it('PIN 两次不一致显示错误并重置', async () => {
       ;(trialRegister as any).mockResolvedValue({
         token: 'tk', userId: 'u1', userType: 'student', pseudonym: '花花',
