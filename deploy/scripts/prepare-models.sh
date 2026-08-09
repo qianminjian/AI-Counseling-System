@@ -41,20 +41,26 @@ fi
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"; }
 
 # 判断相对路径文件的校验和是否与 manifest 一致（用于跳过已完好文件）
+# F-10（2026-08-09）：rel（HF tree API 返回）不含 repo 前缀，而 MANIFEST 是 write_manifest
+# 用 find 生成的 ./<repo>/<rel> 完整路径格式——旧实现拼 ./${rel} 永远匹配不上 →
+# 每个文件都被判"不匹配"→ 每次部署全量重下 110MB（4.7Mbps 带宽 3-4 分钟）→ 部署"看似挂死"。
+# 修复：file_hash_ok 增加 repo 参数，按 ./<repo>/<rel> 完整路径匹配。
 file_hash_ok() {
     local rel="$1"
+    local repo="$2"
     [ -f "${MANIFEST}" ] || return 1
     local expected actual
-    expected=$(awk -v p="  ./${rel}" '$0 ~ p "$" {print $1; exit}' "${MANIFEST}")
+    expected=$(awk -v p="  ./${repo}/${rel}" '$0 ~ p "$" {print $1; exit}' "${MANIFEST}")
     [ -n "${expected}" ] || return 1
-    actual=$(${HASH_CMD} "${TARGET_DIR}/${rel}" | awk '{print $1}')
+    actual=$(${HASH_CMD} "${TARGET_DIR}/${repo}/${rel}" | awk '{print $1}')
     [ "${expected}" = "${actual}" ]
 }
 
 # 重新生成校验清单（排除自身及自身 .tmp，避免重定向先建文件被 find 扫描入清单），供 CI/发布链路 --verify 比对
+# F-10：同时排除 *.onnx.tmp 等下载中断残留（否则残留 tmp 会被记录进 MANIFEST 导致校验失真）
 write_manifest() {
     log "生成校验清单: MANIFEST.sha256"
-    (cd "${TARGET_DIR}" && find . -type f ! -name 'MANIFEST.sha256' ! -name 'MANIFEST.sha256.tmp' -print0 | sort -z | xargs -0 ${HASH_CMD}) > "${MANIFEST}.tmp"
+    (cd "${TARGET_DIR}" && find . -type f ! -name 'MANIFEST.sha256' ! -name 'MANIFEST.sha256.tmp' ! -name '*.tmp' -print0 | sort -z | xargs -0 ${HASH_CMD}) > "${MANIFEST}.tmp"
     mv "${MANIFEST}.tmp" "${MANIFEST}"
 }
 
@@ -155,7 +161,7 @@ for item in json.load(sys.stdin):
         keep_file "${f}" || continue
         local out="${dest}/${f}"
         # ARCH-009 E-5：已存在且校验和匹配才跳过（损坏文件自动重新下载）
-        if [ -s "${out}" ] && file_hash_ok "${f}"; then
+        if [ -s "${out}" ] && file_hash_ok "${f}" "${repo}"; then
             skipped=$((skipped + 1))
             continue
         fi
