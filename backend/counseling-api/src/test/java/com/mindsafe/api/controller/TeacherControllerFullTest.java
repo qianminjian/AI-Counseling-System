@@ -361,13 +361,13 @@ class TeacherControllerFullTest {
     void exportStudents() throws IOException {
         when(teacherService.listActiveStudents(tenantId, null)).thenReturn(List.of(student()));
         HttpServletResponse response = mock(HttpServletResponse.class);
-        when(response.getOutputStream()).thenReturn(mock(ServletOutputStream.class));
         StringWriter sw = new StringWriter();
         when(response.getWriter()).thenReturn(new PrintWriter(sw));
 
         controller.exportStudents(teacherAuth("psych_teacher"), response);
 
         verify(response).setHeader("Content-Disposition", "attachment; filename=students_export.csv");
+        assertThat(sw.toString()).startsWith("\uFEFF");
         assertThat(sw.toString()).contains("昵称,年级,班级,状态");
         assertThat(sw.toString()).contains("小星,GRADE_6,CLASS_1,active");
     }
@@ -466,13 +466,13 @@ class TeacherControllerFullTest {
                         UUID.randomUUID(), studentUserId, "小星", "自伤,高风险", 3, "open",
                         Instant.now(), teacherUserId, false)));
         HttpServletResponse response = mock(HttpServletResponse.class);
-        when(response.getOutputStream()).thenReturn(mock(ServletOutputStream.class));
         StringWriter sw = new StringWriter();
         when(response.getWriter()).thenReturn(new PrintWriter(sw));
 
         controller.exportAlerts(teacherAuth("psych_teacher"), response);
 
         verify(auditLogService).log(tenantId, teacherUserId, "EXPORT_ALERTS", "export");
+        assertThat(sw.toString()).startsWith("\uFEFF");
         assertThat(sw.toString()).contains("\"自伤,高风险\"");
         assertThat(sw.toString()).contains("学生,风险类型,风险等级,状态,检测时间,处理人");
     }

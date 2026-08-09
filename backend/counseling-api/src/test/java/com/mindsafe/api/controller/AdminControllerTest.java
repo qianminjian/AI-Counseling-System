@@ -224,7 +224,6 @@ class AdminControllerTest {
     @DisplayName("downloadTemplate 输出 BOM + CSV 表头与示例行")
     void downloadTemplate() throws IOException {
         HttpServletResponse response = mock(HttpServletResponse.class);
-        when(response.getOutputStream()).thenReturn(mock(ServletOutputStream.class));
         StringWriter sw = new StringWriter();
         when(response.getWriter()).thenReturn(new PrintWriter(sw));
 
@@ -233,6 +232,7 @@ class AdminControllerTest {
         verify(response).setContentType("text/csv; charset=UTF-8");
         verify(response).setHeader("Content-Disposition", "attachment; filename=student_import_template.csv");
         String body = sw.toString();
+        assertThat(body).startsWith("\uFEFF");
         assertThat(body).contains("昵称,年级,班级");
         assertThat(body).contains("小明,四年级,2班");
     }

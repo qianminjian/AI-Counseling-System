@@ -125,9 +125,9 @@ public class AdminController {
     public void downloadTemplate(HttpServletResponse response) throws IOException {
         response.setContentType("text/csv; charset=UTF-8");
         response.setHeader("Content-Disposition", "attachment; filename=student_import_template.csv");
-        // BOM for Excel
-        response.getOutputStream().write(new byte[]{(byte) 0xEF, (byte) 0xBB, (byte) 0xBF});
+        // BOM for Excel（先取 Writer 再写 BOM，避免 getOutputStream/getWriter 混用抛 IllegalStateException）
         var writer = response.getWriter();
+        writer.print('\uFEFF');
         writer.println("昵称,年级,班级");
         writer.println("小明,四年级,2班");
         writer.println("小红,五年级,1班");

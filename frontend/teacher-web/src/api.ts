@@ -49,7 +49,12 @@ export async function api<T = any>(path: string, options: RequestInit & { header
     throw new Error('后端服务不可达，请确认服务已启动')
   }
   if (res.status === 401) {
-    // authFetch 已尝试刷新+重放；仍 401 → 刷新失败 → 统一登出决策点（clear + reload + throw）
+    // 业务性 401（后端信封 success:false + code，如登录失败“用户名或密码错误”）→ 直接抛错展示
+    const body = (await res.json().catch((): null => null)) as { success?: boolean; code?: number; message?: string } | null
+    if (body && body.success === false) {
+      throw toApiError({ code: body.code, message: body.message })
+    }
+    // 会话过期 401（无信封）→ authFetch 已尝试刷新+重放；仍 401 → 刷新失败 → 统一登出决策点（clear + reload + throw）
     handleSessionExpired(storage)
   }
   const json = await res.json()

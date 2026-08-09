@@ -189,6 +189,7 @@ export default function VerifyPage() {
         <Button
           className="btn-primary"
           formType="submit"
+          onClick={() => handleSubmit()}
           disabled={loading}
         >
           {loading ? '处理中...' : mode === 'register' ? '注册并绑定' : '登录'}
