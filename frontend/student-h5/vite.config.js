@@ -102,8 +102,10 @@ export default defineConfig({
     copyOnnxWasm(),
     serveOnnxWasmDev(),
     ...(useHttps ? [basicSsl()] : []),
+    // F-6 修复：学生端禁用 PWA/SW（disable:true）——SW 接管会干扰 transformers.js 加载（路由/缓存策略冲突），
+    // 导致"语音引擎加载中"卡住、唤醒不可用。学生端是实时在线应用，PWA 离线价值低。
     VitePWA({
-      registerType: 'autoUpdate',
+      disable: true, // BUG-F6-SW：构建不生成 sw.js，不自动注册；唤醒链路免受 SW 接管干扰
       includeAssets: ['favicon.svg', 'icons.svg'],
       manifest: {
         name: '波波小精灵',
