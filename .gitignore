@@ -10,6 +10,9 @@ tmp/*
 reports/*
 !reports/.gitkeep
 !reports/*.md
+# DOC-087：browser-test 子目录（三端遍历测试报告/截图）白名单入库
+!reports/browser-test/
+!reports/browser-test/**
 
 # ===== 密钥与环境（红线：永不提交）=====
 .env
