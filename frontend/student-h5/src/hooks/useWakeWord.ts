@@ -213,6 +213,10 @@ function getWakeWorker(): Promise<Worker> {
         tslog('Worker 创建失败:', (err as Error)?.message || String(err))
         throw err
       }
+      // F-27（2026-08-10）：发送 init 消息启动 Worker 加载——F-22 重构时误删此行，
+      // 导致 Worker 从未收到 init → 永不加载 → 180s 超时 → UI 永远"正在准备"（今晚全部故障的根源）。
+      w.postMessage({ type: 'init', config: buildWorkerConfig() })
+      tslog('Worker init 已发送')
       // F-22（2026-08-10 设计落地）：等 Worker 自身 ready（挂临时 onmessage），
       // 而非轮询主线程 wakeModelStore——主线程 getTranscriber 与 Worker 独立，
       // 用主线程状态判 Worker 就绪会导致：主线程失败时 Worker 误超时降级、
