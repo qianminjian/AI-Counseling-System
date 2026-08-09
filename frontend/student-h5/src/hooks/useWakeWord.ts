@@ -381,6 +381,9 @@ export function useWakeWord({ active, paused, onDetected }) {
 
     /** 识别一个音频窗（Worker 优先，降级主线程） */
     const analyzeWindow = (audio: Float32Array) => {
+      // F-21（2026-08-10）：Worker 未就绪（F-19 预启动竞态——麦克风先启动）时跳过本窗，
+      // 不置 analyzing（否则 postMessage 静默失败 + analyzing=true 卡死 → 永不转写）。
+      if (!worker && !useMainThread) return
       analyzing = true
       // 降级为 debug：正常不刷屏
       dbg(`📨 提交音频窗分析 (useMainThread=${useMainThread}, 长度=${audio.length}, rms=${rms(audio).toFixed(5)})`)
