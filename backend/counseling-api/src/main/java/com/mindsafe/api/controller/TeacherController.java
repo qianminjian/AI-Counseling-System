@@ -261,10 +261,9 @@ public class TeacherController {
 
         response.setContentType("text/csv; charset=UTF-8");
         response.setHeader("Content-Disposition", "attachment; filename=alerts_export.csv");
-        // BOM for Excel 中文兼容
-        response.getOutputStream().write(new byte[]{(byte) 0xEF, (byte) 0xBB, (byte) 0xBF});
-
+        // BOM for Excel 中文兼容（先取 Writer 再写 BOM，避免 getOutputStream/getWriter 混用抛 IllegalStateException）
         PrintWriter w = response.getWriter();
+        w.print('\uFEFF');
         // B-01：显式截断提示（不再静默）
         if (alerts.size() >= EXPORT_ALERTS_HARD_LIMIT) {
             w.println("# 提示：预警记录达到导出上限 " + EXPORT_ALERTS_HARD_LIMIT + " 条，数据已截断，请缩小范围后分批导出");
@@ -290,9 +289,8 @@ public class TeacherController {
 
         response.setContentType("text/csv; charset=UTF-8");
         response.setHeader("Content-Disposition", "attachment; filename=students_export.csv");
-        response.getOutputStream().write(new byte[]{(byte) 0xEF, (byte) 0xBB, (byte) 0xBF});
-
         PrintWriter w = response.getWriter();
+        w.print('\uFEFF');
         w.println("昵称,年级,班级,状态");
         for (var s : students) {
             w.printf("%s,%s,%s,%s%n",

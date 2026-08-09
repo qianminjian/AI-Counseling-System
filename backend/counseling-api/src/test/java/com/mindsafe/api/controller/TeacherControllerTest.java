@@ -130,31 +130,33 @@ class TeacherControllerTest {
     // ===== ③ 数据范围接线（班主任 scope 透传） =====
 
     @Test
-    @DisplayName("exportAlerts 班主任 → getAlertsForExport 携带本班 scope（不再全校）")
+    @DisplayName("exportAlerts 班主任 → getAlertsForExport 携带本班 scope（不再全校）+ BOM 输出")
     void exportAlerts_classTeacher_passesScope() throws IOException {
         when(teacherService.resolveClassScope(tenantId, teacherUserId, "class_teacher")).thenReturn("CLASS_1");
         when(teacherService.getAlertsForExport(any(), any(), any(), any(), anyInt())).thenReturn(List.of());
         HttpServletResponse response = mock(HttpServletResponse.class);
-        when(response.getOutputStream()).thenReturn(mock(ServletOutputStream.class));
-        when(response.getWriter()).thenReturn(new PrintWriter(new StringWriter()));
-
+        StringWriter sw = new StringWriter();
+        when(response.getWriter()).thenReturn(new PrintWriter(sw));
+    
         controller.exportAlerts(teacherAuth("class_teacher"), response);
-
+    
         verify(teacherService).getAlertsForExport(tenantId, "CLASS_1", null, null, 5000);
+        assertThat(sw.toString()).startsWith("\uFEFF");
     }
-
+    
     @Test
-    @DisplayName("exportAlerts 心理老师 → getAlertsForExport 全校（scope=null）")
+    @DisplayName("exportAlerts 心理老师 → getAlertsForExport 全校（scope=null）+ BOM 输出")
     void exportAlerts_psychTeacher_passesNullScope() throws IOException {
         when(teacherService.resolveClassScope(tenantId, teacherUserId, "psych_teacher")).thenReturn(null);
         when(teacherService.getAlertsForExport(any(), any(), any(), any(), anyInt())).thenReturn(List.of());
         HttpServletResponse response = mock(HttpServletResponse.class);
-        when(response.getOutputStream()).thenReturn(mock(ServletOutputStream.class));
-        when(response.getWriter()).thenReturn(new PrintWriter(new StringWriter()));
-
+        StringWriter sw = new StringWriter();
+        when(response.getWriter()).thenReturn(new PrintWriter(sw));
+    
         controller.exportAlerts(teacherAuth("psych_teacher"), response);
-
+    
         verify(teacherService).getAlertsForExport(tenantId, null, null, null, 5000);
+        assertThat(sw.toString()).startsWith("\uFEFF");
     }
 
     @Test

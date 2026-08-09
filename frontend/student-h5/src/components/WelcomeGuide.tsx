@@ -36,31 +36,34 @@ export default function WelcomeGuide() {
   const slide = SLIDES[step]
 
   return (
+    // DOC-083：z:9999 全屏遮罩开 pointer-events:none，让事件穿透到底层情绪选择按钮
+    // 进度点/下一步/跳过按钮所在「交互岛」单独开 pointer-events:auto，保证引导可用
     <div
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
       style={{
         position: 'fixed', inset: 0, zIndex: 9999,
+        pointerEvents: 'none',
         background: slide.bg,
         display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
         padding: 32, textAlign: 'center', color: '#fff',
         transition: 'background 0.5s ease',
       }}
     >
-      {/* 弹跳 emoji */}
-      <div key={step} style={{ fontSize: 72, animation: 'bounceIn 0.6s ease' }}>
+      {/* 弹跳 emoji（交互岛） */}
+      <div key={step} style={{ pointerEvents: 'auto', fontSize: 72, animation: 'bounceIn 0.6s ease' }}>
         {slide.emoji}
       </div>
 
-      <h2 key={`t-${step}`} style={{ fontSize: 22, fontWeight: 700, margin: '24px 0 12px', animation: 'fadeUp 0.5s ease' }}>
+      <h2 key={`t-${step}`} style={{ pointerEvents: 'auto', fontSize: 22, fontWeight: 700, margin: '24px 0 12px', animation: 'fadeUp 0.5s ease' }}>
         {slide.title}
       </h2>
-      <p style={{ fontSize: 15, opacity: 0.85, lineHeight: 1.6, animation: 'fadeUp 0.6s ease' }}>
+      <p style={{ pointerEvents: 'auto', fontSize: 15, opacity: 0.85, lineHeight: 1.6, animation: 'fadeUp 0.6s ease' }}>
         {slide.desc}
       </p>
 
       {/* 进度点（可点击跳转） */}
-      <div style={{ display: 'flex', gap: 8, margin: '32px 0' }}>
+      <div style={{ pointerEvents: 'auto', display: 'flex', gap: 8, margin: '32px 0' }}>
         {SLIDES.map((_, i) => (
           <button
             key={i}
@@ -76,7 +79,7 @@ export default function WelcomeGuide() {
       </div>
 
       {/* 按钮 */}
-      <div style={{ display: 'flex', gap: 12 }}>
+      <div style={{ pointerEvents: 'auto', display: 'flex', gap: 12 }}>
         <button onClick={finish} style={{
           padding: '10px 20px', borderRadius: 20, border: '1px solid rgba(255,255,255,0.5)',
           background: 'transparent', color: '#fff', fontSize: 14, cursor: 'pointer',
@@ -93,7 +96,7 @@ export default function WelcomeGuide() {
 
       {/* 滑动提示 */}
       {step < SLIDES.length - 1 && (
-        <p style={{ position: 'absolute', bottom: 32, fontSize: 12, opacity: 0.5 }}>
+        <p style={{ pointerEvents: 'auto', position: 'absolute', bottom: 32, fontSize: 12, opacity: 0.5 }}>
           ← 左右滑动也可以翻页 →
         </p>
       )}

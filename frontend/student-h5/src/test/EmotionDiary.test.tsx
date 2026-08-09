@@ -11,7 +11,7 @@ vi.mock('../api', () => ({
 let mockThemeId = 'ocean'
 // importOriginal 保留真实 THEMES（组件直接 import THEMES.ocean.bobo 等品牌色），仅覆写 useTheme
 vi.mock('../theme/ThemeProvider', async (importOriginal) => {
-  const actual = await importOriginal()
+  const actual = await importOriginal<typeof import('../theme/ThemeProvider')>()
   return {
     ...actual,
     useTheme: () => ({ theme: { companion: '🐬', bobo: { body: '#38BDF8', belly: '#E0F2FE', fin: '#0284C7' }, companionName: '波波' }, themeId: mockThemeId }),
@@ -48,13 +48,14 @@ describe('EmotionDiary', () => {
     expect(onBack).toHaveBeenCalledTimes(1)
   })
 
-  it('显示 6 种情绪选项（F4：neutral→平静、anxious→紧张 对齐 DC-008 单译）', () => {
+  it('显示 5 种情绪选项（DOC-082 与首页 EmotionSelect 共享 STUDENT_EMOTION_TAGS 基线）', () => {
     render(<EmotionDiary onBack={vi.fn()} />)
     expect(screen.getByText('开心')).toBeTruthy()
-    expect(screen.getAllByText('平静')).toHaveLength(2) // calm + neutral 同标签
     expect(screen.getByText('难过')).toBeTruthy()
     expect(screen.getByText('生气')).toBeTruthy()
-    expect(screen.getByText('紧张')).toBeTruthy() // anxious
+    expect(screen.getByText('害怕')).toBeTruthy() // scared
+    expect(screen.getByText('紧张')).toBeTruthy() // nervous
+    expect(screen.queryAllByText('平静')).toHaveLength(0) // calm/neutral 同译去重
   })
 
   it('未选情绪时提交按钮禁用', () => {

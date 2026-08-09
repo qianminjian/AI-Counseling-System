@@ -69,9 +69,15 @@ export function createPlatformRequest(deps: PlatformRequestDeps): PlatformReques
       body: options.data ? JSON.stringify(options.data) : undefined,
     })
 
-    // 401 自动刷新
+    // 401 自动刷新（区分业务性 401 与会话过期 401）
     if (res.status === 401 && !options._retried) {
-      const refreshed = await refreshTokens(storage, baseUrl, doFetch)
+      // 业务性 401（后端信封 success:false + code，如登录失败/监护人同意已撤回）→ 直接抛错给页面展示
+      const body = (await res.json().catch(() => null)) as PlatformApiResponse | null
+      if (body && body.success === false) {
+        throw toApiError({ code: body.code, message: body.message || `请求失败 (${res.status})` })
+      }
+      // 会话过期 401（无信封）→ 尝试 refresh；refresh 内部自带 /api/v1 前缀，baseUrl 传空避免双前缀（/api/v1/api/v1/auth/refresh）
+      const refreshed = await refreshTokens(storage, '', doFetch)
       if (refreshed) {
         return request<T>(path, { ...options, _retried: true })
       }

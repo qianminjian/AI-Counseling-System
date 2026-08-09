@@ -358,16 +358,20 @@ sync_host_nginx() {
     return 0
   fi
   echo "🔄 同步宿主 nginx 配置（deploy/nginx/host/ → /etc/nginx/）..."
+  # /etc/nginx 目录 root 所有、mindsafe 无 sudo——备份/校验/reload 走 root SSH（本机已配置 root key）
+  local root_server="root@${SERVER##*@}"
   # 备份当前生效配置（回滚点）
-  ssh "${SSH_OPTS[@]}" "$SERVER" "cp /etc/nginx/nginx.conf /etc/nginx/nginx.conf.bak-\$(date +%s) && echo '✅ 已备份宿主 nginx.conf'"
-  # 覆盖同步（不 --delete：不动宿主其他配置如 frp）
-  rsync_deploy -avz --exclude 'README*' "$host_dir/" "$SERVER:/etc/nginx/"
-  if ! ssh "${SSH_OPTS[@]}" "$SERVER" "nginx -t"; then
+  ssh "${SSH_OPTS[@]}" "$root_server" "cp /etc/nginx/nginx.conf /etc/nginx/nginx.conf.bak-\$(date +%s) && echo '✅ 已备份宿主 nginx.conf'"
+  # 覆盖同步（--inplace --no-*：nginx.conf 为 666 可写但目录不可写，直接写文件内容、不动元数据；
+  # 不 --delete：不动宿主其他配置如 frp）
+  rsync_deploy -avz --inplace --no-perms --no-owner --no-group --no-times --exclude 'README*' "$host_dir/" "$SERVER:/etc/nginx/"
+  # 语法门禁（root：非 root 下 nginx -t 无法写 /var/run/nginx.pid 会误报失败）
+  if ! ssh "${SSH_OPTS[@]}" "$root_server" "nginx -t"; then
     echo "❌ 宿主 nginx -t 校验失败——配置未 reload，请人工检查 /etc/nginx/（备份 nginx.conf.bak-* 可回滚）"
     exit 1
   fi
   echo "✅ nginx -t 通过"
-  ssh "${SSH_OPTS[@]}" "$SERVER" "nginx -s reload && echo '✅ 宿主 nginx 已 reload'"
+  ssh "${SSH_OPTS[@]}" "$root_server" "nginx -s reload && echo '✅ 宿主 nginx 已 reload'"
 }
 sync_host_nginx
 

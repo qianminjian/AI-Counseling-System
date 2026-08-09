@@ -62,3 +62,11 @@ export function emotionEmoji(codeOrLabel: string): string {
   const byLabel = EMOTION_META.find(m => m.label === codeOrLabel)
   return byLabel?.emoji ?? ''
 }
+
+// DOC-082：学生端情绪集统一基线
+// 场景：首页 EmotionSelect（开聊前选择）与 EmotionDiary 打卡面板共用同一组 5 情绪。
+// 选中规则：（1）不含 calm/neutral 同译「平静」（避免打卡面板重复选项）；（2）覆盖开心/难过/生气/害怕/紧张五大基础情绪；
+// （3）纯 kid-friendly 标签（DC-008 已统一）。
+// 改动源：05_系统测试指导驱动生产 UI 遍历测试发现首页与打卡面板情绪集不一致。
+export const STUDENT_EMOTION_TAGS = ['happy', 'sad', 'angry', 'scared', 'nervous'] as const
+export type StudentEmotionTag = (typeof STUDENT_EMOTION_TAGS)[number]

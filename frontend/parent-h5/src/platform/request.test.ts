@@ -107,6 +107,30 @@ describe('createPlatformRequest（PlatformRequest H5 实现）', () => {
     expect(onSessionExpired).toHaveBeenCalledTimes(1)
   })
 
+  it('业务性 401（信封 success:false）→ 直接抛错，不刷新不登出（登录失败/同意已撤回）', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(401, { success: false, code: 20001, message: '监护人同意已撤回，链接已失效' }))
+    const request = createPlatformRequest(deps)
+    await expect(request('/parent/report?x=1')).rejects.toMatchObject({
+      message: '监护人同意已撤回，链接已失效',
+      code: 20001,
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(onSessionExpired).not.toHaveBeenCalled()
+    expect(storage.getToken()).toBe('t1')
+  })
+
+  it('401 刷新请求 URL 不带双前缀（refresh 内部自带 /api/v1）', async () => {
+    storage.setRefreshToken('rt')
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(401, {}))
+      .mockResolvedValueOnce(jsonResponse(200, { success: true, data: { token: 'nt', refreshToken: 'nr' } }))
+      .mockResolvedValueOnce(jsonResponse(200, { success: true, data: { ok: 1 } }))
+    const request = createPlatformRequest(deps)
+    await request('/parent/report?x=1')
+    const refreshUrl = fetchMock.mock.calls[1][0]
+    expect(refreshUrl).toBe('/api/v1/auth/refresh')
+  })
+
   it('刷新失败且无 refresh token → 直接登出', async () => {
     fetchMock.mockResolvedValue(jsonResponse(401, {}))
     const request = createPlatformRequest({ ...deps, storage: makeStorage({ token: 'expired' }) })

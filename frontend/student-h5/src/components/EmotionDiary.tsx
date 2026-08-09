@@ -4,21 +4,26 @@ import { useTheme } from '../theme/ThemeProvider'
 import { THEME_STYLES } from '../theme/immersiveStyles'
 import BoBoAvatar from './BoBoAvatar'
 import SceneDecor from './SceneDecor'
-import { emotionLabel, emotionEmoji } from '../../../shared/src/emotionMeta'
+import { emotionLabel, emotionEmoji, STUDENT_EMOTION_TAGS } from '../../../shared/src/emotionMeta'
 
-// F4：emoji/text 单一源 shared emotionMeta（neutral→平静、anxious→紧张 对齐 DC-008），color 为组件特有展示
-const EMOTIONS = [
-  { label: 'happy', color: '#52c41a' },
-  { label: 'calm', color: '#1677ff' },
-  { label: 'neutral', color: '#999' },
-  { label: 'sad', color: '#722ed1' },
-  { label: 'angry', color: '#ff4d4f' },
-  { label: 'anxious', color: '#fa8c16' },
-].map(e => ({
-  ...e,
-  emoji: emotionEmoji(e.label),
-  text: emotionLabel(e.label),
+// DOC-082：打卡面板与首页 EmotionSelect 共享 STUDENT_EMOTION_TAGS 基线（5 个情绪统一），
+// 单一源 emotionMeta/EmotionVocabulary 不动（后端 calm 仍合法），color 为面板特有展示
+const EMOTION_STYLE: Record<string, string> = {
+  happy:   '#52c41a',
+  sad:     '#722ed1',
+  angry:   '#ff4d4f',
+  scared:  '#9254de',
+  nervous: '#fa8c16',
+}
+const EMOTIONS = STUDENT_EMOTION_TAGS.map(tag => ({
+  label: tag,
+  color: EMOTION_STYLE[tag] || '#999',
+  emoji: emotionEmoji(tag),
+  text: emotionLabel(tag),
 }))
+
+// 趋势图未知/历史码值兜底：显式第一个可选情绪（不依赖数组索引，防列表调整后错位）
+const FALLBACK = EMOTIONS[0]
 
 const INTENSITY_LABELS = ['', '很轻微', '比较轻', '中等', '比较强', '非常强']
 
@@ -179,7 +184,7 @@ export default function EmotionDiary({ onBack }) {
             <p className="text-sm font-semibold mb-4" style={{ color: ts.title }}>近 14 天心情趋势</p>
             <div className="flex items-end justify-between gap-1 h-28">
               {[...history].reverse().map((d, i) => {
-                const emo = EMOTIONS.find(e => e.label === d.emotionLabel) || EMOTIONS[2]
+                const emo = EMOTIONS.find(e => e.label === d.emotionLabel) || FALLBACK
                 return (
                   <div key={i} className="flex flex-col items-center gap-1 flex-1">
                     <div className="w-full rounded-t-lg transition-all hover:opacity-100 opacity-85"
