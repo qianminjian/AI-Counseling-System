@@ -46,6 +46,11 @@ public class VoiceController {
             return ApiResponse.error(400, "仅支持音频文件");
         }
 
+        // BUG-VOICE-01：转发前校验 10MB 上限（原无校验 → voice-service 400 被 Java 包装为 500）
+        if (file.getSize() > 10L * 1024 * 1024) {
+            return ApiResponse.error(400, "音频文件不能超过 10MB");
+        }
+
         byte[] audioBytes = file.getBytes();
         String filename = file.getOriginalFilename() != null ? file.getOriginalFilename() : "audio.webm";
 

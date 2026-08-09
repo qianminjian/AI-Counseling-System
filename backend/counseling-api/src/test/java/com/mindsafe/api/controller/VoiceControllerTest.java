@@ -13,7 +13,9 @@ import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -75,6 +77,21 @@ class VoiceControllerTest {
         ApiResponse<Map<String, Object>> resp = controller.analyzeVoice(file);
 
         assertThat(resp.code()).isEqualTo(400);
+    }
+
+    @Test
+    @DisplayName("BUG-VOICE-01: analyzeVoice 超 10MB → 400 明确拒绝（原转发致 voice-service 400 被包装为 500）")
+    void analyze_oversizeFile() throws Exception {
+        MultipartFile file = mock(MultipartFile.class);
+        when(file.isEmpty()).thenReturn(false);
+        when(file.getContentType()).thenReturn("audio/mp3");
+        when(file.getSize()).thenReturn(10L * 1024 * 1024 + 1);
+
+        ApiResponse<Map<String, Object>> resp = controller.analyzeVoice(file);
+
+        assertThat(resp.code()).isEqualTo(400);
+        assertThat(resp.message()).contains("10MB");
+        verify(voiceAnalysisService, never()).analyze(any(), any(), any());
     }
 
     @Test
