@@ -231,13 +231,15 @@
 
 **目标**：把 Prometheus/Grafana/service-manager 的能力以**运营者视图**呈现在管理端，并提供告警事件中心与部署历史。
 
+> **衔接**：本模块消费监控链路数据（Prometheus 指标 + AlertManager 告警 + alert_events），**监控链路实现统一归口 `design/doing/83_服务降级监控与告警设计.md`**（OPS-MON-001~008：指标埋点/告警规则/采集落库/部署演练）；本模块只做展示与操作。
+
 **功能清单**：
 
 | 功能 | 说明 | 实现要点 |
 |------|------|---------|
 | 2.1 服务拓扑与健康状态 | 六服务（postgres/redis/tts/voice/backend/nginx）卡片式拓扑：运行状态 + 健康状态（复用 service-manager check_health 语义：UP/DEGRADED/DOWN 三级）+ 依赖关系图（postgres/redis → tts/voice → backend → nginx） | 后端定时（如 30s）探测（Java 侧实现同语义探活，或读 service-manager 输出）；快照落 `service_health_snapshots` 供历史曲线 |
-| 2.2 关键指标看板 | 平台级指标：LLM 首 token 延迟 P50/P90/P99、重试/超时/降级次数、模型回退（from/to）、TTS 合成耗时/错误、语音分析请求量/ASR-SER 就绪态、后端 JVM/HTTP 指标 | 后端代理 Prometheus HTTP API（/api/v1/ops/metrics/query），前端 ECharts 渲染；指标清单映射 design/03 §8 表 |
-| 2.3 告警事件中心 | 告警列表（规则名/级别/状态/时间/详情）、确认（ack）、关闭；聚合 AlertManager 事件 + 系统内 AlertService 告警（企微已发，此处留痕） | 读 AlertManager API（alertmanager 容器内网可达，后端代理）；`alert_events` 表落历史（AlertManager 数据默认 120h 保留，历史需落库） |
+| 2.2 关键指标看板 | 平台级指标：LLM 首 token 延迟 P50/P90/P99、重试/超时/降级次数、模型回退（from/to）、TTS 合成耗时/错误、语音分析请求量/ASR-SER 就绪态、后端 JVM/HTTP 指标 | 后端代理 Prometheus HTTP API（/api/v1/ops/metrics/query），前端 ECharts 渲染；指标清单映射 design/03 §8 表 + 降级监控文档 §3.1（`tts_degraded_events_total` / `mindsafe_llm_model_fallback_total` 等降级指标） |
+| 2.3 告警事件中心 | 告警列表（规则名/级别/状态/时间/详情）、确认（ack）、关闭；聚合 AlertManager 事件 + 系统内 AlertService 告警（企微已发，此处留痕） | 读 AlertManager API（含降级监控文档 §3.2 新增 3 条规则）+ AlertService；`alert_events` 表落历史（**采集器归口降级监控文档 OPS-MON-008**，AlertManager 数据默认 120h 保留，历史需落库） |
 | 2.4 部署历史 | deploy-audit.sh 审计报告列表（组件/耗时/信号 OK/WARN/CRITICAL/回归规则命中） | 后端读 logs/deploy/audit-*.md 解析展示（或 service 定时扫描落库） |
 | 2.5 服务操作 | 服务启停/重启入口（复用 service-manager.sh 语义），操作二次确认 + 审计 | `/api/v1/ops/services/{name}/{action}`；执行方式：后端调用服务器端脚本（经 SSH 受限通道或管理端直连探测；单机部署可后端进程内执行 shell——**需安全评估，见 §10**） |
 | 2.6 租户活跃监控 | 平台→租户→学校层级活跃度钻取（会话量/活跃学生/预警未处理） | 复用 PlatformService.overview/tenantStats/tenantDetail + 扩展时间维度查询 |
@@ -249,6 +251,8 @@
 ### 5.3 M3 服务切换降级监控
 
 **目标**：把现有完备但「看不见、摸不着」的降级机制变为**可视化 + 可手动干预 + 可追溯**。
+
+> **衔接**：本模块负责降级点的**展示与操作**（矩阵视图/手动切换/影响面提示）；自动降级的**检测与事件落库**（指标埋点 + 降级事件检测器）归口 `design/doing/83_服务降级监控与告警设计.md`（OPS-MON-002/007），本模块消费其产出（指标 + degradation_events）并补充 manual 事件。
 
 **现状降级机制盘点（全部已实现，本模块只加管理与视图）**：
 
@@ -266,10 +270,10 @@
 
 | 功能 | 说明 | 实现要点 |
 |------|------|---------|
-| 3.1 降级状态实时视图 | 「能力降级矩阵」：每个降级点显示当前档位（主/备、引擎名、开关态、就绪态），异常态高亮 | 后端聚合：读 tts/voice /health（后端代理）+ Redis 运行时状态键 + Prometheus 指标即时查询 |
-| 3.2 手动切换入口 | 运维角色对可切换降级点执行手动切换（如 TTS 强制 edge-tts、LLM 强制 qwen-plus、SER 关闭、ASR 引擎切换） | `/api/v1/ops/degradation/{point}`：写 Redis 运行时开关/覆盖配置 → 即时生效（优先运行时键，不动部署文件）；操作二次确认 + 审计 |
-| 3.3 降级事件历史 | 每次降级发生/恢复/手动切换记录事件（时间/点/从→到/触发方式 auto|manual/操作人） | `degradation_events` 表：由监控侧监听指标变化落库 + 手动切换直接写库 |
-| 3.4 自动降级通知联动 | 自动降级发生时（如 tts engine 变化）除企微告警外，管理端事件流可见 | 复用 AlertService（WeComAlertService 已接线）+ alert_events 表 |
+| 3.1 降级状态实时视图 | 「能力降级矩阵」：每个降级点显示当前档位（主/备、引擎名、开关态、就绪态），异常态高亮 | 后端聚合：读 tts/voice /health（后端代理）+ Redis 运行时状态键 + Prometheus 指标即时查询（降级指标见降级监控文档 §3.1） |
+| 3.2 手动切换入口 | 运维角色对可切换降级点执行手动切换（如 TTS 强制 edge-tts、LLM 强制 qwen-plus、SER 关闭、ASR 引擎切换） | `/api/v1/ops/degradation/{point}`：写 Redis 运行时开关/覆盖配置 → 即时生效（优先运行时键，不动部署文件）；操作二次确认 + 审计；**同步写 degradation_events（trigger_type=manual）** |
+| 3.3 降级事件历史 | 每次降级发生/恢复/手动切换记录事件（时间/点/从→到/触发方式 auto|manual/操作人） | `degradation_events` 表：**auto 事件由监控侧检测器落库（降级监控文档 OPS-MON-007），manual 事件由手动切换 API 直接写库**；列表查询按时间倒序 + 过滤 |
+| 3.4 自动降级通知联动 | 自动降级发生时（如 tts engine 变化）除企微告警外，管理端事件流可见 | 企微告警由降级监控文档 §3.2 规则触发（OPS-MON-003）；管理端经 alert_events 消费展示（采集器 OPS-MON-008） |
 | 3.5 降级影响面提示 | 切换前提示影响：如「强制 edge-tts：音质降级、响应变慢；强制 qwen-plus：能力差异 X」 | 静态影响说明表（配置在 sys_config 或代码常量） |
 
 **关键设计决策**：
@@ -388,7 +392,7 @@
 |------|------|---------|
 | 8.1 跨租户风险全景 | 红橙黄绿分布、今日新增/未处置数、近 7 天趋势、按租户/学校下钻 | RiskEvent 聚合（platform 域扩展查询，riskLevel 1-4 映射红橙黄绿） |
 | 8.2 预警处置时效监控 | SLA 计时与达标率：检出→通知耗时、通知→认领耗时、认领→处置耗时；按等级/租户聚合（达标率/逾期率/P95 处理时长） | 纯查询聚合（detectedAt/assignedAt/status 时间戳）；**无新增表** |
-| 8.3 逾期预警管理与升级 | 定时扫描（如 5 分钟）未按 SLA 处置的预警（S0 超 5min 未认领/15min 未处置等）→ 逾期清单 + 升级通知（AlertService CRITICAL/WARNING → 企微）→ 平台超管可介入转派/联系学校 | **业务级告警规则**（见 8.6）+ `sla_escalation_log` 升级留痕表 |
+| 8.3 逾期预警管理与升级 | 定时扫描（如 5 分钟）未按 SLA 处置的预警（S0 超 5min 未认领/15min 未处置等）→ 逾期清单 + 升级通知（AlertService CRITICAL/WARNING → 企微）→ 平台超管可介入转派/联系学校 | **复用已实现 SlaEscalationScanner**（P-05/WB-001：RED 5min/ORANGE 15min → ESCALATE CRITICAL、claimed 超时/YELLOW → REMIND WARNING、冷却去重，含 SlaEscalationScannerTest）——本次仅扩展：①升级动作补 `sla_escalation_log` 留痕（扫描器现只告警不落库）②平台级逾期清单查询 + 转派/强制关闭端点 ③业务指标埋点（8.6） |
 | 8.4 通知兜底台账 | notifyStatus=dead 的预警清单（通知超 5 次失败转人工）：人工核对/补发/关闭处置 | RiskNotifyOutboxService 既有状态机 + 管理端台账页（写操作需二次确认） |
 | 8.5 处置闭环统计 | 认领率/闭环率/误报率（false-positive）/回访完成率（followUpDone）/处置结果分布（outcome）按月聚合 | RiskEvent 聚合 |
 | 8.6 业务级告警规则 | **补齐 alert-rules.yml 业务段**（当前 10 条全为基础设施级）：预警逾期（S0 超 5min 未认领）、dead 堆积（≥N）、单租户预警激增（较基线 ≥3 倍）、认领率骤降 | 规则入 Prometheus 需业务指标——**新增 `mindsafe_risk_events_overdue_total` 等业务 gauge/counter 埋点**（Micrometer 扩展，8.3 扫描任务产出） |
@@ -896,14 +900,14 @@
 | AdminController（邀请码/导入/审计） | 原样接入 admin-web 页面 | 审计查询分页化 |
 | AdminPromptController | M7 Prompt 管理原样接入 | 新增 submit/review 端点 + safety-phrases 只读端点 + 草稿态 |
 | PromptVersionService / TemplateMatrixRegistry / RedTeamRegressionRunner | M7 版本/门禁/灰度/护栏直接复用 | prompt_versions.status 字段 + reviewer 落库 |
-| RiskEvent 状态机 + TeacherAlertController 链路 | M8 时效统计/危机追踪数据源（纯查询） | 逾期扫描任务 + sla_escalation_log + 升级端点（转派/强制关闭） |
+| RiskEvent 状态机 + TeacherAlertController 链路 | M8 时效统计/危机追踪数据源（纯查询） | **复用 SlaEscalationScanner/AlertSlaPolicy**（已实现 P-05）+ sla_escalation_log 留痕扩展 + 升级端点（转派/强制关闭） |
 | RiskNotifyOutboxService（outbox + dead） | M8.4 兜底台账、M10 发送统计/失败台账数据源 | 台账管理端点（补发/关闭，二次确认） |
 | KnowledgeBaseController（documents/review/editorial/report） | M9 知识库管理原样接入 | 分页/筛选扩展 + top-hits 统计 |
 | QualityScore / ConsentRecord / CounselingSession | M12 质量看板、M11 同意覆盖数据源 | 无（纯聚合） |
 | AlertService（WeCom/Logging 条件装配） | M2 告警中心、M3 降级事件通知复用统一出口 | 无（仅消费） |
-| Prometheus（3 job + 10 规则） | M2 指标/告警数据源（后端代理） | service_health_snapshots 定时采样 |
+| Prometheus（3 job + 10 规则） | M2 指标/告警数据源（后端代理） | service_health_snapshots 定时采样；**+3 降级规则**（TtsPrimaryEngineDegraded/TtsDegradeRatioHigh/LlmPrimaryFailing，降级监控文档 §3.2，OPS-MON-003） |
 | service-manager.sh（六服务健康/启停） | M2 服务状态语义对齐（UP/DEGRADED/DOWN） | 管理端操作入口（安全评估） |
-| ResilientChatModel/TTS 三级/ASR/SER/VoiceDegradationPolicy | M3 降级点盘点（全部既有） | 运行时覆盖键（Redis）+ degradation_events |
+| ResilientChatModel/TTS 三级/ASR/SER/VoiceDegradationPolicy | M3 降级点盘点（全部既有） | 运行时覆盖键（Redis）+ degradation_events（**auto 写入归口降级监控文档 OPS-MON-007，manual 由本模块写**） |
 | model_call_logs | M4 LLM 计量聚合源 | 补 tenant_id 列（若缺） |
 | TenantLineHandler 行级隔离 | 平台表排除隔离（与 tenants/schools 同机制） | sys_config 等平台表加入忽略名单 |
 | SecurityConfig（hasRole ADMIN） | M6 权限基座 | 细分角色授权 |
@@ -931,9 +935,9 @@
 
 | 期 | 范围 | 交付物 | 依赖/约束 |
 |----|------|--------|----------|
-| **P0 底座** | M6 平台账号与角色 + admin-web 骨架 + M2 服务拓扑（只读，方案①） | admin-web 上线（总览/服务状态/告警中心/审计日志/平台账号） | 无冻结依赖；后端：platform_admin 表 + SecurityConfig 角色细化 + ops 只读端点 |
-| **P1 配置与业务核心** | M1 配置管理 + **M7 提示词配置审核中心** + **M8 业务信号与预警处置监控** + M2 指标看板/健康快照 | 配置注册表/变更留痕/Prompt 在线编辑审核发布流/风险全景/SLA 时效监控/逾期升级/业务级告警规则 | sys_config、sla_escalation_log、prompt_versions.status；M8 需新增逾期扫描任务 + mindsafe_risk_* 业务指标埋点 + alert-rules.yml 业务段；M7 需 submit/review 端点扩展 |
-| **P2 治理深化** | M3 降级监控 + **M9 知识库管理** + **M10 通知渠道管理** + **M12 运营洞察** | 降级可视化管理闭环/知识库审核运营/渠道统计与触达策略/会话质量与预警漏斗 | degradation_events；M10 触达策略改造需动 NotificationService 分发逻辑（回归测试护航）；M12 依赖 M8 指标 |
+| **P0 底座** | M6 平台账号与角色 + admin-web 骨架 + M2 服务拓扑（只读，方案①） | admin-web 上线（总览/服务状态/告警中心只读/审计日志/平台账号） | 无冻结依赖；后端：platform_admin 表 + SecurityConfig 角色细化 + ops 只读端点；告警中心只读先行（AlertManager 直读，不依赖落库） |
+| **P1 配置与业务核心** | M1 配置管理 + **M7 提示词配置审核中心** + **M8 业务信号与预警处置监控** + M2 指标看板/健康快照/告警中心完整 | 配置注册表/变更留痕/Prompt 在线编辑审核发布流/风险全景/SLA 时效监控/逾期升级/业务级告警规则 | sys_config、sla_escalation_log、prompt_versions.status；**M8 逾期扫描复用已实现 SlaEscalationScanner（P-05），新增面：sla_escalation_log 留痕 + 平台级清单/转派端点 + mindsafe_risk_* 业务指标埋点 + alert-rules.yml 业务段**；M7 需 submit/review 端点扩展；**M2 指标看板/告警中心完整版依赖监控链路前置：OPS-MON-003/004/008（降级监控文档）** |
+| **P2 治理深化** | M3 降级监控 + **M9 知识库管理** + **M10 通知渠道管理** + **M12 运营洞察** | 降级可视化管理闭环/知识库审核运营/渠道统计与触达策略/会话质量与预警漏斗 | degradation_events（**auto 事件依赖 OPS-MON-007**）；M10 触达策略改造需动 NotificationService 分发逻辑（回归测试护航）；M12 依赖 M8 指标 |
 | **P3 商业化与合规** | M4 计量计费（usage_events 采集 + 用量报表先行）+ **M11 数据安全合规中心** | 计量采集与报表；订阅/账单设计定稿待解冻；合规视图（留存/同意/审计全景） | **frozen/38 解冻议决**；M11 导出审批流冻结待议决 |
 
 **各期验收标准（示例，落地时细化为可测断言）**：
@@ -953,7 +957,7 @@
 | R-1 | 平台账号模型：独立 platform_admin 表 vs 复用 users（tenant_id=null） | 影响登录链路改造范围；现有 super_admin 已挂 TenantContext.userType | ✅ **已议决**：独立 platform_admin 表 + 独立登录端点（方案 A，隔离最清晰），后续可平滑迁移 |
 | R-2 | 服务操作执行通道：后端执行 shell vs 只读展示 + SSH 人工 | 安全风险 vs 便利性 | ✅ **已议决**：P0 只读展示（方案①）；后端执行通道挂远期 |
 | R-3 | 配置热生效范围：哪些配置可 HOT | Spring @ConfigurationProperties 部分可刷（RefreshScope），环境变量类不可 | ⏳ P1 细化：仅标记 HOT 的开放修改，其余只读 + 重启指引 |
-| R-4 | model_call_logs 是否含 tenant_id | 计量聚合必需；若缺需补列（历史数据回填策略） | ⏳ P3 前核对（本次调研未见列定义确认，落 P3 前置检查项） |
+| R-4 | model_call_logs 是否含 tenant_id | 计量聚合必需；若缺需补列（历史数据回填策略） | ✅ **已核对通过**（2026-08-09 审计）：`ModelCallLog.tenantId` 已存在，无需补列，无历史回填 |
 | R-5 | 计量计费解冻时序 | BILL-002/003 冻结于 frozen/38（P2 商业化），EntitlementFilter 同冻结 | 本方案设计定稿；解冻时按 frozen/38 议决流程执行 |
 | R-6 | 平台级表与租户行级隔离 | TenantLineHandler 需排除平台表 | ✅ **已定**：P0 落地时配置忽略名单 + 集成测试覆盖 |
 | R-7 | 运维角色最低权限边界 | ops_admin 是否可看学生级数据（平台钻取到学生） | ✅ **已议决**：ops_admin 仅看聚合数据，学生级明细仅 super_admin/audit |
@@ -962,6 +966,72 @@
 | R-10 | Prompt 在线编辑与代码内模板双源风险 | DB 模板可绕过代码评审直接生效（classpath 降级存在，但 DB 优先已覆盖） | ✅ **已定**：激活门禁三重（reviewer+红队+eval）不可绕过；safety 域模板强制灰度；classpath 兜底仅限未配置 DB 版本时 |
 | R-11 | 业务指标进 Prometheus 的隐私边界 | 预警/情绪类指标若带标识信息会泄露心理数据 | ✅ **已定**：指标只含计数/时长/等级，绝不带学生/教师标识（对齐 S0-S4 分级）；Grafana 面板访问走管理端代理不直连 |
 | R-12 | 触达策略配置化改造影响预警通知链路 | M10.5 改造 NotificationService 分发逻辑可能影响风险预警通知可靠性 | ✅ **已定**：P2 改造时预警通知路径加回归测试（outbox 状态机单测 + 集成测试）；改造默认值=现状行为 |
+
+---
+
+## 十三、SPEC 开发计划（ticket 级验收标准）
+
+> 说明：本表为 §11 实施路线的**可测化落地**（AC 级，对齐降级监控文档 AC 模式），每个 ticket 对应可测断言；每个 ticket 以 TDD 实施（先写失败测试）。**审计基线（2026-08-09 代码实态核对）**：M2/M3/M5/M7/M8/M9 引用组件与端点全部存在且有测试（AdminPromptController 8 端点/KnowledgeBaseController 7 端点/PlatformController 4 端点）；`SlaEscalationScanner`（P-05）已实现（M8 复用）；`ModelCallLog.tenantId` 已存在（R-4 关闭）；`prompt_versions` 无 status 字段（6.10 为真新增）；定时任务先例 `@Scheduled`（RiskNotifyRetryJob/DataRetentionCleanupJob/SlaEscalationScanner）。
+
+### 13.1 P0 底座（M6 + admin-web 骨架 + M2 服务拓扑/告警只读）
+
+| Ticket | 任务 | 前置 | 验收标准（AC-P0-xx） |
+|--------|------|------|---------------------|
+| ADMIN-P0-01 | platform_admin 表 + 实体 + 迁移 | 无 | 表结构按 §6.8；迁移脚本幂等可重跑；platform_admin 加入 TenantLineHandler 忽略名单（R-6，集成测试覆盖） |
+| ADMIN-P0-02 | 平台登录端点 + 独立 JWT（PLATFORM_ 前缀）+ 四角色 | P0-01 | 独立 `/api/v1/platform/auth/login`（R-1/R-8）；token 前缀 `PLATFORM_`；四角色枚举；错误密码/禁用账号 401 + 审计留痕 |
+| ADMIN-P0-03 | SecurityConfig 角色细化（PLATFORM_ 授权域） | P0-02 | 端点级 hasRole 生效；未授权 403；三端业务端点回归不回归（现有测试全绿） |
+| ADMIN-P0-04 | admin-web 脚手架 + 路由守卫 + 角色菜单 | P0-02 | `/admin/` 路由；登录页（青屿 §8.5）；未登录跳登录；四角色菜单差异断言 |
+| ADMIN-P0-05 | M2 服务拓扑（只读）+ service_health_snapshots | P0-03 | `GET /api/v1/ops/services/status` 六服务 UP/DEGRADED/DOWN（语义对齐 service-manager）；快照 30s 落库；健康历史查询可用 |
+| ADMIN-P0-06 | 告警中心只读（AlertManager 直读） | P0-05 + 监控栈已部署 | `GET /api/v1/ops/alerts` 返回 AlertManager active 告警（无落库依赖）；非 ops 角色 403 |
+| ADMIN-P0-07 | 审计日志查询（跨租户） | P0-03 | audit_logs 平台级查询（tenantId 可空过滤）；分页；操作人/动作/时间筛选 |
+| ADMIN-P0-08 | P0 回归门禁 | P0-01~07 | 后端 mvn verify + 前端 vitest 全绿；新增测试：平台登录/角色越权/服务状态 mock（覆盖率按项目门禁） |
+
+### 13.2 P1 配置与业务核心（M1 + M7 + M8 + M2 完整）
+
+| Ticket | 任务 | 前置 | 验收标准（AC-P1-xx） |
+|--------|------|------|---------------------|
+| ADMIN-P1-01 | sys_config 注册表 + 变更留痕 | P0 | 表 §6.1/6.2；CRUD + SECRET 掩码（值永不出 API）；变更写 sys_config_history；HOT/RESTART 两级（R-3：仅标记 HOT 开放修改，其余只读 + 重启指引）；仅 super_admin 可改 + reason 必填 |
+| ADMIN-P1-02 | M7 审核发布流（submit/review/状态机） | P0 + 现有 AdminPromptController | prompt_versions.status 扩展（§6.10）；draft→pending_review→approved→active 流转；reviewer 必填；safety 域强制灰度；红队失败不可激活（复用 RedTeamRegressionRunner） |
+| ADMIN-P1-03 | M7 门禁可视化 + safety-phrases 只读 | P1-02 | 红队结果/灰度进度/护栏可查；safety 话术只读端点（写请求 403） |
+| ADMIN-P1-04 | M8 风险全景 + 时效监控（纯查询） | P0 | 8.1/8.2 聚合与手工 SQL 抽样一致；riskLevel 1-4 映射红橙黄绿正确；P95 计算正确 |
+| ADMIN-P1-05 | M8 逾期升级扩展（sla_escalation_log + 清单/转派端点） | P1-04 | 复用 SlaEscalationScanner（不改其告警逻辑）；升级动作补落 sla_escalation_log（现只告警不留痕）；平台逾期清单正确；转派/强制关闭端点 X-Confirm + 审计 |
+| ADMIN-P1-06 | M8 业务指标埋点 + alert-rules 业务段 | P1-05 | mindsafe_risk_* 由扫描任务产出（gauge）；4 条业务规则 promtool 语法通过；指标不含学生/教师标识（R-11） |
+| ADMIN-P1-07 | M2 指标看板（完整） | OPS-MON-003/004/008 + P0 | 白名单表达式代理查询；图表与 Grafana 抽样一致；非白名单表达式拒绝（403/400） |
+| ADMIN-P1-08 | M2 告警中心完整（alert_events 消费 + ack） | P1-07 | 列表聚合 alert_events + AlertManager；ack 写库 + 状态流转；仅 ops_admin 可 ack |
+| ADMIN-P1-09 | 前端 P1 页面组 | 对应后端 | 配置注册表/Prompt 管理/审核流/风险全景/时效监控/处置台账/指标看板/告警中心页面可用；写操作确认框 + reason 必填 |
+| ADMIN-P1-10 | P1 回归门禁 | P1-01~09 | 全量回归；SLA 统计与手工计算一致（抽样）；Prompt 草稿→审核→激活全流程可走通（红队失败时不可激活） |
+
+### 13.3 P2 治理深化（M3 + M9 + M10 + M12）
+
+| Ticket | 任务 | 前置 | 验收标准（AC-P2-xx） |
+|--------|------|------|---------------------|
+| ADMIN-P2-01 | M3 降级矩阵 + 手动切换 | OPS-MON-007 + P1 | 矩阵状态聚合（/health + Redis 覆盖键 + Prometheus 指标）；切换写 Redis 键 + degradation_events manual 事件；取消覆盖回落默认（重启后也回落）；影响面提示展示；仅 ops_admin/super_admin |
+| ADMIN-P2-02 | M3 事件时间线（消费 degradation_events） | P2-01 | auto/manual 事件完整展示（时间倒序 + 点/类型过滤）；auto 事件与降级监控文档 OPS-MON-007 产出一致 |
+| ADMIN-P2-03 | M9 知识库管理扩展 | P0 + 现有 KnowledgeBaseController | 分页/筛选扩展 + top-hits 统计；审核流复用现有 review/editorial（不改动既有语义） |
+| ADMIN-P2-04 | M10 通知渠道统计 + 失败台账 + 触达策略 | P1 | 发送统计图表（企微/短信/站内）；dead 台账补发/关闭（二次确认）；触达策略配置化改造默认值=现状行为（NotificationService 分发逻辑回归测试护航） |
+| ADMIN-P2-05 | M12 运营洞察 | P1 | 会话质量趋势（QualityScore）；预警漏斗（检出→通知→认领→处置→闭环）；租户健康度红黄绿列表 |
+| ADMIN-P2-06 | 前端 P2 页面组 | 对应后端 | 降级矩阵/知识库/通知渠道/运营洞察页面可用；降级切换弹窗含影响提示 + reason + 二次确认 |
+| ADMIN-P2-07 | P2 回归门禁 | P2-01~06 | 手动切换后 /health 反映新档位；取消覆盖回落默认；事件历史完整；全量回归全绿 |
+
+### 13.4 P3 商业化与合规（M4 采集 + M11，冻结项不实施）
+
+| Ticket | 任务 | 前置 | 验收标准（AC-P3-xx） |
+|--------|------|------|---------------------|
+| ADMIN-P3-01 | usage_events 采集层（M4 先行落地） | P0 | 采集点埋设（chat/model call 关键路径）；事件幂等（重复提交去重）；采集与 model_call_logs 抽样一致（R-4 已核对 tenantId 存在） |
+| ADMIN-P3-02 | 用量报表 | P3-01 | 活跃学生快照 + LLM token 聚合；报表与手工聚合一致（抽样）；页面标注「计量预览，计费冻结」 |
+| ADMIN-P3-03 | M11 合规视图 | P1 | 留存策略状态/同意覆盖统计/审计全景；与 design/02 留存策略、ConsentRecord 实现一致 |
+| ADMIN-P3-04 | P3 回归门禁 | P3-01~03 | 全量回归全绿；冻结项不实施（M4 4.3~4.6 计费、M11 导出审批，见 §5.4/§5.11） |
+
+### 13.5 开发准备清单（启动前逐项核对）
+
+| 项 | 内容 | 归属 |
+|----|------|------|
+| DB 迁移 | 按 §6.1→6.10 顺序落地（sys_config→sys_config_history→service_health_snapshots→alert_events→degradation_events→usage_events→platform_admin→sla_escalation_log→prompt_versions.status ALTER）；幂等 + 版本化（沿用项目 V 系列迁移脚本机制） | 后端 |
+| admin-web 脚手架 | frontend/admin-web 新建（React 19 + TS + Vite，与 teacher-web 同构）；--ms-* token 同源引入（§8.1，评估提升 frontend/shared）；路由 /admin/ | 前端 |
+| 监控前置 | 降级监控文档 OPS-MON-002~008：M2 依赖 OPS-MON-003/004/008（P1 前），M3 依赖 OPS-MON-007（P2 前） | 监控 |
+| 密钥/配置 | 平台登录 JWT secret（独立于业务 JWT）；Grafana 密码；WECOM_* 4 项（降级监控文档 §3.3） | 部署 |
+| 测试门禁 | 后端 mvn verify + 前端 vitest + Python + shell 套件全绿；新增代码覆盖率按项目门禁（核心 60%/整体 45%） | 全量 |
+| 权限矩阵核对 | §7 各端点权限列 → SecurityConfig 单测覆盖（每端点越权测试，R-7 含 ops_admin 聚合边界） | 后端 |
 
 ---
 
