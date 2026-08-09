@@ -172,14 +172,58 @@ public class ParentController {
             TenantContextHolder.set(info.tenantId());
             try {
                 User student = parentService.getStudent(info.tenantId(), info.studentUserId());
-                if (student == null
-                        || ConsentWithdrawalService.STATUS_WITHDRAWN.equals(student.getStatus())) {
-                    throw new BizException(ErrorCode.UNAUTHORIZED, "监护人同意已撤回，链接已失效");
+                if (student == null) {
+                    // token 指向不存在的学生 = 链接无效（保持原有语义）
+                    throw new BizException(ErrorCode.UNAUTHORIZED, "链接已过期或无效");
+                }
+                if (ConsentWithdrawalService.STATUS_WITHDRAWN.equals(student.getStatus())) {
+                    // BUG-P-P03-01/P05-02：撤回是业务终态而非认证失败，须用 20011→410 而非 20001→401
+                    throw new BizException(ErrorCode.CONSENT_WITHDRAWN, "监护人同意已撤回，链接已失效");
                 }
             } finally {
                 TenantContextHolder.clear();
             }
             return info;
+        } catch (BizException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new BizException(ErrorCode.UNAUTHORIZED, "链接已过期或无效");
+        }
+    }
+
+    /**
+     * 查询监护人授权状态（BUG-P-P04-01：同意管理页展示 状态/时间/版本）。
+     * <p>
+     * 与其它端点不同：本端点使用宽松 token 校验（不拦截 withdrawn 状态）——
+     * 撤回后家长仍需能查询到"已撤回"状态，否则页面永远只显示"链接已失效"。
+     */
+    @GetMapping("/consent/status")
+    public ApiResponse<Map<String, Object>> getConsentStatus(@RequestHeader("Authorization") String authHeader) {
+        ParentTokenInfo info = resolveParentTokenLoose(authHeader);
+        TenantContextHolder.set(info.tenantId());
+        try {
+            return ApiResponse.ok(consentWithdrawalService.getConsentStatus(info.tenantId(), info.studentUserId()));
+        } finally {
+            TenantContextHolder.clear();
+        }
+    }
+
+    /**
+     * 解析 parent_report token（宽松版）：仅校验签名/类型，不检查学生撤回状态。
+     * 用于 consent/status 等"撤回后仍需可见"的只读端点。
+     */
+    private ParentTokenInfo resolveParentTokenLoose(String authHeader) {
+        String token = authHeader.replace("Bearer ", "");
+        try {
+            if (!jwtTokenProvider.validateToken(token)
+                    || jwtTokenProvider.isRefreshToken(token)
+                    || jwtTokenProvider.isVoiceCredential(token)
+                    || !"parent".equals(jwtTokenProvider.getUserType(token))) {
+                throw new BizException(ErrorCode.UNAUTHORIZED, "链接已过期或无效");
+            }
+            return new ParentTokenInfo(
+                    jwtTokenProvider.getUserId(token),
+                    jwtTokenProvider.getTenantId(token));
         } catch (BizException e) {
             throw e;
         } catch (Exception e) {

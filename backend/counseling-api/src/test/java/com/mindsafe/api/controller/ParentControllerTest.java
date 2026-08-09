@@ -189,32 +189,32 @@ class ParentControllerTest {
         }
 
         @Test
-        @DisplayName("getWeeklyReport 撤回后 → UNAUTHORIZED（不查询会话数据）")
+        @DisplayName("getWeeklyReport 撤回后 → CONSENT_WITHDRAWN（不查询会话数据）")
         void reportRejected() {
             mockWithdrawnStudent();
 
             assertThatThrownBy(() -> controller.getWeeklyReport("Bearer " + VALID_PARENT_TOKEN))
                     .isExactlyInstanceOf(BizException.class)
                     .extracting("code")
-                    .isEqualTo(ErrorCode.UNAUTHORIZED.code());
+                    .isEqualTo(ErrorCode.CONSENT_WITHDRAWN.code());
             verify(parentService, org.mockito.Mockito.never()).getRecentSessions(any(), any(), any());
             assertNull(TenantContextHolder.get(), "拒绝路径也不得泄漏租户上下文");
         }
 
         @Test
-        @DisplayName("withdrawConsent 撤回后重复请求 → UNAUTHORIZED")
+        @DisplayName("withdrawConsent 撤回后重复请求 → CONSENT_WITHDRAWN")
         void withdrawRejected() {
             mockWithdrawnStudent();
 
             assertThatThrownBy(() -> controller.withdrawConsent("Bearer " + VALID_PARENT_TOKEN))
                     .isExactlyInstanceOf(BizException.class)
                     .extracting("code")
-                    .isEqualTo(ErrorCode.UNAUTHORIZED.code());
+                    .isEqualTo(ErrorCode.CONSENT_WITHDRAWN.code());
             verify(consentWithdrawalService, org.mockito.Mockito.never()).withdrawConsent(any(), any());
         }
 
         @Test
-        @DisplayName("verifyPhone 撤回后 → UNAUTHORIZED（不签发新 token）")
+        @DisplayName("verifyPhone 撤回后 → CONSENT_WITHDRAWN（不签发新 token）")
         void verifyPhoneRejected() {
             mockWithdrawnStudent();
 
@@ -223,7 +223,7 @@ class ParentControllerTest {
                     Map.of("phone", "13800000001", "code", "123456")))
                     .isExactlyInstanceOf(BizException.class)
                     .extracting("code")
-                    .isEqualTo(ErrorCode.UNAUTHORIZED.code());
+                    .isEqualTo(ErrorCode.CONSENT_WITHDRAWN.code());
         }
 
         @Test
@@ -232,6 +232,59 @@ class ParentControllerTest {
             when(parentService.getStudent(tenantId, studentUserId)).thenReturn(null);
 
             assertThatThrownBy(() -> controller.getWeeklyReport("Bearer " + VALID_PARENT_TOKEN))
+                    .isExactlyInstanceOf(BizException.class)
+                    .extracting("code")
+                    .isEqualTo(ErrorCode.UNAUTHORIZED.code());
+        }
+    }
+
+    // ===== BUG-P-P04-01：consent/status 宽松校验 =====
+
+    @Nested
+    @DisplayName("consent/status 授权状态查询")
+    class ConsentStatus {
+
+        @Test
+        @DisplayName("正常返回授权状态并绑定租户上下文")
+        void returnsStatus() {
+            Map<String, Object> expected = new java.util.LinkedHashMap<>();
+            expected.put("status", "active");
+            expected.put("consentVersion", "v1.0");
+            when(consentWithdrawalService.getConsentStatus(tenantId, studentUserId))
+                    .thenAnswer(inv -> {
+                        assertEquals(tenantId, TenantContextHolder.get(),
+                                "getConsentStatus 查询前 TenantContextHolder 应为 token 中的 tenantId");
+                        return expected;
+                    });
+
+            ApiResponse<Map<String, Object>> resp = controller.getConsentStatus("Bearer " + VALID_PARENT_TOKEN);
+
+            assertThat(resp.code()).isEqualTo(0);
+            assertThat(resp.data().get("status")).isEqualTo("active");
+            assertNull(TenantContextHolder.get(), "请求结束后 TenantContextHolder 必须为 null");
+        }
+
+        @Test
+        @DisplayName("撤回状态下仍可查询（宽松校验，不拦截 withdrawn）")
+        void worksAfterWithdrawn() {
+            // 不 mock parentService.getStudent —— 宽松路径不检查学生状态；
+            // 只需证明没有触发严格校验的 UNAUTHORIZED/CONSENT_WITHDRAWN
+            Map<String, Object> expected = Map.of("status", "withdrawn");
+            when(consentWithdrawalService.getConsentStatus(tenantId, studentUserId)).thenReturn(expected);
+
+            ApiResponse<Map<String, Object>> resp = controller.getConsentStatus("Bearer " + VALID_PARENT_TOKEN);
+
+            assertThat(resp.code()).isEqualTo(0);
+            assertThat(resp.data().get("status")).isEqualTo("withdrawn");
+            verify(consentWithdrawalService).getConsentStatus(tenantId, studentUserId);
+        }
+
+        @Test
+        @DisplayName("student token → UNAUTHORIZED")
+        void studentTokenRejected() {
+            when(jwtTokenProvider.getUserType(VALID_PARENT_TOKEN)).thenReturn("student");
+
+            assertThatThrownBy(() -> controller.getConsentStatus("Bearer " + VALID_PARENT_TOKEN))
                     .isExactlyInstanceOf(BizException.class)
                     .extracting("code")
                     .isEqualTo(ErrorCode.UNAUTHORIZED.code());

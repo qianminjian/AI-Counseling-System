@@ -16,6 +16,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -94,5 +97,47 @@ public class ConsentWithdrawalService {
                 "家长撤回同意：冻结账号 + 删除画像 " + deletedProfiles + " 条");
 
         log.info("同意撤回完成: studentUserId={}, deletedProfiles={}", studentUserId, deletedProfiles);
+    }
+
+    /**
+     * 查询监护人对某学生的授权状态（BUG-P-P04-01：P-04 同意管理页展示用）。
+     * <p>
+     * 注意：本方法不要求学生 status=active —— 撤回后家长仍需能查看"已撤回"状态。
+     *
+     * @return 状态摘要：status(active/withdrawn) + 授权版本/时间 + 撤回时间（若有）
+     */
+    public Map<String, Object> getConsentStatus(UUID tenantId, UUID studentUserId) {
+        User student = userMapper.selectById(studentUserId);
+        if (student == null) {
+            throw new BizException(ErrorCode.RESOURCE_NOT_FOUND, "学生不存在");
+        }
+        boolean withdrawn = STATUS_WITHDRAWN.equals(student.getStatus());
+
+        // 最近一条监护人同意留痕（guardian_consent）
+        ConsentRecord consent = consentRecordMapper.selectOne(
+                new LambdaQueryWrapper<ConsentRecord>()
+                        .eq(ConsentRecord::getTenantId, tenantId)
+                        .eq(ConsentRecord::getUserId, studentUserId)
+                        .eq(ConsentRecord::getConsentType, "guardian_consent")
+                        .orderByDesc(ConsentRecord::getConsentedAt)
+                        .last("LIMIT 1")
+        );
+        // 最近一条撤回留痕（consent_withdrawal）
+        ConsentRecord withdrawal = consentRecordMapper.selectOne(
+                new LambdaQueryWrapper<ConsentRecord>()
+                        .eq(ConsentRecord::getTenantId, tenantId)
+                        .eq(ConsentRecord::getUserId, studentUserId)
+                        .eq(ConsentRecord::getConsentType, "consent_withdrawal")
+                        .orderByDesc(ConsentRecord::getConsentedAt)
+                        .last("LIMIT 1")
+        );
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("status", withdrawn ? STATUS_WITHDRAWN : "active");
+        result.put("consentVersion", consent != null ? consent.getConsentVersion() : null);
+        result.put("consentedAt", consent != null ? consent.getConsentedAt() : null);
+        result.put("withdrawnAt", withdrawal != null ? withdrawal.getConsentedAt() : null);
+        result.put("studentNickname", student.getPseudonym());
+        return result;
     }
 }

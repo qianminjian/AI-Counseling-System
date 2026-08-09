@@ -15,4 +15,5 @@ export const FRONTEND_ENDPOINTS: Array<[path: string, method: string]> = [
   // 家长数据
   ['/api/v1/parent/report', 'get'],
   ['/api/v1/parent/consent/withdraw', 'post'],
+  ['/api/v1/parent/consent/status', 'get'], // BUG-P-P04-01：授权状态查询
 ]
