@@ -41,9 +41,16 @@ export function checkWasmEnvironment(): void {
  * - 'SAME_ORIGIN' → `${base}models/`（同源部署，浏览器 HTTP 缓存持久化）
  * - 相对路径 → origin 拼接（remoteHost 必须是绝对 URL，否则 get_file_metadata 的 new URL() 失败）
  * - 绝对 URL 原样返回
+ * F-15（2026-08-09）：SAME_ORIGIN 分支与 8.2 对齐——8.2 内联实现为
+ * `${base}models/` → `window.location.origin +` 绝对化；DC-009 收敛（41a7a67）时漏掉该处理
+ * → remoteHost 为相对路径 → transformers.js get_file_metadata 探测/缓存 key 异常
+ * → 模型每次重新下载、下载显著变慢（声纹 6.7MB 实测 88s vs 应 ~12s）。
  */
 export function buildRemoteHost(base: string, modelHost: string): string {
-  if (modelHost === 'SAME_ORIGIN') return `${base}models/`
+  if (modelHost === 'SAME_ORIGIN') {
+    const host = `${base}models/`
+    return host.startsWith('http') ? host : window.location.origin + host
+  }
   if (modelHost.startsWith('http')) return modelHost
   return window.location.origin + modelHost
 }
