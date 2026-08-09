@@ -151,15 +151,10 @@ function getTranscriber() {
             setModelStatus('loading', p)
           }),
         })
-        // F-9b（2026-08-09）：pipeline 完整性防御。注意 ASR pipeline 的正确接口是
-        // this.processor（WhisperProcessor），内部 feature_extractor 经 processor.feature_extractor 访问
-        // （dist/transformers.web.js: _call_whisper 中 `this.processor.feature_extractor.config`）。
-        // 旧校验误查 t.feature_extractor（不存在）→ 把正常 pipeline 一律判失败 → 引擎永远"加载失败"。
-        // 正确校验：processor 是 pipeline 必需组件（resolve 时必存在）；processor.feature_extractor
-        // 可能懒加载，缺失时留待首次转写失败重试，不做硬校验。
-        if (!t || !(t as any)?.processor) {
-          throw new Error('pipeline 初始化不完整（processor 缺失），模型文件可能未下载完整')
-        }
+        // F-9b 回滚（2026-08-09 23:30）：恢复 8.2 行为——8.2 版本无 pipeline 完整性校验，
+        // 唤醒链路正常可用；我加的校验（先查 feature_extractor 再查 processor）均会把
+        // 正常加载的 pipeline 误判为失败 → 引擎永远"加载失败"。模型文件不全时由
+        // 转写失败重试机制兜底（与 8.2 一致），不做加载期硬校验。
         setModelStatus('ready')
         return t
       },
