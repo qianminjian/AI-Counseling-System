@@ -3,6 +3,7 @@ package com.mindsafe.service.conversation;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mindsafe.ai.chat.AiChatService;
+import com.mindsafe.common.tenant.TenantContextHolder;
 import com.mindsafe.common.util.TextUtils;
 import com.mindsafe.domain.entity.CounselingSession;
 import com.mindsafe.domain.entity.MessageSummary;
@@ -206,7 +207,10 @@ public class MessageSummaryService {
             summary.setCreatedAt(Instant.now());
             // R-01：AI 回复内容字段级加密后落库
             summary.setContentSummary(fieldEncryptionService.encrypt(summary.getContentSummary()));
-            messageSummaryMapper.insert(summary);
+            // BUG-TENANT-01：本方法在 reactor 回调线程（Flux.defer）执行，无租户上下文且
+            // TaskDecorator 只覆盖 @Async 线程池，捕获不到此处；实体已显式携带 tenantId，
+            // 系统作用域下跳过租户行注入安全（M1-003 fail-fast 配套）。
+            TenantContextHolder.runAsSystem(() -> messageSummaryMapper.insert(summary));
         } catch (Exception e) {
             log.warn("AI 回复摘要持久化失败: sessionId={}, turn={}", session.getSessionId(), turn, e);
         }
@@ -351,27 +355,32 @@ public class MessageSummaryService {
     @Async
     public void updateProgressiveSummaryAsync(UUID tenantId, UUID sessionId, int currentTurn) {
         try {
-            String conversationText = readSessionTranscript(tenantId, sessionId,
-                    new TranscriptFilter(null, 1));
-            if (conversationText.isBlank()) {
-                log.debug("CTX-Agent 摘要：无消息记录，跳过: sessionId={}", sessionId);
-                return;
-            }
+            // BUG-TENANT-01：本方法可能由 reactor 回调线程（Flux.defer）提交，@Async 装饰器
+            // 捕获不到调用方上下文；方法参数已携带 tenantId 且 DB 查询均显式带租户条件，
+            // 系统作用域下执行安全（M1-003 fail-fast 配套）。
+            TenantContextHolder.runAsSystem(() -> {
+                String conversationText = readSessionTranscript(tenantId, sessionId,
+                        new TranscriptFilter(null, 1));
+                if (conversationText.isBlank()) {
+                    log.debug("CTX-Agent 摘要：无消息记录，跳过: sessionId={}", sessionId);
+                    return;
+                }
 
-            String summary = aiChatService.summarizeSessionProgress(conversationText);
-            if (summary == null || summary.isBlank()) {
-                log.debug("CTX-Agent 摘要：LLM 返回空，跳过: sessionId={}", sessionId);
-                return;
-            }
+                String summary = aiChatService.summarizeSessionProgress(conversationText);
+                if (summary == null || summary.isBlank()) {
+                    log.debug("CTX-Agent 摘要：LLM 返回空，跳过: sessionId={}", sessionId);
+                    return;
+                }
 
-            SessionState session = sessionStateStore.get(tenantId, sessionId);
-            if (session != null) {
-                session.setSessionSummary(summary.trim());
-                session.setLastSummaryTurn(currentTurn);
-                sessionStateStore.save(tenantId, sessionId, session);
-                log.info("CTX-Agent 滚动摘要已更新: sessionId={}, turn={}, summaryLen={}",
-                        sessionId, currentTurn, summary.length());
-            }
+                SessionState session = sessionStateStore.get(tenantId, sessionId);
+                if (session != null) {
+                    session.setSessionSummary(summary.trim());
+                    session.setLastSummaryTurn(currentTurn);
+                    sessionStateStore.save(tenantId, sessionId, session);
+                    log.info("CTX-Agent 滚动摘要已更新: sessionId={}, turn={}, summaryLen={}",
+                            sessionId, currentTurn, summary.length());
+                }
+            });
         } catch (Exception e) {
             log.warn("CTX-Agent 滚动摘要失败（不影响对话）: sessionId={}, error={}", sessionId, e.getMessage());
         }

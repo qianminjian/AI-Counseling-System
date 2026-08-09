@@ -2,6 +2,7 @@ package com.mindsafe.service.conversation;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mindsafe.ai.chat.AiChatService;
+import com.mindsafe.common.tenant.TenantContextHolder;
 import com.mindsafe.domain.entity.CounselingSession;
 import com.mindsafe.domain.entity.MessageSummary;
 import com.mindsafe.domain.mapper.MessageSummaryMapper;
@@ -237,6 +238,40 @@ class MessageSummaryServiceTest {
         service.persistAiMessageSummary(session, 2, "   ");
 
         verify(messageSummaryMapper, never()).insert(any(MessageSummary.class));
+    }
+
+    @Test
+    @DisplayName("BUG-TENANT-01: 无租户上下文（reactor 回调线程）persistAiMessageSummary 仍成功落库（runAsSystem）")
+    void persistAi_noTenantContext_stillInserts() {
+        // 模拟 Flux.defer 回调线程：ThreadLocal 无请求租户上下文（M1-003 fail-fast 会拒绝裸 insert）
+        TenantContextHolder.clear();
+        SessionState session = new SessionState(sessionId, tenantId, studentUserId, "平静", "web", null, null, 0);
+
+        service.persistAiMessageSummary(session, 2, "AI 的完整回复");
+
+        // runAsSystem 包裹下 insert 正常执行，不被 fail-fast 拒绝
+        verify(messageSummaryMapper).insert(any(MessageSummary.class));
+        // 系统作用域不得泄漏到调用线程（嵌套安全）
+        assertThat(TenantContextHolder.isSystemScope()).isFalse();
+    }
+
+    @Test
+    @DisplayName("BUG-TENANT-01: 无租户上下文 updateProgressiveSummaryAsync 正常执行且不泄漏系统作用域")
+    void updateProgressive_noTenantContext_stillWorks() {
+        TenantContextHolder.clear();
+        when(messageSummaryMapper.selectList(any()))
+                .thenReturn(List.of(newMessage("student", "enc-1"), newMessage("ai", "enc-2")));
+        when(fieldEncryptionService.decrypt(anyString())).thenAnswer(inv -> inv.getArgument(0));
+        when(aiChatService.summarizeSessionProgress(anyString()))
+                .thenReturn("学生分享了开心的事，AI 正向回应");
+        SessionState session = newState(8, 4);
+        when(sessionStateStore.get(tenantId, sessionId)).thenReturn(session);
+
+        service.updateProgressiveSummaryAsync(tenantId, sessionId, 8);
+
+        assertThat(session.getSessionSummary()).isEqualTo("学生分享了开心的事，AI 正向回应");
+        verify(sessionStateStore).save(eq(tenantId), eq(sessionId), eq(session));
+        assertThat(TenantContextHolder.isSystemScope()).isFalse();
     }
 
     // ===== BA-10：消息读取单点（查→解密→拼接唯一实现，文案统一「学生/AI」） =====
