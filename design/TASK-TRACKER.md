@@ -921,6 +921,8 @@ _本表由 Agent 维护，每次任务变更时更新。_
 
 > 25. **DOC-085 登记**（2026-08-09）：Browser Agent 三端 Web 界面自动化遍历测试设计登记——方案与提示词单一事实源落 `design/doing/82_BrowserAgent三端Web界面自动化遍历测试设计.md`（承接 R-4 Playwright 预留态，DOC-082）：30 场景案例（S-01~10 学生端 / T-01~08 教师端 / P-01~06 家长端 / L-01~06 三端联动）+ 每场景可执行 Browser Agent 提示词（环境/步骤/断言/截图记录四要素）+ 问题登记规范（reports/browser-test/ISSUES-<端>.md，按端+场景汇总，BUG 条目 P0-P3 分级 + OPEN→FIXED→VERIFIED→REGRESSION 状态机）+ 修复-部署-复测闭环（每端测试完→自动修复（TDD）→自动部署（deploy.sh/compose）→自动复测，3 轮上限，收敛定义 P0=0 且 P1=0 且 P2/P3 未关闭 ≤3，超限升级人工）；语音类（声纹 remote/ASR/TTS 真实链路）因 test compose 不含 voice/tts 标记 SKIP-语音，断言降级路径照常；执行顺序：环境准备→学生端→教师端→家长端→联动场景→汇总归档；ticket 见 §二十九。
 
+> 30. **DOC-090 登记**（2026-08-09）：doing/83 双文档 ticket 去冗余整合（项目负责人指令：ticket 不冗余保存在设计文档）——删除降级监控文档 §九（ticket 工作包 7 片）与后台管理端文档 §十五（ticket 工作包 29 片），降级监控 §六 任务表压缩为引用行（内容已在 §三十）；设计文档仅保留设计规格（方案/表/API/风格/AC 定义），**ticket 单一事实源 = TASK-TRACKER §三十/§三十一**；§三十 执行顺序更新（002→003→004→005→007→008→006）；§三十一 说明更新（唯一跟踪表，AC 定义见设计文档 §13）；两文档残留引用清理完毕。
+> 29. **DOC-089 登记**（2026-08-09）：ticket 跟踪表补登记（修正 DOC-087/088 遗漏）——OPS-MON-007/008 补入 §三十（原仅降级监控文档任务表）；**新增 §三十一 后台管理端 AdminConsole ticket 表（29 行 ADMIN-P0-01~P3-04，状态⬜ 待排期，含归属与跨专题依赖）**；原文档 §九/§十五 标注「执行跟踪见 TASK-TRACKER，本表为 ticket 设计定义」，确立「定义在文档、跟踪在台账」双层结构（对齐 OPS-MON 先例）；frontier：ADMIN-P0-01 与 OPS-MON-002 可立即启动。
 > 28. **DOC-088 登记**（2026-08-09）：doing/83 双文档深度审计 + SPEC 开发计划——审计结论（代码实态核对）：① `SlaEscalationScanner`（P-05/WB-001：RED 5min/ORANGE 15min ESCALATE/冷却去重）**已实现**，M8 逾期扫描由「新增」改「复用 + 扩展」（sla_escalation_log 留痕/平台清单与转派端点/业务指标）；② `ModelCallLog.tenantId` 已存在，**R-4 关闭**（无需补列）；③ admin-web 页面数台账修正（24/14 → 实际 25，§八 清单）；④ M7 `prompt_versions` 无 status 字段（6.10 真新增）；⑤ 定时任务用 `@Scheduled` 先例 4 处（OPS-MON-007/008 组件落点据此定）；⑥ M2/M3/M5/M7/M9 Controller 端点/指标/规则全部核对通过（AdminPrompt 8 端点/KB 7 端点/Platform 4 端点/alert-rules 10 条/service-manager 根目录/tts metrics 单 label）；产出：后台管理端文档新增 **§13 SPEC 开发计划**（ADMIN-P0-01~08/P1-01~10/P2-01~07/P3-01~04 共 29 ticket + §13.5 开发准备清单 6 项），降级监控文档补组件落点与执行顺序（OPS-MON-002→003→004→005→007→008）与审计核对注；为启动开发就绪。
 > 27. **DOC-087 登记**（2026-08-09）：doing/83 双文档衔接整合——`83_服务降级监控与告警设计.md`（**监控链路/数据层**：指标埋点 → 告警规则 → 通知 → 事件落库 → 部署演练）与 `83_后台管理端AdminConsole设计方案.md`（**管理视图/操作层**：M2 指标看板/告警中心、M3 降级矩阵/手动切换）职责边界厘清：监控链路实现统一归口降级监控文档，**新增 OPS-MON-007（降级事件检测器：指标增量轮询 → degradation_events auto/恢复事件落库，防抖 + 跳过 manual 覆盖点 + SETNX 锁，AC-9；提取自管理端 §5.3 3.3）与 OPS-MON-008（告警采集器：AlertManager 拉取 + AlertService 同步 → alert_events，AC-10；提取自管理端 §5.2 2.3）+ SPEC AC-9/AC-10**；管理端文档 M2/M3 改为消费侧并补数据源引用（3 条降级规则 → 告警中心、降级指标 → 指标看板/降级矩阵、degradation_events auto/manual 写入方划分）、§九 映射与 §11 实施路线依赖更新（M2 P1 依赖 OPS-MON-003/004/008，M3 P2 依赖 OPS-MON-007；P0 告警中心只读先行不依赖落库）。
 > 26. **DOC-086 登记**（2026-08-09，**同号异题：develop 线**——与 main 线服务降级监控专题共用 DOC-086/doing/83 编号，文件名可区分，参照 DOC-077/078、his/72 与 72_取消CD 先例）：后台管理端 AdminConsole 设计方案登记——深度调研同类产品（教育 SaaS ClassIn 教务/监课/财务/子账号权限、希沃集控层级看板；通用 SaaS 三后台模型 + 中台标准模块：租户/订阅/计费/权限/运营管理；心理健康 SaaS 橙星云/心大陆/心灵伙伴：测评-预警-档案闭环、红橙黄绿四级预警、市-校-生多层级；计量计费模式：per-seat/usage-based/特性+SLA/计价计费分离）+ 代码实态盘点（5 个平台 Controller 可复用：Platform/AdminTenant/AdminUser/Admin/AdminPrompt；监控体系：Prometheus 3 job + 10 规则 + AlertManager→企微 + AlertService + service-manager.sh 六服务 UP/DEGRADED/DOWN；降级机制完备：ResilientChatModel 主备/TTS 三级/ASR 双引擎/SER_ENABLED/VoiceDegradationPolicy；缺口 7 项：无 admin-web 前端/配置无面板/监控无运营视图/降级无视图无开关/租户无套餐权益/计量无汇总/平台账号体系缺）→ 完整方案落 `design/doing/83_后台管理端AdminConsole设计方案.md`：M1 系统配置管理（配置注册表 sys_config + sys_config_history 变更留痕 + 敏感 SECRET 掩码 + 生效方式 HOT/RESTART 两级，不引入新配置源）/ M2 系统应用监控（服务拓扑三态 + 指标看板后端代理 Prometheus 白名单表达式 + 告警中心 alert_events + 部署历史 + service_health_snapshots 快照落库支撑 SLA 验证）/ M3 服务切换降级监控（降级矩阵实时视图 + 手动切换走 Redis 运行时覆盖键不落部署文件 + degradation_events 历史 + 影响面提示，语义「降级≠宕机」沿用 D5/DA-02）/ M4 租户计量计费（usage_events 计量 → rate_plans 计价 → subscriptions/billing 计费三层，对齐 design/07 99/159/259 元/生/年定价与 entitlement 三层，活跃学生快照 + model_call_logs LLM 聚合；**4.3~4.6 设计冻结待 frozen/38 解冻议决**）/ M5 租户管理（生命周期开通/暂停/恢复/归档 + 配额接线（现常量 500/200 未校验）+ 详情钻取预警分布）/ M6 平台基础（platform_admin 四角色 super_admin/ops_admin/finance_admin/audit + 审计 tenantId 可空平台级）；新增表 10 张；API 4 域（platform 扩展/ops 新增运维执行/admin 现有）；admin-web 前端新建（React 19+TS+Vite 同栈，25 页面（2026-08-09 审计修正：原登记 14 失实），/admin/ 路径）；实施四期 P0 底座（M6+骨架+服务拓扑只读，服务操作先走方案①SSH 人工）→ P1 配置监控深化 → P2 降级监控（运行时覆盖键）→ P3 计量计费（冻结）；开放问题 R-1~R-8（平台账号模型独立表 vs users、服务操作执行通道、配置热生效范围、model_call_logs tenant_id 核对、解冻时序、平台表行级隔离排除、ops_admin 最小权限、管理端 JWT 独立）；**DEC-007 议决落定（2026-08-09）**：R-1 独立 platform_admin 表 + 独立登录端点 / R-2 P0 只读展示 + SSH 人工 / R-7 ops_admin 仅看聚合数据 / R-8 独立 token 前缀 PLATFORM_ / M4 采集层先行落地，R-3/R-4 留待 P1/P3。
@@ -961,5 +963,45 @@ _本表由 Agent 维护，每次任务变更时更新。_
 | OPS-MON-004 | 生产部署 monitoring 栈（.env 补 WECOM_* 4 项 + GRAFANA_PASSWORD → compose up） | 部署 | ⬜ 待排期 |
 | OPS-MON-005 | 降级演练 + 验证（断 DASHSCOPE key → 指标 +1 → 企微 ≤5 分钟触达 → 恢复） | 验证 | ⬜ 待排期 |
 | OPS-MON-006 | 合并归档（doing/83 最终态并入 design/04 §9 监控 / 06 §配置章节 → 归档 his/83） | 全量 | ⬜ 待排期 |
+| OPS-MON-007 | 降级事件检测器（30s 轮询指标增量 → degradation_events auto/恢复事件落库，last_value 防抖 + 跳过 manual 覆盖点 + SETNX 锁，AC-9；定义见降级监控文档 §3.5） | counseling-api ops | ⬜ 待排期 |
+| OPS-MON-008 | 告警采集器（60s 拉取 AlertManager → alert_events upsert + AlertService 同步，resolved 流转 + 30 天清理，AC-10；定义见降级监控文档 §3.6） | counseling-api ops | ⬜ 待排期 |
 
-> 执行顺序：OPS-MON-002 → 003 → 004 → 005 → 006（005 演练通过后 006 归档）；AC-6 演练为归档前置门禁。
+> 执行顺序：OPS-MON-002 → 003 → 004 → 005 → 007 → 008 → 006（007 依赖 002/004，008 依赖 004；005 演练通过后 006 归档）；AC-6 演练为归档前置门禁。
+
+---
+
+## 三十一、后台管理端 AdminConsole ticket（2026-08-09，DOC-089 登记）
+
+> 登记说明：doing/83 后台管理端方案（§13）的 29 个 ADMIN ticket **本表为唯一执行跟踪表**（状态/排期/归属）；AC 定义（验收标准断言）见设计文档 §13（唯一 AC 定义处，DRY）。跨专题依赖：P0-06/P1-07/P1-08 → OPS-MON-003/004/008；P2-01/P2-02 → OPS-MON-007。frontier：ADMIN-P0-01 与 OPS-MON-002 可立即启动。
+
+| Ticket | 任务 | 归属 | 状态 |
+|--------|------|------|------|
+| ADMIN-P0-01 | platform_admin 表 + 实体 + 迁移（§6.8，R-6 忽略名单） | 后端 | ⬜ 待排期 |
+| ADMIN-P0-02 | 平台登录端点 + 独立 JWT（PLATFORM_ 前缀）+ 四角色 | 后端 | ⬜ 待排期 |
+| ADMIN-P0-03 | SecurityConfig 角色细化（PLATFORM_ 授权域） | 后端 | ⬜ 待排期 |
+| ADMIN-P0-04 | admin-web 脚手架 + 路由守卫 + 角色菜单 | 前端 | ⬜ 待排期 |
+| ADMIN-P0-05 | M2 服务拓扑（只读）+ service_health_snapshots | 后端 | ⬜ 待排期 |
+| ADMIN-P0-06 | 告警中心只读（AlertManager 直读，依赖 OPS-MON-003/004） | 后端 | ⬜ 待排期 |
+| ADMIN-P0-07 | 审计日志查询（跨租户） | 后端 | ⬜ 待排期 |
+| ADMIN-P0-08 | P0 回归门禁（P0-01~07 全绿） | 全量 | ⬜ 待排期 |
+| ADMIN-P1-01 | sys_config 注册表 + 变更留痕（HOT/RESTART 两级） | 后端 | ⬜ 待排期 |
+| ADMIN-P1-02 | M7 审核发布流（submit/review/状态机，三重门禁） | 后端 | ⬜ 待排期 |
+| ADMIN-P1-03 | M7 门禁可视化 + safety-phrases 只读 | 后端 | ⬜ 待排期 |
+| ADMIN-P1-04 | M8 风险全景 + 时效监控（纯查询） | 后端 | ⬜ 待排期 |
+| ADMIN-P1-05 | M8 逾期升级扩展（sla_escalation_log + 转派端点，复用 SlaEscalationScanner） | 后端 | ⬜ 待排期 |
+| ADMIN-P1-06 | M8 业务指标埋点 + alert-rules 业务段（R-11） | 后端 | ⬜ 待排期 |
+| ADMIN-P1-07 | M2 指标看板（完整，依赖 OPS-MON-003/004/008） | 后端 | ⬜ 待排期 |
+| ADMIN-P1-08 | M2 告警中心完整（alert_events 消费 + ack） | 后端 | ⬜ 待排期 |
+| ADMIN-P1-09 | 前端 P1 页面组（八页） | 前端 | ⬜ 待排期 |
+| ADMIN-P1-10 | P1 回归门禁（P1-01~09 全绿） | 全量 | ⬜ 待排期 |
+| ADMIN-P2-01 | M3 降级矩阵 + 手动切换（依赖 OPS-MON-007） | 后端 | ⬜ 待排期 |
+| ADMIN-P2-02 | M3 事件时间线（消费 degradation_events） | 后端 | ⬜ 待排期 |
+| ADMIN-P2-03 | M9 知识库管理扩展 | 后端 | ⬜ 待排期 |
+| ADMIN-P2-04 | M10 通知渠道统计 + 失败台账 + 触达策略 | 后端 | ⬜ 待排期 |
+| ADMIN-P2-05 | M12 运营洞察 | 后端 | ⬜ 待排期 |
+| ADMIN-P2-06 | 前端 P2 页面组（四页） | 前端 | ⬜ 待排期 |
+| ADMIN-P2-07 | P2 回归门禁（P2-01~06 全绿） | 全量 | ⬜ 待排期 |
+| ADMIN-P3-01 | usage_events 采集层（M4 先行，幂等） | 后端 | ⬜ 待排期 |
+| ADMIN-P3-02 | 用量报表（计量预览标注） | 前端 | ⬜ 待排期 |
+| ADMIN-P3-03 | M11 合规视图 | 后端 | ⬜ 待排期 |
+| ADMIN-P3-04 | P3 回归门禁（P3-01~03 全绿，冻结项不实施） | 全量 | ⬜ 待排期 |

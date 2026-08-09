@@ -971,7 +971,7 @@
 
 ## 十三、SPEC 开发计划（ticket 级验收标准）
 
-> 说明：本表为 §11 实施路线的**可测化落地**（AC 级，对齐降级监控文档 AC 模式），每个 ticket 对应可测断言；每个 ticket 以 TDD 实施（先写失败测试）。**审计基线（2026-08-09 代码实态核对）**：M2/M3/M5/M7/M8/M9 引用组件与端点全部存在且有测试（AdminPromptController 8 端点/KnowledgeBaseController 7 端点/PlatformController 4 端点）；`SlaEscalationScanner`（P-05）已实现（M8 复用）；`ModelCallLog.tenantId` 已存在（R-4 关闭）；`prompt_versions` 无 status 字段（6.10 为真新增）；定时任务先例 `@Scheduled`（RiskNotifyRetryJob/DataRetentionCleanupJob/SlaEscalationScanner）。
+> 说明：本表为 §11 实施路线的**可测化落地**（AC 级，对齐降级监控文档 AC 模式），每个 ticket 对应可测断言；每个 ticket 以 TDD 实施（先写失败测试）。**执行跟踪见 TASK-TRACKER §三十一（唯一跟踪表，本表为 AC 定义）**。**审计基线（2026-08-09 代码实态核对）**：M2/M3/M5/M7/M8/M9 引用组件与端点全部存在且有测试（AdminPromptController 8 端点/KnowledgeBaseController 7 端点/PlatformController 4 端点）；`SlaEscalationScanner`（P-05）已实现（M8 复用）；`ModelCallLog.tenantId` 已存在（R-4 关闭）；`prompt_versions` 无 status 字段（6.10 为真新增）；定时任务先例 `@Scheduled`（RiskNotifyRetryJob/DataRetentionCleanupJob/SlaEscalationScanner）。
 
 ### 13.1 P0 底座（M6 + admin-web 骨架 + M2 服务拓扑/告警只读）
 
@@ -1034,6 +1034,87 @@
 | 权限矩阵核对 | §7 各端点权限列 → SecurityConfig 单测覆盖（每端点越权测试，R-7 含 ops_admin 聚合边界） | 后端 |
 
 ---
+
+## 十四、to-spec 开发规格书（2026-08-09，对本文档 §一~§十三 的规格化提炼）
+
+> 说明：本规格书为开发启动的单一入口（等价发布至 issue tracker 的 ready-for-agent spec；本项目无外部 tracker，事实源即本文档）。**执行跟踪见 TASK-TRACKER §三十一（29 ticket ADMIN-P0~P3）**；AC 定义见 §13。审计基线见 §13 头部（2026-08-09 代码实态核对）。
+
+### 14.1 Problem Statement（问题陈述）
+
+平台管理者需要统一后台（admin-web）对**十二能力域**进行运营管理——系统配置、应用监控、降级干预、租户计量、租户生命周期、平台账号、提示词审核、业务信号处置、知识库、通知触达、数据合规、运营洞察；现状缺口 7 项：无 admin-web 前端 / 配置无面板（仅 yml/env）/ 监控无运营视图（Prometheus/Grafana 需直连）/ 降级无视图无开关 / 租户无套餐权益视图 / 计量无汇总 / 平台账号体系缺失（super_admin 挂在业务租户 users 表）。其中两项为产品核心需求：**提示词在线配置审核**（当前只能改代码发版）与**业务信号处置监控**（老师未及时干预/信号超时无平台级视图）。
+
+### 14.2 Solution（解决方案）
+
+新建 admin-web 管理端（React 19+TS+Vite 同栈、青屿设计体系），后端扩展 platform/ops 域：**十二模块**（M1 系统配置管理 / M2 系统应用监控 / M3 服务切换降级监控 / M4 租户计量计费（冻结）/ M5 租户管理 / M6 平台基础 / M7 提示词与内容配置中心 / M8 业务信号与预警处置监控 / M9 知识库与内容管理 / M10 通知渠道与触达管理 / M11 数据安全与合规中心 / M12 运营洞察），**四期实施**（P0 底座→P1 配置与业务核心→P2 治理深化→P3 商业化与合规冻结）；独立 platform_admin 账号体系（四角色 RBAC），监控链路数据消费自降级监控专题（OPS-MON 前置）。
+
+### 14.3 User Stories（用户故事）
+
+1. As 平台管理员，I want 用独立账号登录管理端（不混用业务登录态），so that 平台操作与租户业务隔离（R-1/R-8）。
+2. As super_admin，I want 管理平台账号（增删改/角色分配/启用禁用），so that 权限按职责收敛。
+3. As 各角色，I want 登录后菜单按角色渲染，so that 看不到无权功能（前端菜单 + 后端端点双保险）。
+4. As 平台管理员，I want 总览页看到租户/学校/学生/会话/预警概览与服务健康，so that 平台状态一眼可见。
+5. As 运维，I want 六服务拓扑与 UP/DEGRADED/DOWN 状态可视化，so that 故障定位先行。
+6. As 运维，I want 告警中心聚合 AlertManager 与业务告警并可 ack，so that 告警统一处理。
+7. As 审计角色，I want 跨租户审计日志检索，so that 平台级操作可追溯。
+8. As super_admin，I want 配置注册表查看/修改（SECRET 掩码、reason 必填、变更留痕），so that 配置变更受控可审计。
+9. As 平台管理员，I want 配置生效方式区分 HOT/RESTART，so that 知道改完是否立即生效（R-3）。
+10. As 内容运营，I want Prompt 在线编辑→提交审核→审核（diff 对比）→激活（三重门禁），so that 提示词变更不再依赖发版（M7 核心）。
+11. As 内容运营，I want 红队结果/灰度进度/护栏可视化，so that 激活决策有依据。
+12. As 安全负责人，I want 安全话术（热线/召回）只读展示，so that 红线内容不被运行时修改（R-7）。
+13. As 平台管理员，I want 跨租户风险全景（红橙黄绿/今日新增/趋势/下钻），so that 风险态势全局可见。
+14. As 平台管理员，I want SLA 时效监控（达标率/逾期率/P95），so that 掌握老师响应时效。
+15. As 平台管理员，I want 逾期预警升级（复用 SlaEscalationScanner + 留痕）与转派/强制关闭，so that 超时预警有人接住。
+16. As 平台管理员，I want 通知兜底台账（dead 补发/关闭），so that 通知失败可人工兜底。
+17. As 运维，I want 降级矩阵实时视图与手动切换（影响面提示 + 二次确认 + 事件留痕），so that 降级可干预可追溯（M3）。
+18. As 运维，I want 降级事件时间线（auto/manual 区分），so that 区分自动降级与人为干预。
+19. As 租户管理员，I want 租户生命周期（开通/暂停/恢复/归档）与配额管理，so that 租户运营闭环（M5）。
+20. As 平台管理员，I want 知识库文档管理（上传/审核/质量报告/命中统计），so that 知识内容受控（M9）。
+21. As 平台管理员，I want 通知渠道状态/发送统计/失败台账，so that 触达链路可观测（M10）。
+22. As 平台管理员，I want 会话质量/预警漏斗/租户健康度，so that 服务效果可度量（M12）。
+23. As 合规角色，I want 留存策略/同意覆盖/审计全景视图，so that 合规状态可查（M11）。
+24. As 财务角色，I want 用量报表（活跃学生/LLM token，计量预览标注），so that 用量可见（M4 采集先行）。
+25. As 平台管理员，I want 指标看板图表与 Grafana 一致（白名单表达式代理），so that 无需直连 Prometheus。
+26. As 运维，I want 降级切换/服务操作/配置修改均二次确认 + 审计，so that 高危操作受控。
+27. As 运维，I want ops_admin 仅看聚合数据（学生级明细仅 super_admin/audit），so that 最小权限（R-7）。
+28. As 开发者，I want 设计令牌直接复用青屿体系（--ms-*），so that 四端视觉一致不另立风格。
+29. As 平台管理员，I want 管理端暗色模式跟随全局 F-01 机制，so that 大屏/夜间使用一致。
+30. As 产品负责人，I want 计量计费与导出审批保持冻结（frozen/38 等），so that 合规红线不被提前实现。
+
+### 14.4 Implementation Decisions（实现决策）
+
+- **账号与登录（DEC-007）**：独立 `platform_admin` 表（与租户 users 解耦）+ 独立登录端点 + 独立 JWT 前缀 `PLATFORM_`；四角色 RBAC（super_admin/ops_admin/finance_admin/audit），端点级强制授权 + 前端菜单双保险，deny-by-default。
+- **十二模块架构**：M1 配置注册表 sys_config + 变更留痕（不引入新配置源，HOT/RESTART 两级）；M2 监控运营视图（后端代理 Prometheus 白名单表达式，快照落库）；M3 降级可视化与手动干预（Redis 运行时覆盖键，不动部署文件，降级≠宕机语义）；M4 计量三层（采集先行，计费冻结）；M5 租户生命周期与配额接线；M6 平台基础；M7 提示词审核发布流（draft→pending_review→approved→active + reviewer 必填 + 三重门禁 + safety 域只读）；M8 业务信号监控（复用 SlaEscalationScanner + sla_escalation_log + mindsafe_risk_* 指标）；M9/M10/M11/M12 复用现有资产纯扩展。
+- **数据表增量**：新增 10 张（§6.1~6.10），唯一 ALTER = prompt_versions.status；全部平台表加入 TenantLineHandler 忽略名单（R-6）；审计 tenantId 可空（平台级操作）。
+- **高危操作约束**：SECRET 不回显 + 修改仅 super_admin + reason 必填；服务操作/降级切换/订阅变更需 `X-Confirm` 头 + 审计留痕。
+- **服务操作通道（R-2 方案①）**：P0 只读展示 + SSH 人工（service-manager.sh）；后端受限执行/运维 agent 挂远期。
+- **监控链路衔接**：M2/M3 为消费侧，指标/规则/采集落库归口降级监控专题（OPS-MON-002~008，前置依赖见 §11）；降级事件 auto 由检测器写、manual 由切换 API 写。
+- **设计体系**：对齐 doing/75 方案 A 青屿（--ms-* token 同源复用，§8.1~8.9），暗色 F-01 机制，BigScreen 常驻暗色。
+- **API 四域**：platform 扩展（M2/M5 查询）、ops 新增（服务/指标/告警/降级/配置/业务监控）、admin 现有（M7/M9 复用）、新 console 控制器；全部权限列见 §7。
+- **实施四期**：P0 底座（M6+骨架+服务拓扑只读+告警只读）→ P1 配置与业务核心（M1/M7/M8/M2 完整）→ P2 治理深化（M3/M9/M10/M12）→ P3 商业化与合规（M4 采集+M11，冻结项不实施）；每期独立可交付可回归。
+
+### 14.5 Testing Decisions（测试决策）
+
+- **好测试的标准**：只断言外部行为（HTTP 状态/数据正确/权限拒绝/审计留痕），不测内部实现；每个 AC（§13）对应可重复断言；越权矩阵逐端点覆盖。
+- **主 seam（最高 seam）**：admin-web 端到端验收——每期完成以真实登录→角色菜单→核心流程走通为门禁（P0 登录/角色差异/服务拓扑；P1 Prompt 全流程与 SLA 统计抽样；P2 手动切换后 /health 反映新档位）；可复用 doing/82 Browser Agent 遍历纪律扩展 admin 端场景。
+- **API 集成 seam**：MockMvc 全端点测试 + 越权矩阵（每端点 × 四角色 × 未登录，403 断言）；先例：AdminPromptControllerTest / PlatformControllerTest / KnowledgeBaseControllerTest。
+- **契约 seam**：OpenAPI 快照三层防线（TEST-006：ContractOpenApiIT + gen-openapi-snapshot + 前端契约测试）扩展新端点。
+- **前端 seam**：vitest 组件测试（teacher-web 先例，maxThreads=1 配置级串行）+ 写操作确认框交互测试。
+- **回归门禁**：每期全量回归（后端 mvn verify + 前端 vitest + Python + shell 套件）+ 覆盖率门禁（核心 60%/整体 45%）。
+
+### 14.6 Out of Scope（范围外）
+
+- M4 4.3~4.6 计费层与订阅账单（frozen/38 冻结，仅采集+报表先行）
+- M11 数据导出审批流（设计预留冻结，心理数据高敏）
+- 服务操作后端受限命令执行通道与独立运维 agent（R-2 远期）
+- ops_admin 学生级明细钻取（R-7 已议决仅聚合）
+- 告警收敛/值班轮转、Grafana 看板模板化（降级监控专题后续）
+- 知识库专家内容供给（design/15 后续阶段）、多语言、无障碍扩展（远期冻结项）
+
+### 14.7 Further Notes（进一步备注）
+
+- 与降级监控专题（doing/83 同号异题）为**衔接关系**（视图层-数据层），任务前置：M2 完整依赖 OPS-MON-003/004/008，M3 依赖 OPS-MON-007（§11/§13 已标注）。
+- 审计基线（2026-08-09）：SlaEscalationScanner 已实现（M8 复用）；ModelCallLog.tenantId 已存在（R-4 关闭）；admin-web 页面 25 页（台账已修正）；引用组件/端点全部存在；@Scheduled 先例 4 处。
+- 归档：各期完成后最终态并入主文档（05 老师后台扩展域/06 数据库/07 SaaS 隔离/08 MVP 范围/09 商业模式），沿用 doing 工作流归档惯例。
 
 ## 附：功能清单总览（速查）
 
