@@ -497,7 +497,10 @@ export function useWakeWord({ active, paused, onDetected }) {
           return
         }
 
-        setWakeStatus('listening')
+        // F-18（2026-08-09 最终根因）：不在此设置 listening——麦克风就绪 ≠ 转写器就绪。
+        // standby（"我在这里安静地等你叫我"）只在 Worker ready（F-11）或主线程降级就绪后显示，
+        // 否则用户看到 standby 呼叫时 Worker 还在等模型下载（实测：缓存空时 Worker 未启动、
+        // console 无任何转写日志，呼叫 2 次无反应）。
       } catch (err) {
         console.warn('[WakeWord] 麦克风初始化失败:', (err as Error)?.message || err)
         setWakeStatus('error')
