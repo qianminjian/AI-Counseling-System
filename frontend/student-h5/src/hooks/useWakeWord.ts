@@ -198,18 +198,10 @@ function getWakeWorker(): Promise<Worker> {
   tslog('getWakeWorker 调用')
   if (!wakeWorkerPromise) {
     wakeWorkerPromise = (async () => {
-      // F-24（2026-08-10）：Worker 只等模型文件写入缓存（下载完成）即可 init，
-      // 不再等主线程 pipeline 完全就绪——主线程 getTranscriber 的 ORT 初始化可能
-      // 很慢（声纹 107s 级），Worker 被无辜拖住（UI 长期"正在准备"）。
-      // 文件进缓存后 Worker 独立从缓存加载（session_create 0.4-12s），与主线程并行。
-      const waitT0 = Date.now()
-      tslog('getWakeWorker 开始：检查缓存完整性')
-      while (!(await hasWakeModelInCache())) {
-        tslog('缓存未完整，等待下载...（已等 ' + Math.round((Date.now() - waitT0) / 1000) + 's）')
-        if (Date.now() - waitT0 > 120000) throw new Error('唤醒模型下载超时（120s）')
-        await new Promise((r) => setTimeout(r, 2000))
-      }
-      tslog('缓存完整，创建 Worker')
+      // F-26（2026-08-10）：前置依赖=模型文件可用，由 Worker 自行满足——立即创建 Worker，
+      // Worker 内 transformers.js 检查缓存（有则读、无则下载），不等待主线程（并发）。
+      // 下载 43MB@4.7Mbps≈73s，超时放宽 180s 覆盖。
+      tslog('getWakeWorker 立即创建 Worker（Worker 自行下载/读缓存）')
       const w = new Worker(
         new URL('../workers/wakeWordWorker.ts', import.meta.url),
         { type: 'module' },
@@ -221,8 +213,8 @@ function getWakeWorker(): Promise<Worker> {
       const t0 = Date.now()
       await new Promise<void>((resolve, reject) => {
         const timer = setTimeout(() => {
-          reject(new Error('Worker 预启动超时（90s）'))
-        }, 90000)
+          reject(new Error('Worker 预启动超时（180s）'))
+        }, 180000)
         w.onmessage = (e) => {
           const { type } = e.data
           if (type === 'status' && e.data.status === 'ready') {
@@ -255,8 +247,10 @@ function getWakeWorker(): Promise<Worker> {
  * F-19：同时预启动转写 Worker（模型下载 + Worker 初始化都在对话前完成）。
  */
 export function preloadWakeModel() {
-  tslog('preloadWakeModel 调用（getTranscriber + getWakeWorker）')
-  getTranscriber().catch(() => {}) // 失败时 active 会重试
+  // F-26（2026-08-10 用户要求"并发+前置依赖"）：只启动 Worker——Worker 是唯一下载者+转写器，
+  // 自己下载模型（缓存无时）→ 初始化 → ready；主线程 getTranscriber 仅 Worker 失败降级时启用。
+  // 单一下载者避免双下载抢带宽；Worker 下载与页面其它操作并发（不等待主线程）。
+  tslog('preloadWakeModel 调用（仅 getWakeWorker，Worker 独立下载+初始化）')
   getWakeWorker().catch(() => {}) // Worker 预启动失败时 active 降级主线程
 }
 
