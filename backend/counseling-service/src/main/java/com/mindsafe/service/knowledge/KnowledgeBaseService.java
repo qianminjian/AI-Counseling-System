@@ -240,8 +240,9 @@ public class KnowledgeBaseService {
      * @return status 字符串，文档不存在时返回 null
      */
     public String findDocumentStatus(UUID tenantId, UUID docId) {
+        // BUG-KB-02：全局知识域（tenant_id IS NULL）文档供全部租户共享检索，管理员审核须可命中
         List<String> rows = jdbcTemplate.queryForList(
-                "SELECT status FROM tenant_template.knowledge_documents WHERE tenant_id = ? AND doc_id = ?",
+                "SELECT status FROM tenant_template.knowledge_documents WHERE (tenant_id = ? OR tenant_id IS NULL) AND doc_id = ?",
                 String.class, tenantId, docId);
         return rows.isEmpty() ? null : rows.get(0);
     }
@@ -268,7 +269,7 @@ public class KnowledgeBaseService {
                     reviewer = COALESCE(?, reviewer),
                     reviewed_at = now(),
                     updated_at = now()
-                WHERE tenant_id = ? AND doc_id = ?
+                WHERE (tenant_id = ? OR tenant_id IS NULL) AND doc_id = ?
                 """,
                 targetStatus, gradeBand, sourceType, evidenceLevel, reviewer, tenantId, docId);
         log.info("知识审核状态落库: tenantId={}, docId={}, targetStatus={}, reviewer={}, rows={}",

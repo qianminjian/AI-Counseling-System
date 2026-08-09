@@ -198,7 +198,9 @@ class KnowledgeBaseServiceTest {
 
             assertThat(rows).isEqualTo(1);
             verify(jdbcTemplate).update(
-                    argThat((String sql) -> sql.contains("COALESCE") && sql.contains("reviewed_at")),
+                    argThat((String sql) -> sql.contains("COALESCE") && sql.contains("reviewed_at")
+                            // BUG-KB-02：全局知识域（tenant_id IS NULL）文档可被管理员审核
+                            && sql.contains("tenant_id = ? OR tenant_id IS NULL")),
                     eq("published"), eq("low"), eq("textbook"), eq("A"), eq("张老师"), eq(tenantId), eq(docId));
         }
 
