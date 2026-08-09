@@ -976,17 +976,18 @@ _本表由 Agent 维护，每次任务变更时更新。_
 ## 三十一、后台管理端 AdminConsole ticket（2026-08-09，DOC-089 登记）
 
 > 登记说明：doing/83 后台管理端方案（§13）的 29 个 ADMIN ticket **本表为唯一执行跟踪表**（状态/排期/归属）；AC 定义（验收标准断言）见设计文档 §13（唯一 AC 定义处，DRY）。跨专题依赖：P0-06/P1-07/P1-08 → OPS-MON-003/004/008；P2-01/P2-02 → OPS-MON-007。frontier：ADMIN-P0-01 与 OPS-MON-002 可立即启动。
+> **P0 实施 backlog（2026-08-09 code-review 遗留，随 P1 批次处理）**：①平台登录防爆破（M3：/api/v1/platform/auth/login 为公开端点，需失败限流/锁定）②平台 token 存储评估（L1：localStorage → httpOnly cookie 长期方案）③探针并行探测（L3：串行最坏 24s）④平台初始账号引导（L4：V35 无种子账号，需引导脚本）⑤双轨收敛跟踪（L5：/api/v1/platform/** 业务 ADMIN 过渡权限，平台端点迁移完成后移除）。
 
 | Ticket | 任务 | 归属 | 状态 |
 |--------|------|------|------|
-| ADMIN-P0-01 | platform_admin 表 + 实体 + 迁移（§6.8，R-6 忽略名单） | 后端 | ⬜ 待排期 |
-| ADMIN-P0-02 | 平台登录端点 + 独立 JWT（PLATFORM_ 前缀）+ 四角色 | 后端 | ⬜ 待排期 |
-| ADMIN-P0-03 | SecurityConfig 角色细化（PLATFORM_ 授权域） | 后端 | ⬜ 待排期 |
-| ADMIN-P0-04 | admin-web 脚手架 + 路由守卫 + 角色菜单 | 前端 | ⬜ 待排期 |
-| ADMIN-P0-05 | M2 服务拓扑（只读）+ service_health_snapshots | 后端 | ⬜ 待排期 |
-| ADMIN-P0-06 | 告警中心只读（AlertManager 直读，依赖 OPS-MON-003/004） | 后端 | ⬜ 待排期 |
-| ADMIN-P0-07 | 审计日志查询（跨租户） | 后端 | ⬜ 待排期 |
-| ADMIN-P0-08 | P0 回归门禁（P0-01~07 全绿） | 全量 | ⬜ 待排期 |
+| ADMIN-P0-01 | platform_admin 表 + 实体 + 迁移（§6.8，R-6 忽略名单） | 后端 | ✅ 实施完成（2026-08-09，V35） |
+| ADMIN-P0-02 | 平台登录端点 + 独立 JWT（PLATFORM_ 前缀）+ 四角色 | 后端 | ✅ 实施完成（2026-08-09，4 用例） |
+| ADMIN-P0-03 | SecurityConfig 角色细化（PLATFORM_ 授权域，P0 过渡双轨） | 后端 | ✅ 实施完成（2026-08-09） |
+| ADMIN-P0-04 | admin-web 脚手架 + 路由守卫 + 角色菜单 | 前端 | ✅ 实施完成（2026-08-09，9 用例全绿） |
+| ADMIN-P0-05 | M2 服务拓扑（只读）+ service_health_snapshots | 后端 | ✅ 实施完成（2026-08-09，Probe 4 用例） |
+| ADMIN-P0-06 | 告警中心只读（AlertManager 直读，依赖 OPS-MON-003/004） | 后端 | ✅ 实施完成（2026-08-09，直读代理） |
+| ADMIN-P0-07 | 审计日志查询（跨租户） | 后端 | ✅ 实施完成（2026-08-09，OpsController 5 用例） |
+| ADMIN-P0-08 | P0 回归门禁（P0-01~07 全绿） | 全量 | ✅ 实施完成（2026-08-09，后端 BUILD SUCCESS + 前端 9 用例） |
 | ADMIN-P1-01 | sys_config 注册表 + 变更留痕（HOT/RESTART 两级） | 后端 | ⬜ 待排期 |
 | ADMIN-P1-02 | M7 审核发布流（submit/review/状态机，三重门禁） | 后端 | ⬜ 待排期 |
 | ADMIN-P1-03 | M7 门禁可视化 + safety-phrases 只读 | 后端 | ⬜ 待排期 |
