@@ -5,6 +5,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.env.Environment;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -84,6 +85,8 @@ public class SecurityConfig {
                         // AUD-005 校正：原注释声称 confirmToken 免登录流程从未实现，confirm 端点依赖 JWT 身份解包，permitAll 已删除
                         // 家长端 API（内部 parentToken 验证，不走 Spring Security 角色）
                         .requestMatchers("/api/v1/parent/**").permitAll()
+                        // 平台管理员登录（ADMIN-P0-02：独立登录端点，R-8）
+                        .requestMatchers("/api/v1/platform/auth/login").permitAll()
                         // 健康检查（Docker/Nginx 探针）
                         .requestMatchers("/actuator/health").permitAll()
                         // WebSocket（握手后内部鉴权）
@@ -96,9 +99,31 @@ public class SecurityConfig {
                         .requestMatchers("/swagger-ui/**", "/api-docs/**").access(
                                 (authentication, context) -> new org.springframework.security.authorization.AuthorizationDecision(!isProd()))
                         // ─── 角色授权 ───
-                        // 管理端 + 平台后台：仅 ADMIN
+                        // 管理端 + 平台后台：仅业务 ADMIN
                         .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
-                        .requestMatchers("/api/v1/platform/**").hasRole("ADMIN")
+                        // Prompt 管理（ADMIN-P1-02，M7）：admin-web 平台角色消费（code-review H1）
+                        .requestMatchers("/api/v1/admin/prompts/**")
+                                .hasAnyRole("ADMIN", "PLATFORM_SUPER_ADMIN", "PLATFORM_OPS_ADMIN")
+                        // 平台后台（ADMIN-P0-03，R-1 平滑迁移）：P0 过渡双轨——业务 ADMIN（teacher-web 现有调用）
+                        // + 平台四角色（admin-web PLATFORM_ token）；后续平台端点全面迁至平台角色域
+                        // 配置修改（ADMIN-P1-01）：仅超级管理员（平台 super_admin + 业务 ADMIN 过渡）
+                        .requestMatchers(HttpMethod.POST, "/api/v1/platform/config/**")
+                                .hasAnyRole("PLATFORM_SUPER_ADMIN", "ADMIN")
+                        .requestMatchers("/api/v1/platform/**")
+                                .hasAnyRole("ADMIN", "PLATFORM_SUPER_ADMIN", "PLATFORM_OPS_ADMIN", "PLATFORM_FINANCE_ADMIN", "PLATFORM_AUDIT")
+                        // M8 高危写操作（ADMIN-P1-05）：转派/强制关闭仅 ops/super（audit 只读，code-review M1）
+                        // 注意：必须置于 /api/v1/ops/** 兜底之前（Spring Security 按声明顺序匹配）
+                        .requestMatchers(HttpMethod.POST, "/api/v1/ops/risk/**")
+                                .hasAnyRole("PLATFORM_SUPER_ADMIN", "PLATFORM_OPS_ADMIN")
+                        // M3 手动降级切换（ADMIN-P2-01）：仅 ops/super（audit 只读）
+                        .requestMatchers(HttpMethod.POST, "/api/v1/ops/degradation/**")
+                                .hasAnyRole("PLATFORM_SUPER_ADMIN", "PLATFORM_OPS_ADMIN")
+                        // 用量报表（ADMIN-P3-02）：finance/audit 只读可访问（code-review H2，§7.4）
+                        .requestMatchers(HttpMethod.GET, "/api/v1/ops/usage/**")
+                                .hasAnyRole("PLATFORM_SUPER_ADMIN", "PLATFORM_OPS_ADMIN", "PLATFORM_FINANCE_ADMIN", "PLATFORM_AUDIT")
+                        // 运维域（ADMIN-P0-05/06 新增：服务拓扑/指标/告警，仅平台角色）
+                        .requestMatchers("/api/v1/ops/**")
+                                .hasAnyRole("PLATFORM_SUPER_ADMIN", "PLATFORM_OPS_ADMIN", "PLATFORM_AUDIT")
                         // 知识库管理：仅 ADMIN（内容审核/入库为管理职责）
                         .requestMatchers("/api/v1/knowledge/**").hasRole("ADMIN")
                         // 教师端 + 预警 + 数据分析：教师角色 + ADMIN

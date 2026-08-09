@@ -26,6 +26,12 @@ public class JwtTokenProvider {
     private static final Logger log = LoggerFactory.getLogger(JwtTokenProvider.class);
     private static final String AUDIENCE = "mindsafe-api";
 
+    /** 平台 token 前缀（R-8/DEC-007：独立前缀，平台登录态与业务登录态隔离） */
+    public static final String PLATFORM_TOKEN_PREFIX = "PLATFORM_";
+
+    /** 平台 token 的 userType 标记 */
+    public static final String PLATFORM_USER_TYPE = "PLATFORM_ADMIN";
+
     private final SecretKey key;
     private final String issuer;
     private final long accessExpirationMs;
@@ -79,6 +85,52 @@ public class JwtTokenProvider {
     /** 生成 Refresh Token（7d） */
     public String generateRefreshToken(UUID userId, String userType, UUID tenantId) {
         return buildToken(userId, userType, tenantId, "refresh", refreshExpirationMs);
+    }
+
+    /**
+     * 生成平台管理员 token（ADMIN-P0-02，R-8）——独立前缀 PLATFORM_ + tokenType=platform_access，
+     * 无 tenantId claim（平台操作不属任何租户）；role claim 承载四角色。
+     */
+    public String generatePlatformToken(UUID adminId, String role) {
+        Date now = new Date();
+        String jwt = Jwts.builder()
+                .subject(adminId.toString())
+                .claim("userType", PLATFORM_USER_TYPE)
+                .claim("role", role)
+                .claim("tokenType", "platform_access")
+                .id(UUID.randomUUID().toString())
+                .issuer(issuer)
+                .audience().add(AUDIENCE).and()
+                .issuedAt(now)
+                .expiration(new Date(now.getTime() + accessExpirationMs))
+                .signWith(key)
+                .compact();
+        return PLATFORM_TOKEN_PREFIX + jwt;
+    }
+
+    /** 是否为平台 token（前缀 + platform_access 类型双重校验） */
+    public boolean isPlatformToken(String token) {
+        if (token == null || !token.startsWith(PLATFORM_TOKEN_PREFIX)) {
+            return false;
+        }
+        try {
+            Claims claims = parseToken(token.substring(PLATFORM_TOKEN_PREFIX.length()));
+            return "platform_access".equals(claims.get("tokenType", String.class));
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /** 平台 token 角色（super_admin/ops_admin/finance_admin/audit） */
+    public String getPlatformRole(String token) {
+        Claims claims = parseToken(token.substring(PLATFORM_TOKEN_PREFIX.length()));
+        return claims.get("role", String.class);
+    }
+
+    /** 平台 token 管理员 ID */
+    public UUID getPlatformAdminId(String token) {
+        Claims claims = parseToken(token.substring(PLATFORM_TOKEN_PREFIX.length()));
+        return UUID.fromString(claims.getSubject());
     }
 
     /** 生成声纹设备凭证（7d，AUD-001：90d → 7d 缩小攻击窗口）：声纹录入时签发，存学生设备本地，声纹登录时凭其换取正式双 token */

@@ -54,9 +54,12 @@ async def _unhandled_exception_handler(request, exc: Exception):
     return JSONResponse(status_code=500, content={"detail": "TTS 服务内部错误"})
 
 # ===== Prometheus 指标（P1-10：手写文本格式，零新增依赖，供监控栈 internal 网络抓取） =====
-# DA-03：counter+summary 公共结构复用 metrics_common（与 voice-service 复制共享），
+# DA-03：counter+summary 公共结构复用 metrics_common（与 voice-service 复制共享 ），
 # 指标名/标签是 alert-rules.yml 的隐式契约，改名需同步告警规则
 _metrics = Metrics()
+# OPS-MON-002（BUG-TTS-01 复盘）：运行期降级事件计数器——独立实例（单 label 结构限制），
+# duration 传 0.0 不污染原 summary；TtsDegradeRatioHigh 规则硬依赖此指标
+_degraded_metrics = Metrics()
 
 
 @app.get("/metrics")
@@ -75,6 +78,13 @@ def metrics():
                 f'tts_engine_available{{engine="cosyvoice"}} {1 if _TTS_POLICY.backends[0].is_available() else 0}',
                 f'tts_engine_available{{engine="edge_tts"}} {1 if _TTS_POLICY.backends[1].is_available() else 0}',
             ],
+        )
+        + _degraded_metrics.render(
+            counter_name="tts_degraded_events_total",
+            counter_help="TTS runtime degradation events (primary engine failed but fallback served)",
+            label_key="direction",
+            summary_name="tts_degraded_duration_seconds",
+            summary_help="TTS degradation event durations (counter-only, always 0)",
         ),
         media_type="text/plain; version=0.0.4; charset=utf-8",
     )
@@ -336,6 +346,10 @@ async def synthesize(req: TtsRequest):
     # 指标：Instruct 失败后无指令重试成功 → cosyvoice_fallback（与 v3 指标契约一致）
     engine_label = "cosyvoice_fallback" if result.retried else result.engine
     _metrics.record(engine_label, time.time() - t_start)
+    # OPS-MON-002（BUG-TTS-01）：运行期降级事件计数——主引擎失效但兜底可用
+    # 判定：实际引擎 ≠ 首选引擎 且 非 retried（instruct 无指令重试成功不算降级）；全失败 503 走 except 不计数
+    if result.engine != _TTS_POLICY.backends[0].name and not result.retried:
+        _degraded_metrics.record(f"{_TTS_POLICY.backends[0].name}->{result.engine}", 0.0)
     logger.info(f"TTS 合成完成 [{result.engine}]: text_len={len(req.text)}, voice={actual_voice}, "
                 f"elapsed={time.time() - t_start:.3f}s")
     return StreamingResponse(

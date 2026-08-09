@@ -2,6 +2,7 @@ package com.mindsafe.service.alert;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpEntity;
@@ -11,6 +12,8 @@ import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
+
+import com.mindsafe.service.monitoring.AlertEventCollector;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -37,9 +40,14 @@ public class WeComAlertService implements AlertService {
     private final RestTemplate restTemplate = buildRestTemplate();
 
     // BA-08（DOC-074）：@Value 私有字段改构造器注入（消除测试反射 setField；mentionedList 字段零消费已删）
-    public WeComAlertService(@Value("${mindsafe.alert.wecom.webhook-url}") String webhookUrl) {
+    // OPS-MON-008：AlertEventCollector 可选注入（业务告警落库，发出即留痕；单测不注入时跳过）
+    public WeComAlertService(@Value("${mindsafe.alert.wecom.webhook-url}") String webhookUrl,
+                             @Autowired(required = false) AlertEventCollector alertEventCollector) {
         this.webhookUrl = webhookUrl;
+        this.alertEventCollector = alertEventCollector;
     }
+
+    private final AlertEventCollector alertEventCollector;
 
     /** 告警外呼必须带超时：企微不可达时不能无限占用 @Async 线程 */
     private static RestTemplate buildRestTemplate() {
@@ -80,6 +88,10 @@ public class WeComAlertService implements AlertService {
         } catch (Exception e) {
             log.warn("企微告警发送失败（降级为日志）: title={}, error={}", title, e.getMessage());
             log.error("[ALERT-{}] {}: {}", level, title, detail);
+        }
+        // OPS-MON-008：业务告警落库（发出即留痕，无论外呼成败）
+        if (alertEventCollector != null) {
+            alertEventCollector.record(level, title, detail);
         }
     }
 }

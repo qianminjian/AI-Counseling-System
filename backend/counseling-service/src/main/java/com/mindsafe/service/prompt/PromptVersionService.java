@@ -231,6 +231,8 @@ public class PromptVersionService {
         // 计算下一个版本号
         int nextVersion = getNextVersion(tenantId, templateKey, abGroup);
         PromptVersion pv = PromptVersion.create(tenantId, templateKey, nextVersion, content, description, abGroup, createdBy);
+        // M7 审核发布流（ADMIN-P1-02）：新版本默认草稿态（code-review H1：NULL 会绕过激活门禁）
+        pv.setStatus(PromptVersion.STATUS_DRAFT);
         promptVersionMapper.insert(pv);
         log.info("Prompt 版本已创建: key={}, version={}, abGroup={}", templateKey, nextVersion, abGroup);
         return pv;
@@ -255,6 +257,12 @@ public class PromptVersionService {
         PromptVersion target = promptVersionMapper.selectById(versionId);
         if (target == null) {
             throw new IllegalArgumentException("版本不存在: " + versionId);
+        }
+
+        // M7 状态机（ADMIN-P1-02）：仅 approved/active 可激活（draft/pending_review/NULL 未过审均拒绝）
+        if (!PromptVersion.STATUS_APPROVED.equals(target.getStatus())
+                && !PromptVersion.STATUS_ACTIVE.equals(target.getStatus())) {
+            throw new IllegalStateException("发布门禁未通过: 版本未过审（当前状态 " + target.getStatus() + "），请先提交审核并通过");
         }
 
         // 门禁一：安全关键模板红队静态回归
@@ -354,13 +362,50 @@ public class PromptVersionService {
             old.setUpdatedAt(Instant.now());
             promptVersionMapper.updateById(old);
         }
-        // 激活目标
+        // 激活目标（M7：is_active 与 status 同步，§6.10 兼容策略）
         target.setIsActive(true);
+        target.setStatus(PromptVersion.STATUS_ACTIVE);
         target.setUpdatedAt(Instant.now());
         promptVersionMapper.updateById(target);
         invalidateCache();
         log.info("Prompt 版本已激活: key={}, version={}, abGroup={}",
                 target.getTemplateKey(), target.getVersion(), target.getAbGroup());
+    }
+
+    // ===== M7 审核发布流状态机（ADMIN-P1-02，§6.10）：draft→pending_review→approved→active =====
+
+    /** 提交审核：draft → pending_review */
+    public void submitForReview(UUID versionId) {
+        PromptVersion target = promptVersionMapper.selectById(versionId);
+        if (target == null) {
+            throw new IllegalArgumentException("版本不存在: " + versionId);
+        }
+        if (!PromptVersion.STATUS_DRAFT.equals(target.getStatus())) {
+            throw new IllegalStateException("仅草稿（draft）可提交审核，当前状态: " + target.getStatus());
+        }
+        target.setStatus(PromptVersion.STATUS_PENDING_REVIEW);
+        target.setUpdatedAt(Instant.now());
+        promptVersionMapper.updateById(target);
+        log.info("Prompt 版本已提交审核: key={}, version={}", target.getTemplateKey(), target.getVersion());
+    }
+
+    /** 审核通过：pending_review → approved（reviewer 必填签字） */
+    public void reviewVersion(UUID versionId, String reviewer) {
+        if (reviewer == null || reviewer.isBlank()) {
+            throw new IllegalArgumentException("reviewer 为必填项（审校人签字）");
+        }
+        PromptVersion target = promptVersionMapper.selectById(versionId);
+        if (target == null) {
+            throw new IllegalArgumentException("版本不存在: " + versionId);
+        }
+        if (!PromptVersion.STATUS_PENDING_REVIEW.equals(target.getStatus())) {
+            throw new IllegalStateException("仅待审核（pending_review）可审核，当前状态: " + target.getStatus());
+        }
+        target.setStatus(PromptVersion.STATUS_APPROVED);
+        target.setUpdatedAt(Instant.now());
+        promptVersionMapper.updateById(target);
+        log.info("Prompt 版本审核通过: key={}, version={}, reviewer={}",
+                target.getTemplateKey(), target.getVersion(), reviewer);
     }
 
     // ===== T4 批次C：管理端查询下沉（Controller 不再直查 Mapper） =====
@@ -370,11 +415,12 @@ public class PromptVersionService {
         return promptVersionMapper.selectById(versionId);
     }
 
-    /** 停用版本（含缓存失效） */
+    /** 停用版本（含缓存失效，M7：status 同步 retired） */
     public void deactivateVersion(UUID versionId) {
         PromptVersion pv = promptVersionMapper.selectById(versionId);
         if (pv != null) {
             pv.setIsActive(false);
+            pv.setStatus(PromptVersion.STATUS_RETIRED);
             pv.setUpdatedAt(Instant.now());
             promptVersionMapper.updateById(pv);
             invalidateCache();

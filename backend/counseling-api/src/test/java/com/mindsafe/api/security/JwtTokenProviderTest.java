@@ -1,6 +1,7 @@
 package com.mindsafe.api.security;
 
 import io.jsonwebtoken.Claims;
+import com.mindsafe.domain.entity.PlatformAdmin;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -159,5 +160,32 @@ class JwtTokenProviderTest {
                 "", 7200000L, 604800000L, 604800000L, 604800000L, "dev", "", "mindsafe-test"));
         assertThrows(IllegalStateException.class, () -> new JwtTokenProvider(
                 "", 7200000L, 604800000L, 604800000L, 604800000L, "dev", "too-short", "mindsafe-test"));
+    }
+
+    // ===== 平台 token（ADMIN-P0-02，R-8：PLATFORM_ 前缀独立登录态） =====
+
+    @Test
+    @DisplayName("平台 token：PLATFORM_ 前缀 + 角色 claim + 无租户依赖")
+    void platformTokenGeneratedWithPrefix() {
+        JwtTokenProvider provider = new JwtTokenProvider(
+                "", 7200000L, 604800000L, 604800000L, 604800000L, "dev", DEV_SECRET, "mindsafe-test");
+        String token = provider.generatePlatformToken(USER_ID, PlatformAdmin.ROLE_SUPER_ADMIN);
+
+        assertTrue(token.startsWith(JwtTokenProvider.PLATFORM_TOKEN_PREFIX));
+        assertTrue(provider.isPlatformToken(token));
+        assertEquals(PlatformAdmin.ROLE_SUPER_ADMIN, provider.getPlatformRole(token));
+        assertEquals(USER_ID, provider.getPlatformAdminId(token));
+    }
+
+    @Test
+    @DisplayName("业务 token 不是平台 token（隔离验证）")
+    void businessTokenNotPlatform() {
+        JwtTokenProvider provider = new JwtTokenProvider(
+                "", 7200000L, 604800000L, 604800000L, 604800000L, "dev", DEV_SECRET, "mindsafe-test");
+        String businessToken = provider.generateToken(USER_ID, "student", TENANT_ID);
+
+        assertFalse(provider.isPlatformToken(businessToken));
+        assertFalse(provider.isPlatformToken(null));
+        assertFalse(provider.isPlatformToken("PLATFORM_garbage"));
     }
 }

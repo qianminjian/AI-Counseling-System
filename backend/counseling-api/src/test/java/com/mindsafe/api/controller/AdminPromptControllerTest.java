@@ -8,6 +8,7 @@ import com.mindsafe.service.audit.AuditLogService;
 import com.mindsafe.service.prompt.PromptEvalGovernance;
 import com.mindsafe.service.prompt.PromptEvalScoreReader;
 import com.mindsafe.service.prompt.PromptVersionService;
+import com.mindsafe.service.prompt.RedTeamRegressionRunner;
 import com.mindsafe.service.prompt.TemplateMatrixRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -39,6 +40,7 @@ class AdminPromptControllerTest {
     private TemplateMatrixRegistry templateMatrixRegistry;
     private PromptEvalGovernance promptEvalGovernance;
     private PromptEvalScoreReader evalScoreReader;
+    private RedTeamRegressionRunner redTeamRegressionRunner;
     private AdminPromptController controller;
 
     private final UUID tenantId = UUID.randomUUID();
@@ -52,8 +54,9 @@ class AdminPromptControllerTest {
         templateMatrixRegistry = mock(TemplateMatrixRegistry.class);
         promptEvalGovernance = mock(PromptEvalGovernance.class);
         evalScoreReader = mock(PromptEvalScoreReader.class);
+        redTeamRegressionRunner = mock(RedTeamRegressionRunner.class);
         controller = new AdminPromptController(promptVersionService, auditLogService,
-                templateMatrixRegistry, promptEvalGovernance, evalScoreReader);
+                templateMatrixRegistry, promptEvalGovernance, evalScoreReader, redTeamRegressionRunner);
     }
 
     private Authentication adminAuth() {

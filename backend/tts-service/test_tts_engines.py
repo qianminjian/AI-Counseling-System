@@ -319,3 +319,52 @@ class TestEdgeBackend:
         with pytest.raises(TTSBackendError) as exc:
             run(backend.synthesize("你好", "v", 1.0))
         assert "超时" in str(exc.value)
+
+
+# ===== 补测批次（覆盖率回归 2026-08-09）：_BoundedDaemonExecutor 并发边界 =====
+
+class TestBoundedDaemonExecutor:
+    def test_submit_runs_and_returns_result(self):
+        from tts_engines import _BoundedDaemonExecutor
+        ex = _BoundedDaemonExecutor(max_workers=2)
+        future = ex.submit(lambda: 42)
+        assert future.result(timeout=5) == 42
+
+    def test_submit_propagates_exception(self):
+        from tts_engines import _BoundedDaemonExecutor
+
+        def boom():
+            raise ValueError("线程内异常")
+
+        ex = _BoundedDaemonExecutor(max_workers=2)
+        future = ex.submit(boom)
+        with pytest.raises(ValueError, match="线程内异常"):
+            future.result(timeout=5)
+
+    def test_submit_rejects_when_pool_full(self, monkeypatch):
+        from tts_engines import TTSBackendError, _BoundedDaemonExecutor
+        # 模拟信号量获取失败（线程池满且排队超时），不真实等待 10s
+        import threading
+        monkeypatch.setattr(threading.BoundedSemaphore, "acquire", lambda self, timeout: False)
+        ex = _BoundedDaemonExecutor(max_workers=1)
+        future = ex.submit(lambda: 1)
+        with pytest.raises(TTSBackendError, match="并发超限"):
+            future.result(timeout=5)
+
+
+class TestDashScopeUnavailable:
+    def test_synthesize_raises_when_api_key_missing(self):
+        from tts_engines import DashScopeBackend, TTSBackendError
+        backend = DashScopeBackend(model="m", api_key="", timeout=1.0, sdk=object())
+        with pytest.raises(TTSBackendError, match="DashScope 不可用"):
+            run(backend.synthesize("你好", "v", 1.0))
+
+    def test_synthesize_raises_when_sdk_missing(self):
+        from tts_engines import DashScopeBackend, TTSBackendError
+        backend = DashScopeBackend(model="m", api_key="key", timeout=1.0, sdk=None)
+        backend._sdk = None  # 强制 SDK 缺失（模块级 _dashscope 在 CI 环境可能已装）
+        import tts_engines as te
+        te._dashscope = None
+        with pytest.raises(TTSBackendError, match="DashScope 不可用"):
+            run(backend.synthesize("你好", "v", 1.0))
+        te._dashscope = None  # 清理（保持后续测试环境一致）

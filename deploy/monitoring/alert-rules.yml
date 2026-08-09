@@ -121,3 +121,87 @@ groups:
         annotations:
           summary: "语音情感识别降级（SER 未就绪）"
           description: "emotion2vec+ 模型未加载，情绪识别降级为中性——功能部分失效，请检查 SER 模型加载日志。"
+      
+      # ----- 服务运行期降级（OPS-MON-003，BUG-TTS-01 复盘：主引擎失效但兜底可用时无告警） -----
+      # 语义：服务仍可用（DEGRADED ≠ DOWN），warning 级；critical 留给全引擎不可用（既有规则）
+      - alert: TtsPrimaryEngineDegraded
+        expr: |
+          sum(rate(tts_synthesize_requests_total{engine="edge_tts"}[5m])) > 0
+            and sum(rate(tts_synthesize_requests_total{engine="cosyvoice"}[5m])) == 0
+            and sum(rate(tts_synthesize_requests_total[5m])) > 0
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "TTS 主引擎（CosyVoice）持续降级"
+          description: "近 5 分钟全部合成走 edge_tts，CosyVoice 0 成功——检查 dashscope SDK 版本/API Key/配额。"
+      
+      - alert: TtsDegradeRatioHigh
+        expr: |
+          sum(rate(tts_degraded_events_total[5m]))
+            / clamp_min(sum(rate(tts_synthesize_requests_total[5m])), 0.001) > 0.3
+        for: 10m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "TTS 降级率过高"
+          description: "主引擎降级率 {{ $value | humanizePercentage }} 持续 10 分钟。"
+      
+      - alert: LlmPrimaryFailing
+        expr: sum(rate(mindsafe_llm_model_fallback_total[10m])) > 0
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "LLM 主供应商连续失败"
+          description: "近 10 分钟发生 {{ $value }} 次主→备切换，检查主 Key 余额/限流/服务状态。"
+
+      # ----- 业务信号（ADMIN-P1-06，M8 业务级告警；R-11 指标仅计数无标识） -----
+      - alert: MindsafeRiskOverdueHigh
+        expr: mindsafe_risk_events_overdue > 0
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "存在逾期未处置预警"
+          description: "当前 {{ $value }} 起预警超过 SLA 处置时限未闭环，请检查处置队列（平台逾期清单可介入转派/强制关闭）。"
+
+      - alert: MindsafeNotifyDeadPiling
+        expr: mindsafe_risk_notify_dead >= 3
+        for: 10m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "通知 dead 堆积"
+          description: "通知失败转人工（dead）堆积 {{ $value }} 条，请核对通知通道（企微/短信）与兜底台账。"
+
+      # ----- 业务信号（ADMIN-P1-06 补，缺口 1：单租户激增 / 认领率骤降） -----
+      - alert: MindsafeRiskSurge
+        expr: |
+          (mindsafe_risk_events_24h > 3 * (mindsafe_risk_events_24h offset 1d) + 10)
+            or (mindsafe_risk_events_24h > 20)
+        for: 30m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "单租户预警激增"
+          description: "租户 {{ $labels.tenant_id }} 近 24h 预警数为昨日 3 倍以上（当前 {{ $value }}），或昨日无基线但绝对量超 20 条（新租户首日兜底），请核查该租户风险来源（班级/时段/触发器）。"
+
+      - alert: MindsafeClaimRateDrop
+        expr: |
+          (mindsafe_risk_events_24h > 3)
+            and (mindsafe_risk_claimed_24h / clamp_min(mindsafe_risk_events_24h, 0.001)) < 0.3
+            and (mindsafe_risk_claimed_24h offset 1d / clamp_min(mindsafe_risk_events_24h offset 1d, 0.001)) > 0.5
+        for: 30m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "预警认领率骤降"
+          description: "租户 {{ $labels.tenant_id }} 认领率由昨日 >50% 降至今日 <30%（近 24h 事件 {{ $value }} 条，守卫：>3 条才有统计意义），请关注教师响应意愿（平台可介入转派）。"

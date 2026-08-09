@@ -26,8 +26,20 @@ import java.util.UUID;
  */
 public class MindSafeTenantLineHandler implements TenantLineHandler {
 
-    /** 恒定忽略的表（公共标识表，无租户归属语义）。 */
-    private static final Set<String> IGNORE_TABLES = Set.of("tenants");
+    /** 恒定忽略的表（公共标识表与平台级事件表，无租户归属语义）。 */
+    private static final Set<String> IGNORE_TABLES = Set.of(
+            "tenants",
+            // OPS-MON-007/008（V34）：降级/告警事件为平台级表（无 tenant_id 列），
+            // 否则定时任务落库触发 fail-fast / 带租户上下文时注入不存在列导致 SQL 报错（code-review H1）
+            "degradation_events",
+            "alert_events",
+            // ADMIN-P0-01（V35）：平台账号与健康快照为平台级表（无 tenant_id 列）
+            "platform_admin",
+            "service_health_snapshots",
+            // ADMIN-P1-01/05（V36）：配置注册表/历史为平台级表；sla_escalation_log 无 tenant_id 列
+            "sys_config",
+            "sys_config_history",
+            "sla_escalation_log");
 
     @Override
     public Expression getTenantId() {

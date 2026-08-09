@@ -5,6 +5,7 @@ TTS 微服务单元测试（TDD 先行）
 import pytest
 from unittest.mock import patch, MagicMock, AsyncMock
 from fastapi.testclient import TestClient
+from tts_policy import TtsResult, TTSSynthesisFailed
 
 
 # ===== Fixtures =====
@@ -295,3 +296,56 @@ class TestMetrics:
         assert 'tts_synthesize_requests_total{engine="error"}' in body
         assert "tts_synthesize_duration_seconds_sum" in body
         assert "tts_synthesize_duration_seconds_count" in body
+
+
+# ===== 降级事件指标（OPS-MON-002：BUG-TTS-01 复盘，tts_degraded_events_total） =====
+
+class TestDegradedMetric:
+    """运行期降级可观测：策略降级（engine≠首选 且非 retried）时计数 +1（AC-1/AC-2/AC-3）"""
+
+    def test_degraded_metric_contract(self, client):
+        """降级计数器定义必须存在（告警规则 TtsDegradeRatioHigh 硬依赖）；无降级时无标签行"""
+        body = client.get("/metrics").text
+        assert "# HELP tts_degraded_events_total" in body
+        assert "# TYPE tts_degraded_events_total counter" in body
+        assert 'tts_degraded_events_total{direction="cosyvoice->edge_tts"}' not in body
+
+    def test_degraded_metric_no_count_on_primary_success(self, client, mock_dashscope, monkeypatch):
+        """首选引擎正常成功 → 降级事件不计数"""
+        async def fake_synthesize(*a, **kw):
+            return TtsResult(audio=b"fake-mp3", engine="cosyvoice", retried=False)
+        monkeypatch.setattr(mock_dashscope._TTS_POLICY, "synthesize_with_degradation", fake_synthesize)
+        resp = client.post("/api/v1/tts/synthesize", json={"text": "你好", "persona": "xiaoxing"})
+        assert resp.status_code == 200
+        body = client.get("/metrics").text
+        assert 'tts_degraded_events_total{direction="cosyvoice->edge_tts"}' not in body
+
+    def test_degraded_metric_increments_on_fallback(self, client, mock_dashscope, monkeypatch):
+        """策略降级（engine=edge_tts 且非重试）→ 降级事件 +1"""
+        async def fake_synthesize(*a, **kw):
+            return TtsResult(audio=b"fake-mp3", engine="edge_tts", retried=False)
+        monkeypatch.setattr(mock_dashscope._TTS_POLICY, "synthesize_with_degradation", fake_synthesize)
+        resp = client.post("/api/v1/tts/synthesize", json={"text": "你好", "persona": "xiaoxing"})
+        assert resp.status_code == 200
+        body = client.get("/metrics").text
+        assert 'tts_degraded_events_total{direction="cosyvoice->edge_tts"} 1' in body
+
+    def test_degraded_metric_no_count_on_retried(self, client, mock_dashscope, monkeypatch):
+        """instruct 无指令重试成功（retried=True）→ 降级事件不计数（仍记 cosyvoice_fallback）"""
+        async def fake_synthesize(*a, **kw):
+            return TtsResult(audio=b"fake-mp3", engine="edge_tts", retried=True)
+        monkeypatch.setattr(mock_dashscope._TTS_POLICY, "synthesize_with_degradation", fake_synthesize)
+        resp = client.post("/api/v1/tts/synthesize", json={"text": "你好", "persona": "xiaoxing"})
+        assert resp.status_code == 200
+        body = client.get("/metrics").text
+        assert 'tts_degraded_events_total{direction="cosyvoice->edge_tts"}' not in body
+
+    def test_degraded_metric_no_count_on_503(self, client_no_raise, mock_dashscope, monkeypatch):
+        """全部引擎失败（503）→ 降级事件不计数"""
+        async def fake_synthesize(*a, **kw):
+            raise TTSSynthesisFailed("all engines down")
+        monkeypatch.setattr(mock_dashscope._TTS_POLICY, "synthesize_with_degradation", fake_synthesize)
+        resp = client_no_raise.post("/api/v1/tts/synthesize", json={"text": "你好", "persona": "xiaoxing"})
+        assert resp.status_code == 503
+        body = client_no_raise.get("/metrics").text
+        assert 'tts_degraded_events_total{direction="cosyvoice->edge_tts"}' not in body

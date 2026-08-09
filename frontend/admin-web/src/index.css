@@ -1,0 +1,45 @@
+/* admin-web 设计令牌（doing/83 §8.1~8.9：青屿体系同源引入，与 teacher-web 同名同值） */
+:root {
+  --ms-primary: #2BA8A0;
+  --ms-primary-strong: #1E7F7A;
+  --ms-primary-soft: #E8F6F4;
+  --ms-bg: #FAF9F6;
+  --ms-card: #FFFFFF;
+  --ms-text: #22303A;
+  --ms-text-secondary: #5C6B76;
+  --ms-text-muted: #8A97A0;
+  --ms-border: #E3E8E6;
+  --ms-border-soft: #EEF2F0;
+  --ms-success: #2E9E6B;
+  --ms-warning: #D98E32;
+  --ms-danger: #D9534F;
+  --ms-radius-card: 16px;
+  --ms-radius-control: 12px;
+  --ms-shadow-card: 0 4px 16px rgba(43, 168, 160, 0.08);
+  --ms-sider-bg: #163B38;
+  --ms-chart-1: #4fc3f7;
+  --ms-chart-2: #2BA8A0;
+  --ms-chart-3: #ffb74d;
+  --ms-chart-4: #81c784;
+  --ms-chart-5: #f06292;
+  --ms-chart-6: #9575cd;
+  --ms-chart-7: #4dd0e1;
+  --ms-chart-8: #aed581;
+  --ms-chart-9: #90a4ae;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+  background: var(--ms-bg);
+  color: var(--ms-text);
+}
+
+/* 状态语义色（doing/83 §8.3） */
+.status-up { color: var(--ms-success); }
+.status-degraded { color: var(--ms-warning); }
+.status-down { color: var(--ms-danger); }

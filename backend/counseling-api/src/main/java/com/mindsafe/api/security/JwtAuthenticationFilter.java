@@ -37,7 +37,17 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                                     FilterChain filterChain) throws ServletException, IOException {
         String token = extractToken(request);
 
-        if (token != null
+        if (token != null && jwtTokenProvider.isPlatformToken(token)) {
+            // 平台 token（ADMIN-P0-02/03，R-8）：独立授权域 ROLE_PLATFORM_<角色>，
+            // 不绑定租户上下文（平台操作无租户归属）；已撤销（黑名单）token 不建立认证（M1）
+            if (!blacklistService.isBlacklisted(jwtTokenProvider.getTokenId(token))) {
+                UUID adminId = jwtTokenProvider.getPlatformAdminId(token);
+                String role = jwtTokenProvider.getPlatformRole(token);
+                var authorities = List.of(new SimpleGrantedAuthority("ROLE_PLATFORM_" + role.toUpperCase()));
+                var auth = new UsernamePasswordAuthenticationToken(adminId, null, authorities);
+                SecurityContextHolder.getContext().setAuthentication(auth);
+            }
+        } else if (token != null
                 && jwtTokenProvider.validateToken(token)
                 && jwtTokenProvider.isAccessToken(token)
                 && !blacklistService.isBlacklisted(jwtTokenProvider.getTokenId(token))) {

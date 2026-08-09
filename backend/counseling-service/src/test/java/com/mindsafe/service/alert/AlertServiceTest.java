@@ -46,7 +46,7 @@ class AlertServiceTest {
         port = server.getAddress().getPort();
 
         // BA-08：构造器注入（webhookUrl 已 final，测试直接传本地地址）
-        weComAlertService = new WeComAlertService("http://127.0.0.1:" + port + "/webhook");
+        weComAlertService = new WeComAlertService("http://127.0.0.1:" + port + "/webhook", null);
     }
 
     @AfterEach
@@ -86,7 +86,7 @@ class AlertServiceTest {
     @Test
     @DisplayName("webhook 不可达 → 降级为日志，不抛异常（告警链不因外呼失败中断）")
     void unreachableWebhookDegradesGracefully() {
-        weComAlertService = new WeComAlertService("http://127.0.0.1:1/webhook");
+        weComAlertService = new WeComAlertService("http://127.0.0.1:1/webhook", null);
 
         assertThatCode(() -> weComAlertService.sendAlert(
                 AlertService.AlertLevel.CRITICAL, "测试降级", "webhook 不可达"))
@@ -96,7 +96,7 @@ class AlertServiceTest {
     @Test
     @DisplayName("LoggingAlertService：三级告警均不抛异常（兜底实现）")
     void loggingAlertServiceAllLevels() {
-        LoggingAlertService loggingService = new LoggingAlertService();
+        LoggingAlertService loggingService = new LoggingAlertService(null);
 
         assertThatCode(() -> {
             loggingService.sendAlert(AlertService.AlertLevel.CRITICAL, "c", "d");
