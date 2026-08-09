@@ -6,6 +6,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.openai.OpenAiChatModel;
+import org.springframework.ai.openai.OpenAiEmbeddingModel;
+import org.springframework.ai.openai.OpenAiEmbeddingOptions;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -75,5 +77,13 @@ class AiConfigTest {
         assertThat(AiConfig.normalizeBaseUrl("https://api.deepseek.com/"))
                 .isEqualTo("https://api.deepseek.com");
         assertThat(AiConfig.normalizeBaseUrl(null)).isNull();
+    }
+
+    @Test
+    @DisplayName("BUG-LLM-03: embedding 构建应用模型名与 dimensions=1536（匹配 vector(1536)）")
+    void buildEmbeddingModel_appliesOptions() {
+        OpenAiEmbeddingOptions options = AiConfig.buildEmbeddingOptions("text-embedding-v4", 1536);
+        assertThat(options.getModel()).isEqualTo("text-embedding-v4");
+        assertThat(options.getDimensions()).isEqualTo(1536);
     }
 }

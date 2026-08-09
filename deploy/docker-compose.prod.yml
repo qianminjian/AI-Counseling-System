@@ -72,6 +72,11 @@ services:
       LLM_BACKUP_API_KEY: ${LLM_BACKUP_API_KEY:-${LLM_FALLBACK_API_KEY:-}}
       LLM_BACKUP_BASE_URL: ${LLM_BACKUP_BASE_URL:-${LLM_FALLBACK_BASE_URL:-https://dashscope.aliyuncs.com/compatible-mode/v1}}
       LLM_BACKUP_MODEL: ${LLM_BACKUP_MODEL:-${LLM_FALLBACK_MODEL:-qwen-plus}}
+      # Embedding（RAG KB-101 / BUG-LLM-03）：独立变量，yml 回退链不再指向主对话供应商（DeepSeek 无 embeddings 端点）
+      # 值暂与 DASHSCOPE_API_KEY 同源（用户后续自行切换供应商时仅改 EMBEDDING_* 三项）
+      EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-https://dashscope.aliyuncs.com/compatible-mode/v1}
+      EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-v4}
       # DASHSCOPE_API_KEY 仅 TTS/ASR 消费，backend 容器不再传递（避免 key 复用面过大）
       MINDSAFE_JWT_SECRET: ${JWT_SECRET}
       # 字段加密（doing/64）：ENCRYPTION_ENABLED=false（默认）可不配 key 启动；true 时必须配置合法密钥

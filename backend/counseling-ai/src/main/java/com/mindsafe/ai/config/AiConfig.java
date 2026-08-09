@@ -8,8 +8,12 @@ import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.memory.MessageWindowChatMemory;
 import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.ai.document.MetadataMode;
+import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.ai.openai.OpenAiChatOptions;
+import org.springframework.ai.openai.OpenAiEmbeddingModel;
+import org.springframework.ai.openai.OpenAiEmbeddingOptions;
 import org.springframework.ai.openai.api.OpenAiApi;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -66,6 +70,21 @@ public class AiConfig {
 
     @Value("${mindsafe.llm.backup.max-tokens:2048}")
     private int backupMaxTokens;
+
+    // ==================== Embedding 配置（RAG 知识检索 KB-101） ====================
+    // BUG-LLM-03：独立变量（EMBEDDING_*，compose 层透传）——生产未配置时回退主对话供应商
+    // （DeepSeek 无 embeddings 端点）→ 404 静默失败，知识注入从未生效。值暂与 ASR 同源，用户后续自行切换供应商。
+    @Value("${spring.ai.openai.embedding.base-url:https://dashscope.aliyuncs.com/compatible-mode/v1}")
+    private String embeddingBaseUrl;
+
+    @Value("${spring.ai.openai.embedding.api-key:}")
+    private String embeddingApiKey;
+
+    @Value("${spring.ai.openai.embedding.options.model:text-embedding-v4}")
+    private String embeddingModel;
+
+    @Value("${spring.ai.openai.embedding.options.dimensions:1536}")
+    private int embeddingDimensions;
 
     /**
      * 弹性 ChatModel：主模型 + 备份模型自动降级（doing/63：主/备均为手动构建，任意双 OpenAI 兼容供应商）。
@@ -127,6 +146,42 @@ public class AiConfig {
         }
         String trimmed = baseUrl.endsWith("/") ? baseUrl.substring(0, baseUrl.length() - 1) : baseUrl;
         return trimmed.endsWith("/v1") ? trimmed.substring(0, trimmed.length() - 3) : trimmed;
+    }
+
+    /**
+     * BUG-LLM-03：RAG 知识检索 embedding 模型（手动构建，与 chat 模型对称应用 normalizeBaseUrl）。
+     * <p>
+     * 关键约束：{@code knowledge_chunks.embedding} 为 vector(1536)（V24），embedding 输出维度必须 1536；
+     * DashScope text-embedding-v4 默认 1024 维，须显式 dimensions=1536（生产实测）。
+     * 未配置 EMBEDDING_API_KEY 时仅告警不 fail-fast（RAG 检索失败安全降级，对话主线不受影响）。
+     */
+    @Bean
+    @Primary
+    public EmbeddingModel embeddingModel() {
+        if (embeddingApiKey.isBlank()) {
+            log.warn("LLM embedding 未配置（EMBEDDING_API_KEY 为空），RAG 向量检索将不可用");
+        }
+        log.info("LLM embedding 模型: [{}] dims={} baseUrl={}", embeddingModel, embeddingDimensions,
+                normalizeBaseUrl(embeddingBaseUrl));
+        return buildEmbeddingModel(embeddingBaseUrl, embeddingApiKey, embeddingModel, embeddingDimensions);
+    }
+
+    /** 构建 embedding 模型（OpenAI 兼容协议；static 便于单测断言 options） */
+    static OpenAiEmbeddingModel buildEmbeddingModel(String baseUrl, String apiKey,
+                                                    String model, int dimensions) {
+        OpenAiApi api = OpenAiApi.builder()
+                .baseUrl(normalizeBaseUrl(baseUrl))
+                .apiKey(apiKey)
+                .build();
+        return new OpenAiEmbeddingModel(api, MetadataMode.EMBED, buildEmbeddingOptions(model, dimensions));
+    }
+
+    /** embedding options：显式模型名与维度（static 便于单测断言） */
+    static OpenAiEmbeddingOptions buildEmbeddingOptions(String model, int dimensions) {
+        return OpenAiEmbeddingOptions.builder()
+                .model(model)
+                .dimensions(dimensions)
+                .build();
     }
 
     @Bean
