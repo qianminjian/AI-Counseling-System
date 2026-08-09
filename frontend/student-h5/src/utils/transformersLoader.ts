@@ -72,7 +72,14 @@ export async function loadTransformersModel<T>(opts: LoadTransformersOptions<T>)
   try {
     const hf = await import('@huggingface/transformers')
     configureEnv(hf, buildRemoteHost(base, opts.modelHost), base)
-    return await opts.load(hf)
+    // F-8-Worker 埋点同步：主线程 ORT session_create 耗时（与 Worker 一致，便于诊断降级路径）
+    const t0Session = (typeof performance !== 'undefined' ? performance.now() : Date.now())
+    const _tag = (opts.modelHost === 'SAME_ORIGIN' || /wespeaker|vp/i.test(opts.modelHost)) ? '[Voiceprint]' : '[WakeWord]'
+    console.info(`${_tag} 主线程 ORT session_create 开始（numThreads=${hf.env.backends.onnx.wasm.numThreads}）`)
+    const result = await opts.load(hf)
+    const elapsed = Math.round(((typeof performance !== 'undefined' ? performance.now() : Date.now()) - t0Session))
+    console.info(`${_tag} 主线程 ORT session_create 完成，耗时 ${elapsed}ms`)
+    return result
   } catch (err) {
     if (opts.onError) opts.onError(err)
     throw err
