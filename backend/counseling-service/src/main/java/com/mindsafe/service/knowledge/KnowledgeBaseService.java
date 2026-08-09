@@ -74,8 +74,10 @@ public class KnowledgeBaseService {
             float[] embedding = embeddingModel.embed(chunk);
             String vectorStr = toVectorString(embedding);
 
+            // BUG-KB-01：embedding 参数须 ::vector cast（search 已有，INSERT 遗漏——生产实证
+            // BadSqlGrammarException: column "embedding" is of type vector but expression is of type character varying）
             jdbcTemplate.update(
-                    "INSERT INTO tenant_template.knowledge_chunks (chunk_id, doc_id, tenant_id, chunk_index, content, embedding, token_count, created_at) VALUES (?,?,?,?,?,?,?,now())",
+                    "INSERT INTO tenant_template.knowledge_chunks (chunk_id, doc_id, tenant_id, chunk_index, content, embedding, token_count, created_at) VALUES (?,?,?,?,?,?::vector,?,now())",
                     UUID.randomUUID(), docId, tenantId, i, chunk, vectorStr, chunk.length());
         }
 

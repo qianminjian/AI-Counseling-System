@@ -86,15 +86,15 @@ class KnowledgeBaseServiceTest {
         }
 
         @Test
-        @DisplayName("向量写入格式为 pgvector 字符串 [x,y]")
+        @DisplayName("向量写入格式为 pgvector 字符串 [x,y]，且 SQL 含 ::vector cast（BUG-KB-01）")
         void vectorStringFormat() {
             when(embeddingModel.embed(anyString())).thenReturn(new float[]{0.1f, 0.2f});
 
             service.ingestDocument(tenantId, "标题", "category", "内容", "manual");
 
-            // embedding 位于第 6 个 vararg
+            // embedding 位于第 6 个 vararg；SQL 须带 ::vector cast（生产实证缺 cast 报 BadSqlGrammarException）
             verify(jdbcTemplate).update(
-                    argThat((String sql) -> sql.contains("knowledge_chunks")),
+                    argThat((String sql) -> sql.contains("knowledge_chunks") && sql.contains("?::vector")),
                     any(), any(), any(), any(), any(), argThat(arg -> "[0.1,0.2]".equals(arg)), any());
         }
     }
