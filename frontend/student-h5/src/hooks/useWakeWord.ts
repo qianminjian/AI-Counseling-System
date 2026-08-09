@@ -151,12 +151,14 @@ function getTranscriber() {
             setModelStatus('loading', p)
           }),
         })
-        // F-9b（2026-08-09）：pipeline 半初始化防御——模型文件下载不全时 pipeline 可能
-        // resolve 但内部 feature_extractor=null（实测：降级主线程后 72 次转写全部
-        // "Cannot read properties of null (reading 'feature_extractor')"）。
-        // 校验完整性，缺失则抛错触发重试，而非静默进入不可用状态。
-        if (!t || typeof (t as any)?.feature_extractor === 'undefined' || (t as any)?.feature_extractor === null) {
-          throw new Error('pipeline 初始化不完整（feature_extractor 缺失），模型文件可能未下载完整')
+        // F-9b（2026-08-09）：pipeline 完整性防御。注意 ASR pipeline 的正确接口是
+        // this.processor（WhisperProcessor），内部 feature_extractor 经 processor.feature_extractor 访问
+        // （dist/transformers.web.js: _call_whisper 中 `this.processor.feature_extractor.config`）。
+        // 旧校验误查 t.feature_extractor（不存在）→ 把正常 pipeline 一律判失败 → 引擎永远"加载失败"。
+        // 正确校验：processor 是 pipeline 必需组件（resolve 时必存在）；processor.feature_extractor
+        // 可能懒加载，缺失时留待首次转写失败重试，不做硬校验。
+        if (!t || !(t as any)?.processor) {
+          throw new Error('pipeline 初始化不完整（processor 缺失），模型文件可能未下载完整')
         }
         setModelStatus('ready')
         return t
