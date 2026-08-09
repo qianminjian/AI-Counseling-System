@@ -46,6 +46,11 @@ const TARGET_SAMPLE_RATE = 16000
  * AUD-027：调试日志 DEV 条件包裹（生产零噪音；诊断时 DEV 模式/本地开发可见）。
  * 运行时降级/失败信号仍走 console.warn（运维可观测），不受此开关影响。
  */
+/** F-25 轨迹时间戳日志：所有关键动作带相对/绝对时间（生产可见，诊断用） */
+const tslog = (...args: unknown[]) => {
+  console.info(`[TS ${(performance.now() / 1000).toFixed(2)}s ${new Date().toLocaleTimeString('zh-CN', { hour12: false })}]`, ...args)
+}
+
 const dbg = (...args: unknown[]) => {
   if (import.meta.env.DEV) console.debug('[WakeWord]', ...args)
 }
@@ -190,6 +195,7 @@ function buildWorkerConfig() {
   }
 }
 function getWakeWorker(): Promise<Worker> {
+  tslog('getWakeWorker 调用')
   if (!wakeWorkerPromise) {
     wakeWorkerPromise = (async () => {
       // F-24（2026-08-10）：Worker 只等模型文件写入缓存（下载完成）即可 init，
@@ -197,10 +203,13 @@ function getWakeWorker(): Promise<Worker> {
       // 很慢（声纹 107s 级），Worker 被无辜拖住（UI 长期"正在准备"）。
       // 文件进缓存后 Worker 独立从缓存加载（session_create 0.4-12s），与主线程并行。
       const waitT0 = Date.now()
+      tslog('getWakeWorker 开始：检查缓存完整性')
       while (!(await hasWakeModelInCache())) {
+        tslog('缓存未完整，等待下载...（已等 ' + Math.round((Date.now() - waitT0) / 1000) + 's）')
         if (Date.now() - waitT0 > 120000) throw new Error('唤醒模型下载超时（120s）')
         await new Promise((r) => setTimeout(r, 2000))
       }
+      tslog('缓存完整，创建 Worker')
       const w = new Worker(
         new URL('../workers/wakeWordWorker.ts', import.meta.url),
         { type: 'module' },
@@ -246,6 +255,7 @@ function getWakeWorker(): Promise<Worker> {
  * F-19：同时预启动转写 Worker（模型下载 + Worker 初始化都在对话前完成）。
  */
 export function preloadWakeModel() {
+  tslog('preloadWakeModel 调用（getTranscriber + getWakeWorker）')
   getTranscriber().catch(() => {}) // 失败时 active 会重试
   getWakeWorker().catch(() => {}) // Worker 预启动失败时 active 降级主线程
 }
@@ -432,6 +442,7 @@ export function useWakeWord({ active, paused, onDetected }) {
     /** 切换到主线程推理模式（Worker 失败时调用） */
     const fallbackToMainThread = (reason: string) => {
       if (useMainThread) return
+      tslog('降级主线程:', reason)
       console.warn('[WakeWord] Worker 不可用，降级主线程推理:', reason)
       useMainThread = true
       worker?.terminate()
@@ -456,9 +467,11 @@ export function useWakeWord({ active, paused, onDetected }) {
 
     // F-19（2026-08-10）：复用预启动 Worker（登录页/情绪页已 init 完成），不再 new Worker。
     // 预启动失败时降级主线程；Worker 就绪后按 F-11/F-14 同步 wakeStatus。
+    tslog('useWakeWord active=true：开始获取 Worker')
     ;(async () => {
       try {
         const w = await getWakeWorker()
+        tslog('getWakeWorker resolve（Worker 已就绪）')
         if (cancelled) return
         worker = w
       } catch (err) {
@@ -477,11 +490,13 @@ export function useWakeWord({ active, paused, onDetected }) {
           if (status === 'loading') {
             if (wakeModelStore.getStatus() !== 'ready') setWakeStatus('loading')
           } else if (status === 'ready') {
+            tslog('onmessage: Worker ready')
             setModelStatus('ready')
             // F-11（2026-08-09）：Worker ready 时同步 wakeStatus → listening。
             // F-14（2026-08-09 用户实测）：ready 后推理器仍须 ~2s 收尾/预热，
             // 延迟 2.5s 提示 standby，避免用户过早呼叫。
             setTimeout(() => {
+              tslog('standby 提示（onmessage ready 路径）')
               if (!cancelled) setWakeStatus('listening')
             }, 2500)
           } else if (status === 'error') {
@@ -505,8 +520,10 @@ export function useWakeWord({ active, paused, onDetected }) {
 
       // F-22：getWakeWorker resolve 即 Worker 自身就绪（已不再依赖主线程状态），
       // 直接同步模型就绪 + F-14 2.5s 后提示 standby。
+      tslog('Worker 复用就绪 → setModelStatus(ready)，2.5s 后 standby')
       setModelStatus('ready')
       setTimeout(() => {
+        tslog('standby 提示（wakeStatus→listening）')
         if (!cancelled) setWakeStatus('listening')
       }, 2500)
     })()
