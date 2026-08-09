@@ -118,16 +118,22 @@ function configureEnv(hf: typeof HF, remoteHost: string, base: string): void {
  * 模型下载进度聚合处理器（传给 pipeline/from_pretrained 的 progress_callback）：
  * 按文件平均聚合（仅处理 status=progress 事件，忽略 progress_total——并行加载多个模型时
  * progress_total 事件会互相覆盖导致进度跳变，如声纹的 AutoModel+AutoFeatureExtractor 并行场景）。
+ * F-16（2026-08-09 用户实测）：单调保护——新文件开始下载（progress 从 0 加入 fileProgress）会
+ * 拉低平均值导致进度回跳（如 80%→40%，声纹多次反跳）。记录 lastShown 只升不降，进度单调前进。
  */
 export function createProgressHandler(onProgress: (p: number) => void): (ev: unknown) => void {
   const fileProgress: Record<string, number> = {}
+  let lastShown = 0
   return (ev) => {
     const e = ev as { status?: string; progress?: number; file?: string }
     if (e.status === 'progress' && e.file && typeof e.progress === 'number') {
       fileProgress[e.file] = e.progress
       const files = Object.keys(fileProgress)
-      const avg = files.reduce((s, f) => s + fileProgress[f], 0) / files.length
-      onProgress(Math.round(avg))
+      const avg = Math.round(files.reduce((s, f) => s + fileProgress[f], 0) / files.length)
+      if (avg >= lastShown) {
+        lastShown = avg
+        onProgress(avg)
+      }
     }
   }
 }
