@@ -185,3 +185,76 @@ export async function cancelDegradationOverride(point: string, reason: string): 
     throw new Error(body?.message ?? '取消失败')
   }
 }
+
+// ===== 前端余页（P1-09/P2-06/P3-02：Prompt 管理/时效/台账/知识库/洞察/用量/合规） =====
+
+export interface PromptVersionItem {
+  versionId: string
+  templateKey: string
+  version: number
+  description?: string
+  abGroup: string
+  isActive: boolean
+  status?: string
+  contentLength: number
+}
+
+export async function promptAction(path: string, body?: unknown): Promise<void> {
+  const token = getAdminToken()
+  const resp = await fetch(`/api/v1/admin/prompts${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: body ? JSON.stringify(body) : undefined,
+  })
+  if (!resp.ok) {
+    const b = await resp.json().catch((): null => null)
+    throw new Error(b?.message ?? '操作失败')
+  }
+}
+
+export function fetchSlaStats(): Promise<Array<Record<string, unknown>>> {
+  return adminFetch<Array<Record<string, unknown>>>('/api/v1/ops/risk/sla-stats')
+}
+
+export interface DeadLedgerItem {
+  riskEventId: string
+  tenantId: string
+  riskLevel: number
+  riskType: string
+  status: string
+  detectedAt: string
+  notifyStatus: string
+}
+
+export function fetchDeadLedger(): Promise<DeadLedgerItem[]> {
+  return adminFetch<DeadLedgerItem[]>('/api/v1/ops/insights/dead-ledger')
+}
+
+export function fetchKnowledgeStats(): Promise<Record<string, unknown>> {
+  return adminFetch<Record<string, unknown>>('/api/v1/ops/knowledge/stats')
+}
+
+export function fetchQualityTrend(): Promise<Record<string, unknown>> {
+  return adminFetch<Record<string, unknown>>('/api/v1/ops/insights/quality-trend')
+}
+
+export function fetchAlertFunnel(): Promise<Record<string, unknown>> {
+  return adminFetch<Record<string, unknown>>('/api/v1/ops/insights/alert-funnel')
+}
+
+export function fetchTenantHealth(): Promise<Array<Record<string, unknown>>> {
+  return adminFetch<Array<Record<string, unknown>>>('/api/v1/ops/insights/tenant-health')
+}
+
+export function fetchUsageSummary(days = 30): Promise<Record<string, unknown>> {
+  return adminFetch<Record<string, unknown>>(`/api/v1/ops/usage/summary?days=${days}`)
+}
+
+export function fetchConsentStats(): Promise<Record<string, unknown>> {
+  return adminFetch<Record<string, unknown>>('/api/v1/ops/compliance/consent-stats')
+}
+
+/** Prompt 版本列表（M7，走 adminFetch 统一鉴权/登出联动） */
+export function fetchPromptVersions(templateKey: string): Promise<PromptVersionItem[]> {
+  return adminFetch<PromptVersionItem[]>(`/api/v1/admin/prompts/versions?templateKey=${encodeURIComponent(templateKey)}`)
+}

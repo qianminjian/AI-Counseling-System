@@ -2,7 +2,7 @@ import { Layout, Menu } from 'antd'
 
 const { Sider, Header, Content } = Layout
 
-export type AdminView = 'overview' | 'config' | 'risk' | 'degradation' | 'services' | 'alerts' | 'audit' | 'forbidden'
+export type AdminView = 'overview' | 'config' | 'prompt' | 'risk' | 'sla' | 'ledger' | 'degradation' | 'knowledge' | 'insights' | 'usage' | 'compliance' | 'services' | 'alerts' | 'audit' | 'forbidden'
 
 interface MenuItem {
   key: AdminView
@@ -14,8 +14,15 @@ const ROLE_MENUS: Record<string, MenuItem[]> = {
   super_admin: [
     { key: 'overview', label: '平台总览' },
     { key: 'config', label: '配置注册表' },
+    { key: 'prompt', label: 'Prompt 管理' },
     { key: 'risk', label: '风险全景' },
+    { key: 'sla', label: '时效监控' },
+    { key: 'ledger', label: '处置台账' },
     { key: 'degradation', label: '降级矩阵' },
+    { key: 'knowledge', label: '知识库' },
+    { key: 'insights', label: '运营洞察' },
+    { key: 'usage', label: '用量报表' },
+    { key: 'compliance', label: '数据合规' },
     { key: 'services', label: '服务状态' },
     { key: 'alerts', label: '告警中心' },
     { key: 'audit', label: '审计日志' },
@@ -23,14 +30,23 @@ const ROLE_MENUS: Record<string, MenuItem[]> = {
   ops_admin: [
     { key: 'overview', label: '平台总览' },
     { key: 'config', label: '配置注册表' },
+    { key: 'prompt', label: 'Prompt 管理' },
     { key: 'risk', label: '风险全景' },
+    { key: 'sla', label: '时效监控' },
+    { key: 'ledger', label: '处置台账' },
     { key: 'degradation', label: '降级矩阵' },
+    { key: 'knowledge', label: '知识库' },
+    { key: 'insights', label: '运营洞察' },
     { key: 'services', label: '服务状态' },
     { key: 'alerts', label: '告警中心' },
   ],
-  finance_admin: [{ key: 'overview', label: '平台总览' }],
+  finance_admin: [
+    { key: 'overview', label: '平台总览' },
+    { key: 'usage', label: '用量报表' },
+  ],
   audit: [
     { key: 'overview', label: '平台总览' },
+    { key: 'compliance', label: '数据合规' },
     { key: 'audit', label: '审计日志' },
   ],
 }

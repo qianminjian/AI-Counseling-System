@@ -2,8 +2,12 @@ package com.mindsafe.api.controller;
 
 import com.mindsafe.api.security.JwtTokenProvider;
 import com.mindsafe.common.dto.ApiResponse;
+import com.mindsafe.common.dto.ErrorCode;
+import com.mindsafe.common.exception.BizException;
 import com.mindsafe.domain.entity.PlatformAdmin;
 import com.mindsafe.service.platform.PlatformAdminService;
+import com.mindsafe.service.platform.PlatformLoginGuard;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -23,18 +27,44 @@ public class PlatformAuthController {
 
     private final PlatformAdminService platformAdminService;
     private final JwtTokenProvider jwtTokenProvider;
+    private final PlatformLoginGuard loginGuard;
 
     public PlatformAuthController(PlatformAdminService platformAdminService,
-                                  JwtTokenProvider jwtTokenProvider) {
+                                  JwtTokenProvider jwtTokenProvider,
+                                  PlatformLoginGuard loginGuard) {
         this.platformAdminService = platformAdminService;
         this.jwtTokenProvider = jwtTokenProvider;
+        this.loginGuard = loginGuard;
     }
 
     @PostMapping("/login")
-    public ApiResponse<PlatformLoginResponse> login(@Valid @RequestBody PlatformLoginRequest request) {
-        PlatformAdmin admin = platformAdminService.login(request.username(), request.password());
-        String token = jwtTokenProvider.generatePlatformToken(admin.getAdminId(), admin.getRole());
-        return ApiResponse.ok(new PlatformLoginResponse(token, admin.getRole(), admin.getDisplayName()));
+    public ApiResponse<PlatformLoginResponse> login(@Valid @RequestBody PlatformLoginRequest request,
+                                                    HttpServletRequest httpRequest) {
+        String clientIp = clientIp(httpRequest);
+        // 防爆破（P0 backlog M3）：锁定期间拒绝登录
+        if (loginGuard.isLocked(clientIp)) {
+            throw new BizException(ErrorCode.UNAUTHORIZED, "失败次数过多，请 15 分钟后再试");
+        }
+        try {
+            PlatformAdmin admin = platformAdminService.login(request.username(), request.password());
+            loginGuard.recordSuccess(clientIp);
+            String token = jwtTokenProvider.generatePlatformToken(admin.getAdminId(), admin.getRole());
+            return ApiResponse.ok(new PlatformLoginResponse(token, admin.getRole(), admin.getDisplayName()));
+        } catch (BizException e) {
+            loginGuard.recordFailure(clientIp);
+            throw e;
+        }
+    }
+
+    /** 客户端 IP（code-review H3：XFF 取尾元素 = nginx $proxy_add_x_forwarded_for 追加的
+     *  $remote_addr，不可伪造；首元素客户端可控） */
+    private String clientIp(HttpServletRequest request) {
+        String forwarded = request.getHeader("X-Forwarded-For");
+        if (forwarded != null && !forwarded.isBlank()) {
+            String[] parts = forwarded.split(",");
+            return parts[parts.length - 1].trim();
+        }
+        return request.getRemoteAddr();
     }
 
     public record PlatformLoginRequest(

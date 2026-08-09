@@ -1,0 +1,76 @@
+import { useEffect, useState } from 'react'
+import { Card, Col, message, Row, Statistic, Table, Tag } from 'antd'
+import { fetchAlertFunnel, fetchQualityTrend, fetchTenantHealth } from '../api'
+
+/** 运营洞察（ADMIN-P2-05，M12：预警漏斗 + 质量趋势 + 租户健康度） */
+export default function InsightsPage() {
+  const [funnel, setFunnel] = useState<Record<string, unknown> | null>(null)
+  const [trend, setTrend] = useState<Record<string, unknown> | null>(null)
+  const [health, setHealth] = useState<Array<Record<string, unknown>>>([])
+
+  useEffect(() => {
+    fetchAlertFunnel().then(setFunnel).catch((e: Error) => message.error(e.message))
+    fetchQualityTrend().then(setTrend).catch(() => setTrend(null))
+    fetchTenantHealth().then(setHealth).catch(() => setHealth([]))
+  }, [])
+
+  const funnelSteps = [
+    ['detected', '检出'], ['notified', '通知'], ['claimed', '认领'], ['resolved', '处置'], ['closed', '闭环'],
+  ] as const
+
+  return (
+    <div>
+      <h2 style={{ marginTop: 0 }}>运营洞察</h2>
+      <Row gutter={16} style={{ marginBottom: 16 }}>
+        {funnelSteps.map(([key, label]) => (
+          <Col span={4} key={key}>
+            <Card>
+              <Statistic
+                title={label}
+                value={Number(funnel?.[key] ?? 0)}
+                valueStyle={{ color: key === 'closed' ? 'var(--ms-success)' : undefined }}
+              />
+            </Card>
+          </Col>
+        ))}
+      </Row>
+      <Card title="会话质量趋势（近 7 天日均分/样本）" style={{ marginBottom: 16, borderRadius: 'var(--ms-radius-card)' }}>
+        <Table<{ day: string; avgScore: number; samples: number }>
+          rowKey="day"
+          size="small"
+          pagination={false}
+          dataSource={Object.entries(trend ?? {}).map(([day, v]) => ({
+            day,
+            avgScore: Number((v as { avgScore?: number }).avgScore ?? 0),
+            samples: Number((v as { samples?: number }).samples ?? 0),
+          }))}
+          columns={[
+            { title: '日期', dataIndex: 'day' },
+            { title: '日均分', dataIndex: 'avgScore', render: (v: number) => v.toFixed(1) },
+            { title: '样本数', dataIndex: 'samples' },
+          ]}
+        />
+      </Card>
+      <Card title="租户健康度（未处置/逾期）" style={{ borderRadius: 'var(--ms-radius-card)' }}>
+        <Table<Record<string, unknown>>
+          rowKey="tenantId"
+          dataSource={health}
+          size="small"
+          pagination={false}
+          columns={[
+            { title: '租户', dataIndex: 'tenantId', render: (v: string) => String(v).slice(0, 8) },
+            { title: '事件数', dataIndex: 'total', width: 90 },
+            { title: '未处置', dataIndex: 'unhandled', width: 90 },
+            { title: '逾期', dataIndex: 'overdue', width: 90 },
+            {
+              title: '健康度',
+              dataIndex: 'health',
+              width: 100,
+              render: (h: string) => <Tag color={h === 'red' ? 'red' : h === 'yellow' ? 'orange' : 'green'}>{h}</Tag>,
+            },
+          ]}
+        />
+      </Card>
+    </div>
+  )
+}

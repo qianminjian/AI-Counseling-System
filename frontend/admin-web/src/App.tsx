@@ -3,7 +3,14 @@ import LoginPage from './pages/LoginPage'
 import OverviewPage from './pages/OverviewPage'
 import ConfigPage from './pages/ConfigPage'
 import RiskPage from './pages/RiskPage'
+import PromptPage from './pages/PromptPage'
+import SlaPage from './pages/SlaPage'
+import LedgerPage from './pages/LedgerPage'
 import DegradationPage from './pages/DegradationPage'
+import KnowledgePage from './pages/KnowledgePage'
+import InsightsPage from './pages/InsightsPage'
+import UsagePage from './pages/UsagePage'
+import CompliancePage from './pages/CompliancePage'
 import ForbiddenPage from './pages/ForbiddenPage'
 import AdminLayout, { allowedViews, type AdminView } from './components/AdminLayout'
 import { adminLogout, getAdminName, getAdminRole, getAdminToken, UNAUTHORIZED_EVENT } from './api'
@@ -38,7 +45,18 @@ export default function App() {
 
   return (
     <AdminLayout role={role} name={name} view={currentView} onNavigate={setView} onLogout={handleLogout}>
-      {currentView === 'forbidden' ? <ForbiddenPage /> : currentView === 'config' ? <ConfigPage /> : currentView === 'risk' ? <RiskPage /> : currentView === 'degradation' ? <DegradationPage /> : <OverviewPage />}
+      {currentView === 'forbidden' ? <ForbiddenPage />
+        : currentView === 'config' ? <ConfigPage />
+        : currentView === 'prompt' ? <PromptPage />
+        : currentView === 'risk' ? <RiskPage />
+        : currentView === 'sla' ? <SlaPage />
+        : currentView === 'ledger' ? <LedgerPage />
+        : currentView === 'degradation' ? <DegradationPage />
+        : currentView === 'knowledge' ? <KnowledgePage />
+        : currentView === 'insights' ? <InsightsPage />
+        : currentView === 'usage' ? <UsagePage />
+        : currentView === 'compliance' ? <CompliancePage />
+        : <OverviewPage />}
     </AdminLayout>
   )
 }

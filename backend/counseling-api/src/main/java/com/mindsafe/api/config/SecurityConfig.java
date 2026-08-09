@@ -101,6 +101,9 @@ public class SecurityConfig {
                         // ─── 角色授权 ───
                         // 管理端 + 平台后台：仅业务 ADMIN
                         .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
+                        // Prompt 管理（ADMIN-P1-02，M7）：admin-web 平台角色消费（code-review H1）
+                        .requestMatchers("/api/v1/admin/prompts/**")
+                                .hasAnyRole("ADMIN", "PLATFORM_SUPER_ADMIN", "PLATFORM_OPS_ADMIN")
                         // 平台后台（ADMIN-P0-03，R-1 平滑迁移）：P0 过渡双轨——业务 ADMIN（teacher-web 现有调用）
                         // + 平台四角色（admin-web PLATFORM_ token）；后续平台端点全面迁至平台角色域
                         // 配置修改（ADMIN-P1-01）：仅超级管理员（平台 super_admin + 业务 ADMIN 过渡）
@@ -115,6 +118,9 @@ public class SecurityConfig {
                         // M3 手动降级切换（ADMIN-P2-01）：仅 ops/super（audit 只读）
                         .requestMatchers(HttpMethod.POST, "/api/v1/ops/degradation/**")
                                 .hasAnyRole("PLATFORM_SUPER_ADMIN", "PLATFORM_OPS_ADMIN")
+                        // 用量报表（ADMIN-P3-02）：finance/audit 只读可访问（code-review H2，§7.4）
+                        .requestMatchers(HttpMethod.GET, "/api/v1/ops/usage/**")
+                                .hasAnyRole("PLATFORM_SUPER_ADMIN", "PLATFORM_OPS_ADMIN", "PLATFORM_FINANCE_ADMIN", "PLATFORM_AUDIT")
                         // 运维域（ADMIN-P0-05/06 新增：服务拓扑/指标/告警，仅平台角色）
                         .requestMatchers("/api/v1/ops/**")
                                 .hasAnyRole("PLATFORM_SUPER_ADMIN", "PLATFORM_OPS_ADMIN", "PLATFORM_AUDIT")

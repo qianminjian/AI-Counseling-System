@@ -271,6 +271,7 @@ public class AdminPromptController {
         m.put("description", pv.getDescription());
         m.put("abGroup", pv.getAbGroup());
         m.put("isActive", pv.getIsActive());
+        m.put("status", pv.getStatus()); // M7 审核流状态（ADMIN-P1-02 补映射）
         m.put("createdBy", pv.getCreatedBy());
         m.put("createdAt", pv.getCreatedAt());
         m.put("contentLength", pv.getContent() != null ? pv.getContent().length() : 0);
