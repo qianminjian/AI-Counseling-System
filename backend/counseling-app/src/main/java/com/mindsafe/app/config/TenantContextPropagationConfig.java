@@ -3,6 +3,7 @@ package com.mindsafe.app.config;
 import com.mindsafe.common.tenant.TenantContextHolder;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Primary;
 import org.springframework.core.task.TaskDecorator;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
@@ -54,8 +55,14 @@ public class TenantContextPropagationConfig {
      * 注意：返回类型必须声明为 {@link ThreadPoolTaskExecutor}（TaskExecutor 子类）而非 {@link Executor}——
      * Spring {@code @Async} 缺省执行器按 {@code TaskExecutor} 类型查找，返回 Executor 类型
      * 的 bean 无法被 {@code getBean(TaskExecutor.class)} 命中（首次修复失效原因）。
+     * <p>
+     * BUG-TENANT-01b：必须标注 {@code @Primary}——Boot 3.2+ 的 {@code AsyncExecutionAspectSupport}
+     * 在多个 TaskExecutor bean（本执行器 + {@code taskScheduler}（ThreadPoolTaskScheduler 亦实现
+     * TaskExecutor））且无 primary 时降级 {@code SimpleAsyncTaskExecutor}（生产线程名实证），
+     * {@code @Primary} 使其在缺省解析中唯一命中。
      */
     @Bean(name = "applicationTaskExecutor")
+    @Primary
     public ThreadPoolTaskExecutor applicationTaskExecutor() {
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
         executor.setCorePoolSize(8);

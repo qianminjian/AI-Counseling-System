@@ -92,34 +92,39 @@ public class MessageSummaryService {
     /** 异步生成会话摘要（不阻塞主流程），摘要完成后触发画像 LLM 提炼（PROF-003） */
     @Async
     public void generateSummaryAsync(UUID tenantId, UUID sessionId, UUID studentUserId) {
-        try {
-            // 1-2. 单点读取转写（BA-10：查→解密→拼接唯一实现，角色标注统一「学生/AI」）
-            // M2（CodeReview）：走失败感知 strict 版——读取异常冒泡触发 summaryFailureCounter（ARCH-010 P2-5 观测性），
-            // 空转写（确无消息）才正常跳过
-            String conversationText = readSessionTranscriptStrict(tenantId, sessionId, TranscriptFilter.all());
-            if (conversationText.isBlank()) return;
+        // BUG-TENANT-01：调用方可能为 reactor 回调线程（Flux.defer），@Async 装饰器
+        // 捕获不到调用方上下文；方法参数已携带 tenantId，实体均显式带租户字段，
+        // 系统作用域下执行安全（M1-003 fail-fast 配套，同 updateProgressiveSummaryAsync）。
+        TenantContextHolder.runAsSystem(() -> {
+            try {
+                // 1-2. 单点读取转写（BA-10：查→解密→拼接唯一实现，角色标注统一「学生/AI」）
+                // M2（CodeReview）：走失败感知 strict 版——读取异常冒泡触发 summaryFailureCounter（ARCH-010 P2-5 观测性），
+                // 空转写（确无消息）才正常跳过
+                String conversationText = readSessionTranscriptStrict(tenantId, sessionId, TranscriptFilter.all());
+                if (conversationText.isBlank()) return;
 
-            // PEVAL-001：异步评估会话质量并落库（服务内部按抽样率决定是否评估，失败静默降级）
-            conversationQualityService.evaluateSessionAsync(tenantId, sessionId, conversationText);
+                // PEVAL-001：异步评估会话质量并落库（服务内部按抽样率决定是否评估，失败静默降级）
+                conversationQualityService.evaluateSessionAsync(tenantId, sessionId, conversationText);
 
-            // 3. 调用 LLM 生成摘要
-            String summary = aiChatService.generateSessionSummary(conversationText);
-            if (summary != null && !summary.isBlank()) {
-                CounselingSession update = new CounselingSession();
-                update.setSessionId(sessionId);
-                // AUDIT-P1-8：session_summary 字段级加密后落库（教师端读取时解密）
-                update.setSessionSummary(fieldEncryptionService.encrypt(summary));
-                update.setUpdatedAt(Instant.now());
-                sessionStore.updateById(update);
-                log.info("会话摘要已生成: sessionId={}", sessionId);
+                // 3. 调用 LLM 生成摘要
+                String summary = aiChatService.generateSessionSummary(conversationText);
+                if (summary != null && !summary.isBlank()) {
+                    CounselingSession update = new CounselingSession();
+                    update.setSessionId(sessionId);
+                    // AUDIT-P1-8：session_summary 字段级加密后落库（教师端读取时解密）
+                    update.setSessionSummary(fieldEncryptionService.encrypt(summary));
+                    update.setUpdatedAt(Instant.now());
+                    sessionStore.updateById(update);
+                    log.info("会话摘要已生成: sessionId={}", sessionId);
 
-                // 4. S1：一次提炼 LLM 调用（画像增量 + 关键事件双节点 JSON），解析后分发
-                dispatchInsights(tenantId, sessionId, studentUserId, summary, conversationText);
+                    // 4. S1：一次提炼 LLM 调用（画像增量 + 关键事件双节点 JSON），解析后分发
+                    dispatchInsights(tenantId, sessionId, studentUserId, summary, conversationText);
+                }
+            } catch (Exception e) {
+                summaryFailureCounter.increment();
+                log.warn("会话摘要生成失败（不影响业务）: sessionId={}", sessionId, e);
             }
-        } catch (Exception e) {
-            summaryFailureCounter.increment();
-            log.warn("会话摘要生成失败（不影响业务）: sessionId={}", sessionId, e);
-        }
+        });
     }
 
     /**

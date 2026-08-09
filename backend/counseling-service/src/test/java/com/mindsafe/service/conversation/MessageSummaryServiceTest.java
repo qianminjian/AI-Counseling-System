@@ -274,6 +274,17 @@ class MessageSummaryServiceTest {
         assertThat(TenantContextHolder.isSystemScope()).isFalse();
     }
 
+    @Test
+    @DisplayName("BUG-TENANT-01b: 无租户上下文（reactor 回调线程）generateSummaryAsync 正常生成摘要且不泄漏系统作用域")
+    void generateSummary_noTenantContext_stillWorks() {
+        TenantContextHolder.clear();
+
+        service.generateSummaryAsync(tenantId, sessionId, studentUserId);
+
+        verify(sessionStore).updateById(any(CounselingSession.class));
+        assertThat(TenantContextHolder.isSystemScope()).isFalse();
+    }
+
     // ===== BA-10：消息读取单点（查→解密→拼接唯一实现，文案统一「学生/AI」） =====
 
     @Test
