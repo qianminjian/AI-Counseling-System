@@ -70,6 +70,7 @@ public class GlobalExceptionHandler {
                 case 20002, 20003, 20007, 20010 -> HttpStatus.FORBIDDEN; // 无权限/需监护人授权/需改密/密码过期
                 case 20004, 20005, 20008, 20009 -> HttpStatus.BAD_REQUEST;
                 case 20006 -> HttpStatus.CONFLICT;               // CONSENT_VERSION_MISMATCH
+                case 20011 -> HttpStatus.GONE;                   // CONSENT_WITHDRAWN（同意撤回为资源终态，410 语义）
                 default -> HttpStatus.BAD_REQUEST;
             };
         }

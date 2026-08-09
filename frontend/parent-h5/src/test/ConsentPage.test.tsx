@@ -11,7 +11,8 @@ vi.mock('@tarojs/taro', () => ({
 
 // Mock 服务层
 vi.mock('../services/index', () => ({
-  withdrawConsent: vi.fn()
+  withdrawConsent: vi.fn(),
+  getConsentStatus: vi.fn()
 }))
 
 // Mock auth utils（isAuthenticated 返回 true：守卫不跳转，聚焦页面行为）
@@ -21,7 +22,7 @@ vi.mock('../utils/auth', () => ({
 }))
 
 import Taro from '@tarojs/taro'
-import { withdrawConsent } from '../services/index'
+import { withdrawConsent, getConsentStatus } from '../services/index'
 import { getUser, isAuthenticated } from '../utils/auth'
 
 const mockedTaro = vi.mocked(Taro)
@@ -39,6 +40,12 @@ describe('ConsentPage', () => {
   beforeEach(() => {
     vi.mocked(getUser).mockReturnValue(mockUser)
     vi.mocked(withdrawConsent).mockResolvedValue({ message: '已成功撤回授权' })
+    // BUG-P-P04-01：默认返回已授权状态，保证撤回流程可见
+    vi.mocked(getConsentStatus).mockResolvedValue({
+      status: 'active',
+      consentVersion: 'v1.0',
+      consentedAt: '2026-08-01T10:00:00Z'
+    })
     mockedTaro.redirectTo.mockClear()
     mockedTaro.navigateTo.mockClear()
   })
@@ -171,5 +178,48 @@ describe('ConsentPage', () => {
     render(<ConsentPage />)
     await user.click(screen.getByText(/返回/))
     expect(mockedTaro.navigateTo).toHaveBeenCalledWith({ url: '/report' })
+  })
+
+  // BUG-P-P04-01 回归：选择孩子后展示授权状态（状态/时间/版本）
+  it('选择孩子后展示授权状态（已授权 + 时间 + 版本）', async () => {
+    const user = userEvent.setup()
+    render(<ConsentPage />)
+    await user.click(screen.getByText(/小明/))
+    await waitFor(() => {
+      expect(getConsentStatus).toHaveBeenCalledWith('c1')
+    })
+    expect(screen.getByText('已授权')).toBeInTheDocument()
+    expect(screen.getByText('政策版本')).toBeInTheDocument()
+    expect(screen.getByText('v1.0')).toBeInTheDocument()
+    // 已授权状态仍展示撤回按钮
+    expect(screen.getByText(/撤回「小明」的授权/)).toBeInTheDocument()
+  })
+
+  // BUG-P-P04-01 回归：已撤回状态展示终态提示，无撤回按钮
+  it('已撤回状态展示终态提示且无撤回按钮', async () => {
+    vi.mocked(getConsentStatus).mockResolvedValue({
+      status: 'withdrawn',
+      consentVersion: 'v1.0',
+      consentedAt: '2026-08-01T10:00:00Z',
+      withdrawnAt: '2026-08-02T09:00:00Z'
+    })
+    const user = userEvent.setup()
+    render(<ConsentPage />)
+    await user.click(screen.getByText(/小明/))
+    await waitFor(() => {
+      expect(screen.getByText('已撤回')).toBeInTheDocument()
+    })
+    expect(screen.getByText(/已撤回授权：孩子账号已冻结/)).toBeInTheDocument()
+    expect(screen.queryByText(/撤回「小明」的授权/)).not.toBeInTheDocument()
+  })
+
+  // BUG-P-P05-01 回归：二次确认文案含"冻结账号/删除画像"具体警示
+  it('二次确认文案包含冻结账号与删除画像警示', async () => {
+    const user = userEvent.setup()
+    render(<ConsentPage />)
+    await user.click(screen.getByText(/小明/))
+    await user.click(screen.getByText(/撤回「小明」的授权/))
+    expect(screen.getByText(/确认撤回？/)).toBeInTheDocument()
+    expect(screen.getByText(/撤回后：孩子账号将被冻结，心理画像数据将被删除/)).toBeInTheDocument()
   })
 })

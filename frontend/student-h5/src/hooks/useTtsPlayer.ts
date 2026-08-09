@@ -327,10 +327,18 @@ export function useTtsPlayer({ persona = 'xiaoxing', emotion = 'neutral', speed 
     // 加入队列 + 更新 UI
     streamQueueRef.current.push(...newSentences)
     setSentences([...streamQueueRef.current])
-    // 为每个新句子启动合成+播放（串行链保证顺序）
-    for (const s of newSentences) {
+    // BUG-TTS-02：立即并行发起合成（预取），播放链只 await 对应 blob——
+    // 旧实现每句合成+播放完全串行，句间等待 ≈ 单句合成耗时（1~2.5s）→ 播放停顿不连贯
+    const precomputed = newSentences.map(s => synthesizeSentence(s))
+    for (let i = 0; i < newSentences.length; i++) {
       const idx = streamIdxRef.current++
-      streamPlayChainRef.current = streamPlayChainRef.current.then(async () => { await playSentence(s, idx) })
+      const blobPromise = precomputed[i]
+      streamPlayChainRef.current = streamPlayChainRef.current.then(async () => {
+        if (abortRef.current) return
+        const blob = await blobPromise
+        if (abortRef.current) return
+        await playSentence(newSentences[i], idx, blob)
+      })
     }
   }, [muted, synthesizeSentence, playBlob, playSentence, speed, persona])
 
@@ -345,9 +353,17 @@ export function useTtsPlayer({ persona = 'xiaoxing', emotion = 'neutral', speed 
       if (tailSentences.length > 0) {
         streamQueueRef.current.push(...tailSentences)
         setSentences([...streamQueueRef.current])
-        for (const s of tailSentences) {
+        // BUG-TTS-02：尾部句子同样并行预合成
+        const precomputed = tailSentences.map(s => synthesizeSentence(s))
+        for (let i = 0; i < tailSentences.length; i++) {
           const idx = streamIdxRef.current++
-          streamPlayChainRef.current = streamPlayChainRef.current.then(async () => { await playSentence(s, idx) })
+          const blobPromise = precomputed[i]
+          streamPlayChainRef.current = streamPlayChainRef.current.then(async () => {
+            if (abortRef.current) return
+            const blob = await blobPromise
+            if (abortRef.current) return
+            await playSentence(tailSentences[i], idx, blob)
+          })
         }
       }
     }

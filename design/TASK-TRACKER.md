@@ -921,7 +921,8 @@ _本表由 Agent 维护，每次任务变更时更新。_
 
 > 25. **DOC-085 登记**（2026-08-09）：Browser Agent 三端 Web 界面自动化遍历测试设计登记——方案与提示词单一事实源落 `design/doing/82_BrowserAgent三端Web界面自动化遍历测试设计.md`（承接 R-4 Playwright 预留态，DOC-082）：30 场景案例（S-01~10 学生端 / T-01~08 教师端 / P-01~06 家长端 / L-01~06 三端联动）+ 每场景可执行 Browser Agent 提示词（环境/步骤/断言/截图记录四要素）+ 问题登记规范（reports/browser-test/ISSUES-<端>.md，按端+场景汇总，BUG 条目 P0-P3 分级 + OPEN→FIXED→VERIFIED→REGRESSION 状态机）+ 修复-部署-复测闭环（每端测试完→自动修复（TDD）→自动部署（deploy.sh/compose）→自动复测，3 轮上限，收敛定义 P0=0 且 P1=0 且 P2/P3 未关闭 ≤3，超限升级人工）；语音类（声纹 remote/ASR/TTS 真实链路）因 test compose 不含 voice/tts 标记 SKIP-语音，断言降级路径照常；执行顺序：环境准备→学生端→教师端→家长端→联动场景→汇总归档；ticket 见 §二十九。
 
-> 26. **DOC-086 登记**（2026-08-09）：后台管理端 AdminConsole 设计方案登记——深度调研同类产品（教育 SaaS ClassIn 教务/监课/财务/子账号权限、希沃集控层级看板；通用 SaaS 三后台模型 + 中台标准模块：租户/订阅/计费/权限/运营管理；心理健康 SaaS 橙星云/心大陆/心灵伙伴：测评-预警-档案闭环、红橙黄绿四级预警、市-校-生多层级；计量计费模式：per-seat/usage-based/特性+SLA/计价计费分离）+ 代码实态盘点（5 个平台 Controller 可复用：Platform/AdminTenant/AdminUser/Admin/AdminPrompt；监控体系：Prometheus 3 job + 10 规则 + AlertManager→企微 + AlertService + service-manager.sh 六服务 UP/DEGRADED/DOWN；降级机制完备：ResilientChatModel 主备/TTS 三级/ASR 双引擎/SER_ENABLED/VoiceDegradationPolicy；缺口 7 项：无 admin-web 前端/配置无面板/监控无运营视图/降级无视图无开关/租户无套餐权益/计量无汇总/平台账号体系缺）→ 完整方案落 `design/doing/83_后台管理端AdminConsole设计方案.md`：M1 系统配置管理（配置注册表 sys_config + sys_config_history 变更留痕 + 敏感 SECRET 掩码 + 生效方式 HOT/RESTART 两级，不引入新配置源）/ M2 系统应用监控（服务拓扑三态 + 指标看板后端代理 Prometheus 白名单表达式 + 告警中心 alert_events + 部署历史 + service_health_snapshots 快照落库支撑 SLA 验证）/ M3 服务切换降级监控（降级矩阵实时视图 + 手动切换走 Redis 运行时覆盖键不落部署文件 + degradation_events 历史 + 影响面提示，语义「降级≠宕机」沿用 D5/DA-02）/ M4 租户计量计费（usage_events 计量 → rate_plans 计价 → subscriptions/billing 计费三层，对齐 design/07 99/159/259 元/生/年定价与 entitlement 三层，活跃学生快照 + model_call_logs LLM 聚合；**4.3~4.6 设计冻结待 frozen/38 解冻议决**）/ M5 租户管理（生命周期开通/暂停/恢复/归档 + 配额接线（现常量 500/200 未校验）+ 详情钻取预警分布）/ M6 平台基础（platform_admin 四角色 super_admin/ops_admin/finance_admin/audit + 审计 tenantId 可空平台级）；新增表 10 张；API 4 域（platform 扩展/ops 新增运维执行/admin 现有）；admin-web 前端新建（React 19+TS+Vite 同栈，14 页面，/admin/ 路径）；实施四期 P0 底座（M6+骨架+服务拓扑只读，服务操作先走方案①SSH 人工）→ P1 配置监控深化 → P2 降级监控（运行时覆盖键）→ P3 计量计费（冻结）；开放问题 R-1~R-8（平台账号模型独立表 vs users、服务操作执行通道、配置热生效范围、model_call_logs tenant_id 核对、解冻时序、平台表行级隔离排除、ops_admin 最小权限、管理端 JWT 独立）。
+> 26. **DOC-086 登记**（2026-08-09，**同号异题：develop 线**——与 main 线服务降级监控专题共用 DOC-086/doing/83 编号，文件名可区分，参照 DOC-077/078、his/72 与 72_取消CD 先例）：后台管理端 AdminConsole 设计方案登记——深度调研同类产品（教育 SaaS ClassIn 教务/监课/财务/子账号权限、希沃集控层级看板；通用 SaaS 三后台模型 + 中台标准模块：租户/订阅/计费/权限/运营管理；心理健康 SaaS 橙星云/心大陆/心灵伙伴：测评-预警-档案闭环、红橙黄绿四级预警、市-校-生多层级；计量计费模式：per-seat/usage-based/特性+SLA/计价计费分离）+ 代码实态盘点（5 个平台 Controller 可复用：Platform/AdminTenant/AdminUser/Admin/AdminPrompt；监控体系：Prometheus 3 job + 10 规则 + AlertManager→企微 + AlertService + service-manager.sh 六服务 UP/DEGRADED/DOWN；降级机制完备：ResilientChatModel 主备/TTS 三级/ASR 双引擎/SER_ENABLED/VoiceDegradationPolicy；缺口 7 项：无 admin-web 前端/配置无面板/监控无运营视图/降级无视图无开关/租户无套餐权益/计量无汇总/平台账号体系缺）→ 完整方案落 `design/doing/83_后台管理端AdminConsole设计方案.md`：M1 系统配置管理（配置注册表 sys_config + sys_config_history 变更留痕 + 敏感 SECRET 掩码 + 生效方式 HOT/RESTART 两级，不引入新配置源）/ M2 系统应用监控（服务拓扑三态 + 指标看板后端代理 Prometheus 白名单表达式 + 告警中心 alert_events + 部署历史 + service_health_snapshots 快照落库支撑 SLA 验证）/ M3 服务切换降级监控（降级矩阵实时视图 + 手动切换走 Redis 运行时覆盖键不落部署文件 + degradation_events 历史 + 影响面提示，语义「降级≠宕机」沿用 D5/DA-02）/ M4 租户计量计费（usage_events 计量 → rate_plans 计价 → subscriptions/billing 计费三层，对齐 design/07 99/159/259 元/生/年定价与 entitlement 三层，活跃学生快照 + model_call_logs LLM 聚合；**4.3~4.6 设计冻结待 frozen/38 解冻议决**）/ M5 租户管理（生命周期开通/暂停/恢复/归档 + 配额接线（现常量 500/200 未校验）+ 详情钻取预警分布）/ M6 平台基础（platform_admin 四角色 super_admin/ops_admin/finance_admin/audit + 审计 tenantId 可空平台级）；新增表 10 张；API 4 域（platform 扩展/ops 新增运维执行/admin 现有）；admin-web 前端新建（React 19+TS+Vite 同栈，14 页面，/admin/ 路径）；实施四期 P0 底座（M6+骨架+服务拓扑只读，服务操作先走方案①SSH 人工）→ P1 配置监控深化 → P2 降级监控（运行时覆盖键）→ P3 计量计费（冻结）；开放问题 R-1~R-8（平台账号模型独立表 vs users、服务操作执行通道、配置热生效范围、model_call_logs tenant_id 核对、解冻时序、平台表行级隔离排除、ops_admin 最小权限、管理端 JWT 独立）；**DEC-007 议决落定（2026-08-09）**：R-1 独立 platform_admin 表 + 独立登录端点 / R-2 P0 只读展示 + SSH 人工 / R-7 ops_admin 仅看聚合数据 / R-8 独立 token 前缀 PLATFORM_ / M4 采集层先行落地，R-3/R-4 留待 P1/P3。
+> 26. **DOC-086 登记**（2026-08-09，**同号异题：main 线**——与 develop 线后台管理端专题共用 DOC-086/doing/83 编号，文件名可区分）：服务降级监控与告警设计登记（BUG-TTS-01 事故复盘：CosyVoice 主引擎 100% 失败静默降级 edge-tts 长期运行无告警）——方案与 SPEC 单一事实源落 `design/doing/83_服务降级监控与告警设计.md`：**TTS 降级事件指标** `tts_degraded_events_total{direction="cosyvoice->edge_tts"}`（独立 Metrics 实例适配单 label 结构，判定 engine≠首选且非 retried）+ **LLM 主备切换指标零改动复用**（`ResilientChatModel` 已有 `mindsafe.llm.model_fallback{from,to}`，仅补规则）+ **alert-rules 新增 3 条**（TtsPrimaryEngineDegraded 成功计数推导 / TtsDegradeRatioHigh 降级率 30% / LlmPrimaryFailing 引用 `mindsafe_llm_model_fallback_total`）+ 生产部署 monitoring 栈（.env 补 WECOM_* 4 项 + GRAFANA_PASSWORD）+ 降级演练（断 DASHSCOPE key → 指标 +1 → 企微 ≤5 分钟触达）；ticket OPS-MON-001~006 见 §三十，验收标准 AC-1~8。
 
 ---
 
@@ -943,3 +944,20 @@ _本表由 Agent 维护，每次任务变更时更新。_
 > 执行顺序：UI-TEST-002 → 003（学生端 S-01~10）→ 008（对话窗口 C-01~07）→ 004 → 005 → 006 → 007（UI-TEST-008 与 003 同批次优先，其问题并入学生端修复循环）；依赖：003~006 各自完成后立即触发修复-部署-复测闭环（3 轮上限），L 场景依赖 S/T/P 收敛后环境。
 
 > 问题登记：各端问题清单落 `reports/browser-test/ISSUES-<端>.md`（BUG-<端>-<场景>-<序号> [P0-P3]），修复后状态流转 OPEN→FIXED→VERIFIED→REGRESSION；每端收敛定义 P0=0 且 P1=0 且 P2/P3 未关闭 ≤3，达 3 轮上限未收敛升级人工。
+
+---
+
+## 三十、服务降级监控与告警（2026-08-09）
+
+> 登记说明：本专题承接 BUG-TTS-01 事故复盘（CosyVoice 主引擎 100% 失败静默降级 edge-tts 长期运行，无告警触达管理员）。方案与 SPEC 单一事实源：`design/doing/83_服务降级监控与告警设计.md`（doing 子文档，编号 83，开发期状态）。
+
+| Ticket | 内容 | 范围 | 状态 |
+|--------|------|------|------|
+| OPS-MON-001 | doing/83 设计文档生成（方案 + SPEC：TTS 降级指标 / 复用 LLM 指标 / 3 条规则 / 部署 / 演练，AC-1~8） | 全量 | ✅ 本次完成（2026-08-09） |
+| OPS-MON-002 | TTS 降级指标埋点（app.py 独立 Metrics 实例 + direction 标签 + test_app.py 用例） | tts-service | ⬜ 待排期 |
+| OPS-MON-003 | alert-rules 新增 3 条规则（TtsPrimaryEngineDegraded / TtsDegradeRatioHigh / LlmPrimaryFailing） | monitoring | ⬜ 待排期 |
+| OPS-MON-004 | 生产部署 monitoring 栈（.env 补 WECOM_* 4 项 + GRAFANA_PASSWORD → compose up） | 部署 | ⬜ 待排期 |
+| OPS-MON-005 | 降级演练 + 验证（断 DASHSCOPE key → 指标 +1 → 企微 ≤5 分钟触达 → 恢复） | 验证 | ⬜ 待排期 |
+| OPS-MON-006 | 合并归档（doing/83 最终态并入 design/04 §9 监控 / 06 §配置章节 → 归档 his/83） | 全量 | ⬜ 待排期 |
+
+> 执行顺序：OPS-MON-002 → 003 → 004 → 005 → 006（005 演练通过后 006 归档）；AC-6 演练为归档前置门禁。

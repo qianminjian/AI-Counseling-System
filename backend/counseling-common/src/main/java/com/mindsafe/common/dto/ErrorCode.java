@@ -33,6 +33,7 @@ public enum ErrorCode {
     NICKNAME_INVALID(20008, "昵称不合规（2-12 字，不含敏感词）"),
     PASSWORD_POLICY_VIOLATION(20009, "密码不符合复杂度要求"),
     PASSWORD_EXPIRED(20010, "密码已过期，请修改后重试"),
+    CONSENT_WITHDRAWN(20011, "监护人同意已撤回，链接已失效"),
 
     // ===== 对话/会话 30xxx =====
     SESSION_NOT_FOUND(30001, "会话不存在"),

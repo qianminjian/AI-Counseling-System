@@ -60,6 +60,20 @@ export function getReport(studentUserId: string) {
   return request<ReportData>(`/parent/report?studentUserId=${studentUserId}`)
 }
 
+/** 监护人授权状态（BUG-P-P04-01：同意管理页展示用） */
+export interface ConsentStatusData {
+  status: 'active' | 'withdrawn'
+  consentVersion?: string | null
+  consentedAt?: string | null
+  withdrawnAt?: string | null
+  studentNickname?: string
+}
+
+/** 查询监护人授权状态（同意撤回后仍可查询，用于展示"已撤回"） */
+export function getConsentStatus(studentUserId: string) {
+  return request<ConsentStatusData>(`/parent/consent/status?studentUserId=${studentUserId}`)
+}
+
 /** 撤回同意 */
 export function withdrawConsent(studentUserId: string) {
   return request<{ message?: string }>('/parent/consent/withdraw', {

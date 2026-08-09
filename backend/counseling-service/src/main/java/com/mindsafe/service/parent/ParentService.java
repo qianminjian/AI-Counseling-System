@@ -3,9 +3,11 @@ package com.mindsafe.service.parent;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.mindsafe.domain.entity.CounselingSession;
 import com.mindsafe.domain.entity.MessageSummary;
+import com.mindsafe.domain.entity.ParentStudentLink;
 import com.mindsafe.domain.entity.User;
 import com.mindsafe.domain.mapper.CounselingSessionMapper;
 import com.mindsafe.domain.mapper.MessageSummaryMapper;
+import com.mindsafe.domain.mapper.ParentStudentLinkMapper;
 import com.mindsafe.domain.mapper.UserMapper;
 import org.springframework.stereotype.Service;
 
@@ -24,13 +26,16 @@ public class ParentService {
     private final UserMapper userMapper;
     private final CounselingSessionMapper sessionMapper;
     private final MessageSummaryMapper messageSummaryMapper;
+    private final ParentStudentLinkMapper parentStudentLinkMapper;
 
     public ParentService(UserMapper userMapper,
                          CounselingSessionMapper sessionMapper,
-                         MessageSummaryMapper messageSummaryMapper) {
+                         MessageSummaryMapper messageSummaryMapper,
+                         ParentStudentLinkMapper parentStudentLinkMapper) {
         this.userMapper = userMapper;
         this.sessionMapper = sessionMapper;
         this.messageSummaryMapper = messageSummaryMapper;
+        this.parentStudentLinkMapper = parentStudentLinkMapper;
     }
 
     /** 查询同租户学生（null 表示不存在/非本租户） */
@@ -40,6 +45,18 @@ public class ParentService {
                         .eq(User::getTenantId, tenantId)
                         .eq(User::getUserId, studentUserId)
         );
+    }
+
+    /**
+     * 校验家长与学生的绑定关系（BUG-P-BASE-04：家长 token sub=parentId，
+     * 端点须按 query 的 studentUserId + 绑定关系双重校验，防越权）。
+     */
+    public boolean isLinked(UUID parentId, UUID studentUserId) {
+        return parentStudentLinkMapper.selectCount(
+                new LambdaQueryWrapper<ParentStudentLink>()
+                        .eq(ParentStudentLink::getParentId, parentId)
+                        .eq(ParentStudentLink::getStudentUserId, studentUserId)
+        ) > 0;
     }
 
     /** 近 N 天会话（同租户 + 同学生，按开始时间倒序） */

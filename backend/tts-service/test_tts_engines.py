@@ -129,7 +129,8 @@ class TestDashScopeBackend:
         run(backend.synthesize("你好", "longxing_v3", 1.0))
         assert captured["model"] == "cosyvoice-v3-flash"
         assert captured["voice"] == "longxing_v3"
-        assert captured["format"] == "MP3_22050HZ_MONO_256KBPS"
+        # BUG-TTS-01 修复后：format 传 tts_v2 导入的 AudioFormat 枚举（.value 是 tuple，用 .name 比较）
+        assert getattr(captured["format"], "name", captured["format"]) == "MP3_22050HZ_MONO_256KBPS"
         assert captured["speech_rate"] == 1.0
 
     def test_speech_rate_clamped(self):
@@ -201,6 +202,32 @@ class TestDashScopeBackend:
         elapsed = time.monotonic() - t0
         assert "超时" in str(exc.value)
         assert elapsed < 0.25, f"超时应快速返回，实际 {elapsed:.2f}s"
+
+    def test_real_sdk_module_uses_tts_v2_synth_class(self, monkeypatch):
+        """BUG-TTS-03 回归：sdk=真实 dashscope 模块时必须用 tts_v2 子模块类。
+
+        顶层 dashscope.SpeechSynthesizer 指向旧版 tts 兼容壳 (self, /, *args, **kwargs)，
+        恒抛 "SpeechSynthesizer() takes no arguments" → CosyVoice 每次降级 edge-tts
+        （与 BUG-TTS-01 ResultCallback/AudioFormat 顶层缺失同模式）。
+        """
+        import dashscope
+        import tts_engines
+
+        captured = {}
+
+        class _V2Synth(FakeSynthesizer):
+            def __init__(self, **kwargs):
+                super().__init__(**kwargs)
+                captured["used"] = _V2Synth
+
+        monkeypatch.setattr(tts_engines, "_SpeechSynthesizerV2", _V2Synth)
+        backend = make_backend(sdk=dashscope)
+        try:
+            audio = run(backend.synthesize("你好", "longxing_v3", 1.0))
+        finally:
+            dashscope.api_key = None  # 恢复全局（synthesize 内会赋值）
+        assert audio == b"chunk1chunk2"
+        assert captured["used"] is _V2Synth  # 走 tts_v2 类而非顶层旧版壳
 
 
 # ===== EdgeBackend =====

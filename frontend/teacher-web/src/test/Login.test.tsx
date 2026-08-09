@@ -98,4 +98,34 @@ describe('Login 登录页', () => {
     await waitFor(() => expect(onLogin).not.toHaveBeenCalled());
     expect(sessionStorage.getItem('mindsafe_token')).toBeNull();
   });
+
+  // DOC-086 / BUG-T-BASE-01 回归：用户名 + 密码 input 必须具备 a11y 自动填充语义
+  it('用户名/密码 input 应具备 a11y 自动填充属性', () => {
+    mockCallEndpoint.mockResolvedValue({ enabled: false });
+    render(<Login onLogin={vi.fn()} />);
+    const userInput = screen.getByPlaceholderText(/用户名/) as HTMLInputElement;
+    const pwdInput = screen.getByPlaceholderText('密码') as HTMLInputElement;
+    // antd 5+ 会透传 autoComplete 到 input
+    expect(userInput.autocomplete).toBe('username');
+    expect(pwdInput.autocomplete).toBe('current-password');
+  });
+
+  // DOC-086 / BUG-T-BASE-02 回归：企业微信未配置不应产生控制台 error 噪声，降级为 debug
+  it('企业微信获取失败时仅 console.debug，不产生 error 噪声', async () => {
+    const debugSpy = vi.spyOn(console, 'debug').mockImplementation(() => {});
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    // 预置但未返回的 reject；mockImplementation 需先 reset，再覆盖 getWecomAuthUrl 路径
+    mockCallEndpoint.mockImplementation((key: string) => {
+      if (key === 'getWecomAuthUrl') return Promise.reject(new Error('企业微信未配置'));
+      return Promise.reject(new Error('login not used'));
+    });
+    render(<Login onLogin={vi.fn()} />);
+    // 等 useEffect 内的 catch 执行
+    await waitFor(() => expect(mockCallEndpoint).toHaveBeenCalledWith('getWecomAuthUrl', undefined));
+    // BUG-T-BASE-02 核心：catch 路径不应产生 error；只允许 debug
+    expect(errorSpy).not.toHaveBeenCalled();
+    expect(debugSpy).toHaveBeenCalled();
+    debugSpy.mockRestore();
+    errorSpy.mockRestore();
+  });
 });

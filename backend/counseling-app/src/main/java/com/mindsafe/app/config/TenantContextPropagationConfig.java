@@ -4,8 +4,10 @@ import com.mindsafe.common.tenant.TenantContextHolder;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.task.TaskDecorator;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
 import java.util.UUID;
+import java.util.concurrent.Executor;
 
 /**
  * 租户上下文异步传播配置（M1-003 fail-fast 收紧配套）
@@ -39,5 +41,25 @@ public class TenantContextPropagationConfig {
                 }
             };
         };
+    }
+
+    /**
+     * BUG-TENANT-01：@Async 缺省执行器显式化（M1-003 fail-fast 收紧配套遗漏）。
+     * <p>
+     * Spring Boot {@code TaskExecutionAutoConfiguration} 的 {@code applicationTaskExecutor}
+     * 条件为 {@code @ConditionalOnMissingBean(Executor.class)}——容器已存在 Executor bean
+     * （AiConfig.outputReviewExecutor）时跳过创建，裸 {@code @Async} 落入
+     * {@code SimpleAsyncTaskExecutor}（无装饰器），子线程丢失租户上下文触发 fail-fast
+     * （生产日志：message_summaries/audit_logs 全量拒绝）。此处显式定义缺省执行器并挂装饰器根治。
+     */
+    @Bean(name = "applicationTaskExecutor")
+    public Executor applicationTaskExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(8);
+        executor.setMaxPoolSize(16);
+        executor.setQueueCapacity(1000);
+        executor.setThreadNamePrefix("mindsafe-async-");
+        executor.setTaskDecorator(tenantContextTaskDecorator());
+        return executor;
     }
 }
