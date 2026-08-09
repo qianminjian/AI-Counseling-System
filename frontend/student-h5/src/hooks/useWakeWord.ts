@@ -187,71 +187,6 @@ export function preloadWakeModel() {
 }
 
 /**
- * 等待主线程预加载结束（下载的文件已写入 Cache API），供 Worker 复用缓存，避免双下载。
- *
- * 背景：Worker 是独立线程，主线程的 transcriberPromise 单例在 Worker 内不存在；
- * Transformers.js 的文件缓存是下载完成后才写入 Cache API——若主线程还在下载（loading），
- * Worker 立即 pipeline() 会从网络重新下载同一批文件，两路 fetch 并行抢带宽（下载量翻倍 + 速度减半）。
- *
- * - idle（从未加载）→ 直接返回 true：Worker 自行下载，是唯一下载者
- * - loading → 轮询直到 ready/error/unsupported（error 时 Worker 自行重试）
- * - 超时 → 返回 false：调用方应降级主线程，复用同一路下载而非另开一路
- *
- * 超时阈值 F-9b（2026-08-09）：60s → 120s。实测声纹+唤醒 40MB 并行下载
- * （4.7Mbps 带宽平分各 ~2.3Mbps）需 ~104s，60s 必然超时降级 → 主线程也未就绪
- * → feature_extractor null 转写全失败（72 次实证）。
- */
-function waitForMainThreadModel(timeoutMs = 120000): Promise<boolean> {
-  return new Promise((resolve) => {
-    const st = wakeModelStore.getStatus()
-    if (st !== 'loading') {
-      resolve(true)
-      return
-    }
-    const start = Date.now()
-    const timer = setInterval(() => {
-      const s = wakeModelStore.getStatus()
-      if (s !== 'loading') {
-        clearInterval(timer)
-        resolve(true)
-      } else if (Date.now() - start >= timeoutMs) {
-        clearInterval(timer)
-        resolve(false)
-      }
-    }, 300)
-  })
-}
-
-/**
- * F-6：检查唤醒模型是否已完整写入 transformers-cache（Cache API）。
- * 缓存完整时 Worker 可直接 init（从缓存秒加载），无需等主线程——
- * 主线程 ORT 初始化（40MB 模型会话创建）即使缓存命中也可能 >60s，
- * 旧逻辑无条件等 60s → 超时降级主线程 → 主线程推理慢致唤醒不可靠。
- * F-9（2026-08-09）：原实现只检查 encoder（10MB）→ decoder（30MB）未命中时
- * 误判"缓存完整"→ Worker 从网络补下载 30M 超过 15s 超时 → 降级主线程 → 转写全失败。
- * 现改为 encoder + decoder 双文件校验（decoder 是最大最慢的瓶颈文件）。
- */
-async function hasWakeModelInCache(): Promise<boolean> {
-  try {
-    if (!('caches' in self)) return false
-    const base = import.meta.env.BASE_URL || '/'
-    const cache = await caches.open('transformers-cache')
-    const files = [
-      'onnx/encoder_model_quantized.onnx',
-      'onnx/decoder_model_merged_quantized.onnx',
-    ]
-    for (const f of files) {
-      const url = `${self.location.origin}${base}models/onnx-community/whisper-tiny/${f}`
-      const hit = await cache.match(url)
-      if (!hit) return false
-    }
-    return true
-  } catch {
-    return false
-  }
-}
-
-/**
  * @param {object} opts
  * @param {boolean} opts.active      是否启动引擎（加载模型 + 启动麦克风）——仅对话内且处于待唤醒态时为 true
  * @param {boolean} opts.paused      暂停检测（AI 忙碌时防自听回声，但保持模型 + 麦克风就绪，忙碌结束立即恢复检测）
@@ -452,31 +387,17 @@ export function useWakeWord({ active, paused, onDetected }) {
 
       // 发送初始化消息（触发模型加载，若已在情绪页预加载则从 Cache API 秒开）
       setModelStatus('loading')
+      // F-12（2026-08-09）：恢复 8.2 直接 init 时序——删除 F-6/F-9 的 waitForMainThreadModel/
+      // hasWakeModelInCache 等待机制（实测其阻塞 init 导致 transcribe 先于 init 到达 Worker、
+      // 状态机时序混乱、UI 卡加载）。Worker 直接 init 加载（缓存命中秒级/首次下载自行完成），
+      // 超时 30s 兜底降级主线程（8.2 为 15s，放宽避免缓存冷启动 11.8s 临界误降级）。
       ;(async () => {
-        // 关键：主线程预加载进行中时先等它结束（文件进 Cache API 后 Worker 可复用），
-        // 避免主线程与 Worker 并行下载同一模型 → 流量翻倍 + 进度反复（用户反馈“下载 2 次、50% 又 重来”）
-        // F-6：缓存已完整时跳过等待（Worker 直接从 Cache API 秒加载），主线程 ORT 初始化慢不再拖累 Worker
-        const cacheReady = await hasWakeModelInCache()
-        if (wakeModelStore.getStatus() === 'loading' && !cacheReady) {
-          const preloadDone = await waitForMainThreadModel()
-          if (cancelled || useMainThread) return
-          if (!preloadDone) {
-            // 主线程 60s 未完成：不再另开一路，降级主线程复用同一路下载
-            fallbackToMainThread('主线程预加载超时（60s），复用其下载避免重复')
-            return
-          }
-        }
-        if (cancelled || useMainThread) return
         worker.postMessage({ type: 'init', config: workerConfig })
-        // Worker 超时保护：缓存完整（秒加载）时 15s；缓存未完整（首次下载 30M，4.7Mbps 带宽
-        // 需 ~50s）时放宽到 90s——否则 Worker 必然超时降级主线程，而主线程同源下载也未完成
-        // → pipeline 半初始化（feature_extractor=null）→ 转写全失败（F-9 实证：21 次失败）
-        const workerTimeoutMs = cacheReady ? 15000 : 90000
         workerTimeout = setTimeout(() => {
           if (!useMainThread && !cancelled) {
-            fallbackToMainThread(`Worker ${workerTimeoutMs / 1000}s 无响应`)
+            fallbackToMainThread('Worker 30s 无响应')
           }
-        }, workerTimeoutMs)
+        }, 30000)
       })()
     }
 
