@@ -111,6 +111,16 @@ keep_file() {
     esac
 }
 
+# 可选文件：HF Transformers（Python）遗留文件，transformers.js 不读——下载失败不影响功能
+is_optional_file() {
+    case "$1" in
+        vocab.json) return 0 ;;
+        normalizer.json) return 0 ;;
+        quantize_config.json) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
 fetch_model() {
     local repo="$1"
     local dest="${TARGET_DIR}/${repo}"
@@ -139,7 +149,7 @@ for item in json.load(sys.stdin):
         print(item['path'])
 ")
 
-    local missing=0 downloaded=0 skipped=0
+    local missing=0 downloaded=0 skipped=0 optional_missing=0
     while IFS= read -r f; do
         [ -z "${f}" ] && continue
         keep_file "${f}" || continue
@@ -152,17 +162,24 @@ for item in json.load(sys.stdin):
         [ -f "${out}" ] && rm -f "${out}"
         mkdir -p "$(dirname "${out}")"
         log "  下载 ${f}"
-        if curl -fSL --retry 3 -o "${out}.tmp" "${MIRROR}/${repo}/resolve/main/${f}"; then
+        if curl -fSL --retry 3 --retry-all-errors --retry-delay 2 --connect-timeout 15 -o "${out}.tmp" "${MIRROR}/${repo}/resolve/main/${f}"; then
             mv "${out}.tmp" "${out}"
             downloaded=$((downloaded + 1))
         else
             rm -f "${out}.tmp"
-            log "  ERROR: 下载失败 ${f}"
-            missing=$((missing + 1))
+            # 可选文件下载失败仅警告，不阻断发布（vocab.json/normalizer.json/quantize_config.json
+            # 等为 HF Transformers（Python）遗留文件，transformers.js 不读——下载失败不影响功能）
+            if is_optional_file "${f}"; then
+                log "  WARNING: 可选文件下载失败 ${f}（不影响功能）"
+                optional_missing=$((optional_missing + 1))
+            else
+                log "  ERROR: 下载失败 ${f}"
+                missing=$((missing + 1))
+            fi
         fi
     done <<< "${files}"
 
-    log "  完成: 新下载 ${downloaded}，已存在 ${skipped}，失败 ${missing}"
+    log "  完成: 新下载 ${downloaded}，已存在 ${skipped}，失败 ${missing}${optional_missing:+，可选失败 ${optional_missing}}"
     [ "${missing}" -eq 0 ]
 }
 
