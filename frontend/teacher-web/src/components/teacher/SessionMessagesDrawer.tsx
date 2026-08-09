@@ -11,17 +11,21 @@ import { riskColor, riskLabel } from '../../utils/riskLevel'
  * 基线取自 StudentPanel 原内联实现（含 cancelled 守卫，防旧响应覆盖新会话）；
  * QualityPanel 复用后统一补上守卫，消除快速切换会话时的竞态。
  * extra 供调用方在抽屉头部附加操作（如 QualityPanel 的「导出 PDF」）。
+ * BUG-UI-01（design/11「摘要而非原文」「默认不开放完整原始聊天全文」）：
+ * 学生档案场景默认不加载/不展示逐轮原文，仅显示 AI 语义摘要；
+ * 质量监控（QualityPanel）质控回放需检查对话内容，显式传 showTranscript 开启。
  */
-export default function SessionMessagesDrawer({ sessionId, onClose, extra = null }: {
+export default function SessionMessagesDrawer({ sessionId, onClose, extra = null, showTranscript = false }: {
   sessionId: string | null
   onClose: () => void
   extra?: ReactNode
+  showTranscript?: boolean
 }) {
   const [messages, setMessages] = useState([])
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
-    if (!sessionId) return
+    if (!sessionId || !showTranscript) return
     let cancelled = false
     setLoading(true)
     getSessionMessages(sessionId)
@@ -40,12 +44,13 @@ export default function SessionMessagesDrawer({ sessionId, onClose, extra = null
       styles={{ body: { padding: '12px 16px' } }}
       extra={extra}
     >
-      {/* AI 会话摘要卡片 */}
+      {/* AI 会话摘要卡片（design/11：摘要而非原文） */}
       <div style={{ marginBottom: 12 }}>
         <SessionSummaryCard sessionId={sessionId} />
       </div>
 
-      {loading ? (
+      {/* BUG-UI-01：逐轮原文仅质量监控质控场景展示（showTranscript） */}
+      {showTranscript && (loading ? (
         <div className="ms-empty"><Spin /></div>
       ) : messages.length === 0 ? (
         <Empty description="暂无对话摘要记录" />
@@ -75,7 +80,7 @@ export default function SessionMessagesDrawer({ sessionId, onClose, extra = null
             </List.Item>
           )}
         />
-      )}
+      ))}
     </Drawer>
   )
 }

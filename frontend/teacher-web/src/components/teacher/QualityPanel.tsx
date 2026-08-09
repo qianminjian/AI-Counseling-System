@@ -96,10 +96,12 @@ export default function QualityPanel() {
         )}
       </Card>
 
-      {/* 会话回放抽屉（FA-04：共享组件，含 cancelled 守卫；导出 PDF 保持当前会话） */}
+      {/* 会话回放抽屉（FA-04：共享组件，含 cancelled 守卫；导出 PDF 保持当前会话）
+          BUG-UI-01：质控回放需检查对话内容，显式开启 showTranscript */}
       <SessionMessagesDrawer
         sessionId={currentSessionId}
         onClose={() => setReplayOpen(false)}
+        showTranscript
         extra={(
           <Button size="small" icon={<EyeOutlined />} onClick={() => {
             // P1-FE-3：导出当前回放的会话；曾误用 flagged.find 取列表第一条 → 张冠李戴

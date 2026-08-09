@@ -6,7 +6,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
  * - 渲染学生列表 + 高风险提醒卡片
  * - 点击姓名/高风险 Tag → 档案详情
  * - 添加教师备注 → addStudentNote 并刷新
- * - 对话摘要抽屉 → getSessionMessages 渲染消息
+ * - 对话摘要抽屉（BUG-UI-01）→ 默认不加载逐轮原文，仅展示 AI 摘要
  * - 导出 CSV / 加载失败容错
  */
 
@@ -110,14 +110,15 @@ describe('StudentPanel 学生管理', () => {
     await waitFor(() => expect(mockGetProfile.mock.calls.length).toBeGreaterThanOrEqual(2));
   });
 
-  it('对话摘要抽屉渲染消息', async () => {
+  it('对话摘要抽屉默认不加载原文（BUG-UI-01 摘要隐私）', async () => {
     render(<StudentPanel />);
     fireEvent.click((await screen.findAllByText('小明'))[0]);
     fireEvent.click(await screen.findByText('对话摘要'));
-    await waitFor(() => expect(mockGetMessages).toHaveBeenCalledWith('se-1'));
-    expect(await screen.findByText('我最近很焦虑')).toBeInTheDocument();
-    expect(screen.getByText('我们慢慢来')).toBeInTheDocument();
-    expect(screen.getAllByText('学生').length).toBeGreaterThanOrEqual(1);
+    // 抽屉打开：AI 摘要卡片渲染，但不得请求/展示逐轮原文
+    expect(await screen.findByText('摘要桩:se-1')).toBeInTheDocument();
+    expect(mockGetMessages).not.toHaveBeenCalled();
+    expect(screen.queryByText('我最近很焦虑')).not.toBeInTheDocument();
+    expect(screen.queryByText('我们慢慢来')).not.toBeInTheDocument();
   });
 
   it('导出 CSV 按钮触发接口', async () => {
