@@ -67,6 +67,9 @@ describe('config/wakeWord', () => {
         expect(matchesWakeWord('哈喽波波')).toBe(true)
         expect(matchesWakeWord('哈罗波波')).toBe(true)
         expect(matchesWakeWord('哈喽啵啵')).toBe(true)
+        // F-7：用户实际发音"哈啰波波"（luó）
+        expect(matchesWakeWord('哈啰波波')).toBe(true)
+        expect(matchesWakeWord('哈啰啵啵')).toBe(true)
       })
 
       it('带前后缀的句子中包含唤醒词', () => {

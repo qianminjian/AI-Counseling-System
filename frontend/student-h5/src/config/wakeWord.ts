@@ -31,6 +31,9 @@ export const WAKE_MODEL_REMOTE_HOST: string = 'SAME_ORIGIN'
 export const WAKE_PATTERNS = [
   '哈喽波波',
   '哈罗波波',
+  // F-7（2026-08-09 实测）：用户实际发音"哈啰波波"（luó）——变体表缺啰系致唤醒不触发
+  '哈啰波波',
+  '哈啰啵啵',
   '哈喽啵啵',
   '哈罗啵啵',
   '哈楼波波',
@@ -100,8 +103,9 @@ export function matchesWakeWord(text) {
   if (isHallucination(t)) return false
   // 精确匹配（已归一化）
   if (WAKE_PATTERNS.some((p) => t.includes(p))) return true
-  // 拼音模糊匹配：Whisper 可能输出其他同音字，用“哈/蛤/嘿” + “喽/罗/楼/喍” + “波/啵/播/伯/铂” + “波/啵/播/伯/铂” 容错
-  const fuzzy = /^[\u54c8\u86e4\u563f\u54ce][\u55bd\u7f57\u697c\u558d\u565c][\u6ce2\u5575\u64ad\u4f2f\u94c2][\u6ce2\u5575\u64ad\u4f2f\u94c2]/
+  // 拼音模糊匹配：Whisper 可能输出其他同音字，用“哈/蛤/嘿/嗨” + “喽/罗/楼/喍/嚅/啰” + “波/啵/播/伯/铂” + “波/啵/播/伯/铂” 容错
+  // F-7：第二组补 \u54c6（啰，用户实测发音 luó）
+  const fuzzy = /^[\u54c8\u86e4\u563f\u54ce][\u55bd\u7f57\u697c\u558d\u565c\u54c6][\u6ce2\u5575\u64ad\u4f2f\u94c2][\u6ce2\u5575\u64ad\u4f2f\u94c2]/
   if (fuzzy.test(t)) return true
   // 英文部分匹配："hello"/"halo" + "bobo"/"波波"
   if (/hello|halo/.test(t) && /bobo|波波|啵啵/.test(t)) return true
