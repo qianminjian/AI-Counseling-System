@@ -103,9 +103,11 @@ export function matchesWakeWord(text) {
   if (isHallucination(t)) return false
   // 精确匹配（已归一化）
   if (WAKE_PATTERNS.some((p) => t.includes(p))) return true
-  // 拼音模糊匹配：Whisper 可能输出其他同音字，用“哈/蛤/嘿/嗨” + “喽/罗/楼/喍/嚅/啰” + “波/啵/播/伯/铂” + “波/啵/播/伯/铂” 容错
+  // 拼音模糊匹配：Whisper 可能输出其他同音字，用“哈/蛤/嘿/嗨” + “喽/罗/楼/喍/嚅/啰” + “波/啵/播/伯/铂/伴/宝/胞/半/瓣” + 同组 容错
   // F-7：第二组补 \u54c6（啰，用户实测发音 luó）
-  const fuzzy = /^[\u54c8\u86e4\u563f\u54ce][\u55bd\u7f57\u697c\u558d\u565c\u54c6][\u6ce2\u5575\u64ad\u4f2f\u94c2][\u6ce2\u5575\u64ad\u4f2f\u94c2]/
+  // F-20（2026-08-10 用户实测）：Whisper 把“哈啰波波”转写为“哈喽伴伴”——第三/四组补
+  // \u4f34（伴）\u5b9d（宝）\u80de（胞）\u534a（半）\u74e3（瓣）等 b-an/ao 近音字
+  const fuzzy = /^[\u54c8\u86e4\u563f\u54ce][\u55bd\u7f57\u697c\u558d\u565c\u54c6][\u6ce2\u5575\u64ad\u4f2f\u94c2\u4f34\u5b9d\u80de\u534a\u74e3][\u6ce2\u5575\u64ad\u4f2f\u94c2\u4f34\u5b9d\u80de\u534a\u74e3]/
   if (fuzzy.test(t)) return true
   // 英文部分匹配："hello"/"halo" + "bobo"/"波波"
   if (/hello|halo/.test(t) && /bobo|波波|啵啵/.test(t)) return true
