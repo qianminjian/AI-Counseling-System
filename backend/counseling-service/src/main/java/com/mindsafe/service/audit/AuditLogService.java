@@ -1,5 +1,6 @@
 package com.mindsafe.service.audit;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mindsafe.domain.entity.AuditLog;
 import com.mindsafe.domain.mapper.AuditLogMapper;
 import org.slf4j.Logger;
@@ -13,6 +14,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.HexFormat;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -28,8 +30,31 @@ public class AuditLogService {
 
     private final AuditLogMapper auditLogMapper;
 
+    private static final ObjectMapper AUDIT_MAPPER = new ObjectMapper();
+
     public AuditLogService(AuditLogMapper auditLogMapper) {
         this.auditLogMapper = auditLogMapper;
+    }
+
+    /**
+     * BUG-AUDIT-01：detail 列 json 类型——调用方偶发传普通文本（监护人同意/撤回同意/知识库摄入审核等）
+     * 致 json 解析失败、审计静默丢失（生产实证 invalid input syntax for type json）。
+     * 防御性归一化：合法 JSON/null 原样透传，普通文本包装为 {@code {"message": ...}}。
+     */
+    static String normalizeDetail(String detail) {
+        if (detail == null || detail.isBlank()) {
+            return detail;
+        }
+        try {
+            AUDIT_MAPPER.readTree(detail);
+            return detail;
+        } catch (Exception e) {
+            try {
+                return AUDIT_MAPPER.writeValueAsString(Map.of("message", detail));
+            } catch (Exception ex) {
+                return "{\"message\":\"audit detail serialization failed\"}";
+            }
+        }
     }
 
     /**
@@ -39,7 +64,8 @@ public class AuditLogService {
     public void log(UUID tenantId, UUID userId, String action,
                     String resourceType, UUID resourceId, String detail) {
         try {
-            AuditLog auditLog = AuditLog.create(tenantId, userId, action, resourceType, resourceId, detail);
+            AuditLog auditLog = AuditLog.create(tenantId, userId, action, resourceType, resourceId,
+                    normalizeDetail(detail));
             // COMP-006: 自动捕获请求上下文
             captureRequestContext(auditLog);
             auditLogMapper.insert(auditLog);
