@@ -31,7 +31,10 @@ public class KnowledgeBaseService {
 
     /** 检索参数 */
     private static final int DEFAULT_TOP_K = 3;
-    private static final double SIMILARITY_THRESHOLD = 0.7;
+    // BUG-KB-03：相似度阈值 0.7 按 OpenAI text-embedding-3 分布假设设定，DashScope text-embedding-v4
+    // 实测余弦分布 0.46~0.57（高度相关如"考试焦虑→学业压力"仅 0.57），0.7 会过滤全部命中 → 检索恒为空。
+    // 调整为 0.45：真实相关可召回，弱相关（<0.45）仍被过滤防噪音注入。
+    private static final double SIMILARITY_THRESHOLD = 0.45;
 
     /** 关键词路最大词元数（防止超长查询生成巨量 LIKE 条件） */
     private static final int MAX_KEYWORD_TOKENS = 8;
