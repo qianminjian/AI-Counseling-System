@@ -15,6 +15,7 @@ import java.sql.Connection;
 import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * 服务健康探针（ADMIN-P0-05，M2 服务拓扑只读）
@@ -52,15 +53,20 @@ public class ServiceHealthProbe {
         this.nginxUrl = nginxUrl;
     }
 
-    /** 探测全部六服务，返回 service → UP/DEGRADED/DOWN */
+    /** 探测全部六服务（code-review L3：HTTP 探测并行，避免串行最坏 24s 拖慢请求/采样线程） */
     public Map<String, String> probeAll() {
         Map<String, String> result = new LinkedHashMap<>();
         result.put("postgres", probePostgres());
         result.put("redis", probeRedis());
         result.put("backend", ServiceHealthSnapshot.STATUS_UP);
-        result.put("tts", probeHttp("tts", ttsUrl));
-        result.put("voice", probeHttp("voice", voiceUrl));
-        result.put("nginx", probeHttp("nginx", nginxUrl));
+
+        // tts/voice/nginx HTTP 探测并行（各 3s/5s 超时，并行最坏 ~5s）
+        CompletableFuture<String> ttsFuture = CompletableFuture.supplyAsync(() -> probeHttp("tts", ttsUrl));
+        CompletableFuture<String> voiceFuture = CompletableFuture.supplyAsync(() -> probeHttp("voice", voiceUrl));
+        CompletableFuture<String> nginxFuture = CompletableFuture.supplyAsync(() -> probeHttp("nginx", nginxUrl));
+        result.put("tts", ttsFuture.join());
+        result.put("voice", voiceFuture.join());
+        result.put("nginx", nginxFuture.join());
         return result;
     }
 

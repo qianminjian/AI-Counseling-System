@@ -2,7 +2,7 @@ import { Layout, Menu } from 'antd'
 
 const { Sider, Header, Content } = Layout
 
-export type AdminView = 'overview' | 'config' | 'prompt' | 'risk' | 'sla' | 'ledger' | 'degradation' | 'knowledge' | 'insights' | 'usage' | 'compliance' | 'services' | 'alerts' | 'audit' | 'forbidden'
+export type AdminView = 'overview' | 'config' | 'prompt' | 'risk' | 'sla' | 'ledger' | 'degradation' | 'knowledge' | 'channel' | 'insights' | 'usage' | 'compliance' | 'services' | 'alerts' | 'audit' | 'forbidden'
 
 interface MenuItem {
   key: AdminView
@@ -20,6 +20,7 @@ const ROLE_MENUS: Record<string, MenuItem[]> = {
     { key: 'ledger', label: '处置台账' },
     { key: 'degradation', label: '降级矩阵' },
     { key: 'knowledge', label: '知识库' },
+    { key: 'channel', label: '通知渠道' },
     { key: 'insights', label: '运营洞察' },
     { key: 'usage', label: '用量报表' },
     { key: 'compliance', label: '数据合规' },
@@ -36,6 +37,7 @@ const ROLE_MENUS: Record<string, MenuItem[]> = {
     { key: 'ledger', label: '处置台账' },
     { key: 'degradation', label: '降级矩阵' },
     { key: 'knowledge', label: '知识库' },
+    { key: 'channel', label: '通知渠道' },
     { key: 'insights', label: '运营洞察' },
     { key: 'services', label: '服务状态' },
     { key: 'alerts', label: '告警中心' },

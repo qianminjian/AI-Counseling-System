@@ -8,6 +8,7 @@ import SlaPage from './pages/SlaPage'
 import LedgerPage from './pages/LedgerPage'
 import DegradationPage from './pages/DegradationPage'
 import KnowledgePage from './pages/KnowledgePage'
+import ChannelPage from './pages/ChannelPage'
 import InsightsPage from './pages/InsightsPage'
 import UsagePage from './pages/UsagePage'
 import CompliancePage from './pages/CompliancePage'
@@ -53,6 +54,7 @@ export default function App() {
         : currentView === 'ledger' ? <LedgerPage />
         : currentView === 'degradation' ? <DegradationPage />
         : currentView === 'knowledge' ? <KnowledgePage />
+        : currentView === 'channel' ? <ChannelPage />
         : currentView === 'insights' ? <InsightsPage />
         : currentView === 'usage' ? <UsagePage />
         : currentView === 'compliance' ? <CompliancePage />

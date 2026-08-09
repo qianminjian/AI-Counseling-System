@@ -258,3 +258,8 @@ export function fetchConsentStats(): Promise<Record<string, unknown>> {
 export function fetchPromptVersions(templateKey: string): Promise<PromptVersionItem[]> {
   return adminFetch<PromptVersionItem[]>(`/api/v1/admin/prompts/versions?templateKey=${encodeURIComponent(templateKey)}`)
 }
+
+/** 通知渠道统计（M10） */
+export function fetchChannelStats(): Promise<Record<string, unknown>> {
+  return adminFetch<Record<string, unknown>>('/api/v1/ops/insights/channel-stats')
+}
