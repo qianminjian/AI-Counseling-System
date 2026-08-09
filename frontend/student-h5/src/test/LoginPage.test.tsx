@@ -208,13 +208,12 @@ describe('LoginPage', () => {
 
     // ==== AUD-008 修订（2026-08-09）：登录页挂载即预加载声纹模型（最早时机），
     // 模型 error 时点击声音进入弹重试确认；loading/ready 直接进入识别 ====
-    it('有声纹：登录页挂载即预加载声纹模型，完成后自动预加载唤醒模型', async () => {
+    it('有声纹：登录页挂载即并行预加载声纹+唤醒模型（回归 8/2 设计）', async () => {
       ;(hasAnyVoiceprint as any).mockResolvedValue(true)
       render(<LoginPage onLogin={vi.fn()} onRegister={vi.fn()} onNeedConsent={vi.fn()} />)
-      // 挂载即预加载（不等点击声音进入）
+      // 挂载即预加载（声纹与唤醒同时启动，互不等待）
       expect(preloadVoiceprintModel).toHaveBeenCalledTimes(1)
-      // 声纹完成后顺序启动唤醒预加载
-      await waitFor(() => expect(preloadWakeModel).toHaveBeenCalledTimes(1))
+      expect(preloadWakeModel).toHaveBeenCalledTimes(1)
     })
 
     it('有声纹且模型 loading：点击声音进入直接打开识别（不弹流量确认）', async () => {
