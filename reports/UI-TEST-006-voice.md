@@ -16,7 +16,7 @@
 | C-04 语音唤醒灵敏准确 | ✅ **F-8 修复后完整闭环** | 授权流 ✓ 引擎加载 ✓ ORT 耗时 <600ms | 授权弹窗 800ms 自动出现 ✓；**Worker ORT session_create 557ms**（修复前 30-60s，numThreads=2 加速 50-100×）；音频变体/抗误唤醒/首轮过滤（注入受限） |
 | C-05 对话上下文记忆 | ✅（1 项观察） | 同会话 ✓ 主题 ✓ 跨会话 ⚠️ | 猫名"豆豆"召回 ✓；主题"数学" ✓；跨会话话术连续性 ✓ 但事实召回（画画）未命中（F-5）；DB 佐证 22 行 message_summaries ✓ |
 | C-06 语音对话暖场 | ✅ | 触发 ✓ 护栏 ✓ Redis ✓ UI ✓ | 服务级 20s 触发（warmthLevel=2）；30s/55s 间隔护栏空流 ✓；Redis 计数=1 ✓；UI 沉默 42s 暖场消息自动出现 ✓（前端轮询 4 次 nudge 请求实证） |
-| C-07 自动超时降级 | ⚠️ 部分 | 降级链 ✓ 冷却关窗待实测 | 冷却关窗（25s）触发条件是 TTS 收尾后调 useVoiceCallMode.startCooldownClose（chrome-devtools 无麦克风音频注入，需用户实际叫唤醒后验证） |
+| C-07 自动超时降级 | ⚠️ 部分→**代码层 VERIFIED**（2026-08-10） | 降级链 ✓ 冷却关窗状态机 ✓ | 冷却关窗（25s）核心状态机由单测覆盖：`useVoiceCallMode.test.ts`「active 模式冷却 25s 后回到 standby」+「busy 时冷却计时器被清除」；端到端音频触发（TTS 收尾后 startCooldownClose）依赖真实麦克风（chrome-devtools 无音频注入），已登记受限项 |
 
 ## 二、C0 素材清单（tests/audio/，已提交）
 
@@ -83,7 +83,7 @@
 **状态**：
 - ✅ F-6（worker 下载停滞）— 实测**完全修复**，Worker session_create 557ms 即可就绪
 - ✅ 唤醒进入 standby 状态：「叫我"哈喽波波" / 我在这里安静地等你叫我」（实测可见）
-- ⚠️ C-07 冷却关窗（25s）— 触发条件是 TTS 收尾后调 `useVoiceCallMode.startCooldownClose`，需用户实际叫唤醒后 TTS 播放才能验证（chrome-devtools 无麦克风音频注入）
+- ✅ C-07 冷却关窗（25s）— **状态机逻辑已由单元测试 VERIFIED**（`useVoiceCallMode.test.ts`：冷却 25s→standby + busy 清除计时）；端到端音频触发（真实唤醒→TTS 收尾→关窗）需物理麦克风，作为受限项登记（与 C-04 音频注入同一限制），真机到位后补测
 
 ### 修复链条
 
