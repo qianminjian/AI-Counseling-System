@@ -200,6 +200,21 @@ class AuthControllerTest {
     }
 
     @Test
+    @DisplayName("F-1: login 冻结账号（withdrawn）→ FORBIDDEN + 专属提示，不记失败")
+    void login_withdrawnAccountFrozen() {
+        User withdrawn = activeStudent();
+        withdrawn.setStatus(User.STATUS_WITHDRAWN);
+        when(authUserService.findLoginCandidates("小星")).thenReturn(List.of(withdrawn));
+
+        assertThatThrownBy(() -> controller.login(new LoginRequest("小星", "pwd12345")))
+                .isExactlyInstanceOf(BizException.class)
+                .extracting("code")
+                .isEqualTo(ErrorCode.FORBIDDEN.code());
+        verify(lockoutService, never()).recordFailure(anyString());
+        verify(authUserService, never()).recordLoginSuccess(any(), any());
+    }
+
+    @Test
     @DisplayName("login 用户不存在 → UNAUTHORIZED")
     void login_userNotFound() {
         when(authUserService.findLoginCandidates("nobody")).thenReturn(List.of());

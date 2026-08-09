@@ -37,8 +37,8 @@ public class ConsentWithdrawalService {
 
     private static final Logger log = LoggerFactory.getLogger(ConsentWithdrawalService.class);
 
-    /** 撤回后账号状态 */
-    public static final String STATUS_WITHDRAWN = "withdrawn";
+    /** 撤回后账号状态（F-1：常量收敛至 User.STATUS_WITHDRAWN，此处保留兼容引用） */
+    public static final String STATUS_WITHDRAWN = User.STATUS_WITHDRAWN;
 
     private final UserMapper userMapper;
     private final StudentProfileMapper profileMapper;

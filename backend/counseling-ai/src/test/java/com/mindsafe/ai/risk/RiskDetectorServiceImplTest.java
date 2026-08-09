@@ -100,7 +100,10 @@ class RiskDetectorServiceImplTest {
                 "妈妈把我锁屋里",
                 "我想离家出走",
                 "我喘不过气来",
-                "我要崩溃了"
+                "我要崩溃了",
+                // F-2：高频"被X欺负"中间插词变体（原"被欺负"不命中致漏报）
+                "我最近总被同学欺负，很难受",
+                "我被人欺负了，不敢告诉老师"
         })
         @DisplayName("橙色关键词 → 橙色或红色")
         void should_return_orange_or_higher_when_medium_risk_keywords(String message) {

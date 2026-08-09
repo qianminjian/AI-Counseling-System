@@ -218,6 +218,22 @@ class TrialAuthServiceTest {
     }
 
     @Test
+    @DisplayName("F-1: PIN 登录冻结账号（withdrawn）→ FORBIDDEN 专属提示（不泄露 PIN 校验）")
+    void withdrawnAccountFrozen() {
+        User user = new User();
+        user.setUserId(UUID.randomUUID());
+        user.setTenantId(UUID.randomUUID());
+        user.setStatus(User.STATUS_WITHDRAWN);
+        user.setPinHash("stored-hash");
+        when(userMapper.selectList(any())).thenReturn(List.of(user));
+
+        BizException ex = assertThrows(BizException.class, () -> service.loginWithPin("小明同学", "1234"));
+        assertEquals(ErrorCode.FORBIDDEN.code(), ex.getCode());
+        assertTrue(ex.getMessage().contains("冻结"));
+        verify(passwordEncoder, never()).matches(anyString(), anyString());
+    }
+
+    @Test
     @DisplayName("PIN 登录成功 → 返回用户并更新最后登录时间")
     void loginSuccess() {
         User user = new User();

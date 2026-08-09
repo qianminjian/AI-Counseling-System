@@ -21,6 +21,9 @@ public class User {
     /** C2（2026-08-05）：状态魔法值收敛——用户待启用（老师后台审批/初始化） */
     public static final String STATUS_PENDING = "pending";
 
+    /** F-1（2026-08-09）：状态魔法值收敛——撤回同意冻结（PIPL §47 家长可撤回，需重新授权恢复） */
+    public static final String STATUS_WITHDRAWN = "withdrawn";
+
     /** C2（2026-08-05）：用户类型魔法值收敛——学生 */
     public static final String USER_TYPE_STUDENT = "student";
 

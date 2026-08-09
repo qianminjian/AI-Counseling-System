@@ -30,12 +30,12 @@ public class AuthUserService {
     /**
      * 按昵称查登录候选（SEC-003：昵称无全局唯一约束，重名拒绝逻辑在调用方判定）。
      * 系统作用域查询，不受租户行隔离影响。
+     * F-1：查询放宽至含 withdrawn（撤回同意冻结）——冻结账号须返回专属提示而非笼统的"用户名或密码错误"。
      */
     public List<User> findLoginCandidates(String username) {
         return TenantContextHolder.callAsSystem(() -> userMapper.selectList(
                 new LambdaQueryWrapper<User>()
                         .eq(User::getPseudonym, username)
-                        .eq(User::getStatus, User.STATUS_ACTIVE)
         ));
     }
 

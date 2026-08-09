@@ -97,6 +97,11 @@ public class AuthController {
         }
         User user = candidates.isEmpty() ? null : candidates.get(0);
 
+        // F-1：撤回同意冻结账号（withdrawn）→ 专属提示（PIPL §47，需重新授权恢复）
+        if (user != null && User.STATUS_WITHDRAWN.equals(user.getStatus())) {
+            throw new BizException(ErrorCode.FORBIDDEN, "账号已冻结，请联系家长或学校重新授权");
+        }
+
         if (user == null || user.getPasswordHash() == null
                 || !passwordEncoder.matches(request.password(), user.getPasswordHash())) {
             lockoutService.recordFailure(request.username());
