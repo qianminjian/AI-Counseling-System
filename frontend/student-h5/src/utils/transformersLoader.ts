@@ -102,15 +102,14 @@ function configureEnv(hf: typeof HF, remoteHost: string, base: string): void {
 
 /**
  * 模型下载进度聚合处理器（传给 pipeline/from_pretrained 的 progress_callback）：
- * progress_total 优先（直接取总百分比）；否则按文件平均聚合。
+ * 按文件平均聚合（仅处理 status=progress 事件，忽略 progress_total——并行加载多个模型时
+ * progress_total 事件会互相覆盖导致进度跳变，如声纹的 AutoModel+AutoFeatureExtractor 并行场景）。
  */
 export function createProgressHandler(onProgress: (p: number) => void): (ev: unknown) => void {
   const fileProgress: Record<string, number> = {}
   return (ev) => {
     const e = ev as { status?: string; progress?: number; file?: string }
-    if (e.status === 'progress_total' && typeof e.progress === 'number') {
-      onProgress(Math.round(e.progress))
-    } else if (e.status === 'progress' && e.file && typeof e.progress === 'number') {
+    if (e.status === 'progress' && e.file && typeof e.progress === 'number') {
       fileProgress[e.file] = e.progress
       const files = Object.keys(fileProgress)
       const avg = files.reduce((s, f) => s + fileProgress[f], 0) / files.length

@@ -67,17 +67,21 @@ function getModelBundle() {
       load: async ({ AutoModel, AutoFeatureExtractor }) => {
         // WeSpeaker 是音频模型，不能用 pipeline('feature-extraction')（那是文本模型专用）。
         // 正确方式：AutoModel + AutoFeatureExtractor 分别加载，手动编排推理。
-        const sessionOpts = {
-          session_options: { graphOptimizationLevel: 'basic' as const },
-          progress_callback: createProgressHandler((p) => {
-            setVpModelStatus('loading', p)
-            console.debug(`[Voiceprint] 模型加载 ${p}%`)
-          }),
-        }
-        // 并行加载模型和特征提取器
+        // 并行加载模型和特征提取器——各自独立 progress_callback（避免共享 fileProgress dict 互相覆盖）
+        const featureCallback = createProgressHandler((p) => {
+          setVpModelStatus('loading', p)
+          console.debug(`[Voiceprint] 特征提取器 ${p}%`)
+        })
+        const modelCallback = createProgressHandler((p) => {
+          setVpModelStatus('loading', p)
+          console.debug(`[Voiceprint] 模型 ${p}%`)
+        })
         const [model, featureExtractor] = await Promise.all([
-          AutoModel.from_pretrained(VP_MODEL_ID, sessionOpts),
-          AutoFeatureExtractor.from_pretrained(VP_MODEL_ID, { progress_callback: sessionOpts.progress_callback }),
+          AutoModel.from_pretrained(VP_MODEL_ID, {
+            session_options: { graphOptimizationLevel: 'basic' as const },
+            progress_callback: modelCallback,
+          }),
+          AutoFeatureExtractor.from_pretrained(VP_MODEL_ID, { progress_callback: featureCallback }),
         ])
         setVpModelStatus('ready', 100)
         return { model, featureExtractor }
