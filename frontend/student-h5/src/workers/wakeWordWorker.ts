@@ -48,12 +48,17 @@ async function ensureModel(config) {
 
     // ━━ 关键修复 1：禁用 WASM 缓存，避免 blob URL 工厂导致 Worker 创建失败 ━━
     env.useWasmCache = false
-    // ━━ 关键修复 2：单线程模式，避免 ORT 创建 pthread Worker ━━
-    env.backends.onnx.wasm.numThreads = 1
+    // F-8-Worker（2026-08-09）：与主线程 transformersLoader.ts 同步——单线程 40MB 模型 session_create
+    // 耗时长（30-60s）改双线程加速。注意 numThreads=2 需要 SharedArrayBuffer + pthread
+    // （COOP/COEP 头已配齐），低端 CPU/WebView 异常时可改回 1。
+    env.backends.onnx.wasm.numThreads = 2
 
     // ONNX WASM 路径
     env.backends.onnx.wasm.wasmPaths = config.wasmPaths
 
+    // F-8-Worker 诊断：埋点 ORT session_create 耗时（生产环境 console 可见，便于排查加载慢问题）
+    const t0Session = Date.now()
+    console.info(TAG, `开始 ORT session_create（numThreads=${env.backends.onnx.wasm.numThreads}）`)
     const t = await pipeline('automatic-speech-recognition', config.modelId, {
       // 禁用高级图优化：ORT 1.26.0 TransposeDQWeightsForMatMulNBits bug
       session_options: { graphOptimizationLevel: 'basic' },
@@ -63,6 +68,9 @@ async function ensureModel(config) {
         }
       },
     })
+    const sessionCreateMs = Date.now() - t0Session
+    console.info(TAG, `✅ ORT session_create 完成，耗时 ${sessionCreateMs}ms`)
+    self.postMessage({ type: 'session_created', durationMs: sessionCreateMs })
 
     transcriberInstance = t
     self.postMessage({ type: 'status', status: 'ready' })

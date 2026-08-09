@@ -8,6 +8,7 @@ import ConfirmDialog from './ConfirmDialog'
 import ToolboxPanel from './ToolboxPanel'
 import SosPanel from './SosPanel'
 import BoBoPet from './BoBoPet'
+import ModelDownloadProgress from './ModelDownloadProgress' // F-8：ChatRoom 也显示模型加载进度（与登录页一致）
 import DraggableVoiceButton from './DraggableVoiceButton'
 import MessageBubble from './MessageBubble'
 // FA-14：语音状态 → 文案/指示器单一映射（mainHint/subHint/VoiceStatusChip）
@@ -307,6 +308,8 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: Se
 
   return (
     <div className="h-screen flex flex-col" style={{ background: 'linear-gradient(to bottom, var(--bg-start), var(--bg-end))' }}>
+      {/* F-8：模型加载进度（与登录页一致），进对话加载时显示百分比，避免"加载中"无感 */}
+      <ModelDownloadProgress />
       {/* ===== Header（FA-06：拆出 ChatRoomHeader 子组件，纯展示 + 回调） ===== */}
       <ChatRoomHeader
         muted={tts.muted}

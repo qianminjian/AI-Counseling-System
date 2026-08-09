@@ -4,7 +4,8 @@ import { CONSENT_VERSION } from './ConsentGate'
 import { hasAnyVoiceprint } from '../utils/voiceprintStore'
 import { useTheme, THEMES } from '../theme/ThemeProvider'
 import { preloadVoiceprintModel, useVoiceprintModelStatus } from '../hooks/useVoiceprint'
-import { preloadWakeModel, useWakeModelStatus } from '../hooks/useWakeWord'
+import { preloadWakeModel } from '../hooks/useWakeWord'
+import ModelDownloadProgress from './ModelDownloadProgress' // F-8：登录页与对话页共用加载进度
 import VoiceLoginOverlay from './VoiceLoginOverlay'
 // DC-007：声纹注册编排收敛（SPEC §21）
 import { useVoiceEnrollment } from '../hooks/useVoiceEnrollment'
@@ -660,69 +661,4 @@ function RegisterForm({ themeId, onRegister }) {
       </ConfirmDialog>
     </form>
   )
-}
-
-/** 本地模型下载进度（登录页底部，合并显示声纹 + 唤醒词模型） */
-function ModelDownloadProgress() {
-  const wake = useWakeModelStatus()
-  const vp = useVoiceprintModelStatus()
-  const [showReady, setShowReady] = useState(false)
-
-  // 汇总两个模型的状态
-  const items: { label: string; status: string; progress: number; error?: string }[] = []
-  if (vp.status === 'loading' || vp.status === 'error') {
-    items.push({ label: '声纹引擎', status: vp.status, progress: vp.progress, error: vp.error })
-  }
-  if (wake.status === 'loading' || wake.status === 'error') {
-    items.push({ label: '语音引擎', status: wake.status, progress: wake.progress, error: wake.error })
-  }
-
-  // 两个模型都 ready 时，短暂显示绿色就绪提示（3s 后自动隐藏）
-  const bothReady = vp.status === 'ready' && wake.status === 'ready'
-  useEffect(() => {
-    if (bothReady) {
-      setShowReady(true)
-      const t = setTimeout(() => setShowReady(false), 3000)
-      return () => clearTimeout(t)
-    }
-  }, [bothReady])
-
-  if (items.length === 0 && !showReady) return null
-
-  // 就绪状态：绿色胶囊
-  if (items.length === 0 && showReady) {
-    return (
-      <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 px-4 py-1.5 rounded-full border text-xs font-medium bg-green-50 text-green-600 border-green-200 transition-opacity duration-500">
-        🎧 语音引擎已就绪
-      </div>
-    )
-  }
-
-  const hasError = items.some((i) => i.status === 'error')
-  const allLoading = items.filter((i) => i.status === 'loading')
-
-  // 有失败：仅友好提示（AUD-024：不向儿童界面渲染错误堆栈/内部路径，诊断信息保留在 console）
-  if (hasError) {
-    const failedItems = items.filter((i) => i.status === 'error')
-    const failedNames = failedItems.map((i) => i.label).join('、')
-    return (
-      <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 px-4 py-1.5 rounded-full border text-xs font-medium bg-red-50 text-red-500 border-red-200 max-w-[90vw]">
-        ⚠️ {failedNames}加载失败，不影响登录
-      </div>
-    )
-  }
-
-  // 正在下载：显示进度
-  if (allLoading.length > 0) {
-    const text = allLoading.length === 2
-      ? `🎧 语音引擎准备中 ${Math.round((allLoading[0].progress + allLoading[1].progress) / 2) || 0}%`
-      : `🎧 ${allLoading[0].label}准备中 ${allLoading[0].progress > 0 ? `${allLoading[0].progress}%` : '…'}`
-    return (
-      <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 px-4 py-1.5 rounded-full border text-xs font-medium bg-amber-50 text-amber-600 border-amber-200 animate-pulse">
-        {text}
-      </div>
-    )
-  }
-
-  return null
 }

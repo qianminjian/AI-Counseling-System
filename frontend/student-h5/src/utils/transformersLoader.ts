@@ -86,8 +86,10 @@ function configureEnv(hf: typeof HF, remoteHost: string, base: string): void {
   hf.env.allowLocalModels = false
   // 关键修复 1：禁用 WASM 缓存，避免 blob URL 工厂导致 Worker 创建失败
   hf.env.useWasmCache = false
-  // 关键修复 2：单线程模式，避免 ORT 创建 pthread Worker（部分浏览器/WebView 对 module Worker 有限制）
-  hf.env.backends.onnx.wasm.numThreads = 1
+  // F-8（2026-08-09）：双线程加速 ORT session 创建。macOS Chrome 支持 SharedArrayBuffer + pthread，
+  // 单线程 40MB 模型 session 创建耗时长（约 30-60s）→ 改为 2 线程。
+  // 兼容回退：低端 CPU/WebView 仍可改回 1。
+  hf.env.backends.onnx.wasm.numThreads = 2
   // ONNX Runtime WASM 走本地（dist/ort/ → /mindsafe/ort/）；始终非 asyncify 变体（调用约定匹配）
   const variant = 'ort-wasm-simd-threaded'
   hf.env.backends.onnx.wasm.wasmPaths = {
