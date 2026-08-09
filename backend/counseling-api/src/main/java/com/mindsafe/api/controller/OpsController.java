@@ -3,8 +3,13 @@ package com.mindsafe.api.controller;
 import com.mindsafe.common.dto.ApiResponse;
 import com.mindsafe.common.dto.ErrorCode;
 import com.mindsafe.domain.entity.AuditLog;
+import com.mindsafe.domain.entity.DegradationEvent;
+import com.mindsafe.domain.entity.RiskEvent;
 import com.mindsafe.domain.entity.ServiceHealthSnapshot;
+import com.mindsafe.service.knowledge.KnowledgeBaseService;
+import com.mindsafe.service.monitoring.DegradationMatrixService;
 import com.mindsafe.service.monitoring.OpsService;
+import com.mindsafe.service.ops.OpsInsightsService;
 import com.mindsafe.service.risk.RiskOverviewService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -40,10 +45,20 @@ public class OpsController {
 
     private final OpsService opsService;
     private final RiskOverviewService riskOverviewService;
+    private final DegradationMatrixService degradationMatrixService;
+    private final KnowledgeBaseService knowledgeBaseService;
+    private final OpsInsightsService opsInsightsService;
 
-    public OpsController(OpsService opsService, RiskOverviewService riskOverviewService) {
+    public OpsController(OpsService opsService,
+                         RiskOverviewService riskOverviewService,
+                         DegradationMatrixService degradationMatrixService,
+                         KnowledgeBaseService knowledgeBaseService,
+                         OpsInsightsService opsInsightsService) {
         this.opsService = opsService;
         this.riskOverviewService = riskOverviewService;
+        this.degradationMatrixService = degradationMatrixService;
+        this.knowledgeBaseService = knowledgeBaseService;
+        this.opsInsightsService = opsInsightsService;
     }
 
     @GetMapping("/services/status")
@@ -129,5 +144,81 @@ public class OpsController {
     }
 
     public record RiskCloseRequest(@NotBlank(message = "reason 必填") String reason) {
+    }
+
+    // ===== M3 降级监控（ADMIN-P2-01/02：矩阵/手动切换/事件时间线） =====
+
+    @GetMapping("/degradation/matrix")
+    public ApiResponse<List<Map<String, Object>>> degradationMatrix() {
+        return ApiResponse.ok(degradationMatrixService.matrix());
+    }
+
+    /** 手动切换（X-Confirm 固定短语 + reason 必填；仅 ops/super，SecurityConfig 强制） */
+    @PostMapping("/degradation/{point}/override")
+    public ApiResponse<Void> override(@PathVariable String point,
+                                      @RequestHeader(value = "X-Confirm", required = false) String confirm,
+                                      @Valid @RequestBody DegradationOverrideRequest request) {
+        if (!CONFIRM_PHRASE.equals(confirm)) {
+            return ApiResponse.error(ErrorCode.PARAM_INVALID.code(), "高危操作需 X-Confirm: CONFIRM 头（操作二次确认）");
+        }
+        degradationMatrixService.override(point, request.to(), operatorName(), request.reason());
+        return ApiResponse.ok(null);
+    }
+
+    /** 取消覆盖（回配置默认） */
+    @PostMapping("/degradation/{point}/override/cancel")
+    public ApiResponse<Void> cancelOverride(@PathVariable String point,
+                                            @RequestHeader(value = "X-Confirm", required = false) String confirm,
+                                            @Valid @RequestBody RiskCloseRequest request) {
+        if (!CONFIRM_PHRASE.equals(confirm)) {
+            return ApiResponse.error(ErrorCode.PARAM_INVALID.code(), "高危操作需 X-Confirm: CONFIRM 头（操作二次确认）");
+        }
+        degradationMatrixService.cancelOverride(point, operatorName(), request.reason());
+        return ApiResponse.ok(null);
+    }
+
+    @GetMapping("/degradation/events")
+    public ApiResponse<List<DegradationEvent>> degradationEvents(
+            @RequestParam(required = false) String point,
+            @RequestParam(defaultValue = "100") int limit) {
+        return ApiResponse.ok(degradationMatrixService.events(point, limit));
+    }
+
+    public record DegradationOverrideRequest(@NotBlank(message = "to 必填") String to,
+                                             @NotBlank(message = "reason 必填") String reason) {
+    }
+
+    // ===== M9 知识库平台统计（ADMIN-P2-03） =====
+
+    @GetMapping("/knowledge/stats")
+    public ApiResponse<Map<String, Object>> knowledgeStats(@RequestParam(required = false) UUID tenantId) {
+        return ApiResponse.ok(knowledgeBaseService.platformStats(tenantId));
+    }
+
+    // ===== M10/M12 运营洞察（ADMIN-P2-04/05） =====
+
+    @GetMapping("/insights/channel-stats")
+    public ApiResponse<Map<String, Object>> channelStats() {
+        return ApiResponse.ok(opsInsightsService.channelStats());
+    }
+
+    @GetMapping("/insights/dead-ledger")
+    public ApiResponse<List<OpsInsightsService.DeadLedgerEntry>> deadLedger(@RequestParam(defaultValue = "100") int limit) {
+        return ApiResponse.ok(opsInsightsService.deadLedger(limit));
+    }
+
+    @GetMapping("/insights/quality-trend")
+    public ApiResponse<Map<String, Object>> qualityTrend() {
+        return ApiResponse.ok(opsInsightsService.qualityTrend());
+    }
+
+    @GetMapping("/insights/alert-funnel")
+    public ApiResponse<Map<String, Object>> alertFunnel() {
+        return ApiResponse.ok(opsInsightsService.alertFunnel());
+    }
+
+    @GetMapping("/insights/tenant-health")
+    public ApiResponse<List<Map<String, Object>>> tenantHealth() {
+        return ApiResponse.ok(opsInsightsService.tenantHealth());
     }
 }

@@ -1007,13 +1007,13 @@
 
 | Ticket | 任务 | 前置 | 验收标准（AC-P2-xx） |
 |--------|------|------|---------------------|
-| ADMIN-P2-01 | M3 降级矩阵 + 手动切换 | OPS-MON-007 + P1 | 矩阵状态聚合（/health + Redis 覆盖键 + Prometheus 指标）；切换写 Redis 键 + degradation_events manual 事件；取消覆盖回落默认（重启后也回落）；影响面提示展示；仅 ops_admin/super_admin |
+| ADMIN-P2-01 | M3 降级矩阵 + 手动切换 | OPS-MON-007 + P1 | 矩阵状态聚合（/health + Redis 覆盖键 + 最近事件）；切换写 Redis 键 + degradation_events manual 事件；取消覆盖回默认；影响面提示；仅 ops_admin/super_admin。**记录型切换（2026-08-09 code-review H1 修订）**：覆盖键当前仅矩阵展示与检测器跳过逻辑消费，运行时档位联动（tts/voice 读键）后续批次；切换=意图登记+留痕+auto 抑制 |
 | ADMIN-P2-02 | M3 事件时间线（消费 degradation_events） | P2-01 | auto/manual 事件完整展示（时间倒序 + 点/类型过滤）；auto 事件与降级监控文档 OPS-MON-007 产出一致 |
 | ADMIN-P2-03 | M9 知识库管理扩展 | P0 + 现有 KnowledgeBaseController | 分页/筛选扩展 + top-hits 统计；审核流复用现有 review/editorial（不改动既有语义） |
 | ADMIN-P2-04 | M10 通知渠道统计 + 失败台账 + 触达策略 | P1 | 发送统计图表（企微/短信/站内）；dead 台账补发/关闭（二次确认）；触达策略配置化改造默认值=现状行为（NotificationService 分发逻辑回归测试护航） |
 | ADMIN-P2-05 | M12 运营洞察 | P1 | 会话质量趋势（QualityScore）；预警漏斗（检出→通知→认领→处置→闭环）；租户健康度红黄绿列表 |
 | ADMIN-P2-06 | 前端 P2 页面组 | 对应后端 | 降级矩阵/知识库/通知渠道/运营洞察页面可用；降级切换弹窗含影响提示 + reason + 二次确认 |
-| ADMIN-P2-07 | P2 回归门禁 | P2-01~06 | 手动切换后 /health 反映新档位；取消覆盖回落默认；事件历史完整；全量回归全绿 |
+| ADMIN-P2-07 | P2 回归门禁 | P2-01~06 | 切换写覆盖键+manual 事件正确；取消覆盖删键回默认；事件历史完整；全量回归全绿（**记录型切换语义**：不承诺 /health 实时档位变更，运行时联动后续批次） |
 
 ### 13.4 P3 商业化与合规（M4 采集 + M11，冻结项不实施）
 

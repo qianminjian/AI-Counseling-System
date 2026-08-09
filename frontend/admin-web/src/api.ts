@@ -120,3 +120,68 @@ export function fetchRiskOverview(): Promise<RiskOverview> {
 export function fetchRiskOverdue(): Promise<Array<Record<string, unknown>>> {
   return adminFetch<Array<Record<string, unknown>>>('/api/v1/ops/risk/overdue')
 }
+
+// ===== P2（ADMIN-P2-01/02：降级矩阵 + 事件时间线） =====
+
+export interface DegradationRow {
+  point: string
+  overridden: boolean
+  overrideTo?: string
+  currentState: string
+  availableStates: string[]
+  latestEvent?: { from: string; to: string; triggerType: string; occurredAt: string }
+}
+
+export function fetchDegradationMatrix(): Promise<DegradationRow[]> {
+  return adminFetch<DegradationRow[]>('/api/v1/ops/degradation/matrix')
+}
+
+export interface DegradationEventItem {
+  point: string
+  fromState: string
+  toState: string
+  triggerType: string
+  operator?: string
+  occurredAt: string
+}
+
+export function fetchDegradationEvents(point?: string): Promise<DegradationEventItem[]> {
+  const q = point ? `?point=${encodeURIComponent(point)}` : ''
+  return adminFetch<DegradationEventItem[]>(`/api/v1/ops/degradation/events${q}`)
+}
+
+/** 手动切换（X-Confirm 固定短语 + reason） */
+export async function degradationOverride(point: string, to: string, reason: string): Promise<void> {
+  const token = getAdminToken()
+  const resp = await fetch(`/api/v1/ops/degradation/${encodeURIComponent(point)}/override`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Confirm': 'CONFIRM',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ to, reason }),
+  })
+  if (!resp.ok) {
+    const body = await resp.json().catch((): null => null)
+    throw new Error(body?.message ?? '切换失败')
+  }
+}
+
+/** 取消覆盖（回配置默认，X-Confirm + reason） */
+export async function cancelDegradationOverride(point: string, reason: string): Promise<void> {
+  const token = getAdminToken()
+  const resp = await fetch(`/api/v1/ops/degradation/${encodeURIComponent(point)}/override/cancel`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Confirm': 'CONFIRM',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ reason }),
+  })
+  if (!resp.ok) {
+    const body = await resp.json().catch((): null => null)
+    throw new Error(body?.message ?? '取消失败')
+  }
+}

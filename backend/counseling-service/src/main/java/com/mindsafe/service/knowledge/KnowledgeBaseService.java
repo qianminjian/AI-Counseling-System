@@ -233,6 +233,33 @@ public class KnowledgeBaseService {
     }
 
     /**
+     * 知识库平台统计（ADMIN-P2-03，M9）：按状态/分类聚合（租户可空=平台全量，仅计数 R-11）。
+     */
+    public Map<String, Object> platformStats(UUID tenantId) {
+        // 租户为空=平台全量（无过滤）；非空=该租户 + 平台共享（tenant_id IS NULL）
+        String where = tenantId == null ? "" : " WHERE (tenant_id IS NULL OR tenant_id = ?)";
+        Object[] params = tenantId == null ? new Object[0] : new Object[]{tenantId};
+        List<Map<String, Object>> byStatus = jdbcTemplate.queryForList(
+                "SELECT status, COUNT(*) AS cnt FROM tenant_template.knowledge_documents" + where
+                        + " GROUP BY status", params);
+        Map<String, Object> statusDist = new java.util.LinkedHashMap<>();
+        for (Map<String, Object> row : byStatus) {
+            statusDist.put(String.valueOf(row.get("status")), row.get("cnt"));
+        }
+        List<Map<String, Object>> byCategory = jdbcTemplate.queryForList(
+                "SELECT category, COUNT(*) AS cnt FROM tenant_template.knowledge_documents" + where
+                        + " GROUP BY category", params);
+        Map<String, Object> categoryDist = new java.util.LinkedHashMap<>();
+        for (Map<String, Object> row : byCategory) {
+            categoryDist.put(String.valueOf(row.get("category")), row.get("cnt"));
+        }
+        Map<String, Object> result = new java.util.LinkedHashMap<>();
+        result.put("byStatus", statusDist);
+        result.put("byCategory", categoryDist);
+        return result;
+    }
+
+    /**
      * 查询文档当前审核状态（DB 真实值，不信请求体）。B3 修复：加 tenant_id 过滤。
      *
      * @return status 字符串，文档不存在时返回 null

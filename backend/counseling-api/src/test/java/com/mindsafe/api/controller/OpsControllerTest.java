@@ -2,7 +2,10 @@ package com.mindsafe.api.controller;
 
 import com.mindsafe.domain.entity.AuditLog;
 import com.mindsafe.domain.entity.ServiceHealthSnapshot;
+import com.mindsafe.service.knowledge.KnowledgeBaseService;
+import com.mindsafe.service.monitoring.DegradationMatrixService;
 import com.mindsafe.service.monitoring.OpsService;
+import com.mindsafe.service.ops.OpsInsightsService;
 import com.mindsafe.service.risk.RiskOverviewService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -28,13 +31,19 @@ class OpsControllerTest {
 
     private OpsService opsService;
     private RiskOverviewService riskOverviewService;
+    private DegradationMatrixService degradationMatrixService;
+    private KnowledgeBaseService knowledgeBaseService;
+    private OpsInsightsService opsInsightsService;
     private OpsController controller;
 
     @BeforeEach
     void setUp() {
         opsService = mock(OpsService.class);
         riskOverviewService = mock(RiskOverviewService.class);
-        controller = new OpsController(opsService, riskOverviewService);
+        degradationMatrixService = mock(DegradationMatrixService.class);
+        knowledgeBaseService = mock(KnowledgeBaseService.class);
+        opsInsightsService = mock(OpsInsightsService.class);
+        controller = new OpsController(opsService, riskOverviewService, degradationMatrixService, knowledgeBaseService, opsInsightsService);
     }
 
     @Test

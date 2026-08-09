@@ -112,6 +112,9 @@ public class SecurityConfig {
                         // 注意：必须置于 /api/v1/ops/** 兜底之前（Spring Security 按声明顺序匹配）
                         .requestMatchers(HttpMethod.POST, "/api/v1/ops/risk/**")
                                 .hasAnyRole("PLATFORM_SUPER_ADMIN", "PLATFORM_OPS_ADMIN")
+                        // M3 手动降级切换（ADMIN-P2-01）：仅 ops/super（audit 只读）
+                        .requestMatchers(HttpMethod.POST, "/api/v1/ops/degradation/**")
+                                .hasAnyRole("PLATFORM_SUPER_ADMIN", "PLATFORM_OPS_ADMIN")
                         // 运维域（ADMIN-P0-05/06 新增：服务拓扑/指标/告警，仅平台角色）
                         .requestMatchers("/api/v1/ops/**")
                                 .hasAnyRole("PLATFORM_SUPER_ADMIN", "PLATFORM_OPS_ADMIN", "PLATFORM_AUDIT")
