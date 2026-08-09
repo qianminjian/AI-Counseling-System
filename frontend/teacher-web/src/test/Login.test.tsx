@@ -98,4 +98,15 @@ describe('Login 登录页', () => {
     await waitFor(() => expect(onLogin).not.toHaveBeenCalled());
     expect(sessionStorage.getItem('mindsafe_token')).toBeNull();
   });
+
+  // DOC-086 / BUG-T-BASE-01 回归：用户名 + 密码 input 必须具备 a11y 自动填充语义
+  it('用户名/密码 input 应具备 a11y 自动填充属性', () => {
+    mockCallEndpoint.mockResolvedValue({ enabled: false });
+    render(<Login onLogin={vi.fn()} />);
+    const userInput = screen.getByPlaceholderText(/用户名/) as HTMLInputElement;
+    const pwdInput = screen.getByPlaceholderText('密码') as HTMLInputElement;
+    // antd 5+ 会透传 autoComplete 到 input
+    expect(userInput.autocomplete).toBe('username');
+    expect(pwdInput.autocomplete).toBe('current-password');
+  });
 });

@@ -79,10 +79,12 @@ export default function Login({ onLogin }: {
         </div>
         <Form onFinish={handleSubmit} size="large">
           <Form.Item name="username" rules={[{ required: true, message: '请输入用户名' }]}>
-            <Input prefix={<UserOutlined />} placeholder="用户名（如：李老师）" />
+            {/* DOC-086 / BUG-T-BASE-01：a11y 自动填充语义 */}
+            <Input prefix={<UserOutlined />} placeholder="用户名（如：李老师）" autoComplete="username" />
           </Form.Item>
           <Form.Item name="password" rules={[{ required: true, message: '请输入密码' }]}>
-            <Input.Password prefix={<LockOutlined />} placeholder="密码" />
+            {/* DOC-086 / BUG-T-BASE-01：a11y 自动填充语义，消除控制台 issue 警告 */}
+            <Input.Password prefix={<LockOutlined />} placeholder="密码" autoComplete="current-password" />
           </Form.Item>
           <Form.Item>
             <Button type="primary" htmlType="submit" block loading={loading}>
