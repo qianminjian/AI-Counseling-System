@@ -7,7 +7,6 @@ import org.springframework.core.task.TaskDecorator;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
 import java.util.UUID;
-import java.util.concurrent.Executor;
 
 /**
  * 租户上下文异步传播配置（M1-003 fail-fast 收紧配套）
@@ -51,9 +50,13 @@ public class TenantContextPropagationConfig {
      * （AiConfig.outputReviewExecutor）时跳过创建，裸 {@code @Async} 落入
      * {@code SimpleAsyncTaskExecutor}（无装饰器），子线程丢失租户上下文触发 fail-fast
      * （生产日志：message_summaries/audit_logs 全量拒绝）。此处显式定义缺省执行器并挂装饰器根治。
+     * <p>
+     * 注意：返回类型必须声明为 {@link ThreadPoolTaskExecutor}（TaskExecutor 子类）而非 {@link Executor}——
+     * Spring {@code @Async} 缺省执行器按 {@code TaskExecutor} 类型查找，返回 Executor 类型
+     * 的 bean 无法被 {@code getBean(TaskExecutor.class)} 命中（首次修复失效原因）。
      */
     @Bean(name = "applicationTaskExecutor")
-    public Executor applicationTaskExecutor() {
+    public ThreadPoolTaskExecutor applicationTaskExecutor() {
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
         executor.setCorePoolSize(8);
         executor.setMaxPoolSize(16);
