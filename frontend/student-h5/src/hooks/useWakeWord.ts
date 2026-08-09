@@ -187,6 +187,56 @@ export function preloadWakeModel() {
 }
 
 /**
+ * F-6/F-9（2026-08-09）：检查唤醒模型是否已完整写入 transformers-cache（Cache API）。
+ * encoder + decoder 双文件校验（decoder 30M 是瓶颈文件）。缓存完整时 Worker 可直接
+ * init 秒加载，避免与主线程并行下载（4.7Mbps 下双下载必然超时）。
+ */
+async function hasWakeModelInCache(): Promise<boolean> {
+  try {
+    if (!('caches' in self)) return false
+    const base = import.meta.env.BASE_URL || '/'
+    const cache = await caches.open('transformers-cache')
+    const files = [
+      'onnx/encoder_model_quantized.onnx',
+      'onnx/decoder_model_merged_quantized.onnx',
+    ]
+    for (const f of files) {
+      const url = `${self.location.origin}${base}models/onnx-community/whisper-tiny/${f}`
+      const hit = await cache.match(url)
+      if (!hit) return false
+    }
+    return true
+  } catch {
+    return false
+  }
+}
+
+/**
+ * 等待主线程预加载结束（下载的文件已写入 Cache API），供 Worker 复用缓存，避免双下载。
+ * 超时 120s（F-9b）：覆盖 4.7Mbps 带宽下 110MB 模型全量下载耗时。
+ */
+function waitForMainThreadModel(timeoutMs = 120000): Promise<boolean> {
+  return new Promise((resolve) => {
+    const st = wakeModelStore.getStatus()
+    if (st !== 'loading') {
+      resolve(true)
+      return
+    }
+    const start = Date.now()
+    const timer = setInterval(() => {
+      const s = wakeModelStore.getStatus()
+      if (s !== 'loading') {
+        clearInterval(timer)
+        resolve(true)
+      } else if (Date.now() - start >= timeoutMs) {
+        clearInterval(timer)
+        resolve(false)
+      }
+    }, 300)
+  })
+}
+
+/**
  * @param {object} opts
  * @param {boolean} opts.active      是否启动引擎（加载模型 + 启动麦克风）——仅对话内且处于待唤醒态时为 true
  * @param {boolean} opts.paused      暂停检测（AI 忙碌时防自听回声，但保持模型 + 麦克风就绪，忙碌结束立即恢复检测）
@@ -387,17 +437,26 @@ export function useWakeWord({ active, paused, onDetected }) {
 
       // 发送初始化消息（触发模型加载，若已在情绪页预加载则从 Cache API 秒开）
       setModelStatus('loading')
-      // F-12（2026-08-09）：恢复 8.2 直接 init 时序——删除 F-6/F-9 的 waitForMainThreadModel/
-      // hasWakeModelInCache 等待机制（实测其阻塞 init 导致 transcribe 先于 init 到达 Worker、
-      // 状态机时序混乱、UI 卡加载）。Worker 直接 init 加载（缓存命中秒级/首次下载自行完成），
-      // 超时 30s 兜底降级主线程（8.2 为 15s，放宽避免缓存冷启动 11.8s 临界误降级）。
+      // F-13（2026-08-09）：F-6 等待机制最终形态——主线程预加载中且缓存未完整时，
+      // 等主线程下载完成（120s 覆盖 4.7Mbps 全量下载）再 init Worker 复用缓存，
+      // 避免双下载抢带宽（F-12 直接 init 实测：Worker 与主线程并行下载 30s 超时必失败）。
+      // F-11 已修复 wakeStatus 同步，等待期间 UI 正常显示"加载中"进度。
       ;(async () => {
+        if (wakeModelStore.getStatus() === 'loading' && !(await hasWakeModelInCache())) {
+          const preloadDone = await waitForMainThreadModel()
+          if (cancelled || useMainThread) return
+          if (!preloadDone) {
+            fallbackToMainThread('主线程预加载超时（120s）')
+            return
+          }
+        }
+        if (cancelled || useMainThread) return
         worker.postMessage({ type: 'init', config: workerConfig })
         workerTimeout = setTimeout(() => {
           if (!useMainThread && !cancelled) {
-            fallbackToMainThread('Worker 30s 无响应')
+            fallbackToMainThread('Worker 60s 无响应')
           }
-        }, 30000)
+        }, 60000)
       })()
     }
 
