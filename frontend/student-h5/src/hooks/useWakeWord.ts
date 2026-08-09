@@ -424,6 +424,11 @@ export function useWakeWord({ active, paused, onDetected }) {
           } else if (status === 'ready') {
             if (workerTimeout) clearTimeout(workerTimeout)
             setModelStatus('ready')
+            // F-11（2026-08-09）：Worker ready 时同步 wakeStatus → listening。
+            // 旧代码只更新 modelStatus，而 Worker 先发的 loading 消息已把 wakeStatus
+            // 覆盖为 loading 且无人改回 → UI 永远"语音引擎加载中"（实测：进度 100%
+            // 后关闭但界面仍加载中、呼叫无反应）。
+            setWakeStatus('listening')
           } else if (status === 'error') {
             if (workerTimeout) clearTimeout(workerTimeout)
             fallbackToMainThread(event.data.message || 'Worker 模型加载失败')
