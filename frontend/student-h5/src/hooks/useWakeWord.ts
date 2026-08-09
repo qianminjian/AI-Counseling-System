@@ -192,9 +192,14 @@ function buildWorkerConfig() {
 function getWakeWorker(): Promise<Worker> {
   if (!wakeWorkerPromise) {
     wakeWorkerPromise = (async () => {
-      // 等主线程模型下载完成（缓存完整或主线程 ready），避免 Worker 与主线程双下载
-      if (wakeModelStore.getStatus() === 'loading' && !(await hasWakeModelInCache())) {
-        await waitForMainThreadModel()
+      // F-24（2026-08-10）：Worker 只等模型文件写入缓存（下载完成）即可 init，
+      // 不再等主线程 pipeline 完全就绪——主线程 getTranscriber 的 ORT 初始化可能
+      // 很慢（声纹 107s 级），Worker 被无辜拖住（UI 长期"正在准备"）。
+      // 文件进缓存后 Worker 独立从缓存加载（session_create 0.4-12s），与主线程并行。
+      const waitT0 = Date.now()
+      while (!(await hasWakeModelInCache())) {
+        if (Date.now() - waitT0 > 120000) throw new Error('唤醒模型下载超时（120s）')
+        await new Promise((r) => setTimeout(r, 2000))
       }
       const w = new Worker(
         new URL('../workers/wakeWordWorker.ts', import.meta.url),
