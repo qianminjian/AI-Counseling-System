@@ -13,8 +13,10 @@ export default function Login({ onLogin }: {
     callEndpoint('getWecomAuthUrl').then(d => {
       if (d.enabled) setWecomUrl(d.authUrl)
     }).catch((e) => {
-      // F-09：企业微信未配置/不可用时静默降级为账密登录（合理降级），但仍留痕便于排查
-      console.error('[Login] 获取企业微信登录地址失败:', e)
+      // F-09 / BUG-T-BASE-02：企业微信未配置/不可用时静默降级为账密登录（合理降级）。
+      // 控制台仅留 debug 痕迹便于排查，error 级别会污染告警；配置缺失是预期状态而非故障。
+      // eslint-disable-next-line no-console
+      console.debug('[Login] wecom auth unavailable, falling back to password login:', e?.message ?? e)
     })
   }, [])
 
