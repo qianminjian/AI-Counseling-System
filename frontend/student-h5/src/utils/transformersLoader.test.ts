@@ -113,7 +113,8 @@ describe('loadTransformersModel', () => {
     expect(mockEnv.remotePathTemplate).toBe('{model}/')
     expect(mockEnv.allowLocalModels).toBe(false)
     expect(mockEnv.useWasmCache).toBe(false)
-    expect(mockEnv.backends.onnx.wasm.numThreads).toBe(1)
+    // F-8（2026-08-09）：numThreads 1→2 双线程加速 ORT session 创建
+    expect(mockEnv.backends.onnx.wasm.numThreads).toBe(2)
     // vi.hoisted 对象无类型推导，此处显式断言 wasmPaths 契约（mjs/wasm 本地 ort 路径）
     const wasmPaths = mockEnv.backends.onnx.wasm.wasmPaths as { mjs: string; wasm: string }
     expect(wasmPaths.mjs).toContain('/ort/ort-wasm-simd-threaded.mjs')
