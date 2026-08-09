@@ -101,7 +101,7 @@ public class OpsController {
     }
 
     @GetMapping("/risk/overdue")
-    public ApiResponse<List<com.mindsafe.domain.entity.RiskEvent>> riskOverdue(@RequestParam(required = false) UUID tenantId) {
+    public ApiResponse<List<RiskOverviewService.OverdueEntry>> riskOverdue(@RequestParam(required = false) UUID tenantId) {
         return ApiResponse.ok(riskOverviewService.overdueList(tenantId));
     }
 

@@ -61,4 +61,61 @@ class RiskMetricsJobTest {
         assertThat(registry.find("mindsafe_risk_events_overdue").gauge().value()).isEqualTo(2.0);
         assertThat(registry.find("mindsafe_risk_notify_dead").gauge().value()).isEqualTo(3.0);
     }
+
+    @Test
+    @DisplayName("租户级指标（缺口 1）：events_24h/claimed_24h 按租户标签注册与计数")
+    void tenantGaugesRegistered() {
+        Instant now = Instant.now();
+        UUID tenantA = UUID.randomUUID();
+        RiskEvent open = event(3, now.minus(2, ChronoUnit.HOURS), RiskEvent.STATUS_OPEN, "sent");
+        open.setTenantId(tenantA);
+        RiskEvent claimed = event(2, now.minus(1, ChronoUnit.HOURS), RiskEvent.STATUS_CLAIMED, "sent");
+        claimed.setTenantId(tenantA);
+        when(mapper.selectList(any(Wrapper.class))).thenReturn(List.of(open, claimed));
+
+        job.refresh();
+
+        assertThat(registry.find("mindsafe_risk_events_24h").gauges()).isNotEmpty();
+        assertThat(registry.find("mindsafe_risk_claimed_24h").gauges()).isNotEmpty();
+        assertThat(registry.find("mindsafe_risk_events_24h")
+                .tags("tenant_id", tenantA.toString()).gauge().value()).isEqualTo(2.0);
+        assertThat(registry.find("mindsafe_risk_claimed_24h")
+                .tags("tenant_id", tenantA.toString()).gauge().value()).isEqualTo(1.0);
+    }
+
+    @Test
+    @DisplayName("租户级指标：窗口内无事件的租户 gauge 归零（防陈旧值失真）")
+    void tenantGaugesResetWhenNoEvents() {
+        Instant now = Instant.now();
+        UUID tenantA = UUID.randomUUID();
+        RiskEvent e = event(3, now.minus(2, ChronoUnit.HOURS), RiskEvent.STATUS_OPEN, "sent");
+        e.setTenantId(tenantA);
+        // selectList 调用序：每次 refresh 先 countOverdue 后 refreshTenantGauges（两次 refresh 共 4 次）
+        when(mapper.selectList(any(Wrapper.class))).thenReturn(
+                List.of(e), List.of(e), List.of(), List.of());
+
+        job.refresh();
+        job.refresh();
+
+        assertThat(registry.find("mindsafe_risk_events_24h")
+                .tags("tenant_id", tenantA.toString()).gauge().value()).isEqualTo(0.0);
+        assertThat(registry.find("mindsafe_risk_claimed_24h")
+                .tags("tenant_id", tenantA.toString()).gauge().value()).isEqualTo(0.0);
+    }
+
+    @Test
+    @DisplayName("租户级指标：多次刷新不重复注册（gauge 序列数稳定）")
+    void tenantGaugesNotDuplicated() {
+        Instant now = Instant.now();
+        UUID tenantA = UUID.randomUUID();
+        RiskEvent e = event(3, now.minus(2, ChronoUnit.HOURS), RiskEvent.STATUS_OPEN, "sent");
+        e.setTenantId(tenantA);
+        when(mapper.selectList(any(Wrapper.class))).thenReturn(List.of(e));
+
+        job.refresh();
+        job.refresh();
+
+        assertThat(registry.find("mindsafe_risk_events_24h").gauges()).hasSize(1);
+        assertThat(registry.find("mindsafe_risk_claimed_24h").gauges()).hasSize(1);
+    }
 }

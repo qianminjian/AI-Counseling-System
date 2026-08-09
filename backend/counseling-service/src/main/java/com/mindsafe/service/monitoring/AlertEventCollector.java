@@ -17,6 +17,7 @@ import org.springframework.web.client.RestTemplate;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.OffsetDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -81,6 +82,21 @@ public class AlertEventCollector {
             }
         }
         markMissingAsResolved(seenFingerprints);
+    }
+
+    /**
+     * 保留 30 天（§6.4 口径，AC-10）：每日清理已恢复超 30 天的告警事件（缺口 3——
+     * 既有 DataRetentionCleanupJob 不覆盖本表，防无界增长）。
+     */
+    @Scheduled(cron = "${mindsafe.monitoring.alert-collector.cleanup-cron:0 45 3 * * ?}")
+    public void cleanup() {
+        TenantContextHolder.runAsSystem(() -> {
+            Instant threshold = Instant.now().minus(30, ChronoUnit.DAYS);
+            int removed = alertEventMapper.delete(new LambdaQueryWrapper<AlertEvent>()
+                    .eq(AlertEvent::getStatus, AlertEvent.STATUS_RESOLVED)
+                    .lt(AlertEvent::getResolvedAt, threshold));
+            log.info("告警事件清理完成: 删除 {} 条（resolved < {}）", removed, threshold);
+        });
     }
 
     /**

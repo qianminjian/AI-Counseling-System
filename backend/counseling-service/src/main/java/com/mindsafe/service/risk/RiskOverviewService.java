@@ -137,8 +137,9 @@ public class RiskOverviewService {
 
     // ===== M8 逾期处置（ADMIN-P1-05：清单/转派/强制关闭，X-Confirm + 留痕） =====
 
-    /** 逾期清单：未处置（open/claimed）且检出超 SLA 阈值（与 slaStats 同口径） */
-    public List<RiskEvent> overdueList(UUID tenantId) {
+    /** 逾期清单（R-7 脱敏：仅暴露处置所需最小字段，不含 studentUserId/schoolId 等
+     *  学生级标识——缺口 2，与 dead-ledger 同口径） */
+    public List<OverdueEntry> overdueList(UUID tenantId) {
         List<RiskEvent> events = loadWindow(tenantId, WINDOW_DAYS);
         Instant now = Instant.now();
         return events.stream()
@@ -147,7 +148,21 @@ public class RiskOverviewService {
                         && Duration.between(e.getDetectedAt(), now).toMinutes()
                         > SLA_DISPOSE_MINUTES.getOrDefault(e.getRiskLevel() == null ? 0 : e.getRiskLevel(), 1440L))
                 .sorted(Comparator.comparing(RiskEvent::getDetectedAt))
+                .map(e -> new OverdueEntry(
+                        e.getRiskEventId(), e.getTenantId(), e.getRiskLevel(), e.getRiskType(),
+                        e.getStatus(), e.getDetectedAt(), e.getNotifyStatus()))
                 .toList();
+    }
+
+    /** 逾期清单脱敏条目（R-7：学生级明细仅 super_admin/audit） */
+    public record OverdueEntry(
+            java.util.UUID riskEventId,
+            java.util.UUID tenantId,
+            Integer riskLevel,
+            String riskType,
+            String status,
+            Instant detectedAt,
+            String notifyStatus) {
     }
 
     /** 转派：更新负责人 + 留痕（action=transfer，operator 必填）；仅 open/claimed 可转派（L1） */

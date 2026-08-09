@@ -1,6 +1,7 @@
 package com.mindsafe.service.monitoring;
 
 import com.baomidou.mybatisplus.core.conditions.Wrapper;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.mindsafe.domain.entity.AlertEvent;
 import com.mindsafe.domain.mapper.AlertEventMapper;
 import com.mindsafe.service.alert.AlertService;
@@ -33,6 +34,15 @@ import static org.mockito.Mockito.when;
  */
 class AlertEventCollectorTest {
 
+    /** 纯单测环境无 MyBatis 启动：手动初始化实体元数据缓存（供 LambdaQueryWrapper 拼参） */
+    private static void initMybatisMeta(Class<?> entityClass) {
+        com.baomidou.mybatisplus.core.MybatisConfiguration configuration =
+                new com.baomidou.mybatisplus.core.MybatisConfiguration();
+        org.apache.ibatis.builder.MapperBuilderAssistant assistant =
+                new org.apache.ibatis.builder.MapperBuilderAssistant(configuration, "");
+        com.baomidou.mybatisplus.core.metadata.TableInfoHelper.initTableInfo(assistant, entityClass);
+    }
+
     private HttpServer server;
     private int port;
     private AlertEventMapper mapper;
@@ -43,6 +53,7 @@ class AlertEventCollectorTest {
 
     @BeforeEach
     void setUp() throws Exception {
+        initMybatisMeta(AlertEvent.class);
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/api/v2/alerts", exchange -> {
             byte[] bytes = alertsBody.getBytes(StandardCharsets.UTF_8);
@@ -191,5 +202,19 @@ class AlertEventCollectorTest {
         assertThatCode(collector::collect).doesNotThrowAnyException();
         verify(mapper, never()).insert(any(AlertEvent.class));
         verify(mapper, times(0)).updateById(any(AlertEvent.class));
+    }
+
+    @Test
+    @DisplayName("30 天清理：仅删除 resolved 超期（status + resolved_at 条件，缺口 3，AC-10）")
+    void cleanupDeletesExpired() {
+        when(mapper.delete(any(Wrapper.class))).thenReturn(7);
+        collector.cleanup();
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<LambdaQueryWrapper<AlertEvent>> captor = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(mapper).delete(captor.capture());
+        LambdaQueryWrapper<AlertEvent> wrapper = captor.getValue();
+        assertThat(wrapper.getSqlSegment()).contains("status").contains("resolved_at");
+        assertThat(wrapper.getParamNameValuePairs().values())
+                .anyMatch(v -> AlertEvent.STATUS_RESOLVED.equals(v));
     }
 }

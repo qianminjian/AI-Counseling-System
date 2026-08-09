@@ -962,12 +962,12 @@ _本表由 Agent 维护，每次任务变更时更新。_
 |--------|------|------|------|
 | OPS-MON-001 | doing/83 设计文档生成（方案 + SPEC：TTS 降级指标 / 复用 LLM 指标 / 3 条规则 / 部署 / 演练，AC-1~8） | 全量 | ✅ 本次完成（2026-08-09） |
 | OPS-MON-002 | TTS 降级指标埋点（app.py 独立 Metrics 实例 + direction 标签 + test_app.py 用例） | tts-service | ✅ 实施完成（2026-08-09，89 pytest 全绿） |
-| OPS-MON-003 | alert-rules 新增 3 条规则（TtsPrimaryEngineDegraded / TtsDegradeRatioHigh / LlmPrimaryFailing） | monitoring | ✅ 实施完成（2026-08-09，YAML 13 条验证通过） |
+| OPS-MON-003 | alert-rules 新增 3 条规则（TtsPrimaryEngineDegraded / TtsDegradeRatioHigh / LlmPrimaryFailing） | monitoring | ✅ 实施完成（2026-08-09，YAML 15 条验证通过；后 P1-06 补 2 条业务规则共 17 条） |
 | OPS-MON-004 | 生产部署 monitoring 栈（.env 补 WECOM_* 4 项 + GRAFANA_PASSWORD → compose up） | 部署 | ⬜ 待部署窗口（.env 红线，人工执行） |
 | OPS-MON-005 | 降级演练 + 验证（断 DASHSCOPE key → 指标 +1 → 企微 ≤5 分钟触达 → 恢复） | 验证 | ⬜ 待排期 |
 | OPS-MON-006 | 合并归档（doing/83 最终态并入 design/04 §9 监控 / 06 §配置章节 → 归档 his/83） | 全量 | ⬜ 待排期 |
 | OPS-MON-007 | 降级事件检测器（30s 轮询指标增量 → degradation_events auto/恢复事件落库，last_value 防抖 + 跳过 manual 覆盖点 + SETNX 锁，AC-9；定义见降级监控文档 §3.5） | counseling-service monitoring | ✅ 实施完成（2026-08-09，6 用例全绿） |
-| OPS-MON-008 | 告警采集器（60s 拉取 AlertManager → alert_events upsert + AlertService 同步，resolved 流转 + 30 天清理，AC-10；定义见降级监控文档 §3.6） | counseling-service monitoring | ✅ 实施完成（2026-08-09，5 用例全绿） |
+| OPS-MON-008 | 告警采集器（60s 拉取 AlertManager → alert_events upsert + AlertService 同步，resolved 流转 + 30 天清理，AC-10；定义见降级监控文档 §3.6） | counseling-service monitoring | ✅ 实施完成（2026-08-09，8 用例全绿；缺口 3 补：30 天清理任务 cleanup 落库删除 resolved 超期 + 测试） |
 
 > 执行顺序：OPS-MON-002 → 003 → 004 → 005 → 007 → 008 → 006（007 依赖 002/004，008 依赖 004；005 演练通过后 006 归档）；AC-6 演练为归档前置门禁。
 
@@ -984,16 +984,16 @@ _本表由 Agent 维护，每次任务变更时更新。_
 | ADMIN-P0-02 | 平台登录端点 + 独立 JWT（PLATFORM_ 前缀）+ 四角色 | 后端 | ✅ 实施完成（2026-08-09，4 用例） |
 | ADMIN-P0-03 | SecurityConfig 角色细化（PLATFORM_ 授权域，P0 过渡双轨） | 后端 | ✅ 实施完成（2026-08-09） |
 | ADMIN-P0-04 | admin-web 脚手架 + 路由守卫 + 角色菜单 | 前端 | ✅ 实施完成（2026-08-09，9 用例全绿） |
-| ADMIN-P0-05 | M2 服务拓扑（只读）+ service_health_snapshots | 后端 | ✅ 实施完成（2026-08-09，Probe 4 用例） |
+| ADMIN-P0-05 | M2 服务拓扑（只读）+ service_health_snapshots | 后端 | ✅ 实施完成（2026-08-09，Probe 4 用例；缺口 3 补：探针并行探测） |
 | ADMIN-P0-06 | 告警中心只读（AlertManager 直读，依赖 OPS-MON-003/004） | 后端 | ✅ 实施完成（2026-08-09，直读代理） |
 | ADMIN-P0-07 | 审计日志查询（跨租户） | 后端 | ✅ 实施完成（2026-08-09，OpsController 5 用例） |
 | ADMIN-P0-08 | P0 回归门禁（P0-01~07 全绿） | 全量 | ✅ 实施完成（2026-08-09，后端 BUILD SUCCESS + 前端 9 用例） |
-| ADMIN-P1-01 | sys_config 注册表 + 变更留痕（HOT/RESTART 两级） | 后端 | ✅ 实施完成（2026-08-09，V36 + 7 用例） |
+| ADMIN-P1-01 | sys_config 注册表 + 变更留痕（HOT/RESTART 两级） | 后端 | ✅ 实施完成（2026-08-09，V36 + V38 种子 6 键 + 7 用例；缺口 4 补：种子数据防空壳配置面板） |
 | ADMIN-P1-02 | M7 审核发布流（submit/review/状态机，三重门禁） | 后端 | ✅ 实施完成（2026-08-09，状态机 6 用例） |
 | ADMIN-P1-03 | M7 门禁可视化 + safety-phrases 只读 | 后端 | ✅ 实施完成（2026-08-09，safety 只读端点） |
-| ADMIN-P1-04 | M8 风险全景 + 时效监控（纯查询） | 后端 | ✅ 实施完成（2026-08-09，2 用例 + 2 端点） |
+| ADMIN-P1-04 | M8 风险全景 + 时效监控（纯查询） | 后端 | ✅ 实施完成（2026-08-09，2 用例 + 2 端点；缺口 2 补：/risk/overdue 脱敏 DTO OverdueEntry，不含学生级标识（R-7）） |
 | ADMIN-P1-05 | M8 逾期升级扩展（sla_escalation_log + 转派端点，复用 SlaEscalationScanner） | 后端 | ✅ 实施完成（2026-08-09，留痕 + X-Confirm 端点） |
-| ADMIN-P1-06 | M8 业务指标埋点 + alert-rules 业务段（R-11） | 后端 | ✅ 实施完成（2026-08-09，gauge 2 项 + 规则共 15 条） |
+| ADMIN-P1-06 | M8 业务指标埋点 + alert-rules 业务段（R-11） | 后端 | ✅ 实施完成（2026-08-09，gauge 4 项 + 业务规则 4 条共 17 条；缺口 1 补齐：激增/认领率规则） |
 | ADMIN-P1-07 | M2 指标看板（完整，依赖 OPS-MON-003/004/008） | 后端 | ⛔ 受阻（OPS-MON-004 监控栈部署待部署窗口） |
 | ADMIN-P1-08 | M2 告警中心完整（alert_events 消费 + ack） | 后端 | ⛔ 受阻（依赖 P1-07） |
 | ADMIN-P1-09 | 前端 P1 页面组（八页） | 前端 | 🟡 部分完成（配置注册表/风险全景/Prompt 管理/时效监控/处置台账 5 页；指标看板/告警中心 2 页受阻待监控栈，审核流页并入 Prompt 页） |
