@@ -219,15 +219,25 @@ function waitForMainThreadModel(timeoutMs = 60000): Promise<boolean> {
  * 缓存完整时 Worker 可直接 init（从缓存秒加载），无需等主线程——
  * 主线程 ORT 初始化（40MB 模型会话创建）即使缓存命中也可能 >60s，
  * 旧逻辑无条件等 60s → 超时降级主线程 → 主线程推理慢致唤醒不可靠。
+ * F-9（2026-08-09）：原实现只检查 encoder（10MB）→ decoder（30MB）未命中时
+ * 误判"缓存完整"→ Worker 从网络补下载 30M 超过 15s 超时 → 降级主线程 → 转写全失败。
+ * 现改为 encoder + decoder 双文件校验（decoder 是最大最慢的瓶颈文件）。
  */
 async function hasWakeModelInCache(): Promise<boolean> {
   try {
     if (!('caches' in self)) return false
     const base = import.meta.env.BASE_URL || '/'
-    const url = `${self.location.origin}${base}models/onnx-community/whisper-tiny/onnx/encoder_model_quantized.onnx`
     const cache = await caches.open('transformers-cache')
-    const hit = await cache.match(url)
-    return !!hit
+    const files = [
+      'onnx/encoder_model_quantized.onnx',
+      'onnx/decoder_model_merged_quantized.onnx',
+    ]
+    for (const f of files) {
+      const url = `${self.location.origin}${base}models/onnx-community/whisper-tiny/${f}`
+      const hit = await cache.match(url)
+      if (!hit) return false
+    }
+    return true
   } catch {
     return false
   }
@@ -433,7 +443,8 @@ export function useWakeWord({ active, paused, onDetected }) {
         // 关键：主线程预加载进行中时先等它结束（文件进 Cache API 后 Worker 可复用），
         // 避免主线程与 Worker 并行下载同一模型 → 流量翻倍 + 进度反复（用户反馈“下载 2 次、50% 又 重来”）
         // F-6：缓存已完整时跳过等待（Worker 直接从 Cache API 秒加载），主线程 ORT 初始化慢不再拖累 Worker
-        if (wakeModelStore.getStatus() === 'loading' && !(await hasWakeModelInCache())) {
+        const cacheReady = await hasWakeModelInCache()
+        if (wakeModelStore.getStatus() === 'loading' && !cacheReady) {
           const preloadDone = await waitForMainThreadModel()
           if (cancelled || useMainThread) return
           if (!preloadDone) {
@@ -444,12 +455,15 @@ export function useWakeWord({ active, paused, onDetected }) {
         }
         if (cancelled || useMainThread) return
         worker.postMessage({ type: 'init', config: workerConfig })
-        // Worker 超时保护：15s 内未收到 ready/result → 降级主线程
+        // Worker 超时保护：缓存完整（秒加载）时 15s；缓存未完整（首次下载 30M，4.7Mbps 带宽
+        // 需 ~50s）时放宽到 90s——否则 Worker 必然超时降级主线程，而主线程同源下载也未完成
+        // → pipeline 半初始化（feature_extractor=null）→ 转写全失败（F-9 实证：21 次失败）
+        const workerTimeoutMs = cacheReady ? 15000 : 90000
         workerTimeout = setTimeout(() => {
           if (!useMainThread && !cancelled) {
-            fallbackToMainThread('Worker 15s 无响应')
+            fallbackToMainThread(`Worker ${workerTimeoutMs / 1000}s 无响应`)
           }
-        }, 15000)
+        }, workerTimeoutMs)
       })()
     }
 
