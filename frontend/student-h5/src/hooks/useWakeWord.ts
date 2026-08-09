@@ -127,12 +127,8 @@ export function __resetWakeWordForTest() {
 type TranscriberFn = (audio: Float32Array, opts: { language: string; task: string }) => Promise<{ text?: string }>
 
 /**
- * 模块级模型单例：加载一次，跨会话复用。
+ * 模块级模型单例（主线程转写器）：加载一次，跨会话复用。
  * 失败时重置为 null，允许下次重试（如网络恢复）。
- *
- * ONNX Runtime WASM 显式指向本机服务器 /mindsafe/ort/（构建时由 vite 插件从 node_modules 复制），
- * 不走 transformers 默认的 jsdelivr CDN（国内不稳定）。变体选择与 transformers 默认一致：
- * Safari/iOS 用 plain，其余（Chrome/Android 等）用 asyncify。
  */
 let transcriberPromise: Promise<TranscriberFn> | null = null
 function getTranscriber() {
@@ -140,21 +136,15 @@ function getTranscriber() {
     setModelStatus('loading')
     transcriberPromise = loadTransformersModel({
       modelHost: WAKE_MODEL_REMOTE_HOST,
-      // DC-009：环境检查/env 配置已移入 loader；此处仅保留模型 API 调用与状态机
       load: async ({ pipeline }) => {
         const t = await pipeline('automatic-speech-recognition', WAKE_MODEL_ID, {
-          // 禁用高级图优化：ORT 1.26.0 的 TransposeDQWeightsForMatMulNBits
-          // 优化对 int8 QDQ 模型有 bug（缺少 scale 张量导致 session 创建失败）
           session_options: { graphOptimizationLevel: 'basic' },
           progress_callback: createProgressHandler((p) => {
             dbg(`模型总进度 ${p}%`)
             setModelStatus('loading', p)
           }),
         })
-        // F-9b 回滚（2026-08-09 23:30）：恢复 8.2 行为——8.2 版本无 pipeline 完整性校验，
-        // 唤醒链路正常可用；我加的校验（先查 feature_extractor 再查 processor）均会把
-        // 正常加载的 pipeline 误判为失败 → 引擎永远"加载失败"。模型文件不全时由
-        // 转写失败重试机制兜底（与 8.2 一致），不做加载期硬校验。
+        // F-9b 回滚（2026-08-09）：恢复 8.2 行为——不做 pipeline 完整性硬校验
         setModelStatus('ready')
         return t
       },
@@ -166,7 +156,6 @@ function getTranscriber() {
     })
       .catch((err) => {
         transcriberPromise = null
-        // 环境不支持（SAB/SIMD）→ 静默降级，不报错；其余错误已由 onError 置 error 态
         if (err?.unsupported) {
           setModelStatus('unsupported')
           return null
@@ -178,12 +167,73 @@ function getTranscriber() {
 }
 
 /**
+ * F-19（2026-08-10 用户要求"转写器提前启动"）：模块级 Worker 单例预启动。
+ * 模型文件预加载（preloadWakeModel）同时预创建+init 转写 Worker（不启动麦克风，隐私合规
+ * design/28 §1.4——监听仍只在对话内），进对话时复用已就绪 Worker → standby 无等待。
+ * init 前等待主线程模型下载完成（复用 hasWakeModelInCache/waitForMainThreadModel），避免双下载。
+ */
+let wakeWorkerPromise: Promise<Worker> | null = null
+function buildWorkerConfig() {
+  const base = import.meta.env.BASE_URL || '/'
+  const variant = 'ort-wasm-simd-threaded'
+  let workerRemoteHost = WAKE_MODEL_REMOTE_HOST === 'SAME_ORIGIN' ? `${base}models/` : WAKE_MODEL_REMOTE_HOST
+  if (workerRemoteHost && !workerRemoteHost.startsWith('http')) {
+    workerRemoteHost = window.location.origin + workerRemoteHost
+  }
+  return {
+    modelId: WAKE_MODEL_ID,
+    remoteHost: workerRemoteHost,
+    wasmPaths: {
+      mjs: `${base}ort/${variant}.mjs`,
+      wasm: `${base}ort/${variant}.wasm`,
+    },
+  }
+}
+function getWakeWorker(): Promise<Worker> {
+  if (!wakeWorkerPromise) {
+    wakeWorkerPromise = (async () => {
+      // 等主线程模型下载完成（缓存完整或主线程 ready），避免 Worker 与主线程双下载
+      if (wakeModelStore.getStatus() === 'loading' && !(await hasWakeModelInCache())) {
+        await waitForMainThreadModel()
+      }
+      const w = new Worker(
+        new URL('../workers/wakeWordWorker.ts', import.meta.url),
+        { type: 'module' },
+      )
+      w.postMessage({ type: 'init', config: buildWorkerConfig() })
+      // init 完成前 resolve 均可（onmessage 由 useWakeWord active 时挂载；ready 状态经
+      // 状态机同步）。若 Worker 加载失败，reject 供调用方降级主线程。
+      const t0 = Date.now()
+      await new Promise<void>((resolve, reject) => {
+        const timer = setInterval(() => {
+          if (wakeModelStore.getStatus() === 'ready') {
+            clearInterval(timer)
+            resolve()
+          } else if (Date.now() - t0 > 90000) {
+            clearInterval(timer)
+            reject(new Error('Worker 预启动超时（90s）'))
+          }
+        }, 500)
+      })
+      console.info(`[WakeWord] Worker 预启动就绪（${Math.round((Date.now() - t0) / 1000)}s）`)
+      return w
+    })().catch((err) => {
+      wakeWorkerPromise = null
+      throw err
+    })
+  }
+  return wakeWorkerPromise
+}
+
+/**
  * 预加载模型（不启动麦克风）：在情绪选择页停留时提前下载模型，
  * 进对话时直接就绪。状态可通过 useWakeModelStatus() 订阅查看。
  * 调用时机：EmotionSelect 挂载 + ChatRoom 挂载。
+ * F-19：同时预启动转写 Worker（模型下载 + Worker 初始化都在对话前完成）。
  */
 export function preloadWakeModel() {
   getTranscriber().catch(() => {}) // 失败时 active 会重试
+  getWakeWorker().catch(() => {}) // Worker 预启动失败时 active 降级主线程
 }
 
 /**
@@ -369,6 +419,7 @@ export function useWakeWord({ active, paused, onDetected }) {
       useMainThread = true
       worker?.terminate()
       worker = null
+      wakeWorkerPromise = null // F-19：已终止的 Worker 不可复用，下次 active 重新创建
       // 触发主线程模型加载（如果尚未加载）
       setModelStatus('loading')
       setWakeStatus('loading')
@@ -386,19 +437,21 @@ export function useWakeWord({ active, paused, onDetected }) {
       })
     }
 
-    // 创建 Worker 并初始化模型
-    try {
-      worker = new Worker(
-        new URL('../workers/wakeWordWorker.ts', import.meta.url),
-        { type: 'module' },
-      )
-    } catch (err) {
-      console.warn('[WakeWord] Worker 创建失败:', (err as Error)?.message)
-      fallbackToMainThread('Worker 创建异常')
-    }
-
-    if (worker) {
-      let workerTimeout: ReturnType<typeof setTimeout> | null = null
+    // F-19（2026-08-10）：复用预启动 Worker（登录页/情绪页已 init 完成），不再 new Worker。
+    // 预启动失败时降级主线程；Worker 就绪后按 F-11/F-14 同步 wakeStatus。
+    ;(async () => {
+      try {
+        const w = await getWakeWorker()
+        if (cancelled) return
+        worker = w
+      } catch (err) {
+        if (!cancelled) {
+          console.warn('[WakeWord] Worker 预启动失败:', (err as Error)?.message)
+          fallbackToMainThread((err as Error)?.message || 'Worker 预启动失败')
+        }
+        return
+      }
+      if (cancelled || useMainThread || !worker) return
 
       worker.onmessage = (event) => {
         const { type } = event.data
@@ -407,24 +460,17 @@ export function useWakeWord({ active, paused, onDetected }) {
           if (status === 'loading') {
             if (wakeModelStore.getStatus() !== 'ready') setWakeStatus('loading')
           } else if (status === 'ready') {
-            if (workerTimeout) clearTimeout(workerTimeout)
             setModelStatus('ready')
             // F-11（2026-08-09）：Worker ready 时同步 wakeStatus → listening。
-            // 旧代码只更新 modelStatus，而 Worker 先发的 loading 消息已把 wakeStatus
-            // 覆盖为 loading 且无人改回 → UI 永远"语音引擎加载中"（实测：进度 100%
-            // 后关闭但界面仍加载中、呼叫无反应）。
-            // F-14（2026-08-09 用户实测）：UI"准备好"瞬间呼叫无响应、约 2s 后第二遍才成功
-            // ——Worker ready 消息发出后推理器仍须 ~2s 收尾/预热。延迟 2.5s 再提示 standby，
-            // 期间保持"加载中"文案，避免用户过早呼叫（用户建议：界面延迟提示好了）。
+            // F-14（2026-08-09 用户实测）：ready 后推理器仍须 ~2s 收尾/预热，
+            // 延迟 2.5s 提示 standby，避免用户过早呼叫。
             setTimeout(() => {
               if (!cancelled) setWakeStatus('listening')
             }, 2500)
           } else if (status === 'error') {
-            if (workerTimeout) clearTimeout(workerTimeout)
             fallbackToMainThread(event.data.message || 'Worker 模型加载失败')
           }
         } else if (type === 'result') {
-          if (workerTimeout) clearTimeout(workerTimeout)
           handleTranscribeResult(event.data.text)
         } else if (type === 'error') {
           console.warn('[WakeWord] 转写失败（忽略，下窗重试）:', event.data.message)
@@ -440,30 +486,16 @@ export function useWakeWord({ active, paused, onDetected }) {
         fallbackToMainThread(err.message || 'Worker onerror')
       }
 
-      // 发送初始化消息（触发模型加载，若已在情绪页预加载则从 Cache API 秒开）
-      setModelStatus('loading')
-      // F-13（2026-08-09）：F-6 等待机制最终形态——主线程预加载中且缓存未完整时，
-      // 等主线程下载完成（120s 覆盖 4.7Mbps 全量下载）再 init Worker 复用缓存，
-      // 避免双下载抢带宽（F-12 直接 init 实测：Worker 与主线程并行下载 30s 超时必失败）。
-      // F-11 已修复 wakeStatus 同步，等待期间 UI 正常显示"加载中"进度。
-      ;(async () => {
-        if (wakeModelStore.getStatus() === 'loading' && !(await hasWakeModelInCache())) {
-          const preloadDone = await waitForMainThreadModel()
-          if (cancelled || useMainThread) return
-          if (!preloadDone) {
-            fallbackToMainThread('主线程预加载超时（120s）')
-            return
-          }
-        }
-        if (cancelled || useMainThread) return
-        worker.postMessage({ type: 'init', config: workerConfig })
-        workerTimeout = setTimeout(() => {
-          if (!useMainThread && !cancelled) {
-            fallbackToMainThread('Worker 60s 无响应')
-          }
-        }, 60000)
-      })()
-    }
+      // 预启动已完成模型加载：若 wakeModelStore 已 ready，直接同步（补 F-14 延迟提示）
+      if (wakeModelStore.getStatus() === 'ready') {
+        setTimeout(() => {
+          if (!cancelled) setWakeStatus('listening')
+        }, 2500)
+      } else {
+        setModelStatus('loading')
+        setWakeStatus('loading')
+      }
+    })()
 
     // 启动麦克风（F6：统一 micSession 模块——约束/错误映射/iOS resume 兜底/释放单点）
     ;(async () => {
@@ -515,8 +547,7 @@ export function useWakeWord({ active, paused, onDetected }) {
       setWakeStatus('idle')
       session?.stop()
       session = null
-      worker?.terminate()
-      worker = null
+      worker = null // F-19：不 terminate——转写 Worker 模块级复用（已 init），下次 active 直接复用
     }
   }, [active, supported])
 
