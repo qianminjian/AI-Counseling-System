@@ -4,7 +4,7 @@ import { CONSENT_VERSION } from './ConsentGate'
 import { hasAnyVoiceprint } from '../utils/voiceprintStore'
 import { useTheme, THEMES } from '../theme/ThemeProvider'
 import { preloadVoiceprintModel, useVoiceprintModelStatus } from '../hooks/useVoiceprint'
-import { useWakeModelStatus } from '../hooks/useWakeWord'
+import { preloadWakeModel, useWakeModelStatus } from '../hooks/useWakeWord'
 import VoiceLoginOverlay from './VoiceLoginOverlay'
 // DC-007：声纹注册编排收敛（SPEC §21）
 import { useVoiceEnrollment } from '../hooks/useVoiceEnrollment'
@@ -30,6 +30,14 @@ export default function LoginPage({ onLogin, onRegister, onNeedConsent, initialT
 
   useEffect(() => {
     hasAnyVoiceprint().then((has) => setHasVoiceprint(has))
+  }, [])
+
+  // 登录页挂载即预加载语音模型（最早时机，缓存命中则秒完成）：
+  // 先声纹（登录页声音进入可用）→ 完成后唤醒（进对话用）——顺序加载避免双路抢带宽
+  useEffect(() => {
+    preloadVoiceprintModel().then(() => {
+      preloadWakeModel()
+    })
   }, [])
 
   // 浏览器是否支持麦克风 + WASM SIMD（决定是否显示声音进入按钮）

@@ -21,11 +21,18 @@ vi.mock('../utils/voiceprintStore', () => ({
   saveVoiceCredential: vi.fn().mockResolvedValue({}),
   markRemoteVoiceprintEnrolled: vi.fn(),
 }))
-// AUD-008：mock 声纹模型状态（默认 idle=未下载），单独覆盖 ready 场景验证跳过流量确认
+// AUD-008 修订（2026-08-09）：登录页挂载即预加载声纹模型（用户决策：最早时机下载），
+// 流量确认保留为模型 error 时的重试确认；mock 声纹模型状态（默认 idle）
 let mockVpStatus = 'idle'
 vi.mock('../hooks/useVoiceprint', () => ({
-  preloadVoiceprintModel: vi.fn(),
+  preloadVoiceprintModel: vi.fn(() => Promise.resolve()),
   useVoiceprintModelStatus: () => ({ status: mockVpStatus, progress: 0, error: undefined }),
+}))
+// 唤醒模型：登录页挂载预加载（声纹完成后启动）；mock 状态避免真实加载
+let mockWakeStatus = 'idle'
+vi.mock('../hooks/useWakeWord', () => ({
+  preloadWakeModel: vi.fn(),
+  useWakeModelStatus: () => ({ status: mockWakeStatus, progress: 0, error: undefined }),
 }))
 vi.mock('../theme/ThemeProvider', () => ({
   useTheme: () => ({ themeId: 'ocean', changeTheme: vi.fn() }),
@@ -63,6 +70,7 @@ vi.mock('../components/ConfirmDialog', () => ({
 import { pinLogin, setToken, setUser, trialRegister, setPin, markConsentDone } from '../api'
 import { hasAnyVoiceprint } from '../utils/voiceprintStore'
 import { preloadVoiceprintModel } from '../hooks/useVoiceprint'
+import { preloadWakeModel } from '../hooks/useWakeWord'
 
 describe('LoginPage', () => {
   beforeEach(() => {
@@ -198,30 +206,37 @@ describe('LoginPage', () => {
       expect(screen.queryByText('还没录过你的声音哦')).toBeNull()
     })
 
-    // ==== AUD-008：模型不再挂载即预下载，点击声音进入后按需下载 + 流量确认 ====
-    it('有声纹且模型未就绪：点击先弹流量确认，确认后下载并打开识别', async () => {
+    // ==== AUD-008 修订（2026-08-09）：登录页挂载即预加载声纹模型（最早时机），
+    // 模型 error 时点击声音进入弹重试确认；loading/ready 直接进入识别 ====
+    it('有声纹：登录页挂载即预加载声纹模型，完成后自动预加载唤醒模型', async () => {
       ;(hasAnyVoiceprint as any).mockResolvedValue(true)
+      render(<LoginPage onLogin={vi.fn()} onRegister={vi.fn()} onNeedConsent={vi.fn()} />)
+      // 挂载即预加载（不等点击声音进入）
+      expect(preloadVoiceprintModel).toHaveBeenCalledTimes(1)
+      // 声纹完成后顺序启动唤醒预加载
+      await waitFor(() => expect(preloadWakeModel).toHaveBeenCalledTimes(1))
+    })
+
+    it('有声纹且模型 loading：点击声音进入直接打开识别（不弹流量确认）', async () => {
+      ;(hasAnyVoiceprint as any).mockResolvedValue(true)
+      mockVpStatus = 'loading'
       render(<LoginPage onLogin={vi.fn()} onRegister={vi.fn()} onNeedConsent={vi.fn()} />)
       await waitFor(() => expect(screen.getByText('🎤 声音进入')).toBeTruthy())
       fireEvent.click(screen.getByText('🎤 声音进入'))
-      // 未直接打开识别，先弹流量确认
-      expect(screen.getByText('需要下载语音模型')).toBeTruthy()
-      expect(preloadVoiceprintModel).not.toHaveBeenCalled()
-      // 确认后开始下载并打开声纹识别
-      fireEvent.click(screen.getByText('继续下载'))
-      await waitFor(() => expect(preloadVoiceprintModel).toHaveBeenCalledTimes(1))
+      expect(screen.queryByText('需要下载语音模型')).toBeNull()
       expect(screen.getByTestId('voice-overlay')).toBeTruthy()
     })
 
-    it('有声纹且模型未就绪：取消流量确认则不下载不进入', async () => {
+    it('有声纹且模型 error：点击弹重试确认，确认后重新下载并打开识别', async () => {
       ;(hasAnyVoiceprint as any).mockResolvedValue(true)
+      mockVpStatus = 'error'
       render(<LoginPage onLogin={vi.fn()} onRegister={vi.fn()} onNeedConsent={vi.fn()} />)
       await waitFor(() => expect(screen.getByText('🎤 声音进入')).toBeTruthy())
       fireEvent.click(screen.getByText('🎤 声音进入'))
       expect(screen.getByText('需要下载语音模型')).toBeTruthy()
-      fireEvent.click(screen.getByText('取消'))
-      expect(preloadVoiceprintModel).not.toHaveBeenCalled()
-      expect(screen.queryByTestId('voice-overlay')).toBeNull()
+      fireEvent.click(screen.getByText('继续下载'))
+      await waitFor(() => expect(preloadVoiceprintModel).toHaveBeenCalledTimes(2))
+      expect(screen.getByTestId('voice-overlay')).toBeTruthy()
     })
 
     it('有声纹且模型已就绪：点击直接进入识别（不弹流量确认）', async () => {
@@ -232,7 +247,8 @@ describe('LoginPage', () => {
       fireEvent.click(screen.getByText('🎤 声音进入'))
       expect(screen.queryByText('需要下载语音模型')).toBeNull()
       expect(screen.getByTestId('voice-overlay')).toBeTruthy()
-      expect(preloadVoiceprintModel).not.toHaveBeenCalled()
+      // 挂载即已预加载（AUD-008 修订）
+      expect(preloadVoiceprintModel).toHaveBeenCalledTimes(1)
     })
   })
 

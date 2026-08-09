@@ -44,12 +44,12 @@ export const useVoiceprintModelStatus = voiceprintModelStore.useStatus
 let modelBundlePromise = null
 
 /**
- * 预加载声纹模型（不启动麦克风）：在登录页提前下载模型，
- * 避免用户点击声纹登录时还要等待模型加载。
- * 状态可通过 useVoiceprintModelStatus() 订阅查看。
+ * 预加载声纹模型（不启动麦克风）：登录页挂载即调用（最早时机），
+ * 避免用户点击声纹登录时还要等待模型下载。
+ * 返回 Promise 供顺序编排（登录页先声纹完成再启动唤醒模型下载，避免双路抢带宽）。
  */
-export function preloadVoiceprintModel() {
-  getModelBundle().catch(() => {}) // 静默失败，实际使用时会重试
+export function preloadVoiceprintModel(): Promise<unknown> {
+  return getModelBundle().catch(() => {}) // 静默失败，实际使用时会重试
 }
 
 /**
@@ -92,8 +92,11 @@ function getModelBundle() {
             regs.forEach(r => r.unregister())
           }).catch(() => {})
         }
+        // BUG-CACHE-01：失败清理不得殃及 transformers-cache（唤醒模型缓存）——只删 SW 预缓存
         if ('caches' in window) {
-          caches.keys().then(keys => keys.forEach(k => caches.delete(k))).catch(() => {})
+          caches.keys().then(keys => keys.forEach(k => {
+            if (!k.startsWith('transformers-cache')) caches.delete(k)
+          })).catch(() => {})
         }
       },
     })
