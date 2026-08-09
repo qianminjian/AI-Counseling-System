@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import LoginPage from './pages/LoginPage'
 import OverviewPage from './pages/OverviewPage'
+import ConfigPage from './pages/ConfigPage'
+import RiskPage from './pages/RiskPage'
 import ForbiddenPage from './pages/ForbiddenPage'
 import AdminLayout, { allowedViews, type AdminView } from './components/AdminLayout'
 import { adminLogout, getAdminName, getAdminRole, getAdminToken, UNAUTHORIZED_EVENT } from './api'
@@ -35,7 +37,7 @@ export default function App() {
 
   return (
     <AdminLayout role={role} name={name} view={currentView} onNavigate={setView} onLogout={handleLogout}>
-      {currentView === 'forbidden' ? <ForbiddenPage /> : <OverviewPage />}
+      {currentView === 'forbidden' ? <ForbiddenPage /> : currentView === 'config' ? <ConfigPage /> : currentView === 'risk' ? <RiskPage /> : <OverviewPage />}
     </AdminLayout>
   )
 }

@@ -1,11 +1,21 @@
 package com.mindsafe.api.controller;
 
 import com.mindsafe.common.dto.ApiResponse;
+import com.mindsafe.common.dto.ErrorCode;
 import com.mindsafe.domain.entity.AuditLog;
 import com.mindsafe.domain.entity.ServiceHealthSnapshot;
 import com.mindsafe.service.monitoring.OpsService;
+import com.mindsafe.service.risk.RiskOverviewService;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -25,10 +35,15 @@ import java.util.UUID;
 @RequestMapping("/api/v1/ops")
 public class OpsController {
 
-    private final OpsService opsService;
+    /** 高危操作确认短语（code-review M2：任意非空值不构成二次确认） */
+    private static final String CONFIRM_PHRASE = "CONFIRM";
 
-    public OpsController(OpsService opsService) {
+    private final OpsService opsService;
+    private final RiskOverviewService riskOverviewService;
+
+    public OpsController(OpsService opsService, RiskOverviewService riskOverviewService) {
         this.opsService = opsService;
+        this.riskOverviewService = riskOverviewService;
     }
 
     @GetMapping("/services/status")
@@ -56,5 +71,63 @@ public class OpsController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant endTime,
             @RequestParam(defaultValue = "100") int limit) {
         return ApiResponse.ok(opsService.auditLogs(tenantId, action, startTime, endTime, limit));
+    }
+
+    // ===== M8 业务信号（ADMIN-P1-04：风险全景 + 时效监控，纯查询） =====
+
+    @GetMapping("/risk/overview")
+    public ApiResponse<Map<String, Object>> riskOverview(@RequestParam(required = false) UUID tenantId) {
+        return ApiResponse.ok(riskOverviewService.overview(tenantId));
+    }
+
+    @GetMapping("/risk/sla-stats")
+    public ApiResponse<List<Map<String, Object>>> riskSlaStats(@RequestParam(required = false) UUID tenantId) {
+        return ApiResponse.ok(riskOverviewService.slaStats(tenantId));
+    }
+
+    @GetMapping("/risk/overdue")
+    public ApiResponse<List<com.mindsafe.domain.entity.RiskEvent>> riskOverdue(@RequestParam(required = false) UUID tenantId) {
+        return ApiResponse.ok(riskOverviewService.overdueList(tenantId));
+    }
+
+    /** 转派（X-Confirm 固定短语 + reason 必填，高危操作二次确认，§10） */
+    @PostMapping("/risk/{riskEventId}/transfer")
+    public ApiResponse<Void> transfer(@PathVariable UUID riskEventId,
+                                      @RequestHeader(value = "X-Confirm", required = false) String confirm,
+                                      @Valid @RequestBody RiskTransferRequest request) {
+        if (!CONFIRM_PHRASE.equals(confirm)) {
+            return ApiResponse.error(ErrorCode.PARAM_INVALID.code(), "高危操作需 X-Confirm: CONFIRM 头（操作二次确认）");
+        }
+        // 操作人取认证主体（code-review M3：不信任请求体，防审计身份伪造）
+        riskOverviewService.transfer(riskEventId, request.assignToUserId(), operatorName(), request.reason());
+        return ApiResponse.ok(null);
+    }
+
+    /** 强制关闭（X-Confirm 固定短语 + reason 必填，高危操作二次确认，§10） */
+    @PostMapping("/risk/{riskEventId}/force-close")
+    public ApiResponse<Void> forceClose(@PathVariable UUID riskEventId,
+                                        @RequestHeader(value = "X-Confirm", required = false) String confirm,
+                                        @Valid @RequestBody RiskCloseRequest request) {
+        if (!CONFIRM_PHRASE.equals(confirm)) {
+            return ApiResponse.error(ErrorCode.PARAM_INVALID.code(), "高危操作需 X-Confirm: CONFIRM 头（操作二次确认）");
+        }
+        riskOverviewService.forceClose(riskEventId, operatorName(), request.reason());
+        return ApiResponse.ok(null);
+    }
+
+    /** 操作人：平台认证主体（审计身份不可伪造） */
+    private String operatorName() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || auth.getName() == null || auth.getName().isBlank()) {
+            return "unknown";
+        }
+        return auth.getName();
+    }
+
+    public record RiskTransferRequest(UUID assignToUserId,
+                                      @NotBlank(message = "reason 必填") String reason) {
+    }
+
+    public record RiskCloseRequest(@NotBlank(message = "reason 必填") String reason) {
     }
 }

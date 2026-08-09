@@ -3,6 +3,7 @@ package com.mindsafe.api.controller;
 import com.mindsafe.domain.entity.AuditLog;
 import com.mindsafe.domain.entity.ServiceHealthSnapshot;
 import com.mindsafe.service.monitoring.OpsService;
+import com.mindsafe.service.risk.RiskOverviewService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -26,12 +27,14 @@ import static org.mockito.Mockito.when;
 class OpsControllerTest {
 
     private OpsService opsService;
+    private RiskOverviewService riskOverviewService;
     private OpsController controller;
 
     @BeforeEach
     void setUp() {
         opsService = mock(OpsService.class);
-        controller = new OpsController(opsService);
+        riskOverviewService = mock(RiskOverviewService.class);
+        controller = new OpsController(opsService, riskOverviewService);
     }
 
     @Test

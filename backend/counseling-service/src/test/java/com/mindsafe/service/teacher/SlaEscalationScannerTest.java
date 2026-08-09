@@ -2,6 +2,7 @@ package com.mindsafe.service.teacher;
 
 import com.mindsafe.domain.entity.RiskEvent;
 import com.mindsafe.domain.mapper.RiskEventMapper;
+import com.mindsafe.domain.mapper.SlaEscalationLogMapper;
 import com.mindsafe.service.alert.AlertService;
 import com.mindsafe.service.alert.AlertService.AlertLevel;
 import org.junit.jupiter.api.BeforeEach;
@@ -31,14 +32,16 @@ import static org.mockito.Mockito.when;
 class SlaEscalationScannerTest {
 
     private RiskEventMapper riskEventMapper;
+    private SlaEscalationLogMapper slaEscalationLogMapper;
     private AlertService alertService;
     private SlaEscalationScanner scanner;
 
     @BeforeEach
     void setUp() {
         riskEventMapper = mock(RiskEventMapper.class);
+        slaEscalationLogMapper = mock(SlaEscalationLogMapper.class);
         alertService = mock(AlertService.class);
-        scanner = new SlaEscalationScanner(riskEventMapper, new AlertSlaPolicy(), alertService, true, 30);
+        scanner = new SlaEscalationScanner(riskEventMapper, new AlertSlaPolicy(), alertService, slaEscalationLogMapper, true, 30);
     }
 
     private RiskEvent event(int riskLevel, String status, int ageMinutes) {
@@ -99,7 +102,7 @@ class SlaEscalationScannerTest {
     @DisplayName("关闭时 enabled=false → 不扫描不告警")
     void disabled_skipsScan() {
         SlaEscalationScanner disabled =
-                new SlaEscalationScanner(riskEventMapper, new AlertSlaPolicy(), alertService, false, 30);
+                new SlaEscalationScanner(riskEventMapper, new AlertSlaPolicy(), alertService, slaEscalationLogMapper, false, 30);
 
         disabled.scan();
 

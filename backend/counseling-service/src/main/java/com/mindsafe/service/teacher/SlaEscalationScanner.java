@@ -3,7 +3,9 @@ package com.mindsafe.service.teacher;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.mindsafe.common.tenant.TenantContextHolder;
 import com.mindsafe.domain.entity.RiskEvent;
+import com.mindsafe.domain.entity.SlaEscalationLog;
 import com.mindsafe.domain.mapper.RiskEventMapper;
+import com.mindsafe.domain.mapper.SlaEscalationLogMapper;
 import com.mindsafe.service.alert.AlertService;
 import com.mindsafe.service.alert.AlertService.AlertLevel;
 import com.mindsafe.service.teacher.AlertSlaPolicy.SlaDecision;
@@ -58,15 +60,20 @@ public class SlaEscalationScanner {
     /** 内存去重表：riskEventId -> 最近一次告警时间（每次扫描按当前命中集合剪枝，避免无界增长） */
     private final Map<UUID, Instant> lastAlertAt = new ConcurrentHashMap<>();
 
+    /** OPS-MON-008 同源 Mapper：升级留痕（ADMIN-P1-05：sla_escalation_log） */
+    private final SlaEscalationLogMapper slaEscalationLogMapper;
+
     public SlaEscalationScanner(
             RiskEventMapper riskEventMapper,
             AlertSlaPolicy slaPolicy,
             AlertService alertService,
+            SlaEscalationLogMapper slaEscalationLogMapper,
             @Value("${mindsafe.security.sla-escalation.enabled:true}") boolean enabled,
             @Value("${mindsafe.security.sla-escalation.re-alert-cooldown-minutes:30}") int reAlertCooldownMinutes) {
         this.riskEventMapper = riskEventMapper;
         this.slaPolicy = slaPolicy;
         this.alertService = alertService;
+        this.slaEscalationLogMapper = slaEscalationLogMapper;
         this.enabled = enabled;
         this.reAlertCooldownMinutes = reAlertCooldownMinutes;
     }
@@ -76,11 +83,13 @@ public class SlaEscalationScanner {
      */
     @Scheduled(cron = "${mindsafe.security.sla-escalation.scan-cron:0 * * * * ?}")
     public void scan() {
-        if (!enabled) {
-            return;
+        // 并发互斥（code-review L2）：扫描重叠会双发告警 + 双写留痕，重叠直接跳过
+        synchronized (this) {
+            if (!enabled) {
+                return;
+            }
+            TenantContextHolder.runAsSystem(this::doScan);
         }
-        // 全租户扫描属合法跨租户链路：显式声明系统作用域（M1-003 fail-fast 配套）
-        TenantContextHolder.runAsSystem(this::doScan);
     }
 
     private void doScan() {
@@ -115,6 +124,8 @@ public class SlaEscalationScanner {
                 if (decision.escalate()) {
                     alertService.sendAlert(AlertLevel.CRITICAL, "风险预警 SLA 超时未接管（升级）", buildDetail(e, decision));
                     escalated++;
+                    // ADMIN-P1-05：升级留痕（sla_escalation_log，平台逾期清单数据源）
+                    recordEscalation(e, decision);
                 } else {
                     alertService.sendAlert(AlertLevel.WARNING, "风险预警 SLA 超时（提醒）", buildDetail(e, decision));
                     reminded++;
@@ -154,5 +165,16 @@ public class SlaEscalationScanner {
                 "风险事件 %s 已超 SLA %d 分钟未处理。租户=%s, 学生=%s, 类型=%s, 等级=%s, 状态=%s, 建议=%s",
                 e.getRiskEventId(), decision.overdueMinutes(), e.getTenantId(), e.getStudentUserId(),
                 e.getRiskType(), toPolicyLevel(e.getRiskLevel()), e.getStatus(), decision.action());
+    }
+
+    /** ADMIN-P1-05：升级留痕（sla_escalation_log；自动升级 stage=ack，operator 为空） */
+    private void recordEscalation(RiskEvent e, SlaDecision decision) {
+        SlaEscalationLog log = new SlaEscalationLog();
+        log.setRiskEventId(e.getRiskEventId());
+        log.setStage("ack");
+        log.setEscalatedAt(Instant.now());
+        log.setAction(SlaEscalationLog.ACTION_NOTIFY_ESCALATE);
+        log.setDetail(String.format("SLA 超时自动升级（action=%s, overdue=%dmin）", decision.action(), decision.overdueMinutes()));
+        slaEscalationLogMapper.insert(log);
     }
 }

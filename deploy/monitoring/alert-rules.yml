@@ -158,3 +158,24 @@ groups:
         annotations:
           summary: "LLM 主供应商连续失败"
           description: "近 10 分钟发生 {{ $value }} 次主→备切换，检查主 Key 余额/限流/服务状态。"
+
+      # ----- 业务信号（ADMIN-P1-06，M8 业务级告警；R-11 指标仅计数无标识） -----
+      - alert: MindsafeRiskOverdueHigh
+        expr: mindsafe_risk_events_overdue > 0
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "存在逾期未处置预警"
+          description: "当前 {{ $value }} 起预警超过 SLA 处置时限未闭环，请检查处置队列（平台逾期清单可介入转派/强制关闭）。"
+
+      - alert: MindsafeNotifyDeadPiling
+        expr: mindsafe_risk_notify_dead >= 3
+        for: 10m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "通知 dead 堆积"
+          description: "通知失败转人工（dead）堆积 {{ $value }} 条，请核对通知通道（企微/短信）与兜底台账。"

@@ -11,6 +11,22 @@ import java.util.UUID;
 @TableName(value = "prompt_versions", schema = "tenant_template")
 public class PromptVersion {
 
+    /** M7 审核发布流状态（V36）：草稿 */
+    public static final String STATUS_DRAFT = "draft";
+
+    /** M7 审核发布流状态（V36）：待审核 */
+    public static final String STATUS_PENDING_REVIEW = "pending_review";
+
+    /** M7 审核发布流状态（V36）：已审核通过（可激活） */
+    public static final String STATUS_APPROVED = "approved";
+
+    /** M7 审核发布流状态（V36）：已激活生效 */
+    public static final String STATUS_ACTIVE = "active";
+
+    /** M7 审核发布流状态（V36）：已停用 */
+    public static final String STATUS_RETIRED = "retired";
+
+
     @TableId(value = "version_id", type = IdType.INPUT)
     private UUID versionId;
 
@@ -35,6 +51,8 @@ public class PromptVersion {
     /** 是否为当前生效版本 */
     private Boolean isActive;
 
+    /** M7 审核发布流状态（V36）：draft/pending_review/approved/active/retired（is_active 保留兼容，激活时两者同步） */
+    private String status;
     private UUID createdBy;
     private Instant createdAt;
     private Instant updatedAt;
@@ -89,6 +107,9 @@ public class PromptVersion {
 
     public Boolean getIsActive() { return isActive; }
     public void setIsActive(Boolean isActive) { this.isActive = isActive; }
+
+    public String getStatus() { return status; }
+    public void setStatus(String status) { this.status = status; }
 
     public UUID getCreatedBy() { return createdBy; }
     public void setCreatedBy(UUID createdBy) { this.createdBy = createdBy; }

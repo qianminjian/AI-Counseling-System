@@ -35,7 +35,11 @@ public class MindSafeTenantLineHandler implements TenantLineHandler {
             "alert_events",
             // ADMIN-P0-01（V35）：平台账号与健康快照为平台级表（无 tenant_id 列）
             "platform_admin",
-            "service_health_snapshots");
+            "service_health_snapshots",
+            // ADMIN-P1-01/05（V36）：配置注册表/历史为平台级表；sla_escalation_log 无 tenant_id 列
+            "sys_config",
+            "sys_config_history",
+            "sla_escalation_log");
 
     @Override
     public Expression getTenantId() {

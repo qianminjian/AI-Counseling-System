@@ -2,7 +2,7 @@ import { Layout, Menu } from 'antd'
 
 const { Sider, Header, Content } = Layout
 
-export type AdminView = 'overview' | 'services' | 'alerts' | 'audit' | 'forbidden'
+export type AdminView = 'overview' | 'config' | 'risk' | 'services' | 'alerts' | 'audit' | 'forbidden'
 
 interface MenuItem {
   key: AdminView
@@ -13,12 +13,16 @@ interface MenuItem {
 const ROLE_MENUS: Record<string, MenuItem[]> = {
   super_admin: [
     { key: 'overview', label: '平台总览' },
+    { key: 'config', label: '配置注册表' },
+    { key: 'risk', label: '风险全景' },
     { key: 'services', label: '服务状态' },
     { key: 'alerts', label: '告警中心' },
     { key: 'audit', label: '审计日志' },
   ],
   ops_admin: [
     { key: 'overview', label: '平台总览' },
+    { key: 'config', label: '配置注册表' },
+    { key: 'risk', label: '风险全景' },
     { key: 'services', label: '服务状态' },
     { key: 'alerts', label: '告警中心' },
   ],

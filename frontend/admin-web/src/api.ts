@@ -75,3 +75,48 @@ export interface ServiceStatus {
 export function fetchServicesStatus(): Promise<ServiceStatus> {
   return adminFetch<ServiceStatus>('/api/v1/ops/services/status')
 }
+
+// ===== P1（ADMIN-P1-01/04：配置注册表 + 风险全景） =====
+
+export interface SysConfigItem {
+  configKey: string
+  domain: string
+  value: string
+  valueType: string
+  sensitive: string
+  effectMode: string
+  description?: string
+}
+
+export function fetchConfigs(domain?: string): Promise<SysConfigItem[]> {
+  const q = domain ? `?domain=${encodeURIComponent(domain)}` : ''
+  return adminFetch<SysConfigItem[]>(`/api/v1/platform/config/registry${q}`)
+}
+
+export async function updateConfig(key: string, value: string, reason: string): Promise<void> {
+  const token = getAdminToken()
+  const resp = await fetch(`/api/v1/platform/config/${encodeURIComponent(key)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: JSON.stringify({ value, reason }),
+  })
+  if (!resp.ok) {
+    const body = await resp.json().catch((): null => null)
+    throw new Error(body?.message ?? '配置修改失败')
+  }
+}
+
+export interface RiskOverview {
+  levelDistribution: Record<string, number>
+  todayNew: number
+  unhandled: number
+  trend7d: Record<string, number>
+}
+
+export function fetchRiskOverview(): Promise<RiskOverview> {
+  return adminFetch<RiskOverview>('/api/v1/ops/risk/overview')
+}
+
+export function fetchRiskOverdue(): Promise<Array<Record<string, unknown>>> {
+  return adminFetch<Array<Record<string, unknown>>>('/api/v1/ops/risk/overdue')
+}

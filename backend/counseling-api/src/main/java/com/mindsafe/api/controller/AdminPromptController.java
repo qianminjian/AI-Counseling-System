@@ -8,6 +8,7 @@ import com.mindsafe.service.audit.AuditLogService;
 import com.mindsafe.service.prompt.PromptEvalGovernance;
 import com.mindsafe.service.prompt.PromptEvalScoreReader;
 import com.mindsafe.service.prompt.PromptVersionService;
+import com.mindsafe.service.prompt.RedTeamRegressionRunner;
 import com.mindsafe.service.prompt.TemplateMatrixRegistry;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
@@ -30,17 +31,20 @@ public class AdminPromptController {
     private final TemplateMatrixRegistry templateMatrixRegistry;
     private final PromptEvalGovernance promptEvalGovernance;
     private final PromptEvalScoreReader evalScoreReader;
+    private final RedTeamRegressionRunner redTeamRegressionRunner;
 
     public AdminPromptController(PromptVersionService promptVersionService,
                                  AuditLogService auditLogService,
                                  TemplateMatrixRegistry templateMatrixRegistry,
                                  PromptEvalGovernance promptEvalGovernance,
-                                 PromptEvalScoreReader evalScoreReader) {
+                                 PromptEvalScoreReader evalScoreReader,
+                                 RedTeamRegressionRunner redTeamRegressionRunner) {
         this.promptVersionService = promptVersionService;
         this.auditLogService = auditLogService;
         this.templateMatrixRegistry = templateMatrixRegistry;
         this.promptEvalGovernance = promptEvalGovernance;
         this.evalScoreReader = evalScoreReader;
+        this.redTeamRegressionRunner = redTeamRegressionRunner;
     }
 
     // ===== 版本 CRUD =====
@@ -123,6 +127,60 @@ public class AdminPromptController {
     public ApiResponse<Void> deactivateVersion(@PathVariable UUID versionId) {
         promptVersionService.deactivateVersion(versionId);
         return ApiResponse.ok(null);
+    }
+
+    // ===== M7 审核发布流（ADMIN-P1-02，§6.10 状态机） =====
+
+    /** 提交审核：draft → pending_review */
+    @PostMapping("/versions/{versionId}/submit")
+    public ApiResponse<Void> submitForReview(@PathVariable UUID versionId) {
+        try {
+            promptVersionService.submitForReview(versionId);
+        } catch (IllegalArgumentException e) {
+            return ApiResponse.error(ErrorCode.RESOURCE_NOT_FOUND.code(), e.getMessage());
+        } catch (IllegalStateException e) {
+            return ApiResponse.error(ErrorCode.PARAM_INVALID.code(), e.getMessage());
+        }
+        return ApiResponse.ok(null);
+    }
+
+    /** 审核通过：pending_review → approved（reviewer 必填签字） */
+    @PostMapping("/versions/{versionId}/review")
+    public ApiResponse<Void> reviewVersion(@PathVariable UUID versionId,
+                                           @RequestBody(required = false) Map<String, Object> body) {
+        Map<String, Object> b = body != null ? body : Map.of();
+        String reviewer = b.get("reviewer") != null ? String.valueOf(b.get("reviewer")).trim() : "";
+        try {
+            promptVersionService.reviewVersion(versionId, reviewer);
+        } catch (IllegalArgumentException e) {
+            return ApiResponse.error(ErrorCode.PARAM_INVALID.code(), e.getMessage());
+        } catch (IllegalStateException e) {
+            return ApiResponse.error(ErrorCode.PARAM_INVALID.code(), e.getMessage());
+        }
+        return ApiResponse.ok(null);
+    }
+
+    // ===== M7 安全话术只读（ADMIN-P1-03，R-7：预审核内容变更需发布评审，管理端只读） =====
+
+    /**
+     * safety 域模板只读视图：返回红队安全关键模板清单（写请求由 SecurityConfig 拒绝 403）。
+     * 内容变更必须走代码级预审核 + 发布门禁，管理端不提供写入口。
+     */
+    @GetMapping("/safety-phrases")
+    public ApiResponse<List<Map<String, Object>>> safetyPhrases() {
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (TemplateMatrixRegistry.TemplateEntry entry : templateMatrixRegistry.getMatrix()) {
+            if (redTeamRegressionRunner.isSafetyCritical(entry.templateId())) {
+                Map<String, Object> item = new LinkedHashMap<>();
+                item.put("templateId", entry.templateId());
+                item.put("version", entry.version());
+                item.put("audience", entry.audience());
+                item.put("status", entry.status().name());
+                item.put("changelog", entry.changelog());
+                result.add(item);
+            }
+        }
+        return ApiResponse.ok(result);
     }
 
     // ===== A/B 效果对比 =====
