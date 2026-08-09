@@ -353,6 +353,45 @@ describe('LoginPage', () => {
       expect(setPin).toHaveBeenCalledWith('654321')
     })
 
+    // DOC-086 / BUG-S-S01-01 回归：PIN 设置页应实时显示长度提示
+    it('PIN 设置页显示长度提示文案（回归 BUG-S-S01-01）', async () => {
+      ;(trialRegister as any).mockResolvedValue({
+        token: 'tk', userId: 'u1', userType: 'student', pseudonym: '花花',
+      })
+      render(<LoginPage onLogin={vi.fn()} onRegister={vi.fn()} onNeedConsent={vi.fn()} initialTab="register" />)
+      fireEvent.change(screen.getByPlaceholderText('老师发的邀请码'), { target: { value: 'DEMO2026' } })
+      fireEvent.change(screen.getByPlaceholderText('给自己取个名字吧'), { target: { value: '花花' } })
+      fireEvent.click(screen.getByText('👧 女生'))
+      fireEvent.change(screen.getByPlaceholderText('你的年龄'), { target: { value: '15' } })
+      fireEvent.click(screen.getByText('注册 🚀'))
+      fireEvent.click(screen.getByText('没错，注册！'))
+      await waitFor(() => expect(screen.getByText('设置你的秘密数字')).toBeTruthy())
+      // 初始为空 → 提示「请输入 4-6 位数字」
+      expect(screen.getByText('请输入 4-6 位数字')).toBeTruthy()
+      // 输入 3 位 → 提示「还需要 1 位数字」
+      fireEvent.click(screen.getByText('1'))
+      fireEvent.click(screen.getByText('2'))
+      fireEvent.click(screen.getByText('3'))
+      expect(screen.getByText('还需要 1 位数字')).toBeTruthy()
+      // 输入第 4 位 → 提示「✓ 可以设置了」
+      fireEvent.click(screen.getByText('4'))
+      expect(screen.getByText('✓ 可以设置了')).toBeTruthy()
+      // 输入第 6 位 → 提示「✓ 已达最长 6 位」
+      fireEvent.click(screen.getByText('5'))
+      fireEvent.click(screen.getByText('6'))
+      expect(screen.getByText('✓ 已达最长 6 位')).toBeTruthy()
+    })
+
+    // DOC-086 / BUG-S-BASE-01 回归：登录页昵称 input 应有 id+name+label 关联
+    it('登录页昵称 input 有 label 关联（回归 BUG-S-BASE-01）', () => {
+      render(<LoginPage onLogin={vi.fn()} onRegister={vi.fn()} onNeedConsent={vi.fn()} initialTab="login" />)
+      const nameInput = screen.getByPlaceholderText('输入注册时的昵称')
+      expect(nameInput.getAttribute('id')).toBe('login-name')
+      expect(nameInput.getAttribute('name')).toBe('pseudonym')
+      const label = document.querySelector('label[for="login-name"]')
+      expect(label).toBeTruthy()
+    })
+
     it('PIN 两次不一致显示错误并重置', async () => {
       ;(trialRegister as any).mockResolvedValue({
         token: 'tk', userId: 'u1', userType: 'student', pseudonym: '花花',

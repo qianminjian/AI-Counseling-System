@@ -243,9 +243,11 @@ function PinLoginForm({ themeId, onLogin }) {
   return (
     <div>
       {/* 昵称 */}
-      <div className={`login-field login-field--${themeId}`}>
-        <label>你的昵称</label>
+      <div className="login-field login-field--${themeId}">
+        <label htmlFor="login-name">你的昵称</label>
         <input
+          id="login-name"
+          name="pseudonym"
           value={name}
           onChange={(e) => { setName(e.target.value); setError('') }}
           placeholder="输入注册时的昵称"
@@ -513,6 +515,14 @@ function RegisterForm({ themeId, onRegister }) {
   // === 设置 PIN ===
   if (step === 'set-pin') {
     const currentPin = pinStep === 'input' ? pin : pinConfirm
+    // DOC-086 / BUG-S-S01-01：实时提示当前 PIN 长度与状态
+    const pinHint = currentPin.length === 0
+      ? '请输入 4-6 位数字'
+      : currentPin.length < 4
+        ? `还需要 ${4 - currentPin.length} 位数字`
+        : currentPin.length === 6
+          ? '✓ 已达最长 6 位'
+          : '✓ 可以设置了'
     return (
       <div>
         <div className={`login-brand login-brand--${themeId}`} style={{ marginBottom: 10 }}>
@@ -526,6 +536,10 @@ function RegisterForm({ themeId, onRegister }) {
             <div key={i} className={`${pinIndicator} ${i < currentPin.length ? 'filled' : ''}`} />
           ))}
         </div>
+
+        <p className={`pin-hint pin-hint--${themeId} ${currentPin.length >= 4 ? 'pin-hint--ok' : ''}`} aria-live="polite">
+          {pinHint}
+        </p>
 
         <div className={`rainbow-keypad rainbow-keypad--${themeId}`}>
           {['1','2','3','4','5','6','7','8','9'].map((k) => (
@@ -560,13 +574,13 @@ function RegisterForm({ themeId, onRegister }) {
   return (
     <form onSubmit={handleFormSubmit}>
       <div className={`login-field login-field--${themeId}`}>
-        <label>邀请码 *</label>
-        <input value={form.inviteCode} onChange={(e) => update('inviteCode', e.target.value)} placeholder="老师发的邀请码" />
+        <label htmlFor="reg-invite">邀请码 *</label>
+        <input id="reg-invite" name="inviteCode" value={form.inviteCode} onChange={(e) => update('inviteCode', e.target.value)} placeholder="老师发的邀请码" />
       </div>
 
       <div className={`login-field login-field--${themeId}`}>
-        <label>昵称 *（2-12 字）</label>
-        <input value={form.pseudonym} onChange={(e) => update('pseudonym', e.target.value)} placeholder="给自己取个名字吧" maxLength={12} />
+        <label htmlFor="reg-nickname">昵称 *（2-12 字）</label>
+        <input id="reg-nickname" name="pseudonym" value={form.pseudonym} onChange={(e) => update('pseudonym', e.target.value)} placeholder="给自己取个名字吧" maxLength={12} />
       </div>
 
       {/* 性别 */}
@@ -580,8 +594,8 @@ function RegisterForm({ themeId, onRegister }) {
 
       {/* 年龄 */}
       <div className={`login-field login-field--${themeId}`}>
-        <label>年龄 *</label>
-        <input type="number" value={form.age} onChange={(e) => update('age', e.target.value)} placeholder="你的年龄" min={6} max={120} />
+        <label htmlFor="reg-age">年龄 *</label>
+        <input id="reg-age" name="age" type="number" value={form.age} onChange={(e) => update('age', e.target.value)} placeholder="你的年龄" min={6} max={120} />
         {form.age && parseInt(form.age) < 14 && (
           <p className={`age-warn age-warn--${themeId}`}>⚠️ 不满 14 周岁建议在家长陪同下使用</p>
         )}
@@ -590,8 +604,10 @@ function RegisterForm({ themeId, onRegister }) {
       {/* 监护人手机号（不满 14 周岁必填，未成年人保护法要求） */}
       {form.age && parseInt(form.age) < 14 && (
         <div className={`login-field login-field--${themeId}`}>
-          <label>家长手机号 *</label>
+          <label htmlFor="reg-guardian-phone">家长手机号 *</label>
           <input
+            id="reg-guardian-phone"
+            name="guardianPhone"
             type="tel"
             value={form.guardianPhone}
             onChange={(e) => update('guardianPhone', e.target.value)}
