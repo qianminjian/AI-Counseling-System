@@ -31,7 +31,9 @@ export function subHint(voiceCall: VoiceCallStatus): string {
     if (wakeStatus === 'loading') return '正在加载语音引擎...'
     if (wakeStatus === 'listening') return '我在这里安静地等你叫我'
     if (wakeStatus === 'error') return '语音引擎加载失败，请关闭再开启'
-    return '我在这里安静地等你叫我'
+    // F-23（2026-08-10）：idle/未知状态不得冒充 standby——原兜底同样返回
+    // "我在这里安静地等你叫我"，导致引擎未就绪（缓存空首访下载期）时用户误以为可呼叫。
+    return '正在准备语音引擎...'
   }
   if (mode === 'active') return '不用按，直接说就行'
   return '按住波波，跟它说说话'

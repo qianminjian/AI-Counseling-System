@@ -29,7 +29,8 @@ describe('VoiceStatusHint 状态→文案单一映射（FA-14）', () => {
       expect(subHint({ mode: 'standby', wakeStatus: 'loading' })).toBe('正在加载语音引擎...')
       expect(subHint({ mode: 'standby', wakeStatus: 'listening' })).toBe('我在这里安静地等你叫我')
       expect(subHint({ mode: 'standby', wakeStatus: 'error' })).toBe('语音引擎加载失败，请关闭再开启')
-      expect(subHint({ mode: 'standby', wakeStatus: 'idle' })).toBe('我在这里安静地等你叫我')
+      // F-23：idle 不得冒充 standby（引擎未就绪时诚实显示准备中）
+      expect(subHint({ mode: 'standby', wakeStatus: 'idle' })).toBe('正在准备语音引擎...')
     })
 
     it('active 与兜底', () => {

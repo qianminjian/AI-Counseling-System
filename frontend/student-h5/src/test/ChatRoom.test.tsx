@@ -37,6 +37,7 @@ vi.mock('../hooks/useSilenceNudge', () => ({
 vi.mock('../hooks/useWakeWord', () => ({
   preloadWakeModel: vi.fn(),
   useWakeWord: () => ({ supported: false, wakeStatus: 'idle' }),
+  useWakeModelStatus: () => ({ status: 'idle', progress: 0, error: '' }), // F-22：ModelDownloadProgress 消费
   __resetWakeWordForTest: vi.fn(),
 }))
 
