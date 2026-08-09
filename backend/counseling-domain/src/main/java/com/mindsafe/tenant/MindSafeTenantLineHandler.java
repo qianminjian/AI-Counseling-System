@@ -32,7 +32,10 @@ public class MindSafeTenantLineHandler implements TenantLineHandler {
             // OPS-MON-007/008（V34）：降级/告警事件为平台级表（无 tenant_id 列），
             // 否则定时任务落库触发 fail-fast / 带租户上下文时注入不存在列导致 SQL 报错（code-review H1）
             "degradation_events",
-            "alert_events");
+            "alert_events",
+            // ADMIN-P0-01（V35）：平台账号与健康快照为平台级表（无 tenant_id 列）
+            "platform_admin",
+            "service_health_snapshots");
 
     @Override
     public Expression getTenantId() {
