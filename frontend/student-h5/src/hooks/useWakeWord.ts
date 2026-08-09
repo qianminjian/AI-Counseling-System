@@ -200,20 +200,29 @@ function getWakeWorker(): Promise<Worker> {
         new URL('../workers/wakeWordWorker.ts', import.meta.url),
         { type: 'module' },
       )
-      w.postMessage({ type: 'init', config: buildWorkerConfig() })
-      // init 完成前 resolve 均可（onmessage 由 useWakeWord active 时挂载；ready 状态经
-      // 状态机同步）。若 Worker 加载失败，reject 供调用方降级主线程。
+      // F-22（2026-08-10 设计落地）：等 Worker 自身 ready（挂临时 onmessage），
+      // 而非轮询主线程 wakeModelStore——主线程 getTranscriber 与 Worker 独立，
+      // 用主线程状态判 Worker 就绪会导致：主线程失败时 Worker 误超时降级、
+      // 主线程先就绪时 resolve 过早（Worker 仍在加载）。
       const t0 = Date.now()
       await new Promise<void>((resolve, reject) => {
-        const timer = setInterval(() => {
-          if (wakeModelStore.getStatus() === 'ready') {
-            clearInterval(timer)
+        const timer = setTimeout(() => {
+          reject(new Error('Worker 预启动超时（90s）'))
+        }, 90000)
+        w.onmessage = (e) => {
+          const { type } = e.data
+          if (type === 'status' && e.data.status === 'ready') {
+            clearTimeout(timer)
             resolve()
-          } else if (Date.now() - t0 > 90000) {
-            clearInterval(timer)
-            reject(new Error('Worker 预启动超时（90s）'))
+          } else if (type === 'status' && e.data.status === 'error') {
+            clearTimeout(timer)
+            reject(new Error(e.data.message || 'Worker 加载失败'))
           }
-        }, 500)
+        }
+        w.onerror = (err) => {
+          clearTimeout(timer)
+          reject(new Error(err.message || 'Worker onerror'))
+        }
       })
       console.info(`[WakeWord] Worker 预启动就绪（${Math.round((Date.now() - t0) / 1000)}s）`)
       return w
@@ -489,15 +498,12 @@ export function useWakeWord({ active, paused, onDetected }) {
         fallbackToMainThread(err.message || 'Worker onerror')
       }
 
-      // 预启动已完成模型加载：若 wakeModelStore 已 ready，直接同步（补 F-14 延迟提示）
-      if (wakeModelStore.getStatus() === 'ready') {
-        setTimeout(() => {
-          if (!cancelled) setWakeStatus('listening')
-        }, 2500)
-      } else {
-        setModelStatus('loading')
-        setWakeStatus('loading')
-      }
+      // F-22：getWakeWorker resolve 即 Worker 自身就绪（已不再依赖主线程状态），
+      // 直接同步模型就绪 + F-14 2.5s 后提示 standby。
+      setModelStatus('ready')
+      setTimeout(() => {
+        if (!cancelled) setWakeStatus('listening')
+      }, 2500)
     })()
 
     // 启动麦克风（F6：统一 micSession 模块——约束/错误映射/iOS resume 兜底/释放单点）
