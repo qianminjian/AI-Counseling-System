@@ -151,6 +151,13 @@ function getTranscriber() {
             setModelStatus('loading', p)
           }),
         })
+        // F-9b（2026-08-09）：pipeline 半初始化防御——模型文件下载不全时 pipeline 可能
+        // resolve 但内部 feature_extractor=null（实测：降级主线程后 72 次转写全部
+        // "Cannot read properties of null (reading 'feature_extractor')"）。
+        // 校验完整性，缺失则抛错触发重试，而非静默进入不可用状态。
+        if (!t || typeof (t as any)?.feature_extractor === 'undefined' || (t as any)?.feature_extractor === null) {
+          throw new Error('pipeline 初始化不完整（feature_extractor 缺失），模型文件可能未下载完整')
+        }
         setModelStatus('ready')
         return t
       },
@@ -191,9 +198,13 @@ export function preloadWakeModel() {
  *
  * - idle（从未加载）→ 直接返回 true：Worker 自行下载，是唯一下载者
  * - loading → 轮询直到 ready/error/unsupported（error 时 Worker 自行重试）
- * - 超时（60s）→ 返回 false：调用方应降级主线程，复用同一路下载而非另开一路
+ * - 超时 → 返回 false：调用方应降级主线程，复用同一路下载而非另开一路
+ *
+ * 超时阈值 F-9b（2026-08-09）：60s → 120s。实测声纹+唤醒 40MB 并行下载
+ * （4.7Mbps 带宽平分各 ~2.3Mbps）需 ~104s，60s 必然超时降级 → 主线程也未就绪
+ * → feature_extractor null 转写全失败（72 次实证）。
  */
-function waitForMainThreadModel(timeoutMs = 60000): Promise<boolean> {
+function waitForMainThreadModel(timeoutMs = 120000): Promise<boolean> {
   return new Promise((resolve) => {
     const st = wakeModelStore.getStatus()
     if (st !== 'loading') {
