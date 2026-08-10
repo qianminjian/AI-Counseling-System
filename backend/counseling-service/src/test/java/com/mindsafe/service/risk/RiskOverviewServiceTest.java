@@ -44,9 +44,12 @@ class RiskOverviewServiceTest {
     @DisplayName("风险全景：红橙黄绿分布 + 今日新增 + 未处置 + 7 天趋势")
     void overviewAggregates() {
         Instant now = Instant.now();
+        // B-03 对齐：服务端按上海日界（CounselingTimeZone.startOfDay）判定"今日"，测试数据须用同一基准
+        // （Instant.truncatedTo(DAYS) 为 UTC 日界，上海 0-8 点窗口会漂移前一天导致 todayNew=0）
+        Instant todayStart = com.mindsafe.service.common.CounselingTimeZone.startOfDay(now);
         when(mapper.selectList(any(Wrapper.class))).thenReturn(List.of(
-                event(3, now.minus(1, ChronoUnit.HOURS), now, RiskEvent.STATUS_RESOLVED),   // 今日 RED 已处置
-                event(2, now.minus(2, ChronoUnit.HOURS), null, RiskEvent.STATUS_OPEN),       // 今日 ORANGE 未处置
+                event(3, todayStart.plus(1, ChronoUnit.HOURS), now, RiskEvent.STATUS_RESOLVED),   // 今日 RED 已处置
+                event(2, todayStart.plus(2, ChronoUnit.HOURS), null, RiskEvent.STATUS_OPEN),       // 今日 ORANGE 未处置
                 event(1, now.minus(3, ChronoUnit.DAYS), null, RiskEvent.STATUS_CLAIMED),     // YELLOW 未处置
                 event(0, now.minus(5, ChronoUnit.DAYS), now.minus(1, ChronoUnit.DAYS), RiskEvent.STATUS_CLOSED)
         ));

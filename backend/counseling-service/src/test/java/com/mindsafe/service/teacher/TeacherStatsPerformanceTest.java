@@ -82,11 +82,14 @@ class TeacherStatsPerformanceTest {
     @DisplayName("getStats 会话趋势：单次查询 + 内存分桶，不再逐日 selectCount")
     void sessionTrend_singleQueryBucketed() {
         Instant now = Instant.now();
-        Instant todayStart = now.truncatedTo(ChronoUnit.DAYS);
+        // B-03 对齐：服务端按上海日界分桶（CounselingTimeZone.startOfDay），测试基准须一致
+        // （UTC truncate 在 0-8 点窗口漂移前一天，今日会话被分到昨天桶导致断言失败）
+        Instant todayStart = com.mindsafe.service.common.CounselingTimeZone.startOfDay(now);
         when(sessionMapper.selectList(any())).thenReturn(List.of(
                 sessionAt(todayStart.plus(1, ChronoUnit.MINUTES)),
                 sessionAt(todayStart.plus(2, ChronoUnit.MINUTES)),
-                sessionAt(now.minus(2, ChronoUnit.DAYS).truncatedTo(ChronoUnit.DAYS).plus(6, ChronoUnit.HOURS))));
+                sessionAt(com.mindsafe.service.common.CounselingTimeZone.truncateToDay(
+                        now.minus(2, ChronoUnit.DAYS)).plus(6, ChronoUnit.HOURS))));
 
         TeacherService.StatsVO stats = service.getStats(tenantId, null);
 
