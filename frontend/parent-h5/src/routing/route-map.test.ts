@@ -6,7 +6,7 @@ import { describe, it, expect } from 'vitest'
 import { ROUTE_MAP, PAGES, toCustomRoutes } from './route-map'
 
 describe('ROUTE_MAP（pages 路径 ↔ H5 URL）', () => {
-  it('五页面映射齐备且 URL 唯一', () => {
+  it('九页面映射齐备且 URL 唯一', () => {
     expect(ROUTE_MAP).toEqual({
       '/pages/verify/index': '/',
       '/pages/privacy/index': '/privacy',
@@ -14,6 +14,13 @@ describe('ROUTE_MAP（pages 路径 ↔ H5 URL）', () => {
       '/pages/consent/index': '/consent',
       // CFG-002：扫码入口页（二维码 URL：/p/{v}/{deviceCode}）
       '/pages/device/index': '/p/:v/:deviceCode',
+      // doing/85 TOC-001/002：toC 家庭版
+      '/pages/toc-login/index': '/toc/login',
+      '/pages/toc-profiles/index': '/toc/profiles',
+      // doing/85 TOC-003：家庭设备管理
+      '/pages/toc-devices/index': '/toc/devices',
+      // doing/85 TOC-007：隐私控制
+      '/pages/toc-privacy/index': '/toc/privacy',
     })
     const urls = Object.values(ROUTE_MAP)
     expect(new Set(urls).size).toBe(urls.length)

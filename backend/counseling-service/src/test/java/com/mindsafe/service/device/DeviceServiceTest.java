@@ -45,7 +45,8 @@ class DeviceServiceTest {
         deviceMapper = mock(DeviceMapper.class);
         bindingMapper = mock(DeviceBindingMapper.class);
         bindCodeMapper = mock(DeviceBindCodeMapper.class);
-        service = new DeviceService(deviceMapper, bindingMapper, bindCodeMapper);
+        service = new DeviceService(deviceMapper, bindingMapper, bindCodeMapper,
+                mock(DevicePreferenceService.class));
     }
 
     private Device unboundDevice() {

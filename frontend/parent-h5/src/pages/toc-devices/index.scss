@@ -1,0 +1,131 @@
+.toc-devices {
+  min-height: 100vh;
+  padding: 32px;
+  background: var(--ms-bg);
+  box-sizing: border-box;
+
+  &__header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 24px;
+  }
+
+  &__title {
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--ms-text);
+  }
+
+  &__add {
+    margin: 0;
+  }
+
+  &__error {
+    display: block;
+    margin-bottom: 12px;
+    font-size: 13px;
+    color: var(--ms-danger);
+  }
+
+  &__list {
+    background: var(--ms-card);
+    border-radius: var(--ms-radius-card);
+    padding: 8px 20px;
+  }
+
+  &__empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 48px 0;
+    gap: 8px;
+
+    &-hint {
+      font-size: 12px;
+      color: var(--ms-text-muted);
+      text-align: center;
+    }
+  }
+
+  &__item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 0;
+    border-bottom: 1px solid var(--ms-border-soft);
+
+    &:last-child {
+      border-bottom: none;
+    }
+  }
+
+  &__item-info {
+    display: flex;
+    flex-direction: column;
+  }
+
+  &__item-code {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--ms-text);
+  }
+
+  &__item-meta {
+    margin-top: 4px;
+    font-size: 13px;
+    color: var(--ms-text-muted);
+  }
+
+  &__item-btn {
+    font-size: 14px;
+    color: var(--ms-danger);
+  }
+}
+
+  &__item-actions {
+    display: flex;
+    gap: 16px;
+  }
+
+  &__pref {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px 0 16px;
+    border-bottom: 1px solid var(--ms-border-soft);
+
+    &-label {
+      font-size: 13px;
+      color: var(--ms-text-secondary);
+    }
+
+    &-options {
+      display: flex;
+      gap: 10px;
+    }
+
+    &-opt {
+      padding: 4px 14px;
+      border: 1px solid var(--ms-border);
+      border-radius: 8px;
+      font-size: 13px;
+      color: var(--ms-text-secondary);
+
+      &--active {
+        border-color: var(--ms-primary);
+        color: var(--ms-primary);
+        background: var(--ms-primary-soft);
+      }
+    }
+
+    &-save {
+      margin-top: 4px;
+      align-self: flex-start;
+    }
+
+    &-msg {
+      font-size: 12px;
+      color: var(--ms-primary);
+    }
+  }

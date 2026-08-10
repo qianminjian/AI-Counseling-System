@@ -16,6 +16,7 @@ import {
   bindDevice,
   type DeviceInfo,
 } from '../../services/device'
+import { tocBindDevice } from '../../services/toc'
 import { validateBindInput } from '../../utils/deviceBind'
 import './index.scss'
 
@@ -53,6 +54,8 @@ export default function DeviceConfigPage() {
   const [bindTargetId, setBindTargetId] = useState('')
   const [code, setCode] = useState('')
   const [bindError, setBindError] = useState('')
+  // CFG-010 联动（doing/85 TOC-003）：检测 toC 家庭登录态 → 家庭绑定模式（FAMILY）
+  const isTocMode = typeof sessionStorage !== 'undefined' && !!sessionStorage.getItem('toc_token')
   const [bindCodeExpires, setBindCodeExpires] = useState('')
   const [offline] = useState(() => typeof navigator !== 'undefined' && !navigator.onLine)
 
@@ -127,6 +130,20 @@ export default function DeviceConfigPage() {
 
   /** 绑定提交（AC-84-10/11/12） */
   const handleBind = useCallback(async () => {
+    if (isTocMode) {
+      // 家庭绑定（CFG-010）：绑定到当前 toC 家庭账号，无需归属输入
+      if (!/^\d{6}$/.test(code)) {
+        setBindError('请输入 6 位验证码')
+        return
+      }
+      try {
+        await tocBindDevice(deviceCode, { code })
+        setStep(4)
+      } catch (e) {
+        setBindError(e instanceof Error ? e.message : '绑定失败，请重试')
+      }
+      return
+    }
     const validationError = validateBindInput(bindTargetId, code)
     if (validationError) {
       setBindError(validationError)
@@ -138,7 +155,7 @@ export default function DeviceConfigPage() {
     } catch (e) {
       setBindError(e instanceof Error ? e.message : '绑定失败，请重试')
     }
-  }, [deviceCode, bindType, bindTargetId, code])
+  }, [deviceCode, bindType, bindTargetId, code, isTocMode])
 
   if (phase === 'loading') {
     return (
@@ -239,18 +256,25 @@ export default function DeviceConfigPage() {
           <Text className='device-section-title'>③ 绑定设备</Text>
           <Text className='device-hint'>设备将语音播报 6 位验证码，请输入进行绑定</Text>
           <View className='device-form'>
-            <Input
-              className='device-input'
-              placeholder='归属类型：CLASS（班级）/ ROOM（咨询室）/ SCHOOL（学校）'
-              value={bindType}
-              onInput={(e) => setBindType(inputValue(e))}
-            />
-            <Input
-              className='device-input'
-              placeholder='归属 ID（学校/班级/咨询室）'
-              value={bindTargetId}
-              onInput={(e) => setBindTargetId(inputValue(e))}
-            />
+            {!isTocMode && (
+              <>
+                <Input
+                  className='device-input'
+                  placeholder='归属类型：CLASS（班级）/ ROOM（咨询室）/ SCHOOL（学校）'
+                  value={bindType}
+                  onInput={(e) => setBindType(inputValue(e))}
+                />
+                <Input
+                  className='device-input'
+                  placeholder='归属 ID（学校/班级/咨询室）'
+                  value={bindTargetId}
+                  onInput={(e) => setBindTargetId(inputValue(e))}
+                />
+              </>
+            )}
+            {isTocMode && (
+              <Text className='device-hint'>家庭模式：将绑定到当前家庭账号（CFG-010）</Text>
+            )}
             <Input
               className='device-input'
               placeholder='设备语音播报的 6 位验证码'

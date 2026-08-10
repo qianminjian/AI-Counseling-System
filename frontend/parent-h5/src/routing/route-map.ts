@@ -5,6 +5,10 @@
  * - /parent/privacy    → privacy
  * - /parent/report     → report（需登录）
  * - /parent/consent    → consent（需登录）
+ * - /parent/toc-login  → toC 家庭版注册/登录（doing/85 TOC-001）
+ * - /parent/toc-profiles → 家庭档案管理（doing/85 TOC-002，需 toC 登录）
+ * - /parent/toc-devices → 家庭设备管理（doing/85 TOC-003，需 toC 登录）
+ * - /parent/toc-privacy → 隐私控制（doing/85 TOC-007，需 toC 登录）
  * config/index.ts 的 h5.router.customRoutes 读取本模块，避免映射散落两处
  */
 
@@ -15,6 +19,13 @@ export const PAGES = [
   'pages/report/index',
   'pages/consent/index',
   'pages/device/index',
+  // doing/85 TOC-001/002：toC 家庭版注册/登录 + 家庭档案管理
+  'pages/toc-login/index',
+  'pages/toc-profiles/index',
+  // doing/85 TOC-003：家庭设备管理（联动 doing/84）
+  'pages/toc-devices/index',
+  // doing/85 TOC-007：隐私控制
+  'pages/toc-privacy/index',
 ] as const
 
 export const ROUTE_MAP = {
@@ -24,6 +35,13 @@ export const ROUTE_MAP = {
   '/pages/consent/index': '/consent',
   // CFG-002（doing/84 §四.1）：扫码入口页（二维码 URL：/p/{v}/{deviceCode}，Taro 路径参数）
   '/pages/device/index': '/p/:v/:deviceCode',
+  // doing/85 TOC-001/002：toC 家庭版（H5 URL：/toc/login、/toc/profiles）
+  '/pages/toc-login/index': '/toc/login',
+  '/pages/toc-profiles/index': '/toc/profiles',
+  // doing/85 TOC-003：家庭设备管理
+  '/pages/toc-devices/index': '/toc/devices',
+  // doing/85 TOC-007：隐私控制
+  '/pages/toc-privacy/index': '/toc/privacy',
 } as const
 
 export function toCustomRoutes(): Record<string, string> {

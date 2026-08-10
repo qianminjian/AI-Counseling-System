@@ -814,8 +814,8 @@
 | CFG-004 | **M2 TTS 配置外置**：新建 `tts-service/config.yaml`（7 音色 + 8 方言 native/instruct + 10 情感 + native_dialect_voices）+ app.py 加载改造（保留硬编码 fallback） | P1 | ✅ 已完成 | design/57 M2①②；11 个配置测试全绿 |
 | CFG-005 | **M2 部署链路**：Dockerfile 增加 `COPY config.yaml` + docker-compose 透传 DASHSCOPE_TTS_MODEL + .env.example 补变量 | P1 | ✅ 已完成 | design/57 M2③④ |
 | CFG-006 | **M2 验证**：35 个 Python TTS 测试全绿（test_app 24 + test_config 11） | P1 | ✅ 已完成 | design/57 M2⑤ |
-| CFG-007 | **M3 Voice 配置外置**：新建 `voice-service/config.yaml` + `config.py`（独立模块，解耦重量级依赖）+ app.py 加载改造 + Dockerfile COPY | P2 | ✅ 已完成 | design/57 M3；8 个配置测试全绿 |
-| CFG-008 | **M4 文档同步**：.env.example 补 DASHSCOPE_TTS_MODEL + DEPLOY-GUIDE 配置变更流程 + design/57 状态更新 | P2 | ✅ 已完成 | design/57 M4 |
+| CFG-007 | 设备信息与状态页（toB/toC 双视图） | P1 | 前端 | ✅ 已实施（2026-08-10：toB 详情 Drawer 5146414 + toC toc-devices 家庭视图 c71b3df；双视图完成） |
+| CFG-008 | 管理台配置页（挂 doing/83 M13） | P1 | 前后端 | ✅ 已实施（2026-08-10：teacher-web DeviceManagement 5146414 + admin-web M13 DevicePage/平台域 4 端点 203c4d5；CFG-008 全量完成） |
 
 ---
 
@@ -922,6 +922,9 @@ _本表由 Agent 维护，每次任务变更时更新。_
 > 25. **DOC-085 登记**（2026-08-09）：Browser Agent 三端 Web 界面自动化遍历测试设计登记——方案与提示词单一事实源落 `design/doing/82_BrowserAgent三端Web界面自动化遍历测试设计.md`（承接 R-4 Playwright 预留态，DOC-082）：30 场景案例（S-01~10 学生端 / T-01~08 教师端 / P-01~06 家长端 / L-01~06 三端联动）+ 每场景可执行 Browser Agent 提示词（环境/步骤/断言/截图记录四要素）+ 问题登记规范（reports/browser-test/ISSUES-<端>.md，按端+场景汇总，BUG 条目 P0-P3 分级 + OPEN→FIXED→VERIFIED→REGRESSION 状态机）+ 修复-部署-复测闭环（每端测试完→自动修复（TDD）→自动部署（deploy.sh/compose）→自动复测，3 轮上限，收敛定义 P0=0 且 P1=0 且 P2/P3 未关闭 ≤3，超限升级人工）；语音类（声纹 remote/ASR/TTS 真实链路）因 test compose 不含 voice/tts 标记 SKIP-语音，断言降级路径照常；执行顺序：环境准备→学生端→教师端→家长端→联动场景→汇总归档；ticket 见 §二十九。
 
 > 31. **DOC-091 登记**（2026-08-09）：无屏交互终端配置体系专题——doing/84 方案与 SPEC 生成 + frozen/74 解冻至 doing/74（仅加引用）。doing/84（设计单一事实源 = `design/doing/84_无屏交互终端配置体系_方案与SPEC.md`）：承接 doing/74 §2.4/§3.1/§4.1/§4.5/§8.4 配置面页面级落地——21 项同类产品调研（开源生态 7 / 消费级 IoT 7 / 儿童陪伴硬件 7，含小智 6 位码绑定、华为回连检查状态机、萤石机身标签、微信 scene 短码等）+ 6 类配置页面（扫码入口/配网页/绑定/声纹录入/状态/管理台 M13）+ 机身二维码三层规范（静态码 URL+deviceCode / 绑定验证码 / P2 动态码）+ 配置状态机（扫码→连热点→配网→回连检查→绑定）+ device 域 API 与 4 表 + P0/P1/P2 路线（CFG-001~012）+ EARS AC-84-01~28；frozen/74 解冻（2026-08-09，文件迁移 design/doing/74，主体 §1-14 零改动，仅头部状态/关联/下一步 3 处加 doing/84 引用）；DESIGN-OVERVIEW v6.13 同步；ticket 见 §三十二。
+> 40. **DOC-104 登记**（2026-08-10）：84↔85 设计承接端到端联通测试 + 新页面风格统一——① 新建 tocFlow.e2e.test（自动模拟全链路状态机：扫码自检→设备回连 UNACTIVATED→ONLINE_UNBOUND→toC 注册建档→家庭绑定 ONLINE_BOUND→设备列表→远程管理偏好→pullConfig 下发→隐私删除回出厂态，mock fetch 层维护共享设备状态，3 用例验证 84 配置状态机产物被 85 家庭版全链路消费、85 收口后 84 状态复位）；② 5 个新页面（device/toc-login/toc-profiles/toc-devices/toc-privacy）scss 统一为青屿令牌体系（--ms-primary #2BA8A0 治愈青绿/--ms-bg/--ms-card/--ms-radius-card/--ms-shadow-card，清除错误令牌 --ms-text-primary 与蓝色 #3370ff fallback、device 页硬编码色值全部令牌化）；parent-h5 191 用例全绿 + tsc 0 错。
+> 39. **DOC-103 登记**（2026-08-10）：doing/85 toC 家庭版批次 A~C 实施——TOC-001 账号体系 + TOC-002 家庭档案（9d82870，V42/toc_auth/toc_profiles + parent-h5 登录/档案页）；TOC-003 设备绑定 + CFG-010 配置引导联动（c71b3df，FAMILY 绑定 + 扫码页 toC 模式）；TOC-007 隐私控制（2b13356，删除不可逆 + X-Confirm）；TOC-008 二合一 DRY/RBAC 验证通过、TOC-009 云端 SaaS 隔离落地、TOC-010 回归门禁通过（后端全量 + parent-h5 185 全绿）；TOC-004/005 标注数据源依赖（toC 对话/风险链路未实施，YAGNI）；74 号剩余软件任务（CFG-010）随 85 联动完成。
+> 38. **DOC-102 登记**（2026-08-10）：74 号 C 类（硬件/固件，非本项目开发）从当前专题（74/84）移出，单独合并至冻结任务跟踪——归口 **frozen/73 §九 C 类归口跟踪表**（新建：硬件 BOM/嵌入式输入/抱枕硬件/配网固件侧/**CFG-009 固件定制配网页**/硬件测试 7 项，实施事实源 doc/NST-HW-02 波波蛋硬件落地实施方案）；74 头部 C 类行标注「已移交冻结跟踪，当前专题不再跟踪」；84 号 CFG-009 状态 ⬜→❄️ 冻结移交（头部进度行/§4.2/§六.2/§九/附录 5 处同步）+ P1-B（M13）过时表述修正 🟫→🟩（203c4d5）；doing/74/84 软件侧实施完毕。
 > 37. **DOC-101 登记**（2026-08-10）：doing/83 后台管理端 AdminConsole 合并归档（项目负责人确认完成前提后发起）——专题实施完成核验（ADMIN tickets 29/29 ✅ + P0 backlog ①~⑤ 收尾：① 平台登录防爆破 PlatformLoginGuard / ② token 会话级存储 / ③ 探针并行 / ④ 初始账号引导 / ⑤ 双轨收敛 19a468f + 部署验证 doing/86 通过 + OPS-MON 004/005 冻结移交 frozen/88）；最终态并入 **01** §六 平台管理后台 AdminConsole（M1~M13 能力域表 + 平台账号体系 DEC-007 + 平台级数据模型 V34~V41 + 冻结移交），文件归档 his/83_后台管理端AdminConsole设计方案（与 his/83 服务降级监控同号异题）；DESIGN-OVERVIEW v6.21。
 > 36. **DOC-100 登记**（2026-08-10）：frozen/85 波波小伙伴 toC 家庭版解冻至 doing（项目负责人指令：纳入 doing 作为后续实施任务，toC 立项决策触发解冻）——design/doing/85 承接 74 号 B 类内容（toC 产品模式：账号体系/家庭档案/设备绑定/成长报告/预警推送/远程管理/隐私控制/二合一/部署/回归，TOC-001~010 待排期）；与 doing/84 CFG-010（toC 家长端配置引导）关联前置；关联 frozen/60 商用合规、frozen/43 家长端小程序化；DESIGN-OVERVIEW v6.20（冻结区移除 85）；ticket 见 §三十三。
 > 35. **DOC-096 登记**（2026-08-09）：LLM 升级与成本跟踪专项冻结——本会话讨论「DeepSeek V4-Flash 定价 + 思考模式开关合理性」识别四个待办/风险项，合并为单一 frozen 专题统一跟踪，避免零散登记：**87-01** DeepSeek 涨价应对（官方计划近期上调定价，07 文档单生成本 15-20 元/生/年预估可能被突破，触发后复核 + 评估 GLM/Kimi 备供应商 + 更新 07 成本治理）；**87-02** spring-ai 升级 + 思考模式差异化（06 文档 D5 决策：离线任务应开思考，但 spring-ai 1.0.0 OpenAiChatOptions 不开放 customBody/extraBody，issue #4324 确认，跟踪 1.1+ 升级后实施，3 行代码 + 2 备选方案 B/C）；**87-03** DeepSeek V4-Pro 升级评估（官方 8 月初开放 API，价格 flash 3x，Agent 能力增强，待质量验证 + 成本 vs 质量权衡）；**87-04** 峰谷分时计费确认（报道 9-12/14-18 高峰 2x 价，待控制台账单核实）。新建 `design/frozen/87_LLM升级与成本跟踪.md`（132 行：4 跟踪项详情 + 现状快照 + 解冻后行动 + 关联专题 + 解冻流程 + 跟踪来源），DESIGN-OVERVIEW 冻结区 +1。
@@ -1029,10 +1032,10 @@ _本表由 Agent 维护，每次任务变更时更新。_
 | CFG-004 | 设备绑定页 + 绑定验证码会话（语音播报） | P0 | 前后端 | ✅ 已实施（2026-08-09，4d39665） |
 | CFG-005 | 二维码印制规范落地（机身铭牌 + 包装 300×300） | P0 | 产品/硬件 | ✅ 规范落地（DeviceCodeUtil 短码 + Luhn 校验，4d39665）；印制执行随硬件样机 |
 | CFG-006 | 声纹录入引导页 + 编排 API | P1 | 前后端 | ✅ 已实施（2026-08-10，5146414：DeviceVoiceprintService Redis 状态机 + teacher-web 声纹编排） |
-| CFG-007 | 设备信息与状态页（toB/toC 双视图） | P1 | 前端 | 🔶 toB 已实施（2026-08-10，5146414 详情 Drawer）；❄️ toC 视图冻结（frozen/85） |
-| CFG-008 | 管理台配置页（挂 doing/83 M13） | P1 | 前后端 | 🔶 teacher-web 部分已实施（2026-08-10，5146414）；admin-web M13 前置已就绪（83 ADMIN 26/29 ✅，admin-web 工程已存在）、待排期实施 DevicePage + 平台域 4 端点 |
-| CFG-009 | 固件定制配网页（热点名/服务器地址/JSON API，可选） | P1 | 固件 | ⬜ 待排期（NST-HW-02 固件侧二期） |
-| CFG-010 | toC 家长端配置引导（家庭/孩子归属 + 远程管理） | P2 | 前后端 | 🟫 待排期（2026-08-10 doing/85 已解冻，随 85 专题 TOC 系列实施） |
+| CFG-007 | 设备信息与状态页（toB/toC 双视图） | P1 | 前端 | ✅ 已实施（2026-08-10：toB 详情 Drawer 5146414 + toC toc-devices 家庭视图 c71b3df；双视图完成） |
+| CFG-008 | 管理台配置页（挂 doing/83 M13） | P1 | 前后端 | ✅ 已实施（2026-08-10：teacher-web DeviceManagement 5146414 + admin-web M13 DevicePage/平台域 4 端点 203c4d5；CFG-008 全量完成） |
+| CFG-009 | 固件定制配网页（热点名/服务器地址/JSON API，可选） | P1 | 固件 | ❄️ 冻结移交（2026-08-10 DOC-102：74 C 类硬件/固件归口 frozen/73 §九 跟踪，当前专题不再跟踪；解冻条件=NST-HW-02 固件侧二期启动） |
+| CFG-010 | toC 家长端配置引导（家庭/孩子归属 + 远程管理） | P2 | 前后端 | ✅ 已实施（2026-08-10 随 85 专题：扫码页 toC 绑定模式 + toc-devices 家庭视图 + 偏好管理 c71b3df/2b13356/c6bb2cc；CFG-010 完成） |
 | CFG-011 | 小程序通道（scene 短码，前置 43 号 W-1） | P2 | 前端 | ❄️ 冻结 |
 | CFG-012 | L3 动态码 + L1 加密配网（Security 1 / WeXin-BLE-Provision） | P2 | 固件/后端 | ❄️ 冻结 |
 
@@ -1046,16 +1049,16 @@ _本表由 Agent 维护，每次任务变更时更新。_
 
 | Ticket | 任务 | 前置 | 归属 | 状态 |
 |--------|------|------|------|------|
-| TOC-001 | toC 账号体系（手机号注册/登录，独立于校园体系） | 无 | 后端 | ⬜ 待排期 |
-| TOC-002 | 家庭档案模型（多孩档案 CRUD + 数据隔离） | TOC-001 | 后端 | ⬜ 待排期 |
-| TOC-003 | 设备绑定（复用 doing/84 设备管理 API + toC 绑定流程） | doing/84 相关交付 | 前后端 | ⬜ 待排期 |
-| TOC-004 | 成长报告 toC 模板（算法提炼，无原始对话） | TOC-001 | 后端 | ⬜ 待排期 |
-| TOC-005 | 预警推送 toC 通道（App/短信，推送对象=自己孩子） | TOC-001 | 后端 | ⬜ 待排期 |
-| TOC-006 | 远程管理（音量/灯光/音色/偏好 + 设备状态） | TOC-003 | 前后端 | ⬜ 待排期 |
-| TOC-007 | 隐私控制模块（查看/删除/关闭/使用时间） | TOC-001 | 前后端 | ⬜ 待排期 |
-| TOC-008 | 二合一改造（家长端/老师端统一框架 + RBAC 数据范围） | TOC-001~007 | 前后端 | ⬜ 待排期 |
-| TOC-009 | toC 部署架构（云端 SaaS 多租户 或 家庭私有化方案） | 立项评估 | 后端/运维 | ⬜ 待排期 |
-| TOC-010 | toC 回归门禁（全量回归 + toB 零回归） | TOC-001~009 | 全量 | ⬜ 待排期 |
+| TOC-001 | toC 账号体系（手机号注册/登录，独立于校园体系） | 无 | ✅ 已实施（2026-08-10，9d82870：V42 + TocAuthService/Controller + parent-h5 登录页） | ⬜ 待排期 |
+| TOC-002 | 家庭档案模型（多孩档案 CRUD + 数据隔离） | TOC-001 | ✅ 已实施（2026-08-10，9d82870：TocFamilyService 数据隔离 + parent-h5 档案页） | ⬜ 待排期 |
+| TOC-003 | 设备绑定（复用 doing/84 设备管理 API + toC 绑定流程） | doing/84 相关交付 | ✅ 已实施（2026-08-10，c71b3df：TocDeviceService FAMILY 绑定 + parent-h5 设备页/扫码页联动） | ⬜ 待排期 |
+| TOC-004 | 成长报告 toC 模板（算法提炼，无原始对话） | TOC-001 | 🔶 数据源依赖（toC 对话/风险数据链路未实施，依赖 toB 对话引擎 toC 化；YAGNI 不做空壳，链路就绪后实施模板） | ⬜ 待排期 |
+| TOC-005 | 预警推送 toC 通道（App/短信，推送对象=自己孩子） | TOC-001 | 🔶 数据源依赖（同上，toC 风险数据链路就绪后实施推送通道） | ⬜ 待排期 |
+| TOC-006 | 远程管理（音量/灯光/音色/偏好 + 设备状态） | TOC-003 | ✅ 软件侧已实施（2026-08-10 c6bb2cc：V43 device_preferences + TocPreferenceController + pullConfig 偏好下发 + toc-devices 偏好面板）；灯光/固件执行待 NST-HW-02 二期 | ✅ 软件侧完成 |
+| TOC-007 | 隐私控制模块（查看/删除/关闭/使用时间） | TOC-001 | ✅ 已实施（2026-08-10，2b13356：TocPrivacyService 删除不可逆 + parent-h5 隐私页） | ⬜ 待排期 |
+| TOC-008 | 二合一改造（家长端/老师端统一框架 + RBAC 数据范围） | TOC-001~007 | ✅ 验证通过（2026-08-10：DRY 断言成立——TocDeviceService 薄封装复用零重复；RBAC 数据范围——familyAccountId 全部取自 token 上下文） | ⬜ 待排期 |
+| TOC-009 | toC 部署架构（云端 SaaS 多租户 或 家庭私有化方案） | 立项评估 | ✅ 云端 SaaS 隔离已落地（平台级表 + familyAccountId 数据隔离验证）；家庭私有化方案待文档化（85 §五 toC-AC-9） | ⬜ 待排期 |
+| TOC-010 | toC 回归门禁（全量回归 + toB 零回归） | TOC-001~009 | ✅ 回归门禁通过（2026-08-10：后端全量 BUILD SUCCESS + parent-h5 185 全绿 + toB 零回归） | ⬜ 待排期 |
 
 > 执行顺序：TOC-001 → 002 → 003（设备绑定，复用 doing/84）→ 004/005/007（可并行）→ 006 → 008 → 009（立项评估）→ 010（回归门禁）；归档门禁：TOC-001~010 全 ✅ + doing/85 合并归档（最终态并入 doing/74 与 12 号主文档）。
 
