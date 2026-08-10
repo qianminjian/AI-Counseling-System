@@ -17,8 +17,13 @@ export default function RiskPage() {
       .catch(() => setOverdue([]))
   }, [])
 
-  // 权威 RiskLevel 映射（GREEN=0/YELLOW=1/ORANGE=2/RED=3，与后端一致）
-  const levelColor: Record<string, string> = { red: '#D9534F', orange: '#D98E32', yellow: '#E6C23A', green: '#2E9E6B' }
+  // 权威 RiskLevel 映射（GREEN=0/YELLOW=1/ORANGE=2/RED=3，与后端一致；语义色 token 引用，青屿 §8.3）
+  const levelColor: Record<string, string> = {
+    red: 'var(--ms-danger)',
+    orange: 'var(--ms-warning)',
+    yellow: 'var(--ms-warning-border)',
+    green: 'var(--ms-success)',
+  }
   const levelName = (level: number) =>
     level === 3 ? 'red' : level === 2 ? 'orange' : level === 1 ? 'yellow' : 'green'
 
