@@ -113,6 +113,25 @@ export function tocUnbindDevice(deviceCode: string) {
   return request<Record<string, unknown>>(`/toc/devices/${deviceCode}/unbind`, { method: 'POST' })
 }
 
+// ========== 远程管理偏好 API（TOC-006） ==========
+
+export interface TocDevicePreferences {
+  deviceCode: string
+  volume?: number
+  voicePersona?: string
+  dialoguePref?: string
+}
+
+/** 查询设备偏好 */
+export function getTocPreferences(deviceCode: string) {
+  return request<TocDevicePreferences>(`/toc/devices/${deviceCode}/preferences`, { method: 'GET' })
+}
+
+/** 设置设备偏好（音量/音色/对话偏好，设备端配置拉取时下发） */
+export function setTocPreferences(deviceCode: string, body: Partial<TocDevicePreferences>) {
+  return request<TocDevicePreferences>(`/toc/devices/${deviceCode}/preferences`, { method: 'PUT', data: body })
+}
+
 // ========== 隐私控制 API（TOC-007） ==========
 
 export interface TocPrivacyOverview {

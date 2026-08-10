@@ -24,6 +24,7 @@ const mockPrivacyOverview = vi.fn(() => Promise.resolve({
   dataRetentionNote: '删除后数据不可恢复（TOC-007）',
 }))
 const mockDeletePrivacy = vi.fn(() => Promise.resolve({ unboundDevices: 1, deletedProfiles: 2, accountStatus: 'DISABLED' }))
+const mockSetPrefs = vi.fn(() => Promise.resolve({ deviceCode: 'K7M2P9XW4AQ', volume: 80, voicePersona: 'qingyu', dialoguePref: 'gentle' }))
 const mockNavigate = vi.fn()
 const mockReLaunch = vi.fn()
 
@@ -43,6 +44,8 @@ vi.mock('../services/toc', () => ({
   tocUnbindDevice: (...a: unknown[]) => mockUnbind(...a),
   getTocPrivacyOverview: (...a: unknown[]) => mockPrivacyOverview(...a),
   deleteTocPrivacyData: (...a: unknown[]) => mockDeletePrivacy(...a),
+  getTocPreferences: vi.fn(() => Promise.resolve({ deviceCode: 'K7M2P9XW4AQ' })),
+  setTocPreferences: (...a: unknown[]) => mockSetPrefs(...a),
   saveTocSession: vi.fn(),
   clearTocSession: vi.fn(),
 }))
@@ -160,6 +163,19 @@ describe('toC 家庭设备页（TOC-003）', () => {
     await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith({ url: '/pages/device/index?v=1&deviceCode=SCAN' }))
   })
 })
+
+
+  it('偏好：展开偏好面板并保存（TOC-006）', async () => {
+    render(<TocDevicesPage />)
+    await screen.findByText('K7M2P9XW4AQ')
+    fireEvent.click(screen.getByText('偏好'))
+    expect(screen.getByText('音量（0-100）：60')).toBeInTheDocument()
+    fireEvent.click(screen.getByText('80'))
+    fireEvent.click(screen.getByText('保存偏好'))
+    await waitFor(() => expect(mockSetPrefs).toHaveBeenCalledWith('K7M2P9XW4AQ',
+      expect.objectContaining({ volume: 80, voicePersona: 'qingyu', dialoguePref: 'gentle' })))
+    expect(await screen.findByText(/偏好已保存/)).toBeInTheDocument()
+  })
 
 describe('toC 隐私控制页（TOC-007）', () => {
   beforeEach(() => {

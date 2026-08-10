@@ -34,6 +34,9 @@ export const FRONTEND_ENDPOINTS: Array<[path: string, method: string]> = [
   ['/api/v1/toc/devices/{deviceCode}/bind-code', 'post'],
   ['/api/v1/toc/devices/{deviceCode}/bind', 'post'],
   ['/api/v1/toc/devices/{deviceCode}/unbind', 'post'],
+  // doing/85 TOC-006：远程管理偏好
+  ['/api/v1/toc/devices/{deviceCode}/preferences', 'get'],
+  ['/api/v1/toc/devices/{deviceCode}/preferences', 'put'],
   // doing/85 TOC-007：隐私控制（数据查看/删除，X-Confirm）
   ['/api/v1/toc/privacy', 'get'],
   ['/api/v1/toc/privacy/data', 'delete'],

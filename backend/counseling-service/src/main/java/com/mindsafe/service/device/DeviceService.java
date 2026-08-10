@@ -34,13 +34,16 @@ public class DeviceService {
     private final DeviceMapper deviceMapper;
     private final DeviceBindingMapper bindingMapper;
     private final DeviceBindCodeMapper bindCodeMapper;
+    private final DevicePreferenceService preferenceService;
     private final SecureRandom secureRandom = new SecureRandom();
 
     public DeviceService(DeviceMapper deviceMapper, DeviceBindingMapper bindingMapper,
-                         DeviceBindCodeMapper bindCodeMapper) {
+                         DeviceBindCodeMapper bindCodeMapper,
+                         DevicePreferenceService preferenceService) {
         this.deviceMapper = deviceMapper;
         this.bindingMapper = bindingMapper;
         this.bindCodeMapper = bindCodeMapper;
+        this.preferenceService = preferenceService;
     }
 
     /**
@@ -272,12 +275,16 @@ public class DeviceService {
         return result;
     }
 
-    /** 配置拉取（心跳时调用）：返回服务器地址（P0 配置面，音色/心情随管理台 CFG-008 扩展）。 */
+    /** 配置拉取（心跳时调用）：返回服务器地址 + 设备偏好下发（TOC-006 远程管理软件侧）。 */
     public Map<String, Object> pullConfig(String deviceCode) {
         Device device = requireDevice(deviceCode);
         Map<String, Object> config = new LinkedHashMap<>();
         config.put("serverUrl", device.getServerUrl());
         config.put("heartbeatIntervalSeconds", 30L);
+        Map<String, Object> preferences = preferenceService.preferencesForPull(deviceCode);
+        if (preferences != null) {
+            config.put("preferences", preferences);
+        }
         return config;
     }
 
