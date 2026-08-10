@@ -1,14 +1,14 @@
 .toc-privacy {
   min-height: 100vh;
   padding: 32px;
-  background: #f5f6fa;
+  background: var(--ms-bg);
   box-sizing: border-box;
 
   &__title {
     display: block;
     font-size: 24px;
     font-weight: 700;
-    color: var(--ms-text-primary, #1f2329);
+    color: var(--ms-text);
     margin-bottom: 24px;
   }
 
@@ -16,12 +16,12 @@
     display: block;
     margin-bottom: 12px;
     font-size: 13px;
-    color: var(--ms-danger, #f53f3f);
+    color: var(--ms-danger);
   }
 
   &__card {
-    background: #fff;
-    border-radius: 16px;
+    background: var(--ms-card);
+    border-radius: var(--ms-radius-card);
     padding: 20px;
     margin-bottom: 16px;
     display: flex;
@@ -29,31 +29,31 @@
     gap: 8px;
 
     &--danger {
-      border: 1px solid rgba(245, 63, 63, 0.25);
+      border: 1px solid var(--ms-danger);
     }
   }
 
   &__label {
     font-size: 15px;
-    color: var(--ms-text-primary, #1f2329);
+    color: var(--ms-text);
   }
 
   &__note {
     font-size: 13px;
-    color: var(--ms-text-muted, #86909c);
+    color: var(--ms-text-muted);
   }
 
   &__danger-title {
     font-size: 16px;
     font-weight: 600;
-    color: var(--ms-danger, #f53f3f);
+    color: var(--ms-danger);
   }
 
   &__danger-btn {
     margin-top: 8px;
-    background: var(--ms-danger, #f53f3f);
+    background: var(--ms-danger);
     color: #fff;
-    border-radius: 10px;
+    border-radius: var(--ms-radius-control);
   }
 
   &__confirm {
@@ -64,7 +64,7 @@
 
     &-hint {
       font-size: 14px;
-      color: var(--ms-danger, #f53f3f);
+      color: var(--ms-danger);
     }
 
     &-actions {
