@@ -69,7 +69,7 @@ public class SlaEscalationScanner {
             AlertService alertService,
             SlaEscalationLogMapper slaEscalationLogMapper,
             @Value("${mindsafe.security.sla-escalation.enabled:true}") boolean enabled,
-            @Value("${mindsafe.security.sla-escalation.re-alert-cooldown-minutes:30}") int reAlertCooldownMinutes) {
+            @Value("${mindsafe.security.sla-escalation.re-alert-cooldown-minutes:60}") int reAlertCooldownMinutes) {
         this.riskEventMapper = riskEventMapper;
         this.slaPolicy = slaPolicy;
         this.alertService = alertService;
@@ -167,14 +167,23 @@ public class SlaEscalationScanner {
                 e.getRiskType(), toPolicyLevel(e.getRiskLevel()), e.getStatus(), decision.action());
     }
 
-    /** ADMIN-P1-05：升级留痕（sla_escalation_log；自动升级 stage=ack，operator 为空） */
+    /**
+     * ADMIN-P1-05：升级留痕（sla_escalation_log；自动升级 stage=ack，operator 为空）。
+     * 附加通道原则（2026-08-10）：主键由代码生成（IdType.INPUT 实体，缺则 INSERT NULL 违反
+     * NOT NULL）；留痕失败仅记 WARN，不中断 SLA 扫描主流程（告警已发，台账缺失可补查）。
+     */
     private void recordEscalation(RiskEvent e, SlaDecision decision) {
-        SlaEscalationLog log = new SlaEscalationLog();
-        log.setRiskEventId(e.getRiskEventId());
-        log.setStage("ack");
-        log.setEscalatedAt(Instant.now());
-        log.setAction(SlaEscalationLog.ACTION_NOTIFY_ESCALATE);
-        log.setDetail(String.format("SLA 超时自动升级（action=%s, overdue=%dmin）", decision.action(), decision.overdueMinutes()));
-        slaEscalationLogMapper.insert(log);
+        try {
+            SlaEscalationLog log = new SlaEscalationLog();
+            log.setEscalationId(UUID.randomUUID());
+            log.setRiskEventId(e.getRiskEventId());
+            log.setStage("ack");
+            log.setEscalatedAt(Instant.now());
+            log.setAction(SlaEscalationLog.ACTION_NOTIFY_ESCALATE);
+            log.setDetail(String.format("SLA 超时自动升级（action=%s, overdue=%dmin）", decision.action(), decision.overdueMinutes()));
+            slaEscalationLogMapper.insert(log);
+        } catch (Exception ex) {
+            log.warn("SLA 升级留痕落库失败: riskEventId={}, error={}", e.getRiskEventId(), ex.getMessage());
+        }
     }
 }

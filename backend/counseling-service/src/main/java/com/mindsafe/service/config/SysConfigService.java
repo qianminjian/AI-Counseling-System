@@ -12,6 +12,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.UUID;
 
 /**
  * 配置注册表服务（ADMIN-P1-01，M1 系统配置管理）
@@ -65,6 +66,7 @@ public class SysConfigService {
         }
 
         SysConfigHistory history = new SysConfigHistory();
+        history.setHistoryId(UUID.randomUUID());
         history.setConfigKey(key);
         history.setOldValue(config.getValue());
         history.setNewValue(SysConfig.SENSITIVE_SECRET.equals(config.getSensitive())

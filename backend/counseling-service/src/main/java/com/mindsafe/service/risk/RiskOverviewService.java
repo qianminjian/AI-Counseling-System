@@ -199,6 +199,7 @@ public class RiskOverviewService {
 
     private void writeLog(RiskEvent event, String action, String operator, String detail) {
         SlaEscalationLog log = new SlaEscalationLog();
+        log.setEscalationId(UUID.randomUUID());
         log.setRiskEventId(event.getRiskEventId());
         log.setStage("ack");
         log.setEscalatedAt(Instant.now());

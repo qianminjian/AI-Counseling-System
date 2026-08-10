@@ -20,6 +20,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 /**
  * 降级矩阵与手动切换（ADMIN-P2-01/02，M3 服务切换降级监控）
@@ -142,6 +143,7 @@ public class DegradationMatrixService {
 
     private void recordManualEvent(String point, String from, String to, String operator, String reason) {
         DegradationEvent event = new DegradationEvent();
+        event.setEventId(UUID.randomUUID());
         event.setPoint(point);
         event.setFromState(from);
         event.setToState(to);
