@@ -90,6 +90,8 @@ public class PlatformService {
 
     /** 租户列表（含各校学生/教师数） */
     public List<Map<String, Object>> tenantStats() {
+        // 修复（2026-08-10）：与 overview 同——跨租户聚合须 callAsSystem（M1-003 fail-fast）
+        return TenantContextHolder.callAsSystem(() -> {
         List<Tenant> tenants = tenantMapper.selectList(
                 new LambdaQueryWrapper<Tenant>().orderByDesc(Tenant::getCreatedAt));
 
@@ -119,6 +121,7 @@ public class PlatformService {
             item.put("sessionCount", sessions);
             return item;
         }).collect(Collectors.toList());
+        });
     }
 
     /** 单租户详情（学校列表 + 近 7 天会话趋势）；租户不存在返回 null */
