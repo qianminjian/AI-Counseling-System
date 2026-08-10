@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react'
+import { ConfigProvider, theme } from 'antd'
+import zhCN from 'antd/locale/zh_CN'
 import LoginPage from './pages/LoginPage'
 import OverviewPage from './pages/OverviewPage'
 import ConfigPage from './pages/ConfigPage'
@@ -26,6 +28,34 @@ export default function App() {
   const [name, setName] = useState<string>(getAdminName)
   const [view, setView] = useState<AdminView>('overview')
 
+  // 青屿体系（doing/75 方案 A + doing/83 §8.1~8.9）：antd token 全局对齐，与 teacher-web 同名同值
+  const themeConfig = {
+    algorithm: theme.defaultAlgorithm,
+    token: {
+      colorPrimary: '#2BA8A0',
+      colorSuccess: '#2E9E6B',
+      colorWarning: '#D98E32',
+      colorError: '#D9534F',
+      colorTextBase: '#22303A',
+      borderRadius: 12,
+    },
+    components: {
+      // 深青 Sider + 激活项青绿软填充（与 teacher-web 工作台一致）
+      Menu: {
+        darkItemBg: '#163B38',
+        darkSubMenuItemBg: '#163B38',
+        darkItemSelectedBg: 'rgba(43, 168, 160, 0.28)',
+        darkItemSelectedColor: '#FFFFFF',
+      },
+      Card: {
+        borderRadiusLG: 16,
+      },
+      Table: {
+        headerBg: '#F4F7F6',
+      },
+    },
+  }
+
   // 401/403 登录态失效联动：回登录页（code-review M2）
   useEffect(() => {
     const handler = () => setToken(null)
@@ -34,7 +64,11 @@ export default function App() {
   }, [])
 
   if (!token) {
-    return <LoginPage onLogin={(r, n) => { setRole(r); setName(n); setToken('logged-in') }} />
+    return (
+      <ConfigProvider locale={zhCN} theme={themeConfig}>
+        <LoginPage onLogin={(r, n) => { setRole(r); setName(n); setToken('logged-in') }} />
+      </ConfigProvider>
+    )
   }
 
   // 路由守卫：角色无权访问 → 403（§13.1 前端菜单双保险之一）
@@ -48,23 +82,25 @@ export default function App() {
   }
 
   return (
-    <AdminLayout role={role} name={name} view={currentView} onNavigate={setView} onLogout={handleLogout}>
-      {currentView === 'forbidden' ? <ForbiddenPage />
-        : currentView === 'config' ? <ConfigPage />
-        : currentView === 'prompt' ? <PromptPage />
-        : currentView === 'risk' ? <RiskPage />
-        : currentView === 'sla' ? <SlaPage />
-        : currentView === 'ledger' ? <LedgerPage />
-        : currentView === 'degradation' ? <DegradationPage />
-        : currentView === 'knowledge' ? <KnowledgePage />
-        : currentView === 'channel' ? <ChannelPage />
-        : currentView === 'insights' ? <InsightsPage />
-        : currentView === 'usage' ? <UsagePage />
-        : currentView === 'compliance' ? <CompliancePage />
-        : currentView === 'metrics' ? <MetricsPage />
-        : currentView === 'alerts' ? <AlertPage />
-        : currentView === 'devices' ? <DevicePage />
-        : <OverviewPage />}
-    </AdminLayout>
+    <ConfigProvider locale={zhCN} theme={themeConfig}>
+      <AdminLayout role={role} name={name} view={currentView} onNavigate={setView} onLogout={handleLogout}>
+        {currentView === 'forbidden' ? <ForbiddenPage />
+          : currentView === 'config' ? <ConfigPage />
+          : currentView === 'prompt' ? <PromptPage />
+          : currentView === 'risk' ? <RiskPage />
+          : currentView === 'sla' ? <SlaPage />
+          : currentView === 'ledger' ? <LedgerPage />
+          : currentView === 'degradation' ? <DegradationPage />
+          : currentView === 'knowledge' ? <KnowledgePage />
+          : currentView === 'channel' ? <ChannelPage />
+          : currentView === 'insights' ? <InsightsPage />
+          : currentView === 'usage' ? <UsagePage />
+          : currentView === 'compliance' ? <CompliancePage />
+          : currentView === 'metrics' ? <MetricsPage />
+          : currentView === 'alerts' ? <AlertPage />
+          : currentView === 'devices' ? <DevicePage />
+          : <OverviewPage />}
+      </AdminLayout>
+    </ConfigProvider>
   )
 }

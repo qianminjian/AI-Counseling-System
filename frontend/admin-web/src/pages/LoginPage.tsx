@@ -23,8 +23,31 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
   }
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--ms-bg)' }}>
-      <div style={{ width: 380, padding: 40, background: 'var(--ms-card)', borderRadius: 'var(--ms-radius-card)', boxShadow: 'var(--ms-shadow-card)' }}>
+    <div
+      style={{
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: 'var(--ms-bg)',
+        position: 'relative',
+        overflow: 'hidden',
+      }}
+    >
+      {/* 右上青绿渐变光晕（青屿登录页特征 his/75：克制，不整屏渐变） */}
+      <div
+        style={{
+          position: 'absolute',
+          top: -120,
+          right: -120,
+          width: 360,
+          height: 360,
+          borderRadius: '50%',
+          background: 'radial-gradient(circle, rgba(43, 168, 160, 0.18), rgba(43, 168, 160, 0) 70%)',
+          pointerEvents: 'none',
+        }}
+      />
+      <div style={{ width: 380, padding: 40, background: 'var(--ms-card)', borderRadius: 'var(--ms-radius-card)', boxShadow: 'var(--ms-shadow-card)', position: 'relative' }}>
         <h1 style={{ margin: '0 0 8px', fontSize: 22, color: 'var(--ms-text)' }}>MindSafe 平台管理后台</h1>
         <p style={{ margin: '0 0 24px', color: 'var(--ms-text-muted)', fontSize: 13 }}>独立平台账号登录（PLATFORM_ 登录态）</p>
         <Form layout="vertical" onFinish={handleFinish}>
@@ -34,7 +57,7 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
           <Form.Item name="password" label="密码" rules={[{ required: true, message: '请输入密码' }]}>
             <Input.Password autoComplete="current-password" placeholder="密码" />
           </Form.Item>
-          <Button type="primary" htmlType="submit" block loading={loading} style={{ background: 'var(--ms-primary)' }}>
+          <Button type="primary" htmlType="submit" block loading={loading}>
             登录
           </Button>
         </Form>
