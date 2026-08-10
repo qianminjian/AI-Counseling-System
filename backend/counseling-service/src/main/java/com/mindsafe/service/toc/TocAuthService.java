@@ -3,6 +3,8 @@ package com.mindsafe.service.toc;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.mindsafe.domain.entity.TocFamilyAccount;
 import com.mindsafe.domain.mapper.TocFamilyAccountMapper;
+import org.springframework.context.EnvironmentAware;
+import org.springframework.core.env.Environment;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
@@ -21,7 +23,7 @@ import java.util.concurrent.ThreadLocalRandom;
  * Controller 层签发 JWT（userType=toc_parent，tenantId=null 平台级）。
  */
 @Service
-public class TocAuthService {
+public class TocAuthService implements EnvironmentAware {
 
     /** 验证码 Redis key 前缀 */
     private static final String CODE_KEY_PREFIX = "toccode:";
@@ -32,6 +34,8 @@ public class TocAuthService {
     /** 重发冷却 */
     private static final Duration RESEND_COOLDOWN = Duration.ofSeconds(60);
 
+    private Environment environment;
+
     private final TocFamilyAccountMapper accountMapper;
     private final StringRedisTemplate redisTemplate;
 
@@ -40,8 +44,14 @@ public class TocAuthService {
         this.redisTemplate = redisTemplate;
     }
 
+    @Override
+    public void setEnvironment(Environment environment) {
+        this.environment = environment;
+    }
+
     /**
      * 发送验证码（注册/登录共用）：60s 重发冷却 + 5 分钟有效。
+     * 验证码明文仅 dev/test profile 回显（P0-3：生产接入短信通道后无回显）。
      */
     public Map<String, Object> sendCode(String phone) {
         if (phone == null || !phone.matches("^1\\d{10}$")) {
@@ -59,7 +69,10 @@ public class TocAuthService {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("phone", maskPhone(phone));
         result.put("expiresInSeconds", CODE_TTL.toSeconds());
-        result.put("code", code); // 演示环境回显验证码（生产接入短信通道后移除）
+        // P0-3：验证码明文仅 dev/test profile 回显（生产接入短信通道后无回显）
+        if (environment != null && !environment.acceptsProfiles("prod")) {
+            result.put("code", code);
+        }
         return result;
     }
 

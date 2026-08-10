@@ -9,6 +9,7 @@ import com.mindsafe.domain.mapper.DeviceBindingMapper;
 import com.mindsafe.domain.mapper.DeviceMapper;
 import com.mindsafe.domain.util.DeviceCodeUtil;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -192,6 +193,7 @@ public class DeviceService {
      * 绑定（AC-84-10/11/12）：登录态 + 验证码双因子；验证码哈希比对、
      * 3 次失败锁定 5 分钟、绑定成功即作废；设备状态 → ONLINE_BOUND。
      */
+    @Transactional
     public Map<String, Object> bind(String deviceCode, String bindType, UUID bindTargetId,
                                     UUID studentId, String code, String operator) {
         Device device = requireDevice(deviceCode);
@@ -413,7 +415,7 @@ public class DeviceService {
                         .eq(DeviceBindCode::getDeviceId, deviceId)
                         .isNull(DeviceBindCode::getUsedAt)
                         .orderByDesc(DeviceBindCode::getCreatedAt)
-                        .last("LIMIT 1"));
+                        .last("LIMIT 1 FOR UPDATE"));  // P0-2：行锁防竞态
     }
 
     private static String sha256Hex(String input) {

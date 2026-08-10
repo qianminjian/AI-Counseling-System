@@ -5,6 +5,7 @@ import com.mindsafe.domain.mapper.TocFamilyAccountMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.core.env.Environment;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 
@@ -36,6 +37,9 @@ class TocAuthServiceTest {
         valueOps = mock(ValueOperations.class);
         when(redisTemplate.opsForValue()).thenReturn(valueOps);
         service = new TocAuthService(accountMapper, redisTemplate);
+        Environment env = mock(Environment.class);
+        when(env.acceptsProfiles("prod")).thenReturn(false);
+        service.setEnvironment(env);
     }
 
     @Test
