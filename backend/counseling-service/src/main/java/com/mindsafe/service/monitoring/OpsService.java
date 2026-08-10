@@ -1,9 +1,13 @@
 package com.mindsafe.service.monitoring;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.mindsafe.common.dto.ErrorCode;
+import com.mindsafe.common.exception.BizException;
 import com.mindsafe.common.tenant.TenantContextHolder;
+import com.mindsafe.domain.entity.AlertEvent;
 import com.mindsafe.domain.entity.AuditLog;
 import com.mindsafe.domain.entity.ServiceHealthSnapshot;
+import com.mindsafe.domain.mapper.AlertEventMapper;
 import com.mindsafe.domain.mapper.AuditLogMapper;
 import com.mindsafe.domain.mapper.ServiceHealthSnapshotMapper;
 import org.slf4j.Logger;
@@ -33,6 +37,7 @@ public class OpsService {
     private final ServiceHealthProbe probe;
     private final ServiceHealthSnapshotMapper snapshotMapper;
     private final AuditLogMapper auditLogMapper;
+    private final AlertEventMapper alertEventMapper;
     private final RestTemplate restTemplate = buildRestTemplate();
 
     @Value("${mindsafe.monitoring.alertmanager-url:http://alertmanager:9093}")
@@ -40,10 +45,12 @@ public class OpsService {
 
     public OpsService(ServiceHealthProbe probe,
                       ServiceHealthSnapshotMapper snapshotMapper,
-                      AuditLogMapper auditLogMapper) {
+                      AuditLogMapper auditLogMapper,
+                      AlertEventMapper alertEventMapper) {
         this.probe = probe;
         this.snapshotMapper = snapshotMapper;
         this.auditLogMapper = auditLogMapper;
+        this.alertEventMapper = alertEventMapper;
     }
 
     /** 六服务实时健康状态 */
@@ -88,6 +95,50 @@ public class OpsService {
                         .le(endTime != null, AuditLog::getCreatedAt, endTime)
                         .orderByDesc(AuditLog::getCreatedAt)
                         .last("LIMIT " + safeLimit)));
+    }
+
+    // ===== M2 告警事件中心（ADMIN-P1-08：alert_events 落库消费 + ack） =====
+
+    /**
+     * 告警事件历史列表（source=alertmanager + alertservice 聚合台账）。
+     * 平台级表（tenant_template）无租户上下文——callAsSystem 显式声明系统作用域。
+     */
+    public List<AlertEvent> alertEvents(String status, int limit) {
+        int safeLimit = Math.min(Math.max(limit, 1), 500);
+        return TenantContextHolder.callAsSystem(() ->
+                alertEventMapper.selectList(new LambdaQueryWrapper<AlertEvent>()
+                        .eq(status != null && !status.isBlank(), AlertEvent::getStatus, status)
+                        .orderByDesc(AlertEvent::getFiredAt)
+                        .last("LIMIT " + safeLimit)));
+    }
+
+    /**
+     * 告警确认（firing → ack，仅 ops/super，SecurityConfig 强制）。
+     * 已 ack/closed 的记录重复 ack 幂等跳过（状态机：firing→ack→closed 单向推进）。
+     * 附加通道原则（2026-08-10）：ack 状态回写失败仅记 WARN，不阻断请求（页面仍可操作）。
+     */
+    public void ackAlert(UUID eventId, String operator) {
+        TenantContextHolder.callAsSystem(() -> {
+            AlertEvent event = alertEventMapper.selectById(eventId);
+            if (event == null) {
+                throw new BizException(ErrorCode.RESOURCE_NOT_FOUND, "告警事件不存在: " + eventId);
+            }
+            if (AlertEvent.STATUS_ACK.equals(event.getStatus())
+                    || AlertEvent.STATUS_CLOSED.equals(event.getStatus())) {
+                return null; // 已确认/已关闭：幂等跳过
+            }
+            try {
+                AlertEvent update = new AlertEvent();
+                update.setEventId(eventId);
+                update.setStatus(AlertEvent.STATUS_ACK);
+                update.setAcknowledgedBy(operator);
+                update.setAcknowledgedAt(Instant.now());
+                alertEventMapper.updateById(update);
+            } catch (Exception e) {
+                log.warn("告警 ack 状态回写失败: eventId={}, error={}", eventId, e.getMessage());
+            }
+            return null;
+        });
     }
 
     /** 采集外呼必须带超时：AlertManager 不可达时不能挂死请求线程（WeComAlertService 同模式） */

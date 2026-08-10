@@ -12,6 +12,8 @@ import ChannelPage from './pages/ChannelPage'
 import InsightsPage from './pages/InsightsPage'
 import UsagePage from './pages/UsagePage'
 import CompliancePage from './pages/CompliancePage'
+import MetricsPage from './pages/MetricsPage'
+import AlertPage from './pages/AlertPage'
 import ForbiddenPage from './pages/ForbiddenPage'
 import AdminLayout, { allowedViews, type AdminView } from './components/AdminLayout'
 import { adminLogout, getAdminName, getAdminRole, getAdminToken, UNAUTHORIZED_EVENT } from './api'
@@ -58,6 +60,8 @@ export default function App() {
         : currentView === 'insights' ? <InsightsPage />
         : currentView === 'usage' ? <UsagePage />
         : currentView === 'compliance' ? <CompliancePage />
+        : currentView === 'metrics' ? <MetricsPage />
+        : currentView === 'alerts' ? <AlertPage />
         : <OverviewPage />}
     </AdminLayout>
   )

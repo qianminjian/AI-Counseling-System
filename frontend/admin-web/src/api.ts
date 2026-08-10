@@ -263,3 +263,53 @@ export function fetchPromptVersions(templateKey: string): Promise<PromptVersionI
 export function fetchChannelStats(): Promise<Record<string, unknown>> {
   return adminFetch<Record<string, unknown>>('/api/v1/ops/insights/channel-stats')
 }
+
+// ===== M2 指标看板 + 告警中心（ADMIN-P1-07/08/09） =====
+
+/** 指标看板：白名单表达式代理查询 Prometheus（P1-07） */
+export function fetchMetricsQuery(expr: string): Promise<Record<string, unknown>> {
+  return adminFetch<Record<string, unknown>>(`/api/v1/ops/metrics/query?expr=${encodeURIComponent(expr)}`)
+}
+
+/** 告警事件历史（alert_events 落库台账，P1-08） */
+export interface AlertEventItem {
+  eventId: string
+  source: string
+  ruleName: string
+  severity: string
+  status: string
+  summary: string
+  detail?: string
+  notifyStatus?: string
+  acknowledgedBy?: string
+  firedAt: string
+  resolvedAt?: string
+}
+
+export function fetchAlertEvents(status?: string): Promise<AlertEventItem[]> {
+  const q = status ? `?status=${encodeURIComponent(status)}` : ''
+  return adminFetch<AlertEventItem[]>(`/api/v1/ops/alert-events${q}`)
+}
+
+/** 告警确认（firing → ack，X-Confirm 二次确认 + reason 必填，仅 ops/super） */
+export async function ackAlertEvent(eventId: string, reason: string): Promise<void> {
+  const token = getAdminToken()
+  const resp = await fetch(`/api/v1/ops/alerts/${eventId}/ack`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Confirm': 'CONFIRM',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ reason }),
+  })
+  if (resp.status === 401 || resp.status === 403) {
+    adminLogout()
+    window.dispatchEvent(new Event(UNAUTHORIZED_EVENT))
+    throw new Error(resp.status === 403 ? '无权限访问（仅运维/超管可确认告警）' : '登录已过期')
+  }
+  if (!resp.ok) {
+    const b = await resp.json().catch((): null => null)
+    throw new Error(b?.message ?? '确认失败')
+  }
+}

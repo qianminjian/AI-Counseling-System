@@ -997,10 +997,10 @@ _本表由 Agent 维护，每次任务变更时更新。_
 | ADMIN-P1-04 | M8 风险全景 + 时效监控（纯查询） | 后端 | ✅ 实施完成（2026-08-09，2 用例 + 2 端点；缺口 2 补：/risk/overdue 脱敏 DTO OverdueEntry，不含学生级标识（R-7）） |
 | ADMIN-P1-05 | M8 逾期升级扩展（sla_escalation_log + 转派端点，复用 SlaEscalationScanner） | 后端 | ✅ 实施完成（2026-08-09，留痕 + X-Confirm 端点） |
 | ADMIN-P1-06 | M8 业务指标埋点 + alert-rules 业务段（R-11） | 后端 | ✅ 实施完成（2026-08-09，gauge 4 项 + 业务规则 4 条共 17 条；缺口 1 补齐：激增/认领率规则） |
-| ADMIN-P1-07 | M2 指标看板（完整，依赖 OPS-MON-003/004/008） | 后端 | ⛔ 受阻（OPS-MON-004 监控栈部署待部署窗口） |
-| ADMIN-P1-08 | M2 告警中心完整（alert_events 消费 + ack） | 后端 | ⛔ 受阻（依赖 P1-07） |
-| ADMIN-P1-09 | 前端 P1 页面组（八页） | 前端 | 🟡 部分完成（配置注册表/风险全景/Prompt 管理/时效监控/处置台账 5 页；指标看板/告警中心 2 页受阻待监控栈，审核流页并入 Prompt 页） |
-| ADMIN-P1-10 | P1 回归门禁（P1-01~09 全绿） | 全量 | ✅ 实施完成（2026-08-09，后端 BUILD SUCCESS + 前端 9 用例 + tsc OK；受阻项除外） |
+| ADMIN-P1-07 | M2 指标看板（完整，依赖 OPS-MON-003/004/008） | 后端 | ✅ 实施完成（2026-08-10 阻塞解除后补做：/api/v1/ops/metrics/query 白名单代理 Prometheus——MetricsQueryService，前缀白名单 + 单层 sum() 包裹，非白名单 403；5 用例全绿） |
+| ADMIN-P1-08 | M2 告警中心完整（alert_events 消费 + ack） | 后端 | ✅ 实施完成（2026-08-10 补做：/api/v1/ops/alert-events 落库台账 + /api/v1/ops/alerts/{id}/ack（X-Confirm + reason，仅 ops/super SecurityConfig 强制，firing→ack 状态机 + 幂等）；OpsService 5 用例 + Controller 3 用例） |
+| ADMIN-P1-09 | 前端 P1 页面组（八页） | 前端 | ✅ 实施完成（2026-08-10 补齐：指标看板 MetricsPage 10 指标卡 + 告警中心 AlertPage（台账/推送状态/ack 弹窗，仅 ops/super 可操作），共 8 页全交付；+2 页测试） |
+| ADMIN-P1-10 | P1 回归门禁（P1-01~09 全绿） | 全量 | ✅ 实施完成（2026-08-09 首次；2026-08-10 P1-07/08/09 补齐后复核：后端 service 1037 + api 418 + admin-web 28 全绿，tsc OK，**无受阻项**） |
 | ADMIN-P2-01 | M3 降级矩阵 + 手动切换（依赖 OPS-MON-007） | 后端 | ✅ 实施完成（2026-08-09，记录型切换，6 用例） |
 | ADMIN-P2-02 | M3 事件时间线（消费 degradation_events） | 后端 | ✅ 实施完成（2026-08-09） |
 | ADMIN-P2-03 | M9 知识库管理扩展 | 后端 | ✅ 实施完成（2026-08-09，平台统计） |

@@ -2,12 +2,14 @@ package com.mindsafe.api.controller;
 
 import com.mindsafe.common.dto.ApiResponse;
 import com.mindsafe.common.dto.ErrorCode;
+import com.mindsafe.domain.entity.AlertEvent;
 import com.mindsafe.domain.entity.AuditLog;
 import com.mindsafe.domain.entity.DegradationEvent;
 import com.mindsafe.domain.entity.RiskEvent;
 import com.mindsafe.domain.entity.ServiceHealthSnapshot;
 import com.mindsafe.service.knowledge.KnowledgeBaseService;
 import com.mindsafe.service.monitoring.DegradationMatrixService;
+import com.mindsafe.service.monitoring.MetricsQueryService;
 import com.mindsafe.service.monitoring.OpsService;
 import com.mindsafe.service.ops.OpsInsightsService;
 import com.mindsafe.service.risk.RiskOverviewService;
@@ -48,17 +50,20 @@ public class OpsController {
     private final DegradationMatrixService degradationMatrixService;
     private final KnowledgeBaseService knowledgeBaseService;
     private final OpsInsightsService opsInsightsService;
+    private final MetricsQueryService metricsQueryService;
 
     public OpsController(OpsService opsService,
                          RiskOverviewService riskOverviewService,
                          DegradationMatrixService degradationMatrixService,
                          KnowledgeBaseService knowledgeBaseService,
-                         OpsInsightsService opsInsightsService) {
+                         OpsInsightsService opsInsightsService,
+                         MetricsQueryService metricsQueryService) {
         this.opsService = opsService;
         this.riskOverviewService = riskOverviewService;
         this.degradationMatrixService = degradationMatrixService;
         this.knowledgeBaseService = knowledgeBaseService;
         this.opsInsightsService = opsInsightsService;
+        this.metricsQueryService = metricsQueryService;
     }
 
     @GetMapping("/services/status")
@@ -76,6 +81,34 @@ public class OpsController {
     @GetMapping("/alerts")
     public ApiResponse<List<Map<String, Object>>> alerts() {
         return ApiResponse.ok(opsService.activeAlerts());
+    }
+
+    // ===== M2 指标看板 + 告警事件中心（ADMIN-P1-07/08） =====
+
+    /** 指标看板：白名单表达式代理查询 Prometheus（P1-07，非白名单 403） */
+    @GetMapping("/metrics/query")
+    public ApiResponse<Map<String, Object>> metricsQuery(@RequestParam String expr) {
+        return ApiResponse.ok(metricsQueryService.query(expr));
+    }
+
+    /** 告警事件历史（alert_events 落库消费，聚合 alertmanager + alertservice 台账，P1-08） */
+    @GetMapping("/alert-events")
+    public ApiResponse<List<AlertEvent>> alertEvents(
+            @RequestParam(required = false) String status,
+            @RequestParam(defaultValue = "100") int limit) {
+        return ApiResponse.ok(opsService.alertEvents(status, limit));
+    }
+
+    /** 告警确认（firing → ack，仅 ops/super——SecurityConfig 强制，audit 只读） */
+    @PostMapping("/alerts/{eventId}/ack")
+    public ApiResponse<Void> ackAlert(@PathVariable UUID eventId,
+                                      @RequestHeader(value = "X-Confirm", required = false) String confirm,
+                                      @Valid @RequestBody RiskCloseRequest request) {
+        if (!CONFIRM_PHRASE.equals(confirm)) {
+            return ApiResponse.error(ErrorCode.PARAM_INVALID.code(), "高危操作需 X-Confirm: CONFIRM 头（操作二次确认）");
+        }
+        opsService.ackAlert(eventId, operatorName());
+        return ApiResponse.ok(null);
     }
 
     @GetMapping("/audit-logs")

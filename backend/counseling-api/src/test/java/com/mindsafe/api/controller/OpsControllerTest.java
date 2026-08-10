@@ -1,9 +1,11 @@
 package com.mindsafe.api.controller;
 
+import com.mindsafe.domain.entity.AlertEvent;
 import com.mindsafe.domain.entity.AuditLog;
 import com.mindsafe.domain.entity.ServiceHealthSnapshot;
 import com.mindsafe.service.knowledge.KnowledgeBaseService;
 import com.mindsafe.service.monitoring.DegradationMatrixService;
+import com.mindsafe.service.monitoring.MetricsQueryService;
 import com.mindsafe.service.monitoring.OpsService;
 import com.mindsafe.service.ops.OpsInsightsService;
 import com.mindsafe.service.risk.RiskOverviewService;
@@ -22,6 +24,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
@@ -34,6 +37,7 @@ class OpsControllerTest {
     private DegradationMatrixService degradationMatrixService;
     private KnowledgeBaseService knowledgeBaseService;
     private OpsInsightsService opsInsightsService;
+    private MetricsQueryService metricsQueryService;
     private OpsController controller;
 
     @BeforeEach
@@ -43,7 +47,8 @@ class OpsControllerTest {
         degradationMatrixService = mock(DegradationMatrixService.class);
         knowledgeBaseService = mock(KnowledgeBaseService.class);
         opsInsightsService = mock(OpsInsightsService.class);
-        controller = new OpsController(opsService, riskOverviewService, degradationMatrixService, knowledgeBaseService, opsInsightsService);
+        metricsQueryService = mock(MetricsQueryService.class);
+        controller = new OpsController(opsService, riskOverviewService, degradationMatrixService, knowledgeBaseService, opsInsightsService, metricsQueryService);
     }
 
     @Test
@@ -327,5 +332,46 @@ class OpsControllerTest {
         var response = controller.consentStats();
 
         assertThat(response.data()).containsEntry("total", 42);
+    }
+
+    // ===== M2 指标看板 + 告警事件中心（ADMIN-P1-07/08） =====
+
+    @Test
+    @DisplayName("GET /metrics/query → 白名单表达式透传 MetricsQueryService")
+    void metricsQuery() {
+        when(metricsQueryService.query("tts_synthesize_requests_total"))
+                .thenReturn(Map.of("status", "success"));
+
+        var response = controller.metricsQuery("tts_synthesize_requests_total");
+
+        assertThat(response.data()).containsEntry("status", "success");
+    }
+
+    @Test
+    @DisplayName("GET /alert-events → alert_events 落库台账（status/limit 透传）")
+    void alertEvents() {
+        AlertEvent event = new AlertEvent();
+        event.setEventId(UUID.randomUUID());
+        event.setStatus(AlertEvent.STATUS_FIRING);
+        when(opsService.alertEvents("firing", 100)).thenReturn(List.of(event));
+
+        var response = controller.alertEvents("firing", 100);
+
+        assertThat(response.data()).hasSize(1);
+        assertThat(response.data().get(0).getStatus()).isEqualTo(AlertEvent.STATUS_FIRING);
+    }
+
+    @Test
+    @DisplayName("POST /alerts/{id}/ack → X-Confirm 缺失被拒 / 合法透传 ack")
+    void ackAlert() {
+        UUID eventId = UUID.randomUUID();
+        var request = new OpsController.RiskCloseRequest("处理完成");
+
+        var rejected = controller.ackAlert(eventId, null, request);
+        assertThat(rejected.code()).isNotEqualTo(0);
+
+        var accepted = controller.ackAlert(eventId, "CONFIRM", request);
+        assertThat(accepted.code()).isEqualTo(0);
+        verify(opsService).ackAlert(eventId, "unknown");
     }
 }

@@ -127,6 +127,9 @@ public class SecurityConfig {
                         // M3 手动降级切换（ADMIN-P2-01）：仅 ops/super（audit 只读）
                         .requestMatchers(HttpMethod.POST, "/api/v1/ops/degradation/**")
                                 .hasAnyRole("PLATFORM_SUPER_ADMIN", "PLATFORM_OPS_ADMIN")
+                        // M2 告警确认（ADMIN-P1-08）：ack 仅 ops/super（audit 只读，置于 /ops/** 兜底前）
+                        .requestMatchers(HttpMethod.POST, "/api/v1/ops/alerts/**")
+                                .hasAnyRole("PLATFORM_SUPER_ADMIN", "PLATFORM_OPS_ADMIN")
                         // 用量报表（ADMIN-P3-02）：finance/audit 只读可访问（code-review H2，§7.4）
                         .requestMatchers(HttpMethod.GET, "/api/v1/ops/usage/**")
                                 .hasAnyRole("PLATFORM_SUPER_ADMIN", "PLATFORM_OPS_ADMIN", "PLATFORM_FINANCE_ADMIN", "PLATFORM_AUDIT")
