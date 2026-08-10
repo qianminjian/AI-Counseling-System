@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { mainHint, subHint, chipHint, VoiceStatusChip } from '../components/VoiceStatusHint'
+import { mainHint, subHint, chipHint, VoiceStatusChip, isWakeNotReady } from '../components/VoiceStatusHint'
 import { render, screen } from '@testing-library/react'
 
 describe('VoiceStatusHint 状态→文案单一映射（FA-14）', () => {
@@ -26,11 +26,20 @@ describe('VoiceStatusHint 状态→文案单一映射（FA-14）', () => {
     })
 
     it('standby 分支按 wakeStatus 细分（loading/listening/error/其他）', () => {
-      expect(subHint({ mode: 'standby', wakeStatus: 'loading' })).toBe('正在加载语音引擎...')
+      // F-29：未就绪文案明确"等会儿再叫我"，避免用户过早呼叫
+      expect(subHint({ mode: 'standby', wakeStatus: 'loading' })).toBe('正在加载语音引擎…等会儿再叫我哦')
       expect(subHint({ mode: 'standby', wakeStatus: 'listening' })).toBe('我在这里安静地等你叫我')
       expect(subHint({ mode: 'standby', wakeStatus: 'error' })).toBe('语音引擎加载失败，请关闭再开启')
       // F-23：idle 不得冒充 standby（引擎未就绪时诚实显示准备中）
-      expect(subHint({ mode: 'standby', wakeStatus: 'idle' })).toBe('正在准备语音引擎...')
+      expect(subHint({ mode: 'standby', wakeStatus: 'idle' })).toBe('正在准备语音引擎…等会儿再叫我哦')
+    })
+
+    it('F-29 isWakeNotReady：idle/loading 判定未就绪，其余非未就绪', () => {
+      expect(isWakeNotReady({ mode: 'standby', wakeStatus: 'idle' })).toBe(true)
+      expect(isWakeNotReady({ mode: 'standby', wakeStatus: 'loading' })).toBe(true)
+      expect(isWakeNotReady({ mode: 'standby', wakeStatus: 'listening' })).toBe(false)
+      expect(isWakeNotReady({ mode: 'active', wakeStatus: 'listening' })).toBe(false)
+      expect(isWakeNotReady({ mode: 'standby', wakeStatus: 'error' })).toBe(false)
     })
 
     it('active 与兜底', () => {
@@ -41,7 +50,7 @@ describe('VoiceStatusHint 状态→文案单一映射（FA-14）', () => {
 
   describe('chipHint：手机端唤醒状态指示器', () => {
     it('五态映射文案与变体', () => {
-      expect(chipHint({ mode: 'standby', wakeStatus: 'loading' })).toEqual({ text: '语音引擎加载中...', variant: 'loading' })
+      expect(chipHint({ mode: 'standby', wakeStatus: 'loading' })).toEqual({ text: '语音引擎加载中…等会儿再叫我哦', variant: 'loading' })
       expect(chipHint({ mode: 'standby', wakeStatus: 'listening' })).toEqual({ text: '说“哈喽波波”唤醒我', variant: 'listening' })
       expect(chipHint({ mode: 'active', wakeStatus: 'detected' })).toEqual({ text: '🎉 听到了！正在准备听你说话...', variant: 'detected' })
       expect(chipHint({ mode: 'active', wakeStatus: 'listening' })).toEqual({ text: '我在听，直接说吧', variant: 'active' })
@@ -67,7 +76,7 @@ describe('VoiceStatusHint 状态→文案单一映射（FA-14）', () => {
 
     it('渲染文案与样式变体', () => {
       render(<VoiceStatusChip voiceCall={{ mode: 'standby', wakeStatus: 'loading' }} />)
-      const el = screen.getByText('语音引擎加载中...')
+      const el = screen.getByText('语音引擎加载中…等会儿再叫我哦')
       expect(el.className).toContain('bg-blue-50')
       expect(el.className).toContain('text-blue-500')
     })

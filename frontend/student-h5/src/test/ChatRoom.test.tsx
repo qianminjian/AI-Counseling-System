@@ -542,7 +542,8 @@ describe('ChatRoom', () => {
     mockVoiceCallState.wakeSupported = true
     mockVoiceCallState.wakeStatus = 'loading'
     const { rerenderChatRoom } = renderChatRoom()
-    expect(screen.getByText('正在加载语音引擎...')).toBeTruthy()
+    // F-29：未就绪时图标下醒目提示（琥珀胶囊文案）
+    expect(screen.getByText('正在准备语音引擎…等会儿再叫我哦')).toBeTruthy()
 
     mockVoiceCallState.wakeStatus = 'listening'
     rerenderChatRoom()

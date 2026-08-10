@@ -12,7 +12,7 @@ import ModelDownloadProgress from './ModelDownloadProgress' // F-8：ChatRoom �
 import DraggableVoiceButton from './DraggableVoiceButton'
 import MessageBubble from './MessageBubble'
 // FA-14：语音状态 → 文案/指示器单一映射（mainHint/subHint/VoiceStatusChip）
-import { mainHint, subHint, VoiceStatusChip } from './VoiceStatusHint'
+import { mainHint, subHint, VoiceStatusChip, isWakeNotReady } from './VoiceStatusHint'
 import { useTheme } from '../theme/ThemeProvider'
 import { useVoicePersona } from '../hooks/useVoicePersona'
 import { useTtsPlayer } from '../hooks/useTtsPlayer'
@@ -330,17 +330,33 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: Se
           style={{ background: 'linear-gradient(to bottom, var(--primary-light), var(--bg-end))' }}>
           {/* 波波（按住说话） */}
           <div className="mb-10">{boBoPet(170)}</div>
-          <p className="text-lg" style={{ color: 'var(--primary)' }}>
-            {recording ? '我在认真听你说...'
-              : analyzing ? '我在感受你的情绪...'
-              : streaming ? '让我想想...'
-              : tts.playing ? '我在说给你听...'
-              : mainHint(voiceCall)}
-          </p>
-          <p className="mt-3 text-sm text-gray-400">
-            {recording ? '松开手指发送，上滑取消'
-              : subHint(voiceCall)}
-          </p>
+          {/* F-29（2026-08-10 用户要求）：唤醒未就绪时图标下醒目提示（琥珀胶囊+呼吸点），
+              明确"等会儿再叫我"——避免引擎仍在下载/初始化时用户过早呼叫无响应 */}
+          {isWakeNotReady(voiceCall) ? (
+            <div className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-amber-50 border border-amber-200 shadow-sm">
+              <span className="relative flex h-2.5 w-2.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500"></span>
+              </span>
+              <p className="text-base font-medium" style={{ color: 'var(--warning, #d97706)' }}>
+                正在准备语音引擎…等会儿再叫我哦
+              </p>
+            </div>
+          ) : (
+            <>
+              <p className="text-lg" style={{ color: 'var(--primary)' }}>
+                {recording ? '我在认真听你说...'
+                  : analyzing ? '我在感受你的情绪...'
+                  : streaming ? '让我想想...'
+                  : tts.playing ? '我在说给你听...'
+                  : mainHint(voiceCall)}
+              </p>
+              <p className="mt-3 text-sm text-gray-400">
+                {recording ? '松开手指发送，上滑取消'
+                  : subHint(voiceCall)}
+              </p>
+            </>
+          )}
         </aside>
 
         {/* 右栏（手机为全宽）：对话区 */}

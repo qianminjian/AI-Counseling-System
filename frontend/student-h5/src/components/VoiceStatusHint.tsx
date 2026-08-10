@@ -28,15 +28,22 @@ export function subHint(voiceCall: VoiceCallStatus): string {
   const { wakeStatus, mode } = voiceCall
   if (wakeStatus === 'detected') return '正在准备听你说话...'
   if (mode === 'standby') {
-    if (wakeStatus === 'loading') return '正在加载语音引擎...'
+    // F-29（2026-08-10 用户要求）：未就绪时明确"等会儿再叫我"，避免用户过早呼叫
+    if (wakeStatus === 'loading') return '正在加载语音引擎…等会儿再叫我哦'
     if (wakeStatus === 'listening') return '我在这里安静地等你叫我'
     if (wakeStatus === 'error') return '语音引擎加载失败，请关闭再开启'
     // F-23（2026-08-10）：idle/未知状态不得冒充 standby——原兜底同样返回
     // "我在这里安静地等你叫我"，导致引擎未就绪（缓存空首访下载期）时用户误以为可呼叫。
-    return '正在准备语音引擎...'
+    return '正在准备语音引擎…等会儿再叫我哦'
   }
   if (mode === 'active') return '不用按，直接说就行'
   return '按住波波，跟它说说话'
+}
+
+/** F-29：唤醒引擎是否未就绪（idle/loading）——用于图标下醒目提示，避免用户过早呼叫 */
+export function isWakeNotReady(voiceCall: VoiceCallStatus): boolean {
+  const { wakeStatus } = voiceCall
+  return wakeStatus === 'idle' || wakeStatus === 'loading'
 }
 
 export type VoiceChipVariant = 'loading' | 'listening' | 'detected' | 'active' | 'error'
@@ -44,7 +51,7 @@ export type VoiceChipVariant = 'loading' | 'listening' | 'detected' | 'active' |
 /** 手机端唤醒状态指示器：状态 → { 文案, 样式变体 }；无匹配（off/idle）返回 null */
 export function chipHint(voiceCall: VoiceCallStatus): { text: string; variant: VoiceChipVariant } | null {
   const { wakeStatus, mode } = voiceCall
-  if (wakeStatus === 'loading') return { text: '语音引擎加载中...', variant: 'loading' }
+  if (wakeStatus === 'loading') return { text: '语音引擎加载中…等会儿再叫我哦', variant: 'loading' }
   if (wakeStatus === 'listening' && mode === 'standby') return { text: '说“哈喽波波”唤醒我', variant: 'listening' }
   if (wakeStatus === 'detected') return { text: '🎉 听到了！正在准备听你说话...', variant: 'detected' }
   // error 优先于 active：引擎故障提示比“我在听”更重要（单函数收敛后需显式定序）
