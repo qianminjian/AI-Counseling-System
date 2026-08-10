@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { Layout, Menu, Badge, message, notification } from 'antd'
 import {
   BellOutlined, WarningOutlined, TeamOutlined, LogoutOutlined,
-  DashboardOutlined, AlertOutlined, SettingOutlined,
+  DashboardOutlined, AlertOutlined, SettingOutlined, DesktopOutlined,
 } from '@ant-design/icons'
 import { getUnreadCount } from '../api'
 import { useAlertWebSocket } from '../hooks/useAlertWebSocket'
@@ -14,6 +14,7 @@ import NotificationPanel from '../components/teacher/NotificationPanel'
 import AdminPanel from '../components/teacher/AdminPanel'
 import PlatformPanel from '../components/teacher/PlatformPanel'
 import QualityPanel from '../components/teacher/QualityPanel'
+import DeviceManagement from '../components/teacher/DeviceManagement'
 import OnboardingGuide from '../components/teacher/OnboardingGuide'
 
 const { Header, Sider, Content } = Layout
@@ -60,6 +61,8 @@ const MENU_ITEMS = [
   { key: 'students', icon: <TeamOutlined />, label: '学生管理' },
   { key: 'quality', icon: <WarningOutlined />, label: '质量监控' },
   { key: 'notifications', icon: <BellOutlined />, label: '通知中心' },
+  // CFG-006/007/008（doing/84 §四.6）：无屏终端设备管理
+  { key: 'devices', icon: <DesktopOutlined />, label: '终端设备' },
 ]
 
 const ADMIN_MENU_ITEMS = [
@@ -160,6 +163,7 @@ export default function Dashboard({ user, onLogout, darkMode, toggleDark }: {
     students: '学生管理',
     quality: '质量监控',
     notifications: '通知中心',
+    devices: '终端设备',
     platform: '平台总览',
     admin: '管理控制台',
   }
@@ -220,6 +224,7 @@ export default function Dashboard({ user, onLogout, darkMode, toggleDark }: {
           {tab === 'students' && <StudentPanel />}
           {tab === 'quality' && <QualityPanel />}
           {tab === 'notifications' && <NotificationPanel />}
+          {tab === 'devices' && <DeviceManagement />}
           {tab === 'platform' && isAdmin && <PlatformPanel />}
           {tab === 'admin' && isAdmin && <AdminPanel />}
         </Content>

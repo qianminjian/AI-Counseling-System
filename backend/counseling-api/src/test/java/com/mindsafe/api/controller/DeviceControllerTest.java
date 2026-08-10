@@ -4,11 +4,13 @@ import com.mindsafe.api.dto.device.BindDeviceRequest;
 import com.mindsafe.domain.entity.DeviceBinding;
 import com.mindsafe.domain.util.DeviceCodeUtil;
 import com.mindsafe.service.device.DeviceService;
+import com.mindsafe.service.device.DeviceVoiceprintService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -27,6 +29,7 @@ import static org.mockito.Mockito.when;
 class DeviceControllerTest {
 
     private DeviceService deviceService;
+    private DeviceVoiceprintService voiceprintService;
     private DeviceController controller;
 
     private final String deviceCode = DeviceCodeUtil.generate("BB-2026-000123");
@@ -34,7 +37,8 @@ class DeviceControllerTest {
     @BeforeEach
     void setUp() {
         deviceService = mock(DeviceService.class);
-        controller = new DeviceController(deviceService);
+        voiceprintService = mock(DeviceVoiceprintService.class);
+        controller = new DeviceController(deviceService, voiceprintService);
     }
 
     private Map<String, Object> sampleInfo() {
@@ -168,5 +172,69 @@ class DeviceControllerTest {
         var response = controller.pullConfig(body);
         assertThat(response.code()).isEqualTo(0);
         assertThat(response.data().get("serverUrl")).isEqualTo("https://mindsafe.local");
+    }
+
+    // ===== CFG-006/008（P1）：声纹编排 + 设备列表 =====
+
+    @Test
+    @DisplayName("list：按绑定归属返回设备列表")
+    void listDevicesOk() {
+        UUID targetId = UUID.randomUUID();
+        when(deviceService.listDevices("CLASS", targetId)).thenReturn(List.of());
+
+        var response = controller.listDevices("CLASS", targetId);
+        assertThat(response.code()).isEqualTo(0);
+        assertThat(response.data()).isEmpty();
+        verify(deviceService).listDevices("CLASS", targetId);
+    }
+
+    @Test
+    @DisplayName("createVoiceprintTask：studentId 缺失返回 400")
+    void createVoiceprintTaskMissingStudent() {
+        var response = controller.createVoiceprintTask(deviceCode, Map.of(), "t");
+        assertThat(response.code()).isEqualTo(400);
+        assertThat(response.message()).contains("studentId");
+    }
+
+    @Test
+    @DisplayName("createVoiceprintTask：发起成功返回 INITIATED 任务")
+    void createVoiceprintTaskOk() {
+        Map<String, Object> task = new LinkedHashMap<>();
+        task.put("taskId", "t1");
+        task.put("phase", "INITIATED");
+        when(deviceService.exists(deviceCode)).thenReturn(true);
+        when(voiceprintService.createTask(deviceCode, "stu-1", "t")).thenReturn(task);
+
+        var response = controller.createVoiceprintTask(deviceCode, Map.of("studentId", "stu-1"), "t");
+        assertThat(response.code()).isEqualTo(0);
+        assertThat(response.data().get("phase")).isEqualTo("INITIATED");
+    }
+
+    @Test
+    @DisplayName("getVoiceprintTask：任务不存在或设备码不匹配返回 404")
+    void getVoiceprintTaskNotFound() {
+        when(voiceprintService.getTask("t1")).thenReturn(null);
+        assertThat(controller.getVoiceprintTask(deviceCode, "t1").code()).isEqualTo(404);
+    }
+
+    @Test
+    @DisplayName("reportVoiceprintPhase：设备端进度上报成功")
+    void reportVoiceprintPhaseOk() {
+        Map<String, Object> task = new LinkedHashMap<>();
+        task.put("taskId", "t1");
+        task.put("phase", "COLLECTING");
+        when(voiceprintService.reportPhase("t1", "COLLECTING")).thenReturn(task);
+
+        var response = controller.reportVoiceprintPhase(Map.of("taskId", "t1", "phase", "COLLECTING"));
+        assertThat(response.code()).isEqualTo(0);
+        assertThat(response.data().get("phase")).isEqualTo("COLLECTING");
+    }
+
+    @Test
+    @DisplayName("reportVoiceprintPhase：任务不存在返回 404")
+    void reportVoiceprintPhaseNotFound() {
+        when(voiceprintService.reportPhase("t1", "COLLECTING")).thenReturn(null);
+        assertThat(controller.reportVoiceprintPhase(Map.of("taskId", "t1", "phase", "COLLECTING")).code())
+                .isEqualTo(404);
     }
 }

@@ -286,6 +286,35 @@ public class DeviceService {
         return deviceCode != null && findByCode(deviceCode) != null;
     }
 
+    /**
+     * 老师租户级设备列表（CFG-008，doing/84 §四.6）：按绑定归属过滤
+     * （bind_type + bind_target_id 匹配老师学校/班级/咨询室）。
+     */
+    public List<Map<String, Object>> listDevices(String bindType, UUID bindTargetId) {
+        List<DeviceBinding> actives = bindingMapper.selectList(
+                new LambdaQueryWrapper<DeviceBinding>()
+                        .eq(DeviceBinding::getBindType, bindType)
+                        .eq(DeviceBinding::getBindTargetId, bindTargetId)
+                        .eq(DeviceBinding::getStatus, DeviceBinding.STATUS_ACTIVE));
+        if (actives.isEmpty()) {
+            return List.of();
+        }
+        List<UUID> deviceIds = actives.stream().map(DeviceBinding::getDeviceId).toList();
+        List<Device> devices = deviceMapper.selectList(
+                new LambdaQueryWrapper<Device>().in(Device::getDeviceId, deviceIds));
+        return devices.stream().map(d -> {
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("deviceCode", d.getDeviceCode());
+            item.put("deviceType", d.getDeviceType());
+            item.put("firmwareVersion", d.getFirmwareVersion());
+            item.put("status", d.getStatus());
+            item.put("online", d.getLastOnlineAt() != null
+                    && d.getLastOnlineAt().isAfter(Instant.now().minusSeconds(Device.HEARTBEAT_TIMEOUT_SECONDS)));
+            item.put("lastOnlineAt", d.getLastOnlineAt());
+            return item;
+        }).toList();
+    }
+
     private Device requireDevice(String deviceCode) {
         Device device = findByCode(deviceCode);
         if (device == null) {

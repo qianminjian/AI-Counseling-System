@@ -3,9 +3,12 @@ package com.mindsafe.api.controller;
 import com.mindsafe.api.dto.device.BindDeviceRequest;
 import com.mindsafe.common.dto.ApiResponse;
 import com.mindsafe.service.device.DeviceService;
+import com.mindsafe.service.device.DeviceVoiceprintService;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 /**
  * 无屏终端设备管理 API（CFG-001/004，doing/84 §六.2）
@@ -19,9 +22,11 @@ import java.util.Map;
 public class DeviceController {
 
     private final DeviceService deviceService;
+    private final DeviceVoiceprintService voiceprintService;
 
-    public DeviceController(DeviceService deviceService) {
+    public DeviceController(DeviceService deviceService, DeviceVoiceprintService voiceprintService) {
         this.deviceService = deviceService;
+        this.voiceprintService = voiceprintService;
     }
 
     /** 扫码入口页脱敏信息（匿名，AC-84-01）：型号/尾号/绑定态 */
@@ -102,6 +107,57 @@ public class DeviceController {
             return ApiResponse.error(404, "设备不存在");
         }
         return ApiResponse.ok(deviceService.pullConfig(deviceCode));
+    }
+
+    /** 老师租户级设备列表（CFG-008，按绑定归属过滤） */
+    @GetMapping("/list")
+    public ApiResponse<List<Map<String, Object>>> listDevices(
+            @RequestParam String bindType,
+            @RequestParam UUID bindTargetId) {
+        return ApiResponse.ok(deviceService.listDevices(bindType, bindTargetId));
+    }
+
+    /** 发起声纹录入任务（CFG-006，AC-84-13，登录态） */
+    @PostMapping("/{deviceCode}/voiceprint/tasks")
+    public ApiResponse<Map<String, Object>> createVoiceprintTask(
+            @PathVariable String deviceCode,
+            @RequestBody Map<String, String> body,
+            @RequestParam(required = false) String operator) {
+        String studentId = body.get("studentId");
+        if (studentId == null || studentId.isBlank()) {
+            return ApiResponse.error(400, "studentId 缺失");
+        }
+        if (!deviceService.exists(deviceCode)) {
+            return ApiResponse.error(404, "设备不存在");
+        }
+        return ApiResponse.ok(voiceprintService.createTask(deviceCode, studentId, operator));
+    }
+
+    /** 轮询声纹录入任务（CFG-006，AC-84-14） */
+    @GetMapping("/{deviceCode}/voiceprint/tasks/{taskId}")
+    public ApiResponse<Map<String, Object>> getVoiceprintTask(
+            @PathVariable String deviceCode,
+            @PathVariable String taskId) {
+        Map<String, Object> task = voiceprintService.getTask(taskId);
+        if (task == null || !deviceCode.equals(task.get("deviceCode"))) {
+            return ApiResponse.error(404, "任务不存在");
+        }
+        return ApiResponse.ok(task);
+    }
+
+    /** 设备端采集进度上报（CFG-006，AC-84-13，匿名白名单） */
+    @PostMapping("/report/voiceprint")
+    public ApiResponse<Map<String, Object>> reportVoiceprintPhase(@RequestBody Map<String, String> body) {
+        String taskId = body.get("taskId");
+        String phase = body.get("phase");
+        if (taskId == null || phase == null) {
+            return ApiResponse.error(400, "taskId/phase 缺失");
+        }
+        Map<String, Object> task = voiceprintService.reportPhase(taskId, phase);
+        if (task == null) {
+            return ApiResponse.error(404, "任务不存在");
+        }
+        return ApiResponse.ok(task);
     }
 
     /** 业务异常统一转 400（参数/状态非法），设备不存在单独 404 已在各端点前置处理 */

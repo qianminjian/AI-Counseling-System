@@ -317,3 +317,52 @@ export const getAuditLogs = (action?: string) => {
   const qs = action ? `?action=${action}` : ''
   return callEndpoint('getAuditLogs', { query: qs })
 }
+
+// ===== 无屏终端设备管理（CFG-001/004/006/008，doing/84 §六.2） =====
+
+export interface DeviceItem {
+  deviceCode: string
+  deviceType: string
+  firmwareVersion?: string
+  status: string
+  online: boolean
+  lastOnlineAt?: string
+}
+
+export interface VoiceprintTask {
+  taskId: string
+  deviceCode: string
+  studentId: string
+  phase: string
+  createdAt?: string
+  completedAt?: string
+}
+
+/** 老师租户级设备列表（按绑定归属过滤） */
+export const getDeviceList = (bindType: string, bindTargetId: string): Promise<DeviceItem[]> =>
+  callEndpoint('getDeviceList', { query: `?bindType=${bindType}&bindTargetId=${encodeURIComponent(bindTargetId)}` })
+
+/** 发起声纹录入任务 */
+export const createVoiceprintTask = (deviceCode: string, studentId: string, operator?: string): Promise<VoiceprintTask> =>
+  callEndpoint('createVoiceprintTask', {
+    pathParams: { deviceCode },
+    body: JSON.stringify({ studentId }),
+  })
+
+/** 轮询声纹录入任务 */
+export const getVoiceprintTask = (deviceCode: string, taskId: string): Promise<VoiceprintTask> =>
+  callEndpoint('getVoiceprintTask', { pathParams: { deviceCode, taskId } })
+
+/** 生成绑定验证码（触发设备语音播报） */
+export const createBindCode = (deviceCode: string): Promise<{ code: string; expiresAt: string }> =>
+  callEndpoint('createBindCode', { pathParams: { deviceCode } })
+
+/** 绑定设备（归属 + 验证码双因子） */
+export const bindDevice = (
+  deviceCode: string,
+  data: { bindType: string; bindTargetId: string; code: string }
+): Promise<{ status: string; boundAt: string }> =>
+  callEndpoint('bindDevice', {
+    pathParams: { deviceCode },
+    body: JSON.stringify(data),
+  })

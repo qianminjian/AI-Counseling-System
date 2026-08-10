@@ -51,6 +51,12 @@ export const ENDPOINTS = {
   deactivateInviteCode: { path: '/api/v1/admin/invite-codes/{codeId}/deactivate', method: 'patch' },
   deleteInviteCode: { path: '/api/v1/admin/invite-codes/{codeId}', method: 'delete' },
   getAuditLogs: { path: '/api/v1/admin/invite-codes/audit-logs', method: 'get' },
+  // CFG-001/004/006/008（doing/84 §六.2）：无屏终端设备管理（toB 老师端）
+  getDeviceList: { path: '/api/v1/device/list', method: 'get' },
+  createBindCode: { path: '/api/v1/device/{deviceCode}/bind-code', method: 'post' },
+  bindDevice: { path: '/api/v1/device/{deviceCode}/bind', method: 'post' },
+  createVoiceprintTask: { path: '/api/v1/device/{deviceCode}/voiceprint/tasks', method: 'post' },
+  getVoiceprintTask: { path: '/api/v1/device/{deviceCode}/voiceprint/tasks/{taskId}', method: 'get' },
   // 数据导出 / 批量导入
   openWeeklyReport: { path: '/api/v1/teacher/report/weekly', method: 'get' },
   exportAlertsCsv: { path: '/api/v1/teacher/export/alerts', method: 'get' },
