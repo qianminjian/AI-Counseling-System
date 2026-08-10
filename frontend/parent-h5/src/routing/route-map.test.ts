@@ -1,16 +1,19 @@
 // doing/73 T2（AC-9）：路由映射单一事实源测试
 // 语义：Taro pages 路径 ↔ H5 URL 映射（config/index.ts h5.router.customRoutes 读取本模块），
-// 保证迁移后四 URL（/parent/、/parent/privacy、/parent/report、/parent/consent）与迁移前 React Router 路由完全等价
+// 保证迁移后四 URL（/parent/、/parent/privacy、/parent/report、/parent/consent）与迁移前
+// React Router 路由完全等价；CFG-002（doing/84 §四.1）新增扫码入口页 /p/:v/:deviceCode
 import { describe, it, expect } from 'vitest'
 import { ROUTE_MAP, PAGES, toCustomRoutes } from './route-map'
 
 describe('ROUTE_MAP（pages 路径 ↔ H5 URL）', () => {
-  it('四页面映射齐备且 URL 唯一', () => {
+  it('五页面映射齐备且 URL 唯一', () => {
     expect(ROUTE_MAP).toEqual({
       '/pages/verify/index': '/',
       '/pages/privacy/index': '/privacy',
       '/pages/report/index': '/report',
       '/pages/consent/index': '/consent',
+      // CFG-002：扫码入口页（二维码 URL：/p/{v}/{deviceCode}）
+      '/pages/device/index': '/p/:v/:deviceCode',
     })
     const urls = Object.values(ROUTE_MAP)
     expect(new Set(urls).size).toBe(urls.length)

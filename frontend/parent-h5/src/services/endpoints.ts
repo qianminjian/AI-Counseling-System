@@ -16,4 +16,9 @@ export const FRONTEND_ENDPOINTS: Array<[path: string, method: string]> = [
   ['/api/v1/parent/report', 'get'],
   ['/api/v1/parent/consent/withdraw', 'post'],
   ['/api/v1/parent/consent/status', 'get'], // BUG-P-P04-01：授权状态查询
+  // CFG-001/004（doing/84 §六.2）：无屏终端扫码配置（扫码入口匿名查询 + 绑定需登录态）
+  ['/api/v1/device/{deviceCode}/info', 'get'],
+  ['/api/v1/device/{deviceCode}/status', 'get'],
+  ['/api/v1/device/{deviceCode}/bind-code', 'post'],
+  ['/api/v1/device/{deviceCode}/bind', 'post'],
 ]
