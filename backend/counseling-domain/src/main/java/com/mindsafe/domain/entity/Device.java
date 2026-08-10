@@ -66,6 +66,12 @@ public class Device {
 
     private Instant createdAt;
 
+    /** 设备 HMAC 密钥（P0-1，V44） */
+    private String deviceSecret;
+
+    /** 设备 JWT token（P0-1，reportOnline 签发） */
+    private String deviceToken;
+
     private Instant updatedAt;
 
     public UUID getDeviceId() {
@@ -146,6 +152,22 @@ public class Device {
 
     public void setCreatedAt(Instant createdAt) {
         this.createdAt = createdAt;
+    }
+
+    public String getDeviceSecret() {
+        return deviceSecret;
+    }
+
+    public void setDeviceSecret(String deviceSecret) {
+        this.deviceSecret = deviceSecret;
+    }
+
+    public String getDeviceToken() {
+        return deviceToken;
+    }
+
+    public void setDeviceToken(String deviceToken) {
+        this.deviceToken = deviceToken;
     }
 
     public Instant getUpdatedAt() {

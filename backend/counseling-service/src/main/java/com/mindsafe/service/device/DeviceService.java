@@ -35,15 +35,18 @@ public class DeviceService {
     private final DeviceBindingMapper bindingMapper;
     private final DeviceBindCodeMapper bindCodeMapper;
     private final DevicePreferenceService preferenceService;
+    private final DeviceSecurityService securityService;
     private final SecureRandom secureRandom = new SecureRandom();
 
     public DeviceService(DeviceMapper deviceMapper, DeviceBindingMapper bindingMapper,
                          DeviceBindCodeMapper bindCodeMapper,
-                         DevicePreferenceService preferenceService) {
+                         DevicePreferenceService preferenceService,
+                         DeviceSecurityService securityService) {
         this.deviceMapper = deviceMapper;
         this.bindingMapper = bindingMapper;
         this.bindCodeMapper = bindCodeMapper;
         this.preferenceService = preferenceService;
+        this.securityService = securityService;
     }
 
     /**
@@ -92,10 +95,15 @@ public class DeviceService {
             deviceMapper.updateById(update);
             device.setStatus(update.getStatus());
         }
+        // P0-1：签发设备安全凭证（device_secret 落库 + device_token 返回）
+        DeviceSecurityService.DeviceSecurityCredentials creds = securityService.issueCredentials(device);
+
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("deviceCode", deviceCode);
         result.put("status", device.getStatus());
         result.put("registered", true);
+        result.put("deviceToken", creds.token());
+        result.put("tokenExpiresAt", creds.expiresAt());
         return result;
     }
 
@@ -284,6 +292,10 @@ public class DeviceService {
         Map<String, Object> preferences = preferenceService.preferencesForPull(deviceCode);
         if (preferences != null) {
             config.put("preferences", preferences);
+        }
+        // P0-1：reportOnline 成功后签发的 device_token 下发备后续鉴权
+        if (device.getDeviceToken() != null) {
+            config.put("deviceToken", device.getDeviceToken());
         }
         return config;
     }
