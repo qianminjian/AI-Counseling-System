@@ -14,7 +14,9 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 /**
  * 无屏终端平台管理服务（CFG-008 admin-web M13，doing/84 §六.2 平台管理域）
@@ -48,9 +50,23 @@ public class PlatformDeviceService {
         wrapper.orderByDesc(Device::getUpdatedAt);
         List<Device> devices = deviceMapper.selectList(wrapper);
 
+        // P1（N+1）：批量查询绑定关系，避免逐设备循环查询
+        List<UUID> deviceIds = devices.stream().map(Device::getDeviceId).toList();
+        List<DeviceBinding> allBindings = deviceIds.isEmpty() ? List.of() : bindingMapper.selectList(
+                new LambdaQueryWrapper<DeviceBinding>()
+                        .in(DeviceBinding::getDeviceId, deviceIds));
+        Map<UUID, List<DeviceBinding>> bindingByDevice = allBindings.stream()
+                .collect(Collectors.groupingBy(DeviceBinding::getDeviceId));
+        // bindTargetId 过滤用 ACTIVE 绑定计数
+        Set<UUID> deviceIdsWithTarget = bindingByDevice.entrySet().stream()
+                .filter(e -> e.getValue().stream().anyMatch(b ->
+                        DeviceBinding.STATUS_ACTIVE.equals(b.getStatus()) && b.getBindTargetId() != null
+                                && b.getBindTargetId().equals(bindTargetId)))
+                .map(Map.Entry::getKey).collect(Collectors.toSet());
+
         List<Map<String, Object>> result = new ArrayList<>();
         for (Device d : devices) {
-            if (bindTargetId != null && !hasBinding(d.getDeviceId(), bindTargetId)) {
+            if (bindTargetId != null && !deviceIdsWithTarget.contains(d.getDeviceId())) {
                 continue;
             }
             Map<String, Object> item = new LinkedHashMap<>();
@@ -62,7 +78,7 @@ public class PlatformDeviceService {
             item.put("online", d.getLastOnlineAt() != null
                     && d.getLastOnlineAt().isAfter(Instant.now().minusSeconds(Device.HEARTBEAT_TIMEOUT_SECONDS)));
             item.put("lastOnlineAt", d.getLastOnlineAt());
-            item.put("binding", activeBindingSummary(d.getDeviceId()));
+            item.put("binding", activeBindingSummary(bindingByDevice.getOrDefault(d.getDeviceId(), List.of())));
             result.add(item);
         }
         return result;
@@ -169,19 +185,13 @@ public class PlatformDeviceService {
         return result;
     }
 
-    private boolean hasBinding(UUID deviceId, UUID bindTargetId) {
-        return bindingMapper.selectCount(new LambdaQueryWrapper<DeviceBinding>()
-                .eq(DeviceBinding::getDeviceId, deviceId)
-                .eq(DeviceBinding::getBindTargetId, bindTargetId)
-                .eq(DeviceBinding::getStatus, DeviceBinding.STATUS_ACTIVE)) > 0;
-    }
-
-    private Map<String, Object> activeBindingSummary(UUID deviceId) {
-        DeviceBinding b = bindingMapper.selectOne(
-                new LambdaQueryWrapper<DeviceBinding>()
-                        .eq(DeviceBinding::getDeviceId, deviceId)
-                        .eq(DeviceBinding::getStatus, DeviceBinding.STATUS_ACTIVE)
-                        .last("LIMIT 1"));
+    private Map<String, Object> activeBindingSummary(List<DeviceBinding> bindings) {
+        if (bindings == null || bindings.isEmpty()) {
+            return null;
+        }
+        DeviceBinding b = bindings.stream()
+                .filter(b1 -> DeviceBinding.STATUS_ACTIVE.equals(b1.getStatus()))
+                .findFirst().orElse(null);
         if (b == null) {
             return null;
         }

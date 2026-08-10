@@ -15,6 +15,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.TimeUnit;
 
 /**
  * toC 家庭账号服务（doing/85 TOC-001，toC-AC-1）
@@ -34,6 +35,11 @@ public class TocAuthService implements EnvironmentAware {
 
     /** 重发冷却 */
     private static final Duration RESEND_COOLDOWN = Duration.ofSeconds(60);
+
+    /** 登录/注册速率限制（P1） */
+    private static final String RATE_KEY_PREFIX = "ratelimit:toc:auth:";
+    private static final int RATE_MAX_ATTEMPTS = 10;
+    private static final Duration RATE_WINDOW = Duration.ofMinutes(1);
 
     private Environment environment;
 
@@ -58,6 +64,7 @@ public class TocAuthService implements EnvironmentAware {
      * 验证码明文仅 dev/test profile 回显（P0-3：生产接入短信通道后无回显）。
      */
     public Map<String, Object> sendCode(String phone) {
+        rateLimitCheck(phone);
         if (phone == null || !phone.matches("^1\\d{10}$")) {
             throw new IllegalArgumentException("手机号格式非法");
         }
@@ -85,6 +92,7 @@ public class TocAuthService implements EnvironmentAware {
      * P0-4：手机号经 FieldEncryptionService 加密后存储（ENCRYPTION_ENABLED=false 时明文透传）。
      */
     public TocFamilyAccount register(String phone, String code) {
+        rateLimitCheck(phone);
         verifyCode(phone, code);
         String encryptedPhone = encryptionService.encrypt(phone);
         TocFamilyAccount existing = accountMapper.selectOne(
@@ -108,6 +116,7 @@ public class TocAuthService implements EnvironmentAware {
      * P0-4：查询前对输入手机号执行与存储时相同的 encrypt 操作匹配。
      */
     public TocFamilyAccount login(String phone, String code) {
+        rateLimitCheck(phone);
         verifyCode(phone, code);
         TocFamilyAccount account = accountMapper.selectOne(
                 new LambdaQueryWrapper<TocFamilyAccount>().eq(TocFamilyAccount::getPhone, encryptionService.encrypt(phone)));
@@ -139,5 +148,17 @@ public class TocAuthService implements EnvironmentAware {
     private static String maskPhone(String phone) {
         return phone == null || phone.length() < 7 ? phone
                 : phone.substring(0, 3) + "****" + phone.substring(7);
+    }
+
+    /** P1 速率限制：同一手机号每分钟最多 10 次认证请求 */
+    private void rateLimitCheck(String phone) {
+        String key = RATE_KEY_PREFIX + phone;
+        Long count = redisTemplate.opsForValue().increment(key);
+        if (count == 1) {
+            redisTemplate.expire(key, RATE_WINDOW.toSeconds(), TimeUnit.SECONDS);
+        }
+        if (count != null && count > RATE_MAX_ATTEMPTS) {
+            throw new IllegalArgumentException("操作过于频繁，请稍后再试");
+        }
     }
 }
