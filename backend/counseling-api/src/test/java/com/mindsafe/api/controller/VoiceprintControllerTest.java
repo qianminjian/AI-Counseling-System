@@ -61,7 +61,7 @@ class VoiceprintControllerTest {
         auditLogService = mock(AuditLogService.class);
         rateLimiter = mock(RateLimiter.class);
         controller = new VoiceprintController(verifyService, enrollService, voiceprintLoginService,
-                jwtTokenProvider, auditLogService, rateLimiter);
+                jwtTokenProvider, auditLogService, rateLimiter, mock(com.mindsafe.service.device.DeviceVoiceprintService.class));
         when(rateLimiter.tryAcquire(anyString(), anyString(), anyInt(), any())).thenReturn(true);
     }
 
@@ -267,7 +267,7 @@ class VoiceprintControllerTest {
             when(auth.getDetails()).thenReturn(ctx);
 
             ApiResponse<Map<String, Object>> resp = controller.enroll(
-                    new VoiceprintController.EnrollRequest(List.of(List.of(1.0, 0.0), List.of(0.5, 0.5))), auth);
+                    new VoiceprintController.EnrollRequest(List.of(List.of(1.0, 0.0), List.of(0.5, 0.5)), null), auth);
 
             assertThat(resp.data().get("enrolled")).isEqualTo(2);
             assertThat(resp.data().get("mode")).isEqualTo("remote");
@@ -280,7 +280,7 @@ class VoiceprintControllerTest {
         @DisplayName("未认证 → UNAUTHORIZED")
         void unauthenticatedRejected() {
             assertThatThrownBy(() -> controller.enroll(
-                    new VoiceprintController.EnrollRequest(List.of(List.of(1.0, 0.0))), null))
+                    new VoiceprintController.EnrollRequest(List.of(List.of(1.0, 0.0)), null), null))
                     .isInstanceOf(BizException.class)
                     .extracting("code")
                     .isEqualTo(ErrorCode.UNAUTHORIZED.code());

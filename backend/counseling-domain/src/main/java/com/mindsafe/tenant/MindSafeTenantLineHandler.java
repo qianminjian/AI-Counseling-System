@@ -39,7 +39,12 @@ public class MindSafeTenantLineHandler implements TenantLineHandler {
             // ADMIN-P1-01/05（V36）：配置注册表/历史为平台级表；sla_escalation_log 无 tenant_id 列
             "sys_config",
             "sys_config_history",
-            "sla_escalation_log");
+            "sla_escalation_log",
+            // CFG-001/004/005（V39）：无屏终端设备表为平台级表（无 tenant_id 列）
+            "device",
+            "device_bindings",
+            "device_bind_codes",
+            "device_qr_issuance");
 
     @Override
     public Expression getTenantId() {

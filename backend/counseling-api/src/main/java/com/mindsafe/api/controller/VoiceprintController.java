@@ -14,6 +14,7 @@ import com.mindsafe.service.voiceprint.VoiceprintEnrollService;
 import com.mindsafe.service.voiceprint.VoiceprintLoginService;
 import com.mindsafe.service.voiceprint.VoiceprintVerifyService;
 import com.mindsafe.service.voiceprint.VoiceprintVerifyService.VerifyOutcome;
+import com.mindsafe.service.device.DeviceVoiceprintService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotEmpty;
@@ -45,6 +46,7 @@ public class VoiceprintController {
     private final JwtTokenProvider jwtTokenProvider;
     private final AuditLogService auditLogService;
     private final RateLimiter rateLimiter;
+    private final DeviceVoiceprintService deviceVoiceprintService;
 
     /** 公开端点按 IP 限流：每分钟最多 10 次声纹验证尝试（防暴力探测） */
     private static final int VERIFY_MAX_PER_MINUTE = 10;
@@ -59,13 +61,15 @@ public class VoiceprintController {
                                 VoiceprintLoginService voiceprintLoginService,
                                 JwtTokenProvider jwtTokenProvider,
                                 AuditLogService auditLogService,
-                                RateLimiter rateLimiter) {
+                                RateLimiter rateLimiter,
+                                DeviceVoiceprintService deviceVoiceprintService) {
         this.verifyService = verifyService;
         this.enrollService = enrollService;
         this.voiceprintLoginService = voiceprintLoginService;
         this.jwtTokenProvider = jwtTokenProvider;
         this.auditLogService = auditLogService;
         this.rateLimiter = rateLimiter;
+        this.deviceVoiceprintService = deviceVoiceprintService;
     }
 
     /** 获取声纹配置（公开）：前端据此决定走 local 还是 remote 流程 */
@@ -93,6 +97,11 @@ public class VoiceprintController {
         // 域服务：删旧模板 → 写入新模板（限 maxTemplates）
         int count = enrollService.enroll(userId, tenantId, request.embeddings());
         auditLogService.log(tenantId, userId, "VOICEPRINT_ENROLL_REMOTE", "user", userId, null);
+
+        // CFG-006（doing/84 §四.4）：设备端声纹录入任务完成置位（taskId 可选，无任务时不影响既有流程）
+        if (request.taskId() != null && !request.taskId().isBlank()) {
+            deviceVoiceprintService.complete(request.taskId());
+        }
 
         // AUD-001：响应携带 tenantId——前端 verify 需携带租户维度，由服务端签发避免前端伪造归属
         return ApiResponse.ok(Map.of("enrolled", count, "mode", "remote",
@@ -172,7 +181,9 @@ public class VoiceprintController {
 
     public record EnrollRequest(
             @NotEmpty(message = "embeddings 不能为空")
-            List<List<Double>> embeddings
+            List<List<Double>> embeddings,
+            // CFG-006：无屏终端声纹录入任务 ID（可选，设备端编排联动）
+            String taskId
     ) {}
 
     public record VerifyRequest(

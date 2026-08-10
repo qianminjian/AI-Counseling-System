@@ -14,6 +14,7 @@ export const PAGES = [
   'pages/privacy/index',
   'pages/report/index',
   'pages/consent/index',
+  'pages/device/index',
 ] as const
 
 export const ROUTE_MAP = {
@@ -21,6 +22,8 @@ export const ROUTE_MAP = {
   '/pages/privacy/index': '/privacy',
   '/pages/report/index': '/report',
   '/pages/consent/index': '/consent',
+  // CFG-002（doing/84 §四.1）：扫码入口页（二维码 URL：/p/{v}/{deviceCode}，Taro 路径参数）
+  '/pages/device/index': '/p/:v/:deviceCode',
 } as const
 
 export function toCustomRoutes(): Record<string, string> {

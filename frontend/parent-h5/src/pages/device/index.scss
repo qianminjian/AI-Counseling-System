@@ -1,0 +1,156 @@
+// CFG-002（doing/84 §四.1）：扫码入口页样式
+// 对齐 parent-h5 现有风格（青屿主色 #2BA8A0 语义），配置向导为移动端 H5 页面
+.device-page {
+  padding: 32px 24px;
+  min-height: 100vh;
+  background: #f5f6fa;
+  box-sizing: border-box;
+}
+
+.device-card {
+  background: #fff;
+  border-radius: 16px;
+  padding: 24px;
+  margin-bottom: 24px;
+  box-shadow: 0 4px 16px rgba(43, 168, 160, 0.08);
+}
+
+.device-title {
+  display: block;
+  font-size: 32px;
+  font-weight: 600;
+  color: #22303a;
+  margin-bottom: 12px;
+}
+
+.device-section-title {
+  display: block;
+  font-size: 30px;
+  font-weight: 600;
+  color: #22303a;
+  margin-bottom: 16px;
+}
+
+.device-hint {
+  display: block;
+  font-size: 26px;
+  line-height: 1.6;
+  color: #5c6b76;
+  margin-bottom: 8px;
+}
+
+.device-offline {
+  background: #fdf1e3;
+  border-radius: 12px;
+  padding: 16px 20px;
+  margin-bottom: 24px;
+}
+
+.device-led {
+  background: #e8f6f4;
+  border-radius: 12px;
+  padding: 12px 16px;
+  margin-top: 8px;
+}
+
+// 步骤条（涂鸦单页步骤条模式）
+.device-steps {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 24px;
+}
+
+.device-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  color: #8a97a0;
+
+  > text:first-child {
+    width: 44px;
+    height: 44px;
+    line-height: 44px;
+    text-align: center;
+    border-radius: 50%;
+    background: #eef2f0;
+    font-size: 24px;
+  }
+
+  &.active {
+    color: #2ba8a0;
+
+    > text:first-child {
+      background: #2ba8a0;
+      color: #fff;
+    }
+  }
+
+  &.done {
+    color: #2e9e6b;
+
+    > text:first-child {
+      background: #e8f6ee;
+    }
+  }
+}
+
+.device-step-label {
+  font-size: 22px;
+}
+
+// 表单
+.device-form {
+  margin-bottom: 16px;
+}
+
+.device-input {
+  background: #f4f7f6;
+  border-radius: 12px;
+  padding: 16px;
+  font-size: 26px;
+  margin-bottom: 16px;
+  color: #22303a;
+}
+
+.device-error {
+  display: block;
+  color: #d9534f;
+  font-size: 24px;
+  margin-bottom: 12px;
+}
+
+.device-btn {
+  background: #2ba8a0;
+  color: #fff;
+  border-radius: 24px;
+  font-size: 28px;
+  margin-top: 8px;
+
+  &:active {
+    opacity: 0.9;
+  }
+}
+
+// 轮询状态
+.device-status {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 16px 0;
+}
+
+.device-dot {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+
+  &.blue {
+    background: #4fc3f7;
+  }
+
+  &.green {
+    background: #2e9e6b;
+  }
+}

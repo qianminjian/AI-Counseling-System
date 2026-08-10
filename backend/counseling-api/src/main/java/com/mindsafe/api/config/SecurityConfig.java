@@ -79,6 +79,12 @@ public class SecurityConfig {
                         // 前端运行时配置（CFG-001，登录前即需拉取，如声纹模式判断）
                         .requestMatchers("/api/v1/system/config").permitAll()
                         .requestMatchers("/api/v1/auth/refresh").permitAll()
+                        // CFG-001（V39）：无屏终端设备上报/脱敏查询（设备端无 JWT，扫码入口匿名可查）；
+                        // 绑定类端点（bind-code/bind/unbind）默认需登录态
+                        .requestMatchers("/api/v1/device/report/**").permitAll()
+                        .requestMatchers("/api/v1/device/*/info").permitAll()
+                        .requestMatchers("/api/v1/device/*/status").permitAll()
+                        .requestMatchers("/api/v1/device/config/pull").permitAll()
                         // 企微 OAuth 回调（无 JWT，靠 code 换 token）
                         .requestMatchers("/api/v1/auth/wecom/**").permitAll()
                         // 监护人同意确认：要求学生已登录会话内确认（GuardianConsentGate 流程），
