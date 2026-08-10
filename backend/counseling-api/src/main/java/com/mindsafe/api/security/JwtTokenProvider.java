@@ -243,6 +243,11 @@ public class JwtTokenProvider {
 
     /** 获取 token JWT ID（AUDIT-P1-13：黑名单按 jti 粒度，避免完整 token 作 Redis key） */
     public String getTokenId(String token) {
+        // 修复（2026-08-10）：平台 token（PLATFORM_ 前缀）须先剥离前缀再解析——
+        // 原实现对平台 token 直接 parseToken(完整串) → MalformedJwtException → 平台域 API 全部 500
+        if (token != null && token.startsWith(PLATFORM_TOKEN_PREFIX)) {
+            return parseToken(token.substring(PLATFORM_TOKEN_PREFIX.length())).getId();
+        }
         return parseToken(token).getId();
     }
 }
