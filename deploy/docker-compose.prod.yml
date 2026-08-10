@@ -62,6 +62,8 @@ services:
       SPRING_DATA_REDIS_HOST: redis
       SPRING_DATA_REDIS_PORT: 6379
       SPRING_DATA_REDIS_PASSWORD: ${REDIS_PASSWORD}
+      # nginx 服务探测（F-30，2026-08-10）：nginx 为宿主机进程，后端容器内经宿主 IP 探测 /health
+      MINDSAFE_MONITORING_SERVICE_PROBES_NGINX: ${MINDSAFE_MONITORING_SERVICE_PROBES_NGINX:-http://116.8.109.229}
       # LLM 主模型（doing/63：key 主命名；compose 层做新→旧名迁移，yml 回退链覆盖 DEEPSEEK_API_KEY 三级）
       LLM_PRIMARY_API_KEY: ${LLM_PRIMARY_API_KEY:-${LLM_API_KEY:-}}
       LLM_PRIMARY_BASE_URL: ${LLM_PRIMARY_BASE_URL:-${LLM_BASE_URL:-https://api.deepseek.com}}
