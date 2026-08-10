@@ -6,6 +6,7 @@ import com.mindsafe.domain.entity.RiskEvent;
 import com.mindsafe.domain.entity.School;
 import com.mindsafe.domain.entity.Tenant;
 import com.mindsafe.domain.entity.User;
+import com.mindsafe.common.tenant.TenantContextHolder;
 import com.mindsafe.domain.mapper.CounselingSessionMapper;
 import com.mindsafe.domain.mapper.RiskEventMapper;
 import com.mindsafe.domain.mapper.SchoolMapper;
@@ -48,6 +49,9 @@ public class PlatformService {
 
     /** 平台总览（跨租户聚合） */
     public Map<String, Object> overview() {
+        // 修复（2026-08-10）：跨租户聚合须 runAsSystem 声明系统作用域——
+        // 原实现直接查租户表（schools/users/...）触发 M1-003 fail-fast → 平台总览 500
+        return TenantContextHolder.runAsSystem(() -> {
         List<Tenant> tenants = tenantMapper.selectList(
                 new LambdaQueryWrapper<Tenant>().eq(Tenant::getStatus, Tenant.STATUS_ACTIVE));
 
@@ -81,6 +85,7 @@ public class PlatformService {
         overview.put("totalAlerts", totalAlerts);
         overview.put("openAlerts", openAlerts);
         return overview;
+        });
     }
 
     /** 租户列表（含各校学生/教师数） */
