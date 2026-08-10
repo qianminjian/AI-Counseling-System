@@ -223,13 +223,24 @@ function getWakeWorker(): Promise<Worker> {
       // 用主线程状态判 Worker 就绪会导致：主线程失败时 Worker 误超时降级、
       // 主线程先就绪时 resolve 过早（Worker 仍在加载）。
       const t0 = Date.now()
+      let lastProgressBucket = -1 // F-30：progress 采样去重（每 5% 一条）
       await new Promise<void>((resolve, reject) => {
         const timer = setTimeout(() => {
           reject(new Error('Worker 预启动超时（180s）'))
         }, 180000)
         w.onmessage = (e) => {
           const { type } = e.data
-          tslog('Worker 消息:', type, JSON.stringify(e.data)?.slice(0, 100))
+          // F-30（2026-08-10）：progress 消息采样输出（每 5% 一条）——预启动下载期每条 chunk 都
+          // console.info 会刷屏 3000+ 条（实测拖慢 DevTools 会话、用户感知卡顿）；状态/结果类保留完整日志
+          if (type === 'progress') {
+            const bucket = Math.floor((e.data.progress || 0) / 5) * 5
+            if (bucket !== lastProgressBucket) {
+              lastProgressBucket = bucket
+              tslog('Worker 下载:', e.data.file, `${e.data.progress.toFixed(0)}%`)
+            }
+          } else {
+            tslog('Worker 消息:', type, JSON.stringify(e.data)?.slice(0, 100))
+          }
           if (type === 'status' && e.data.status === 'ready') {
             clearTimeout(timer)
             resolve()
