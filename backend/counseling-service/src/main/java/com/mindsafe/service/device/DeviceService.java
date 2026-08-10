@@ -2,6 +2,8 @@ package com.mindsafe.service.device;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.mindsafe.domain.entity.Device;
+import com.mindsafe.domain.entity.DeviceOperation;
+import com.mindsafe.domain.mapper.DeviceOperationMapper;
 import com.mindsafe.domain.entity.DeviceBindCode;
 import com.mindsafe.domain.entity.DeviceBinding;
 import com.mindsafe.domain.mapper.DeviceBindCodeMapper;
@@ -37,17 +39,20 @@ public class DeviceService {
     private final DeviceBindCodeMapper bindCodeMapper;
     private final DevicePreferenceService preferenceService;
     private final DeviceSecurityService securityService;
+    private final DeviceOperationMapper operationMapper;
     private final SecureRandom secureRandom = new SecureRandom();
 
     public DeviceService(DeviceMapper deviceMapper, DeviceBindingMapper bindingMapper,
                          DeviceBindCodeMapper bindCodeMapper,
                          DevicePreferenceService preferenceService,
-                         DeviceSecurityService securityService) {
+                         DeviceSecurityService securityService,
+                         DeviceOperationMapper operationMapper) {
         this.deviceMapper = deviceMapper;
         this.bindingMapper = bindingMapper;
         this.bindCodeMapper = bindCodeMapper;
         this.preferenceService = preferenceService;
         this.securityService = securityService;
+        this.operationMapper = operationMapper;
     }
 
     /**
@@ -305,6 +310,7 @@ public class DeviceService {
     /** 固件升级受理（CFG-008 M13，AC-84-20）：登记操作意图（真实执行由固件侧）。 */
     public Map<String, Object> ota(String deviceCode, String operator) {
         Device device = requireDevice(deviceCode);
+        auditOperation(deviceCode, "ota", operator, "操作已受理，固件侧执行待 NST-HW-02 二期对接");
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("deviceCode", deviceCode);
         result.put("action", "ota");
@@ -340,6 +346,7 @@ public class DeviceService {
             update.setUnboundAt(now);
             bindingMapper.updateById(update);
         }
+        auditOperation(deviceCode, "factory-reset", operator, "解绑" + actives.size() + "个绑定 + 状态回 UNACTIVATED");
         Device deviceUpdate = new Device();
         deviceUpdate.setDeviceId(device.getDeviceId());
         deviceUpdate.setStatus(Device.STATUS_UNACTIVATED);
@@ -427,3 +434,16 @@ public class DeviceService {
         }
     }
 }
+
+
+    /** P1 设备操作审计落库 */
+    private void auditOperation(String deviceCode, String action, String operator, String note) {
+        DeviceOperation op = new DeviceOperation();
+        op.setOperationId(UUID.randomUUID());
+        op.setDeviceCode(deviceCode);
+        op.setAction(action);
+        op.setOperator(operator);
+        op.setAcceptedAt(Instant.now());
+        op.setNote(note);
+        operationMapper.insert(op);
+    }

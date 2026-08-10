@@ -49,7 +49,7 @@ class DeviceServiceTest {
         when(securityService.issueCredentials(any())).thenReturn(
                 new DeviceSecurityService.DeviceSecurityCredentials("DVC_test_token_abc", 9999999999999L));
         service = new DeviceService(deviceMapper, bindingMapper, bindCodeMapper,
-                mock(DevicePreferenceService.class), securityService);
+                mock(DevicePreferenceService.class), securityService, mock(DeviceOperationMapper.class));
     }
 
     private Device unboundDevice() {

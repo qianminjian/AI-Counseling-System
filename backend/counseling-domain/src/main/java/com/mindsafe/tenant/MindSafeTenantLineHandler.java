@@ -49,7 +49,9 @@ public class MindSafeTenantLineHandler implements TenantLineHandler {
             "toc_family_accounts",
             "toc_child_profiles",
             // TOC-006（V43）：设备偏好为平台级表（无 tenant_id 列）
-            "device_preferences");
+            "device_preferences",
+            // P1（V45）：设备操作审计为平台级表
+            "device_operations");
 
     @Override
     public Expression getTenantId() {
