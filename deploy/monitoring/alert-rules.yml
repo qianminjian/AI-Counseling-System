@@ -45,7 +45,7 @@ groups:
       - alert: MindsafeHighErrorRate
         expr: |
           sum(rate(http_server_requests_seconds_count{status=~"5.."}[5m])) by (instance)
-            / clamp_min(sum(rate(http_server_requests_seconds_count)[5m]) by (instance), 0.001) > 0.05
+            / clamp_min(sum(rate(http_server_requests_seconds_count[5m])) by (instance), 0.001) > 0.05
         for: 5m
         labels:
           severity: warning
@@ -79,7 +79,7 @@ groups:
       - alert: MindsafeTtsHighFailureRate
         expr: |
           sum(rate(tts_synthesize_requests_total{engine="error"}[5m]))
-            / clamp_min(sum(rate(tts_synthesize_requests_total)[5m]), 0.001) > 0.5
+            / clamp_min(sum(rate(tts_synthesize_requests_total[5m])), 0.001) > 0.5
         for: 5m
         labels:
           severity: warning
@@ -92,7 +92,7 @@ groups:
       - alert: MindsafeVoiceHighFailureRate
         expr: |
           sum(rate(voice_analyze_requests_total{result!="success"}[5m]))
-            / clamp_min(sum(rate(voice_analyze_requests_total)[5m]), 0.001) > 0.5
+            / clamp_min(sum(rate(voice_analyze_requests_total[5m])), 0.001) > 0.5
         for: 5m
         labels:
           severity: warning

@@ -89,6 +89,9 @@ public class SecurityConfig {
                         .requestMatchers("/api/v1/platform/auth/login").permitAll()
                         // 健康检查（Docker/Nginx 探针）
                         .requestMatchers("/actuator/health").permitAll()
+                        // Prometheus 指标抓取（OPS-MON-003，2026-08-10）：容器 internal 网络内可达（不经公网），
+                        // 生产放行 /actuator/prometheus——否则抓取 403、指标看板/告警规则无数据
+                        .requestMatchers("/actuator/prometheus").permitAll()
                         // WebSocket（握手后内部鉴权）
                         .requestMatchers("/ws/**").permitAll()
                         // ─── 环境受控端点 ───
