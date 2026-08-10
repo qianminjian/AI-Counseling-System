@@ -6,6 +6,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.env.Environment;
+import com.mindsafe.service.security.FieldEncryptionService;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 
@@ -36,7 +37,9 @@ class TocAuthServiceTest {
         redisTemplate = mock(StringRedisTemplate.class);
         valueOps = mock(ValueOperations.class);
         when(redisTemplate.opsForValue()).thenReturn(valueOps);
-        service = new TocAuthService(accountMapper, redisTemplate);
+        FieldEncryptionService encService = mock(FieldEncryptionService.class);
+        when(encService.encrypt(anyString())).thenAnswer(i -> i.getArgument(0)); // 透传（测试环境 encryption disabled）
+        service = new TocAuthService(accountMapper, redisTemplate, encService);
         Environment env = mock(Environment.class);
         when(env.acceptsProfiles("prod")).thenReturn(false);
         service.setEnvironment(env);

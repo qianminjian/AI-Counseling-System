@@ -76,12 +76,12 @@ class DeviceVoiceprintServiceTest {
         String taskId = (String) task.get("taskId");
         when(valueOps.get(anyString())).thenReturn(serialize(task));
 
-        Map<String, Object> collecting = service.reportPhase(taskId, DeviceVoiceprintService.PHASE_COLLECTING);
+        Map<String, Object> collecting = service.reportPhase(taskId, DeviceVoiceprintService.PHASE_COLLECTING, null);
         assertThat(collecting.get("phase")).isEqualTo(DeviceVoiceprintService.PHASE_COLLECTING);
 
         when(valueOps.get(anyString())).thenReturn(serialize(collecting));
-        Map<String, Object> uploaded = service.reportPhase(taskId, DeviceVoiceprintService.PHASE_UPLOADED);
-        assertThat(uploaded.get("phase")).isEqualTo(DeviceVoiceprintService.PHASE_UPLOADED);
+        Map<String, Object> uploaded = service.reportPhase(taskId, DeviceVoiceprintService.PHASE_UPLOADED, null);
+        assertThat(uploaded.get("phase")).isEqualTo(DeviceVoiceprintService.PHASE_COMPLETED);
     }
 
     @Test

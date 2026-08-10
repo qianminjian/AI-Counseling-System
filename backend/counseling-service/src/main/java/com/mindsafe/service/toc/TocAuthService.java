@@ -3,6 +3,7 @@ package com.mindsafe.service.toc;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.mindsafe.domain.entity.TocFamilyAccount;
 import com.mindsafe.domain.mapper.TocFamilyAccountMapper;
+import com.mindsafe.service.security.FieldEncryptionService;
 import org.springframework.context.EnvironmentAware;
 import org.springframework.core.env.Environment;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -38,10 +39,13 @@ public class TocAuthService implements EnvironmentAware {
 
     private final TocFamilyAccountMapper accountMapper;
     private final StringRedisTemplate redisTemplate;
+    private final FieldEncryptionService encryptionService;
 
-    public TocAuthService(TocFamilyAccountMapper accountMapper, StringRedisTemplate redisTemplate) {
+    public TocAuthService(TocFamilyAccountMapper accountMapper, StringRedisTemplate redisTemplate,
+                          FieldEncryptionService encryptionService) {
         this.accountMapper = accountMapper;
         this.redisTemplate = redisTemplate;
+        this.encryptionService = encryptionService;
     }
 
     @Override
@@ -78,17 +82,19 @@ public class TocAuthService implements EnvironmentAware {
 
     /**
      * 注册：手机号 + 验证码 → 创建家庭账号，返回账号信息（token 由 Controller 签发）。
+     * P0-4：手机号经 FieldEncryptionService 加密后存储（ENCRYPTION_ENABLED=false 时明文透传）。
      */
     public TocFamilyAccount register(String phone, String code) {
         verifyCode(phone, code);
+        String encryptedPhone = encryptionService.encrypt(phone);
         TocFamilyAccount existing = accountMapper.selectOne(
-                new LambdaQueryWrapper<TocFamilyAccount>().eq(TocFamilyAccount::getPhone, phone));
+                new LambdaQueryWrapper<TocFamilyAccount>().eq(TocFamilyAccount::getPhone, encryptedPhone));
         if (existing != null) {
             throw new IllegalArgumentException("该手机号已注册，请直接登录");
         }
         TocFamilyAccount account = new TocFamilyAccount();
         account.setFamilyAccountId(UUID.randomUUID());
-        account.setPhone(phone);
+        account.setPhone(encryptedPhone);
         account.setStatus(TocFamilyAccount.STATUS_ACTIVE);
         Instant now = Instant.now();
         account.setCreatedAt(now);
@@ -99,11 +105,12 @@ public class TocAuthService implements EnvironmentAware {
 
     /**
      * 登录：手机号 + 验证码（已注册账号），返回账号信息（token 由 Controller 签发）。
+     * P0-4：查询前对输入手机号执行与存储时相同的 encrypt 操作匹配。
      */
     public TocFamilyAccount login(String phone, String code) {
         verifyCode(phone, code);
         TocFamilyAccount account = accountMapper.selectOne(
-                new LambdaQueryWrapper<TocFamilyAccount>().eq(TocFamilyAccount::getPhone, phone));
+                new LambdaQueryWrapper<TocFamilyAccount>().eq(TocFamilyAccount::getPhone, encryptionService.encrypt(phone)));
         if (account == null) {
             throw new IllegalArgumentException("账号不存在，请先注册");
         }
