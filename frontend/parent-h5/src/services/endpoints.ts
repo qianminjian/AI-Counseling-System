@@ -34,4 +34,7 @@ export const FRONTEND_ENDPOINTS: Array<[path: string, method: string]> = [
   ['/api/v1/toc/devices/{deviceCode}/bind-code', 'post'],
   ['/api/v1/toc/devices/{deviceCode}/bind', 'post'],
   ['/api/v1/toc/devices/{deviceCode}/unbind', 'post'],
+  // doing/85 TOC-007：隐私控制（数据查看/删除，X-Confirm）
+  ['/api/v1/toc/privacy', 'get'],
+  ['/api/v1/toc/privacy/data', 'delete'],
 ]

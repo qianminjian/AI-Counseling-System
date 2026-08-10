@@ -8,6 +8,7 @@
  * - /parent/toc-login  → toC 家庭版注册/登录（doing/85 TOC-001）
  * - /parent/toc-profiles → 家庭档案管理（doing/85 TOC-002，需 toC 登录）
  * - /parent/toc-devices → 家庭设备管理（doing/85 TOC-003，需 toC 登录）
+ * - /parent/toc-privacy → 隐私控制（doing/85 TOC-007，需 toC 登录）
  * config/index.ts 的 h5.router.customRoutes 读取本模块，避免映射散落两处
  */
 
@@ -23,6 +24,8 @@ export const PAGES = [
   'pages/toc-profiles/index',
   // doing/85 TOC-003：家庭设备管理（联动 doing/84）
   'pages/toc-devices/index',
+  // doing/85 TOC-007：隐私控制
+  'pages/toc-privacy/index',
 ] as const
 
 export const ROUTE_MAP = {
@@ -37,6 +40,8 @@ export const ROUTE_MAP = {
   '/pages/toc-profiles/index': '/toc/profiles',
   // doing/85 TOC-003：家庭设备管理
   '/pages/toc-devices/index': '/toc/devices',
+  // doing/85 TOC-007：隐私控制
+  '/pages/toc-privacy/index': '/toc/privacy',
 } as const
 
 export function toCustomRoutes(): Record<string, string> {

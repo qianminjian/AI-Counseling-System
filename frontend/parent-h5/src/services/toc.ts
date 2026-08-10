@@ -112,3 +112,27 @@ export function tocBindDevice(deviceCode: string, body: { code: string; profileI
 export function tocUnbindDevice(deviceCode: string) {
   return request<Record<string, unknown>>(`/toc/devices/${deviceCode}/unbind`, { method: 'POST' })
 }
+
+// ========== 隐私控制 API（TOC-007） ==========
+
+export interface TocPrivacyOverview {
+  familyAccountId: string
+  phone: string
+  status: string
+  profileCount: number
+  deviceCount: number
+  dataRetentionNote: string
+}
+
+/** 数据清单预览 */
+export function getTocPrivacyOverview() {
+  return request<TocPrivacyOverview>('/toc/privacy', { method: 'GET' })
+}
+
+/** 删除全部家庭数据（不可逆，X-Confirm 二次确认） */
+export function deleteTocPrivacyData() {
+  return request<Record<string, unknown>>('/toc/privacy/data', {
+    method: 'DELETE',
+    headers: { 'X-Confirm': 'CONFIRM' },
+  })
+}

@@ -19,6 +19,11 @@ const mockListDevices = vi.fn(() => Promise.resolve([
   { deviceCode: 'K7M2P9XW4AQ', deviceType: 'desk_toy', firmwareVersion: 'v0.1.0', status: 'ONLINE_BOUND', online: true },
 ]))
 const mockUnbind = vi.fn(() => Promise.resolve({}))
+const mockPrivacyOverview = vi.fn(() => Promise.resolve({
+  familyAccountId: 'f1', phone: '138****8000', status: 'ACTIVE', profileCount: 2, deviceCount: 1,
+  dataRetentionNote: '删除后数据不可恢复（TOC-007）',
+}))
+const mockDeletePrivacy = vi.fn(() => Promise.resolve({ unboundDevices: 1, deletedProfiles: 2, accountStatus: 'DISABLED' }))
 const mockNavigate = vi.fn()
 const mockReLaunch = vi.fn()
 
@@ -36,6 +41,8 @@ vi.mock('../services/toc', () => ({
   deleteTocProfile: (...a: unknown[]) => mockDelete(...a),
   listTocDevices: (...a: unknown[]) => mockListDevices(...a),
   tocUnbindDevice: (...a: unknown[]) => mockUnbind(...a),
+  getTocPrivacyOverview: (...a: unknown[]) => mockPrivacyOverview(...a),
+  deleteTocPrivacyData: (...a: unknown[]) => mockDeletePrivacy(...a),
   saveTocSession: vi.fn(),
   clearTocSession: vi.fn(),
 }))
@@ -43,6 +50,7 @@ vi.mock('../services/toc', () => ({
 import TocLoginPage from '../pages/toc-login/index'
 import TocProfilesPage from '../pages/toc-profiles/index'
 import TocDevicesPage from '../pages/toc-devices/index'
+import TocPrivacyPage from '../pages/toc-privacy/index'
 
 describe('toC 登录页（TOC-001）', () => {
   beforeEach(() => {
@@ -150,6 +158,35 @@ describe('toC 家庭设备页（TOC-003）', () => {
     await screen.findByText('K7M2P9XW4AQ')
     fireEvent.click(screen.getByText('绑定新设备'))
     await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith({ url: '/pages/device/index?v=1&deviceCode=SCAN' }))
+  })
+})
+
+describe('toC 隐私控制页（TOC-007）', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('数据清单：展示账号/档案数/设备数', async () => {
+    render(<TocPrivacyPage />)
+    expect(await screen.findByText(/138\*\*\*\*8000/)).toBeInTheDocument()
+    expect(screen.getByText(/孩子档案：2 个/)).toBeInTheDocument()
+    expect(screen.getByText(/绑定设备：1 台/)).toBeInTheDocument()
+  })
+
+  it('删除：先二次确认再调删除接口', async () => {
+    render(<TocPrivacyPage />)
+    await screen.findByText(/孩子档案：2 个/)
+    fireEvent.click(screen.getAllByText('删除全部数据')[1])
+    fireEvent.click(screen.getByText('确认删除'))
+    await waitFor(() => expect(mockDeletePrivacy).toHaveBeenCalled())
+  })
+
+  it('取消：不调删除接口', async () => {
+    render(<TocPrivacyPage />)
+    await screen.findByText(/孩子档案：2 个/)
+    fireEvent.click(screen.getAllByText('删除全部数据')[1])
+    fireEvent.click(screen.getByText('取消'))
+    expect(mockDeletePrivacy).not.toHaveBeenCalled()
   })
 })
 })
