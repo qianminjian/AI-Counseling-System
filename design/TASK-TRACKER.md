@@ -1053,7 +1053,7 @@ _本表由 Agent 维护，每次任务变更时更新。_
 | TOC-003 | 设备绑定（复用 doing/84 设备管理 API + toC 绑定流程） | doing/84 相关交付 | ✅ 已实施（2026-08-10，c71b3df：TocDeviceService FAMILY 绑定 + parent-h5 设备页/扫码页联动） | ⬜ 待排期 |
 | TOC-004 | 成长报告 toC 模板（算法提炼，无原始对话） | TOC-001 | 🔶 数据源依赖（toC 对话/风险数据链路未实施，依赖 toB 对话引擎 toC 化；YAGNI 不做空壳，链路就绪后实施模板） | ⬜ 待排期 |
 | TOC-005 | 预警推送 toC 通道（App/短信，推送对象=自己孩子） | TOC-001 | 🔶 数据源依赖（同上，toC 风险数据链路就绪后实施推送通道） | ⬜ 待排期 |
-| TOC-006 | 远程管理（音量/灯光/音色/偏好 + 设备状态） | TOC-003 | 🔶 部分落地（音量/灯光/音色偏好为固件侧配置面，NST-HW-02 二期；软件侧设备状态视图已具备 toc-devices） | ⬜ 待排期 |
+| TOC-006 | 远程管理（音量/灯光/音色/偏好 + 设备状态） | TOC-003 | ✅ 软件侧已实施（2026-08-10 c6bb2cc：V43 device_preferences + TocPreferenceController + pullConfig 偏好下发 + toc-devices 偏好面板）；灯光/固件执行待 NST-HW-02 二期 | ✅ 软件侧完成 |
 | TOC-007 | 隐私控制模块（查看/删除/关闭/使用时间） | TOC-001 | ✅ 已实施（2026-08-10，2b13356：TocPrivacyService 删除不可逆 + parent-h5 隐私页） | ⬜ 待排期 |
 | TOC-008 | 二合一改造（家长端/老师端统一框架 + RBAC 数据范围） | TOC-001~007 | ✅ 验证通过（2026-08-10：DRY 断言成立——TocDeviceService 薄封装复用零重复；RBAC 数据范围——familyAccountId 全部取自 token 上下文） | ⬜ 待排期 |
 | TOC-009 | toC 部署架构（云端 SaaS 多租户 或 家庭私有化方案） | 立项评估 | ✅ 云端 SaaS 隔离已落地（平台级表 + familyAccountId 数据隔离验证）；家庭私有化方案待文档化（85 §五 toC-AC-9） | ⬜ 待排期 |
