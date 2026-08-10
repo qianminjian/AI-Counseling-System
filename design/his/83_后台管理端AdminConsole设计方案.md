@@ -1,5 +1,7 @@
 # doing/83 - 后台管理端 AdminConsole 设计方案
 
+> ⚠️ **已归档（2026-08-10，DOC-101）**：专题实施完成（ADMIN tickets 29/29 ✅ + P0 backlog ①~⑤ 收尾 + 部署验证通过），最终态并入 **01** §六 平台管理后台 AdminConsole；本文件归档 his/ 只读溯源（与 his/83 服务降级监控同号异题）。
+
 > 状态：开发期（doing 子文档） | 编号：83（接续 doing/82）
 > 创建：2026-08-09 | 作者：Agent（钱敏健工作区）
 > 关联：design/07（商业化：定价 99/159/259 元/生/年、entitlement 三层、计量 BIZ 系列 P3）；design/03 §8（监控运维架构：Prometheus+Grafana+AlertManager 10 条规则）；design/02（数据库：tenants 隔离根、行级隔离 D-12、model_call_logs）；design/04（部署：service-manager.sh 六服务健康检查、deploy.sh 唯一发布通道）；design/09 §5（风险分级 SLA：R4 红 1 分钟告警/5 分钟确认/15 分钟人工接触）；design/11 §四（预警中心工作流状态机 open→claimed→resolved→closed + S0-S3 处置 SLA）；frozen/38（P2 商业化冻结：BILL-002/003 计量计费、EntitlementFilter 权益映射）
