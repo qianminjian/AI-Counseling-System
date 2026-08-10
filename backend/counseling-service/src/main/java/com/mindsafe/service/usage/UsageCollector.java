@@ -34,7 +34,9 @@ public class UsageCollector {
     }
 
     /** LLM 调用聚合（30min 窗口，按租户 token 总和） */
-    @Scheduled(cron = "${mindsafe.monitoring.usage-collector.llm-cron:0 */30 * * * * ?}")
+    // 修复（2026-08-10）：7 段 Quartz 格式（0 */30 * * * * ?）非法——Spring @Scheduled 为 6 段
+    // （秒 分 时 日 月 周），多一个 * 导致启动失败（BeanCreationException）
+    @Scheduled(cron = "${mindsafe.monitoring.usage-collector.llm-cron:0 */30 * * * *}")
     public void collectLlmCalls() {
         TenantContextHolder.runAsSystem(() -> {
             Instant windowStart = Instant.now().truncatedTo(ChronoUnit.MINUTES)
