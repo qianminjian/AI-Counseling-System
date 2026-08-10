@@ -29,4 +29,9 @@ export const FRONTEND_ENDPOINTS: Array<[path: string, method: string]> = [
   ['/api/v1/toc/profiles', 'post'],
   ['/api/v1/toc/profiles/{profileId}', 'put'],
   ['/api/v1/toc/profiles/{profileId}', 'delete'],
+  // doing/85 TOC-003：家庭设备绑定（联动 doing/84 设备域）
+  ['/api/v1/toc/devices', 'get'],
+  ['/api/v1/toc/devices/{deviceCode}/bind-code', 'post'],
+  ['/api/v1/toc/devices/{deviceCode}/bind', 'post'],
+  ['/api/v1/toc/devices/{deviceCode}/unbind', 'post'],
 ]

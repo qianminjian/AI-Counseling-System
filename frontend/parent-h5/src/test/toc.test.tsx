@@ -15,6 +15,10 @@ const mockList = vi.fn(() => Promise.resolve([
 ]))
 const mockCreate = vi.fn(() => Promise.resolve({ profileId: 'p2', familyAccountId: 'f1', nickname: '小红' }))
 const mockDelete = vi.fn(() => Promise.resolve())
+const mockListDevices = vi.fn(() => Promise.resolve([
+  { deviceCode: 'K7M2P9XW4AQ', deviceType: 'desk_toy', firmwareVersion: 'v0.1.0', status: 'ONLINE_BOUND', online: true },
+]))
+const mockUnbind = vi.fn(() => Promise.resolve({}))
 const mockNavigate = vi.fn()
 const mockReLaunch = vi.fn()
 
@@ -30,12 +34,15 @@ vi.mock('../services/toc', () => ({
   createTocProfile: (...a: unknown[]) => mockCreate(...a),
   updateTocProfile: vi.fn(() => Promise.resolve({})),
   deleteTocProfile: (...a: unknown[]) => mockDelete(...a),
+  listTocDevices: (...a: unknown[]) => mockListDevices(...a),
+  tocUnbindDevice: (...a: unknown[]) => mockUnbind(...a),
   saveTocSession: vi.fn(),
   clearTocSession: vi.fn(),
 }))
 
 import TocLoginPage from '../pages/toc-login/index'
 import TocProfilesPage from '../pages/toc-profiles/index'
+import TocDevicesPage from '../pages/toc-devices/index'
 
 describe('toC 登录页（TOC-001）', () => {
   beforeEach(() => {
@@ -112,4 +119,37 @@ describe('toC 家庭档案页（TOC-002）', () => {
     fireEvent.click(screen.getByText('退出'))
     await waitFor(() => expect(mockReLaunch).toHaveBeenCalledWith({ url: '/pages/toc-login/index' }))
   })
+
+describe('toC 家庭设备页（TOC-003）', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('设备列表：展示设备码/类型/在线状态', async () => {
+    render(<TocDevicesPage />)
+    expect(await screen.findByText('K7M2P9XW4AQ')).toBeInTheDocument()
+    expect(screen.getByText(/desk_toy/)).toBeInTheDocument()
+    expect(screen.getByText(/在线/)).toBeInTheDocument()
+  })
+
+  it('空列表：展示引导文案', async () => {
+    mockListDevices.mockResolvedValueOnce([])
+    render(<TocDevicesPage />)
+    expect(await screen.findByText('还没有绑定设备')).toBeInTheDocument()
+  })
+
+  it('解绑：调用解绑并刷新', async () => {
+    render(<TocDevicesPage />)
+    await screen.findByText('K7M2P9XW4AQ')
+    fireEvent.click(screen.getByText('解绑'))
+    await waitFor(() => expect(mockUnbind).toHaveBeenCalledWith('K7M2P9XW4AQ'))
+  })
+
+  it('绑定新设备：跳转扫码配置页', async () => {
+    render(<TocDevicesPage />)
+    await screen.findByText('K7M2P9XW4AQ')
+    fireEvent.click(screen.getByText('绑定新设备'))
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith({ url: '/pages/device/index?v=1&deviceCode=SCAN' }))
+  })
+})
 })
