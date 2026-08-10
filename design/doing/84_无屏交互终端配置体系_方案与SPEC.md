@@ -828,7 +828,7 @@ S6 声纹录入(④引导页, 可跳过) ──► 完成 → ⑤状态页确认
 | P0 | CFG-001~005（后端 device 域 + 扫码入口 + 绑定 + 二维码） | ✅ 已实施 | 4d39665（27 文件 +2447） | 后端 36 测试 + parent-h5 148 测试全绿 |
 | P1-A | CFG-006~008 toB 老师端（声纹编排 + 设备管理面板） | ✅ 已实施 | 5146414（12 文件 +883） | 后端 35 + teacher-web 210 测试全绿 |
 | P1-B | CFG-008 admin-web M13（DevicePage + 平台域 4 端点） | 🟩 已实施（203c4d5，2026-08-10） | — | CFG-008 全量完成；CFG-009 固件冻结移交（DOC-102 归口 frozen/73 §九，待 NST-HW-02 二期） |
-| P2 | CFG-010 toC 引导 / CFG-011 小程序 / CFG-012 加密 | 🟫 CFG-010 待排期（doing/85 解冻，2026-08-10）；⬜ CFG-011/012 冻结 | — | CFG-010 随 85 专题；CFG-011 前置 frozen/43 W-1；CFG-012 前置 NST-HW-02 二期 |
+| P2 | CFG-010 toC 引导 / CFG-011 小程序 / CFG-012 加密 | 🟩 CFG-010 已实施（2026-08-10 随 85 专题 c71b3df/2b13356/c6bb2cc）；⬜ CFG-011/012 冻结 | — | CFG-010 完成（扫码页 toC 模式 + 家庭视图 + 偏好管理）；CFG-011 前置 frozen/43 W-1；CFG-012 前置 NST-HW-02 二期 |
 
 **实现偏差记录**（设计 → 实现）：① 扫码页「归属选择下拉」P0 简化为输入框（归属列表依赖班级 API，P1 管理台补）；② 回连轮询改为「立即检查一次 + 3s 间隔 + 100s 超时后重新检查按钮」（体验优化）；③ parent-h5 Taro Input 事件兼容（inputValue 兼容 detail.value / target.value）与校验逻辑抽纯函数 validateBindInput（Taro Stencil web component 下 jsdom 输入不可测，校验单测覆盖）；④ 新增端点 GET /device/list（老师租户级）与 POST /report/voiceprint（设备端采集进度），见 §6.2。
 

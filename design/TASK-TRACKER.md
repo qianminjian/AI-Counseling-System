@@ -814,7 +814,7 @@
 | CFG-004 | **M2 TTS 配置外置**：新建 `tts-service/config.yaml`（7 音色 + 8 方言 native/instruct + 10 情感 + native_dialect_voices）+ app.py 加载改造（保留硬编码 fallback） | P1 | ✅ 已完成 | design/57 M2①②；11 个配置测试全绿 |
 | CFG-005 | **M2 部署链路**：Dockerfile 增加 `COPY config.yaml` + docker-compose 透传 DASHSCOPE_TTS_MODEL + .env.example 补变量 | P1 | ✅ 已完成 | design/57 M2③④ |
 | CFG-006 | **M2 验证**：35 个 Python TTS 测试全绿（test_app 24 + test_config 11） | P1 | ✅ 已完成 | design/57 M2⑤ |
-| CFG-007 | **M3 Voice 配置外置**：新建 `voice-service/config.yaml` + `config.py`（独立模块，解耦重量级依赖）+ app.py 加载改造 + Dockerfile COPY | P2 | ✅ 已完成 | design/57 M3；8 个配置测试全绿 |
+| CFG-007 | 设备信息与状态页（toB/toC 双视图） | P1 | 前端 | ✅ 已实施（2026-08-10：toB 详情 Drawer 5146414 + toC toc-devices 家庭视图 c71b3df；双视图完成） |
 | CFG-008 | 管理台配置页（挂 doing/83 M13） | P1 | 前后端 | ✅ 已实施（2026-08-10：teacher-web DeviceManagement 5146414 + admin-web M13 DevicePage/平台域 4 端点 203c4d5；CFG-008 全量完成） |
 
 ---
@@ -1032,10 +1032,10 @@ _本表由 Agent 维护，每次任务变更时更新。_
 | CFG-004 | 设备绑定页 + 绑定验证码会话（语音播报） | P0 | 前后端 | ✅ 已实施（2026-08-09，4d39665） |
 | CFG-005 | 二维码印制规范落地（机身铭牌 + 包装 300×300） | P0 | 产品/硬件 | ✅ 规范落地（DeviceCodeUtil 短码 + Luhn 校验，4d39665）；印制执行随硬件样机 |
 | CFG-006 | 声纹录入引导页 + 编排 API | P1 | 前后端 | ✅ 已实施（2026-08-10，5146414：DeviceVoiceprintService Redis 状态机 + teacher-web 声纹编排） |
-| CFG-007 | 设备信息与状态页（toB/toC 双视图） | P1 | 前端 | 🔶 toB 已实施（2026-08-10，5146414 详情 Drawer）；❄️ toC 视图冻结（frozen/85） |
+| CFG-007 | 设备信息与状态页（toB/toC 双视图） | P1 | 前端 | ✅ 已实施（2026-08-10：toB 详情 Drawer 5146414 + toC toc-devices 家庭视图 c71b3df；双视图完成） |
 | CFG-008 | 管理台配置页（挂 doing/83 M13） | P1 | 前后端 | ✅ 已实施（2026-08-10：teacher-web DeviceManagement 5146414 + admin-web M13 DevicePage/平台域 4 端点 203c4d5；CFG-008 全量完成） |
 | CFG-009 | 固件定制配网页（热点名/服务器地址/JSON API，可选） | P1 | 固件 | ❄️ 冻结移交（2026-08-10 DOC-102：74 C 类硬件/固件归口 frozen/73 §九 跟踪，当前专题不再跟踪；解冻条件=NST-HW-02 固件侧二期启动） |
-| CFG-010 | toC 家长端配置引导（家庭/孩子归属 + 远程管理） | P2 | 前后端 | 🟫 待排期（2026-08-10 doing/85 已解冻，随 85 专题 TOC 系列实施） |
+| CFG-010 | toC 家长端配置引导（家庭/孩子归属 + 远程管理） | P2 | 前后端 | ✅ 已实施（2026-08-10 随 85 专题：扫码页 toC 绑定模式 + toc-devices 家庭视图 + 偏好管理 c71b3df/2b13356/c6bb2cc；CFG-010 完成） |
 | CFG-011 | 小程序通道（scene 短码，前置 43 号 W-1） | P2 | 前端 | ❄️ 冻结 |
 | CFG-012 | L3 动态码 + L1 加密配网（Security 1 / WeXin-BLE-Provision） | P2 | 固件/后端 | ❄️ 冻结 |
 
