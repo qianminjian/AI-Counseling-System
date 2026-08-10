@@ -5,6 +5,8 @@ import App from '../App'
 vi.mock('../api', () => ({
   platformLogin: vi.fn(),
   fetchServicesStatus: vi.fn(),
+  fetchPlatformOverview: vi.fn(),
+  fetchPlatformTenants: vi.fn(),
   adminLogout: vi.fn(),
   getAdminToken: vi.fn(),
   getAdminRole: vi.fn(),
@@ -21,7 +23,7 @@ describe('App 路由守卫', () => {
     vi.mocked(getAdminToken).mockReset()
     vi.mocked(getAdminRole).mockReset()
     vi.mocked(getAdminName).mockReset()
-    localStorage.clear()
+    sessionStorage.clear()
   })
 
   it('未登录 → 渲染登录页', () => {

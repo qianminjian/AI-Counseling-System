@@ -205,9 +205,6 @@ export const getDashboard = (): Promise<DashboardVO> => callEndpoint('getDashboa
 export const getStats = (): Promise<StatsVO> => callEndpoint('getStats')
 export const getSatisfaction = (): Promise<SatisfactionStatsVO> => callEndpoint('getSatisfaction')
 
-// ===== 平台管理 =====
-export const getPlatformOverview = () => callEndpoint('getPlatformOverview')
-export const getPlatformTenants = () => callEndpoint('getPlatformTenants')
 
 // ===== 质量监控 =====
 export const getQualityStats = () => callEndpoint('getQualityStats')

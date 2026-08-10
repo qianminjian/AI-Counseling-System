@@ -11,7 +11,7 @@ import { platformLogin } from '../api'
 describe('LoginPage', () => {
   beforeEach(() => {
     vi.mocked(platformLogin).mockReset()
-    localStorage.clear()
+    sessionStorage.clear()
   })
 
   it('渲染登录表单（用户名/密码/登录按钮）', () => {

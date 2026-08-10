@@ -12,7 +12,6 @@ import AlertQueue from '../components/teacher/AlertQueue'
 import StudentPanel from '../components/teacher/StudentPanel'
 import NotificationPanel from '../components/teacher/NotificationPanel'
 import AdminPanel from '../components/teacher/AdminPanel'
-import PlatformPanel from '../components/teacher/PlatformPanel'
 import QualityPanel from '../components/teacher/QualityPanel'
 import DeviceManagement from '../components/teacher/DeviceManagement'
 import OnboardingGuide from '../components/teacher/OnboardingGuide'
@@ -66,7 +65,7 @@ const MENU_ITEMS = [
 ]
 
 const ADMIN_MENU_ITEMS = [
-  { key: 'platform', icon: <DashboardOutlined />, label: '平台总览' },
+  // P0 backlog ⑤ 双轨收敛：平台总览已迁 admin-web（平台角色域），业务 ADMIN 仅保留管理控制台
   { key: 'admin', icon: <SettingOutlined />, label: '管理控制台' },
 ]
 
@@ -164,7 +163,6 @@ export default function Dashboard({ user, onLogout, darkMode, toggleDark }: {
     quality: '质量监控',
     notifications: '通知中心',
     devices: '终端设备',
-    platform: '平台总览',
     admin: '管理控制台',
   }
 
@@ -225,7 +223,6 @@ export default function Dashboard({ user, onLogout, darkMode, toggleDark }: {
           {tab === 'quality' && <QualityPanel />}
           {tab === 'notifications' && <NotificationPanel />}
           {tab === 'devices' && <DeviceManagement />}
-          {tab === 'platform' && isAdmin && <PlatformPanel />}
           {tab === 'admin' && isAdmin && <AdminPanel />}
         </Content>
       </Layout>

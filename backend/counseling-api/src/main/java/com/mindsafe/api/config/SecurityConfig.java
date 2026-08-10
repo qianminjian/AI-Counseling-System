@@ -113,13 +113,13 @@ public class SecurityConfig {
                         // Prompt 管理（ADMIN-P1-02，M7）：admin-web 平台角色消费（code-review H1）
                         .requestMatchers("/api/v1/admin/prompts/**")
                                 .hasAnyRole("ADMIN", "PLATFORM_SUPER_ADMIN", "PLATFORM_OPS_ADMIN")
-                        // 平台后台（ADMIN-P0-03，R-1 平滑迁移）：P0 过渡双轨——业务 ADMIN（teacher-web 现有调用）
-                        // + 平台四角色（admin-web PLATFORM_ token）；后续平台端点全面迁至平台角色域
-                        // 配置修改（ADMIN-P1-01）：仅超级管理员（平台 super_admin + 业务 ADMIN 过渡）
+                        // 平台后台（ADMIN-P0-03；P0 backlog ⑤ 双轨收敛 2026-08-10）：平台总览已迁 admin-web，
+                        // 移除业务 ADMIN 过渡角色，平台端点仅平台四角色（PLATFORM_ token）
+                        // 配置修改（ADMIN-P1-01）：仅超级管理员（平台 super_admin）
                         .requestMatchers(HttpMethod.POST, "/api/v1/platform/config/**")
-                                .hasAnyRole("PLATFORM_SUPER_ADMIN", "ADMIN")
+                                .hasAnyRole("PLATFORM_SUPER_ADMIN")
                         .requestMatchers("/api/v1/platform/**")
-                                .hasAnyRole("ADMIN", "PLATFORM_SUPER_ADMIN", "PLATFORM_OPS_ADMIN", "PLATFORM_FINANCE_ADMIN", "PLATFORM_AUDIT")
+                                .hasAnyRole("PLATFORM_SUPER_ADMIN", "PLATFORM_OPS_ADMIN", "PLATFORM_FINANCE_ADMIN", "PLATFORM_AUDIT")
                         // M8 高危写操作（ADMIN-P1-05）：转派/强制关闭仅 ops/super（audit 只读，code-review M1）
                         // 注意：必须置于 /api/v1/ops/** 兜底之前（Spring Security 按声明顺序匹配）
                         .requestMatchers(HttpMethod.POST, "/api/v1/ops/risk/**")

@@ -29,7 +29,6 @@ vi.mock('../components/teacher/AlertQueue', () => ({ default: () => <div>预警�
 vi.mock('../components/teacher/StudentPanel', () => ({ default: () => <div>学生管理桩</div> }));
 vi.mock('../components/teacher/NotificationPanel', () => ({ default: () => <div>通知中心桩</div> }));
 vi.mock('../components/teacher/AdminPanel', () => ({ default: () => <div>管理控制台桩</div> }));
-vi.mock('../components/teacher/PlatformPanel', () => ({ default: () => <div>平台总览桩</div> }));
 vi.mock('../components/teacher/QualityPanel', () => ({ default: () => <div>质量监控桩</div> }));
 vi.mock('../components/teacher/OnboardingGuide', () => ({ default: () => null }));
 
@@ -69,7 +68,6 @@ describe('Dashboard 教师工作台', () => {
     expect(screen.getByText('学生管理')).toBeInTheDocument();
     expect(screen.getByText('质量监控')).toBeInTheDocument();
     expect(screen.getByText('通知中心')).toBeInTheDocument();
-    expect(screen.queryByText('平台总览')).not.toBeInTheDocument();
     expect(screen.queryByText('管理控制台')).not.toBeInTheDocument();
   });
 
@@ -94,13 +92,13 @@ describe('Dashboard 教师工作台', () => {
     });
   });
 
-  it('管理员可见平台总览与管理控制台并可切换', async () => {
+  it('管理员可见管理控制台并可切换（平台总览已迁 admin-web，双轨收敛）', async () => {
     render(<Dashboard user={admin} onLogout={vi.fn()} darkMode={false} toggleDark={vi.fn()} />);
     await screen.findByText('工作台桩');
-    expect(screen.getByText('平台总览')).toBeInTheDocument();
+    expect(screen.queryByText('平台总览')).not.toBeInTheDocument();
     expect(screen.getByText('管理控制台')).toBeInTheDocument();
-    fireEvent.click(screen.getByText('平台总览'));
-    expect(await screen.findByText('平台总览桩')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('管理控制台'));
+    expect(await screen.findByText('管理控制台桩')).toBeInTheDocument();
   });
 
   it('退出与暗色切换回调', async () => {
