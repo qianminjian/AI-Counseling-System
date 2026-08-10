@@ -160,6 +160,27 @@ public class DeviceController {
         return ApiResponse.ok(task);
     }
 
+    /** 固件升级受理（CFG-008 M13，AC-84-20，登录态，X-Confirm 语义） */
+    @PostMapping("/{deviceCode}/ota")
+    public ApiResponse<Map<String, Object>> ota(@PathVariable String deviceCode,
+                                                @RequestParam(required = false) String operator) {
+        return wrap(deviceCode, () -> deviceService.ota(deviceCode, operator));
+    }
+
+    /** 远程重启受理（CFG-008 M13，登录态） */
+    @PostMapping("/{deviceCode}/reboot")
+    public ApiResponse<Map<String, Object>> reboot(@PathVariable String deviceCode,
+                                                   @RequestParam(required = false) String operator) {
+        return wrap(deviceCode, () -> deviceService.reboot(deviceCode, operator));
+    }
+
+    /** 恢复出厂（CFG-008 M13，AC-84-19：解绑+状态回 UNACTIVATED，登录态） */
+    @PostMapping("/{deviceCode}/factory-reset")
+    public ApiResponse<Map<String, Object>> factoryReset(@PathVariable String deviceCode,
+                                                         @RequestParam(required = false) String operator) {
+        return wrap(deviceCode, () -> deviceService.factoryReset(deviceCode, operator));
+    }
+
     /** 业务异常统一转 400（参数/状态非法），设备不存在单独 404 已在各端点前置处理 */
     private <T> ApiResponse<T> wrap(String deviceCode, java.util.function.Supplier<T> supplier) {
         try {

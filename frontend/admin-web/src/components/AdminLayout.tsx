@@ -2,7 +2,7 @@ import { Layout, Menu } from 'antd'
 
 const { Sider, Header, Content } = Layout
 
-export type AdminView = 'overview' | 'config' | 'prompt' | 'risk' | 'sla' | 'ledger' | 'degradation' | 'knowledge' | 'channel' | 'insights' | 'usage' | 'compliance' | 'services' | 'alerts' | 'audit' | 'forbidden'
+export type AdminView = 'overview' | 'config' | 'prompt' | 'risk' | 'sla' | 'ledger' | 'degradation' | 'knowledge' | 'channel' | 'insights' | 'usage' | 'compliance' | 'services' | 'alerts' | 'audit' | 'devices' | 'forbidden'
 
 interface MenuItem {
   key: AdminView
@@ -27,6 +27,8 @@ const ROLE_MENUS: Record<string, MenuItem[]> = {
     { key: 'services', label: '服务状态' },
     { key: 'alerts', label: '告警中心' },
     { key: 'audit', label: '审计日志' },
+    // M13（CFG-008，doing/84 §四.6）：无屏终端设备管理（跨租户）
+    { key: 'devices', label: '终端设备' },
   ],
   ops_admin: [
     { key: 'overview', label: '平台总览' },
@@ -41,6 +43,8 @@ const ROLE_MENUS: Record<string, MenuItem[]> = {
     { key: 'insights', label: '运营洞察' },
     { key: 'services', label: '服务状态' },
     { key: 'alerts', label: '告警中心' },
+    // M13（CFG-008，doing/84 §四.6）：无屏终端设备管理（跨租户）
+    { key: 'devices', label: '终端设备' },
   ],
   finance_admin: [
     { key: 'overview', label: '平台总览' },

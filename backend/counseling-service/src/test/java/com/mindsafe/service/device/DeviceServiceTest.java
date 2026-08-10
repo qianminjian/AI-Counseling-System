@@ -282,6 +282,46 @@ class DeviceServiceTest {
         assertThat(config.get("heartbeatIntervalSeconds")).isEqualTo(30L);
     }
 
+    // ===== CFG-008 M13：设备操作（ota/reboot/factory-reset） =====
+
+    @Test
+    @DisplayName("ota：受理并登记操作意图")
+    void otaAccepted() {
+        when(deviceMapper.selectOne(any())).thenReturn(unboundDevice());
+        Map<String, Object> result = service.ota(deviceCode, "admin-1");
+        assertThat(result.get("action")).isEqualTo("ota");
+        assertThat(result.get("operator")).isEqualTo("admin-1");
+    }
+
+    @Test
+    @DisplayName("reboot：受理")
+    void rebootAccepted() {
+        when(deviceMapper.selectOne(any())).thenReturn(unboundDevice());
+        Map<String, Object> result = service.reboot(deviceCode, "admin-1");
+        assertThat(result.get("action")).isEqualTo("reboot");
+    }
+
+    @Test
+    @DisplayName("factoryReset：解绑全部绑定 + 状态回 UNACTIVATED")
+    void factoryResetUnbindsAndResets() {
+        Device bound = unboundDevice();
+        bound.setStatus(Device.STATUS_ONLINE_BOUND);
+        bound.setServerUrl("https://mindsafe.school.local");
+        when(deviceMapper.selectOne(any())).thenReturn(bound);
+
+        DeviceBinding active = new DeviceBinding();
+        active.setBindingId(UUID.randomUUID());
+        active.setStatus(DeviceBinding.STATUS_ACTIVE);
+        when(bindingMapper.selectList(any())).thenReturn(List.of(active));
+
+        Map<String, Object> result = service.factoryReset(deviceCode, "admin-1");
+
+        assertThat(result.get("status")).isEqualTo(Device.STATUS_UNACTIVATED);
+        assertThat(result.get("unboundCount")).isEqualTo(1);
+        verify(bindingMapper).updateById(any(DeviceBinding.class));
+        verify(deviceMapper).updateById(any(Device.class));
+    }
+
     private static String sha256(String input) {
         try {
             java.security.MessageDigest md = java.security.MessageDigest.getInstance("SHA-256");

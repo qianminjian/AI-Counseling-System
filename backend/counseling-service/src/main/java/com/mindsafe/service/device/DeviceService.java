@@ -281,6 +281,59 @@ public class DeviceService {
         return config;
     }
 
+    /** 固件升级受理（CFG-008 M13，AC-84-20）：登记操作意图（真实执行由固件侧）。 */
+    public Map<String, Object> ota(String deviceCode, String operator) {
+        Device device = requireDevice(deviceCode);
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("deviceCode", deviceCode);
+        result.put("action", "ota");
+        result.put("operator", operator);
+        result.put("acceptedAt", Instant.now());
+        result.put("note", "操作已受理，固件侧执行待 NST-HW-02 二期对接");
+        return result;
+    }
+
+    /** 远程重启受理（CFG-008 M13）。 */
+    public Map<String, Object> reboot(String deviceCode, String operator) {
+        Device device = requireDevice(deviceCode);
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("deviceCode", deviceCode);
+        result.put("action", "reboot");
+        result.put("operator", operator);
+        result.put("acceptedAt", Instant.now());
+        return result;
+    }
+
+    /** 恢复出厂（CFG-008 M13，AC-84-19）：解绑全部绑定 + 设备状态回 UNACTIVATED。 */
+    public Map<String, Object> factoryReset(String deviceCode, String operator) {
+        Device device = requireDevice(deviceCode);
+        Instant now = Instant.now();
+        List<DeviceBinding> actives = bindingMapper.selectList(
+                new LambdaQueryWrapper<DeviceBinding>()
+                        .eq(DeviceBinding::getDeviceId, device.getDeviceId())
+                        .eq(DeviceBinding::getStatus, DeviceBinding.STATUS_ACTIVE));
+        for (DeviceBinding binding : actives) {
+            DeviceBinding update = new DeviceBinding();
+            update.setBindingId(binding.getBindingId());
+            update.setStatus(DeviceBinding.STATUS_UNBOUND);
+            update.setUnboundAt(now);
+            bindingMapper.updateById(update);
+        }
+        Device deviceUpdate = new Device();
+        deviceUpdate.setDeviceId(device.getDeviceId());
+        deviceUpdate.setStatus(Device.STATUS_UNACTIVATED);
+        deviceUpdate.setServerUrl(null);
+        deviceUpdate.setUpdatedAt(now);
+        deviceMapper.updateById(deviceUpdate);
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("deviceCode", deviceCode);
+        result.put("status", Device.STATUS_UNACTIVATED);
+        result.put("unboundCount", actives.size());
+        result.put("operator", operator);
+        return result;
+    }
+
     /** 设备是否存在（供扫码页 404 分流）。 */
     public boolean exists(String deviceCode) {
         return deviceCode != null && findByCode(deviceCode) != null;
