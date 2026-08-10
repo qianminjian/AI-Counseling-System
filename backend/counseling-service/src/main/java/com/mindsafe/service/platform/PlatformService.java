@@ -51,7 +51,7 @@ public class PlatformService {
     public Map<String, Object> overview() {
         // 修复（2026-08-10）：跨租户聚合须 runAsSystem 声明系统作用域——
         // 原实现直接查租户表（schools/users/...）触发 M1-003 fail-fast → 平台总览 500
-        return TenantContextHolder.runAsSystem(() -> {
+        return TenantContextHolder.callAsSystem(() -> {
         List<Tenant> tenants = tenantMapper.selectList(
                 new LambdaQueryWrapper<Tenant>().eq(Tenant::getStatus, Tenant.STATUS_ACTIVE));
 
