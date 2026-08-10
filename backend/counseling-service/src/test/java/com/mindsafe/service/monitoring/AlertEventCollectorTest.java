@@ -96,6 +96,7 @@ class AlertEventCollectorTest {
         ArgumentCaptor<AlertEvent> captor = ArgumentCaptor.forClass(AlertEvent.class);
         verify(mapper).insert(captor.capture());
         AlertEvent event = captor.getValue();
+        assertThat(event.getEventId()).isNotNull();
         assertThat(event.getSource()).isEqualTo(AlertEvent.SOURCE_ALERTMANAGER);
         assertThat(event.getFingerprint()).isEqualTo("fp-tts-1");
         assertThat(event.getRuleName()).isEqualTo("TtsPrimaryEngineDegraded");
@@ -103,6 +104,8 @@ class AlertEventCollectorTest {
         assertThat(event.getStatus()).isEqualTo(AlertEvent.STATUS_FIRING);
         assertThat(event.getSummary()).isEqualTo("TTS 主引擎（CosyVoice）持续降级");
         assertThat(event.getFiredAt()).isEqualTo(Instant.parse("2026-08-09T10:00:00Z"));
+        // alertmanager 来源：推送由 AlertManager 负责，notify_status 不适用（null）
+        assertThat(event.getNotifyStatus()).isNull();
     }
 
     @Test
@@ -181,18 +184,62 @@ class AlertEventCollectorTest {
     }
 
     @Test
-    @DisplayName("业务告警落库（AlertService 发出同步写，source=alertservice）")
+    @DisplayName("业务告警落库（AlertService 发出同步写，source=alertservice，主键+推送状态就位）")
     void recordBusinessAlert() {
-        collector.record(AlertService.AlertLevel.CRITICAL, "逾期预警升级", "S0 超时未认领");
+        UUID eventId = collector.record(AlertService.AlertLevel.CRITICAL, "逾期预警升级", "S0 超时未认领");
 
+        assertThat(eventId).isNotNull();
         ArgumentCaptor<AlertEvent> captor = ArgumentCaptor.forClass(AlertEvent.class);
         verify(mapper).insert(captor.capture());
         AlertEvent event = captor.getValue();
+        assertThat(event.getEventId()).isNotNull();
         assertThat(event.getSource()).isEqualTo(AlertEvent.SOURCE_ALERTSERVICE);
         assertThat(event.getRuleName()).isEqualTo("逾期预警升级");
         assertThat(event.getSeverity()).isEqualTo("CRITICAL");
         assertThat(event.getStatus()).isEqualTo(AlertEvent.STATUS_FIRING);
         assertThat(event.getFiredAt()).isNotNull();
+        // 3 参重载（无推送通道通道）：notify_status=SKIPPED
+        assertThat(event.getNotifyStatus()).isEqualTo(AlertEvent.NOTIFY_SKIPPED);
+    }
+
+    @Test
+    @DisplayName("4 参落库（企微通道）：notify_status=PENDING 先行，返回 eventId 供推送后回写")
+    void recordBusinessAlertWithPendingNotify() {
+        UUID eventId = collector.record(AlertService.AlertLevel.WARNING, "降级告警", "主引擎失效",
+                AlertEvent.NOTIFY_PENDING);
+
+        assertThat(eventId).isNotNull();
+        ArgumentCaptor<AlertEvent> captor = ArgumentCaptor.forClass(AlertEvent.class);
+        verify(mapper).insert(captor.capture());
+        assertThat(captor.getValue().getNotifyStatus()).isEqualTo(AlertEvent.NOTIFY_PENDING);
+    }
+
+    @Test
+    @DisplayName("推送结果回写：成功 → SUCCESS / 失败 → FAILED（先入库再推送，失败仅标识）")
+    void markNotifyResult() {
+        UUID eventId = UUID.randomUUID();
+        collector.markNotifyResult(eventId, true);
+        collector.markNotifyResult(eventId, false);
+
+        ArgumentCaptor<AlertEvent> captor = ArgumentCaptor.forClass(AlertEvent.class);
+        verify(mapper, times(2)).updateById(captor.capture());
+        assertThat(captor.getAllValues().get(0).getNotifyStatus()).isEqualTo(AlertEvent.NOTIFY_SUCCESS);
+        assertThat(captor.getAllValues().get(1).getNotifyStatus()).isEqualTo(AlertEvent.NOTIFY_FAILED);
+    }
+
+    @Test
+    @DisplayName("落库失败（insert 抛异常）→ 返回 null 不抛异常，推送链路不受影响")
+    void recordFailureReturnsNullGracefully() {
+        when(mapper.insert(any(AlertEvent.class)))
+                .thenThrow(new RuntimeException("DB down"));
+
+        assertThatCode(() -> {
+            UUID eventId = collector.record(AlertService.AlertLevel.CRITICAL, "标题", "详情");
+            assertThat(eventId).isNull();
+        }).doesNotThrowAnyException();
+        // 落库失败后推送状态回写应被跳过（eventId=null）
+        assertThatCode(() -> collector.markNotifyResult(null, true)).doesNotThrowAnyException();
+        verify(mapper, never()).updateById(any(AlertEvent.class));
     }
 
     @Test

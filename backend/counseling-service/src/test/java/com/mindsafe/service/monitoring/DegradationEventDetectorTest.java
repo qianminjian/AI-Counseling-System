@@ -119,6 +119,8 @@ class DegradationEventDetectorTest {
         ArgumentCaptor<DegradationEvent> captor = ArgumentCaptor.forClass(DegradationEvent.class);
         verify(mapper, times(4)).insert(captor.capture());
         assertThat(captor.getAllValues()).anySatisfy(e -> {
+            // 主键由代码生成（IdType.INPUT 实体，缺则 INSERT NULL 违反 NOT NULL——2026-08-10 修复）
+            assertThat(e.getEventId()).isNotNull();
             assertThat(e.getPoint()).isEqualTo("tts");
             assertThat(e.getFromState()).isEqualTo("edge_tts");
             assertThat(e.getToState()).isEqualTo("cosyvoice");

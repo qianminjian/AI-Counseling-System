@@ -22,6 +22,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 
 /**
  * 告警事件采集器（OPS-MON-008，doing/83 服务降级监控 §3.6）
@@ -101,71 +102,115 @@ public class AlertEventCollector {
 
     /**
      * 业务告警落库（source=alertservice）。由 WeComAlertService / LoggingAlertService
-     * sendAlert 尾部调用（发出即留痕，无论外呼成败）。
+     * sendAlert 调用（先入库、再推送；发出即留痕，无论外呼成败）。
+     * 附加通道原则（2026-08-10）：落库失败仅记 WARN 并返回 null——企微/日志通道不通
+     * 或 DB 异常均不得阻断调用方主流程（对称于推送通道的 try-catch 隔离）。
+     *
+     * @return 落库事件 ID（失败返回 null，调用方跳过推送状态回写）
      */
-    public void record(AlertService.AlertLevel level, String title, String detail) {
-        AlertEvent event = new AlertEvent();
-        event.setSource(AlertEvent.SOURCE_ALERTSERVICE);
-        event.setRuleName(title);
-        event.setSeverity(level.name());
-        event.setStatus(AlertEvent.STATUS_FIRING);
-        event.setSummary(title);
-        event.setDetail(detail);
-        event.setFiredAt(Instant.now());
-        event.setCreatedAt(Instant.now());
-        alertEventMapper.insert(event);
-        log.debug("业务告警已落库: level={}, title={}", level, title);
+    public UUID record(AlertService.AlertLevel level, String title, String detail, String notifyStatus) {
+        try {
+            AlertEvent event = new AlertEvent();
+            event.setEventId(UUID.randomUUID());
+            event.setSource(AlertEvent.SOURCE_ALERTSERVICE);
+            event.setRuleName(title);
+            event.setSeverity(level.name());
+            event.setStatus(AlertEvent.STATUS_FIRING);
+            event.setSummary(title);
+            event.setDetail(detail);
+            event.setFiredAt(Instant.now());
+            event.setCreatedAt(Instant.now());
+            event.setNotifyStatus(notifyStatus);
+            alertEventMapper.insert(event);
+            log.debug("业务告警已落库: level={}, title={}, notify={}", level, title, notifyStatus);
+            return event.getEventId();
+        } catch (Exception e) {
+            log.warn("业务告警落库失败（降级为日志留痕）: title={}, error={}", title, e.getMessage());
+            return null;
+        }
+    }
+
+    /** 3 参重载（无推送通道的通道使用，如日志降级）：notifyStatus=SKIPPED */
+    public UUID record(AlertService.AlertLevel level, String title, String detail) {
+        return record(level, title, detail, AlertEvent.NOTIFY_SKIPPED);
+    }
+
+    /**
+     * 回写推送结果（2026-08-10 议决：先入库、再异步推送、失败仅标识）。
+     * 推送成功 → SUCCESS；失败 → FAILED。eventId 为 null（落库失败）时跳过。
+     */
+    public void markNotifyResult(UUID eventId, boolean pushed) {
+        if (eventId == null) {
+            return;
+        }
+        try {
+            AlertEvent update = new AlertEvent();
+            update.setEventId(eventId);
+            update.setNotifyStatus(pushed ? AlertEvent.NOTIFY_SUCCESS : AlertEvent.NOTIFY_FAILED);
+            alertEventMapper.updateById(update);
+            log.debug("告警推送状态已回写: eventId={}, status={}", eventId, update.getNotifyStatus());
+        } catch (Exception e) {
+            // 附加通道原则：推送状态回写失败不影响任何链路（仅留日志，下轮采集/查询不受影响）
+            log.warn("告警推送状态回写失败: eventId={}, error={}", eventId, e.getMessage());
+        }
     }
 
     /** upsert：按 source+fingerprint 查库，存在则更新状态/时间，不存在则插入 */
     private void upsertAlert(Map<String, Object> alert) {
-        String fingerprint = String.valueOf(alert.getOrDefault("fingerprint", ""));
-        String alertname = readLabel(alert, "alertname");
-        String severity = readLabel(alert, "severity");
-        Map<String, Object> status = castMap(alert.get("status"));
-        String state = String.valueOf(status.getOrDefault("state", "active"));
-        Map<String, Object> annotations = castMap(alert.get("annotations"));
-        String summary = String.valueOf(annotations.getOrDefault("summary", alertname));
-        String detail = String.valueOf(annotations.getOrDefault("description", ""));
-        Instant startsAt = parseTime(alert.get("startsAt"));
-        Instant endsAt = parseTime(alert.get("endsAt"));
+        try {
+            String fingerprint = String.valueOf(alert.getOrDefault("fingerprint", ""));
+            String alertname = readLabel(alert, "alertname");
+            String severity = readLabel(alert, "severity");
+            Map<String, Object> status = castMap(alert.get("status"));
+            String state = String.valueOf(status.getOrDefault("state", "active"));
+            Map<String, Object> annotations = castMap(alert.get("annotations"));
+            String summary = String.valueOf(annotations.getOrDefault("summary", alertname));
+            String detail = String.valueOf(annotations.getOrDefault("description", ""));
+            Instant startsAt = parseTime(alert.get("startsAt"));
+            Instant endsAt = parseTime(alert.get("endsAt"));
 
-        AlertEvent existing = fingerprint.isBlank() ? null
-                : alertEventMapper.selectOne(new LambdaQueryWrapper<AlertEvent>()
-                        .eq(AlertEvent::getSource, AlertEvent.SOURCE_ALERTMANAGER)
-                        .eq(AlertEvent::getFingerprint, fingerprint));
+            AlertEvent existing = fingerprint.isBlank() ? null
+                    : alertEventMapper.selectOne(new LambdaQueryWrapper<AlertEvent>()
+                            .eq(AlertEvent::getSource, AlertEvent.SOURCE_ALERTMANAGER)
+                            .eq(AlertEvent::getFingerprint, fingerprint));
 
-        boolean resolved = "resolved".equals(state) || (endsAt != null && endsAt.isAfter(Instant.EPOCH));
-        if (existing != null) {
-            // 状态双向流转：firing→resolved（恢复）；resolved→firing（复燃，同 fingerprint 再次触发，M1）
-            // ack/closed 由管理端 API 更新，采集器不覆盖
-            if (resolved && AlertEvent.STATUS_FIRING.equals(existing.getStatus())) {
-                existing.setStatus(AlertEvent.STATUS_RESOLVED);
-                existing.setResolvedAt(endsAt != null && endsAt.isAfter(Instant.EPOCH) ? endsAt : Instant.now());
-                alertEventMapper.updateById(existing);
-            } else if (!resolved && AlertEvent.STATUS_RESOLVED.equals(existing.getStatus())) {
-                existing.setStatus(AlertEvent.STATUS_FIRING);
-                existing.setFiredAt(startsAt != null ? startsAt : Instant.now());
-                existing.setResolvedAt(null);
-                alertEventMapper.updateById(existing);
+            boolean resolved = "resolved".equals(state) || (endsAt != null && endsAt.isAfter(Instant.EPOCH));
+            if (existing != null) {
+                // 状态双向流转：firing→resolved（恢复）；resolved→firing（复燃，同 fingerprint 再次触发，M1）
+                // ack/closed 由管理端 API 更新，采集器不覆盖
+                if (resolved && AlertEvent.STATUS_FIRING.equals(existing.getStatus())) {
+                    existing.setStatus(AlertEvent.STATUS_RESOLVED);
+                    existing.setResolvedAt(endsAt != null && endsAt.isAfter(Instant.EPOCH) ? endsAt : Instant.now());
+                    alertEventMapper.updateById(existing);
+                } else if (!resolved && AlertEvent.STATUS_RESOLVED.equals(existing.getStatus())) {
+                    existing.setStatus(AlertEvent.STATUS_FIRING);
+                    existing.setFiredAt(startsAt != null ? startsAt : Instant.now());
+                    existing.setResolvedAt(null);
+                    alertEventMapper.updateById(existing);
+                }
+                return;
             }
-            return;
-        }
 
-        AlertEvent event = new AlertEvent();
-        event.setSource(AlertEvent.SOURCE_ALERTMANAGER);
-        event.setFingerprint(fingerprint);
-        event.setRuleName(alertname);
-        event.setSeverity(severity);
-        event.setStatus(resolved ? AlertEvent.STATUS_RESOLVED : AlertEvent.STATUS_FIRING);
-        event.setSummary(summary);
-        event.setDetail(detail);
-        event.setFiredAt(startsAt != null ? startsAt : Instant.now());
-        if (resolved && endsAt != null && endsAt.isAfter(Instant.EPOCH)) {
-            event.setResolvedAt(endsAt);
+            AlertEvent event = new AlertEvent();
+            event.setEventId(UUID.randomUUID());
+            event.setSource(AlertEvent.SOURCE_ALERTMANAGER);
+            event.setFingerprint(fingerprint);
+            event.setRuleName(alertname);
+            event.setSeverity(severity);
+            event.setStatus(resolved ? AlertEvent.STATUS_RESOLVED : AlertEvent.STATUS_FIRING);
+            event.setSummary(summary);
+            event.setDetail(detail);
+            event.setFiredAt(startsAt != null ? startsAt : Instant.now());
+            if (resolved && endsAt != null && endsAt.isAfter(Instant.EPOCH)) {
+                event.setResolvedAt(endsAt);
+            }
+            event.setCreatedAt(Instant.now());
+            alertEventMapper.insert(event);
+        } catch (Exception e) {
+            // 附加通道原则（2026-08-10）：单条告警落库失败仅记 WARN，不中断本轮整批采集
+            log.warn("告警落库失败（跳过本条）: rule={}, error={}",
+                    readLabel(alert, "alertname"), e.getMessage());
         }
-        event.setCreatedAt(Instant.now());
-        alertEventMapper.insert(event);
     }
 
     /**

@@ -13,6 +13,7 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
+import com.mindsafe.domain.entity.AlertEvent;
 import com.mindsafe.service.monitoring.AlertEventCollector;
 
 import java.time.Duration;
@@ -20,6 +21,7 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.Map;
+import java.util.UUID;
 
 /**
  * 企微 Webhook 告警实现（OPS-004）
@@ -57,9 +59,22 @@ public class WeComAlertService implements AlertService {
         return new RestTemplate(factory);
     }
 
+    /**
+     * 告警外呼（@Async 异步线程执行；先入库、再推送、失败仅标识——2026-08-10 议决）：
+     * 1. 先落库（主流程：事件留痕优先，无论推送成败页面可见）
+     * 2. 再企微推送（附加通道：超时/不可达仅降级日志）
+     * 3. 回写推送状态（SUCCESS/FAILED；落库失败时 eventId=null 跳过回写）
+     */
     @Async
     @Override
     public void sendAlert(AlertLevel level, String title, String detail) {
+        // 1. 先入库（返回 eventId；落库失败返回 null，不影响后续推送）
+        UUID eventId = (alertEventCollector != null)
+                ? alertEventCollector.record(level, title, detail, AlertEvent.NOTIFY_PENDING)
+                : null;
+
+        // 2. 再推送（附加通道：失败不影响数据链路）
+        boolean pushed = false;
         try {
             String emoji = switch (level) {
                 case CRITICAL -> "🔴";
@@ -85,13 +100,15 @@ public class WeComAlertService implements AlertService {
 
             restTemplate.postForEntity(webhookUrl, request, String.class);
             log.info("企微告警发送成功: level={}, title={}", level, title);
+            pushed = true;
         } catch (Exception e) {
             log.warn("企微告警发送失败（降级为日志）: title={}, error={}", title, e.getMessage());
             log.error("[ALERT-{}] {}: {}", level, title, detail);
         }
-        // OPS-MON-008：业务告警落库（发出即留痕，无论外呼成败）
+
+        // 3. 回写推送状态（失败仅标识，不抛异常）
         if (alertEventCollector != null) {
-            alertEventCollector.record(level, title, detail);
+            alertEventCollector.markNotifyResult(eventId, pushed);
         }
     }
 }

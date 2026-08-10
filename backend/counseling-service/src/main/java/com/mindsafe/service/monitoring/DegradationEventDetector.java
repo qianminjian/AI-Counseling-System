@@ -138,14 +138,20 @@ public class DegradationEventDetector {
     }
 
     private void insertEvent(String point, String from, String to, String triggerType, String detail) {
-        DegradationEvent event = new DegradationEvent();
-        event.setPoint(point);
-        event.setFromState(from);
-        event.setToState(to);
-        event.setTriggerType(triggerType);
-        event.setDetail(detail);
-        event.setOccurredAt(Instant.now());
-        degradationEventMapper.insert(event);
+        try {
+            DegradationEvent event = new DegradationEvent();
+            event.setEventId(UUID.randomUUID());
+            event.setPoint(point);
+            event.setFromState(from);
+            event.setToState(to);
+            event.setTriggerType(triggerType);
+            event.setDetail(detail);
+            event.setOccurredAt(Instant.now());
+            degradationEventMapper.insert(event);
+        } catch (Exception e) {
+            // 附加通道原则（2026-08-10）：降级事件落库失败仅记 WARN，不中断轮询（台账缺失可事后补查指标）
+            log.warn("降级事件落库失败: point={} {}->{}, error={}", point, from, to, e.getMessage());
+        }
     }
 
     /** 查询 Prometheus 即时向量：result 非空即存在匹配样本 */

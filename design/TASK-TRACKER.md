@@ -966,8 +966,8 @@ _本表由 Agent 维护，每次任务变更时更新。_
 | OPS-MON-001 | doing/83 设计文档生成（方案 + SPEC：TTS 降级指标 / 复用 LLM 指标 / 3 条规则 / 部署 / 演练，AC-1~8） | 全量 | ✅ 本次完成（2026-08-09） |
 | OPS-MON-002 | TTS 降级指标埋点（app.py 独立 Metrics 实例 + direction 标签 + test_app.py 用例） | tts-service | ✅ 实施完成（2026-08-09，89 pytest 全绿） |
 | OPS-MON-003 | alert-rules 新增 3 条规则（TtsPrimaryEngineDegraded / TtsDegradeRatioHigh / LlmPrimaryFailing） | monitoring | ✅ 实施完成（2026-08-09，YAML 15 条验证通过；后 P1-06 补 2 条业务规则共 17 条） |
-| OPS-MON-004 | 生产部署 monitoring 栈（.env 补 WECOM_* 4 项 + GRAFANA_PASSWORD → compose up） | 部署 | ⬜ 待部署窗口（.env 红线，人工执行） |
-| OPS-MON-005 | 降级演练 + 验证（断 DASHSCOPE key → 指标 +1 → 企微 ≤5 分钟触达 → 恢复） | 验证 | ⬜ 待排期 |
+| OPS-MON-004 | 生产部署 monitoring 栈（.env 补 WECOM_* 4 项 + GRAFANA_PASSWORD → compose up） | 部署 | 🔶 部分完成（2026-08-10 生产实测：监控栈 3 容器运行 + GRAFANA_PASSWORD 已配 + 17 条规则加载成功；**WECOM_* 4 项未配置 → 企微推送走哨兵值，触达链路缺失**）→ 🔒 冻结（2026-08-10 项目负责人议决：WECOM 通知配置合并 frozen/88 企微告警推送对接专题跟踪，当前不处理；不影响指标采集/告警落库/管理端页面查看） |
+| OPS-MON-005 | 降级演练 + 验证（断 DASHSCOPE key → 指标 +1 → 企微 ≤5 分钟触达 → 恢复） | 验证 | 🔒 冻结（2026-08-10 随 OPS-MON-004 合并 frozen/88，演练验收依赖 WECOM 触达，解冻后执行） |
 | OPS-MON-006 | 合并归档（最终态并入 01 平台管理后台 / 03 §8 监控运维·§5.2 平台表豁免·§5.3.1 平台账号 / 02 §6.6 平台级表 / 07 §2.8.1 计量定稿 → 归档 his/83 双文件，2026-08-09 DOC-095） | 全量 | ✅ 已完成（2026-08-09） |
 | OPS-MON-007 | 降级事件检测器（30s 轮询指标增量 → degradation_events auto/恢复事件落库，last_value 防抖 + 跳过 manual 覆盖点 + SETNX 锁，AC-9；定义见降级监控文档 §3.5） | counseling-service monitoring | ✅ 实施完成（2026-08-09，6 用例全绿） |
 | OPS-MON-008 | 告警采集器（60s 拉取 AlertManager → alert_events upsert + AlertService 同步，resolved 流转 + 30 天清理，AC-10；定义见降级监控文档 §3.6） | counseling-service monitoring | ✅ 实施完成（2026-08-09，8 用例全绿；缺口 3 补：30 天清理任务 cleanup 落库删除 resolved 超期 + 测试） |

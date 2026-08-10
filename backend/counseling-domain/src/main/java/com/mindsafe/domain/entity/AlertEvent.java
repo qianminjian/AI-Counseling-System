@@ -35,6 +35,15 @@ public class AlertEvent {
     /** 状态：已关闭（管理端 close） */
     public static final String STATUS_CLOSED = "closed";
 
+    /** 推送状态：已入库待推送（业务告警，企微通道） */
+    public static final String NOTIFY_PENDING = "PENDING";
+    /** 推送状态：企微推送成功 */
+    public static final String NOTIFY_SUCCESS = "SUCCESS";
+    /** 推送状态：企微推送失败（附加通道失败仅标识，不影响数据链路） */
+    public static final String NOTIFY_FAILED = "FAILED";
+    /** 推送状态：无推送通道（日志降级通道 LoggingAlertService） */
+    public static final String NOTIFY_SKIPPED = "SKIPPED";
+
     @TableId(value = "event_id", type = IdType.INPUT)
     private UUID eventId;
 
@@ -73,6 +82,9 @@ public class AlertEvent {
 
     /** 落库时间 */
     private Instant createdAt;
+
+    /** 推送状态（V40）：PENDING/SUCCESS/FAILED/SKIPPED（alertservice 来源）；alertmanager 来源为 null */
+    private String notifyStatus;
 
     public UUID getEventId() {
         return eventId;
@@ -176,5 +188,13 @@ public class AlertEvent {
 
     public void setCreatedAt(Instant createdAt) {
         this.createdAt = createdAt;
+    }
+
+    public String getNotifyStatus() {
+        return notifyStatus;
+    }
+
+    public void setNotifyStatus(String notifyStatus) {
+        this.notifyStatus = notifyStatus;
     }
 }
