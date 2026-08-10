@@ -21,4 +21,12 @@ export const FRONTEND_ENDPOINTS: Array<[path: string, method: string]> = [
   ['/api/v1/device/{deviceCode}/status', 'get'],
   ['/api/v1/device/{deviceCode}/bind-code', 'post'],
   ['/api/v1/device/{deviceCode}/bind', 'post'],
+  // doing/85 TOC-001/002：toC 家庭账号与孩子档案（注册/登录匿名 + 档案 CRUD）
+  ['/api/v1/toc/auth/send-code', 'post'],
+  ['/api/v1/toc/auth/register', 'post'],
+  ['/api/v1/toc/auth/login', 'post'],
+  ['/api/v1/toc/profiles', 'get'],
+  ['/api/v1/toc/profiles', 'post'],
+  ['/api/v1/toc/profiles/{profileId}', 'put'],
+  ['/api/v1/toc/profiles/{profileId}', 'delete'],
 ]

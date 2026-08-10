@@ -91,6 +91,9 @@ public class SecurityConfig {
                         // AUD-005 校正：原注释声称 confirmToken 免登录流程从未实现，confirm 端点依赖 JWT 身份解包，permitAll 已删除
                         // 家长端 API（内部 parentToken 验证，不走 Spring Security 角色）
                         .requestMatchers("/api/v1/parent/**").permitAll()
+                        // toC 家庭版（doing/85 TOC-001）：验证码注册/登录匿名，档案/设备等登录态（ROLE_TOC_PARENT）
+                        .requestMatchers("/api/v1/toc/auth/send-code", "/api/v1/toc/auth/register", "/api/v1/toc/auth/login").permitAll()
+                        .requestMatchers("/api/v1/toc/**").hasRole("TOC_PARENT")
                         // 平台管理员登录（ADMIN-P0-02：独立登录端点，R-8）
                         .requestMatchers("/api/v1/platform/auth/login").permitAll()
                         // 健康检查（Docker/Nginx 探针）

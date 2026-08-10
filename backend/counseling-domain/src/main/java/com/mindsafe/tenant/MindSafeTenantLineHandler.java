@@ -44,7 +44,10 @@ public class MindSafeTenantLineHandler implements TenantLineHandler {
             "device",
             "device_bindings",
             "device_bind_codes",
-            "device_qr_issuance");
+            "device_qr_issuance",
+            // TOC-001/002（V42）：toC 家庭账号与孩子档案为平台级表（无 tenant_id 列）
+            "toc_family_accounts",
+            "toc_child_profiles");
 
     @Override
     public Expression getTenantId() {
