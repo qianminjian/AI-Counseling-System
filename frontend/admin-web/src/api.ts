@@ -1,4 +1,6 @@
-/** 平台管理端 API（ADMIN-P0-02/04：登录 + token 存取 + 服务状态） */
+/** 平台管理端 API（ADMIN-P0-02/04：登录 + token 存取 + 服务状态）
+ * P0 backlog ②（L1）：token 从 localStorage 迁 sessionStorage（会话级，关闭浏览器自动清除，
+ * 对齐 teacher-web AUD-007 先例）；httpOnly cookie 长期方案留作远期。 */
 
 export interface PlatformLoginResult {
   token: string
@@ -22,28 +24,28 @@ export async function platformLogin(username: string, password: string): Promise
   }
   const body = await resp.json()
   const data = body.data as PlatformLoginResult
-  localStorage.setItem(TOKEN_KEY, data.token)
-  localStorage.setItem(ROLE_KEY, data.role)
-  localStorage.setItem(NAME_KEY, data.displayName ?? '')
+  sessionStorage.setItem(TOKEN_KEY, data.token)
+  sessionStorage.setItem(ROLE_KEY, data.role)
+  sessionStorage.setItem(NAME_KEY, data.displayName ?? '')
   return data
 }
 
 export function getAdminToken(): string | null {
-  return localStorage.getItem(TOKEN_KEY)
+  return sessionStorage.getItem(TOKEN_KEY)
 }
 
 export function getAdminRole(): string | null {
-  return localStorage.getItem(ROLE_KEY)
+  return sessionStorage.getItem(ROLE_KEY)
 }
 
 export function getAdminName(): string {
-  return localStorage.getItem(NAME_KEY) ?? ''
+  return sessionStorage.getItem(NAME_KEY) ?? ''
 }
 
 export function adminLogout(): void {
-  localStorage.removeItem(TOKEN_KEY)
-  localStorage.removeItem(ROLE_KEY)
-  localStorage.removeItem(NAME_KEY)
+  sessionStorage.removeItem(TOKEN_KEY)
+  sessionStorage.removeItem(ROLE_KEY)
+  sessionStorage.removeItem(NAME_KEY)
 }
 
 /** 登录态失效事件（401/403 时触发，App 监听后回登录页，code-review M2） */
@@ -70,6 +72,29 @@ export async function adminFetch<T>(path: string): Promise<T> {
 /** 服务健康状态（P0-05） */
 export interface ServiceStatus {
   [service: string]: string
+}
+
+// ===== 平台总览（P0 backlog ⑤ 双轨收敛：从 teacher-web 迁移至 admin-web） =====
+
+/** 平台总览指标（/api/v1/platform/overview） */
+export function fetchPlatformOverview(): Promise<Record<string, unknown>> {
+  return adminFetch<Record<string, unknown>>('/api/v1/platform/overview')
+}
+
+/** 租户列表（/api/v1/platform/tenants） */
+export interface PlatformTenant {
+  tenantName: string
+  status: string
+  tenantCode: string
+  schoolCount: number
+  studentCount: number
+  teacherCount: number
+  sessionCount: number
+  createdAt: string
+}
+
+export function fetchPlatformTenants(): Promise<PlatformTenant[]> {
+  return adminFetch<PlatformTenant[]>('/api/v1/platform/tenants')
 }
 
 export function fetchServicesStatus(): Promise<ServiceStatus> {

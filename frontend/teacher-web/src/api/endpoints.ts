@@ -19,8 +19,6 @@ export const ENDPOINTS = {
   getStats: { path: '/api/v1/teacher/stats', method: 'get' },
   getSatisfaction: { path: '/api/v1/teacher/satisfaction', method: 'get' },
   // 平台管理
-  getPlatformOverview: { path: '/api/v1/platform/overview', method: 'get' },
-  getPlatformTenants: { path: '/api/v1/platform/tenants', method: 'get' },
   // 质量监控
   getQualityStats: { path: '/api/v1/teacher/quality/stats', method: 'get' },
   getFlaggedSessions: { path: '/api/v1/teacher/quality/flagged', method: 'get' },
