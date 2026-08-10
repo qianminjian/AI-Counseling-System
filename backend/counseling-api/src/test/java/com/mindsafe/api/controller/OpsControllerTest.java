@@ -372,6 +372,6 @@ class OpsControllerTest {
 
         var accepted = controller.ackAlert(eventId, "CONFIRM", request);
         assertThat(accepted.code()).isEqualTo(0);
-        verify(opsService).ackAlert(eventId, "unknown");
+        verify(opsService).ackAlert(eventId, "unknown", "处理完成");
     }
 }

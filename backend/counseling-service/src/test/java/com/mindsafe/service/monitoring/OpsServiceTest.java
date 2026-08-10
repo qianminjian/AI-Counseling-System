@@ -9,6 +9,7 @@ import com.mindsafe.domain.mapper.AuditLogMapper;
 import com.mindsafe.domain.mapper.ServiceHealthSnapshotMapper;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 import java.time.Instant;
 import java.util.LinkedHashMap;
@@ -17,7 +18,6 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
@@ -121,17 +121,24 @@ class OpsServiceTest {
     }
 
     @Test
-    @DisplayName("ackAlert：firing → ack + 操作人/时间回写")
+    @DisplayName("ackAlert：firing → ack + 操作人/原因/时间回写（条件更新）")
     void ackAlertTransitionsToAck() {
         UUID eventId = UUID.randomUUID();
         AlertEvent existing = new AlertEvent();
         existing.setEventId(eventId);
         existing.setStatus(AlertEvent.STATUS_FIRING);
         when(alertEventMapper.selectById(eventId)).thenReturn(existing);
+        when(alertEventMapper.update(any(AlertEvent.class), any())).thenReturn(1);
 
-        opsService.ackAlert(eventId, "ops01");
+        opsService.ackAlert(eventId, "ops01", "已人工处置");
 
-        verify(alertEventMapper).updateById(any(AlertEvent.class));
+        ArgumentCaptor<AlertEvent> captor = ArgumentCaptor.forClass(AlertEvent.class);
+        verify(alertEventMapper).update(captor.capture(), any());
+        AlertEvent update = captor.getValue();
+        assertThat(update.getStatus()).isEqualTo(AlertEvent.STATUS_ACK);
+        assertThat(update.getAcknowledgedBy()).isEqualTo("ops01");
+        assertThat(update.getAckReason()).isEqualTo("已人工处置"); // code-review H1：原因审计留痕
+        assertThat(update.getAcknowledgedAt()).isNotNull();
     }
 
     @Test
@@ -143,9 +150,9 @@ class OpsServiceTest {
         acked.setStatus(AlertEvent.STATUS_ACK);
         when(alertEventMapper.selectById(eventId)).thenReturn(acked);
 
-        opsService.ackAlert(eventId, "ops01");
+        opsService.ackAlert(eventId, "ops01", "已人工处置");
 
-        verify(alertEventMapper, never()).updateById(any(AlertEvent.class));
+        verify(alertEventMapper, never()).update(any(AlertEvent.class), any());
     }
 
     @Test
@@ -153,20 +160,21 @@ class OpsServiceTest {
     void ackAlertNotFound() {
         when(alertEventMapper.selectById(any(UUID.class))).thenReturn(null);
 
-        assertThatThrownBy(() -> opsService.ackAlert(UUID.randomUUID(), "ops01"))
+        assertThatThrownBy(() -> opsService.ackAlert(UUID.randomUUID(), "ops01", "原因"))
                 .isInstanceOf(BizException.class);
     }
 
     @Test
-    @DisplayName("ackAlert：落库失败不向上抛（附加通道原则，台账缺失仅留日志）")
-    void ackAlertFailureSwallowed() {
+    @DisplayName("ackAlert：落库失败向上抛（主操作语义，code-review M3——前端可见失败而非误报成功）")
+    void ackAlertFailurePropagates() {
         UUID eventId = UUID.randomUUID();
         AlertEvent existing = new AlertEvent();
         existing.setEventId(eventId);
         existing.setStatus(AlertEvent.STATUS_FIRING);
         when(alertEventMapper.selectById(eventId)).thenReturn(existing);
-        when(alertEventMapper.updateById(any(AlertEvent.class))).thenThrow(new RuntimeException("db down"));
+        when(alertEventMapper.update(any(AlertEvent.class), any())).thenThrow(new RuntimeException("db down"));
 
-        assertThatCode(() -> opsService.ackAlert(eventId, "ops01")).doesNotThrowAnyException();
+        assertThatThrownBy(() -> opsService.ackAlert(eventId, "ops01", "原因"))
+                .isInstanceOf(RuntimeException.class);
     }
 }

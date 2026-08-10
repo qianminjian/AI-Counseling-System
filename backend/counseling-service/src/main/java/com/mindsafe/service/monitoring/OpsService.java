@@ -1,6 +1,7 @@
 package com.mindsafe.service.monitoring;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.mindsafe.common.dto.ErrorCode;
 import com.mindsafe.common.exception.BizException;
 import com.mindsafe.common.tenant.TenantContextHolder;
@@ -115,9 +116,10 @@ public class OpsService {
     /**
      * 告警确认（firing → ack，仅 ops/super，SecurityConfig 强制）。
      * 已 ack/closed 的记录重复 ack 幂等跳过（状态机：firing→ack→closed 单向推进）。
-     * 附加通道原则（2026-08-10）：ack 状态回写失败仅记 WARN，不阻断请求（页面仍可操作）。
+     * 条件更新（code-review L2）：仅当 status=firing 才回写，消除与采集器 resolved 流转的极窄竞态。
+     * 主操作语义（code-review M3）：落库失败向上抛，前端可见失败而非误报成功。
      */
-    public void ackAlert(UUID eventId, String operator) {
+    public void ackAlert(UUID eventId, String operator, String reason) {
         TenantContextHolder.callAsSystem(() -> {
             AlertEvent event = alertEventMapper.selectById(eventId);
             if (event == null) {
@@ -127,15 +129,17 @@ public class OpsService {
                     || AlertEvent.STATUS_CLOSED.equals(event.getStatus())) {
                 return null; // 已确认/已关闭：幂等跳过
             }
-            try {
-                AlertEvent update = new AlertEvent();
-                update.setEventId(eventId);
-                update.setStatus(AlertEvent.STATUS_ACK);
-                update.setAcknowledgedBy(operator);
-                update.setAcknowledgedAt(Instant.now());
-                alertEventMapper.updateById(update);
-            } catch (Exception e) {
-                log.warn("告警 ack 状态回写失败: eventId={}, error={}", eventId, e.getMessage());
+            AlertEvent update = new AlertEvent();
+            update.setStatus(AlertEvent.STATUS_ACK);
+            update.setAcknowledgedBy(operator);
+            update.setAcknowledgedAt(Instant.now());
+            update.setAckReason(reason); // code-review H1：确认原因审计留痕
+            int updated = alertEventMapper.update(update,
+                    new LambdaUpdateWrapper<AlertEvent>()
+                            .eq(AlertEvent::getEventId, eventId)
+                            .eq(AlertEvent::getStatus, AlertEvent.STATUS_FIRING));
+            if (updated == 0) {
+                log.warn("告警 ack 条件更新未命中（状态已变化）: eventId={}", eventId);
             }
             return null;
         });

@@ -101,6 +101,26 @@ class MetricsQueryServiceTest {
     }
 
     @Test
+    @DisplayName("畸形表达式（sum( 缺右括号 / 多余右括号）→ 403 拒绝（code-review L1）")
+    void malformedSumRejected() {
+        assertThatThrownBy(() -> service.query("sum(tts_synthesize_requests_total"))
+                .isInstanceOf(BizException.class)
+                .hasMessageContaining("白名单");
+        assertThatThrownBy(() -> service.query("tts_synthesize_requests_total)"))
+                .isInstanceOf(BizException.class)
+                .hasMessageContaining("白名单");
+    }
+
+    @Test
+    @DisplayName("Prometheus 不可达 → INTERNAL_ERROR（不挂死，明确报错）")
+    void prometheusUnreachableRaises() {
+        server.stop(0);
+
+        assertThatThrownBy(() -> service.query("tts_synthesize_requests_total"))
+                .isInstanceOf(BizException.class);
+    }
+
+    @Test
     @DisplayName("空/空白表达式 → 参数错误")
     void blankExprRejected() {
         assertThatThrownBy(() -> service.query("  "))

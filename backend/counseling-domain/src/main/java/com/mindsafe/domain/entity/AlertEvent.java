@@ -74,6 +74,9 @@ public class AlertEvent {
     /** 确认时间 */
     private Instant acknowledgedAt;
 
+    /** 确认原因（ack 时必填，审计留痕，V41） */
+    private String ackReason;
+
     /** 触发时间 */
     private Instant firedAt;
 
@@ -164,6 +167,14 @@ public class AlertEvent {
 
     public void setAcknowledgedAt(Instant acknowledgedAt) {
         this.acknowledgedAt = acknowledgedAt;
+    }
+
+    public String getAckReason() {
+        return ackReason;
+    }
+
+    public void setAckReason(String ackReason) {
+        this.ackReason = ackReason;
     }
 
     public Instant getFiredAt() {

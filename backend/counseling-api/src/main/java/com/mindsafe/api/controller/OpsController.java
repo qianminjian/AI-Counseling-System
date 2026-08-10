@@ -107,7 +107,7 @@ public class OpsController {
         if (!CONFIRM_PHRASE.equals(confirm)) {
             return ApiResponse.error(ErrorCode.PARAM_INVALID.code(), "高危操作需 X-Confirm: CONFIRM 头（操作二次确认）");
         }
-        opsService.ackAlert(eventId, operatorName());
+        opsService.ackAlert(eventId, operatorName(), request.reason());
         return ApiResponse.ok(null);
     }
 
