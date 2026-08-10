@@ -125,7 +125,8 @@ export default function DevicePage() {
       <h2 style={{ marginTop: 0 }}>终端设备管理</h2>
       <Card
         extra={
-          <Space>
+          // BUG-A-007：窄窗口下操作区横向溢出 → Space wrap 换行
+          <Space wrap>
             <Select value={status} style={{ width: 140 }} onChange={setStatus}
               options={STATUS_OPTIONS} />
             <Button icon={<ReloadOutlined />} onClick={() => void load()}>刷新</Button>

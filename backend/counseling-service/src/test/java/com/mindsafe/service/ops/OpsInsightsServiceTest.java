@@ -8,6 +8,7 @@ import com.mindsafe.domain.mapper.ConsentRecordMapper;
 import com.mindsafe.domain.mapper.NotificationMapper;
 import com.mindsafe.domain.mapper.QualityScoreMapper;
 import com.mindsafe.domain.mapper.RiskEventMapper;
+import com.mindsafe.domain.mapper.TenantMapper;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -33,11 +34,12 @@ class OpsInsightsServiceTest {
     private final RiskEventMapper riskEventMapper = mock(RiskEventMapper.class);
     private final QualityScoreMapper qualityScoreMapper = mock(QualityScoreMapper.class);
     private final ConsentRecordMapper consentRecordMapper = mock(ConsentRecordMapper.class);
+    private final TenantMapper tenantMapper = mock(TenantMapper.class);
     private final org.springframework.jdbc.core.JdbcTemplate jdbcTemplate =
             mock(org.springframework.jdbc.core.JdbcTemplate.class);
     private final OpsInsightsService service =
             new OpsInsightsService(notificationMapper, riskEventMapper, qualityScoreMapper,
-                    consentRecordMapper, jdbcTemplate);
+                    consentRecordMapper, tenantMapper, jdbcTemplate);
 
     @Test
     @DisplayName("渠道统计：按 channel 分组计数")

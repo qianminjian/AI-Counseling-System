@@ -5,14 +5,17 @@ import com.mindsafe.common.tenant.TenantContextHolder;
 import com.mindsafe.domain.entity.Notification;
 import com.mindsafe.domain.entity.QualityScore;
 import com.mindsafe.domain.entity.RiskEvent;
+import com.mindsafe.domain.entity.Tenant;
 import com.mindsafe.domain.mapper.ConsentRecordMapper;
 import com.mindsafe.domain.mapper.NotificationMapper;
 import com.mindsafe.domain.mapper.QualityScoreMapper;
 import com.mindsafe.domain.mapper.RiskEventMapper;
+import com.mindsafe.domain.mapper.TenantMapper;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
+import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
@@ -36,17 +39,20 @@ public class OpsInsightsService {
     private final RiskEventMapper riskEventMapper;
     private final QualityScoreMapper qualityScoreMapper;
     private final ConsentRecordMapper consentRecordMapper;
+    private final TenantMapper tenantMapper;
     private final JdbcTemplate jdbcTemplate;
 
     public OpsInsightsService(NotificationMapper notificationMapper,
                               RiskEventMapper riskEventMapper,
                               QualityScoreMapper qualityScoreMapper,
                               ConsentRecordMapper consentRecordMapper,
+                              TenantMapper tenantMapper,
                               JdbcTemplate jdbcTemplate) {
         this.notificationMapper = notificationMapper;
         this.riskEventMapper = riskEventMapper;
         this.qualityScoreMapper = qualityScoreMapper;
         this.consentRecordMapper = consentRecordMapper;
+        this.tenantMapper = tenantMapper;
         this.jdbcTemplate = jdbcTemplate;
     }
 
@@ -157,6 +163,10 @@ public class OpsInsightsService {
         Map<UUID, List<RiskEvent>> byTenant = events.stream()
                 .filter(e -> e.getTenantId() != null)
                 .collect(Collectors.groupingBy(RiskEvent::getTenantId));
+        // 租户名称映射（BUG-A-005：显示内部 ID → 映射 tenant_name/tenant_code）
+        Map<UUID, Tenant> tenants = TenantContextHolder.callAsSystem(() ->
+                tenantMapper.selectBatchIds(byTenant.keySet()).stream()
+                        .collect(Collectors.toMap(Tenant::getTenantId, t -> t)));
         Instant now = Instant.now();
         List<Map<String, Object>> health = new java.util.ArrayList<>();
         for (Map.Entry<UUID, List<RiskEvent>> entry : byTenant.entrySet()) {
@@ -170,6 +180,9 @@ public class OpsInsightsService {
                     .count();
             Map<String, Object> row = new LinkedHashMap<>();
             row.put("tenantId", entry.getKey());
+            Tenant tenant = tenants.get(entry.getKey());
+            row.put("tenantName", tenant != null ? tenant.getTenantName() : null);
+            row.put("tenantCode", tenant != null ? tenant.getTenantCode() : null);
             row.put("total", tenantEvents.size());
             row.put("unhandled", unhandled);
             row.put("overdue", overdue);
@@ -197,7 +210,7 @@ public class OpsInsightsService {
                         WHERE event_time >= ?
                         GROUP BY metric, unit
                         ORDER BY metric
-                        """, since));
+                        """, Timestamp.from(since)));
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("windowDays", safeDays);
         for (Map<String, Object> row : rows) {

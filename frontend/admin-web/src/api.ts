@@ -397,3 +397,17 @@ export async function batchDeviceOperation(deviceCodes: string[], action: string
   const body = await resp.json()
   return body.data as Record<string, unknown>
 }
+
+/** 跨租户审计日志（ADMIN-P0-07：tenantId/action/时间范围筛选，BUG-A-004 补前端消费） */
+export interface AuditLogItem {
+  auditLogId: string
+  tenantId?: string
+  userId?: string
+  action: string
+  detail?: string
+  createdAt: string
+}
+
+export function fetchAuditLogs(limit = 100): Promise<AuditLogItem[]> {
+  return adminFetch<AuditLogItem[]>(`/api/v1/ops/audit-logs?limit=${limit}`)
+}

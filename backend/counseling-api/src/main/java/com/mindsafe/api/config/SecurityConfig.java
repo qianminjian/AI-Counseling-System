@@ -111,11 +111,13 @@ public class SecurityConfig {
                         .requestMatchers("/swagger-ui/**", "/api-docs/**").access(
                                 (authentication, context) -> new org.springframework.security.authorization.AuthorizationDecision(!isProd()))
                         // ─── 角色授权 ───
-                        // 管理端 + 平台后台：仅业务 ADMIN
-                        .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
                         // Prompt 管理（ADMIN-P1-02，M7）：admin-web 平台角色消费（code-review H1）
+                        // ⚠️ 必须置于 /api/v1/admin/** 兜底之前（Spring Security 按声明顺序匹配；
+                        //    2026-08-11 BUG-A-001：原顺序在后导致平台 super_admin 403 + 前端登出死循环）
                         .requestMatchers("/api/v1/admin/prompts/**")
                                 .hasAnyRole("ADMIN", "PLATFORM_SUPER_ADMIN", "PLATFORM_OPS_ADMIN")
+                        // 管理端 + 平台后台：仅业务 ADMIN
+                        .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
                         // 平台后台（ADMIN-P0-03；P0 backlog ⑤ 双轨收敛 2026-08-10）：平台总览已迁 admin-web，
                         // 移除业务 ADMIN 过渡角色，平台端点仅平台四角色（PLATFORM_ token）
                         // 配置修改（ADMIN-P1-01）：仅超级管理员（平台 super_admin）

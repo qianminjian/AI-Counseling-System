@@ -58,7 +58,12 @@ export default function InsightsPage() {
           size="small"
           pagination={false}
           columns={[
-            { title: '租户', dataIndex: 'tenantId', render: (v: string) => String(v).slice(0, 8) },
+            {
+              title: '租户',
+              dataIndex: 'tenantName',
+              render: (v: string, record: Record<string, unknown>) =>
+                v ? `${v}${record.tenantCode ? `（${String(record.tenantCode)}）` : ''}` : String(record.tenantId).slice(0, 8),
+            },
             { title: '事件数', dataIndex: 'total', width: 90 },
             { title: '未处置', dataIndex: 'unhandled', width: 90 },
             { title: '逾期', dataIndex: 'overdue', width: 90 },
@@ -66,7 +71,16 @@ export default function InsightsPage() {
               title: '健康度',
               dataIndex: 'health',
               width: 100,
-              render: (h: string) => <Tag color={h === 'red' ? 'red' : h === 'yellow' ? 'orange' : 'green'}>{h}</Tag>,
+              // BUG-A-006：英文枚举 → 中文语义标签（红/黄/绿）
+              render: (h: string) => {
+                const map: Record<string, { label: string; color: string }> = {
+                  red: { label: '差', color: 'red' },
+                  yellow: { label: '中', color: 'orange' },
+                  green: { label: '良', color: 'green' },
+                }
+                const item = map[h] ?? { label: h, color: 'default' }
+                return <Tag color={item.color}>{item.label}</Tag>
+              },
             },
           ]}
         />
