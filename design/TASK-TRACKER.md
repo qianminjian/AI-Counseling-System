@@ -968,7 +968,7 @@ _本表由 Agent 维护，每次任务变更时更新。_
 | OPS-MON-003 | alert-rules 新增 3 条规则（TtsPrimaryEngineDegraded / TtsDegradeRatioHigh / LlmPrimaryFailing） | monitoring | ✅ 实施完成（2026-08-09，YAML 15 条验证通过；后 P1-06 补 2 条业务规则共 17 条） |
 | OPS-MON-004 | 生产部署 monitoring 栈（.env 补 WECOM_* 4 项 + GRAFANA_PASSWORD → compose up） | 部署 | 🔒 冻结移交（2026-08-10 议决：从本专题解冻，与 OPS-MON-005 一并归口 **frozen/88 企微告警推送对接**统一管理，本专题不再跟踪）。已完结部分：监控栈 3 容器运行 + GRAFANA_PASSWORD 已配 + 17 条规则加载 + 业务告警企微群机器人 webhook 触达验证 SUCCESS；剩余：AlertManager 企微应用消息（WECOM_* 4 项真实凭证），解锁条件 = 企微自建应用凭证 |
 | OPS-MON-005 | 降级演练 + 验证（断 DASHSCOPE key → 指标 +1 → 企微 ≤5 分钟触达 → 恢复） | 验证 | 🔒 冻结（frozen/88 企微告警推送对接：演练验收依赖 AlertManager 企微应用消息触达，凭证就绪后解冻执行） |
-| OPS-MON-006 | 合并归档（最终态并入 01 平台管理后台 / 03 §8 监控运维·§5.2 平台表豁免·§5.3.1 平台账号 / 02 §6.6 平台级表 / 07 §2.8.1 计量定稿 → 归档 his/83 双文件，2026-08-09 DOC-095） | 全量 | ✅ 已完成（2026-08-09） |
+| OPS-MON-006 | 合并归档（最终态并入 01 平台管理后台 / 03 §8 监控运维·§5.2 平台表豁免·§5.3.1 平台账号 / 02 §6.6 平台级表 / 07 §2.8.1 计量定稿 → 归档 his/83 双文件，2026-08-09 DOC-095） | 全量 | ✅ 已完成（2026-08-09 DOC-095 首次归档；2026-08-10 回迁修正后实施全部完成（主键修复/V40/webhook 触达/冷却期 60）→ **最终归档 his/83_服务降级监控与告警设计**，实施态定稿 01/02/03/04，DESIGN-OVERVIEW 登记） |
 | OPS-MON-007 | 降级事件检测器（30s 轮询指标增量 → degradation_events auto/恢复事件落库，last_value 防抖 + 跳过 manual 覆盖点 + SETNX 锁，AC-9；定义见降级监控文档 §3.5） | counseling-service monitoring | ✅ 实施完成（2026-08-09，6 用例全绿） |
 | OPS-MON-008 | 告警采集器（60s 拉取 AlertManager → alert_events upsert + AlertService 同步，resolved 流转 + 30 天清理，AC-10；定义见降级监控文档 §3.6） | counseling-service monitoring | ✅ 实施完成（2026-08-09，8 用例全绿；缺口 3 补：30 天清理任务 cleanup 落库删除 resolved 超期 + 测试） |
 
