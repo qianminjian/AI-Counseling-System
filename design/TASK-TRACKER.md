@@ -922,6 +922,8 @@ _本表由 Agent 维护，每次任务变更时更新。_
 > 25. **DOC-085 登记**（2026-08-09）：Browser Agent 三端 Web 界面自动化遍历测试设计登记——方案与提示词单一事实源落 `design/doing/82_BrowserAgent三端Web界面自动化遍历测试设计.md`（承接 R-4 Playwright 预留态，DOC-082）：30 场景案例（S-01~10 学生端 / T-01~08 教师端 / P-01~06 家长端 / L-01~06 三端联动）+ 每场景可执行 Browser Agent 提示词（环境/步骤/断言/截图记录四要素）+ 问题登记规范（reports/browser-test/ISSUES-<端>.md，按端+场景汇总，BUG 条目 P0-P3 分级 + OPEN→FIXED→VERIFIED→REGRESSION 状态机）+ 修复-部署-复测闭环（每端测试完→自动修复（TDD）→自动部署（deploy.sh/compose）→自动复测，3 轮上限，收敛定义 P0=0 且 P1=0 且 P2/P3 未关闭 ≤3，超限升级人工）；语音类（声纹 remote/ASR/TTS 真实链路）因 test compose 不含 voice/tts 标记 SKIP-语音，断言降级路径照常；执行顺序：环境准备→学生端→教师端→家长端→联动场景→汇总归档；ticket 见 §二十九。
 
 > 31. **DOC-091 登记**（2026-08-09）：无屏交互终端配置体系专题——doing/84 方案与 SPEC 生成 + frozen/74 解冻至 doing/74（仅加引用）。doing/84（设计单一事实源 = `design/doing/84_无屏交互终端配置体系_方案与SPEC.md`）：承接 doing/74 §2.4/§3.1/§4.1/§4.5/§8.4 配置面页面级落地——21 项同类产品调研（开源生态 7 / 消费级 IoT 7 / 儿童陪伴硬件 7，含小智 6 位码绑定、华为回连检查状态机、萤石机身标签、微信 scene 短码等）+ 6 类配置页面（扫码入口/配网页/绑定/声纹录入/状态/管理台 M13）+ 机身二维码三层规范（静态码 URL+deviceCode / 绑定验证码 / P2 动态码）+ 配置状态机（扫码→连热点→配网→回连检查→绑定）+ device 域 API 与 4 表 + P0/P1/P2 路线（CFG-001~012）+ EARS AC-84-01~28；frozen/74 解冻（2026-08-09，文件迁移 design/doing/74，主体 §1-14 零改动，仅头部状态/关联/下一步 3 处加 doing/84 引用）；DESIGN-OVERVIEW v6.13 同步；ticket 见 §三十二。
+> 43. **DOC-107 登记**（2026-08-10，merge 补登）：doing/86 后台管理端部署验证专题合并归档（全部闭环）——4 项验证通过（监控栈/指标看板/告警中心/账号引导）+ 2 项移交（降级演练 AC-6 → frozen/88、档位联动 → doing/87）；文件归档 his/86（编号修正：原 DESIGN-OVERVIEW 误引 DOC-103 → DOC-107，与 TASK-TRACKER 既有编号对齐）。
+> 42. **DOC-106 登记**（2026-08-10，merge 补登）：doing/87 M3 运行时档位联动独立提升小专题生成——doing/86 验证项 5 剥离（管理端手动切换记录型已上线，补齐 tts/asr/ser 运行时消费链路 + /health 档位 + TTL + fail-open）；方案与 SPEC 见 doing/87，ticket 见 TASK-TRACKER §三十四 RUNTIME-001~005（编号修正：原误引 DOC-102 → DOC-106）。
 > 41. **DOC-105 登记**（2026-08-11）：三专题（74/84/85）剩余任务移交冻结跟踪——① **frozen/89 新建**（toC 数据链路依赖跟踪：TOC-004 成长报告 / TOC-005 预警推送，根因=toC 对话/风险数据链路未实施，解冻条件=toC 对话链路立项）；② frozen/73 §九 追加 CFG-012（L1 动态码加密，NST-HW-02 二期）+ TOC-006 灯光/固件执行；③ frozen/43 登记 CFG-011（scene 短码，W-1 前置）；④ 84/85 文档状态同步（CFG-011/012/TOC-004/005 → ❄️ 冻结移交，当前专题不再跟踪）。**三专题当前专题跟踪清零**：74 无剩余（软件侧完成）、84 CFG-001~010 ✅ + 009/011/012 冻结移交、85 TOC 7/10 ✅ + 004/005/006-灯光 冻结移交。
 > 40. **DOC-104 登记**（2026-08-10）：84↔85 设计承接端到端联通测试 + 新页面风格统一——① 新建 tocFlow.e2e.test（自动模拟全链路状态机：扫码自检→设备回连 UNACTIVATED→ONLINE_UNBOUND→toC 注册建档→家庭绑定 ONLINE_BOUND→设备列表→远程管理偏好→pullConfig 下发→隐私删除回出厂态，mock fetch 层维护共享设备状态，3 用例验证 84 配置状态机产物被 85 家庭版全链路消费、85 收口后 84 状态复位）；② 5 个新页面（device/toc-login/toc-profiles/toc-devices/toc-privacy）scss 统一为青屿令牌体系（--ms-primary #2BA8A0 治愈青绿/--ms-bg/--ms-card/--ms-radius-card/--ms-shadow-card，清除错误令牌 --ms-text-primary 与蓝色 #3370ff fallback、device 页硬编码色值全部令牌化）；parent-h5 191 用例全绿 + tsc 0 错。
 > 39. **DOC-103 登记**（2026-08-10）：doing/85 toC 家庭版批次 A~C 实施——TOC-001 账号体系 + TOC-002 家庭档案（9d82870，V42/toc_auth/toc_profiles + parent-h5 登录/档案页）；TOC-003 设备绑定 + CFG-010 配置引导联动（c71b3df，FAMILY 绑定 + 扫码页 toC 模式）；TOC-007 隐私控制（2b13356，删除不可逆 + X-Confirm）；TOC-008 二合一 DRY/RBAC 验证通过、TOC-009 云端 SaaS 隔离落地、TOC-010 回归门禁通过（后端全量 + parent-h5 185 全绿）；TOC-004/005 标注数据源依赖（toC 对话/风险链路未实施，YAGNI）；74 号剩余软件任务（CFG-010）随 85 联动完成。
@@ -1062,3 +1064,17 @@ _本表由 Agent 维护，每次任务变更时更新。_
 | TOC-010 | toC 回归门禁（全量回归 + toB 零回归） | TOC-001~009 | ✅ 回归门禁通过（2026-08-10：后端全量 BUILD SUCCESS + parent-h5 185 全绿 + toB 零回归） | ⬜ 待排期 |
 
 > 执行顺序：TOC-001 → 002 → 003（设备绑定，复用 doing/84）→ 004/005/007（可并行）→ 006 → 008 → 009（立项评估）→ 010（回归门禁）；归档门禁：TOC-001~010 全 ✅ + doing/85 合并归档（最终态并入 doing/74 与 12 号主文档）。
+
+## 三十四、M3 运行时档位联动 ticket（2026-08-10，doing/87 登记）
+
+> 登记说明：doing/87 M3 运行时档位联动（独立提升小专题，doing/86 验证项 5 剥离）——管理端手动切换"记录型"已上线（写 Redis 覆盖键 + manual 事件），本专题补齐运行时消费链路（tts/asr/ser 按覆盖键实际运行）。方案与 SPEC 单一事实源：`design/doing/87_M3运行时档位联动_方案与SPEC.md`（AC-1~11 定义处，DRY）。跨专题关联：his/83 §5.3 M3（写侧已上线）；frozen/88（独立）。
+
+| Ticket | 任务 | 归属 | 状态 |
+|--------|------|------|------|
+| RUNTIME-001 | tts 覆盖（tts_policy 读覆盖键 + fail-open + overridden-fallback 事件 + /health engine 字段 + pytest） | tts-service | ⬜ 待排期（AC-1/2/3/7/9） |
+| RUNTIME-002 | voice 覆盖（请求时 ASR/SER 档位判定 + 未加载拒绝 + /health 档位字段 + pytest） | voice-service | ⬜ 待排期（AC-4/5/6/7/9） |
+| RUNTIME-003 | 后端 override() 加 TTL 7 天 | counseling-service | ⬜ 待排期（AC-8） |
+| RUNTIME-004 | compose/env 透传 REDIS_PASSWORD（tts/voice）+ .env.example 注释 | 部署 | ⬜ 待排期 |
+| RUNTIME-005 | 联调验收（AC-1~11 全量 + 管理端矩阵一致性抽样） | 全量 | ⬜ 待排期（AC-10/11） |
+
+> 执行顺序：001 → 002 → 003/004 → 005；归档门禁：AC-1~11 全通过 + doing/87 合并归档（最终态并入 his/83 §5.3 M3 实施态 / 04 部署 §语音微服务）。

@@ -9,9 +9,9 @@ import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.util.UriComponentsBuilder;
 
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
+import java.net.URI;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
@@ -73,12 +73,14 @@ public class MetricsQueryService {
             throw new BizException(ErrorCode.FORBIDDEN, "表达式不在白名单：仅允许平台自有指标名 + 简单 label 过滤");
         }
         try {
-            // code-review M1：URLEncoder 空格编码为 +（form 语义），RestTemplate 链会将其二次编码为 %2B
-            // 导致 Prometheus 收到字面 + 查询失败——替换为 %20 规避（字面 + 已被编码为 %2B，不会误替换）
-            String encoded = URLEncoder.encode(trimmed, StandardCharsets.UTF_8).replace("+", "%20");
+            // 编码链路（code-review M1 + 生产实测 2026-08-10）：URLEncoder + 字符串拼接会被
+            // RestTemplate 的 DefaultUriBuilderFactory 二次解析破坏（%28 丢失）——改用
+            // UriComponentsBuilder 统一编码 query param（空格 → %20，括号/方括号正确转义）
+            URI uri = UriComponentsBuilder.fromHttpUrl(prometheusUrl + "/api/v1/query")
+                    .queryParam("query", trimmed)
+                    .build().encode().toUri();
             @SuppressWarnings("unchecked")
-            Map<String, Object> body = restTemplate.getForObject(
-                    prometheusUrl + "/api/v1/query?query=" + encoded, Map.class);
+            Map<String, Object> body = restTemplate.getForObject(uri, Map.class);
             return body == null ? Map.of() : body;
         } catch (RestClientException e) {
             log.warn("Prometheus 查询失败: expr={}, error={}", trimmed, e.getMessage());
