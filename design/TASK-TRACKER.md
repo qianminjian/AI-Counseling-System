@@ -1058,3 +1058,17 @@ _本表由 Agent 维护，每次任务变更时更新。_
 | TOC-010 | toC 回归门禁（全量回归 + toB 零回归） | TOC-001~009 | 全量 | ⬜ 待排期 |
 
 > 执行顺序：TOC-001 → 002 → 003（设备绑定，复用 doing/84）→ 004/005/007（可并行）→ 006 → 008 → 009（立项评估）→ 010（回归门禁）；归档门禁：TOC-001~010 全 ✅ + doing/85 合并归档（最终态并入 doing/74 与 12 号主文档）。
+
+## 三十四、M3 运行时档位联动 ticket（2026-08-10，doing/87 登记）
+
+> 登记说明：doing/87 M3 运行时档位联动（独立提升小专题，doing/86 验证项 5 剥离）——管理端手动切换"记录型"已上线（写 Redis 覆盖键 + manual 事件），本专题补齐运行时消费链路（tts/asr/ser 按覆盖键实际运行）。方案与 SPEC 单一事实源：`design/doing/87_M3运行时档位联动_方案与SPEC.md`（AC-1~11 定义处，DRY）。跨专题关联：his/83 §5.3 M3（写侧已上线）；frozen/88（独立）。
+
+| Ticket | 任务 | 归属 | 状态 |
+|--------|------|------|------|
+| RUNTIME-001 | tts 覆盖（tts_policy 读覆盖键 + fail-open + overridden-fallback 事件 + /health engine 字段 + pytest） | tts-service | ⬜ 待排期（AC-1/2/3/7/9） |
+| RUNTIME-002 | voice 覆盖（请求时 ASR/SER 档位判定 + 未加载拒绝 + /health 档位字段 + pytest） | voice-service | ⬜ 待排期（AC-4/5/6/7/9） |
+| RUNTIME-003 | 后端 override() 加 TTL 7 天 | counseling-service | ⬜ 待排期（AC-8） |
+| RUNTIME-004 | compose/env 透传 REDIS_PASSWORD（tts/voice）+ .env.example 注释 | 部署 | ⬜ 待排期 |
+| RUNTIME-005 | 联调验收（AC-1~11 全量 + 管理端矩阵一致性抽样） | 全量 | ⬜ 待排期（AC-10/11） |
+
+> 执行顺序：001 → 002 → 003/004 → 005；归档门禁：AC-1~11 全通过 + doing/87 合并归档（最终态并入 his/83 §5.3 M3 实施态 / 04 部署 §语音微服务）。
