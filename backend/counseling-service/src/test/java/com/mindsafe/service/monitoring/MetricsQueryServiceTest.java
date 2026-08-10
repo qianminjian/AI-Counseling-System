@@ -28,6 +28,8 @@ class MetricsQueryServiceTest {
     void setUp() throws Exception {
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/api/v1/query", exchange -> {
+            // 记录收到的 query 参数（编码链路断言用，code-review L3）
+            receivedQuery = exchange.getRequestURI().getRawQuery();
             String body = "{\"status\":\"success\",\"data\":{\"result\":[{\"metric\":{\"__name__\":\"tts_synthesize_requests_total\"},\"value\":[1700000000,\"42\"]}]}}";
             byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
             exchange.getResponseHeaders().set("Content-Type", "application/json");
@@ -54,6 +56,8 @@ class MetricsQueryServiceTest {
         server.stop(0);
     }
 
+    private volatile String receivedQuery = "";
+
     @Test
     @DisplayName("白名单指标表达式 → 代理查询返回 Prometheus 响应体")
     void whitelistedExprProxies() {
@@ -79,6 +83,17 @@ class MetricsQueryServiceTest {
         Map<String, Object> body = service.query("sum(tts_synthesize_requests_total)");
 
         assertThat(body.get("status")).isEqualTo("success");
+    }
+
+    @Test
+    @DisplayName("编码链路：label 花括号/引号/空格正确转义，Prometheus 收到原始表达式（code-review M1 生产实测）")
+    void encodingPreservesExpr() {
+        service.query("sum(tts_synthesize_requests_total{engine=\"cosy voice\"})");
+
+        // 括号为 URI 合法字符不编码；label 花括号/引号/空格必须编码（%7B/%22/%20）
+        assertThat(receivedQuery).contains("query=sum(tts_synthesize_requests_total%7Bengine%3D%22cosy%20voice%22%7D)");
+        assertThat(java.net.URLDecoder.decode(receivedQuery.replace("query=", ""), java.nio.charset.StandardCharsets.UTF_8))
+                .isEqualTo("sum(tts_synthesize_requests_total{engine=\"cosy voice\"})");
     }
 
     @Test
