@@ -313,3 +313,62 @@ export async function ackAlertEvent(eventId: string, reason: string): Promise<vo
     throw new Error(b?.message ?? '确认失败')
   }
 }
+
+// ===== M13 无屏终端设备管理（CFG-008，doing/84 §六.2 平台管理域） =====
+
+export interface PlatformDeviceItem {
+  deviceId: string
+  deviceCode: string
+  deviceType: string
+  firmwareVersion?: string
+  status: string
+  online: boolean
+  lastOnlineAt?: string
+  binding?: { bindType: string; bindTargetId: string; boundAt?: string } | null
+}
+
+/** 跨租户设备列表（状态/归属筛选） */
+export function fetchPlatformDevices(status?: string, bindTargetId?: string): Promise<PlatformDeviceItem[]> {
+  const qs = new URLSearchParams()
+  if (status) qs.set('status', status)
+  if (bindTargetId) qs.set('bindTargetId', bindTargetId)
+  const query = qs.toString()
+  return adminFetch<PlatformDeviceItem[]>(`/api/v1/platform/devices${query ? `?${query}` : ''}`)
+}
+
+/** 设备详情（含绑定历史） */
+export function fetchPlatformDeviceDetail(deviceId: string): Promise<Record<string, unknown>> {
+  return adminFetch<Record<string, unknown>>(`/api/v1/platform/devices/${deviceId}`)
+}
+
+/** 二维码批量签发（印刷包留痕） */
+export async function exportDeviceQr(deviceCodes: string[]): Promise<{ issuedCount: number; notFound: string[] }> {
+  const token = getAdminToken()
+  const resp = await fetch('/api/v1/platform/devices/export-qr', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: JSON.stringify({ deviceCodes, issuedBy: getAdminName() }),
+  })
+  if (!resp.ok) {
+    const body = await resp.json().catch((): null => null)
+    throw new Error(body?.message ?? '二维码签发失败')
+  }
+  const body = await resp.json()
+  return body.data as { issuedCount: number; notFound: string[] }
+}
+
+/** 批量操作受理（ota / reboot / factory-reset） */
+export async function batchDeviceOperation(deviceCodes: string[], action: string): Promise<Record<string, unknown>> {
+  const token = getAdminToken()
+  const resp = await fetch('/api/v1/platform/devices/batch', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: JSON.stringify({ deviceCodes, action, operator: getAdminName() }),
+  })
+  if (!resp.ok) {
+    const body = await resp.json().catch((): null => null)
+    throw new Error(body?.message ?? '批量操作失败')
+  }
+  const body = await resp.json()
+  return body.data as Record<string, unknown>
+}

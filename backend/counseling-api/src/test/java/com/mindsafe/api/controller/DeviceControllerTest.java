@@ -237,4 +237,35 @@ class DeviceControllerTest {
         assertThat(controller.reportVoiceprintPhase(Map.of("taskId", "t1", "phase", "COLLECTING")).code())
                 .isEqualTo(404);
     }
+
+    // ===== CFG-008 M13：设备操作端点 =====
+
+    @Test
+    @DisplayName("ota：受理成功")
+    void otaOk() {
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("action", "ota");
+        when(deviceService.ota(deviceCode, "admin-1")).thenReturn(result);
+        var response = controller.ota(deviceCode, "admin-1");
+        assertThat(response.code()).isEqualTo(0);
+        assertThat(response.data().get("action")).isEqualTo("ota");
+    }
+
+    @Test
+    @DisplayName("reboot：受理成功")
+    void rebootOk() {
+        when(deviceService.reboot(deviceCode, "admin-1")).thenReturn(Map.of("action", "reboot"));
+        assertThat(controller.reboot(deviceCode, "admin-1").code()).isEqualTo(0);
+        verify(deviceService).reboot(deviceCode, "admin-1");
+    }
+
+    @Test
+    @DisplayName("factory-reset：设备不存在转 400")
+    void factoryResetError() {
+        when(deviceService.factoryReset(deviceCode, "admin-1"))
+                .thenThrow(new IllegalArgumentException("设备不存在"));
+        var response = controller.factoryReset(deviceCode, "admin-1");
+        assertThat(response.code()).isEqualTo(400);
+        assertThat(response.message()).contains("设备不存在");
+    }
 }
