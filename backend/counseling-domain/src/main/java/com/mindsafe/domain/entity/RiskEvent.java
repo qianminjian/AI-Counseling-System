@@ -42,6 +42,10 @@ public class RiskEvent {
     @TableField(typeHandler = JsonbTypeHandler.class)
     private String reasonCodes;
 
+    // doing/92 R-015：Layer2 输出安全审查 JSON 留痕（TC260 人工抽检依据，V46）
+    @TableField(typeHandler = JsonbTypeHandler.class)
+    private String reviewJson;
+
     private String detectedBy;
     private Instant detectedAt;
     private String status;
@@ -116,6 +120,9 @@ public class RiskEvent {
 
     public String getReasonCodes() { return reasonCodes; }
     public void setReasonCodes(String reasonCodes) { this.reasonCodes = reasonCodes; }
+
+    public String getReviewJson() { return reviewJson; }
+    public void setReviewJson(String reviewJson) { this.reviewJson = reviewJson; }
 
     public String getDetectedBy() { return detectedBy; }
     public void setDetectedBy(String detectedBy) { this.detectedBy = detectedBy; }

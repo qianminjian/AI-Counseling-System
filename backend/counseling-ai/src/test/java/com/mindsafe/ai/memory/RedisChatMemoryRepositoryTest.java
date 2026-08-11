@@ -25,6 +25,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -129,6 +130,36 @@ class RedisChatMemoryRepositoryTest {
 
         repository.refreshTtl(conversationId);
         verify(redisTemplate).expire(expected, Duration.ofHours(2));
+    }
+
+    @Test
+    @DisplayName("R-015: append 原子追加（rightPush 单条写 + 刷新 TTL，租户段 key）")
+    void append_pushesSingleMessageAndRefreshesTtl() {
+        TenantContextHolder.set(tenantId);
+
+        repository.append(conversationId, new AssistantMessage("更正消息"));
+
+        org.mockito.ArgumentCaptor<String> jsonCaptor = org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(listOperations).rightPush(eq("chat:memory:" + tenantId + ":" + conversationId), jsonCaptor.capture());
+        assertThat(jsonCaptor.getValue())
+                .contains("\"schemaVersion\":1")
+                .contains("\"role\":\"ASSISTANT\"")
+                .contains("更正消息");
+        verify(redisTemplate).expire("chat:memory:" + tenantId + ":" + conversationId, Duration.ofHours(2));
+        // 原子追加：不做 find+saveAll（无 range 读、无 rightPushAll 全量写）
+        verify(listOperations, org.mockito.Mockito.never()).range(anyString(), org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.anyLong());
+    }
+
+    @Test
+    @DisplayName("R-015: hasMessages 原子判空（EXISTS key，租户段）")
+    void hasMessages_checksKeyExistence() {
+        TenantContextHolder.set(tenantId);
+        when(redisTemplate.hasKey("chat:memory:" + tenantId + ":" + conversationId)).thenReturn(true);
+
+        assertThat(repository.hasMessages(conversationId)).isTrue();
+
+        when(redisTemplate.hasKey("chat:memory:" + tenantId + ":" + conversationId)).thenReturn(false);
+        assertThat(repository.hasMessages(conversationId)).isFalse();
     }
 
     @Test

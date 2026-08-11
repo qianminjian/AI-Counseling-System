@@ -1,5 +1,6 @@
 package com.mindsafe.service.safety;
 
+import com.mindsafe.ai.memory.ChatMemoryAppender;
 import com.mindsafe.ai.safety.OutputSafetyReporter;
 import com.mindsafe.common.enums.RiskLevel;
 import com.mindsafe.domain.entity.CounselingSession;
@@ -10,26 +11,24 @@ import com.mindsafe.service.notification.NotificationService;
 import com.mindsafe.service.notification.RiskNotifyOutboxService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.ai.chat.memory.ChatMemoryRepository;
 import org.springframework.ai.chat.messages.AssistantMessage;
-import org.springframework.ai.chat.messages.Message;
 import org.springframework.stereotype.Service;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.UUID;
 
 /**
  * 输出安全违规上报实现（依赖倒置 adapter，实现 counseling-ai 定义的 {@link OutputSafetyReporter}）。
  * <p>
- * 复用现有 {@code tenant_template.risk_events} 表（无 schema 变更）：
+ * 复用现有 {@code tenant_template.risk_events} 表（V46 新增 review_json 列）：
  * <ul>
  *   <li>Layer1 实时拦截（严重）：risk_level=RED(3)，detected_by=output_filter，触发教师通知（与输入风险一致）；</li>
  *   <li>Layer2 异步审查留痕（低危）：risk_level=YELLOW(1)，detected_by=output_review，仅留痕不通知（避免轰炸教师）；</li>
- *   <li>Layer2 召回替换（SAFE-202）：替换已落记忆的 AI 回复，分级 rewrite=YELLOW/block=ORANGE/escalate=RED，
+ *   <li>Layer2 召回替换（SAFE-202）：追加更正消息至已落记忆（原子追加，不做整表替换——
+ *       幂等无并发覆盖），分级 rewrite=YELLOW/block=ORANGE/escalate=RED，
  *       block/escalate 触发教师通知。</li>
  * </ul>
  * <p>
+ * reviewJson（LLM 审查 JSON）随事件落库（doing/92 R-015，V46 review_json 列），供 TC260 人工抽检回溯。
  * 会话查不到时优雅降级（仅日志，不抛异常）——上报失败绝不影响对话主流程。
  */
 @Service
@@ -44,18 +43,18 @@ public class OutputSafetyReporterImpl implements OutputSafetyReporter {
     private final RiskEventMapper riskEventMapper;
     private final NotificationService notificationService;
     private final RiskNotifyOutboxService riskNotifyOutboxService;
-    private final ChatMemoryRepository chatMemoryRepository;
+    private final ChatMemoryAppender chatMemoryAppender;
 
     public OutputSafetyReporterImpl(CounselingSessionMapper sessionMapper,
                                     RiskEventMapper riskEventMapper,
                                     NotificationService notificationService,
                                     RiskNotifyOutboxService riskNotifyOutboxService,
-                                    ChatMemoryRepository chatMemoryRepository) {
+                                    ChatMemoryAppender chatMemoryAppender) {
         this.sessionMapper = sessionMapper;
         this.riskEventMapper = riskEventMapper;
         this.notificationService = notificationService;
         this.riskNotifyOutboxService = riskNotifyOutboxService;
-        this.chatMemoryRepository = chatMemoryRepository;
+        this.chatMemoryAppender = chatMemoryAppender;
     }
 
     @Override
@@ -108,6 +107,8 @@ public class OutputSafetyReporterImpl implements OutputSafetyReporter {
                     RiskLevel.YELLOW.severity()
             );
             event.setDetectedBy("output_review");
+            // doing/92 R-015：审查 JSON 落库（TC260 人工抽检依据）
+            event.setReviewJson(reviewJson);
             riskEventMapper.insert(event);
 
             // P0-4：无通知义务的事件标记完成态，防止补偿任务误重试留痕事件
@@ -130,8 +131,17 @@ public class OutputSafetyReporterImpl implements OutputSafetyReporter {
                 return;
             }
 
-            // 1. 替换已落记忆的最后一条 AI 回复（SSE 单向流无实时召回通道，下一轮历史即替换后版本）
-            boolean replaced = replaceLastAssistantMessage(sessionId.toString(), replacementText);
+            // 1. 追加更正消息（doing/92 R-015：替换改追加——原子幂等无并发覆盖；
+            //    SSE 单向流无实时召回通道，下一轮历史即更正后版本。
+            //    设计权衡：违规原文仍留在记忆（学生已在 SSE 见过），后续 LLM 上下文携带
+            //    原文+更正，由输出过滤器（Layer1/Layer2）二次拦截兜底——纵深防御不破）
+            //    记忆为空（TTL 过期/从未写入）时跳过追加，避免悬空更正成为整段历史
+            if (chatMemoryAppender.hasMessages(sessionId.toString())) {
+                chatMemoryAppender.append(sessionId.toString(), new AssistantMessage(replacementText));
+            } else {
+                log.warn("Layer2 召回：会话记忆为空，跳过追加更正消息: sessionId={}, decision={}",
+                        sessionId, decision);
+            }
 
             // 2. 分级留痕：rewrite=YELLOW 不通知；block=ORANGE、escalate=RED 通知教师
             RiskLevel level = switch (decision) {
@@ -147,6 +157,8 @@ public class OutputSafetyReporterImpl implements OutputSafetyReporter {
                     level.severity()
             );
             event.setDetectedBy("output_review");
+            // doing/92 R-015：审查 JSON 落库（TC260 人工抽检依据）
+            event.setReviewJson(reviewJson);
             riskEventMapper.insert(event);
 
             if (level != RiskLevel.YELLOW) {
@@ -163,34 +175,10 @@ public class OutputSafetyReporterImpl implements OutputSafetyReporter {
                 riskNotifyOutboxService.markSent(event);
             }
 
-            log.warn("Layer2 召回已执行: sessionId={}, decision={}, replaced={}, riskEventId={}",
-                    sessionId, decision, replaced, event.getRiskEventId());
+            log.warn("Layer2 召回已执行: sessionId={}, decision={}, replaced=true, riskEventId={}",
+                    sessionId, decision, event.getRiskEventId());
         } catch (Exception e) {
             log.error("Layer2 召回执行失败（不影响对话流）: sessionId={}, decision={}", sessionId, decision, e);
         }
-    }
-
-    /**
-     * 替换会话记忆中最后一条 AI 回复。
-     *
-     * @return 是否实际替换（无 AI 回复时返回 false）
-     */
-    private boolean replaceLastAssistantMessage(String conversationId, String replacementText) {
-        List<Message> history = chatMemoryRepository.findByConversationId(conversationId);
-        int lastAssistantIdx = -1;
-        for (int i = history.size() - 1; i >= 0; i--) {
-            if (history.get(i) instanceof AssistantMessage) {
-                lastAssistantIdx = i;
-                break;
-            }
-        }
-        if (lastAssistantIdx < 0) {
-            log.warn("Layer2 召回：记忆中无 AI 回复可替换: conversationId={}", conversationId);
-            return false;
-        }
-        List<Message> updated = new ArrayList<>(history);
-        updated.set(lastAssistantIdx, new AssistantMessage(replacementText));
-        chatMemoryRepository.saveAll(conversationId, updated);
-        return true;
     }
 }

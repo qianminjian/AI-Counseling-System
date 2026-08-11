@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.mindsafe.domain.entity.EmotionDiary;
 import com.mindsafe.domain.mapper.EmotionDiaryMapper;
 import com.mindsafe.service.achievement.BadgeService;
+import com.mindsafe.service.common.CounselingTimeZone;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -21,37 +22,26 @@ import java.util.UUID;
 public class EmotionDiaryService {
 
     private final EmotionDiaryMapper diaryMapper;
+    private final BadgeService badgeService;
 
-    public EmotionDiaryService(EmotionDiaryMapper diaryMapper) {
+    public EmotionDiaryService(EmotionDiaryMapper diaryMapper, BadgeService badgeService) {
         this.diaryMapper = diaryMapper;
+        this.badgeService = badgeService;
     }
 
     /** 今日打卡（每天仅一次，重复提交覆盖） */
     @Transactional
     public EmotionDiary checkin(UUID tenantId, UUID studentUserId, String emotion, int intensity, String note) {
         // doing/92 R-010：业务日界收敛至 CounselingTimeZone
-        LocalDate today = com.mindsafe.service.common.CounselingTimeZone.today();
+        LocalDate today = CounselingTimeZone.today();
 
-        // 查找今日已有记录
-        EmotionDiary existing = diaryMapper.selectOne(
-                new LambdaQueryWrapper<EmotionDiary>()
-                        .eq(EmotionDiary::getTenantId, tenantId)
-                        .eq(EmotionDiary::getStudentUserId, studentUserId)
-                        .eq(EmotionDiary::getDiaryDate, today)
-        );
-
-        if (existing != null) {
-            // 覆盖更新
-            existing.setEmotionLabel(emotion);
-            existing.setIntensity(intensity);
-            existing.setNote(note);
-            diaryMapper.updateById(existing);
-            return existing;
-        }
-
+        // doing/92 R-011：原子 upsert（唯一索引 uq_diary_student_date 冲突时覆盖更新，
+        // 并发双击不再双落/抛唯一冲突；created_at 保留首次打卡时间）
         EmotionDiary diary = EmotionDiary.create(tenantId, studentUserId, emotion, intensity, note);
-        diaryMapper.insert(diary);
-        return diary;
+        diary.setDiaryDate(today); // create() 默认系统时区，此处统一业务日界
+        diaryMapper.upsertCheckin(diary);
+
+        return getToday(tenantId, studentUserId);
     }
 
     /** 获取今日打卡状态（null 表示未打卡） */
@@ -84,7 +74,7 @@ public class EmotionDiaryService {
                         .eq(EmotionDiary::getStudentUserId, studentUserId)
                         .orderByDesc(EmotionDiary::getDiaryDate)
         );
-        return new StreakInfo(BadgeService.computeStreak(all), all.size());
+        return new StreakInfo(badgeService.computeStreak(all), all.size());
     }
 
     /** 连续打卡信息 */

@@ -77,8 +77,8 @@ public class BadgeService {
                 new Badge("diary_30", "🏆", "月度之星", "累计打卡 30 天", diaryCount >= 30));
     }
 
-    /** 连续打卡天数（纯函数，EmotionDiaryService.getStreak 复用） */
-    public static int computeStreak(List<EmotionDiary> all) {
+    /** 连续打卡天数（doing/92 R-011：去 static——EmotionDiaryService 经注入调用，消除跨域静态耦合） */
+    public int computeStreak(List<EmotionDiary> all) {
         int streak = 0;
         LocalDate expected = LocalDate.now();
         for (EmotionDiary d : all) {

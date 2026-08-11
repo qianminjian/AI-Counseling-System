@@ -132,13 +132,13 @@ class BadgeServiceTest {
         assertThat(badgeOf(badges, "streak_3").unlocked()).isFalse();
     }
 
-    // ===== computeStreak 纯函数 =====
+    // ===== computeStreak 纯函数（doing/92 R-011：去 static 后经实例调用） =====
 
     @Test
     @DisplayName("computeStreak 今天+昨天连续 → 2")
     void computeStreak_consecutive() {
         LocalDate today = LocalDate.now();
-        int streak = BadgeService.computeStreak(List.of(diary(today), diary(today.minusDays(1))));
+        int streak = badgeService.computeStreak(List.of(diary(today), diary(today.minusDays(1))));
 
         assertThat(streak).isEqualTo(2);
     }
@@ -147,7 +147,7 @@ class BadgeServiceTest {
     @DisplayName("computeStreak 昨天断档 → 0")
     void computeStreak_broken() {
         LocalDate today = LocalDate.now();
-        int streak = BadgeService.computeStreak(List.of(diary(today.minusDays(2))));
+        int streak = badgeService.computeStreak(List.of(diary(today.minusDays(2))));
 
         assertThat(streak).isEqualTo(0);
     }
@@ -156,7 +156,7 @@ class BadgeServiceTest {
     @DisplayName("computeStreak 今天未打卡但昨天起连续 → 0（连续从今天起算）")
     void computeStreak_notToday() {
         LocalDate today = LocalDate.now();
-        int streak = BadgeService.computeStreak(List.of(diary(today.minusDays(1)), diary(today.minusDays(2))));
+        int streak = badgeService.computeStreak(List.of(diary(today.minusDays(1)), diary(today.minusDays(2))));
 
         assertThat(streak).isEqualTo(0);
     }
