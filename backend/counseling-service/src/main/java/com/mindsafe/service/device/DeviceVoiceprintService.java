@@ -1,6 +1,7 @@
 package com.mindsafe.service.device;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Service;
@@ -91,6 +92,8 @@ public class DeviceVoiceprintService {
     private final ObjectMapper objectMapper;
     private final VoiceprintScriptRunner scriptRunner;
 
+    // @Autowired 显式标注：多构造器时 Spring 按此注入（AD-006 引入 3 参包级构造器后 Spring 无法自动选择）
+    @Autowired
     public DeviceVoiceprintService(StringRedisTemplate redisTemplate, ObjectMapper objectMapper) {
         this(redisTemplate, objectMapper, null);
     }
