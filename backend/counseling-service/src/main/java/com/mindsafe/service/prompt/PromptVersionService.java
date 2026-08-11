@@ -2,6 +2,7 @@ package com.mindsafe.service.prompt;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.mindsafe.ai.prompt.PromptTemplateService;
+import com.mindsafe.common.tenant.TenantContextHolder;
 import com.mindsafe.domain.entity.PromptVersion;
 import com.mindsafe.domain.mapper.PromptVersionMapper;
 import com.mindsafe.service.audit.AuditLogService;
@@ -508,15 +509,17 @@ public class PromptVersionService {
         return result;
     }
 
-    /** 查询版本列表 */
+    /** 查询版本列表（平台管理端跨租户消费：callAsSystem 系统作用域——prompt_versions 租户表，平台 token 无租户上下文会被 fail-fast 拦截，BUG-A-008） */
     public List<PromptVersion> listVersions(UUID tenantId, String templateKey) {
-        LambdaQueryWrapper<PromptVersion> wrapper = new LambdaQueryWrapper<PromptVersion>()
-                .eq(PromptVersion::getTemplateKey, templateKey)
-                .orderByDesc(PromptVersion::getVersion);
-        if (tenantId != null) {
-            wrapper.and(w -> w.eq(PromptVersion::getTenantId, tenantId).or().isNull(PromptVersion::getTenantId));
-        }
-        return promptVersionMapper.selectList(wrapper);
+        return TenantContextHolder.callAsSystem(() -> {
+            LambdaQueryWrapper<PromptVersion> wrapper = new LambdaQueryWrapper<PromptVersion>()
+                    .eq(PromptVersion::getTemplateKey, templateKey)
+                    .orderByDesc(PromptVersion::getVersion);
+            if (tenantId != null) {
+                wrapper.and(w -> w.eq(PromptVersion::getTenantId, tenantId).or().isNull(PromptVersion::getTenantId));
+            }
+            return promptVersionMapper.selectList(wrapper);
+        });
     }
 
     private int getNextVersion(UUID tenantId, String templateKey, String abGroup) {
