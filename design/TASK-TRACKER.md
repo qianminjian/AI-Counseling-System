@@ -1080,3 +1080,23 @@ _本表由 Agent 维护，每次任务变更时更新。_
 | RUNTIME-005 | 联调验收（AC-1~11 全量 + 管理端矩阵一致性抽样） | 全量 | ⬜ 待排期（AC-10/11） |
 
 > 执行顺序：001 → 002 → 003/004 → 005；归档门禁：AC-1~11 全通过 + doing/87 合并归档（最终态并入 his/83 §5.3 M3 实施态 / 04 部署 §语音微服务）。
+
+## 三十五、全项目深度审计 ticket（2026-08-11，doing/88 登记）
+
+> 登记说明：独立审计 agent 五维度深度审计（架构/代码质量/工程化/团队协作/虚化度，总体 7.9/10）。问题清单单一事实源：`design/doing/88_全项目深度审计问题清单.md`（P1-01~P3-04 定义处，DRY）。已规划冻结项（frozen/73 HMAC、doing/87 覆盖键消费等）不登记本表。
+
+| Ticket | 任务 | 归属 | 状态 |
+|--------|------|------|------|
+| AUDIT-DEEP-001 | 设备 token 过期校验 + 签名改造（P1-01：内嵌 exp 24h + HMAC/JWT + 单测） | counseling-service | ⬜ 待排期 |
+| AUDIT-DEEP-002 | reportOnline serverUrl 加固（P1-02：首次注册禁匿名重写 + 签名更新 + pullConfig 认证） | counseling-service | ⬜ 待排期 |
+| AUDIT-DEEP-003 | sys_config 运行时消费接线（P2-01：1-2 个 HOT 项真实消费） | counseling-service | ⬜ 待排期 |
+| AUDIT-DEEP-004 | IGNORE_TABLES 文档同步（P2-02：03 §5.2 18 表 + 分类） | 文档 | ⬜ 待排期 |
+| AUDIT-DEEP-005 | 降级矩阵注释统一（P2-03："记录型声明 + 覆盖键预留"） | counseling-service | ⬜ 待排期 |
+| AUDIT-DEEP-006 | admin-web 页数台账修正（P2-04：25→17） | 文档 | ⬜ 待排期 |
+| AUDIT-DEEP-007 | design/14 补建或改记（P2-05：DOC-098 引用悬空修复） | 文档 | ⬜ 待排期 |
+| AUDIT-DEEP-008 | Prometheus 查询编码统一（P3-01：UriComponentsBuilder） | counseling-service | ⬜ 待排期 |
+| AUDIT-DEEP-009 | TtsController engine 透传（P3-02：/health 字段对齐） | counseling-api | ⬜ 待排期 |
+| AUDIT-DEEP-010 | language_mode 僵尸字段清理（P3-03） | tts-service | ⬜ 待排期 |
+| AUDIT-DEEP-011 | 公开端点限流（P3-04：voiceprint/verify + device 端点） | counseling-api | ⬜ 待排期 |
+
+> 执行顺序：001/002（P1 安全）→ 003 → 004~007（台账修复）→ 008~011；每批完成即回归。
