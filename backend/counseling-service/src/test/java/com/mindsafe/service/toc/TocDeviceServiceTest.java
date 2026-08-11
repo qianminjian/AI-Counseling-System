@@ -1,6 +1,9 @@
 package com.mindsafe.service.toc;
 
+import com.mindsafe.domain.entity.Device;
 import com.mindsafe.domain.entity.DeviceBinding;
+import com.mindsafe.domain.mapper.DeviceBindingMapper;
+import com.mindsafe.domain.mapper.DeviceMapper;
 import com.mindsafe.service.device.DeviceService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -11,6 +14,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -22,6 +26,8 @@ import static org.mockito.Mockito.when;
 class TocDeviceServiceTest {
 
     private DeviceService deviceService;
+    private com.mindsafe.domain.mapper.DeviceMapper deviceMapper;
+    private com.mindsafe.domain.mapper.DeviceBindingMapper bindingMapper;
     private TocDeviceService service;
 
     private final UUID familyAccountId = UUID.randomUUID();
@@ -30,7 +36,9 @@ class TocDeviceServiceTest {
     @BeforeEach
     void setUp() {
         deviceService = mock(DeviceService.class);
-        service = new TocDeviceService(deviceService);
+        deviceMapper = mock(com.mindsafe.domain.mapper.DeviceMapper.class);
+        bindingMapper = mock(com.mindsafe.domain.mapper.DeviceBindingMapper.class);
+        service = new TocDeviceService(deviceService, bindingMapper, deviceMapper);
     }
 
     @Test
@@ -60,8 +68,15 @@ class TocDeviceServiceTest {
     }
 
     @Test
-    @DisplayName("unbind：委托 DeviceService")
+    @DisplayName("unbind：委托 DeviceService（AD-004 归属校验通过后）")
     void unbindDelegates() {
+        // AD-004：unbind 前置校验设备存在且属于该家庭——mock 设备与绑定计数
+        Device device = new Device();
+        device.setDeviceId(java.util.UUID.randomUUID());
+        device.setDeviceCode(deviceCode);
+        when(deviceMapper.selectOne(any())).thenReturn(device);
+        when(bindingMapper.selectCount(any())).thenReturn(1L);
+
         service.unbind(familyAccountId, deviceCode, "acc-1");
         verify(deviceService).unbind(deviceCode, "acc-1");
     }

@@ -3,9 +3,11 @@ package com.mindsafe.service.device;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.mindsafe.domain.entity.Device;
 import com.mindsafe.domain.entity.DeviceBinding;
+import com.mindsafe.domain.entity.DeviceOperation;
 import com.mindsafe.domain.entity.DeviceQrIssuance;
 import com.mindsafe.domain.mapper.DeviceBindingMapper;
 import com.mindsafe.domain.mapper.DeviceMapper;
+import com.mindsafe.domain.mapper.DeviceOperationMapper;
 import com.mindsafe.domain.mapper.DeviceQrIssuanceMapper;
 import org.springframework.stereotype.Service;
 
