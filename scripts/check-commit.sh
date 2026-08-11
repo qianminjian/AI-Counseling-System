@@ -124,22 +124,28 @@ if [ "$STAGED" -eq 1 ]; then
   SUBJECT=$(head -1 "$MSG_FILE")
   echo "== 暂存提交消息检查 =="
   echo "  消息: $SUBJECT"
-  # merge 进行中检测（修复：L11 设计意图"merge 提交自动跳过"只覆盖 --last 模式，
-  # --staged/commit-msg hook 路径缺失 → 拦截后无醒目告警，合并状态悬空且文档不更新）
+  # merge 进行中检测（修复 2026-08-11：原实现“MERGE_MSG 存在一律拦截”形成死循环——
+  # 拦截提示“手动 git commit 完成合并”，但手动 commit 时 MERGE_MSG 仍在 → 再次拦截，合并无法完成。
+  # 修复：仅拦截不合规消息（git merge 自动默认 “Merge branch ...” 无 type 前缀）；
+  # 消息合规（手动 git commit -m 'type(scope): ...' 或 git merge -m 显式提供）放行）
   if [ -f "$(git rev-parse --git-path MERGE_MSG)" ]; then
-    echo ""
-    echo "=================================================================="
-    echo "⚠️  MERGE 未完成！commit-msg hook 拦截了 merge 自动提交消息"
-    echo ""
-    echo "    git merge 的合并结果已暂存，但提交被中止——develop 尚未记录本次合并，"
-    echo "    DESIGN-OVERVIEW/TASK-TRACKER 等文档的合并变更不会落库，CI 不会触发。"
-    echo ""
-    echo "    请手动完成合并提交（可审计合入内容）："
-    echo "      git commit -m 'chore(main): 合并 origin/main 至 develop（<合入内容摘要>）'"
-    echo ""
-    echo "    如需放弃合并：git merge --abort"
-    echo "=================================================================="
-    exit 1
+    if echo "$SUBJECT" | grep -qE '^(feat|fix|docs|style|refactor|test|chore|perf|ci|revert|security|hotfix)(\([^)]*\))?: '; then
+      pass "merge 进行中但消息合规（手动完成合并，放行）"
+    else
+      echo ""
+      echo "=================================================================="
+      echo "⚠️  MERGE 未完成！commit-msg hook 拦截了 merge 自动提交消息"
+      echo ""
+      echo "    git merge 的合并结果已暂存，但提交被中止——develop 尚未记录本次合并，"
+      echo "    DESIGN-OVERVIEW/TASK-TRACKER 等文档的合并变更不会落库，CI 不会触发。"
+      echo ""
+      echo "    请手动完成合并提交（可审计合入内容）："
+      echo "      git commit -m 'chore(main): 合并 origin/main 至 develop（<合入内容摘要>）'"
+      echo ""
+      echo "    如需放弃合并：git merge --abort"
+      echo "=================================================================="
+      exit 1
+    fi
   fi
   if echo "$SUBJECT" | grep -qE '^(feat|fix|docs|style|refactor|test|chore|perf|ci|revert|security|hotfix)(\([^)]*\))?: '; then
     pass "格式合法"
