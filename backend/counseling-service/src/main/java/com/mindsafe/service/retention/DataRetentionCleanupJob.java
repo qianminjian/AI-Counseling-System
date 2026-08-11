@@ -3,9 +3,17 @@ package com.mindsafe.service.retention;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.mindsafe.common.tenant.TenantContextHolder;
 import com.mindsafe.domain.entity.CounselingSession;
+import com.mindsafe.domain.entity.EmotionDiary;
+import com.mindsafe.domain.entity.LongTermMemory;
 import com.mindsafe.domain.entity.MessageSummary;
+import com.mindsafe.domain.entity.User;
+import com.mindsafe.domain.entity.VoiceprintEmbedding;
 import com.mindsafe.domain.mapper.CounselingSessionMapper;
+import com.mindsafe.domain.mapper.EmotionDiaryMapper;
+import com.mindsafe.domain.mapper.LongTermMemoryMapper;
 import com.mindsafe.domain.mapper.MessageSummaryMapper;
+import com.mindsafe.domain.mapper.UserMapper;
+import com.mindsafe.domain.mapper.VoiceprintEmbeddingMapper;
 import com.mindsafe.service.audit.AuditLogService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -16,6 +24,8 @@ import org.springframework.stereotype.Service;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.List;
+import java.util.UUID;
 
 /**
  * 数据保留期定期清理任务（AUTH-031，PIPL 数据最小化 + 删除权）
@@ -26,6 +36,9 @@ import java.time.temporal.ChronoUnit;
  *   <li>高风险对话消息摘要（risk_level ≥ 2）：365 天后物理删除（默认，可配置 high-risk-session-days）</li>
  *   <li>已完成会话记录：跟随消息保留期（普通 180 天 / 高风险 365 天）</li>
  * </ul>
+ * <p>
+ * 撤回学生优先清理（doing/92 R-009②，PIPL §47 删除权）：withdrawn 账号的声纹/长期记忆/
+ * 情绪日记撤回即删（见 doing/92 R-009① 清单口径），每日任务顺带执行（幂等，删过无痕）。
  * 每日凌晨 03:00 执行（低峰期），清理结果写入审计日志。
  */
 @Service
@@ -39,6 +52,10 @@ public class DataRetentionCleanupJob {
 
     private final MessageSummaryMapper messageSummaryMapper;
     private final CounselingSessionMapper sessionMapper;
+    private final UserMapper userMapper;
+    private final VoiceprintEmbeddingMapper voiceprintEmbeddingMapper;
+    private final LongTermMemoryMapper longTermMemoryMapper;
+    private final EmotionDiaryMapper emotionDiaryMapper;
     private final AuditLogService auditLogService;
 
     private final int normalRetentionDays;
@@ -47,11 +64,19 @@ public class DataRetentionCleanupJob {
     public DataRetentionCleanupJob(
             MessageSummaryMapper messageSummaryMapper,
             CounselingSessionMapper sessionMapper,
+            UserMapper userMapper,
+            VoiceprintEmbeddingMapper voiceprintEmbeddingMapper,
+            LongTermMemoryMapper longTermMemoryMapper,
+            EmotionDiaryMapper emotionDiaryMapper,
             AuditLogService auditLogService,
             @Value("${mindsafe.security.data-retention.normal-session-days:180}") int normalRetentionDays,
             @Value("${mindsafe.security.data-retention.high-risk-session-days:365}") int highRiskRetentionDays) {
         this.messageSummaryMapper = messageSummaryMapper;
         this.sessionMapper = sessionMapper;
+        this.userMapper = userMapper;
+        this.voiceprintEmbeddingMapper = voiceprintEmbeddingMapper;
+        this.longTermMemoryMapper = longTermMemoryMapper;
+        this.emotionDiaryMapper = emotionDiaryMapper;
         this.auditLogService = auditLogService;
         this.normalRetentionDays = normalRetentionDays;
         this.highRiskRetentionDays = highRiskRetentionDays;
@@ -76,6 +101,10 @@ public class DataRetentionCleanupJob {
         int deletedSessions = 0;
 
         try {
+            // 0. 撤回学生优先清理（doing/92 R-009②）：withdrawn 账号的声纹/长期记忆/情绪日记撤回即删
+            //    （PIPL §47 删除权口径，清单见 doing/92 R-009①；幂等——删过再跑无痕）
+            cleanupWithdrawnStudentData();
+
             // 1. 清理普通消息摘要（risk_level < 2 且超过 180 天）
             deletedMessages += messageSummaryMapper.delete(
                     new LambdaQueryWrapper<MessageSummary>()
@@ -126,5 +155,42 @@ public class DataRetentionCleanupJob {
             auditLogService.log(null, null, "DATA_RETENTION_CLEANUP_ERROR", "system", null,
                     "清理任务异常: " + e.getMessage());
         }
+    }
+
+    /**
+     * 撤回学生数据优先清理（doing/92 R-009②）：删除全部 withdrawn 学生账号的
+     * 声纹特征/长期记忆/情绪日记（撤回即删口径）；返回处理的学生数。
+     * 系统作用域批量删除（跨租户合法，仅限 withdrawn 学生 id 集合）。
+     * <p>
+     * 已知限制（审查登记）：系统级审计（tenantId=null）受 audit_logs.tenant_id NOT NULL
+     * 约束无法落库（与既有 DATA_RETENTION_CLEANUP 同病），审计意图保留待基建修复。
+     */
+    private int cleanupWithdrawnStudentData() {
+        List<User> withdrawn = userMapper.selectList(
+                new LambdaQueryWrapper<User>()
+                        .eq(User::getStatus, User.STATUS_WITHDRAWN)
+                        .eq(User::getUserType, User.USER_TYPE_STUDENT)
+                        .select(User::getUserId));
+        if (withdrawn.isEmpty()) {
+            return 0;
+        }
+        List<UUID> userIds = withdrawn.stream().map(User::getUserId).toList();
+
+        int deletedVoiceprints = voiceprintEmbeddingMapper.delete(
+                new LambdaQueryWrapper<VoiceprintEmbedding>()
+                        .in(VoiceprintEmbedding::getUserId, userIds));
+        int deletedMemories = longTermMemoryMapper.delete(
+                new LambdaQueryWrapper<LongTermMemory>()
+                        .in(LongTermMemory::getStudentUserId, userIds));
+        int deletedDiaries = emotionDiaryMapper.delete(
+                new LambdaQueryWrapper<EmotionDiary>()
+                        .in(EmotionDiary::getStudentUserId, userIds));
+
+        log.info("撤回学生优先清理: 学生 {} 人, 删声纹 {} 条, 删长期记忆 {} 条, 删情绪日记 {} 条",
+                withdrawn.size(), deletedVoiceprints, deletedMemories, deletedDiaries);
+        auditLogService.log(null, null, "DATA_RETENTION_WITHDRAWAL_CLEANUP", "system", null,
+                String.format("撤回学生优先清理: %d 人, 删声纹 %d 条, 删长期记忆 %d 条, 删情绪日记 %d 条",
+                        withdrawn.size(), deletedVoiceprints, deletedMemories, deletedDiaries));
+        return withdrawn.size();
     }
 }
