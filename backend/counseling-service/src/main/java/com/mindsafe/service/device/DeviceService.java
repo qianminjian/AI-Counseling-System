@@ -2,6 +2,8 @@ package com.mindsafe.service.device;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.mindsafe.domain.entity.Device;
+import com.mindsafe.domain.entity.DeviceOperation;
+import com.mindsafe.domain.mapper.DeviceOperationMapper;
 import com.mindsafe.domain.entity.DeviceBindCode;
 import com.mindsafe.domain.entity.DeviceBinding;
 import com.mindsafe.domain.mapper.DeviceBindCodeMapper;
@@ -9,6 +11,7 @@ import com.mindsafe.domain.mapper.DeviceBindingMapper;
 import com.mindsafe.domain.mapper.DeviceMapper;
 import com.mindsafe.domain.util.DeviceCodeUtil;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -35,15 +38,21 @@ public class DeviceService {
     private final DeviceBindingMapper bindingMapper;
     private final DeviceBindCodeMapper bindCodeMapper;
     private final DevicePreferenceService preferenceService;
+    private final DeviceSecurityService securityService;
+    private final DeviceOperationMapper operationMapper;
     private final SecureRandom secureRandom = new SecureRandom();
 
     public DeviceService(DeviceMapper deviceMapper, DeviceBindingMapper bindingMapper,
                          DeviceBindCodeMapper bindCodeMapper,
-                         DevicePreferenceService preferenceService) {
+                         DevicePreferenceService preferenceService,
+                         DeviceSecurityService securityService,
+                         DeviceOperationMapper operationMapper) {
         this.deviceMapper = deviceMapper;
         this.bindingMapper = bindingMapper;
         this.bindCodeMapper = bindCodeMapper;
         this.preferenceService = preferenceService;
+        this.securityService = securityService;
+        this.operationMapper = operationMapper;
     }
 
     /**
@@ -92,10 +101,15 @@ public class DeviceService {
             deviceMapper.updateById(update);
             device.setStatus(update.getStatus());
         }
+        // P0-1：签发设备安全凭证（device_secret 落库 + device_token 返回）
+        DeviceSecurityService.DeviceSecurityCredentials creds = securityService.issueCredentials(device);
+
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("deviceCode", deviceCode);
         result.put("status", device.getStatus());
         result.put("registered", true);
+        result.put("deviceToken", creds.token());
+        result.put("tokenExpiresAt", creds.expiresAt());
         return result;
     }
 
@@ -184,6 +198,7 @@ public class DeviceService {
      * 绑定（AC-84-10/11/12）：登录态 + 验证码双因子；验证码哈希比对、
      * 3 次失败锁定 5 分钟、绑定成功即作废；设备状态 → ONLINE_BOUND。
      */
+    @Transactional
     public Map<String, Object> bind(String deviceCode, String bindType, UUID bindTargetId,
                                     UUID studentId, String code, String operator) {
         Device device = requireDevice(deviceCode);
@@ -285,12 +300,17 @@ public class DeviceService {
         if (preferences != null) {
             config.put("preferences", preferences);
         }
+        // P0-1：reportOnline 成功后签发的 device_token 下发备后续鉴权
+        if (device.getDeviceToken() != null) {
+            config.put("deviceToken", device.getDeviceToken());
+        }
         return config;
     }
 
     /** 固件升级受理（CFG-008 M13，AC-84-20）：登记操作意图（真实执行由固件侧）。 */
     public Map<String, Object> ota(String deviceCode, String operator) {
         Device device = requireDevice(deviceCode);
+        auditOperation(deviceCode, "ota", operator, "操作已受理，固件侧执行待 NST-HW-02 二期对接");
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("deviceCode", deviceCode);
         result.put("action", "ota");
@@ -326,6 +346,7 @@ public class DeviceService {
             update.setUnboundAt(now);
             bindingMapper.updateById(update);
         }
+        auditOperation(deviceCode, "factory-reset", operator, "解绑" + actives.size() + "个绑定 + 状态回 UNACTIVATED");
         Device deviceUpdate = new Device();
         deviceUpdate.setDeviceId(device.getDeviceId());
         deviceUpdate.setStatus(Device.STATUS_UNACTIVATED);
@@ -401,7 +422,7 @@ public class DeviceService {
                         .eq(DeviceBindCode::getDeviceId, deviceId)
                         .isNull(DeviceBindCode::getUsedAt)
                         .orderByDesc(DeviceBindCode::getCreatedAt)
-                        .last("LIMIT 1"));
+                        .last("LIMIT 1 FOR UPDATE"));  // P0-2：行锁防竞态
     }
 
     private static String sha256Hex(String input) {
@@ -411,5 +432,17 @@ public class DeviceService {
         } catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException("SHA-256 不可用", e);
         }
+    }
+
+    /** P1 设备操作审计落库 */
+    private void auditOperation(String deviceCode, String action, String operator, String note) {
+        DeviceOperation op = new DeviceOperation();
+        op.setOperationId(UUID.randomUUID());
+        op.setDeviceCode(deviceCode);
+        op.setAction(action);
+        op.setOperator(operator);
+        op.setAcceptedAt(Instant.now());
+        op.setNote(note);
+        operationMapper.insert(op);
     }
 }

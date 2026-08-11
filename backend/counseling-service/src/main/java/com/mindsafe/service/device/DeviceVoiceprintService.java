@@ -75,8 +75,10 @@ public class DeviceVoiceprintService {
 
     /**
      * 设备端采集进度上报（AC-84-13）：COLLECTING/UPLOADED 阶段推进；任务不存在返回 null。
+     * 当设备上报 UPLOADED 时自动调用 complete() 完成状态机流转（P0-5：真实 enroll
+     * 落库链路待对接 voice-service，当前前置亭——前端轮询不会卡在 UPLOADED）。
      */
-    public Map<String, Object> reportPhase(String taskId, String phase) {
+    public Map<String, Object> reportPhase(String taskId, String phase, String deviceCode) {
         Map<String, Object> task = getTask(taskId);
         if (task == null || !task.get("phase").equals(PHASE_INITIATED) && !task.get("phase").equals(PHASE_COLLECTING)) {
             return task;
@@ -84,14 +86,25 @@ public class DeviceVoiceprintService {
         if (!PHASE_COLLECTING.equals(phase) && !PHASE_UPLOADED.equals(phase)) {
             throw new IllegalArgumentException("非法采集阶段: " + phase);
         }
+        // P0-5：校验 task 的 deviceCode 与上报方一致
+        if (deviceCode != null && !deviceCode.equals(task.get("deviceCode"))) {
+            throw new IllegalArgumentException("设备码与任务不匹配");
+        }
         task.put("phase", phase);
         task.put("updatedAt", Instant.now().toString());
         redisTemplate.opsForValue().set(key(taskId), write(task), TASK_TTL_MINUTES, TimeUnit.MINUTES);
+        // P0-5：UPLOADED 自动触发 complete（真实 enroll 链路就绪后替换为唤醒 enroll 异步任务）
+        if (PHASE_UPLOADED.equals(phase)) {
+            complete(taskId);
+            return getTask(taskId);
+        }
         return task;
     }
 
     /**
      * 标记任务完成（AC-84-14）：enroll 落库成功后调用；任务不存在静默忽略。
+     * @TODO P0-5：当前由 reportPhase(UPLOADED) 自动触发 complete()，真实 enroll
+     * 对接 voice-service 后应移除自动逻辑，改由 enroll 回调驱动。
      */
     public void complete(String taskId) {
         if (taskId == null || taskId.isBlank()) {

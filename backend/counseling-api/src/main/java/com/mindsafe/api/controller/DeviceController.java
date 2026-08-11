@@ -153,7 +153,7 @@ public class DeviceController {
         if (taskId == null || phase == null) {
             return ApiResponse.error(400, "taskId/phase 缺失");
         }
-        Map<String, Object> task = voiceprintService.reportPhase(taskId, phase);
+        Map<String, Object> task = voiceprintService.reportPhase(taskId, phase, body.get("deviceCode"));
         if (task == null) {
             return ApiResponse.error(404, "任务不存在");
         }

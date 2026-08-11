@@ -3,6 +3,9 @@ package com.mindsafe.service.toc;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.mindsafe.domain.entity.TocFamilyAccount;
 import com.mindsafe.domain.mapper.TocFamilyAccountMapper;
+import com.mindsafe.service.security.FieldEncryptionService;
+import org.springframework.context.EnvironmentAware;
+import org.springframework.core.env.Environment;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
@@ -12,6 +15,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.TimeUnit;
 
 /**
  * toC 家庭账号服务（doing/85 TOC-001，toC-AC-1）
@@ -21,7 +25,7 @@ import java.util.concurrent.ThreadLocalRandom;
  * Controller 层签发 JWT（userType=toc_parent，tenantId=null 平台级）。
  */
 @Service
-public class TocAuthService {
+public class TocAuthService implements EnvironmentAware {
 
     /** 验证码 Redis key 前缀 */
     private static final String CODE_KEY_PREFIX = "toccode:";
@@ -32,18 +36,35 @@ public class TocAuthService {
     /** 重发冷却 */
     private static final Duration RESEND_COOLDOWN = Duration.ofSeconds(60);
 
+    /** 登录/注册速率限制（P1） */
+    private static final String RATE_KEY_PREFIX = "ratelimit:toc:auth:";
+    private static final int RATE_MAX_ATTEMPTS = 10;
+    private static final Duration RATE_WINDOW = Duration.ofMinutes(1);
+
+    private Environment environment;
+
     private final TocFamilyAccountMapper accountMapper;
     private final StringRedisTemplate redisTemplate;
+    private final FieldEncryptionService encryptionService;
 
-    public TocAuthService(TocFamilyAccountMapper accountMapper, StringRedisTemplate redisTemplate) {
+    public TocAuthService(TocFamilyAccountMapper accountMapper, StringRedisTemplate redisTemplate,
+                          FieldEncryptionService encryptionService) {
         this.accountMapper = accountMapper;
         this.redisTemplate = redisTemplate;
+        this.encryptionService = encryptionService;
+    }
+
+    @Override
+    public void setEnvironment(Environment environment) {
+        this.environment = environment;
     }
 
     /**
      * 发送验证码（注册/登录共用）：60s 重发冷却 + 5 分钟有效。
+     * 验证码明文仅 dev/test profile 回显（P0-3：生产接入短信通道后无回显）。
      */
     public Map<String, Object> sendCode(String phone) {
+        rateLimitCheck(phone);
         if (phone == null || !phone.matches("^1\\d{10}$")) {
             throw new IllegalArgumentException("手机号格式非法");
         }
@@ -59,23 +80,29 @@ public class TocAuthService {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("phone", maskPhone(phone));
         result.put("expiresInSeconds", CODE_TTL.toSeconds());
-        result.put("code", code); // 演示环境回显验证码（生产接入短信通道后移除）
+        // P0-3：验证码明文仅 dev/test profile 回显（生产接入短信通道后无回显）
+        if (environment != null && !environment.acceptsProfiles("prod")) {
+            result.put("code", code);
+        }
         return result;
     }
 
     /**
      * 注册：手机号 + 验证码 → 创建家庭账号，返回账号信息（token 由 Controller 签发）。
+     * P0-4：手机号经 FieldEncryptionService 加密后存储（ENCRYPTION_ENABLED=false 时明文透传）。
      */
     public TocFamilyAccount register(String phone, String code) {
+        rateLimitCheck(phone);
         verifyCode(phone, code);
+        String encryptedPhone = encryptionService.encrypt(phone);
         TocFamilyAccount existing = accountMapper.selectOne(
-                new LambdaQueryWrapper<TocFamilyAccount>().eq(TocFamilyAccount::getPhone, phone));
+                new LambdaQueryWrapper<TocFamilyAccount>().eq(TocFamilyAccount::getPhone, encryptedPhone));
         if (existing != null) {
             throw new IllegalArgumentException("该手机号已注册，请直接登录");
         }
         TocFamilyAccount account = new TocFamilyAccount();
         account.setFamilyAccountId(UUID.randomUUID());
-        account.setPhone(phone);
+        account.setPhone(encryptedPhone);
         account.setStatus(TocFamilyAccount.STATUS_ACTIVE);
         Instant now = Instant.now();
         account.setCreatedAt(now);
@@ -86,11 +113,13 @@ public class TocAuthService {
 
     /**
      * 登录：手机号 + 验证码（已注册账号），返回账号信息（token 由 Controller 签发）。
+     * P0-4：查询前对输入手机号执行与存储时相同的 encrypt 操作匹配。
      */
     public TocFamilyAccount login(String phone, String code) {
+        rateLimitCheck(phone);
         verifyCode(phone, code);
         TocFamilyAccount account = accountMapper.selectOne(
-                new LambdaQueryWrapper<TocFamilyAccount>().eq(TocFamilyAccount::getPhone, phone));
+                new LambdaQueryWrapper<TocFamilyAccount>().eq(TocFamilyAccount::getPhone, encryptionService.encrypt(phone)));
         if (account == null) {
             throw new IllegalArgumentException("账号不存在，请先注册");
         }
@@ -119,5 +148,17 @@ public class TocAuthService {
     private static String maskPhone(String phone) {
         return phone == null || phone.length() < 7 ? phone
                 : phone.substring(0, 3) + "****" + phone.substring(7);
+    }
+
+    /** P1 速率限制：同一手机号每分钟最多 10 次认证请求 */
+    private void rateLimitCheck(String phone) {
+        String key = RATE_KEY_PREFIX + phone;
+        Long count = redisTemplate.opsForValue().increment(key);
+        if (count == 1) {
+            redisTemplate.expire(key, RATE_WINDOW.toSeconds(), TimeUnit.SECONDS);
+        }
+        if (count != null && count > RATE_MAX_ATTEMPTS) {
+            throw new IllegalArgumentException("操作过于频繁，请稍后再试");
+        }
     }
 }
