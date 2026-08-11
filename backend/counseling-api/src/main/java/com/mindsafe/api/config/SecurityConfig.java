@@ -58,27 +58,33 @@ public class SecurityConfig {
                     );
                 })
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                // doing/90 P3-2（2026-08-11）：安全头部——防点击劫持/XSS/MIME 嗅探
+                .headers(headers -> headers
+                    .frameOptions(f -> f.deny())
+                    .contentTypeOptions()
+                )
                 .authorizeHttpRequests(auth -> auth
                         // ASYNC/ERROR 分发放行：SSE 流式响应经 ASYNC 二次分发时 SecurityContext 不传播，
                         // 初始 REQUEST 分发已完成鉴权，二次分发再拦会掐断流（IT: sendRedRiskMessage 回归）
                         .dispatcherTypeMatchers(jakarta.servlet.DispatcherType.ASYNC, jakarta.servlet.DispatcherType.ERROR).permitAll()
                         // ─── 公开端点（无需 JWT）───
                         // 认证流程入口
-                        .requestMatchers("/api/v1/auth/login").permitAll()
-                        .requestMatchers("/api/v1/auth/trial/register").permitAll()
-                        .requestMatchers("/api/v1/auth/pin-login").permitAll()
+                        // doing/90 P3-3（2026-08-11，公开端点审计）：以下 11 个端点无 JWT 认证，各防护措施见注释
+                        .requestMatchers("/api/v1/auth/login").permitAll()              // 登录入口（限流+锁定 LoginLockoutService）
+                        .requestMatchers("/api/v1/auth/trial/register").permitAll()     // 试注册（限流）
+                        .requestMatchers("/api/v1/auth/pin-login").permitAll()           // PIN 登录（限流）
                         // 声纹登录（本地声纹比对通过后凭设备凭证换 token，凭证在端点内校验）
-                        .requestMatchers("/api/v1/auth/voice-login").permitAll()
+                        .requestMatchers("/api/v1/auth/voice-login").permitAll()         // 声纹登录（IP+embedding 双限流 SEC-007）
                         // 声纹双模式：config 公开查询模式，verify 公开接收 embedding 比对签发 token
-                        .requestMatchers("/api/v1/voiceprint/config").permitAll()
-                        .requestMatchers("/api/v1/voiceprint/verify").permitAll()
+                        .requestMatchers("/api/v1/voiceprint/config").permitAll()        // 声纹配置（只读）
+                        .requestMatchers("/api/v1/voiceprint/verify").permitAll()        // 声纹验证（IP+embedding 双限流+IP 300/min）
                         // 声纹登录引导语 TTS（白名单文本，无需认证）
-                        .requestMatchers("/api/v1/tts/login-prompt").permitAll()
+                        .requestMatchers("/api/v1/tts/login-prompt").permitAll()          // TTS 登录引导
                         // TTS 音色人设列表（登录前选音色/配置需要，公开只读）
-                        .requestMatchers("/api/v1/tts/personas").permitAll()
+                        .requestMatchers("/api/v1/tts/personas").permitAll()              // TTS 人设列表
                         // 前端运行时配置（CFG-001，登录前即需拉取，如声纹模式判断）
-                        .requestMatchers("/api/v1/system/config").permitAll()
-                        .requestMatchers("/api/v1/auth/refresh").permitAll()
+                        .requestMatchers("/api/v1/system/config").permitAll()             // 系统配置（CFG-001 公开只读）
+                        .requestMatchers("/api/v1/auth/refresh").permitAll()              // token 刷新（需旧 token 签名校验）
                         // CFG-001（V39）：无屏终端设备上报/脱敏查询（设备端无 JWT，扫码入口匿名可查）；
                         // 绑定类端点（bind-code/bind/unbind）默认需登录态
                         // P0-1/AD-002：设备 report 通道暂回 permitAll（固件侧 HMAC 签名未就绪，
