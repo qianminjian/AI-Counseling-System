@@ -5,6 +5,7 @@ import com.mindsafe.domain.entity.DeviceBinding;
 import com.mindsafe.domain.entity.DeviceQrIssuance;
 import com.mindsafe.domain.mapper.DeviceBindingMapper;
 import com.mindsafe.domain.mapper.DeviceMapper;
+import com.mindsafe.domain.mapper.DeviceOperationMapper;
 import com.mindsafe.domain.mapper.DeviceQrIssuanceMapper;
 import com.mindsafe.domain.util.DeviceCodeUtil;
 import org.junit.jupiter.api.BeforeEach;
@@ -44,7 +45,7 @@ class PlatformDeviceServiceTest {
         deviceMapper = mock(DeviceMapper.class);
         bindingMapper = mock(DeviceBindingMapper.class);
         qrIssuanceMapper = mock(DeviceQrIssuanceMapper.class);
-        service = new PlatformDeviceService(deviceMapper, bindingMapper, qrIssuanceMapper);
+        service = new PlatformDeviceService(deviceMapper, bindingMapper, qrIssuanceMapper, mock(DeviceOperationMapper.class));
     }
 
     private Device sampleDevice() {

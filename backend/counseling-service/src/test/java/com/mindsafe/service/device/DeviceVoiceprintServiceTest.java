@@ -90,7 +90,7 @@ class DeviceVoiceprintServiceTest {
         Map<String, Object> task = service.createTask("K7M2P9XW4AQ", "stu-1", "t");
         when(valueOps.get(anyString())).thenReturn(serialize(task));
 
-        assertThatThrownBy(() -> service.reportPhase((String) task.get("taskId"), "HACKED"))
+        assertThatThrownBy(() -> service.reportPhase((String) task.get("taskId"), "HACKED", null))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("非法采集阶段");
     }

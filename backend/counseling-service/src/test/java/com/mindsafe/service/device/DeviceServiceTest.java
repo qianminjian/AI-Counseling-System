@@ -6,6 +6,7 @@ import com.mindsafe.domain.entity.DeviceBinding;
 import com.mindsafe.domain.mapper.DeviceBindCodeMapper;
 import com.mindsafe.domain.mapper.DeviceBindingMapper;
 import com.mindsafe.domain.mapper.DeviceMapper;
+import com.mindsafe.domain.mapper.DeviceOperationMapper;
 import com.mindsafe.domain.util.DeviceCodeUtil;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;

@@ -223,7 +223,7 @@ class DeviceControllerTest {
         Map<String, Object> task = new LinkedHashMap<>();
         task.put("taskId", "t1");
         task.put("phase", "COLLECTING");
-        when(voiceprintService.reportPhase("t1", "COLLECTING")).thenReturn(task);
+        when(voiceprintService.reportPhase("t1", "COLLECTING", null)).thenReturn(task);
 
         var response = controller.reportVoiceprintPhase(Map.of("taskId", "t1", "phase", "COLLECTING"));
         assertThat(response.code()).isEqualTo(0);
@@ -233,7 +233,7 @@ class DeviceControllerTest {
     @Test
     @DisplayName("reportVoiceprintPhase：任务不存在返回 404")
     void reportVoiceprintPhaseNotFound() {
-        when(voiceprintService.reportPhase("t1", "COLLECTING")).thenReturn(null);
+        when(voiceprintService.reportPhase("t1", "COLLECTING", null)).thenReturn(null);
         assertThat(controller.reportVoiceprintPhase(Map.of("taskId", "t1", "phase", "COLLECTING")).code())
                 .isEqualTo(404);
     }

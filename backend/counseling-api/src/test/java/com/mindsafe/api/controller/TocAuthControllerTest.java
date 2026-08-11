@@ -1,7 +1,7 @@
 package com.mindsafe.api.controller;
 
 import com.mindsafe.api.security.JwtAuthenticationFilter.TenantContext;
-import com.mindsafe.api.security.JwtTokenProvider;
+import com.mindsafe.api.security.TocAuthProvider;
 import com.mindsafe.domain.entity.TocFamilyAccount;
 import com.mindsafe.service.toc.TocAuthService;
 import org.junit.jupiter.api.BeforeEach;
@@ -24,14 +24,14 @@ import static org.mockito.Mockito.when;
 class TocAuthControllerTest {
 
     private TocAuthService tocAuthService;
-    private JwtTokenProvider jwtTokenProvider;
+    private TocAuthProvider tocAuthProvider;
     private TocAuthController controller;
 
     @BeforeEach
     void setUp() {
         tocAuthService = mock(TocAuthService.class);
-        jwtTokenProvider = mock(JwtTokenProvider.class);
-        controller = new TocAuthController(tocAuthService, jwtTokenProvider);
+        tocAuthProvider = mock(TocAuthProvider.class);
+        controller = new TocAuthController(tocAuthService, tocAuthProvider);
     }
 
     @Test
@@ -50,14 +50,15 @@ class TocAuthControllerTest {
         account.setFamilyAccountId(UUID.randomUUID());
         account.setPhone("13800138000");
         when(tocAuthService.register("13800138000", "123456")).thenReturn(account);
-        when(jwtTokenProvider.generateToken(account.getFamilyAccountId(), "toc_parent", null))
-                .thenReturn("jwt-token");
+        Map<String, Object> session = new java.util.LinkedHashMap<>();
+        session.put("token", "jwt-token");
+        when(tocAuthProvider.buildSession(account)).thenReturn(session);
 
         var response = controller.register(Map.of("phone", "13800138000", "code", "123456"));
 
         assertThat(response.code()).isEqualTo(0);
         assertThat(response.data().get("token")).isEqualTo("jwt-token");
-        verify(jwtTokenProvider).generateToken(account.getFamilyAccountId(), "toc_parent", null);
+        verify(tocAuthProvider).buildSession(account);
     }
 
     @Test

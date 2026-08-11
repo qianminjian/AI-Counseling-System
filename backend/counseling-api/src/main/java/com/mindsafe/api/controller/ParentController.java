@@ -10,6 +10,7 @@ import com.mindsafe.domain.entity.MessageSummary;
 import com.mindsafe.domain.entity.User;
 import com.mindsafe.service.consent.ConsentWithdrawalService;
 import com.mindsafe.service.parent.ParentService;
+import com.mindsafe.service.parent.WeeklyReportService;
 import com.mindsafe.service.sms.PhoneVerificationService;
 import org.springframework.web.bind.annotation.*;
 
@@ -35,15 +36,17 @@ public class ParentController {
 
     private final JwtTokenProvider jwtTokenProvider;
     private final ParentService parentService;
+    private final WeeklyReportService weeklyReportService;
     private final ConsentWithdrawalService consentWithdrawalService;
     private final PhoneVerificationService phoneVerificationService;
 
     public ParentController(JwtTokenProvider jwtTokenProvider,
                             ParentService parentService,
                             ConsentWithdrawalService consentWithdrawalService,
-                            PhoneVerificationService phoneVerificationService) {
+                            PhoneVerificationService phoneVerificationService, WeeklyReportService weeklyReportService) {
         this.jwtTokenProvider = jwtTokenProvider;
         this.parentService = parentService;
+        this.weeklyReportService = weeklyReportService;
         this.consentWithdrawalService = consentWithdrawalService;
         this.phoneVerificationService = phoneVerificationService;
     }
@@ -69,48 +72,11 @@ public class ParentController {
     }
 
     private ApiResponse<Map<String, Object>> doGetWeeklyReport(UUID tenantId, UUID studentUserId) {
-        // T4 批次C：查询下沉 ParentService（租户 + 学生双条件）
-        User student = parentService.getStudent(tenantId, studentUserId);
-        if (student == null) {
+        // doing/89 N-003 步骤 5：聚合下沉 WeeklyReportService（Controller 仅编排，AC-89-07）
+        Map<String, Object> report = weeklyReportService.generate(tenantId, studentUserId);
+        if (report == null) {
             throw new BizException(ErrorCode.RESOURCE_NOT_FOUND, "学生不存在");
         }
-
-        Instant weekAgo = Instant.now().minus(7, ChronoUnit.DAYS);
-
-        // 近 7 天会话
-        List<CounselingSession> sessions = parentService.getRecentSessions(tenantId, studentUserId, weekAgo);
-
-        // 近 7 天情绪标签统计
-        List<MessageSummary> studentMessages =
-                parentService.getRecentStudentMessages(tenantId, studentUserId, weekAgo);
-
-        // 情绪分布
-        Map<String, Long> emotionDist = studentMessages.stream()
-                .filter(m -> m.getEmotionLabel() != null && !m.getEmotionLabel().isBlank())
-                .collect(Collectors.groupingBy(MessageSummary::getEmotionLabel, Collectors.counting()));
-
-        // 最高风险等级
-        int maxRisk = sessions.stream()
-                .mapToInt(s -> s.getRiskLevelSnapshot() != null ? s.getRiskLevelSnapshot() : 0)
-                .max().orElse(0);
-
-        Map<String, Object> report = new LinkedHashMap<>();
-        report.put("studentNickname", student.getPseudonym());
-        report.put("gradeCode", student.getGradeCode());
-        report.put("classCode", student.getClassCode());
-        report.put("weekStart", weekAgo.toString());
-        report.put("sessionCount", sessions.size());
-        report.put("totalTurns", sessions.stream().mapToInt(s -> s.getTurnCount() != null ? s.getTurnCount() : 0).sum());
-        report.put("emotionDistribution", emotionDist);
-        report.put("maxRiskLevel", maxRisk);
-        report.put("riskLabel", switch (maxRisk) {
-            case 3 -> "需关注";
-            case 2 -> "轻度波动";
-            case 1 -> "平稳";
-            default -> "良好";
-        });
-        report.put("generatedAt", Instant.now().toString());
-
         return ApiResponse.ok(report);
     }
 

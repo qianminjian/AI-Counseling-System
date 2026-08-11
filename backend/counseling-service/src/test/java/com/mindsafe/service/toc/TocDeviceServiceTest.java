@@ -1,6 +1,7 @@
 package com.mindsafe.service.toc;
 
 import com.mindsafe.domain.entity.DeviceBinding;
+import com.mindsafe.domain.mapper.DeviceMapper;
 import com.mindsafe.service.device.DeviceService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -30,7 +31,7 @@ class TocDeviceServiceTest {
     @BeforeEach
     void setUp() {
         deviceService = mock(DeviceService.class);
-        service = new TocDeviceService(deviceService);
+        service = new TocDeviceService(deviceService, mock(com.mindsafe.domain.mapper.DeviceBindingMapper.class), mock(DeviceMapper.class));
     }
 
     @Test
