@@ -1,8 +1,8 @@
 # doing/89 认证与身份解析深化 SPEC（N-001 + N-003）
 
 > 编号：DOC-110 | 创建：2026-08-11 | 来源：doing/89 非 device 域架构深化候选清单——首要建议批次（N-001 认证域 + N-003 家长域 withdrawn 旁路）
-> 状态：SPEC（6/8 AC 闭环，待收尾）| 与 frozen/89 同号异题（文件名可区分）
-> 核验（2026-08-11）：AC-89-01/02/03/06/07/08 已闭环（805eacc/7de2b0a/f57c6af + 四端回归 28+61 全绿）；**AC-89-04（ParentIdentityResolver 统一）与 AC-89-05（AuthProvider 统一签发）未实施**——暂不归档
+> 状态：**已合并归档（2026-08-11，DOC-112，his/89）**——8/8 AC 全部闭环 | 与 frozen/89 同号异题（文件名可区分）
+> 实施（2026-08-11，commit 6297372）：AC-89-04/05 收尾完成——ParentIdentityResolver（统一双路径 + withdrawn 统一拦截 + requireLinkedOnly 宽松专用，11 单测）+ AuthProvider 接口四实现（业务/平台/家长签发改造 + Toc implements）；回归 service 1093 + api 454 + ai 520 全绿（AC-89-08）；最终态并入 03 §5.3；文件归档 his/89
 > 关联：doing/89 候选清单（全量 N-001~013）、his/83 §7.6（平台认证）、design/13（领域词汇表）
 
 ---
