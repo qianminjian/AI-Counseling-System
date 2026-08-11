@@ -6,7 +6,7 @@
 #   1. DESIGN-OVERVIEW 合并文档表格中的全部 .md 链接指向的文件必须存在
 #   2. design/ 根目录合并文档编号 01~N 必须连续（防删改跳号；撤销编号在 RETIRED_NUMS 登记豁免）
 #   3. design/frozen/ 下文件编号必须在 DESIGN-OVERVIEW 声明的冻结白名单内
-#      （34、38-43、58-62、73、87-91；doing/92 R-028：白名单与 OVERVIEW 冻结区声明、frozen 实态三对齐——
+#      （34、38-43、58-62、73、87-93；doing/92 R-028：白名单与 OVERVIEW 冻结区声明、frozen 实态三对齐——
 #       新增冻结文档需同步更新白名单与 OVERVIEW）
 #
 # 用法：
@@ -99,9 +99,9 @@ else
 fi
 echo ""
 
-# ---- 3. frozen 白名单校验（DESIGN-OVERVIEW 冻结区声明：34、38-43、58-62、73、87-91）----
+# ---- 3. frozen 白名单校验（DESIGN-OVERVIEW 冻结区声明：34、38-43、58-62、73、87-93）----
 FROZEN_DIR="$DESIGN_DIR/frozen"
-FROZEN_WHITELIST="34 38 39 40 41 42 43 58 59 60 61 62 73 87 88 89 90 91"
+FROZEN_WHITELIST="34 38 39 40 41 42 43 58 59 60 61 62 73 87 88 89 90 91 92 93"
 if [ -d "$FROZEN_DIR" ]; then
   echo "  frozen 白名单: $FROZEN_WHITELIST"
   FROZEN_COUNT=0
