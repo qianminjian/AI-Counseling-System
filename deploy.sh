@@ -410,6 +410,15 @@ $DEPLOY_BACKEND && BUILD_TARGETS="$BUILD_TARGETS backend"
 $DEPLOY_TTS && BUILD_TARGETS="$BUILD_TARGETS tts-service"
 $DEPLOY_VOICE && BUILD_TARGETS="$BUILD_TARGETS voice-service"
 
+# DEPLOY-OPT-1（2026-08-11）：compose 配置本地预检——防配置错误上传服务器后才暴露
+# （教训：RUNTIME-004 REDIS_* 误插 tts build 段，docker compose build 阶段才报 Additional property）
+if ! docker compose -f deploy/docker-compose.prod.yml config --quiet 2>/tmp/compose-config.err; then
+  echo "❌ compose 配置校验失败（本地预检，未上传服务器）："
+  grep -E "Additional property|error|invalid" /tmp/compose-config.err | head -5
+  exit 1
+fi
+echo "✅ compose 配置校验通过（本地预检）"
+
 if [ -n "$BUILD_TARGETS" ]; then
   echo "🔨 构建镜像:$BUILD_TARGETS"
   dm_start build-images
@@ -439,7 +448,13 @@ if [ -n "$RESTART_TARGETS" ]; then
   echo "🔄 重启服务:$RESTART_TARGETS"
   dm_start restart
   if ! ssh "${SSH_OPTS[@]}" "$SERVER" "cd $REMOTE_DIR && bash service-manager.sh restart $RESTART_TARGETS"; then
-    echo "❌ 服务重启失败，请检查：ssh $SERVER 'cd $REMOTE_DIR && bash service-manager.sh status'"
+    # DEPLOY-OPT-2（2026-08-11）：失败自动抓取容器日志定位（不再只提示手工检查）
+    echo "❌ 服务重启失败，自动抓取容器日志定位："
+    for svc in $RESTART_TARGETS; do
+      [ "$svc" = "nginx" ] && continue
+      echo "--- $svc 最近错误日志 ---"
+      ssh "${SSH_OPTS[@]}" "$SERVER" "docker logs mindsafe-$svc --tail 30 2>&1 | grep -E 'ERROR|Exception|Caused by|NoSuchMethod|APPLICATION FAILED|Started .*Application' | tail -6"
+    done
     echo "   部署状态未更新，下次 deploy.sh 将重新部署"
     exit 1
   fi

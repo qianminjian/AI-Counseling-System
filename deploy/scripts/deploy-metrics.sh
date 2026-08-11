@@ -182,6 +182,9 @@ NoResourceFoundException|NoResourceFoundException：API 路由不存在，核对
 tts/personas|/tts/personas 403：SecurityConfig 白名单遗漏 permitAll
 URI is not absolute|企微告警 URI is not absolute：WeCom webhook 环境变量缺失或格式错误
 HttpMessageNotReadableException|HttpMessageNotReadableException：非法 JSON 未映射 400，检查全局异常处理
+Additional property .* is not allowed|compose 配置结构错误（属性误插段落，如 REDIS_* 误入 build 段）：本地 docker compose config --quiet 预检可提前拦截，检查 yml 缩进/段落归属（DEPLOY-OPT-1）
+Permission denied (13)|rsync 权限失败：服务器目标目录存在 root 遗留文件（如 dist/audio-test），用 docker run --rm -v 挂载 等效 root 清理后重试
+No default constructor found|Spring 多构造器未标注：Bean 实例化失败，给主构造器加 @Autowired（多构造器需显式标注）
 "
 
 # ===== 失败模式知识库（特征 → 修复指引） =====
