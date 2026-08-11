@@ -29,7 +29,8 @@ public class EmotionDiaryService {
     /** 今日打卡（每天仅一次，重复提交覆盖） */
     @Transactional
     public EmotionDiary checkin(UUID tenantId, UUID studentUserId, String emotion, int intensity, String note) {
-        LocalDate today = LocalDate.now();
+        // doing/92 R-010：业务日界收敛至 CounselingTimeZone
+        LocalDate today = com.mindsafe.service.common.CounselingTimeZone.today();
 
         // 查找今日已有记录
         EmotionDiary existing = diaryMapper.selectOne(
@@ -59,13 +60,13 @@ public class EmotionDiaryService {
                 new LambdaQueryWrapper<EmotionDiary>()
                         .eq(EmotionDiary::getTenantId, tenantId)
                         .eq(EmotionDiary::getStudentUserId, studentUserId)
-                        .eq(EmotionDiary::getDiaryDate, LocalDate.now())
+                        .eq(EmotionDiary::getDiaryDate, com.mindsafe.service.common.CounselingTimeZone.today())
         );
     }
 
     /** 近 N 天历史（默认 14 天，用于趋势图） */
     public List<EmotionDiary> getHistory(UUID tenantId, UUID studentUserId, int days) {
-        LocalDate since = LocalDate.now().minusDays(days);
+        LocalDate since = com.mindsafe.service.common.CounselingTimeZone.today().minusDays(days);
         return diaryMapper.selectList(
                 new LambdaQueryWrapper<EmotionDiary>()
                         .eq(EmotionDiary::getTenantId, tenantId)

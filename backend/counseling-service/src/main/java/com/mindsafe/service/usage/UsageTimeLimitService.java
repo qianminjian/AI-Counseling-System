@@ -85,6 +85,7 @@ public class UsageTimeLimitService {
     }
 
     private String key(UUID tenantId, UUID userId) {
-        return KEY_PREFIX + tenantId + ":" + userId + ":" + LocalDate.now().format(DAY_FMT);
+        // doing/92 R-010：业务日界收敛至 CounselingTimeZone
+        return KEY_PREFIX + tenantId + ":" + userId + ":" + com.mindsafe.service.common.CounselingTimeZone.today().format(DAY_FMT);
     }
 }

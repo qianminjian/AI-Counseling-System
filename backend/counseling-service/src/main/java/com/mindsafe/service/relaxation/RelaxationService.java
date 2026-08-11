@@ -35,7 +35,8 @@ public class RelaxationService {
 
     /** 今日已完成练习计数 */
     public long countTodayCompleted(UUID tenantId, UUID studentUserId) {
-        Instant todayStart = LocalDate.now().atStartOfDay(ZoneId.systemDefault()).toInstant();
+        // doing/92 R-010：业务日界收敛至 CounselingTimeZone（原系统时区漂移）
+        Instant todayStart = com.mindsafe.service.common.CounselingTimeZone.todayStart();
         return relaxationSessionMapper.selectCount(
                 new LambdaQueryWrapper<RelaxationSession>()
                         .eq(RelaxationSession::getTenantId, tenantId)
