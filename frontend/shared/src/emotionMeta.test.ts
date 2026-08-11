@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { EMOTION_META, emotionLabel, emotionEmoji } from './emotionMeta';
+import { describe, it, expect } from 'vitest'
+import { EMOTION_META, emotionLabel, emotionEmoji, STUDENT_EMOTION_TAGS, STUDENT_EMOTION_COLORS } from './emotionMeta';
 
 /**
  * 情绪元数据单一源测试（F4 收编，doing/78 §F4）
@@ -53,5 +53,15 @@ describe('emotionMeta 情绪元数据单一源', () => {
     expect(unknown).toBeDefined();
     expect(unknown!.label).toBe('');
     expect(unknown!.emoji).toBe('');
+  });
+
+  it('STUDENT_EMOTION_COLORS 键集与 STUDENT_EMOTION_TAGS 完全一致（EmotionDiary/EmotionSelect 同源防回潮）', () => {
+    expect(Object.keys(STUDENT_EMOTION_COLORS).sort()).toEqual([...STUDENT_EMOTION_TAGS].sort());
+    // 色相语义锚点：happy 黄 / sad 蓝 / angry 红 / scared 紫 / nervous 橙（与 EmotionSelect Tailwind 类一致）
+    expect(STUDENT_EMOTION_COLORS.happy.strong).toBe('#facc15');
+    expect(STUDENT_EMOTION_COLORS.sad.strong).toBe('#60a5fa');
+    expect(STUDENT_EMOTION_COLORS.angry.strong).toBe('#f87171');
+    expect(STUDENT_EMOTION_COLORS.scared.strong).toBe('#c084fc');
+    expect(STUDENT_EMOTION_COLORS.nervous.strong).toBe('#fb923c');
   });
 });

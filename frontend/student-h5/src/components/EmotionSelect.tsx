@@ -15,7 +15,8 @@ import { emotionLabel, emotionEmoji, STUDENT_EMOTION_TAGS } from '../../../share
 import { readMutedPreference, writeMutedPreference } from '../utils/storage'
 
 // DOC-082：情绪集与 EmotionDiary 打卡面板统一（共享 STUDENT_EMOTION_TAGS 基线），
-// 色彩/描述为首页开聊场景特有展示，与后端 ZH_LABELS/F4 词表单一源对齐
+// 色彩/描述为首页开聊场景特有展示（Tailwind 类需静态完整出现供 JIT 扫描，故不引用 shared 类串），
+// 色相一致由 shared STUDENT_EMOTION_COLORS 单源保证（黄/蓝/红/紫/橙，EmotionDiary 同源）
 const EMOTION_STYLE: Record<string, { desc: string; color: string }> = {
   happy:   { desc: '有好事发生',   color: 'bg-yellow-100 border-yellow-400 text-yellow-800' },
   sad:     { desc: '心里不舒服',   color: 'bg-blue-100 border-blue-400 text-blue-800' },

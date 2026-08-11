@@ -1,0 +1,38 @@
+project:
+  name: ai-counseling-system
+  baseUrl: http://localhost
+  outputDir: .design-qa
+
+design:
+  designMd: DESIGN.md
+  screenSpec: SCREEN_SPEC.md
+
+code:
+  include:
+    - frontend/teacher-web/src/**/*.{ts,tsx,css,scss}
+    - frontend/parent-h5/src/**/*.{ts,tsx,css,scss}
+    - frontend/student-h5/src/**/*.{ts,tsx,css}
+    - frontend/admin-web/src/**/*.{ts,tsx,css}
+  exclude:
+    - '**/node_modules/**'
+    - '**/dist/**'
+    - '**/build/**'
+    - '**/test/**'
+    - '**/*.test.*'
+    - '**/*.spec.*'
+    - '.design-qa/**'
+
+uiAlignment:
+  runDebtAudit: true
+
+debt:
+  maxHardCodedColors: 0
+  maxArbitraryTailwindValues: 5
+  maxInlineStyles: 0
+  allowedColorValues:
+    - '#000'
+    - '#000000'
+    - '#fff'
+    - '#ffffff'
+    - transparent
+    - currentcolor

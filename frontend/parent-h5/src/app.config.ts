@@ -8,6 +8,7 @@ export default defineAppConfig({
   pages: [...PAGES],
   window: {
     navigationStyle: 'custom',
-    backgroundColor: '#f5f6fa',
+    // 与 --ms-bg 青屿 token 同值（Taro window 配置不支持 CSS 变量，须硬编码）
+    backgroundColor: '#FAF9F6',
   },
 })

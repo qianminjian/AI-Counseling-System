@@ -338,7 +338,7 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: Se
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
                 <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500"></span>
               </span>
-              <p className="text-base font-medium" style={{ color: 'var(--warning, #d97706)' }}>
+              <p className="text-base font-medium text-amber-600">
                 正在准备语音引擎…等会儿再叫我哦
               </p>
             </div>

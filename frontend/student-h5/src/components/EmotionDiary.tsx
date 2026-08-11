@@ -4,23 +4,20 @@ import { useTheme } from '../theme/ThemeProvider'
 import { THEME_STYLES } from '../theme/immersiveStyles'
 import BoBoAvatar from './BoBoAvatar'
 import SceneDecor from './SceneDecor'
-import { emotionLabel, emotionEmoji, STUDENT_EMOTION_TAGS } from '../../../shared/src/emotionMeta'
+import { emotionLabel, emotionEmoji, STUDENT_EMOTION_TAGS, STUDENT_EMOTION_COLORS } from '../../../shared/src/emotionMeta'
 
 // DOC-082：打卡面板与首页 EmotionSelect 共享 STUDENT_EMOTION_TAGS 基线（5 个情绪统一），
-// 单一源 emotionMeta/EmotionVocabulary 不动（后端 calm 仍合法），color 为面板特有展示
-const EMOTION_STYLE: Record<string, string> = {
-  happy:   '#52c41a',
-  sad:     '#722ed1',
-  angry:   '#ff4d4f',
-  scared:  '#9254de',
-  nervous: '#fa8c16',
-}
-const EMOTIONS = STUDENT_EMOTION_TAGS.map(tag => ({
-  label: tag,
-  color: EMOTION_STYLE[tag] || '#999',
-  emoji: emotionEmoji(tag),
-  text: emotionLabel(tag),
-}))
+// 色彩单一源 STUDENT_EMOTION_COLORS（与首页 Tailwind 色相一致：黄/蓝/红/紫/橙）
+const EMOTIONS = STUDENT_EMOTION_TAGS.map(tag => {
+  const c = STUDENT_EMOTION_COLORS[tag]
+  return {
+    label: tag,
+    color: c?.strong ?? '#999',
+    textColor: c?.text ?? '#999',
+    emoji: emotionEmoji(tag),
+    text: emotionLabel(tag),
+  }
+})
 
 // 趋势图未知/历史码值兜底：显式第一个可选情绪（不依赖数组索引，防列表调整后错位）
 const FALLBACK = EMOTIONS[0]
@@ -130,7 +127,7 @@ export default function EmotionDiary({ onBack }) {
                     boxShadow: selected === e.label ? `0 6px 16px ${e.color}40` : undefined,
                   }}>
                   <span className="text-3xl">{e.emoji}</span>
-                  <span className="text-xs font-medium" style={{ color: selected === e.label ? (ts.dark ? '#fff' : e.color) : ts.muted }}>{e.text}</span>
+                  <span className="text-xs font-medium" style={{ color: selected === e.label ? (ts.dark ? '#fff' : e.textColor) : ts.muted }}>{e.text}</span>
                 </button>
               ))}
             </div>

@@ -3,7 +3,7 @@ import type { CSSProperties } from 'react'
 import { getStats, getDashboard, getSatisfaction } from '../api'
 import type { DailyCount, RiskDistItem, ClassRiskItem, EmotionItem } from '../api'
 import { emotionLabel } from '../../../shared/src/emotionMeta'
-import { riskHex, riskLabel } from '../utils/riskLevel'
+import { riskHexBright, riskLabel } from '../utils/riskLevel'
 import { usePolling } from '../hooks/usePolling'
 
 const REFRESH_INTERVAL = 30000
@@ -176,7 +176,7 @@ function RiskDonut({ data }: { data: RiskDistItem[] }) {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {data.map((d, i) => (
           <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <div style={{ width: 12, height: 12, borderRadius: 3, background: riskHex(d.level) }} />
+            <div style={{ width: 12, height: 12, borderRadius: 3, background: riskHexBright(d.level) }} />
             <span style={{ fontSize: 12, color: 'var(--ms-bs-text-fainter)' }}>{riskLabel(d.level) || d.label}</span>
             <span style={{ fontSize: 12, color: 'var(--ms-bs-text-dim)' }}>{d.count} ({Math.round((d.count || 0) / total * 100)}%)</span>
           </div>

@@ -70,3 +70,19 @@ export function emotionEmoji(codeOrLabel: string): string {
 // 改动源：05_系统测试指导驱动生产 UI 遍历测试发现首页与打卡面板情绪集不一致。
 export const STUDENT_EMOTION_TAGS = ['happy', 'sad', 'angry', 'scared', 'nervous'] as const
 export type StudentEmotionTag = (typeof STUDENT_EMOTION_TAGS)[number]
+
+/**
+ * 学生端情绪卡片色单一源（5 基础情绪，色相与首页 EmotionSelect Tailwind 类一致）：
+ * - strong：强调色（描边/选中背景/趋势柱，Tailwind 400 级）
+ * - text：深色文字（选中态标签，Tailwind 800 级，浅底可读）
+ * 背景：EmotionSelect bg-*-100 / EmotionDiary strong+'26' 透明底。
+ * 禁止各组件自建情绪色表（曾出现 EmotionDiary 与 EmotionSelect 同一情绪两套色相：
+ * sad 紫 vs 蓝、scared 浅紫 vs 紫，数据语义映射色需可区分且一致）。
+ */
+export const STUDENT_EMOTION_COLORS: Record<StudentEmotionTag, { strong: string; text: string }> = {
+  happy:   { strong: '#facc15', text: '#854d0e' }, // yellow
+  sad:     { strong: '#60a5fa', text: '#1e40af' }, // blue
+  angry:   { strong: '#f87171', text: '#991b1b' }, // red
+  scared:  { strong: '#c084fc', text: '#6b21a8' }, // purple
+  nervous: { strong: '#fb923c', text: '#9a3412' }, // orange
+}
