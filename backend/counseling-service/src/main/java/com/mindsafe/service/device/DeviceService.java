@@ -433,8 +433,6 @@ public class DeviceService {
             throw new IllegalStateException("SHA-256 不可用", e);
         }
     }
-}
-
 
     /** P1 设备操作审计落库 */
     private void auditOperation(String deviceCode, String action, String operator, String note) {
@@ -447,3 +445,4 @@ public class DeviceService {
         op.setNote(note);
         operationMapper.insert(op);
     }
+}
