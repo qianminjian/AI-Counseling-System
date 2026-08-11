@@ -280,7 +280,8 @@ public class KnowledgeBaseService {
     /**
      * 审核状态转移落库（KB-102，V30 审核字段）。B3 修复：加 tenant_id 过滤。
      * <p>
-     * 门禁校验由调用方（KnowledgeBaseController + ReviewGateValidator）完成后调用；
+     * doing/90 P-010 核对：ReviewGateValidator 位于 knowledge 域（service 层）——门禁组件在域内，
+     * 校验编排由 KnowledgeBaseController 完成；
      * 审核字段 COALESCE 保留旧值（允许分步补齐）。
      *
      * @return 更新行数（0=文档不存在或不属该租户）

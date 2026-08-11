@@ -28,6 +28,7 @@ import java.time.temporal.ChronoUnit;
  * 每日凌晨 03:00 执行（低峰期），清理结果写入审计日志。
  */
 @Service
+@Transactional
 public class DataRetentionCleanupJob {
 
     private static final Logger log = LoggerFactory.getLogger(DataRetentionCleanupJob.class);

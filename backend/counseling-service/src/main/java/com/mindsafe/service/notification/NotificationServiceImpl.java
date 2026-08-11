@@ -113,13 +113,13 @@ public class NotificationServiceImpl implements NotificationService {
     /**
      * 标记通知为已读（P1 审计修复：归属校验，防 IDOR）
      * <p>
-     * 仅收件人本人可标记；他人通知或通知不存在 → 拒绝（IllegalArgumentException → 400）
+     * 仅收件人本人可标记；他人通知或通知不存在 → 拒绝（doing/90 P-010：BizException 风格统一）
      */
     @Override
     public void markAsRead(UUID notificationId, UUID recipientUserId) {
         Notification existing = notificationMapper.selectById(notificationId);
         if (existing == null || !recipientUserId.equals(existing.getRecipientUserId())) {
-            throw new IllegalArgumentException("通知不存在: " + notificationId);
+            throw new BizException(ErrorCode.RESOURCE_NOT_FOUND, "通知不存在: " + notificationId);
         }
         Notification update = new Notification();
         update.setNotificationId(notificationId);
