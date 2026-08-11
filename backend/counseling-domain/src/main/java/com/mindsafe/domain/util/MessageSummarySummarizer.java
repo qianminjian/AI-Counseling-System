@@ -78,7 +78,11 @@ public final class MessageSummarySummarizer {
         for (String s : cleaned) {
             sb.append(s);
         }
-        return sb.substring(0, MAX_SUMMARY_LENGTH);
+        // doing/92 R-021：按 code point 截断（UTF-16 substring 可能切断 emoji 代理对 → 显示 �）
+        if (sb.length() <= MAX_SUMMARY_LENGTH) {
+            return sb.toString();
+        }
+        return sb.substring(0, sb.offsetByCodePoints(0, MAX_SUMMARY_LENGTH));
     }
 
     /** 单句清理：去句尾语气词；整句为噪声（语气词/标点）时返回 null */

@@ -38,7 +38,17 @@ public record StreamMessageEvent(
     public record MessageMetadata(
             Integer emotionIntensity,
             Integer riskLevel,
-            String nextAction
+            String nextAction,
+            Boolean fallback
     ) {
+        // doing/92 Q-004：兼容旧调用（三参构造 fallback=null）
+        public MessageMetadata(Integer emotionIntensity, Integer riskLevel, String nextAction) {
+            this(emotionIntensity, riskLevel, nextAction, null);
+        }
+    }
+
+    /** doing/92 Q-004：降级话术事件（前端按 token 显示，但会话记录/摘要排除——防数据面污染） */
+    public static StreamMessageEvent fallback(String text) {
+        return new StreamMessageEvent("token", text, new MessageMetadata(null, null, null, true));
     }
 }

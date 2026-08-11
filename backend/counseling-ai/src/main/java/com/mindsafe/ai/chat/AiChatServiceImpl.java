@@ -149,6 +149,29 @@ public class AiChatServiceImpl implements AiChatService {
     }
 
     /** 清除会话记忆（会话结束时调用） */
+    /** doing/92 Q-005：同步辅助 LLM 调用统一超时（原 4 方法无超时——上游慢速时请求线程悬挂） */
+    private static final java.util.concurrent.ExecutorService LLM_AUX_POOL =
+            java.util.concurrent.Executors.newFixedThreadPool(4,
+                    r -> { Thread t = new Thread(r, "llm-aux"); t.setDaemon(true); return t; });
+    private static final long AUX_TIMEOUT_SECONDS = 15;
+
+    private String callWithTimeout(java.util.function.Supplier<String> call, String name) {
+        long start = System.currentTimeMillis();
+        try {
+            String result = java.util.concurrent.CompletableFuture
+                    .supplyAsync(call, LLM_AUX_POOL)
+                    .get(AUX_TIMEOUT_SECONDS, java.util.concurrent.TimeUnit.SECONDS);
+            log.debug("{} 完成, length={}", name, result != null ? result.length() : 0);
+            logModelCall(null, name, System.currentTimeMillis() - start, "success", null);
+            return result;
+        } catch (Exception e) {
+            log.error("{} 失败或超时（>{}s）", name, AUX_TIMEOUT_SECONDS, e);
+            recordLlmAuxFailure(name); // AUD-014
+            logModelCall(null, name, System.currentTimeMillis() - start, "error", e.getMessage());
+            return null;
+        }
+    }
+
     @Override
     public void clearMemory(UUID sessionId) {
         chatMemory.clear(sessionId.toString());
@@ -178,22 +201,12 @@ public class AiChatServiceImpl implements AiChatService {
         if (conversationText == null || conversationText.isBlank()) {
             return null;
         }
-        long start = System.currentTimeMillis();
-        try {
-            String result = chatClient.prompt()
-                    .system(SUMMARY_SYSTEM_PROMPT)
-                    .user("请为以下对话生成摘要：\n\n" + conversationText)
-                    .call()
-                    .content();
-            log.debug("会话摘要生成完成, length={}", result != null ? result.length() : 0);
-            logModelCall(null, "session_summary", System.currentTimeMillis() - start, "success", null);
-            return result;
-        } catch (Exception e) {
-            log.error("会话摘要生成失败", e);
-            recordLlmAuxFailure("session_summary"); // AUD-014
-            logModelCall(null, "session_summary", System.currentTimeMillis() - start, "error", e.getMessage());
-            return null;
-        }
+        // doing/92 Q-005：统一超时包装（15s，超时/失败返回 null 走降级）
+        return callWithTimeout(() -> chatClient.prompt()
+                .system(SUMMARY_SYSTEM_PROMPT)
+                .user("请为以下对话生成摘要：\n\n" + conversationText)
+                .call()
+                .content(), "session_summary");
     }
 
     /**
@@ -329,23 +342,12 @@ public class AiChatServiceImpl implements AiChatService {
         if (conversationText == null || conversationText.isBlank()) {
             return null;
         }
-        long start = System.currentTimeMillis();
-        try {
-            String userPrompt = "请评估以下会话的 AI 辅导质量：\n\n" + conversationText + "\n\n请输出评分 JSON：";
-            String result = chatClient.prompt()
-                    .system(QUALITY_JUDGE_SYSTEM_PROMPT)
-                    .user(userPrompt)
-                    .call()
-                    .content();
-            log.debug("质量评估完成, length={}", result != null ? result.length() : 0);
-            logModelCall(null, "quality_judge", System.currentTimeMillis() - start, "success", null);
-            return result;
-        } catch (Exception e) {
-            log.error("质量评估 LLM 调用失败", e);
-            recordLlmAuxFailure("quality_judge"); // AUD-014
-            logModelCall(null, "quality_judge", System.currentTimeMillis() - start, "error", e.getMessage());
-            return null;
-        }
+        // doing/92 Q-005：统一超时包装（15s）
+        return callWithTimeout(() -> chatClient.prompt()
+                .system(QUALITY_JUDGE_SYSTEM_PROMPT)
+                .user("请评估以下会话的 AI 辅导质量：\n\n" + conversationText + "\n\n请输出评分 JSON：")
+                .call()
+                .content(), "quality_judge");
     }
 
     // ===== CTX-Agent Phase 3: 渐进式会话摘要 =====
@@ -365,22 +367,12 @@ public class AiChatServiceImpl implements AiChatService {
         if (conversationText == null || conversationText.isBlank()) {
             return null;
         }
-        long start = System.currentTimeMillis();
-        try {
-            String result = chatClient.prompt()
-                    .system(SESSION_PROGRESS_SUMMARY_PROMPT)
-                    .user("请为以下对话生成进展摘要：\n\n" + conversationText)
-                    .call()
-                    .content();
-            log.debug("会话进展摘要完成, length={}", result != null ? result.length() : 0);
-            logModelCall(null, "session_progress_summary", System.currentTimeMillis() - start, "success", null);
-            return result;
-        } catch (Exception e) {
-            log.error("会话进展摘要 LLM 调用失败", e);
-            recordLlmAuxFailure("session_progress_summary"); // AUD-014
-            logModelCall(null, "session_progress_summary", System.currentTimeMillis() - start, "error", e.getMessage());
-            return null;
-        }
+        // doing/92 Q-005：统一超时包装（15s）
+        return callWithTimeout(() -> chatClient.prompt()
+                .system(SESSION_PROGRESS_SUMMARY_PROMPT)
+                .user("请为以下对话生成进展摘要：\n\n" + conversationText)
+                .call()
+                .content(), "session_progress_summary");
     }
 
     /**

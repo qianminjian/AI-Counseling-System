@@ -101,10 +101,16 @@ jobs:
           "
 
       # verify：单测（surefire *Test）+ 集成测试（failsafe *IT）+ jacoco report-aggregate
-      # IT 使用 GitHub Actions services（非 Testcontainers）：通过 CI_DB_URL 环境变量切换
+      # IT 使用 GitHub Actions services（非 Testcontainers）：通过 CI_DB_URL 环 境变量切换
       - name: Unit Tests + Integration Tests + JaCoCo
         run: mvn verify -B
-
+      
+      # doing/92 R-023：01_schema.sql 快照门禁（迁移后未重新生成即失败，防参照物过期）
+      - name: Schema Snapshot Gate
+        run: |
+          PGURL=jdbc:postgresql://localhost:5432/mindsafe_test PGPASSWORD=test \
+            bash backend/scripts/gen-schema-snapshot.sh backend/scripts/sql/01_schema.sql
+      
       # 覆盖率门禁（P2-5：核心链路 ≥60%，整体 ≥45%）
       # 审计 Q-01：报告缺失即失败，不再静默跳过
       - name: Coverage Gate Check

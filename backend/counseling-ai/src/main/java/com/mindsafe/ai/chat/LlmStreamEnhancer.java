@@ -172,7 +172,8 @@ public class LlmStreamEnhancer {
      */
     private Flux<StreamMessageEvent> fallbackStream(UUID sessionId, String reason) {
         log.info("LLM 降级触发: sessionId={}, reason={}", sessionId, reason);
-        StreamMessageEvent tokenEvt = new StreamMessageEvent("token", fallbackMessage, null);
+        // doing/92 Q-004：降级话术标记 fallback（前端显示，会话记录/摘要排除）
+        StreamMessageEvent tokenEvt = StreamMessageEvent.fallback(fallbackMessage);
         StreamMessageEvent doneEvt = new StreamMessageEvent("done", null, null);
         return Flux.just(tokenEvt, doneEvt);
     }

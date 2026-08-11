@@ -68,16 +68,16 @@ public class DeviceService {
     public Map<String, Object> reportOnline(String deviceCode, String sn, String firmwareVersion, String serverUrl,
                                             String deviceToken) {
         if (deviceCode == null || !DeviceCodeUtil.isValid(deviceCode)) {
-            throw new IllegalArgumentException("设备码不合法");
+            throw new BizException(ErrorCode.PARAM_INVALID, "设备码不合法");
         }
         if (sn == null || sn.isBlank()) {
-            throw new IllegalArgumentException("设备 SN 缺失");
+            throw new BizException(ErrorCode.PARAM_INVALID, "设备 SN 缺失");
         }
         Device device = findByCode(deviceCode);
         Instant now = Instant.now();
         if (device == null) {
             if (deviceMapper.selectCount(new LambdaQueryWrapper<Device>().eq(Device::getSn, sn)) > 0) {
-                throw new IllegalArgumentException("该 SN 已被其他设备码占用");
+                throw new BizException(ErrorCode.PARAM_INVALID, "该 SN 已被其他设备码占用");
             }
             device = new Device();
             device.setDeviceId(UUID.randomUUID());
@@ -93,7 +93,7 @@ public class DeviceService {
             deviceMapper.insert(device);
         } else {
             if (device.getStatus().equals(Device.STATUS_RETIRED)) {
-                throw new IllegalArgumentException("设备已注销");
+                throw new BizException(ErrorCode.PARAM_INVALID, "设备已注销");
             }
             // AUDIT-DEEP-002 code-review P0-1：已存在设备回连必须携带有效 DVC_ token——
             // 否则攻击者可匿名重签 token 后绕过 pullConfig 校验 + 轮换 secret 使真设备失联
@@ -132,7 +132,7 @@ public class DeviceService {
     public Void heartbeat(String deviceCode) {
         Device device = requireDevice(deviceCode);
         if (device.getStatus().equals(Device.STATUS_RETIRED)) {
-            throw new IllegalArgumentException("设备已注销");
+            throw new BizException(ErrorCode.PARAM_INVALID, "设备已注销");
         }
         Device update = new Device();
         update.setDeviceId(device.getDeviceId());
@@ -190,7 +190,7 @@ public class DeviceService {
     public Map<String, Object> createBindCode(String deviceCode, String operator) {
         Device device = requireDevice(deviceCode);
         if (isBound(device)) {
-            throw new IllegalArgumentException("设备已绑定，无需生成绑定码");
+            throw new BizException(ErrorCode.PARAM_INVALID, "设备已绑定，无需生成绑定码");
         }
         String plainCode = String.format("%06d", secureRandom.nextInt(1_000_000));
         DeviceBindCode record = new DeviceBindCode();
@@ -218,21 +218,21 @@ public class DeviceService {
                                     UUID studentId, String code, String operator) {
         Device device = requireDevice(deviceCode);
         if (isBound(device)) {
-            throw new IllegalArgumentException("设备已绑定");
+            throw new BizException(ErrorCode.PARAM_INVALID, "设备已绑定");
         }
         if (code == null || code.isBlank()) {
-            throw new IllegalArgumentException("绑定验证码缺失");
+            throw new BizException(ErrorCode.PARAM_INVALID, "绑定验证码缺失");
         }
         DeviceBindCode latest = latestActiveCode(device.getDeviceId());
         if (latest == null) {
-            throw new IllegalArgumentException("无有效绑定会话，请先发起绑定");
+            throw new BizException(ErrorCode.PARAM_INVALID, "无有效绑定会话，请先发起绑定");
         }
         Instant now = Instant.now();
         if (latest.getLockedUntil() != null && latest.getLockedUntil().isAfter(now)) {
-            throw new IllegalArgumentException("验证码已锁定，请稍后再试");
+            throw new BizException(ErrorCode.PARAM_INVALID, "验证码已锁定，请稍后再试");
         }
         if (latest.getExpiresAt().isBefore(now)) {
-            throw new IllegalArgumentException("验证码已过期，请重新发起绑定");
+            throw new BizException(ErrorCode.PARAM_INVALID, "验证码已过期，请重新发起绑定");
         }
         if (!latest.getCodeHash().equals(sha256Hex(code))) {
             int failCount = (latest.getFailCount() == null ? 0 : latest.getFailCount()) + 1;
@@ -243,7 +243,7 @@ public class DeviceService {
                 failUpdate.setLockedUntil(now.plusSeconds(DeviceBindCode.LOCK_MINUTES * 60));
             }
             bindCodeMapper.updateById(failUpdate);
-            throw new IllegalArgumentException("验证码错误" + (failCount >= DeviceBindCode.MAX_FAIL_COUNT
+            throw new BizException(ErrorCode.PARAM_INVALID, "验证码错误" + (failCount >= DeviceBindCode.MAX_FAIL_COUNT
                     ? "，已锁定 5 分钟" : "，剩余 " + (DeviceBindCode.MAX_FAIL_COUNT - failCount) + " 次机会"));
         }
 
@@ -423,7 +423,7 @@ public class DeviceService {
     private Device requireDevice(String deviceCode) {
         Device device = findByCode(deviceCode);
         if (device == null) {
-            throw new IllegalArgumentException("设备不存在");
+            throw new BizException(ErrorCode.PARAM_INVALID, "设备不存在");
         }
         return device;
     }

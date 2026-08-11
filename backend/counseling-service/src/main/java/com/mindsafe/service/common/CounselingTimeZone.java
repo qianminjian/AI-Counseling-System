@@ -20,6 +20,16 @@ public final class CounselingTimeZone {
     }
 
     /** 上海时区当日开始（UTC 16:00 为上海次日 00:00） */
+    /** 今日（业务时区）LocalDate——doing/92 R-010 收敛口 */
+    public static java.time.LocalDate today() {
+        return java.time.LocalDate.now(SHANGHAI);
+    }
+
+    /** 今日起始（业务时区）Instant——doing/92 R-010 收敛口 */
+    public static Instant todayStart() {
+        return today().atStartOfDay(SHANGHAI).toInstant();
+    }
+
     public static Instant startOfDay(Instant now) {
         return now.atZone(SHANGHAI).toLocalDate().atStartOfDay(SHANGHAI).toInstant();
     }

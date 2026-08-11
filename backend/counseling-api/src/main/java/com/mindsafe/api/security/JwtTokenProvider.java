@@ -114,7 +114,7 @@ public class JwtTokenProvider {
             return false;
         }
         try {
-            Claims claims = parseToken(token.substring(PLATFORM_TOKEN_PREFIX.length()));
+            Claims claims = parseToken(stripPlatformPrefix(token));
             return "platform_access".equals(claims.get("tokenType", String.class));
         } catch (Exception e) {
             return false;
@@ -123,13 +123,13 @@ public class JwtTokenProvider {
 
     /** 平台 token 角色（super_admin/ops_admin/finance_admin/audit） */
     public String getPlatformRole(String token) {
-        Claims claims = parseToken(token.substring(PLATFORM_TOKEN_PREFIX.length()));
+        Claims claims = parseToken(stripPlatformPrefix(token));
         return claims.get("role", String.class);
     }
 
     /** 平台 token 管理员 ID */
     public UUID getPlatformAdminId(String token) {
-        Claims claims = parseToken(token.substring(PLATFORM_TOKEN_PREFIX.length()));
+        Claims claims = parseToken(stripPlatformPrefix(token));
         return UUID.fromString(claims.getSubject());
     }
 
@@ -160,6 +160,11 @@ public class JwtTokenProvider {
                 .compact();
     }
 
+    /** doing/92 R-016：平台前缀剥离单点化（原 4 处重复——8/10 getTokenId 漏剥致平台域 500 事故根因） */
+    private String stripPlatformPrefix(String token) {
+        return token.substring(PLATFORM_TOKEN_PREFIX.length());
+    }
+
     public Claims parseToken(String token) {
         return Jwts.parser()
                 .verifyWith(key)
@@ -179,6 +184,26 @@ public class JwtTokenProvider {
     }
 
     /** 验证是否为 access token（防止用 refresh token 访问 API） */
+    /** doing/92 R-017：单次 parse + 签名校验（filter 每请求 6 次 parse → 1 次），返回快照 */
+    public ParsedToken parseOnce(String token) {
+        if (token == null) {
+            throw new com.mindsafe.common.exception.BizException(
+                    com.mindsafe.common.dto.ErrorCode.UNAUTHORIZED, "token 缺失");
+        }
+        String raw = token.startsWith(PLATFORM_TOKEN_PREFIX) ? stripPlatformPrefix(token) : token;
+        Claims claims = parseToken(raw);
+        return new ParsedToken(
+                claims.getId(),
+                UUID.fromString(claims.getSubject()),
+                claims.get("userType", String.class),
+                claims.get("tenantId", String.class) == null ? null : UUID.fromString(claims.get("tenantId", String.class)),
+                claims.get("tokenType", String.class));
+    }
+
+    /** doing/92 R-017：单次 parse 快照（filter 认证链用） */
+    public record ParsedToken(String tokenId, UUID userId, String userType, UUID tenantId, String tokenType) {
+    }
+
     public boolean isAccessToken(String token) {
         try {
             Claims claims = parseToken(token);
@@ -246,7 +271,7 @@ public class JwtTokenProvider {
         // 修复（2026-08-10）：平台 token（PLATFORM_ 前缀）须先剥离前缀再解析——
         // 原实现对平台 token 直接 parseToken(完整串) → MalformedJwtException → 平台域 API 全部 500
         if (token != null && token.startsWith(PLATFORM_TOKEN_PREFIX)) {
-            return parseToken(token.substring(PLATFORM_TOKEN_PREFIX.length())).getId();
+            return parseToken(stripPlatformPrefix(token)).getId();
         }
         return parseToken(token).getId();
     }

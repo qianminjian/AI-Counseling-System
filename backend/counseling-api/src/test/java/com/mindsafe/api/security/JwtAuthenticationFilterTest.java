@@ -89,13 +89,10 @@ class JwtAuthenticationFilterTest {
         UUID tenantId = UUID.randomUUID();
         when(request.getHeader("Authorization")).thenReturn("Bearer biz-token");
         when(jwtTokenProvider.isPlatformToken("biz-token")).thenReturn(false);
-        when(jwtTokenProvider.validateToken("biz-token")).thenReturn(true);
-        when(jwtTokenProvider.isAccessToken("biz-token")).thenReturn(true);
-        when(jwtTokenProvider.getTokenId("biz-token")).thenReturn("tid-2");
+        // doing/92 R-017：filter 单次 parse——mock parseOnce 返回快照 record
+        when(jwtTokenProvider.parseOnce("biz-token"))
+                .thenReturn(new JwtTokenProvider.ParsedToken("tid-2", userId, "STUDENT", tenantId, "access"));
         when(blacklistService.isBlacklisted("tid-2")).thenReturn(false);
-        when(jwtTokenProvider.getUserId("biz-token")).thenReturn(userId);
-        when(jwtTokenProvider.getUserType("biz-token")).thenReturn("STUDENT");
-        when(jwtTokenProvider.getTenantId("biz-token")).thenReturn(tenantId);
 
         filter.doFilter(request, response, filterChain);
 

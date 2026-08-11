@@ -92,9 +92,19 @@ public class ConsentWithdrawalService {
                 studentUserId, tenantId, "consent_withdrawal", "v0.1");
         consentRecordMapper.insert(record);
 
-        // 4. 审计日志
+        // doing/92 R-007：删除旧的 guardian_consent 记录（撤回后允许重新申请；
+        // 审计链由 consent_withdrawal 留痕承担，guardian_consent 删除不破坏审计）
+        consentRecordMapper.delete(
+                new LambdaQueryWrapper<ConsentRecord>()
+                        .eq(ConsentRecord::getUserId, studentUserId)
+                        .eq(ConsentRecord::getTenantId, tenantId)
+                        .eq(ConsentRecord::getConsentType, GuardianConsentService.CONSENT_TYPE));
+
+        // 4. 审计日志（doing/92 R-009：撤回删除范围清单——声纹/记忆/日记/对话随保留期
+        // 由 DataRetentionCleanupJob 处理（AUTH-031），撤回学生优先清理登记为后续项）
         auditLogService.log(tenantId, studentUserId, "CONSENT_WITHDRAW", "user", studentUserId,
-                "家长撤回同意：冻结账号 + 删除画像 " + deletedProfiles + " 条");
+                "家长撤回同意：冻结账号 + 删除画像 " + deletedProfiles + " 条"
+                        + "（声纹/长期记忆/日记/对话按保留期清理，撤回学生优先清理待 DataRetentionCleanupJob 支持）");
 
         log.info("同意撤回完成: studentUserId={}, deletedProfiles={}", studentUserId, deletedProfiles);
     }

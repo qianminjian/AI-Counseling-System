@@ -5,6 +5,7 @@ import com.mindsafe.common.dto.ErrorCode;
 import com.mindsafe.common.exception.BizException;
 import com.mindsafe.domain.entity.ConsentRecord;
 import com.mindsafe.domain.entity.User;
+import java.time.Instant;
 import com.mindsafe.domain.mapper.ConsentRecordMapper;
 import com.mindsafe.domain.mapper.UserMapper;
 import com.mindsafe.service.audit.AuditLogService;
@@ -33,7 +34,7 @@ public class GuardianConsentService {
 
     /** 监护人同意版本号（与告知同意条款版本对齐） */
     private static final String CONSENT_VERSION = "v1.0";
-    private static final String CONSENT_TYPE = "guardian_consent";
+    static final String CONSENT_TYPE = "guardian_consent";
 
     private final PhoneVerificationService phoneVerificationService;
     private final ConsentRecordMapper consentRecordMapper;
@@ -78,7 +79,10 @@ public class GuardianConsentService {
         // 发送验证码
         phoneVerificationService.sendCode(guardianPhone, "监护人同意确认");
         log.info("监护人同意验证码已发送: studentUserId={}, phone={}", studentUserId,
-                guardianPhone.substring(0, 3) + "****" + guardianPhone.substring(guardianPhone.length() - 4));
+                // doing/92 R-008：脱敏长度守卫（<7 位不截断，防 StringIndexOutOfBounds）
+                guardianPhone.length() >= 7
+                        ? guardianPhone.substring(0, 3) + "****" + guardianPhone.substring(guardianPhone.length() - 4)
+                        : "****");
     }
 
     /**
@@ -99,6 +103,17 @@ public class GuardianConsentService {
         // 写入同意记录
         ConsentRecord record = ConsentRecord.create(studentUserId, tenantId, CONSENT_TYPE, CONSENT_VERSION);
         consentRecordMapper.insert(record);
+
+        // doing/92 R-007：重新授权后账号 reactivate（撤回是业务终态→重新授权可恢复）
+        User student = userMapper.selectById(studentUserId);
+        if (student != null && User.STATUS_WITHDRAWN.equals(student.getStatus())) {
+            User update = new User();
+            update.setUserId(studentUserId);
+            update.setStatus(User.STATUS_ACTIVE);
+            update.setUpdatedAt(Instant.now());
+            userMapper.updateById(update);
+            log.info("监护人重新授权，账号已恢复: studentUserId={}", studentUserId);
+        }
 
         // 审计日志
         auditLogService.log(tenantId, studentUserId, "GUARDIAN_CONSENT", "user", studentUserId,

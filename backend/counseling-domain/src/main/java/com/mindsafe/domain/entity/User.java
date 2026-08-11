@@ -88,7 +88,7 @@ public class User {
         u.pseudonym = pseudonym;
         u.gradeCode = gradeCode;
         u.classCode = classCode;
-        u.status = "active";
+        u.status = STATUS_ACTIVE;
         u.createdAt = Instant.now();
         u.updatedAt = Instant.now();
         return u;
@@ -100,7 +100,7 @@ public class User {
         u.schoolId = schoolId;
         u.userType = userType;
         u.pseudonym = pseudonym;
-        u.status = "active";
+        u.status = STATUS_ACTIVE;
         u.createdAt = Instant.now();
         u.updatedAt = Instant.now();
         return u;
