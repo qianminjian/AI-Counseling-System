@@ -55,7 +55,9 @@ class DegradationMatrixServiceTest {
     void overrideWritesKeyAndEvent() {
         service.override("tts", "edge_tts", "ops", "强制切 edge 保稳定");
 
-        verify(valueOps).set("mindsafe:degradation:override:tts", "edge_tts");
+        // doing/87 RUNTIME-003：TTL 7 天（AC-8）
+        verify(valueOps).set("mindsafe:degradation:override:tts", "edge_tts",
+                DegradationMatrixService.OVERRIDE_TTL_DAYS, java.util.concurrent.TimeUnit.DAYS);
         ArgumentCaptor<DegradationEvent> captor = ArgumentCaptor.forClass(DegradationEvent.class);
         verify(eventMapper).insert(captor.capture());
         DegradationEvent event = captor.getValue();

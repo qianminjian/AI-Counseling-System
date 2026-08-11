@@ -27,6 +27,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.when;
 
 /**
@@ -42,6 +43,7 @@ import static org.mockito.Mockito.when;
 class ParentControllerTest {
 
     private JwtTokenProvider jwtTokenProvider;
+    private com.mindsafe.api.security.ParentIdentityResolver parentIdentityResolver;
     private ParentService parentService;
     private ConsentWithdrawalService consentWithdrawalService;
     private PhoneVerificationService phoneVerificationService;
@@ -55,11 +57,12 @@ class ParentControllerTest {
     @BeforeEach
     void setUp() {
         jwtTokenProvider = mock(JwtTokenProvider.class);
+        parentIdentityResolver = mock(com.mindsafe.api.security.ParentIdentityResolver.class);
         parentService = mock(ParentService.class);
         consentWithdrawalService = mock(ConsentWithdrawalService.class);
         phoneVerificationService = mock(PhoneVerificationService.class);
 
-        controller = new ParentController(jwtTokenProvider, parentService,
+        controller = new ParentController(parentIdentityResolver, jwtTokenProvider, parentService,
                 consentWithdrawalService, phoneVerificationService,
                 mock(com.mindsafe.service.parent.WeeklyReportService.class));
 
@@ -70,8 +73,12 @@ class ParentControllerTest {
         when(jwtTokenProvider.getUserType(VALID_PARENT_TOKEN)).thenReturn("parent");
         when(jwtTokenProvider.getUserId(VALID_PARENT_TOKEN)).thenReturn(parentId);
         when(jwtTokenProvider.getTenantId(VALID_PARENT_TOKEN)).thenReturn(tenantId);
-        // BUG-P-BASE-04：默认家长-学生已绑定（requireLinkedStudent 通过）
-        when(parentService.isLinked(parentId, studentUserId)).thenReturn(true);
+        // BUG-P-BASE-04：默认家长-学生已绑定（resolver mock 默认通过）
+        // AC-89-04：解析统一在 ParentIdentityResolver——mock 默认返回身份，requireLinked* 默认无操作
+        when(parentIdentityResolver.resolveLoginIdentity(any()))
+                .thenReturn(new com.mindsafe.api.security.ParentIdentityResolver.ParentIdentity(parentId, tenantId));
+        when(parentIdentityResolver.resolveLegacyLink(any()))
+                .thenReturn(new com.mindsafe.api.security.ParentIdentityResolver.ParentLinkIdentity(studentUserId, tenantId));
     }
 
     @AfterEach
@@ -136,7 +143,11 @@ class ParentControllerTest {
 
         @BeforeEach
         void setUp() {
-            when(jwtTokenProvider.getUserType(VALID_PARENT_TOKEN)).thenReturn("student");
+            // AC-89-04：userType 校验在 resolver 统一执行
+            doThrow(new BizException(ErrorCode.UNAUTHORIZED, "链接已过期或无效"))
+                    .when(parentIdentityResolver).resolveLoginIdentity(any());
+            doThrow(new BizException(ErrorCode.UNAUTHORIZED, "链接已过期或无效"))
+                    .when(parentIdentityResolver).resolveLegacyLink(any());
         }
 
         @Test
@@ -160,6 +171,9 @@ class ParentControllerTest {
         @Test
         @DisplayName("sendCode student token → UNAUTHORIZED")
         void sendCodeRejected() {
+            doThrow(new BizException(ErrorCode.UNAUTHORIZED, "链接已过期或无效"))
+                    .when(parentIdentityResolver).resolveLegacyLink(any());
+
             assertThatThrownBy(() -> controller.sendVerificationCode("Bearer " + VALID_PARENT_TOKEN,
                     Map.of("phone", "13800000001")))
                     .isExactlyInstanceOf(BizException.class)
@@ -172,7 +186,9 @@ class ParentControllerTest {
     @DisplayName("无效 JWT → UNAUTHORIZED")
     void invalidTokenRejected() {
         String bad = "Bearer invalid.token.here";
-        when(jwtTokenProvider.validateToken(anyString())).thenReturn(false);
+        // AC-89-04：token 校验在 resolver 统一执行
+        doThrow(new BizException(ErrorCode.UNAUTHORIZED, "链接已过期或无效"))
+                .when(parentIdentityResolver).resolveLoginIdentity(any());
 
         assertThatThrownBy(() -> controller.getWeeklyReport(bad, studentUserId))
                 .isExactlyInstanceOf(BizException.class)
@@ -187,9 +203,11 @@ class ParentControllerTest {
     class WithdrawnStudentRejected {
 
         private void mockWithdrawnStudent() {
-            User student = studentUser();
-            student.setStatus("withdrawn");
-            when(parentService.getStudent(tenantId, studentUserId)).thenReturn(student);
+            // AC-89-04：withdrawn 拦截统一在 ParentIdentityResolver（Controller 不再私有实现）
+            doThrow(new BizException(ErrorCode.CONSENT_WITHDRAWN, "监护人同意已撤回，链接已失效"))
+                    .when(parentIdentityResolver).requireLinkedStudent(any(), any());
+            doThrow(new BizException(ErrorCode.CONSENT_WITHDRAWN, "监护人同意已撤回，链接已失效"))
+                    .when(parentIdentityResolver).resolveLegacyLink(any());
         }
 
         @Test
@@ -235,7 +253,9 @@ class ParentControllerTest {
         @Test
         @DisplayName("学生查无此人 → UNAUTHORIZED")
         void missingStudentRejected() {
-            when(parentService.getStudent(tenantId, studentUserId)).thenReturn(null);
+            // AC-89-04：学生存在性校验在 resolver.requireLinkedStudent
+            doThrow(new BizException(ErrorCode.UNAUTHORIZED, "链接已过期或无效"))
+                    .when(parentIdentityResolver).requireLinkedStudent(any(), any());
 
             assertThatThrownBy(() -> controller.getWeeklyReport("Bearer " + VALID_PARENT_TOKEN, studentUserId))
                     .isExactlyInstanceOf(BizException.class)
@@ -291,7 +311,9 @@ class ParentControllerTest {
         @Test
         @DisplayName("未绑定学生 → UNAUTHORIZED（BUG-P-BASE-04 越权防护）")
         void unlinkedStudentRejected() {
-            when(parentService.isLinked(parentId, studentUserId)).thenReturn(false);
+            // AC-89-04：绑定校验在 resolver（requireLinkedOnly 状态端点专用）
+            doThrow(new BizException(ErrorCode.UNAUTHORIZED, "链接已过期或无效"))
+                    .when(parentIdentityResolver).requireLinkedOnly(any(), any());
 
             assertThatThrownBy(() -> controller.getConsentStatus("Bearer " + VALID_PARENT_TOKEN, studentUserId))
                     .isExactlyInstanceOf(BizException.class)
@@ -304,7 +326,9 @@ class ParentControllerTest {
         @Test
         @DisplayName("student token → UNAUTHORIZED")
         void studentTokenRejected() {
-            when(jwtTokenProvider.getUserType(VALID_PARENT_TOKEN)).thenReturn("student");
+            // AC-89-04：userType 校验在 resolver 统一执行
+            doThrow(new BizException(ErrorCode.UNAUTHORIZED, "链接已过期或无效"))
+                    .when(parentIdentityResolver).resolveLoginIdentity(any());
 
             assertThatThrownBy(() -> controller.getConsentStatus("Bearer " + VALID_PARENT_TOKEN, studentUserId))
                     .isExactlyInstanceOf(BizException.class)

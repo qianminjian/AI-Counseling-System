@@ -169,23 +169,18 @@ public class LongTermMemoryService {
 
             if (candidates == null || candidates.isEmpty()) return null;
 
-            // MEM-102 四因子评分排序
+            // MEM-102 四因子评分排序（N-010 2026-08-11：评分单次化——原 filter/sort 各算一次共 2 次/条，现缓存 1 次/条）
             Instant now = Instant.now();
+            record ScoredMemory(LongTermMemory memory, double score) {}
             List<LongTermMemory> scored = candidates.stream()
-                    .filter(m -> {
-                        double score = memoryRelevanceScorer.score(
-                                m.getImportance() != null ? m.getImportance() : 0.5, // vectorSimilarity 近似
-                                m.getImportance() != null ? m.getImportance() : 0.5,
-                                m.getCreatedAt(), m.getMemoryType(), now);
-                        return memoryRelevanceScorer.isWorthRecalling(score);
-                    })
-                    .sorted(Comparator.comparingDouble((LongTermMemory m) ->
-                            memoryRelevanceScorer.score(
-                                    m.getImportance() != null ? m.getImportance() : 0.5,
-                                    m.getImportance() != null ? m.getImportance() : 0.5,
-                                    m.getCreatedAt(), m.getMemoryType(), now))
-                            .reversed())
+                    .map(m -> new ScoredMemory(m, memoryRelevanceScorer.score(
+                            m.getImportance() != null ? m.getImportance() : 0.5, // vectorSimilarity 近似
+                            m.getImportance() != null ? m.getImportance() : 0.5,
+                            m.getCreatedAt(), m.getMemoryType(), now)))
+                    .filter(sm -> memoryRelevanceScorer.isWorthRecalling(sm.score()))
+                    .sorted(Comparator.comparingDouble(ScoredMemory::score).reversed())
                     .limit(RECALL_LIMIT)
+                    .map(ScoredMemory::memory)
                     .toList();
 
             if (scored.isEmpty()) return null;

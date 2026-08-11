@@ -14,7 +14,7 @@ import java.util.Map;
  * 本组件是 toC 体系（手机号验证码）的 token 组装唯一出口。
  */
 @Component
-public class TocAuthProvider {
+public class TocAuthProvider implements AuthProvider {
 
     private final JwtTokenProvider jwtTokenProvider;
 
@@ -22,10 +22,15 @@ public class TocAuthProvider {
         this.jwtTokenProvider = jwtTokenProvider;
     }
 
+    @Override
+    public String issueAccessToken(java.util.UUID userId, String userType, java.util.UUID tenantId) {
+        // toC 平台级（tenantId=null，IGNORE_TABLES 双保险），userType=toc_parent
+        return jwtTokenProvider.generateToken(userId, userType, tenantId);
+    }
+
     /** 组装登录响应：token 签发（userType=toc_parent，tenantId=null 平台级）+ 账号信息。 */
     public Map<String, Object> buildSession(TocFamilyAccount account) {
-        String token = jwtTokenProvider.generateToken(
-                account.getFamilyAccountId(), "toc_parent", null);
+        String token = issueAccessToken(account.getFamilyAccountId(), "toc_parent", null);
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("token", token);
         result.put("familyAccountId", account.getFamilyAccountId());

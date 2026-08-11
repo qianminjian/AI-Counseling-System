@@ -46,7 +46,7 @@ public class TeacherService {
     private final AuditLogService auditLogService;
 
     // 预警待办静音规则（design/35 §4.2 降噪第 3 条，纯规则内联实例化）
-    private final AlertTodoMutePolicy alertTodoMutePolicy = new AlertTodoMutePolicy();
+    private final AlertTodoMutePolicy alertTodoMutePolicy;
 
     /** 个案跟踪标志的备注类型与生效值（复用 teacher_notes 免 schema 变更） */
     private static final String CASE_TRACKING_NOTE_TYPE = "case_tracking";
@@ -69,8 +69,8 @@ public class TeacherService {
     /** 数据看板风险统计时间窗（B-15：近 90 天，覆盖学期活动窗口，避免全量历史加载内存） */
     private static final int STATS_RISK_WINDOW_DAYS = 90;
 
-    // 个案生命周期纯函数（无状态，同 AlertTodoMutePolicy 内联实例化先例）
-    private final CaseLifecycleService caseLifecycleService = new CaseLifecycleService();
+    // N-007（2026-08-11）：CaseLifecycleService/AlertTodoMutePolicy 反哺 Spring 注入（替换内联 new，恢复替换接缝）
+    private final CaseLifecycleService caseLifecycleService;
 
     public TeacherService(RiskEventMapper riskEventMapper,
                           CounselingSessionMapper sessionMapper,
@@ -80,7 +80,9 @@ public class TeacherService {
                           MessageSummaryMapper messageSummaryMapper,
                           FieldEncryptionService fieldEncryptionService,
                           SessionAccessService sessionAccessService,
-                          AuditLogService auditLogService) {
+                          AuditLogService auditLogService,
+                          AlertTodoMutePolicy alertTodoMutePolicy,
+                          CaseLifecycleService caseLifecycleService) {
         this.riskEventMapper = riskEventMapper;
         this.sessionMapper = sessionMapper;
         this.userMapper = userMapper;
@@ -90,6 +92,8 @@ public class TeacherService {
         this.fieldEncryptionService = fieldEncryptionService;
         this.sessionAccessService = sessionAccessService;
         this.auditLogService = auditLogService;
+        this.alertTodoMutePolicy = alertTodoMutePolicy;
+        this.caseLifecycleService = caseLifecycleService;
     }
 
     // ===== 数据范围解析（RBAC） =====

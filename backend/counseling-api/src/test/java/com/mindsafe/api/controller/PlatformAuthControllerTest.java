@@ -15,6 +15,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -28,6 +29,7 @@ class PlatformAuthControllerTest {
     private PlatformAdminService adminService;
     private JwtTokenProvider jwtTokenProvider;
     private PlatformLoginGuard loginGuard;
+    private com.mindsafe.api.security.PlatformAuthProvider platformAuthProvider;
     private HttpServletRequest request;
     private PlatformAuthController controller;
 
@@ -36,8 +38,9 @@ class PlatformAuthControllerTest {
         adminService = mock(PlatformAdminService.class);
         jwtTokenProvider = mock(JwtTokenProvider.class);
         loginGuard = mock(PlatformLoginGuard.class);
+        platformAuthProvider = mock(com.mindsafe.api.security.PlatformAuthProvider.class);
         request = mock(HttpServletRequest.class);
-        controller = new PlatformAuthController(adminService, jwtTokenProvider, loginGuard);
+        controller = new PlatformAuthController(adminService, platformAuthProvider, loginGuard);
     }
 
     private PlatformAuthController.PlatformLoginRequest req(String u, String p) {
@@ -54,8 +57,7 @@ class PlatformAuthControllerTest {
         admin.setRole(PlatformAdmin.ROLE_OPS_ADMIN);
         admin.setDisplayName("运维");
         when(adminService.login("ops", "secret")).thenReturn(admin);
-        when(jwtTokenProvider.generatePlatformToken(admin.getAdminId(), admin.getRole()))
-                .thenReturn("PLATFORM_abc");
+        when(platformAuthProvider.issueAccessToken(any(), any(), any())).thenReturn("PLATFORM_abc");
 
         var response = controller.login(req("ops", "secret"), request);
 

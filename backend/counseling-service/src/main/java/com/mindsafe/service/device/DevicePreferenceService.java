@@ -25,7 +25,12 @@ public class DevicePreferenceService {
         this.preferenceMapper = preferenceMapper;
     }
 
-    /** 查询设备偏好（按家庭隔离，非本人返回 null）。 */
+    /**
+     * 查询设备偏好（家庭管理通道授权：调用方须已校验家庭-设备绑定）。
+     * AD-005（2026-08-11）授权语义统一：偏好数据按 deviceCode 全局唯一（平台级表），
+     * "谁的偏好"不变量 = 设备归属——两条读取路径的授权由调用通道保证：
+     * 本方法=家庭通道（绑定校验），preferencesForPull=设备通道（DVC_ token，见 pullConfig）。
+     */
     public Map<String, Object> getPreferences(UUID familyAccountId, String deviceCode) {
         DevicePreference pref = find(familyAccountId, deviceCode);
         if (pref == null) {
@@ -69,7 +74,13 @@ public class DevicePreferenceService {
         return getPreferences(familyAccountId, deviceCode);
     }
 
-    /** 设备配置拉取下发用（DeviceService.pullConfig 调用，匿名设备通道按 deviceCode 查）。 */
+    /**
+     * 设备配置拉取下发用（DeviceService.pullConfig 调用）。
+     * AD-005（2026-08-11）授权语义统一：本方法仅经设备通道消费——已绑定设备由
+     * pullConfig 强制 DVC_ token 校验（AUDIT-DEEP-002）；未绑定设备无偏好（绑定后
+     * 才可设置）返回 null，匿名拉取无泄漏面。与 getPreferences（家庭通道）共享
+     * "设备归属"不变量，两种授权语义已收口到调用通道。
+     */
     public Map<String, Object> preferencesForPull(String deviceCode) {
         DevicePreference pref = preferenceMapper.selectOne(
                 new LambdaQueryWrapper<DevicePreference>()

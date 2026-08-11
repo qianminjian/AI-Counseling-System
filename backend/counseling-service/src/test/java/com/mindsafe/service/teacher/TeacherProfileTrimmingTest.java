@@ -55,7 +55,9 @@ class TeacherProfileTrimmingTest {
                 new com.mindsafe.service.security.FieldEncryptionService(
                         false, "", 1, "", new org.springframework.core.env.StandardEnvironment()),
                 mock(SessionAccessService.class),
-                mock(AuditLogService.class));
+                mock(AuditLogService.class),
+                new com.mindsafe.service.teacher.AlertTodoMutePolicy(),
+                new com.mindsafe.service.casemanage.CaseLifecycleService());
 
         User student = new User();
         student.setUserId(studentId);

@@ -62,7 +62,9 @@ class TeacherStatsPerformanceTest {
     void setUp() {
         service = new TeacherService(riskEventMapper, sessionMapper, userMapper,
                 teacherNoteMapper, notificationMapper, messageSummaryMapper, fieldEncryptionService,
-                sessionAccessService, mock(AuditLogService.class));
+                sessionAccessService, mock(AuditLogService.class),
+                new com.mindsafe.service.teacher.AlertTodoMutePolicy(),
+                new com.mindsafe.service.casemanage.CaseLifecycleService());
         // getStats 其余部分的默认返回（本测试聚焦趋势/情绪/满意度三处）
         lenient().when(riskEventMapper.selectList(any())).thenReturn(List.of());
         lenient().when(userMapper.selectList(any())).thenReturn(List.of());

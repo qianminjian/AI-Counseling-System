@@ -143,6 +143,10 @@ services:
       VOICE_PROCESS_TIMEOUT: ${VOICE_PROCESS_TIMEOUT:-30}
       VOICE_ANALYZE_TIMEOUT: ${VOICE_ANALYZE_TIMEOUT:-60}
       VOICE_CORS_ORIGINS: ${VOICE_CORS_ORIGINS:-}
+      # doing/87 RUNTIME-004：覆盖键读取（直连 Redis，fail-open）
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
     volumes:
       # 模型缓存：宿主机持久化（emotion2vec ~300MB + SenseVoice ~1GB）
       # 使用前需运行: bash deploy/scripts/prepare-funasr.sh
@@ -172,6 +176,10 @@ services:
     container_name: mindsafe-tts
     restart: unless-stopped
     environment:
+      # doing/87 RUNTIME-004：覆盖键读取（直连 Redis，fail-open）
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
       DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:-}
       # DC-003：TTS 运行时参数透传（与 .env.example 声明、tts-service 消费对齐）
       DASHSCOPE_TTS_MODEL: ${DASHSCOPE_TTS_MODEL:-cosyvoice-v3-flash}

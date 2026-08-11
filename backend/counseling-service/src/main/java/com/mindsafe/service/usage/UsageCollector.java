@@ -1,5 +1,6 @@
 package com.mindsafe.service.usage;
 
+import com.mindsafe.service.common.CounselingTimeZone;
 import com.mindsafe.common.tenant.TenantContextHolder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -58,8 +59,8 @@ public class UsageCollector {
     @Scheduled(cron = "${mindsafe.monitoring.usage-collector.snapshot-cron:0 30 0 * * ?}")
     public void collectActiveStudents() {
         TenantContextHolder.runAsSystem(() -> {
-            Instant dayStart = Instant.now().atZone(ZoneId.of("Asia/Shanghai")).toLocalDate()
-                    .atStartOfDay(ZoneId.of("Asia/Shanghai")).toInstant();
+            Instant dayStart = Instant.now().atZone(CounselingTimeZone.SHANGHAI).toLocalDate()
+                    .atStartOfDay(CounselingTimeZone.SHANGHAI).toInstant();
             int rows = jdbcTemplate.update("""
                     INSERT INTO tenant_template.usage_events (tenant_id, metric, value, unit, event_time)
                     SELECT tenant_id, 'active_student_snapshot', COUNT(DISTINCT student_user_id), 'count', ?

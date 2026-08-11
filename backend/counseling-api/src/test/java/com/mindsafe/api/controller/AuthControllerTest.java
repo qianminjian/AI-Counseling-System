@@ -72,6 +72,7 @@ class AuthControllerTest {
     private AuthUserService authUserService;
     private PasswordEncoder passwordEncoder;
     private JwtTokenProvider jwtTokenProvider;
+    private com.mindsafe.api.security.BusinessAuthProvider businessAuthProvider;
     private TrialAuthStrategy trialAuthStrategy;
     private TrialAuthService trialAuthService;
     private AuditLogService auditLogService;
@@ -104,9 +105,11 @@ class AuthControllerTest {
         passwordPolicyService = mock(PasswordPolicyService.class);
         guardianConsentService = mock(GuardianConsentService.class);
         tokenBlacklistService = mock(TokenBlacklistService.class);
+        businessAuthProvider = mock(com.mindsafe.api.security.BusinessAuthProvider.class);
         tenantAccessGuard = mock(TenantAccessGuard.class);
 
         controller = new AuthController(passwordEncoder, jwtTokenProvider,
+                businessAuthProvider,
                 trialAuthStrategy, trialAuthService, auditLogService, lockoutService,
                 passwordPolicyService, guardianConsentService, tokenBlacklistService,
                 tenantAccessGuard, authUserService);
@@ -140,8 +143,8 @@ class AuthControllerTest {
     }
 
     private void mockTokenIssuance() {
-        when(jwtTokenProvider.generateToken(userId, "student", tenantId)).thenReturn(ACCESS_TOKEN);
-        when(jwtTokenProvider.generateRefreshToken(userId, "student", tenantId)).thenReturn(REFRESH_TOKEN);
+        when(businessAuthProvider.issueAccessToken(userId, "student", tenantId)).thenReturn(ACCESS_TOKEN);
+        when(businessAuthProvider.issueRefreshToken(userId, "student", tenantId)).thenReturn(REFRESH_TOKEN);
     }
 
     // ===== login =====
@@ -278,8 +281,8 @@ class AuthControllerTest {
         User fullUser = activeStudent();
         fullUser.setFamilyCode("FAM-001");
         when(authUserService.findByIdAsSystem(userId)).thenReturn(fullUser);
-        when(jwtTokenProvider.generateToken(userId, "trial_student", tenantId)).thenReturn(ACCESS_TOKEN);
-        when(jwtTokenProvider.generateRefreshToken(userId, "trial_student", tenantId)).thenReturn(REFRESH_TOKEN);
+        when(businessAuthProvider.issueAccessToken(userId, "trial_student", tenantId)).thenReturn(ACCESS_TOKEN);
+        when(businessAuthProvider.issueRefreshToken(userId, "trial_student", tenantId)).thenReturn(REFRESH_TOKEN);
 
         TrialRegisterRequest req = new TrialRegisterRequest("CODE123", "小星", 15, null, null, "v1", null, null);
         ApiResponse<TrialRegisterResponse> resp = controller.trialRegister(req);
@@ -297,8 +300,8 @@ class AuthControllerTest {
         when(trialAuthStrategy.authenticate(any())).thenReturn(au);
         when(authUserService.findByIdAsSystem(userId)).thenReturn(activeStudent());
         when(guardianConsentService.hasGuardianConsent(tenantId, userId)).thenReturn(false);
-        when(jwtTokenProvider.generateToken(userId, "trial_student", tenantId)).thenReturn(ACCESS_TOKEN);
-        when(jwtTokenProvider.generateRefreshToken(userId, "trial_student", tenantId)).thenReturn(REFRESH_TOKEN);
+        when(businessAuthProvider.issueAccessToken(userId, "trial_student", tenantId)).thenReturn(ACCESS_TOKEN);
+        when(businessAuthProvider.issueRefreshToken(userId, "trial_student", tenantId)).thenReturn(REFRESH_TOKEN);
 
         TrialRegisterRequest req = new TrialRegisterRequest("CODE123", "小星", 10, null, null, "v1", "13800000001", null);
         ApiResponse<TrialRegisterResponse> resp = controller.trialRegister(req);
@@ -313,8 +316,8 @@ class AuthControllerTest {
         when(trialAuthStrategy.authenticate(any())).thenReturn(au);
         when(authUserService.findByIdAsSystem(userId)).thenReturn(activeStudent());
         when(guardianConsentService.hasGuardianConsent(tenantId, userId)).thenReturn(true);
-        when(jwtTokenProvider.generateToken(userId, "trial_student", tenantId)).thenReturn(ACCESS_TOKEN);
-        when(jwtTokenProvider.generateRefreshToken(userId, "trial_student", tenantId)).thenReturn(REFRESH_TOKEN);
+        when(businessAuthProvider.issueAccessToken(userId, "trial_student", tenantId)).thenReturn(ACCESS_TOKEN);
+        when(businessAuthProvider.issueRefreshToken(userId, "trial_student", tenantId)).thenReturn(REFRESH_TOKEN);
 
         TrialRegisterRequest req = new TrialRegisterRequest("CODE123", "小星", 10, null, null, "v1", "13800000001", null);
         ApiResponse<TrialRegisterResponse> resp = controller.trialRegister(req);
@@ -581,8 +584,8 @@ class AuthControllerTest {
         when(jwtTokenProvider.getUserType(REFRESH_TOKEN)).thenReturn("student");
         when(jwtTokenProvider.getTenantId(REFRESH_TOKEN)).thenReturn(tenantId);
         when(jwtTokenProvider.getRemainingMs(REFRESH_TOKEN)).thenReturn(3600000L);
-        when(jwtTokenProvider.generateToken(userId, "student", tenantId)).thenReturn("new-access");
-        when(jwtTokenProvider.generateRefreshToken(userId, "student", tenantId)).thenReturn("new-refresh");
+        when(businessAuthProvider.issueAccessToken(userId, "student", tenantId)).thenReturn("new-access");
+        when(businessAuthProvider.issueRefreshToken(userId, "student", tenantId)).thenReturn("new-refresh");
 
         ApiResponse<Map<String, String>> resp = controller.refresh(new RefreshRequest(REFRESH_TOKEN));
 

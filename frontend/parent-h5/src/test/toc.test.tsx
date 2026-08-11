@@ -32,6 +32,13 @@ vi.mock('@tarojs/taro', () => ({
   default: { navigateTo: (...a: unknown[]) => mockNavigate(...a), reLaunch: (...a: unknown[]) => mockReLaunch(...a) },
 }))
 
+vi.mock('../services/device', () => ({
+  listTocDevices: (...a: unknown[]) => mockListDevices(...a),
+  tocUnbindDevice: (...a: unknown[]) => mockUnbind(...a),
+  getTocPreferences: vi.fn(() => Promise.resolve({ deviceCode: 'K7M2P9XW4AQ' })),
+  setTocPreferences: (...a: unknown[]) => mockSetPrefs(...a),
+}))
+
 vi.mock('../services/toc', () => ({
   sendTocCode: (...a: unknown[]) => mockSendCode(...a),
   tocLogin: (...a: unknown[]) => mockLogin(...a),
@@ -40,12 +47,8 @@ vi.mock('../services/toc', () => ({
   createTocProfile: (...a: unknown[]) => mockCreate(...a),
   updateTocProfile: vi.fn(() => Promise.resolve({})),
   deleteTocProfile: (...a: unknown[]) => mockDelete(...a),
-  listTocDevices: (...a: unknown[]) => mockListDevices(...a),
-  tocUnbindDevice: (...a: unknown[]) => mockUnbind(...a),
   getTocPrivacyOverview: (...a: unknown[]) => mockPrivacyOverview(...a),
   deleteTocPrivacyData: (...a: unknown[]) => mockDeletePrivacy(...a),
-  getTocPreferences: vi.fn(() => Promise.resolve({ deviceCode: 'K7M2P9XW4AQ' })),
-  setTocPreferences: (...a: unknown[]) => mockSetPrefs(...a),
   saveTocSession: vi.fn(),
   clearTocSession: vi.fn(),
 }))

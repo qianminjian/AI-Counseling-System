@@ -15,6 +15,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -86,9 +87,10 @@ class DeviceControllerTest {
     void bindCodeBusinessError() {
         when(deviceService.createBindCode(deviceCode, "t"))
                 .thenThrow(new IllegalArgumentException("设备已绑定"));
-        var response = controller.createBindCode(deviceCode, "t");
-        assertThat(response.code()).isEqualTo(400);
-        assertThat(response.message()).contains("已绑定");
+        // AD-007：异常上抛由 GlobalExceptionHandler 统一转 400
+        assertThatThrownBy(() -> controller.createBindCode(deviceCode, "t"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("已绑定");
     }
 
     @Test
@@ -119,9 +121,10 @@ class DeviceControllerTest {
         when(deviceService.bind(deviceCode, request.getBindType(), request.getBindTargetId(),
                 null, "000000", "t")).thenThrow(new IllegalArgumentException("验证码错误"));
 
-        var response = controller.bind(deviceCode, request, "t");
-        assertThat(response.code()).isEqualTo(400);
-        assertThat(response.message()).contains("验证码错误");
+        // AD-007：wrap 移除后异常上抛，由 GlobalExceptionHandler 统一转 400（本层断言抛出）
+        assertThatThrownBy(() -> controller.bind(deviceCode, request, "t"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("验证码错误");
     }
 
     // ===== 设备上报端点：404 与成功 =====
@@ -264,8 +267,9 @@ class DeviceControllerTest {
     void factoryResetError() {
         when(deviceService.factoryReset(deviceCode, "admin-1"))
                 .thenThrow(new IllegalArgumentException("设备不存在"));
-        var response = controller.factoryReset(deviceCode, "admin-1");
-        assertThat(response.code()).isEqualTo(400);
-        assertThat(response.message()).contains("设备不存在");
+        // AD-007：异常上抛由 GlobalExceptionHandler 统一转 400
+        assertThatThrownBy(() -> controller.factoryReset(deviceCode, "admin-1"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("设备不存在");
     }
 }

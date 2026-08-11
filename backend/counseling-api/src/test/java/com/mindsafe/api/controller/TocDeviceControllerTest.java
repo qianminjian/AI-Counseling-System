@@ -12,6 +12,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -58,9 +59,10 @@ class TocDeviceControllerTest {
         when(tocDeviceService.bind(familyAccountId, "K7M2P9XW4AQ", null, "000000",
                 familyAccountId.toString()))
                 .thenThrow(new IllegalArgumentException("验证码错误"));
-        var response = controller.bind(auth, "K7M2P9XW4AQ", Map.of("code", "000000"));
-        assertThat(response.code()).isEqualTo(400);
-        assertThat(response.message()).contains("验证码");
+        // AD-007：异常上抛由 GlobalExceptionHandler 统一转 400
+        assertThatThrownBy(() -> controller.bind(auth, "K7M2P9XW4AQ", Map.of("code", "000000")))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("验证码");
     }
 
     @Test

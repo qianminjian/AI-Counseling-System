@@ -68,7 +68,13 @@ public class MindSafeTenantLineHandler implements TenantLineHandler {
         return "tenant_id";
     }
 
+    /** AD-003（2026-08-11）：平台级表豁免名单只读访问器（迁移一致性测试用） */
+    public static Set<String> ignoredTables() {
+        return IGNORE_TABLES;
+    }
+
     @Override
+
     public boolean ignoreTable(String tableName) {
         // 公共标识表恒定忽略（在 fail-fast 之前判断：前置过滤器查 tenants 表属合法路径）
         if (IGNORE_TABLES.contains(normalize(tableName))) {

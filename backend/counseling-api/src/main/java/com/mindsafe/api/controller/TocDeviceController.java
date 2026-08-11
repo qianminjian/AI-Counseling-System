@@ -29,11 +29,8 @@ public class TocDeviceController {
     /** 发起绑定验证码会话（触发设备语音播报） */
     @PostMapping("/{deviceCode}/bind-code")
     public ApiResponse<Map<String, Object>> createBindCode(Authentication auth, @PathVariable String deviceCode) {
-        try {
-            return ApiResponse.ok(tocDeviceService.createBindCode(deviceCode, operator(auth)));
-        } catch (IllegalArgumentException e) {
-            return ApiResponse.error(400, e.getMessage());
-        }
+        // AD-007：异常统一由 GlobalExceptionHandler 转 400（IllegalArgumentException）
+        return ApiResponse.ok(tocDeviceService.createBindCode(deviceCode, operator(auth)));
     }
 
     /** 家庭绑定：body = {code, profileId?} */
@@ -41,22 +38,14 @@ public class TocDeviceController {
     public ApiResponse<Map<String, Object>> bind(Authentication auth, @PathVariable String deviceCode,
                                                  @RequestBody Map<String, Object> body) {
         UUID profileId = body.get("profileId") == null ? null : UUID.fromString(String.valueOf(body.get("profileId")));
-        try {
-            return ApiResponse.ok(tocDeviceService.bind(accountId(auth), deviceCode, profileId,
-                    String.valueOf(body.get("code")), operator(auth)));
-        } catch (IllegalArgumentException e) {
-            return ApiResponse.error(400, e.getMessage());
-        }
+        return ApiResponse.ok(tocDeviceService.bind(accountId(auth), deviceCode, profileId,
+                String.valueOf(body.get("code")), operator(auth)));
     }
 
     /** 解绑 */
     @PostMapping("/{deviceCode}/unbind")
     public ApiResponse<Map<String, Object>> unbind(Authentication auth, @PathVariable String deviceCode) {
-        try {
-            return ApiResponse.ok(tocDeviceService.unbind(accountId(auth), deviceCode, operator(auth)));
-        } catch (IllegalArgumentException e) {
-            return ApiResponse.error(400, e.getMessage());
-        }
+        return ApiResponse.ok(tocDeviceService.unbind(accountId(auth), deviceCode, operator(auth)));
     }
 
     /** 家庭设备列表 */

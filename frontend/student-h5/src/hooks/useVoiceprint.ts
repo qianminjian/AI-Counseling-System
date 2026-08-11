@@ -11,6 +11,8 @@
  *
  * 降级：模型加载失败 → supported=false → UI 隐藏声纹入口，PIN 主路径不受影响。
  */
+// N-011：音频工具共享（rms/downsample 原重复实现收编）
+import { downsampleTo16k, rms } from '../../../shared/src/audio-utils'
 import { useState, useRef, useCallback } from 'react'
 import {
   VP_MODEL_ID,
@@ -152,27 +154,6 @@ function cosineSimilarity(a, b) {
 }
 
 /** 均方根能量（判断静音） */
-function rms(f32) {
-  let sum = 0
-  for (let i = 0; i < f32.length; i++) sum += f32[i] * f32[i]
-  return Math.sqrt(sum / (f32.length || 1))
-}
-
-/** 线性插值降采样到 16kHz */
-function downsample(f32, inputRate) {
-  if (inputRate === VP_SAMPLE_RATE) return f32
-  const ratio = inputRate / VP_SAMPLE_RATE
-  const outLen = Math.floor(f32.length / ratio)
-  const out = new Float32Array(outLen)
-  for (let i = 0; i < outLen; i++) {
-    const pos = i * ratio
-    const i0 = Math.floor(pos)
-    const frac = pos - i0
-    out[i] = (f32[i0] || 0) * (1 - frac) + (f32[i0 + 1] || 0) * frac
-  }
-  return out
-}
-
 // ===== Hook =====
 
 /**
@@ -219,7 +200,7 @@ export function useVoiceprint() {
     }
 
     // 降采样到 16kHz
-    const pcm16k = downsample(audio, sampleRate)
+    const pcm16k = downsampleTo16k(audio, sampleRate)
 
     setLoading(true)
     try {

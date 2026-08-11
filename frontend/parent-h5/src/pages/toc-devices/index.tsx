@@ -7,7 +7,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { View, Text, Button } from '@tarojs/components'
 import Taro from '@tarojs/taro'
-import { listTocDevices, tocUnbindDevice, setTocPreferences, type TocDeviceItem } from '../../services/toc'
+import { listTocDevices, tocUnbindDevice, setTocPreferences, type TocDeviceItem } from '../../services/device'
 import './index.scss'
 
 const VOLUME_OPTIONS = [30, 60, 80]

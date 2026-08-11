@@ -51,7 +51,7 @@ public class DeviceController {
     @PostMapping("/{deviceCode}/bind-code")
     public ApiResponse<Map<String, Object>> createBindCode(@PathVariable String deviceCode,
                                                            @RequestParam(required = false) String operator) {
-        return wrap(deviceCode, () -> deviceService.createBindCode(deviceCode, operator));
+        return ApiResponse.ok(deviceService.createBindCode(deviceCode, operator));
     }
 
     /** 绑定（登录态，AC-84-10/11/12）：归属 + 验证码双因子 */
@@ -59,7 +59,7 @@ public class DeviceController {
     public ApiResponse<Map<String, Object>> bind(@PathVariable String deviceCode,
                                                  @RequestBody BindDeviceRequest request,
                                                  @RequestParam(required = false) String operator) {
-        return wrap(deviceCode, () -> deviceService.bind(deviceCode, request.getBindType(),
+        return ApiResponse.ok(deviceService.bind(deviceCode, request.getBindType(),
                 request.getBindTargetId(), request.getStudentId(), request.getCode(), operator));
     }
 
@@ -67,7 +67,7 @@ public class DeviceController {
     @PostMapping("/{deviceCode}/unbind")
     public ApiResponse<Map<String, Object>> unbind(@PathVariable String deviceCode,
                                                    @RequestParam(required = false) String operator) {
-        return wrap(deviceCode, () -> deviceService.unbind(deviceCode, operator));
+        return ApiResponse.ok(deviceService.unbind(deviceCode, operator));
     }
 
     /** 设备首次上线/回连注册（设备端上报；已存在设备需 X-Device-Token，AUDIT-DEEP-002 code-review P0-1） */
@@ -75,7 +75,7 @@ public class DeviceController {
     public ApiResponse<Map<String, Object>> reportOnline(
             @RequestBody Map<String, String> body,
             @RequestHeader(value = "X-Device-Token", required = false) String deviceToken) {
-        return wrap(body.get("deviceCode"), () -> deviceService.reportOnline(
+        return ApiResponse.ok(deviceService.reportOnline(
                 body.get("deviceCode"), body.get("sn"), body.get("firmwareVersion"), body.get("serverUrl"),
                 deviceToken));
     }
@@ -169,29 +169,21 @@ public class DeviceController {
     @PostMapping("/{deviceCode}/ota")
     public ApiResponse<Map<String, Object>> ota(@PathVariable String deviceCode,
                                                 @RequestParam(required = false) String operator) {
-        return wrap(deviceCode, () -> deviceService.ota(deviceCode, operator));
+        return ApiResponse.ok(deviceService.ota(deviceCode, operator));
     }
 
     /** 远程重启受理（CFG-008 M13，登录态） */
     @PostMapping("/{deviceCode}/reboot")
     public ApiResponse<Map<String, Object>> reboot(@PathVariable String deviceCode,
                                                    @RequestParam(required = false) String operator) {
-        return wrap(deviceCode, () -> deviceService.reboot(deviceCode, operator));
+        return ApiResponse.ok(deviceService.reboot(deviceCode, operator));
     }
 
     /** 恢复出厂（CFG-008 M13，AC-84-19：解绑+状态回 UNACTIVATED，登录态） */
     @PostMapping("/{deviceCode}/factory-reset")
     public ApiResponse<Map<String, Object>> factoryReset(@PathVariable String deviceCode,
                                                          @RequestParam(required = false) String operator) {
-        return wrap(deviceCode, () -> deviceService.factoryReset(deviceCode, operator));
+        return ApiResponse.ok(deviceService.factoryReset(deviceCode, operator));
     }
 
-    /** 业务异常统一转 400（参数/状态非法），设备不存在单独 404 已在各端点前置处理 */
-    private <T> ApiResponse<T> wrap(String deviceCode, java.util.function.Supplier<T> supplier) {
-        try {
-            return ApiResponse.ok(supplier.get());
-        } catch (IllegalArgumentException e) {
-            return ApiResponse.error(400, e.getMessage());
-        }
-    }
 }

@@ -65,3 +65,61 @@ export function bindDevice(
 ) {
   return request<BindResult>(`/device/${deviceCode}/bind`, { method: 'POST', data })
 }
+
+// ========== 家庭登录上下文适配器（AD-008，2026-08-11） ==========
+// 设备域按身份上下文收进单一模块：匿名扫码（上方 parent_ request）+ 家庭登录（本段 toc_ request），
+// 共享类型语义（DeviceInfo/TocDeviceItem 同源设备概念）。原 toc.ts 设备段迁移至此。
+
+const tocRequest = createPlatformRequest({
+  storage: createPlatformTokens('toc_', sessionStorageImpl),
+})
+
+export interface TocDeviceItem {
+  deviceCode: string
+  deviceType: string
+  firmwareVersion?: string
+  status: string
+  online: boolean
+  binding?: { bindType: string; bindTargetId: string; boundAt?: string } | null
+}
+
+/** 家庭设备列表（本人账号 FAMILY 绑定） */
+export function listTocDevices() {
+  return tocRequest<TocDeviceItem[]>('/toc/devices', { method: 'GET' })
+}
+
+/** 发起家庭绑定验证码会话（触发设备语音播报） */
+export function createTocBindCode(deviceCode: string) {
+  return tocRequest<{ deviceCode: string; code: string; expiresAt: string }>(
+    `/toc/devices/${deviceCode}/bind-code`, { method: 'POST' })
+}
+
+/** 家庭绑定：验证码 + 可选孩子档案 */
+export function tocBindDevice(deviceCode: string, body: { code: string; profileId?: string }) {
+  return tocRequest<{ deviceCode: string; status: string; boundAt: string }>(
+    `/toc/devices/${deviceCode}/bind`, { method: 'POST', data: body })
+}
+
+/** 解绑 */
+export function tocUnbindDevice(deviceCode: string) {
+  return tocRequest<Record<string, unknown>>(`/toc/devices/${deviceCode}/unbind`, { method: 'POST' })
+}
+
+// ========== 远程管理偏好 API（TOC-006） ==========
+
+export interface TocDevicePreferences {
+  deviceCode: string
+  volume?: number
+  voicePersona?: string
+  dialoguePref?: string
+}
+
+/** 查询设备偏好 */
+export function getTocPreferences(deviceCode: string) {
+  return tocRequest<TocDevicePreferences>(`/toc/devices/${deviceCode}/preferences`, { method: 'GET' })
+}
+
+/** 设置设备偏好（音量/音色/对话偏好，设备端配置拉取时下发） */
+export function setTocPreferences(deviceCode: string, body: Partial<TocDevicePreferences>) {
+  return tocRequest<TocDevicePreferences>(`/toc/devices/${deviceCode}/preferences`, { method: 'PUT', data: body })
+}

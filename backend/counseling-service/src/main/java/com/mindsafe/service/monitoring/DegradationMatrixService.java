@@ -38,6 +38,9 @@ public class DegradationMatrixService {
 
     private static final Logger log = LoggerFactory.getLogger(DegradationMatrixService.class);
 
+    /** doing/87 RUNTIME-003：覆盖键 TTL（天）——到期自动回落，防遗忘覆盖长期生效（AC-8） */
+    public static final long OVERRIDE_TTL_DAYS = 7L;
+
     /** 覆盖键前缀（与 DegradationEventDetector.OVERRIDE_KEY_PREFIX 同约定） */
     public static final String OVERRIDE_KEY_PREFIX = "mindsafe:degradation:override:";
 
@@ -109,7 +112,8 @@ public class DegradationMatrixService {
         }
         String key = OVERRIDE_KEY_PREFIX + point;
         String previous = redisTemplate.opsForValue().get(key);
-        redisTemplate.opsForValue().set(key, to);
+        // doing/87 RUNTIME-003（AC-8）：覆盖键 TTL 7 天——到期自动回落配置默认（Redis TTL 机制）
+        redisTemplate.opsForValue().set(key, to, OVERRIDE_TTL_DAYS, java.util.concurrent.TimeUnit.DAYS);
         recordManualEvent(point, previous == null ? "auto" : previous, to, operator, reason);
         log.warn("手动降级切换: point={} -> {}（operator={}, reason={}）", point, to, operator, reason);
     }
