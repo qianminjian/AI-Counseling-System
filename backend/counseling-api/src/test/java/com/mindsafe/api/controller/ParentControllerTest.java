@@ -60,7 +60,8 @@ class ParentControllerTest {
         phoneVerificationService = mock(PhoneVerificationService.class);
 
         controller = new ParentController(jwtTokenProvider, parentService,
-                consentWithdrawalService, phoneVerificationService);
+                consentWithdrawalService, phoneVerificationService,
+                mock(com.mindsafe.service.parent.WeeklyReportService.class));
 
         // 默认：有效 parent token（sub=parentId，BUG-P-BASE-04 语义）
         when(jwtTokenProvider.validateToken(VALID_PARENT_TOKEN)).thenReturn(true);

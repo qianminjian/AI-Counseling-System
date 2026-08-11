@@ -4,7 +4,7 @@ import com.mindsafe.api.security.JwtAuthenticationFilter.TenantContext;
 import com.mindsafe.common.dto.ApiResponse;
 import com.mindsafe.domain.entity.TocFamilyAccount;
 import com.mindsafe.service.toc.TocAuthService;
-import com.mindsafe.api.security.JwtTokenProvider;
+import com.mindsafe.api.security.TocAuthProvider;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
@@ -23,11 +23,11 @@ import java.util.UUID;
 public class TocAuthController {
 
     private final TocAuthService tocAuthService;
-    private final JwtTokenProvider jwtTokenProvider;
+    private final TocAuthProvider tocAuthProvider;
 
-    public TocAuthController(TocAuthService tocAuthService, JwtTokenProvider jwtTokenProvider) {
+    public TocAuthController(TocAuthService tocAuthService, TocAuthProvider tocAuthProvider) {
         this.tocAuthService = tocAuthService;
-        this.jwtTokenProvider = jwtTokenProvider;
+        this.tocAuthProvider = tocAuthProvider;
     }
 
     /** 发送验证码（注册/登录共用，匿名） */
@@ -48,7 +48,7 @@ public class TocAuthController {
         String code = body.get("code");
         try {
             TocFamilyAccount account = tocAuthService.register(phone, code);
-            return ApiResponse.ok(session(account));
+            return ApiResponse.ok(tocAuthProvider.buildSession(account));
         } catch (IllegalArgumentException e) {
             return ApiResponse.error(400, e.getMessage());
         }
@@ -61,7 +61,7 @@ public class TocAuthController {
         String code = body.get("code");
         try {
             TocFamilyAccount account = tocAuthService.login(phone, code);
-            return ApiResponse.ok(session(account));
+            return ApiResponse.ok(tocAuthProvider.buildSession(account));
         } catch (IllegalArgumentException e) {
             return ApiResponse.error(400, e.getMessage());
         }
@@ -80,18 +80,6 @@ public class TocAuthController {
         result.put("phone", maskPhone(account.getPhone()));
         result.put("status", account.getStatus());
         return ApiResponse.ok(result);
-    }
-
-    /** 组装登录响应（token 签发在 Controller 层） */
-    private Map<String, Object> session(TocFamilyAccount account) {
-        String token = jwtTokenProvider.generateToken(
-                account.getFamilyAccountId(), "toc_parent", null);
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("token", token);
-        result.put("familyAccountId", account.getFamilyAccountId());
-        result.put("phone", maskPhone(account.getPhone()));
-        result.put("displayName", "家庭 " + maskPhone(account.getPhone()));
-        return result;
     }
 
     private static String maskPhone(String phone) {

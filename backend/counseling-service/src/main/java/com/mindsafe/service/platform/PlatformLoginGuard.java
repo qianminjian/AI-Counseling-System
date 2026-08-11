@@ -1,5 +1,8 @@
 package com.mindsafe.service.platform;
 
+import com.mindsafe.common.exception.BizException;
+import com.mindsafe.common.dto.ErrorCode;
+import com.mindsafe.service.auth.LoginRateLimiter;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
@@ -13,7 +16,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * 仅防在线爆破（BCrypt 已减缓离线爆破）；分布式多实例场景后续可迁移 Redis。
  */
 @Component
-public class PlatformLoginGuard {
+public class PlatformLoginGuard implements LoginRateLimiter {
 
     /** 失败阈值 */
     static final int MAX_FAILURES = 5;
@@ -61,5 +64,19 @@ public class PlatformLoginGuard {
     public void recordSuccess(String clientIp) {
         failures.remove(clientIp);
         locks.remove(clientIp);
+    }
+
+    // ===== LoginRateLimiter 适配（doing/89 N-001） =====
+
+    @Override
+    public void checkLockout(String identifier) {
+        if (isLocked(identifier)) {
+            throw new BizException(ErrorCode.RATE_LIMITED, "失败次数过多，请 15 分钟后再试");
+        }
+    }
+
+    @Override
+    public void clearFailures(String identifier) {
+        recordSuccess(identifier);
     }
 }

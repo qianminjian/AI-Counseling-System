@@ -3,6 +3,7 @@ package com.mindsafe.service.toc;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.mindsafe.domain.entity.TocFamilyAccount;
 import com.mindsafe.domain.mapper.TocFamilyAccountMapper;
+import com.mindsafe.service.auth.LoginRateLimiter;
 import com.mindsafe.service.security.FieldEncryptionService;
 import org.springframework.context.EnvironmentAware;
 import org.springframework.core.env.Environment;
@@ -25,7 +26,7 @@ import java.util.concurrent.TimeUnit;
  * Controller 层签发 JWT（userType=toc_parent，tenantId=null 平台级）。
  */
 @Service
-public class TocAuthService implements EnvironmentAware {
+public class TocAuthService implements EnvironmentAware, LoginRateLimiter {
 
     /** 验证码 Redis key 前缀 */
     private static final String CODE_KEY_PREFIX = "toccode:";
@@ -148,6 +149,23 @@ public class TocAuthService implements EnvironmentAware {
     private static String maskPhone(String phone) {
         return phone == null || phone.length() < 7 ? phone
                 : phone.substring(0, 3) + "****" + phone.substring(7);
+    }
+
+    // ===== LoginRateLimiter 适配（doing/89 N-001） =====
+
+    @Override
+    public void checkLockout(String identifier) {
+        rateLimitCheck(identifier);
+    }
+
+    @Override
+    public void recordFailure(String identifier) {
+        // 频率模型不按失败计数锁定（每分钟 10 次已覆盖），无操作
+    }
+
+    @Override
+    public void clearFailures(String identifier) {
+        // 频率窗口自动过期，无操作
     }
 
     /** P1 速率限制：同一手机号每分钟最多 10 次认证请求 */
