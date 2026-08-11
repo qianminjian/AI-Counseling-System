@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ComponentType } from 'react'
 import { ConfigProvider, theme } from 'antd'
 import zhCN from 'antd/locale/zh_CN'
 import LoginPage from './pages/LoginPage'
@@ -24,6 +24,37 @@ import AdminLayout, { allowedViews, type AdminView } from './components/AdminLay
 import { adminLogout, getAdminName, getAdminRole, getAdminToken, UNAUTHORIZED_EVENT } from './api'
 
 /** 平台管理端入口（ADMIN-P0-04：路由守卫 + state 路由 + 角色视图） */
+/**
+ * AD-009（2026-08-11）：视图→组件注册表（单一规则源，替代 17 分支三元链）。
+ * 新页面只需：AdminView 类型 + 本表登记 + AdminLayout 菜单——三处集中，TS 穷尽检查
+ * （Record 完整性由编译器保证，漏登记直接编译报错，不再静默渲染兜底页）。
+ */
+const VIEW_REGISTRY: Record<Exclude<AdminView, 'forbidden'>, ComponentType> = {
+  overview: OverviewPage,
+  config: ConfigPage,
+  prompt: PromptPage,
+  risk: RiskPage,
+  sla: SlaPage,
+  ledger: LedgerPage,
+  degradation: DegradationPage,
+  knowledge: KnowledgePage,
+  channel: ChannelPage,
+  insights: InsightsPage,
+  usage: UsagePage,
+  compliance: CompliancePage,
+  metrics: MetricsPage,
+  alerts: AlertPage,
+  devices: DevicePage,
+  services: ServicesPage,
+  audit: AuditPage,
+}
+
+/** 注册表渲染器：forbidden 单独处理，未登记视图（TS 已穷尽）兜底 Overview */
+function ViewRenderer({ view }: { view: AdminView }) {
+  const Page = view === 'forbidden' ? ForbiddenPage : VIEW_REGISTRY[view]
+  return <Page />
+}
+
 export default function App() {
   const [token, setToken] = useState<string | null>(getAdminToken)
   const [role, setRole] = useState<string>(() => getAdminRole() ?? '')
@@ -86,24 +117,7 @@ export default function App() {
   return (
     <ConfigProvider locale={zhCN} theme={themeConfig}>
       <AdminLayout role={role} name={name} view={currentView} onNavigate={setView} onLogout={handleLogout}>
-        {currentView === 'forbidden' ? <ForbiddenPage />
-          : currentView === 'config' ? <ConfigPage />
-          : currentView === 'prompt' ? <PromptPage />
-          : currentView === 'risk' ? <RiskPage />
-          : currentView === 'sla' ? <SlaPage />
-          : currentView === 'ledger' ? <LedgerPage />
-          : currentView === 'degradation' ? <DegradationPage />
-          : currentView === 'knowledge' ? <KnowledgePage />
-          : currentView === 'channel' ? <ChannelPage />
-          : currentView === 'insights' ? <InsightsPage />
-          : currentView === 'usage' ? <UsagePage />
-          : currentView === 'compliance' ? <CompliancePage />
-          : currentView === 'metrics' ? <MetricsPage />
-          : currentView === 'alerts' ? <AlertPage />
-          : currentView === 'devices' ? <DevicePage />
-          : currentView === 'services' ? <ServicesPage />
-          : currentView === 'audit' ? <AuditPage />
-          : <OverviewPage />}
+        <ViewRenderer view={currentView} />
       </AdminLayout>
     </ConfigProvider>
   )

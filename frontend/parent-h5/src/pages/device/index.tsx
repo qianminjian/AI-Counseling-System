@@ -16,7 +16,7 @@ import {
   bindDevice,
   type DeviceInfo,
 } from '../../services/device'
-import { tocBindDevice } from '../../services/toc'
+import { tocBindDevice } from '../../services/device'
 import { validateBindInput } from '../../utils/deviceBind'
 import './index.scss'
 

@@ -117,13 +117,11 @@ import {
   tocRegister,
   createTocProfile,
   listTocProfiles,
-  createTocBindCode,
-  tocBindDevice,
-  listTocDevices,
-  setTocPreferences,
   getTocPrivacyOverview,
   deleteTocPrivacyData,
 } from '../services/toc'
+// AD-008：设备域统一从 services/device（家庭登录上下文适配器）引入
+import { createTocBindCode, tocBindDevice, listTocDevices, setTocPreferences } from '../services/device'
 
 describe('84 ↔ 85 设计承接端到端连通性（自动模拟全链路）', () => {
   beforeEach(() => {

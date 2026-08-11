@@ -82,56 +82,6 @@ export function deleteTocProfile(profileId: string) {
 
 // ========== 家庭设备 API（TOC-003，联动 doing/84 CFG-010） ==========
 
-export interface TocDeviceItem {
-  deviceCode: string
-  deviceType: string
-  firmwareVersion?: string
-  status: string
-  online: boolean
-  binding?: { bindType: string; bindTargetId: string; boundAt?: string } | null
-}
-
-/** 家庭设备列表（本人账号 FAMILY 绑定） */
-export function listTocDevices() {
-  return request<TocDeviceItem[]>('/toc/devices', { method: 'GET' })
-}
-
-/** 发起家庭绑定验证码会话（触发设备语音播报） */
-export function createTocBindCode(deviceCode: string) {
-  return request<{ deviceCode: string; code: string; expiresAt: string }>(
-    `/toc/devices/${deviceCode}/bind-code`, { method: 'POST' })
-}
-
-/** 家庭绑定：验证码 + 可选孩子档案 */
-export function tocBindDevice(deviceCode: string, body: { code: string; profileId?: string }) {
-  return request<{ deviceCode: string; status: string; boundAt: string }>(
-    `/toc/devices/${deviceCode}/bind`, { method: 'POST', data: body })
-}
-
-/** 解绑 */
-export function tocUnbindDevice(deviceCode: string) {
-  return request<Record<string, unknown>>(`/toc/devices/${deviceCode}/unbind`, { method: 'POST' })
-}
-
-// ========== 远程管理偏好 API（TOC-006） ==========
-
-export interface TocDevicePreferences {
-  deviceCode: string
-  volume?: number
-  voicePersona?: string
-  dialoguePref?: string
-}
-
-/** 查询设备偏好 */
-export function getTocPreferences(deviceCode: string) {
-  return request<TocDevicePreferences>(`/toc/devices/${deviceCode}/preferences`, { method: 'GET' })
-}
-
-/** 设置设备偏好（音量/音色/对话偏好，设备端配置拉取时下发） */
-export function setTocPreferences(deviceCode: string, body: Partial<TocDevicePreferences>) {
-  return request<TocDevicePreferences>(`/toc/devices/${deviceCode}/preferences`, { method: 'PUT', data: body })
-}
-
 // ========== 隐私控制 API（TOC-007） ==========
 
 export interface TocPrivacyOverview {

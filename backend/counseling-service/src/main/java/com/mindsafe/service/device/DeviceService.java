@@ -345,6 +345,8 @@ public class DeviceService {
     /** 远程重启受理（CFG-008 M13）。 */
     public Map<String, Object> reboot(String deviceCode, String operator) {
         Device device = requireDevice(deviceCode);
+        // AD-001（2026-08-11）：补齐 reboot 审计接入（ota/factory-reset 已接入，reboot 原漏接）
+        auditOperation(deviceCode, "reboot", operator, "操作已受理，固件侧执行待 NST-HW-02 二期对接");
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("deviceCode", deviceCode);
         result.put("action", "reboot");

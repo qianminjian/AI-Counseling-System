@@ -2,10 +2,12 @@ package com.mindsafe.service.device;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
@@ -41,12 +43,64 @@ public class DeviceVoiceprintService {
     /** 任务阶段：失败（可重试，重试 = 新建任务） */
     public static final String PHASE_FAILED = "FAILED";
 
+    /**
+     * AD-006（2026-08-11）：阶段推进 Lua 原子脚本（CAS 防并发覆盖）——
+     * 仅 INITIATED/COLLECTING 可推进；deviceCode 匹配校验；写回带 TTL。
+     * 返回：新任务 JSON / 原任务 JSON（不可推进）/ 'MISMATCH' / nil（任务不存在）。
+     */
+    /** 包级可见（测试按脚本实例分发模拟，P3-3） */
+    static final DefaultRedisScript<String> REPORT_PHASE_SCRIPT = new DefaultRedisScript<>(
+            "local json = redis.call('GET', KEYS[1])\n"
+                    + "if not json then return nil end\n"
+                    + "local task = cjson.decode(json)\n"
+                    + "if task.phase ~= 'INITIATED' and task.phase ~= 'COLLECTING' then return cjson.encode(task) end\n"
+                    + "if ARGV[2] ~= '' and task.deviceCode ~= ARGV[2] then return 'MISMATCH' end\n"
+                    + "task.phase = ARGV[1]\n"
+                    + "task.updatedAt = ARGV[3]\n"
+                    + "redis.call('SET', KEYS[1], cjson.encode(task), 'EX', tonumber(ARGV[4]))\n"
+                    + "return cjson.encode(task)", String.class);
+
+    /**
+     * AD-006：终态原子写（COMPLETED/FAILED，管理端强制完成/失败；带 TTL 写回）。
+     * code-review P1（2026-08-11）：deviceCode 校验在脚本内（ARGV[4] 可选）——
+     * 不匹配返回 'MISMATCH' 不写回（与 REPORT_PHASE 语义一致，杜绝先写后验污染状态）。
+     */
+    /** 包级可见（测试按脚本实例分发模拟，P3-3） */
+    static final DefaultRedisScript<String> TERMINAL_PHASE_SCRIPT = new DefaultRedisScript<>(
+            "local json = redis.call('GET', KEYS[1])\n"
+                    + "if not json then return nil end\n"
+                    + "local task = cjson.decode(json)\n"
+                    + "if ARGV[4] and ARGV[4] ~= '' and task.deviceCode ~= ARGV[4] then return 'MISMATCH' end\n"
+                    + "task.phase = ARGV[1]\n"
+                    + "task.updatedAt = ARGV[2]\n"
+                    + "if ARGV[1] == 'COMPLETED' then task.completedAt = ARGV[2] end\n"
+                    + "if ARGV[1] == 'FAILED' then task.failedAt = ARGV[2] end\n"
+                    + "redis.call('SET', KEYS[1], cjson.encode(task), 'EX', tonumber(ARGV[3]))\n"
+                    + "return cjson.encode(task)", String.class);
+
+    /**
+     * Lua 脚本执行器（AD-006，2026-08-11）：与 RedisTemplate 解耦——
+     * 生产默认包装 execute；测试注入内存模拟（规避 Mockito varargs 匹配陷阱）。
+     */
+    @FunctionalInterface
+    interface VoiceprintScriptRunner {
+        String execute(DefaultRedisScript<String> script, String key, Object... args);
+    }
+
     private final StringRedisTemplate redisTemplate;
     private final ObjectMapper objectMapper;
+    private final VoiceprintScriptRunner scriptRunner;
 
     public DeviceVoiceprintService(StringRedisTemplate redisTemplate, ObjectMapper objectMapper) {
+        this(redisTemplate, objectMapper, null);
+    }
+
+    DeviceVoiceprintService(StringRedisTemplate redisTemplate, ObjectMapper objectMapper,
+                            VoiceprintScriptRunner scriptRunner) {
         this.redisTemplate = redisTemplate;
         this.objectMapper = objectMapper;
+        this.scriptRunner = scriptRunner != null ? scriptRunner
+                : (script, key, args) -> redisTemplate.execute(script, List.of(key), args);
     }
 
     /**
@@ -79,23 +133,25 @@ public class DeviceVoiceprintService {
      * 落库链路待对接 voice-service，当前前置亭——前端轮询不会卡在 UPLOADED）。
      */
     public Map<String, Object> reportPhase(String taskId, String phase, String deviceCode) {
-        Map<String, Object> task = getTask(taskId);
-        if (task == null || !task.get("phase").equals(PHASE_INITIATED) && !task.get("phase").equals(PHASE_COLLECTING)) {
-            return task;
-        }
         if (!PHASE_COLLECTING.equals(phase) && !PHASE_UPLOADED.equals(phase)) {
             throw new IllegalArgumentException("非法采集阶段: " + phase);
         }
-        // P0-5：校验 task 的 deviceCode 与上报方一致
-        if (deviceCode != null && !deviceCode.equals(task.get("deviceCode"))) {
+        // AD-006：Lua 原子推进（CAS）——读取/校验/写回单次原子执行，并发上报不丢更新；
+        // 前置状态（INITIATED/COLLECTING）与 deviceCode 匹配校验在脚本内完成
+        // AD-006：脚本经 runner 执行（生产=Redis Lua 原子，测试=内存模拟）
+        String result = scriptRunner.execute(REPORT_PHASE_SCRIPT, key(taskId),
+                phase, deviceCode == null ? "" : deviceCode,
+                Instant.now().toString(), String.valueOf(TASK_TTL_MINUTES));
+        if (result == null) {
+            return null; // 任务不存在
+        }
+        if ("MISMATCH".equals(result)) {
             throw new IllegalArgumentException("设备码与任务不匹配");
         }
-        task.put("phase", phase);
-        task.put("updatedAt", Instant.now().toString());
-        redisTemplate.opsForValue().set(key(taskId), write(task), TASK_TTL_MINUTES, TimeUnit.MINUTES);
+        Map<String, Object> task = read(result);
         // P0-5：UPLOADED 自动触发 complete（真实 enroll 链路就绪后替换为唤醒 enroll 异步任务）
         if (PHASE_UPLOADED.equals(phase)) {
-            complete(taskId);
+            complete(taskId, null);
             return getTask(taskId);
         }
         return task;
@@ -107,30 +163,47 @@ public class DeviceVoiceprintService {
      * 对接 voice-service 后应移除自动逻辑，改由 enroll 回调驱动。
      */
     public void complete(String taskId) {
+        complete(taskId, null);
+    }
+
+    /**
+     * 标记任务完成（AC-84-14）：enroll 落库成功后调用；任务不存在静默忽略。
+     * AD-006：Lua 原子写；deviceCode 提供时校验与任务归属一致（管理端调用可传 null 跳过）。
+     */
+    public void complete(String taskId, String deviceCode) {
         if (taskId == null || taskId.isBlank()) {
             return;
         }
-        Map<String, Object> task = getTask(taskId);
-        if (task == null) {
-            return;
-        }
-        task.put("phase", PHASE_COMPLETED);
-        task.put("completedAt", Instant.now().toString());
-        redisTemplate.opsForValue().set(key(taskId), write(task), TASK_TTL_MINUTES, TimeUnit.MINUTES);
+        applyTerminalPhase(taskId, PHASE_COMPLETED, deviceCode);
     }
 
     /** 标记任务失败（可重试：客户端新建任务） */
     public void fail(String taskId) {
+        fail(taskId, null);
+    }
+
+    /**
+     * 标记任务失败（可重试：客户端新建任务）。
+     * AD-006：Lua 原子写；deviceCode 提供时校验与任务归属一致。
+     */
+    public void fail(String taskId, String deviceCode) {
         if (taskId == null || taskId.isBlank()) {
             return;
         }
-        Map<String, Object> task = getTask(taskId);
-        if (task == null) {
-            return;
+        applyTerminalPhase(taskId, PHASE_FAILED, deviceCode);
+    }
+
+    /** 终态原子写（AD-006）：任务存在 + 归属一致（脚本内校验，失败不写回）后单次脚本置位 */
+    private void applyTerminalPhase(String taskId, String phase, String deviceCode) {
+        String result = scriptRunner.execute(TERMINAL_PHASE_SCRIPT, key(taskId),
+                phase, Instant.now().toString(), String.valueOf(TASK_TTL_MINUTES),
+                deviceCode == null ? "" : deviceCode);
+        if (result == null) {
+            return; // 任务不存在
         }
-        task.put("phase", PHASE_FAILED);
-        task.put("failedAt", Instant.now().toString());
-        redisTemplate.opsForValue().set(key(taskId), write(task), TASK_TTL_MINUTES, TimeUnit.MINUTES);
+        if ("MISMATCH".equals(result)) {
+            throw new IllegalArgumentException("设备码与任务不匹配");
+        }
     }
 
     private static String key(String taskId) {

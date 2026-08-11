@@ -23,10 +23,6 @@ public class GlobalExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
-    /**
-     * 业务异常（AUD-015：按 ErrorCode 映射 4xx/5xx，body 保留 code/message 兼容前端；
-     * 网关/nginx 可按状态码告警重试，不再全部 200 承载）
-     */
     @ExceptionHandler(BizException.class)
     public ResponseEntity<ApiResponse<Void>> handleBizException(BizException e) {
         HttpStatus status = resolveStatus(e.getCode());
@@ -103,7 +99,7 @@ public class GlobalExceptionHandler {
         return ApiResponse.error(ErrorCode.PARAM_INVALID.code(), e.getMessage());
     }
 
-    /** 非法参数（P1 审计修复：服务层 IllegalArgumentException（归属校验/学生不存在等）→ 400，不再 500） */
+    /** 非法参数（P1 审计修复：服务层 IllegalArgumentException（归属校验/学 生不存在等）→ 400，不再 500；AD-007 收编 DeviceController.wrap/TocDeviceController 手写 catch 后为唯一出口） */
     @ExceptionHandler(IllegalArgumentException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public ApiResponse<Void> handleIllegalArgument(IllegalArgumentException e) {
