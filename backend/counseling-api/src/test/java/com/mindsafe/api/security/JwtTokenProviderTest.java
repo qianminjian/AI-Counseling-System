@@ -188,4 +188,43 @@ class JwtTokenProviderTest {
         assertFalse(provider.isPlatformToken(null));
         assertFalse(provider.isPlatformToken("PLATFORM_garbage"));
     }
+
+    // ===== R-016 tokenType 枚举化（字面量单点收敛） =====
+
+    @Test
+    @DisplayName("parseOnce：五种合法类型均映射枚举，claim 值保持兼容")
+    void parseOnce_mapsAllTokenTypes() {
+        assertEquals(TokenType.ACCESS, provider.parseOnce(provider.generateToken(USER_ID, "student", TENANT_ID)).tokenType());
+        assertEquals(TokenType.REFRESH, provider.parseOnce(provider.generateRefreshToken(USER_ID, "teacher", TENANT_ID)).tokenType());
+        assertEquals(TokenType.VOICE_CREDENTIAL, provider.parseOnce(provider.generateVoiceCredential(USER_ID, "student", TENANT_ID)).tokenType());
+        assertEquals(TokenType.PARENT_REPORT, provider.parseOnce(provider.generateParentReportToken(USER_ID, TENANT_ID)).tokenType());
+        // 平台 token 走前缀剥离路径（8/10 事故根因所在，语义最特殊）
+        assertEquals(TokenType.PLATFORM_ACCESS,
+                provider.parseOnce(provider.generatePlatformToken(USER_ID, "super_admin")).tokenType());
+    }
+
+    @Test
+    @DisplayName("parseOnce：未知 tokenType claim → null（filter 按非 ACCESS 拒绝，安全默认）")
+    void parseOnce_unknownTokenTypeRejected() throws Exception {
+        // 手工签发未知 tokenType 的 token（绕过枚举生成器）
+        JwtTokenProvider provider = new JwtTokenProvider(
+                "", 7200000L, 604800000L, 604800000L, 604800000L, "dev", DEV_SECRET, "mindsafe-test");
+        var field = JwtTokenProvider.class.getDeclaredField("key");
+        field.setAccessible(true);
+        var key = (javax.crypto.SecretKey) field.get(provider);
+        String rogue = io.jsonwebtoken.Jwts.builder()
+                .subject(USER_ID.toString())
+                .claim("userType", "student")
+                .claim("tenantId", TENANT_ID.toString())
+                .claim("tokenType", "super_secret_magic")
+                .issuer("mindsafe-test")
+                .audience().add("mindsafe-api").and()
+                .issuedAt(new java.util.Date())
+                .expiration(new java.util.Date(System.currentTimeMillis() + 3600_000))
+                .signWith(key)
+                .compact();
+
+        assertNull(provider.parseOnce(rogue).tokenType());
+        assertFalse(provider.isAccessToken(rogue));
+    }
 }

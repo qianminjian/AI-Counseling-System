@@ -50,7 +50,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         } else if (token != null) {
             // doing/92 R-017：单次 parse（原 6 次 parse/请求：validate+isAccess+getTokenId+getUserId+getUserType+getTenantId）
             var parsed = jwtTokenProvider.parseOnce(token);
-            if (!"access".equals(parsed.tokenType())
+            // doing/92 R-016：tokenType 枚举化（未知类型 parseOnce 返回 null → 非 ACCESS 拒绝）
+            if (parsed.tokenType() != TokenType.ACCESS
                     || blacklistService.isBlacklisted(parsed.tokenId())) {
                 // 非 access 类型 或 已撤销（黑名单）token → 不建立认证
                 return;

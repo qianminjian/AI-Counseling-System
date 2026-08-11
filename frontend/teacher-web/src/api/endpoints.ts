@@ -48,7 +48,7 @@ export const ENDPOINTS = {
   createInviteCode: { path: '/api/v1/admin/invite-codes', method: 'post' },
   deactivateInviteCode: { path: '/api/v1/admin/invite-codes/{codeId}/deactivate', method: 'patch' },
   deleteInviteCode: { path: '/api/v1/admin/invite-codes/{codeId}', method: 'delete' },
-  getAuditLogs: { path: '/api/v1/admin/invite-codes/audit-logs', method: 'get' },
+  getAuditLogs: { path: '/api/v1/admin/audit-logs', method: 'get' }, // doing/92 R-002：审计日志独立端点（旧 invite-codes 路径为兼容别名）
   // CFG-001/004/006/008（doing/84 §六.2）：无屏终端设备管理（toB 老师端）
   getDeviceList: { path: '/api/v1/device/list', method: 'get' },
   createBindCode: { path: '/api/v1/device/{deviceCode}/bind-code', method: 'post' },

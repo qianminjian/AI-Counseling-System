@@ -166,10 +166,13 @@ public class AdminController {
         }
     }
 
-    // ===== 审计日志查询 =====
+    // ===== 审计日志查询（doing/92 R-002：迁出至 AuditLogController /api/v1/admin/audit-logs） =====
 
-    /** 查询审计日志（admin 专用，最近 200 条） */
+    /**
+     * 查询审计日志（兼容别名，deprecated：审计日志为全局资源，请用 /api/v1/admin/audit-logs）
+     */
     @GetMapping("/audit-logs")
+    @Deprecated
     public ApiResponse<List<AuditLog>> getAuditLogs(
             Authentication auth,
             @RequestParam(required = false) String action,

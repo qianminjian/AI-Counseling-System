@@ -79,12 +79,12 @@ public class JwtTokenProvider {
 
     /** 生成 Access Token（2h） */
     public String generateToken(UUID userId, String userType, UUID tenantId) {
-        return buildToken(userId, userType, tenantId, "access", accessExpirationMs);
+        return buildToken(userId, userType, tenantId, TokenType.ACCESS, accessExpirationMs);
     }
 
     /** 生成 Refresh Token（7d） */
     public String generateRefreshToken(UUID userId, String userType, UUID tenantId) {
-        return buildToken(userId, userType, tenantId, "refresh", refreshExpirationMs);
+        return buildToken(userId, userType, tenantId, TokenType.REFRESH, refreshExpirationMs);
     }
 
     /**
@@ -97,7 +97,7 @@ public class JwtTokenProvider {
                 .subject(adminId.toString())
                 .claim("userType", PLATFORM_USER_TYPE)
                 .claim("role", role)
-                .claim("tokenType", "platform_access")
+                .claim("tokenType", TokenType.PLATFORM_ACCESS.claimValue())
                 .id(UUID.randomUUID().toString())
                 .issuer(issuer)
                 .audience().add(AUDIENCE).and()
@@ -115,7 +115,7 @@ public class JwtTokenProvider {
         }
         try {
             Claims claims = parseToken(stripPlatformPrefix(token));
-            return "platform_access".equals(claims.get("tokenType", String.class));
+            return TokenType.PLATFORM_ACCESS.claimValue().equals(claims.get("tokenType", String.class));
         } catch (Exception e) {
             return false;
         }
@@ -135,21 +135,21 @@ public class JwtTokenProvider {
 
     /** 生成声纹设备凭证（7d，AUD-001：90d → 7d 缩小攻击窗口）：声纹录入时签发，存学生设备本地，声纹登录时凭其换取正式双 token */
     public String generateVoiceCredential(UUID userId, String userType, UUID tenantId) {
-        return buildToken(userId, userType, tenantId, "voice_credential", voiceCredentialExpirationMs);
+        return buildToken(userId, userType, tenantId, TokenType.VOICE_CREDENTIAL, voiceCredentialExpirationMs);
     }
 
     /** 生成家长报告链接 token（默认 7d，SEC-006）：独立 tokenType，与学生 access token 区分，防学生自持 token 调家长接口 */
     public String generateParentReportToken(UUID studentUserId, UUID tenantId) {
-        return buildToken(studentUserId, "parent", tenantId, "parent_report", parentReportExpirationMs);
+        return buildToken(studentUserId, "parent", tenantId, TokenType.PARENT_REPORT, parentReportExpirationMs);
     }
 
-    private String buildToken(UUID userId, String userType, UUID tenantId, String tokenType, long ttl) {
+    private String buildToken(UUID userId, String userType, UUID tenantId, TokenType tokenType, long ttl) {
         Date now = new Date();
         return Jwts.builder()
                 .subject(userId.toString())
                 .claim("userType", userType)
                 .claim("tenantId", tenantId.toString())
-                .claim("tokenType", tokenType)
+                .claim("tokenType", tokenType.claimValue())
                 // AUDIT-P1-13：jti（黑名单粒度）/ iss / aud
                 .id(UUID.randomUUID().toString())
                 .issuer(issuer)
@@ -197,17 +197,18 @@ public class JwtTokenProvider {
                 UUID.fromString(claims.getSubject()),
                 claims.get("userType", String.class),
                 claims.get("tenantId", String.class) == null ? null : UUID.fromString(claims.get("tenantId", String.class)),
-                claims.get("tokenType", String.class));
+                // doing/92 R-016：枚举化（未知 claim 值 → null，filter 按非 ACCESS 拒绝）
+                TokenType.fromClaimValue(claims.get("tokenType", String.class)));
     }
 
     /** doing/92 R-017：单次 parse 快照（filter 认证链用） */
-    public record ParsedToken(String tokenId, UUID userId, String userType, UUID tenantId, String tokenType) {
+    public record ParsedToken(String tokenId, UUID userId, String userType, UUID tenantId, TokenType tokenType) {
     }
 
     public boolean isAccessToken(String token) {
         try {
             Claims claims = parseToken(token);
-            return "access".equals(claims.get("tokenType", String.class));
+            return TokenType.ACCESS.claimValue().equals(claims.get("tokenType", String.class));
         } catch (Exception e) {
             return false;
         }
@@ -217,7 +218,7 @@ public class JwtTokenProvider {
     public boolean isRefreshToken(String token) {
         try {
             Claims claims = parseToken(token);
-            return "refresh".equals(claims.get("tokenType", String.class));
+            return TokenType.REFRESH.claimValue().equals(claims.get("tokenType", String.class));
         } catch (Exception e) {
             return false;
         }
@@ -227,7 +228,7 @@ public class JwtTokenProvider {
     public boolean isVoiceCredential(String token) {
         try {
             Claims claims = parseToken(token);
-            return "voice_credential".equals(claims.get("tokenType", String.class));
+            return TokenType.VOICE_CREDENTIAL.claimValue().equals(claims.get("tokenType", String.class));
         } catch (Exception e) {
             return false;
         }
@@ -237,7 +238,7 @@ public class JwtTokenProvider {
     public boolean isParentReportToken(String token) {
         try {
             Claims claims = parseToken(token);
-            return "parent_report".equals(claims.get("tokenType", String.class));
+            return TokenType.PARENT_REPORT.claimValue().equals(claims.get("tokenType", String.class));
         } catch (Exception e) {
             return false;
         }
