@@ -14,6 +14,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -28,6 +29,7 @@ class ParentAuthControllerTest {
 
     private ParentAuthService parentAuthService;
     private JwtTokenProvider jwtTokenProvider;
+    private com.mindsafe.api.security.ParentAuthProvider parentAuthProvider;
     private ParentAuthController controller;
 
     private final UUID parentId = UUID.randomUUID();
@@ -38,7 +40,8 @@ class ParentAuthControllerTest {
     void setUp() {
         parentAuthService = mock(ParentAuthService.class);
         jwtTokenProvider = mock(JwtTokenProvider.class);
-        controller = new ParentAuthController(parentAuthService, jwtTokenProvider);
+        parentAuthProvider = mock(com.mindsafe.api.security.ParentAuthProvider.class);
+        controller = new ParentAuthController(parentAuthService, parentAuthProvider, jwtTokenProvider);
     }
 
     private ParentAccount account() {
@@ -72,8 +75,8 @@ class ParentAuthControllerTest {
     void register_success() {
         when(parentAuthService.register("FAM001", "13800000000", "pwd123", "妈妈"))
                 .thenReturn(account());
-        when(jwtTokenProvider.generateToken(parentId, "parent", tenantId)).thenReturn("tk");
-        when(jwtTokenProvider.generateRefreshToken(parentId, "parent", tenantId)).thenReturn("rt");
+        when(parentAuthProvider.issueAccessToken(any(), any(), any())).thenReturn("tk");
+        when(parentAuthProvider.issueRefreshToken(any(), any(), any())).thenReturn("rt");
         when(parentAuthService.getLinkedStudents(parentId))
                 .thenReturn(List.of(childWithCodes(), childWithoutCodes()));
 
@@ -104,8 +107,8 @@ class ParentAuthControllerTest {
     void register_noChildren() {
         when(parentAuthService.register("FAM001", "13800000000", "pwd123", null))
                 .thenReturn(account());
-        when(jwtTokenProvider.generateToken(parentId, "parent", tenantId)).thenReturn("tk");
-        when(jwtTokenProvider.generateRefreshToken(parentId, "parent", tenantId)).thenReturn("rt");
+        when(parentAuthProvider.issueAccessToken(any(), any(), any())).thenReturn("tk");
+        when(parentAuthProvider.issueRefreshToken(any(), any(), any())).thenReturn("rt");
         when(parentAuthService.getLinkedStudents(parentId)).thenReturn(List.of());
 
         ApiResponse<Map<String, Object>> resp = controller.register(
@@ -118,8 +121,8 @@ class ParentAuthControllerTest {
     @DisplayName("login 成功 → 双 token + children")
     void login_success() {
         when(parentAuthService.login("13800000000", "pwd123")).thenReturn(account());
-        when(jwtTokenProvider.generateToken(parentId, "parent", tenantId)).thenReturn("tk");
-        when(jwtTokenProvider.generateRefreshToken(parentId, "parent", tenantId)).thenReturn("rt");
+        when(parentAuthProvider.issueAccessToken(any(), any(), any())).thenReturn("tk");
+        when(parentAuthProvider.issueRefreshToken(any(), any(), any())).thenReturn("rt");
         when(parentAuthService.getLinkedStudents(parentId)).thenReturn(List.of(childWithCodes()));
 
         ApiResponse<Map<String, Object>> resp = controller.login(

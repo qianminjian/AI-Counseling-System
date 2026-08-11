@@ -1,6 +1,6 @@
 package com.mindsafe.api.controller;
 
-import com.mindsafe.api.security.JwtTokenProvider;
+import com.mindsafe.api.security.PlatformAuthProvider;
 import com.mindsafe.common.dto.ApiResponse;
 import com.mindsafe.common.dto.ErrorCode;
 import com.mindsafe.common.exception.BizException;
@@ -26,14 +26,14 @@ import org.springframework.web.bind.annotation.RestController;
 public class PlatformAuthController {
 
     private final PlatformAdminService platformAdminService;
-    private final JwtTokenProvider jwtTokenProvider;
+    private final PlatformAuthProvider platformAuthProvider;
     private final PlatformLoginGuard loginGuard;
 
     public PlatformAuthController(PlatformAdminService platformAdminService,
-                                  JwtTokenProvider jwtTokenProvider,
+                                  PlatformAuthProvider platformAuthProvider,
                                   PlatformLoginGuard loginGuard) {
         this.platformAdminService = platformAdminService;
-        this.jwtTokenProvider = jwtTokenProvider;
+        this.platformAuthProvider = platformAuthProvider;
         this.loginGuard = loginGuard;
     }
 
@@ -48,7 +48,8 @@ public class PlatformAuthController {
         try {
             PlatformAdmin admin = platformAdminService.login(request.username(), request.password());
             loginGuard.recordSuccess(clientIp);
-            String token = jwtTokenProvider.generatePlatformToken(admin.getAdminId(), admin.getRole());
+            // AC-89-05：平台 token 经 PlatformAuthProvider 统一签发（PLATFORM_ 格式不变）
+            String token = platformAuthProvider.issueAccessToken(admin.getAdminId(), admin.getRole(), null);
             return ApiResponse.ok(new PlatformLoginResponse(token, admin.getRole(), admin.getDisplayName()));
         } catch (BizException e) {
             loginGuard.recordFailure(clientIp);

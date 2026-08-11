@@ -1,6 +1,7 @@
 package com.mindsafe.api.controller;
 
 import com.mindsafe.api.security.JwtTokenProvider;
+import com.mindsafe.api.security.ParentAuthProvider;
 import com.mindsafe.common.dto.ApiResponse;
 import com.mindsafe.domain.entity.ParentAccount;
 import com.mindsafe.domain.entity.User;
@@ -26,11 +27,14 @@ import java.util.stream.Collectors;
 public class ParentAuthController {
 
     private final ParentAuthService parentAuthService;
+    private final ParentAuthProvider parentAuthProvider;
     private final JwtTokenProvider jwtTokenProvider;
 
     public ParentAuthController(ParentAuthService parentAuthService,
+                                ParentAuthProvider parentAuthProvider,
                                 JwtTokenProvider jwtTokenProvider) {
         this.parentAuthService = parentAuthService;
+        this.parentAuthProvider = parentAuthProvider;
         this.jwtTokenProvider = jwtTokenProvider;
     }
 
@@ -43,9 +47,10 @@ public class ParentAuthController {
                 request.familyCode(), request.phone(), request.password(), request.relation());
 
         // 签发 JWT（userType=parent）
-        String token = jwtTokenProvider.generateToken(
+        // AC-89-05：家长 token 经 ParentAuthProvider 统一签发（格式不变）
+        String token = parentAuthProvider.issueAccessToken(
                 account.getParentId(), "parent", account.getTenantId());
-        String refreshToken = jwtTokenProvider.generateRefreshToken(
+        String refreshToken = parentAuthProvider.issueRefreshToken(
                 account.getParentId(), "parent", account.getTenantId());
 
         // 查询绑定的学生
@@ -73,9 +78,10 @@ public class ParentAuthController {
     public ApiResponse<Map<String, Object>> login(@Valid @RequestBody ParentLoginRequest request) {
         ParentAccount account = parentAuthService.login(request.phone(), request.password());
 
-        String token = jwtTokenProvider.generateToken(
+        // AC-89-05：家长 token 经 ParentAuthProvider 统一签发（格式不变）
+        String token = parentAuthProvider.issueAccessToken(
                 account.getParentId(), "parent", account.getTenantId());
-        String refreshToken = jwtTokenProvider.generateRefreshToken(
+        String refreshToken = parentAuthProvider.issueRefreshToken(
                 account.getParentId(), "parent", account.getTenantId());
 
         List<User> students = parentAuthService.getLinkedStudents(account.getParentId());

@@ -4,6 +4,7 @@ import com.mindsafe.api.auth.AuthenticatedUser;
 import com.mindsafe.api.auth.TrialAuthStrategy;
 import com.mindsafe.api.auth.TrialRegisterRequest;
 import com.mindsafe.api.security.JwtAuthenticationFilter.TenantContext;
+import com.mindsafe.api.security.BusinessAuthProvider;
 import com.mindsafe.api.security.JwtTokenProvider;
 import com.mindsafe.common.dto.ApiResponse;
 import com.mindsafe.common.dto.ErrorCode;
@@ -44,6 +45,7 @@ public class AuthController {
 
     private final PasswordEncoder passwordEncoder;
     private final JwtTokenProvider jwtTokenProvider;
+    private final BusinessAuthProvider businessAuthProvider;
     private final TrialAuthStrategy trialAuthStrategy;
     private final TrialAuthService trialAuthService;
     private final AuditLogService auditLogService;
@@ -56,6 +58,7 @@ public class AuthController {
 
     public AuthController(PasswordEncoder passwordEncoder,
                           JwtTokenProvider jwtTokenProvider,
+                                   BusinessAuthProvider businessAuthProvider,
                           TrialAuthStrategy trialAuthStrategy,
                           TrialAuthService trialAuthService,
                           AuditLogService auditLogService,
@@ -67,6 +70,7 @@ public class AuthController {
                           AuthUserService authUserService) {
         this.passwordEncoder = passwordEncoder;
         this.jwtTokenProvider = jwtTokenProvider;
+        this.businessAuthProvider = businessAuthProvider;
         this.trialAuthStrategy = trialAuthStrategy;
         this.trialAuthService = trialAuthService;
         this.auditLogService = auditLogService;
@@ -119,9 +123,9 @@ public class AuthController {
         // 更新最后登录时间 + LOGIN 审计（T4 批次B：下沉 AuthUserService，租户上下文绑定在 Service 内）
         authUserService.recordLoginSuccess(user.getTenantId(), user.getUserId());
 
-        String token = jwtTokenProvider.generateToken(
+        String token = businessAuthProvider.issueAccessToken(
                 user.getUserId(), user.getUserType(), user.getTenantId());
-        String refreshToken = jwtTokenProvider.generateRefreshToken(
+        String refreshToken = businessAuthProvider.issueRefreshToken(
                 user.getUserId(), user.getUserType(), user.getTenantId());
 
         boolean mustChange = Boolean.TRUE.equals(user.getMustChangePassword())
@@ -154,9 +158,9 @@ public class AuthController {
                 && !TenantContextHolder.callAsSystem(
                         () -> guardianConsentService.hasGuardianConsent(authUser.tenantId(), authUser.userId()));
 
-        String token = jwtTokenProvider.generateToken(
+        String token = businessAuthProvider.issueAccessToken(
                 authUser.userId(), authUser.userType(), authUser.tenantId());
-        String refreshToken = jwtTokenProvider.generateRefreshToken(
+        String refreshToken = businessAuthProvider.issueRefreshToken(
                 authUser.userId(), authUser.userType(), authUser.tenantId());
 
         return ApiResponse.ok(new TrialRegisterResponse(
@@ -209,9 +213,9 @@ public class AuthController {
         try {
             User user = trialAuthService.loginWithPin(request.pseudonym(), request.pin());
             lockoutService.clearFailures(lockKey);
-            String token = jwtTokenProvider.generateToken(
+            String token = businessAuthProvider.issueAccessToken(
                     user.getUserId(), user.getUserType(), user.getTenantId());
-            String refreshToken = jwtTokenProvider.generateRefreshToken(
+            String refreshToken = businessAuthProvider.issueRefreshToken(
                     user.getUserId(), user.getUserType(), user.getTenantId());
             // 审计需绑定真实租户上下文提交（@Async 经 TaskDecorator 继承，否则 fail-fast 拒绝写入）
             TenantContextHolder.set(user.getTenantId());
@@ -273,9 +277,9 @@ public class AuthController {
         // 更新最后登录时间（T4 批次B：下沉 AuthUserService）
         authUserService.touchLastLogin(user.getUserId());
 
-        String token = jwtTokenProvider.generateToken(
+        String token = businessAuthProvider.issueAccessToken(
                 user.getUserId(), user.getUserType(), user.getTenantId());
-        String refreshToken = jwtTokenProvider.generateRefreshToken(
+        String refreshToken = businessAuthProvider.issueRefreshToken(
                 user.getUserId(), user.getUserType(), user.getTenantId());
 
         auditLogService.log(user.getTenantId(), user.getUserId(), "VOICE_LOGIN", "user", user.getUserId(), null);
@@ -329,8 +333,8 @@ public class AuthController {
         UUID tenantId = jwtTokenProvider.getTenantId(rt);
 
         // 签发新双 token
-        String newAccess = jwtTokenProvider.generateToken(userId, userType, tenantId);
-        String newRefresh = jwtTokenProvider.generateRefreshToken(userId, userType, tenantId);
+        String newAccess = businessAuthProvider.issueAccessToken(userId, userType, tenantId);
+        String newRefresh = businessAuthProvider.issueRefreshToken(userId, userType, tenantId);
 
         // 旧 refresh token 拉黑（防重放；AUDIT-P1-13 按 jti 粒度）
         tokenBlacklistService.blacklist(jwtTokenProvider.getTokenId(rt), jwtTokenProvider.getRemainingMs(rt));
