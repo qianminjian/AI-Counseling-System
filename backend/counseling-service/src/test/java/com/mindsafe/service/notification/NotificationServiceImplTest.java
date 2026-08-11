@@ -1,6 +1,7 @@
 package com.mindsafe.service.notification;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.mindsafe.common.exception.BizException;
 import com.mindsafe.domain.entity.Notification;
 import com.mindsafe.domain.entity.User;
 import com.mindsafe.domain.mapper.NotificationMapper;
@@ -74,7 +75,7 @@ class NotificationServiceImplTest {
     void othersNotification_rejected() {
         when(notificationMapper.selectById(notificationId)).thenReturn(notification(otherTeacherId));
 
-        assertThrows(IllegalArgumentException.class,
+        assertThrows(BizException.class,
                 () -> service.markAsRead(notificationId, teacherId));
         verify(notificationMapper, never()).updateById(any(Notification.class));
     }
@@ -84,7 +85,7 @@ class NotificationServiceImplTest {
     void missingNotification_rejected() {
         when(notificationMapper.selectById(notificationId)).thenReturn(null);
 
-        assertThrows(IllegalArgumentException.class,
+        assertThrows(BizException.class,
                 () -> service.markAsRead(notificationId, teacherId));
         verify(notificationMapper, never()).updateById(any(Notification.class));
     }

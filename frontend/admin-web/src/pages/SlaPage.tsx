@@ -1,3 +1,4 @@
+import { riskLevelName, riskLevelColor } from '../utils/riskLevel'
 import { useEffect, useState } from 'react'
 import { Card, message, Table, Tag } from 'antd'
 import { fetchSlaStats } from '../api'
@@ -10,7 +11,7 @@ export default function SlaPage() {
     fetchSlaStats().then(setStats).catch((e: Error) => message.error(e.message))
   }, [])
 
-  const levelName = (l: unknown) => (l === 3 ? 'RED' : l === 2 ? 'ORANGE' : l === 1 ? 'YELLOW' : 'GREEN')
+  // doing/90 P-009：等级映射收敛至共享 riskLevel
 
   return (
     <div>
@@ -26,7 +27,7 @@ export default function SlaPage() {
               title: '等级',
               dataIndex: 'riskLevel',
               width: 100,
-              render: (l: number) => <Tag color={l === 3 ? 'red' : l === 2 ? 'orange' : l === 1 ? 'yellow' : 'green'}>{levelName(l)}</Tag>,
+              render: (l: number) => <Tag color={riskLevelColor(l)}>{riskLevelName(l)}</Tag>,
             },
             { title: '事件数', dataIndex: 'total', width: 90 },
             { title: '达标', dataIndex: 'onTime', width: 90 },

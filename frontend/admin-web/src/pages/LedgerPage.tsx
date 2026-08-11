@@ -1,3 +1,4 @@
+import { riskLevelColor } from '../utils/riskLevel'
 import { useEffect, useState } from 'react'
 import { Card, message, Table, Tag } from 'antd'
 import { fetchDeadLedger, type DeadLedgerItem } from '../api'
@@ -25,7 +26,7 @@ export default function LedgerPage() {
               title: '等级',
               dataIndex: 'riskLevel',
               width: 90,
-              render: (l: number) => <Tag color={l === 3 ? 'red' : l === 2 ? 'orange' : l === 1 ? 'yellow' : 'green'}>{l}</Tag>,
+              render: (l: number) => <Tag color={riskLevelColor(l)}>{l}</Tag>,
             },
             { title: '状态', dataIndex: 'status', width: 90 },
             { title: '检出时间', dataIndex: 'detectedAt', render: (v: string) => (v ? String(v).slice(0, 19) : '-') },

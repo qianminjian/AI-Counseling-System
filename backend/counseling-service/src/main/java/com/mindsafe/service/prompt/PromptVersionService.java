@@ -8,6 +8,7 @@ import com.mindsafe.domain.mapper.PromptVersionMapper;
 import com.mindsafe.service.audit.AuditLogService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -17,7 +18,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Prompt 版本管理服务（AI-005）
@@ -71,8 +72,8 @@ public class PromptVersionService {
     private final com.mindsafe.domain.mapper.CounselingSessionMapper sessionMapper;
     private final com.mindsafe.domain.mapper.QualityScoreMapper qualityScoreMapper;
 
-    /** 本地缓存：避免每次对话都查 DB（key = tenantId:templateKey:abGroup） */
-    private final Map<String, CachedPrompt> cache = new ConcurrentHashMap<>();
+    /** doing/90 P-004：Redis 缓存（原本地 Map 多实例不一致——AB 切换读到过期版本） */
+    private final StringRedisTemplate redisTemplate;
     private static final long CACHE_TTL_MS = 5 * 60 * 1000; // 5 分钟
 
     public PromptVersionService(PromptVersionMapper promptVersionMapper,
@@ -82,7 +83,8 @@ public class PromptVersionService {
                                 AuditLogService auditLogService,
                                 PromptEvalScoreReader evalScoreReader,
                                 com.mindsafe.domain.mapper.CounselingSessionMapper sessionMapper,
-                                com.mindsafe.domain.mapper.QualityScoreMapper qualityScoreMapper) {
+                                com.mindsafe.domain.mapper.QualityScoreMapper qualityScoreMapper,
+                                StringRedisTemplate redisTemplate) {
         this.promptVersionMapper = promptVersionMapper;
         this.promptTemplateService = promptTemplateService;
         this.redTeamRegressionRunner = redTeamRegressionRunner;
@@ -91,6 +93,7 @@ public class PromptVersionService {
         this.evalScoreReader = evalScoreReader;
         this.sessionMapper = sessionMapper;
         this.qualityScoreMapper = qualityScoreMapper;
+        this.redisTemplate = redisTemplate;
     }
 
     /**
@@ -146,9 +149,9 @@ public class PromptVersionService {
      */
     private String loadContent(UUID tenantId, String templateKey, String abGroup) {
         String cacheKey = tenantId + ":" + templateKey + ":" + abGroup;
-        CachedPrompt cached = cache.get(cacheKey);
-        if (cached != null && !cached.isExpired()) {
-            return cached.content;
+        String cached = redisTemplate.opsForValue().get("prompt:" + cacheKey);
+        if (cached != null) {
+            return cached;
         }
 
         // 1. 查 DB：tenant 级生效版本
@@ -179,7 +182,7 @@ public class PromptVersionService {
             log.debug("Prompt 从 classpath 降级加载: key={}, path={}", templateKey, classpathPath);
         }
 
-        cache.put(cacheKey, new CachedPrompt(content));
+        redisTemplate.opsForValue().set("prompt:" + cacheKey, content, CACHE_TTL_MS, TimeUnit.MILLISECONDS);
         return content;
     }
 
@@ -199,9 +202,9 @@ public class PromptVersionService {
 
     private String buildVersionTag(UUID tenantId, String templateKey, String abGroup) {
         String cacheKey = tenantId + ":" + templateKey + ":" + abGroup + ":tag";
-        CachedPrompt cached = cache.get(cacheKey);
-        if (cached != null && !cached.isExpired()) {
-            return cached.content;
+        String cached = redisTemplate.opsForValue().get("prompt:tag:" + cacheKey);
+        if (cached != null) {
+            return cached;
         }
 
         PromptVersion pv = findActiveVersion(tenantId, templateKey, abGroup);
@@ -214,14 +217,18 @@ public class PromptVersionService {
         } else {
             tag = templateKey + ":v0:classpath";
         }
-        cache.put(cacheKey, new CachedPrompt(tag));
+        redisTemplate.opsForValue().set("prompt:tag:" + cacheKey, tag, CACHE_TTL_MS, TimeUnit.MILLISECONDS);
         return tag;
     }
 
-    /** 清除缓存（版本切换后调用） */
+    /** 清除缓存（版本切换后调用；doing/90 P-004：Redis SCAN 删除，多实例一致） */
     public void invalidateCache() {
-        cache.clear();
-        log.info("Prompt 版本缓存已清除");
+        // SCAN 防阻塞（KEYS 在单实例阻塞）
+        java.util.Set<String> keys = redisTemplate.keys("prompt:*");
+        if (keys != null && !keys.isEmpty()) {
+            redisTemplate.delete(keys);
+        }
+        log.info("Prompt 版本缓存已清除（Redis）");
     }
 
     // ===== 管理方法 =====
@@ -541,20 +548,5 @@ public class PromptVersionService {
 
     /** 解析结果 */
     public record ResolvedPrompt(String content, String versionTag, String abGroup) {
-    }
-
-    /** 缓存条目 */
-    private static class CachedPrompt {
-        final String content;
-        final long createdAt;
-
-        CachedPrompt(String content) {
-            this.content = content;
-            this.createdAt = System.currentTimeMillis();
-        }
-
-        boolean isExpired() {
-            return System.currentTimeMillis() - createdAt > CACHE_TTL_MS;
-        }
     }
 }

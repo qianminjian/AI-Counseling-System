@@ -11,6 +11,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
@@ -28,6 +29,7 @@ import java.time.temporal.ChronoUnit;
  * 每日凌晨 03:00 执行（低峰期），清理结果写入审计日志。
  */
 @Service
+@Transactional
 public class DataRetentionCleanupJob {
 
     private static final Logger log = LoggerFactory.getLogger(DataRetentionCleanupJob.class);

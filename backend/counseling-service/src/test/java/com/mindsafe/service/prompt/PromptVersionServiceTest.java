@@ -22,7 +22,9 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -33,6 +35,19 @@ import static org.mockito.Mockito.when;
  */
 @ExtendWith(MockitoExtension.class)
 class PromptVersionServiceTest {
+    /** doing/90 P-004：Redis mock（opsForValue 已 stub，get 默认 null=未命中走 DB） */
+    static final org.springframework.data.redis.core.StringRedisTemplate redisTemplateMock =
+            mock(org.springframework.data.redis.core.StringRedisTemplate.class);
+
+    static org.springframework.data.redis.core.StringRedisTemplate redisMock() {
+        @SuppressWarnings("unchecked")
+        org.springframework.data.redis.core.ValueOperations<String, String> ops =
+                mock(org.springframework.data.redis.core.ValueOperations.class);
+        lenient().when(redisTemplateMock.opsForValue()).thenReturn(ops);
+        lenient().when(ops.get(any())).thenReturn(null);
+        return redisTemplateMock;
+    }
+
 
     @Mock
     private PromptVersionMapper promptVersionMapper;
@@ -62,7 +77,8 @@ class PromptVersionServiceTest {
     void setUp() {
         service = new PromptVersionService(promptVersionMapper, promptTemplateService,
                 new RedTeamRegressionRunner(), new TemplateMatrixRegistry(), auditLogService,
-                evalScoreReader, sessionMapper, qualityScoreMapper);
+                evalScoreReader, sessionMapper, qualityScoreMapper,
+                redisMock());
     }
 
     @Test
@@ -186,6 +202,19 @@ class PromptVersionServiceTest {
             PromptVersion pv = PromptVersion.create(tenantId, "SYS_001", 1,
                     "内容", null, "control", null);
             when(promptVersionMapper.selectOne(any())).thenReturn(pv);
+
+            // doing/90 P-004：内存 store 模拟 Redis set/get（首次未命中 → DB → set；二次 get 命中）
+            java.util.Map<String, String> store = new java.util.HashMap<>();
+            @SuppressWarnings("unchecked")
+            org.springframework.data.redis.core.ValueOperations<String, String> ops =
+                    (org.springframework.data.redis.core.ValueOperations<String, String>)
+                            redisTemplateMock.opsForValue();
+            org.mockito.Mockito.doAnswer(inv -> {
+                store.put(inv.getArgument(0), inv.getArgument(1));
+                return null;
+            }).when(ops).set(anyString(), anyString(), anyLong(), any());
+            org.mockito.Mockito.when(ops.get(anyString()))
+                    .thenAnswer(inv -> store.get(inv.getArgument(0)));
 
             service.resolve(tenantId, "SYS_001", null, Map.of());
             service.resolve(tenantId, "SYS_001", null, Map.of());
@@ -468,7 +497,8 @@ class TestM7ReviewFlow {
 
     private final PromptVersionService service = new PromptVersionService(promptVersionMapper,
             promptTemplateService, new RedTeamRegressionRunner(), new TemplateMatrixRegistry(),
-            auditLogService, evalScoreReader, sessionMapper, qualityScoreMapper);
+            auditLogService, evalScoreReader, sessionMapper, qualityScoreMapper,
+            PromptVersionServiceTest.redisMock());
 
     private PromptVersion version(String status) {
         PromptVersion v = new PromptVersion();

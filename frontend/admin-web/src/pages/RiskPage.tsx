@@ -1,3 +1,4 @@
+import { riskLevelKey } from '../utils/riskLevel'
 import { useEffect, useState } from 'react'
 import { Card, Col, Descriptions, Row, Spin, Statistic, Table, Tag } from 'antd'
 import { fetchRiskOverview, fetchRiskOverdue, type RiskOverview } from '../api'
@@ -17,15 +18,13 @@ export default function RiskPage() {
       .catch(() => setOverdue([]))
   }, [])
 
-  // 权威 RiskLevel 映射（GREEN=0/YELLOW=1/ORANGE=2/RED=3，与后端一致；语义色 token 引用，青屿 §8.3）
+  // doing/90 P-009：等级映射收敛至共享 riskLevel（仅 CSS token 语义色映射保留唯一）
   const levelColor: Record<string, string> = {
     red: 'var(--ms-danger)',
     orange: 'var(--ms-warning)',
     yellow: 'var(--ms-warning-border)',
     green: 'var(--ms-success)',
   }
-  const levelName = (level: number) =>
-    level === 3 ? 'red' : level === 2 ? 'orange' : level === 1 ? 'yellow' : 'green'
 
   return (
     <div>
@@ -75,7 +74,7 @@ export default function RiskPage() {
               dataIndex: 'riskLevel',
               width: 90,
               render: (level: number) => (
-                <Tag color={levelColor[levelName(level)]}>{level}</Tag>
+                <Tag color={levelColor[riskLevelKey(level)]}>{level}</Tag>
               ),
             },
             { title: '状态', dataIndex: 'status', width: 90 },
