@@ -31,15 +31,18 @@ public class ParentAuthService {
     private final ParentStudentLinkMapper parentStudentLinkMapper;
     private final UserMapper userMapper;
     private final PasswordEncoder passwordEncoder;
+    private final LoginLockoutService lockoutService;
 
     public ParentAuthService(ParentAccountMapper parentAccountMapper,
                              ParentStudentLinkMapper parentStudentLinkMapper,
                              UserMapper userMapper,
-                             PasswordEncoder passwordEncoder) {
+                             PasswordEncoder passwordEncoder,
+                             LoginLockoutService lockoutService) {
         this.parentAccountMapper = parentAccountMapper;
         this.parentStudentLinkMapper = parentStudentLinkMapper;
         this.userMapper = userMapper;
         this.passwordEncoder = passwordEncoder;
+        this.lockoutService = lockoutService;
     }
 
     /**
@@ -127,6 +130,8 @@ public class ParentAuthService {
     }
 
     private ParentAccount doLogin(String phone, String password) {
+        // AC-89-01：家长端接入锁定向（doing/89 N-001，原零防护）
+        lockoutService.checkLockout(phone);
         ParentAccount account = parentAccountMapper.selectOne(
                 new LambdaQueryWrapper<ParentAccount>()
                         .eq(ParentAccount::getPhone, phone)
@@ -134,8 +139,10 @@ public class ParentAuthService {
                         .last("LIMIT 1")
         );
         if (account == null || !passwordEncoder.matches(password, account.getPasswordHash())) {
+            lockoutService.recordFailure(phone);
             throw new BizException(ErrorCode.UNAUTHORIZED, "手机号或密码错误");
         }
+        lockoutService.clearFailures(phone);
 
         // 更新最后登录时间
         ParentAccount update = new ParentAccount();

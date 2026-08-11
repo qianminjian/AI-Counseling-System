@@ -12,7 +12,7 @@ import java.time.Duration;
  * 连续 5 次失败 → 锁定 15 分钟
  */
 @Service
-public class LoginLockoutService {
+public class LoginLockoutService implements LoginRateLimiter {
 
     private static final String KEY_PREFIX = "login_fail:";
     private static final int MAX_ATTEMPTS = 5;

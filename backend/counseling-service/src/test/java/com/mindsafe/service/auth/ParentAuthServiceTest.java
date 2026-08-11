@@ -47,7 +47,7 @@ class ParentAuthServiceTest {
     @BeforeEach
     void setUp() {
         service = new ParentAuthService(parentAccountMapper, parentStudentLinkMapper,
-                userMapper, passwordEncoder);
+                userMapper, passwordEncoder, mock(LoginLockoutService.class));
     }
 
     private User student() {
