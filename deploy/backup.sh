@@ -79,6 +79,13 @@ if [ "${DAY_OF_WEEK}" = "7" ]; then
     docker run --rm -v "${BACKUP_VOLUME}:/backups" -w /backups pgvector/pgvector:pg16 \
         sh -c 'mkdir -p weekly && cp daily/'"${BACKUP_NAME}"' weekly/mindsafe_week_'"${TIMESTAMP}"'.dump'
     log "周备份: mindsafe_week_${TIMESTAMP}.dump"
+    # doing/92 R-026：周备份复制后复校验（原从 staging 复制未校验——损坏备份进入周/月链）
+    if docker run --rm -v "${BACKUP_VOLUME}:/backups" -w /backups pgvector/pgvector:pg16             pg_restore --list "weekly/mindsafe_week_${TIMESTAMP}.dump" > /dev/null 2>&1; then
+        log "周备份完整性校验通过"
+    else
+        log "ERROR: 周备份校验失败（weekly/mindsafe_week_${TIMESTAMP}.dump 不可用），请人工排查！"
+        exit 1
+    fi
 fi
 
 # ===== 月备份（每月 1 日） =====
@@ -87,6 +94,13 @@ if [ "${DAY_OF_MONTH}" = "01" ]; then
     docker run --rm -v "${BACKUP_VOLUME}:/backups" -w /backups pgvector/pgvector:pg16 \
         sh -c 'mkdir -p monthly && cp daily/'"${BACKUP_NAME}"' monthly/mindsafe_month_'"${TIMESTAMP}"'.dump'
     log "月备份: mindsafe_month_${TIMESTAMP}.dump"
+    # doing/92 R-026：月备份复制后复校验
+    if docker run --rm -v "${BACKUP_VOLUME}:/backups" -w /backups pgvector/pgvector:pg16             pg_restore --list "monthly/mindsafe_month_${TIMESTAMP}.dump" > /dev/null 2>&1; then
+        log "月备份完整性校验通过"
+    else
+        log "ERROR: 月备份校验失败（monthly/mindsafe_month_${TIMESTAMP}.dump 不可用），请人工排查！"
+        exit 1
+    fi
 fi
 
 # ===== 清理过期备份（volume + 暂存双清） =====
