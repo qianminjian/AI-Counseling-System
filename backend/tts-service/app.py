@@ -174,6 +174,31 @@ _validate_runtime_contract(_CONFIG)
 # ===== 引擎装配（DC-011：适配器层 + 降级策略；引擎实现细节见 tts_engines.py / tts_policy.py） =====
 
 DASHSCOPE_TTS_MODEL = _CONFIG["model"]["dashscope"]
+# doing/87 RUNTIME-001：覆盖键读取器（redis-py 直连，fail-open）
+# 键：mindsafe:degradation:override:tts；值：cosyvoice|edge_tts；TTL 由后端写侧保证（7 天）
+_OVERRIDE_KEY = "mindsafe:degradation:override:tts"
+_redis_client = None
+
+
+def _read_tts_override():
+    """读覆盖键；Redis 不可达/键缺失返回 None（fail-open 按配置默认）"""
+    global _redis_client
+    try:
+        if _redis_client is None:
+            import redis
+            _redis_client = redis.Redis(
+                host=os.environ.get("REDIS_HOST", "redis"),
+                port=int(os.environ.get("REDIS_PORT", "6379")),
+                password=os.environ.get("REDIS_PASSWORD") or None,
+                socket_connect_timeout=1, socket_timeout=1,
+                decode_responses=True,
+            )
+        return _redis_client.get(_OVERRIDE_KEY)
+    except Exception as e:
+        logger.warning("覆盖键读取失败（fail-open，按配置默认）: %s", e)
+        return None
+
+
 _TTS_POLICY = DegradationPolicy(
     [
         DashScopeBackend(
@@ -184,6 +209,7 @@ _TTS_POLICY = DegradationPolicy(
         EdgeBackend(timeout=TTS_SYNTHESIZE_TIMEOUT),
     ],
     log=logger.warning,
+    override_reader=_read_tts_override,
 )
 # X-TTS-Engine 响应头映射（内部引擎名 → 对外契约名）
 _ENGINE_HEADER_MAP = {"cosyvoice": "cosyvoice-cloud", "edge_tts": "edge-tts"}
@@ -276,7 +302,13 @@ class TtsInfoResponse(BaseModel):
 
 @app.get("/health")
 def health():
-    if _TTS_POLICY.backends[0].is_available():
+    # doing/87 RUNTIME-001：engine = 覆盖值优先（AC-1/AC-3 管理端一致性）；映射对外契约名
+    override = _read_tts_override()
+    if override == "cosyvoice":
+        engine = "cosyvoice-cloud"
+    elif override == "edge_tts":
+        engine = "edge-tts"
+    elif _TTS_POLICY.backends[0].is_available():
         engine = "cosyvoice-cloud"
     elif _TTS_POLICY.backends[1].is_available():
         engine = "edge-tts"
@@ -353,6 +385,9 @@ async def synthesize(req: TtsRequest):
     # 判定：实际引擎 ≠ 首选引擎 且 非 retried（instruct 无指令重试成功不算降级）；全失败 503 走 except 不计数
     if result.engine != _TTS_POLICY.backends[0].name and not result.retried:
         _degraded_metrics.record(f"{_TTS_POLICY.backends[0].name}->{result.engine}", 0.0)
+    # doing/87 RUNTIME-001（AC-2）：覆盖目标不可用走兜底 → overridden-fallback 事件（不静默）
+    if result.overridden and result.engine != _read_tts_override():
+        _degraded_metrics.record("overridden-fallback", 0.0)
     logger.info(f"TTS 合成完成 [{result.engine}]: text_len={len(req.text)}, voice={actual_voice}, "
                 f"elapsed={time.time() - t_start:.3f}s")
     return StreamingResponse(

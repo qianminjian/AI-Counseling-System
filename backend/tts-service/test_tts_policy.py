@@ -162,3 +162,61 @@ class TestDegradationPolicy:
         policy = DegradationPolicy(backends=[backend])
         run(policy.synthesize_with_degradation("你好", "v10", 1.0, voice_map={"other": "x"}))
         assert backend.calls == [("v10", None)]
+
+
+# ===== doing/87 RUNTIME-001（2026-08-11）：覆盖键优先级 =====
+
+class _FakeBackend:
+    """极简引擎桩（同步 is_available/synthesize，适配 async 调用）"""
+
+    def __init__(self, name, available=True):
+        self.name = name
+        self._available = available
+        self.supports_instruction = True
+        self.retry_without_instruction = False
+
+    def is_available(self):
+        return self._available
+
+    async def synthesize(self, text, voice, speed, instruction, pitch):
+        return b"audio-" + self.name.encode()
+
+
+def _policy(backends, reader):
+    return DegradationPolicy(backends, log=lambda m: None, override_reader=reader)
+
+
+def test_override_forces_target_engine():
+    """AC-1：覆盖键 = edge_tts → 强制走 edge_tts（跳过配置顺序 cosyvoice）"""
+    policy = _policy([_FakeBackend("cosyvoice"), _FakeBackend("edge_tts")],
+                     lambda: "edge_tts")
+    result = asyncio.run(policy.synthesize_with_degradation("hi", "v", 1.0))
+    assert result.engine == "edge_tts"
+    assert result.overridden is True
+
+
+def test_override_target_unavailable_falls_back():
+    """AC-2：覆盖 cosyvoice 但不可用 → 走兜底 edge_tts + overridden 标记（overridden-fallback）"""
+    policy = _policy([_FakeBackend("cosyvoice", available=False), _FakeBackend("edge_tts")],
+                     lambda: "cosyvoice")
+    result = asyncio.run(policy.synthesize_with_degradation("hi", "v", 1.0))
+    assert result.engine == "edge_tts"
+    assert result.overridden is True
+
+
+def test_override_reader_fail_open():
+    """AC-7：覆盖键读取异常 → fail-open 按配置默认运行"""
+    def broken_reader():
+        raise RuntimeError("redis down")
+    policy = _policy([_FakeBackend("cosyvoice"), _FakeBackend("edge_tts")], broken_reader)
+    result = asyncio.run(policy.synthesize_with_degradation("hi", "v", 1.0))
+    assert result.engine == "cosyvoice"  # 配置默认首选
+
+
+def test_override_unknown_value_ignored():
+    """覆盖值非法（不在引擎词表）→ 忽略按默认"""
+    policy = _policy([_FakeBackend("cosyvoice"), _FakeBackend("edge_tts")],
+                     lambda: "hacked_engine")
+    result = asyncio.run(policy.synthesize_with_degradation("hi", "v", 1.0))
+    assert result.engine == "cosyvoice"
+    assert result.overridden is False

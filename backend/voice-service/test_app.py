@@ -122,3 +122,48 @@ class TestMetrics:
         """默认 SER_ENABLED=true → voice_ser_enabled 1"""
         resp = client.get("/metrics")
         assert "voice_ser_enabled 1" in resp.text
+
+
+# ===== doing/87 RUNTIME-002（2026-08-11）：请求时覆盖档位判定 =====
+
+class TestOverrideResolution:
+    """AC-4/5/6/7：覆盖键 → ASR/SER 档位判定（fresh_app 提供已装配模块，monkeypatch _read_override）"""
+
+    def test_asr_override_dashscope(self, fresh_app, monkeypatch):
+        """AC-4：覆盖 asr=dashscope → 档位 dashscope（环境变量 funasr 时也切换）"""
+        monkeypatch.setattr(fresh_app, "_read_override", lambda point: "dashscope" if point == "asr" else None)
+        assert fresh_app._resolve_asr_engine() == "dashscope"
+
+    def test_asr_override_funasr_model_not_loaded_rejected(self, fresh_app, monkeypatch):
+        """AC-6：覆盖 asr=funasr 但模型未加载（asr_model=None）→ 拒绝切换保持当前档位"""
+        monkeypatch.setattr(fresh_app, "_read_override", lambda point: "funasr" if point == "asr" else None)
+        monkeypatch.setattr(fresh_app, "asr_model", None)
+        monkeypatch.setattr(fresh_app, "ASR_ENGINE", "dashscope")
+        assert fresh_app._resolve_asr_engine() == "dashscope"  # 保持当前，不 500
+
+    def test_ser_override_disabled(self, fresh_app, monkeypatch):
+        """AC-5：覆盖 ser=disabled → SER 关闭"""
+        monkeypatch.setattr(fresh_app, "_read_override", lambda point: "disabled" if point == "ser" else None)
+        assert fresh_app._resolve_ser_enabled() is False
+
+    def test_ser_override_enabled(self, fresh_app, monkeypatch):
+        """覆盖 ser=enabled → SER 开启（即使环境变量禁用）"""
+        monkeypatch.setattr(fresh_app, "_read_override", lambda point: "enabled" if point == "ser" else None)
+        monkeypatch.setattr(fresh_app, "SER_ENABLED", False)
+        assert fresh_app._resolve_ser_enabled() is True
+
+    def test_no_override_falls_back_to_env(self, fresh_app, monkeypatch):
+        """AC-7：键缺失 → 环境变量档位（fail-open）"""
+        monkeypatch.setattr(fresh_app, "_read_override", lambda point: None)
+        monkeypatch.setattr(fresh_app, "ASR_ENGINE", "funasr")
+        monkeypatch.setattr(fresh_app, "SER_ENABLED", True)
+        assert fresh_app._resolve_asr_engine() == "funasr"
+        assert fresh_app._resolve_ser_enabled() is True
+
+    def test_override_reader_fail_open(self, fresh_app, monkeypatch):
+        """AC-7：Redis 不可达（reader 内部捕获）→ 返回 None → 环境变量档位"""
+        def broken(point):
+            raise RuntimeError("redis down")
+        monkeypatch.setattr(fresh_app, "_read_override", broken)
+        monkeypatch.setattr(fresh_app, "ASR_ENGINE", "dashscope")
+        assert fresh_app._resolve_asr_engine() == "dashscope"

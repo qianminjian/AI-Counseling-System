@@ -45,6 +45,62 @@ if not _CONFIG.get("emotion_labels"):
 # ===== 引擎选择（环境变量唯一驱动；DA-10：默认值与 entrypoint/compose/.env.example 对齐 dashscope） =====
 ASR_ENGINE = os.environ.get("ASR_ENGINE", "dashscope").lower()
 SER_ENABLED = os.environ.get("SER_ENABLED", "true").lower() == "true"
+
+# doing/87 RUNTIME-002：覆盖键读取器（redis-py 直连，fail-open）
+# 键：mindsafe:degradation:override:{asr|ser}；TTL 由后端写侧保证（7 天）
+_OVERRIDE_PREFIX = "mindsafe:degradation:override:"
+_redis_client = None
+
+
+def _read_override(point: str):
+    """读覆盖键；Redis 不可达/键缺失返回 None（fail-open 按配置默认）"""
+    global _redis_client
+    try:
+        if _redis_client is None:
+            import redis
+            _redis_client = redis.Redis(
+                host=os.environ.get("REDIS_HOST", "redis"),
+                port=int(os.environ.get("REDIS_PORT", "6379")),
+                password=os.environ.get("REDIS_PASSWORD") or None,
+                socket_connect_timeout=1, socket_timeout=1,
+                decode_responses=True,
+            )
+        return _redis_client.get(_OVERRIDE_PREFIX + point)
+    except Exception as e:
+        logger.warning("覆盖键读取失败（fail-open，按配置默认）: %s", e)
+        return None
+
+
+def _resolve_asr_engine() -> str:
+    """请求时 ASR 档位：覆盖键优先；funasr 模型未加载时拒绝切换（AC-6）；
+    reader 异常防御回落环境变量（fail-open，AC-7）"""
+    try:
+        override = _read_override("asr")
+    except Exception as e:
+        logger.warning("覆盖键读取异常（fail-open）: %s", e)
+        override = None
+    if override in ("funasr", "dashscope"):
+        if override == "funasr" and asr_model is None:
+            # AC-6：funasr 模型未加载 → 拒绝切换（保持当前档位 + WARN，不 500）
+            logger.warning("覆盖 asr=funasr 但本地模型未加载，拒绝切换（保持 %s）", ASR_ENGINE)
+            return ASR_ENGINE
+        return override
+    return ASR_ENGINE
+
+
+def _resolve_ser_enabled() -> bool:
+    """请求时 SER 档位：覆盖键优先（ser=enabled|disabled），否则环境变量；
+    reader 异常防御回落环境变量（fail-open，AC-7）"""
+    try:
+        override = _read_override("ser")
+    except Exception as e:
+        logger.warning("覆盖键读取异常（fail-open）: %s", e)
+        override = None
+    if override == "enabled":
+        return True
+    if override == "disabled":
+        return False
+    return SER_ENABLED
 DASHSCOPE_API_KEY = os.environ.get("DASHSCOPE_API_KEY", "")
 
 # 单请求超时（P1-DEP：ffmpeg 转码 / ASR / SER 挂死时避免请求永久挂起；超时返回 504）
@@ -167,6 +223,13 @@ else:
     _ASR_BACKEND = FunASRBackend(model=asr_model)
 
 
+def _resolve_asr_backend(engine: str):
+    """请求时按覆盖档位选 backend（RUNTIME-002；dashscope 云端始终可用）"""
+    if engine == "dashscope":
+        return DashScopeASRBackend(model=_CONFIG["asr"]["dashscope_model"], api_key=DASHSCOPE_API_KEY)
+    return _ASR_BACKEND if ASR_ENGINE == "funasr" else FunASRBackend(model=asr_model)
+
+
 # ===== 数据模型 =====
 
 class EmotionResult(BaseModel):
@@ -225,9 +288,10 @@ def health():
         status = "UP"
     return {
         "status": status,
-        "asr_engine": ASR_ENGINE,
-        "asr_model": "SenseVoiceSmall" if ASR_ENGINE == "funasr" else "DashScope-Paraformer-V2",
+        "asr_engine": _resolve_asr_engine(),  # RUNTIME-002：覆盖值优先
+        "asr_model": "SenseVoiceSmall" if _resolve_asr_engine() == "funasr" else "DashScope-Paraformer-V2",
         "ser_model": "emotion2vec_plus_large" if emotion_model is not None else "disabled",
+        "ser_enabled": int(_resolve_ser_enabled()),  # RUNTIME-002：覆盖值优先
         "asr_ready": int(asr_ready),
         "ser_ready": int(ser_ready),
     }
@@ -288,10 +352,12 @@ async def analyze_voice(file: UploadFile = File(...)):
         audio_data, sample_rate = sf.read(wav_path)
         duration = len(audio_data) / sample_rate if sample_rate > 0 else 0.0
 
-        # ===== ASR + SER 并行执行 =====
-        asr_fn = _ASR_BACKEND.transcribe
+        # ===== ASR + SER 并行执行（RUNTIME-002：请求时覆盖档位判定） =====
+        runtime_asr = _resolve_asr_engine()
+        asr_fn = _resolve_asr_backend(runtime_asr).transcribe
+        ser_on = _resolve_ser_enabled() and emotion_model is not None
 
-        if emotion_model is not None:
+        if ser_on:
             # ASR 和 SER 并行（ASR 可能是网络IO或CPU，SER 是CPU，并行提升响应速度）
             # P1-DEP：result(timeout) 防挂死 → 外层 except TimeoutError 返回 504
             # AUD-016：复用进程级单例线程池 _ANALYZE_EXECUTOR（不再每请求新建/销毁）；
@@ -309,7 +375,7 @@ async def analyze_voice(file: UploadFile = File(...)):
             text = asr_fn(wav_path)
             emotion = EmotionResult(label="中性", label_en="neutral", confidence=0.0, scores=[0.0] * 9)
 
-        logger.info(f"分析完成 [ASR={ASR_ENGINE}, SER={'on' if emotion_model else 'off'}]: "
+        logger.info(f"分析完成 [ASR={runtime_asr}, SER={'on' if ser_on else 'off'}]: "
                     f"text_len={len(text)}, emotion={emotion.label_en}({emotion.confidence:.2f}), duration={duration:.1f}s")
 
         _metrics.record("success", time.time() - t_start)
