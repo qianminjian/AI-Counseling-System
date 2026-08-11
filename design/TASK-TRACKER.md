@@ -1,6 +1,7 @@
 # AI 小学生心理辅导系统 - 任务跟踪表
 
 > 创建：2026-07-23 | 更新：2026-08-09
+> **doing/91 第四轮架构深化候选清单合并归档（DOC-117，2026-08-11）**：Q-001~010 全部议决闭环——Q-001（敏感类别双套）/Q-002（忽略名单）/Q-004（降级话术标记）/Q-010（脱敏单源）经代码核验已由后续轮次实施（DC-001/AD-003/fallback 标记/AUDIT-P1-15）+ Q-006/008/009 议决拍板（全局处理器唯一出口/N-004 已收敛维持分工/CI 分层维持现状 YAGNI）+ Q-005 实施（46cbaee）+ Q-003/007 冻结移交 frozen/91；最终态补充并入 03 §4.2（Q-004/Q-005，其余随原实施轮次已并入）；文件归档 his/91；doing 区仅剩 92。
 > **doing/88 审计问题清单合并归档（DOC-111，2026-08-11）**
 > **doing/89 认证与身份解析 SPEC 合并归档（DOC-112，2026-08-11）**
 > **doing/88 无屏终端域架构深化候选清单合并归档（DOC-113，2026-08-11）**
@@ -1082,17 +1083,17 @@ _本表由 Agent 维护，每次任务变更时更新。_
 
 ## 三十四、M3 运行时档位联动 ticket（2026-08-10，doing/87 登记）
 
-> 登记说明：doing/87 M3 运行时档位联动（独立提升小专题，doing/86 验证项 5 剥离）——管理端手动切换"记录型"已上线（写 Redis 覆盖键 + manual 事件），本专题补齐运行时消费链路（tts/asr/ser 按覆盖键实际运行）。方案与 SPEC 单一事实源：`design/doing/87_M3运行时档位联动_方案与SPEC.md`（AC-1~11 定义处，DRY）。跨专题关联：his/83 §5.3 M3（写侧已上线）；frozen/88（独立）。
+> 登记说明：doing/87 M3 运行时档位联动（独立提升小专题，doing/86 验证项 5 剥离）——管理端手动切换"记录型"已上线（写 Redis 覆盖键 + manual 事件），本专题补齐运行时消费链路（tts/asr/ser 按覆盖键实际运行）。方案与 SPEC 单一事实源：`design/his/87_M3运行时档位联动_方案与SPEC.md`（AC-1~11 定义处，DRY；**已合并归档 2026-08-11 DOC-115**，最终态并入 03 §8.1）。跨专题关联：his/83 §5.3 M3（写侧已上线）；frozen/88（独立）。
 
 | Ticket | 任务 | 归属 | 状态 |
 |--------|------|------|------|
-| RUNTIME-001 | tts 覆盖（tts_policy 读覆盖键 + fail-open + overridden-fallback 事件 + /health engine 字段 + pytest） | tts-service | ⬜ 待排期（AC-1/2/3/7/9） |
-| RUNTIME-002 | voice 覆盖（请求时 ASR/SER 档位判定 + 未加载拒绝 + /health 档位字段 + pytest） | voice-service | ⬜ 待排期（AC-4/5/6/7/9） |
-| RUNTIME-003 | 后端 override() 加 TTL 7 天 | counseling-service | ⬜ 待排期（AC-8） |
-| RUNTIME-004 | compose/env 透传 REDIS_PASSWORD（tts/voice）+ .env.example 注释 | 部署 | ⬜ 待排期 |
-| RUNTIME-005 | 联调验收（AC-1~11 全量 + 管理端矩阵一致性抽样） | 全量 | ⬜ 待排期（AC-10/11） |
+| RUNTIME-001 | tts 覆盖（tts_policy 读覆盖键 + fail-open + overridden-fallback 事件 + /health engine 字段 + pytest） | tts-service | ✅ 已实施（2026-08-11，9372844，AC-1/2/3/7/9） |
+| RUNTIME-002 | voice 覆盖（请求时 ASR/SER 档位判定 + 未加载拒绝 + /health 档位字段 + pytest） | voice-service | ✅ 已实施（2026-08-11，9372844，AC-4/5/6/7/9） |
+| RUNTIME-003 | 后端 override() 加 TTL 7 天 | counseling-service | ✅ 已实施（2026-08-11，9372844，AC-8） |
+| RUNTIME-004 | compose/env 透传 REDIS_PASSWORD（tts/voice）+ .env.example 注释 | 部署 | ✅ 已实施（2026-08-11，9372844） |
+| RUNTIME-005 | 联调验收（AC-1~11 全量 + 管理端矩阵一致性抽样） | 全量 | 🟡 部分通过（2026-08-11，9372844）：AC-1~9 ✅；AC-10 管理端矩阵一致性留部署后联调 |
 
-> 执行顺序：001 → 002 → 003/004 → 005；归档门禁：AC-1~11 全通过 + doing/87 合并归档（最终态并入 his/83 §5.3 M3 实施态 / 04 部署 §语音微服务）。
+> 执行顺序：001 → 002 → 003/004 → 005；归档门禁：AC-1~11 全通过 + doing/87 合并归档（最终态并入 his/83 §5.3 M3 实施态 / 04 部署 §语音微服务）。**归档已完成（2026-08-11，DOC-115，his/87）**：回归 tts 99 + voice 46+1 + 后端 1096+454 全绿；AC-10 待部署后联调闭合。
 
 ## 三十五、全项目深度审计 ticket（2026-08-11，doing/88 登记）
 
