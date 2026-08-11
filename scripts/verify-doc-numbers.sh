@@ -4,9 +4,10 @@
 #
 # 校验内容（机器可执行、结果可回归）：
 #   1. DESIGN-OVERVIEW 合并文档表格中的全部 .md 链接指向的文件必须存在
-#   2. design/ 根目录合并文档编号 01~N 必须连续（防删改跳号）
+#   2. design/ 根目录合并文档编号 01~N 必须连续（防删改跳号；撤销编号在 RETIRED_NUMS 登记豁免）
 #   3. design/frozen/ 下文件编号必须在 DESIGN-OVERVIEW 声明的冻结白名单内
-#      （34、38-43、58-62、73、74（doing 迁移中）、87-90；doing/92 R-028：注释与代码 FROZEN_WHITELIST 对齐——新增冻结文档需同步更新白名单与 OVERVIEW）
+#      （34、38-43、58-62、73、87-91；doing/92 R-028：白名单与 OVERVIEW 冻结区声明、frozen 实态三对齐——
+#       新增冻结文档需同步更新白名单与 OVERVIEW）
 #
 # 用法：
 #   ./scripts/verify-doc-numbers.sh                # 校验真实 design/（默认）
@@ -15,6 +16,10 @@
 # 退出码：全部通过 = 0；任一失败 = 1
 # ============================================================
 set -euo pipefail
+
+# 撤销编号豁免（doing/92 R-028：有意撤销的主文档编号在此登记，防误报缺号；编号不得复用）
+# 14：后台管理端设计（DOC-095，ee12bb08 撤销）
+RETIRED_NUMS="14"
 
 DESIGN_DIR="design"
 while [ $# -gt 0 ]; do
@@ -78,7 +83,9 @@ else
   i=1
   while [ "$i" -le "$MAX" ]; do
     n=$(printf "%02d" "$i")
-    if ! echo "$NUMS" | grep -qx "$n"; then
+    if echo "$RETIRED_NUMS" | grep -qw "$i"; then
+      pass "编号撤销豁免: $n (RETIRED_NUMS 登记)"
+    elif ! echo "$NUMS" | grep -qx "$n"; then
       fail "编号缺号: $n"
       GAP=$((GAP + 1))
     else
@@ -92,9 +99,9 @@ else
 fi
 echo ""
 
-# ---- 3. frozen 白名单校验（DESIGN-OVERVIEW 声明：34、38-43、58）----
+# ---- 3. frozen 白名单校验（DESIGN-OVERVIEW 冻结区声明：34、38-43、58-62、73、87-91）----
 FROZEN_DIR="$DESIGN_DIR/frozen"
-FROZEN_WHITELIST="34 38 39 40 41 42 43 58 59 60 61 62 73 74"
+FROZEN_WHITELIST="34 38 39 40 41 42 43 58 59 60 61 62 73 87 88 89 90 91"
 if [ -d "$FROZEN_DIR" ]; then
   echo "  frozen 白名单: $FROZEN_WHITELIST"
   FROZEN_COUNT=0

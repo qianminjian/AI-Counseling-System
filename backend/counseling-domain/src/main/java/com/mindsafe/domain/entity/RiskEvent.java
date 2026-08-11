@@ -9,7 +9,7 @@ import java.util.UUID;
 /**
  * 风险事件实体（对应 tenant_template.risk_events）
  */
-@TableName(value = "risk_events", schema = "tenant_template")
+@TableName(value = "risk_events", schema = TenantSchema.TENANT_TEMPLATE)
 public class RiskEvent {
 
     /** C2（2026-08-05）：状态魔法值收敛——待处理（非实时报警/留痕事件均使用） */

@@ -9,7 +9,7 @@ import java.util.UUID;
  * 用户实体（对应 tenant_template.users）
  * M1 简化：不含加密字段，使用明文 pseudonym 作为显示名
  */
-@TableName(value = "users", schema = "tenant_template")
+@TableName(value = "users", schema = TenantSchema.TENANT_TEMPLATE)
 public class User {
 
     /** C2（2026-08-05）：状态魔法值收敛——用户启用 */

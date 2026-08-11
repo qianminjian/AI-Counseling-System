@@ -12,7 +12,7 @@ import java.util.UUID;
  * <p>
  * M1 配置变更留痕（SECRET 存掩码标记）。设计见 doing/83 后台管理端 §6.2。
  */
-@TableName(value = "sys_config_history", schema = "tenant_template")
+@TableName(value = "sys_config_history", schema = TenantSchema.TENANT_TEMPLATE)
 public class SysConfigHistory {
 
     @TableId(value = "history_id", type = IdType.INPUT)

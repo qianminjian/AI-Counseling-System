@@ -13,9 +13,9 @@ import org.springframework.context.annotation.Configuration;
  * <p>
  * 注册 {@link TenantLineInnerInterceptor}，为业务表 SQL 自动追加租户条件，构成 隔离纵深防线。
  * 注册 {@link PaginationInnerInterceptor}（AUD-043）：列表查询已统一用 {@code Page} 分页，
- * 存量仅剩「取单条/上限查询」仍用 {@code .last("LIMIT ...")}（值均为常量，无注入面；
- * 位置：TrialAuthService/ParentAuthService/WeComOAuthService/PromptVersionService/
- * StudentProfileService/TeacherQualityService，后续批次逐处收敛）。
+ * 存量仍用 {@code .last("LIMIT ...")} 的手写分页已登记至 scripts/verify-no-new-last.sh LEGACY
+ * （doing/92 R-022：实测 14 文件，值均为常量无注入面；新增 .last( 由 CI 脚本拦截），
+ * 后续批次逐处收敛为 Page 分页。
  * 插件顺序：租户行拦截器必须在分页插件之前（官方要求，分页 SQL 生成依赖租户条件先行）。
  * 由 counseling-app 的 {@code @ComponentScan("com.mindsafe")} 扫描生效。
  */

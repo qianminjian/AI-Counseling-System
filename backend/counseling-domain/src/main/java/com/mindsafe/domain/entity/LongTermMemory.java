@@ -8,7 +8,7 @@ import java.util.UUID;
 /**
  * 长期记忆实体（AI-008：跨会话关键事件 + 主题记忆）
  */
-@TableName(value = "long_term_memories", schema = "tenant_template")
+@TableName(value = "long_term_memories", schema = TenantSchema.TENANT_TEMPLATE)
 public class LongTermMemory {
 
     @TableId(value = "memory_id", type = IdType.INPUT)

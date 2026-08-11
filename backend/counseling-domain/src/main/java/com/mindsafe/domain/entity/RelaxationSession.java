@@ -8,7 +8,7 @@ import java.util.UUID;
 /**
  * 放松练习记录实体（对应 tenant_template.relaxation_sessions）
  */
-@TableName(value = "relaxation_sessions", schema = "tenant_template")
+@TableName(value = "relaxation_sessions", schema = TenantSchema.TENANT_TEMPLATE)
 public class RelaxationSession {
 
     @TableId(value = "relaxation_id", type = IdType.INPUT)

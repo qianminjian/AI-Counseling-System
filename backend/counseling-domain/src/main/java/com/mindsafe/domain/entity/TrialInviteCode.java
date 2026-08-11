@@ -8,7 +8,7 @@ import java.util.UUID;
 /**
  * 试用邀请码（对应 tenant_template.trial_invite_codes）
  */
-@TableName(value = "trial_invite_codes", schema = "tenant_template")
+@TableName(value = "trial_invite_codes", schema = TenantSchema.TENANT_TEMPLATE)
 public class TrialInviteCode {
 
     /** C2（2026-08-05）：状态魔法值收敛——邀请码有效 */

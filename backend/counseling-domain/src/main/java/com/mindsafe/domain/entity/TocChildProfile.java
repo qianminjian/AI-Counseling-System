@@ -13,7 +13,7 @@ import java.util.UUID;
  * TOC-002：一账号多孩档案（昵称/年龄/性别/兴趣），按 family_account_id 数据隔离
  * （doing/85 §四/§五 toC-AC-2）。
  */
-@TableName(value = "toc_child_profiles", schema = "tenant_template")
+@TableName(value = "toc_child_profiles", schema = TenantSchema.TENANT_TEMPLATE)
 public class TocChildProfile {
 
     @TableId(type = IdType.INPUT)

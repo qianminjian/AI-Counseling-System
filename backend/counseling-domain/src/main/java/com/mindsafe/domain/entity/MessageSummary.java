@@ -21,7 +21,7 @@ import java.util.UUID;
  * {@code MessageSummaryService}（单一入口 + ObjectMapper）；本实体仅承载字段映射。
  * suggestedNextAction / cbtFields 字段已删除（生产零消费方，DB 列保留不删）。
  */
-@TableName(value = "message_summaries", schema = "tenant_template", autoResultMap = true)
+@TableName(value = "message_summaries", schema = TenantSchema.TENANT_TEMPLATE, autoResultMap = true)
 public class MessageSummary {
 
     @TableId(value = "summary_id", type = IdType.INPUT)

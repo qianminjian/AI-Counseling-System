@@ -9,7 +9,7 @@ import java.util.UUID;
  * 告知同意留痕（对应 tenant_template.consent_records）
  * 版本化记录，每次告知同意版本升级需用户重新同意
  */
-@TableName(value = "consent_records", schema = "tenant_template")
+@TableName(value = "consent_records", schema = TenantSchema.TENANT_TEMPLATE)
 public class ConsentRecord {
 
     @TableId(value = "consent_id", type = IdType.INPUT)

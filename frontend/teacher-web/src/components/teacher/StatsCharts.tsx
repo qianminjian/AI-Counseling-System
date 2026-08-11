@@ -2,6 +2,7 @@ import { useRef } from 'react'
 import * as echarts from 'echarts/core'
 import type { EChartsOption } from 'echarts'
 import { emotionLabel } from '../../../../shared/src/emotionMeta'
+import { themeColors } from '../../../../shared/src/theme'
 import { riskHex } from '../../utils/riskLevel'
 import { useECharts } from '../../hooks/useECharts'
 import { LineChart, PieChart, BarChart } from 'echarts/charts'
@@ -25,15 +26,7 @@ function ChartBox({ option, height = 260 }: { option: EChartsOption; height?: nu
   return <div ref={ref} style={{ width: '100%', height }} />
 }
 
-// ECharts canvas 绘制不支持 CSS var()，须用真实色值（与 index.css token 同步，doing/75 方案 A）
-const MS = {
-  primary: '#2BA8A0',
-  primaryDeep: '#1E7F7A',
-  primarySoft: 'rgba(43, 168, 160, 0.08)',
-  primaryMid: 'rgba(43, 168, 160, 0.45)',
-  warning: '#D98E32',
-  danger: '#D9534F',
-}
+// 品牌色板单源（doing/92 R-005）：自 shared/theme 导出，与 index.css --ms-* token 同源（一致性由 theme-consistency.test.ts 守卫）
 
 // 风险等级色：FA-01 收敛到 utils/riskLevel 单源（1 黄 / 2 橙 / 3 红，此前 1/2 同色）
 
@@ -53,9 +46,9 @@ export function SessionTrendChart({ data }: { data: DailyCount[] | undefined }) 
       type: 'line',
       data: data?.map(d => d.count) || [],
       smooth: true,
-      areaStyle: { color: MS.primarySoft },
-      lineStyle: { color: MS.primary, width: 2 },
-      itemStyle: { color: MS.primary },
+      areaStyle: { color: themeColors.primarySoft },
+      lineStyle: { color: themeColors.primary, width: 2 },
+      itemStyle: { color: themeColors.primary },
     }],
   }
   return <ChartBox option={option} height={220} />
@@ -98,7 +91,7 @@ export function ClassBarChart({ data }: { data: ClassRiskItem[] | undefined }) {
         name: '预警数',
         type: 'bar',
         data: data?.map(d => d.alertCount) || [],
-        itemStyle: { color: MS.danger, borderRadius: [3, 3, 0, 0] },
+        itemStyle: { color: themeColors.danger, borderRadius: [3, 3, 0, 0] },
         barMaxWidth: 28,
       },
       {
@@ -106,7 +99,7 @@ export function ClassBarChart({ data }: { data: ClassRiskItem[] | undefined }) {
         type: 'bar',
         data: data?.map(d => d.studentCount) || [],
         // 青屿主色系（替换 antd 默认蓝 #91d5ff）
-        itemStyle: { color: MS.primaryMid, borderRadius: [3, 3, 0, 0] },
+        itemStyle: { color: themeColors.primaryMid, borderRadius: [3, 3, 0, 0] },
         barMaxWidth: 28,
       },
     ],
@@ -134,8 +127,8 @@ export function EmotionBarChart({ data }: { data: EmotionItem[] | undefined }) {
         borderRadius: [0, 3, 3, 0],
         // 青屿渐变（主色 → 主色加深，替换 antd 默认蓝）
         color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
-          { offset: 0, color: '#8FD4CF' },
-          { offset: 1, color: MS.primaryDeep },
+          { offset: 0, color: themeColors.gradientMid },
+          { offset: 1, color: themeColors.primaryDeep },
         ]),
       },
       barMaxWidth: 18,

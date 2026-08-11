@@ -9,7 +9,7 @@ import java.util.UUID;
 /**
  * 辅导会话实体（对应 tenant_template.counseling_sessions）
  */
-@TableName(value = "counseling_sessions", schema = "tenant_template", autoResultMap = true)
+@TableName(value = "counseling_sessions", schema = TenantSchema.TENANT_TEMPLATE, autoResultMap = true)
 public class CounselingSession {
 
     /** C2（2026-08-05）：状态魔法值收敛——会话已完成 */

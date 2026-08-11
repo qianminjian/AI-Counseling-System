@@ -13,7 +13,7 @@ import java.util.UUID;
  * CFG-005：机身/包装二维码批量印制留痕（URL 原文 + 签发人），供回溯与
  * 换码审计。设计见 doing/84 §六.1。
  */
-@TableName(value = "device_qr_issuance", schema = "tenant_template")
+@TableName(value = "device_qr_issuance", schema = TenantSchema.TENANT_TEMPLATE)
 public class DeviceQrIssuance {
 
     @TableId(value = "issuance_id", type = IdType.INPUT)

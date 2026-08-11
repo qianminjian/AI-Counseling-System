@@ -13,7 +13,7 @@ import java.util.UUID;
  * M8 逾期升级留痕：扫描器自动升级（notify_escalate）+ 平台转派/强制关闭。
  * 设计见 doing/83 后台管理端 §6.9。
  */
-@TableName(value = "sla_escalation_log", schema = "tenant_template")
+@TableName(value = "sla_escalation_log", schema = TenantSchema.TENANT_TEMPLATE)
 public class SlaEscalationLog {
 
     /** 动作：通知升级（扫描器自动） */

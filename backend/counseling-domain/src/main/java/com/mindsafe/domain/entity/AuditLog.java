@@ -9,7 +9,7 @@ import java.util.UUID;
 /**
  * 审计日志实体（对应 tenant_template.audit_logs）
  */
-@TableName(value = "audit_logs", schema = "tenant_template", autoResultMap = true)
+@TableName(value = "audit_logs", schema = TenantSchema.TENANT_TEMPLATE, autoResultMap = true)
 public class AuditLog {
 
     @TableId(value = "audit_log_id", type = IdType.INPUT)
