@@ -21,7 +21,8 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 /**
- * 学生心理画像服务（P0：纯 SQL 聚合，无额外 LLM 调用）
+ * 学生心理画像服务（P0 说明修正，N-009 2026-08-11：画像更新链路 = 本服务 SQL 聚合基底 +
+ * MessageSummaryService.dispatchInsights 提炼链路（profile_patch 增量）——非"纯 SQL"）
  * 
  * 职责：
  * 1. 会话结束后聚合统计，更新画像
@@ -67,6 +68,7 @@ public class StudentProfileService {
     public void updateProfile(UUID tenantId, UUID userId, List<String> voiceEmotions) {
         try {
             // 1. 聚合情绪分布（近 20 次会话）
+            // N-009（2026-08-11）：AUD-043 分页插件接缝（原 .last("LIMIT 20") 原始拼接——与 tenant_id 注入并存可接受但绕过分页拦截器）
             List<CounselingSession> recentSessions = sessionMapper.selectList(
                     new LambdaQueryWrapper<CounselingSession>()
                             .eq(CounselingSession::getTenantId, tenantId)

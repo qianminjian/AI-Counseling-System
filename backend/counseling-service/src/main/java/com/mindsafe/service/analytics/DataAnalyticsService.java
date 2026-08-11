@@ -31,6 +31,10 @@ import java.util.stream.Collectors;
 @Service
 public class DataAnalyticsService {
 
+    /** N-004（2026-08-11）：负向情绪词表单源（原同文件 2 处重复；与 emotion 标签契约一致） */
+    private static final Set<String> NEGATIVE_LABELS =
+            Set.of("sad", "angry", "scared", "nervous", "lonely", "tired");
+
     private static final Logger log = LoggerFactory.getLogger(DataAnalyticsService.class);
     private static final ZoneId ZONE_CN = ZoneId.of("Asia/Shanghai");
 
@@ -267,7 +271,7 @@ public class DataAnalyticsService {
                         .ge(MessageSummary::getCreatedAt, from)
                         .lt(MessageSummary::getCreatedAt, to));
         if (summaries.isEmpty()) return 0;
-        Set<String> negativeLabels = Set.of("sad", "angry", "scared", "nervous", "lonely", "tired");
+        Set<String> negativeLabels = NEGATIVE_LABELS;
         long negCount = summaries.stream()
                 .filter(s -> s.getEmotionLabel() != null && negativeLabels.contains(s.getEmotionLabel()))
                 .count();
@@ -344,7 +348,7 @@ public class DataAnalyticsService {
             byWeek.computeIfAbsent(week, k -> new ArrayList<>()).add(s.getEmotionLabel());
         }
 
-        Set<String> negativeLabels = Set.of("sad", "angry", "scared", "nervous", "lonely", "tired");
+        Set<String> negativeLabels = NEGATIVE_LABELS;
         List<Map<String, Object>> curve = new ArrayList<>();
         for (Map.Entry<String, List<String>> entry : byWeek.entrySet()) {
             List<String> labels = entry.getValue();

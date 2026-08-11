@@ -13,6 +13,7 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
+import com.mindsafe.service.common.CounselingTimeZone;
 import com.mindsafe.domain.entity.AlertEvent;
 import com.mindsafe.service.monitoring.AlertEventCollector;
 
@@ -35,7 +36,7 @@ public class WeComAlertService implements AlertService {
 
     private static final Logger log = LoggerFactory.getLogger(WeComAlertService.class);
     private static final DateTimeFormatter FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
-            .withZone(ZoneId.of("Asia/Shanghai"));
+            .withZone(CounselingTimeZone.SHANGHAI);
 
     private final String webhookUrl;
 

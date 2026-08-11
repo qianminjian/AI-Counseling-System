@@ -23,6 +23,8 @@
  * - VAD 预过滤：静音窗直接跳过转写，省 CPU 并抑制 Whisper 静音幻觉。
  */
 import { useState, useEffect, useRef } from 'react'
+// N-011：音频工具共享（rms/downsample 原重复实现收编）
+import { downsampleTo16k, rms } from '../../../shared/src/audio-utils'
 import {
   WAKE_MODEL_ID,
   WAKE_MODEL_REMOTE_HOST,
@@ -77,19 +79,6 @@ function resolveWakeParams() {
 // 注：AudioWorklet 优先 / ScriptProcessor 降级逻辑在 createPcmCapture 内部
 
 /** 线性插值降采样到 16kHz（Float32 输出，Whisper 直接消费） */
-function downsampleTo16kFloat(f32, inputRate) {
-  if (inputRate === TARGET_SAMPLE_RATE) return f32
-  const ratio = inputRate / TARGET_SAMPLE_RATE
-  const outLen = Math.floor(f32.length / ratio)
-  const out = new Float32Array(outLen)
-  for (let i = 0; i < outLen; i++) {
-    const pos = i * ratio
-    const i0 = Math.floor(pos)
-    const frac = pos - i0
-    out[i] = (f32[i0] || 0) * (1 - frac) + (f32[i0 + 1] || 0) * frac
-  }
-  return out
-}
 
 /** 合并多个 Float32 chunk */
 function concatChunks(chunks: Float32Array[], total: number): Float32Array {
@@ -102,12 +91,6 @@ function concatChunks(chunks: Float32Array[], total: number): Float32Array {
   return merged
 }
 
-/** 均方根能量（VAD 判停用） */
-function rms(f32) {
-  let sum = 0
-  for (let i = 0; i < f32.length; i++) sum += f32[i] * f32[i]
-  return Math.sqrt(sum / (f32.length || 1))
-}
 
 /* ===== 全局模型加载状态（ARCH-006 收敛 A：复用 createModelStatusStore 基座） ===== */
 const wakeModelStore = createModelStatusStore()
@@ -505,7 +488,7 @@ export function useWakeWord({ active, paused, onDetected }) {
         let chunkCount = 0
         session = await createMicSession((rawPcm: Float32Array) => {
           if (cancelled) return
-          const pcm = downsampleTo16kFloat(rawPcm, inputRate)
+          const pcm = downsampleTo16k(rawPcm, inputRate)
           chunks.push(pcm)
           totalSamples += pcm.length
           chunkCount++

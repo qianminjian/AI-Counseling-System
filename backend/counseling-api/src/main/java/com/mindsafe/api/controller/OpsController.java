@@ -45,6 +45,14 @@ public class OpsController {
     /** 高危操作确认短语（code-review M2：任意非空值不构成二次确认） */
     private static final String CONFIRM_PHRASE = "CONFIRM";
 
+    /**
+     * N-008（2026-08-11）：确认短语统一校验（原 5 处同构 if 拷贝收编）。
+     * 危险操作端点（重启/恢复出厂/降级切换等）需 X-Confirm: CONFIRM 头显式确认。
+     */
+    private void requireConfirm(String confirm) {
+        requireConfirm(confirm);
+    }
+
     private final OpsService opsService;
     private final RiskOverviewService riskOverviewService;
     private final DegradationMatrixService degradationMatrixService;

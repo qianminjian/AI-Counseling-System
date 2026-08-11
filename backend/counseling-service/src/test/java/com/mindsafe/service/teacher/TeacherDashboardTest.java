@@ -50,7 +50,9 @@ class TeacherDashboardTest {
                 mock(MessageSummaryMapper.class),
                 mock(FieldEncryptionService.class),
                 mock(SessionAccessService.class),
-                mock(AuditLogService.class));
+                mock(AuditLogService.class),
+                new com.mindsafe.service.teacher.AlertTodoMutePolicy(),
+                new com.mindsafe.service.casemanage.CaseLifecycleService());
     }
 
     private CounselingSession ratedSession(int rating) {

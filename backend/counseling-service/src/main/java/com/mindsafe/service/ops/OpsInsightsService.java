@@ -1,6 +1,7 @@
 package com.mindsafe.service.ops;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.mindsafe.service.common.CounselingTimeZone;
 import com.mindsafe.common.tenant.TenantContextHolder;
 import com.mindsafe.domain.entity.Notification;
 import com.mindsafe.domain.entity.QualityScore;
@@ -102,7 +103,7 @@ public class OpsInsightsService {
         List<QualityScore> scores = TenantContextHolder.callAsSystem(() ->
                 qualityScoreMapper.selectList(new LambdaQueryWrapper<QualityScore>()
                         .ge(QualityScore::getEvaluatedAt, since)));
-        ZoneId zone = ZoneId.of("Asia/Shanghai");
+        ZoneId zone = CounselingTimeZone.SHANGHAI;
         Map<String, Object> trend = new LinkedHashMap<>();
         for (int i = 6; i >= 0; i--) {
             Instant dayStart = Instant.now().atZone(zone).toLocalDate().minusDays(i).atStartOfDay(zone).toInstant();

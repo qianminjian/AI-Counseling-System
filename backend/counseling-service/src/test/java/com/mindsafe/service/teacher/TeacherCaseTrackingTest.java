@@ -59,7 +59,9 @@ class TeacherCaseTrackingTest {
                 mock(MessageSummaryMapper.class),
                 fieldEncryptionService,
                 mock(SessionAccessService.class),
-                mock(AuditLogService.class));
+                mock(AuditLogService.class),
+                new com.mindsafe.service.teacher.AlertTodoMutePolicy(),
+                new com.mindsafe.service.casemanage.CaseLifecycleService());
     }
 
     private User givenStudent() {
