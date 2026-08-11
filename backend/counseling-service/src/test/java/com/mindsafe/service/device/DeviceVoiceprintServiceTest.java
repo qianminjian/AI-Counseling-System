@@ -8,14 +8,18 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.when;
 
 /**
@@ -72,14 +76,21 @@ class DeviceVoiceprintServiceTest {
     @Test
     @DisplayName("设备端上报：INITIATED → COLLECTING → UPLOADED 推进")
     void reportPhaseAdvances() {
+        // P0-5 适配：UPLOADED 自动触发 complete + Redis 回读——用内存 Redis 模拟状态推进
+        //（develop 原实现简单 stub 无法模拟回读，合并后暴露；2026-08-11）
+        AtomicReference<String> store = new AtomicReference<>();
+        when(valueOps.get(anyString())).thenAnswer(i -> store.get());
+        doAnswer(i -> {
+            store.set(i.getArgument(1));
+            return null;
+        }).when(valueOps).set(anyString(), anyString(), anyLong(), any(TimeUnit.class));
+
         Map<String, Object> task = service.createTask("K7M2P9XW4AQ", "stu-1", "t");
         String taskId = (String) task.get("taskId");
-        when(valueOps.get(anyString())).thenReturn(serialize(task));
 
         Map<String, Object> collecting = service.reportPhase(taskId, DeviceVoiceprintService.PHASE_COLLECTING, null);
         assertThat(collecting.get("phase")).isEqualTo(DeviceVoiceprintService.PHASE_COLLECTING);
 
-        when(valueOps.get(anyString())).thenReturn(serialize(collecting));
         Map<String, Object> uploaded = service.reportPhase(taskId, DeviceVoiceprintService.PHASE_UPLOADED, null);
         assertThat(uploaded.get("phase")).isEqualTo(DeviceVoiceprintService.PHASE_COMPLETED);
     }

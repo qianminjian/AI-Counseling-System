@@ -197,13 +197,20 @@ class TestBuildInstruction:
         assert voice is None
 
     def test_native_dialect_voice_override(self, mock_dashscope):
-        """原生方言音色 + language_mode=dialect → 覆盖 voice"""
+        """原生方言音色 → 覆盖 voice（P3-2：language_mode 已废弃清理，测试语义同步）"""
         cfg = mock_dashscope.VOICE_PERSONAS["qiqiu"]
         instruction, voice = mock_dashscope.build_instruction(
-            cfg, "cantonese", "neutral", language_mode="dialect", persona_gender="female"
+            cfg, "cantonese", "neutral", persona_gender="female"
         )
         assert instruction is None  # 原生音色无需 instruction
         assert voice == "longjiayi_v3"  # 粤语女声
+
+    def test_old_request_language_mode_ignored(self):
+        """旧请求体多余字段（language_mode）被 extra=ignore 吸收（AUDIT-DEEP-010 兼容性，P3-4）"""
+        from app import TtsRequest
+        req = TtsRequest(text="你好", persona="xiaoxing", language_mode="dialect")
+        assert req.text == "你好"
+        assert not hasattr(req, "language_mode")  # 字段已移除
 
     def test_native_dialect_voice_male(self, mock_dashscope):
         """原生方言音色男声匹配（粤语男声）"""

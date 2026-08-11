@@ -191,10 +191,13 @@ public class TtsController {
     @GetMapping("/status")
     public ApiResponse<Map<String, Object>> status() {
         boolean available = ttsService.isAvailable();
+        // AUDIT-DEEP-009（P3-02）：透传 tts-service /health 真实引擎（cosyvoice-cloud/edge-tts/none），
+        // 移除过时硬编码 "cosyvoice2/edge-tts"；currentEngine 异常返回空时兜底 unknown
+        String engine = ttsService.currentEngine();
         return ApiResponse.ok(Map.of(
                 "available", available,
                 "service", "tts",
-                "engine", available ? "cosyvoice2/edge-tts" : "unavailable"
+                "engine", available ? (engine != null ? engine : "unknown") : "unavailable"
         ));
     }
 }

@@ -70,11 +70,14 @@ public class DeviceController {
         return wrap(deviceCode, () -> deviceService.unbind(deviceCode, operator));
     }
 
-    /** 设备首次上线/回连注册（设备端上报，匿名，AC-84-24） */
+    /** 设备首次上线/回连注册（设备端上报；已存在设备需 X-Device-Token，AUDIT-DEEP-002 code-review P0-1） */
     @PostMapping("/report/online")
-    public ApiResponse<Map<String, Object>> reportOnline(@RequestBody Map<String, String> body) {
+    public ApiResponse<Map<String, Object>> reportOnline(
+            @RequestBody Map<String, String> body,
+            @RequestHeader(value = "X-Device-Token", required = false) String deviceToken) {
         return wrap(body.get("deviceCode"), () -> deviceService.reportOnline(
-                body.get("deviceCode"), body.get("sn"), body.get("firmwareVersion"), body.get("serverUrl")));
+                body.get("deviceCode"), body.get("sn"), body.get("firmwareVersion"), body.get("serverUrl"),
+                deviceToken));
     }
 
     /** 心跳上报（设备端，30s 间隔，90s 判离线） */
@@ -99,14 +102,16 @@ public class DeviceController {
         return ApiResponse.ok(null);
     }
 
-    /** 配置拉取（设备心跳时调用） */
+    /** 配置拉取（设备心跳时调用；已绑定设备需 X-Device-Token，AUDIT-DEEP-002） */
     @PostMapping("/config/pull")
-    public ApiResponse<Map<String, Object>> pullConfig(@RequestBody Map<String, String> body) {
+    public ApiResponse<Map<String, Object>> pullConfig(
+            @RequestBody Map<String, String> body,
+            @RequestHeader(value = "X-Device-Token", required = false) String deviceToken) {
         String deviceCode = body.get("deviceCode");
         if (deviceCode == null || !deviceService.exists(deviceCode)) {
             return ApiResponse.error(404, "设备不存在");
         }
-        return ApiResponse.ok(deviceService.pullConfig(deviceCode));
+        return ApiResponse.ok(deviceService.pullConfig(deviceCode, deviceToken));
     }
 
     /** 老师租户级设备列表（CFG-008，按绑定归属过滤） */

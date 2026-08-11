@@ -1,9 +1,11 @@
 package com.mindsafe.service.teacher;
 
 import com.mindsafe.domain.entity.RiskEvent;
+import com.mindsafe.domain.entity.SysConfig;
 import com.mindsafe.domain.entity.SlaEscalationLog;
 import com.mindsafe.domain.mapper.RiskEventMapper;
 import com.mindsafe.domain.mapper.SlaEscalationLogMapper;
+import com.mindsafe.domain.mapper.SysConfigMapper;
 import com.mindsafe.service.alert.AlertService;
 import com.mindsafe.service.alert.AlertService.AlertLevel;
 import org.junit.jupiter.api.BeforeEach;
@@ -37,6 +39,7 @@ class SlaEscalationScannerTest {
 
     private RiskEventMapper riskEventMapper;
     private SlaEscalationLogMapper slaEscalationLogMapper;
+    private SysConfigMapper sysConfigMapper;
     private AlertService alertService;
     private SlaEscalationScanner scanner;
 
@@ -44,8 +47,9 @@ class SlaEscalationScannerTest {
     void setUp() {
         riskEventMapper = mock(RiskEventMapper.class);
         slaEscalationLogMapper = mock(SlaEscalationLogMapper.class);
+        sysConfigMapper = mock(SysConfigMapper.class);
         alertService = mock(AlertService.class);
-        scanner = new SlaEscalationScanner(riskEventMapper, new AlertSlaPolicy(), alertService, slaEscalationLogMapper, true, 30);
+        scanner = new SlaEscalationScanner(riskEventMapper, new AlertSlaPolicy(), alertService, slaEscalationLogMapper, sysConfigMapper, true, 30);
     }
 
     private RiskEvent event(int riskLevel, String status, int ageMinutes) {
@@ -133,10 +137,34 @@ class SlaEscalationScannerTest {
     }
 
     @Test
+    @DisplayName("sys_config DB 值覆盖 yml 默认（HOT 键 false 暂停扫描，AUDIT-DEEP-003）")
+    void sysConfigOverridesYmlEnabled() {
+        SysConfig config = new SysConfig();
+        config.setConfigKey("mindsafe.security.sla-escalation.enabled");
+        config.setValue("false");
+        when(sysConfigMapper.selectOne(any())).thenReturn(config);
+
+        scanner.scan();
+
+        verifyNoInteractions(riskEventMapper);
+        verifyNoInteractions(alertService);
+    }
+
+    @Test
+    @DisplayName("sys_config 键缺失 → 回落 yml 默认（fail-open 不阻断扫描）")
+    void sysConfigMissingFallsBackToYml() {
+        when(sysConfigMapper.selectOne(any())).thenReturn(null);
+
+        scanner.scan(); // 构造 enabled=true，应正常扫描
+
+        verify(riskEventMapper).selectList(any());
+    }
+
+    @Test
     @DisplayName("关闭时 enabled=false → 不扫描不告警")
     void disabled_skipsScan() {
         SlaEscalationScanner disabled =
-                new SlaEscalationScanner(riskEventMapper, new AlertSlaPolicy(), alertService, slaEscalationLogMapper, false, 30);
+                new SlaEscalationScanner(riskEventMapper, new AlertSlaPolicy(), alertService, slaEscalationLogMapper, sysConfigMapper, false, 30);
 
         disabled.scan();
 

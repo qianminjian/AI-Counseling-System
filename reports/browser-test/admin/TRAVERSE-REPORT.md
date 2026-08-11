@@ -46,3 +46,18 @@
 ## 四、截图索引
 
 step-01~26（登录/总览/配置/风险/降级/洞察/告警/设备等，详见目录）
+
+## 五、修复与复测闭环（2026-08-11）
+
+| ID | 级别 | 修复 | 复测 |
+|----|------|------|------|
+| BUG-A-001 | P0 | SecurityConfig prompts 规则置前 | ✅ |
+| BUG-A-002 | P1 | usageSummary Timestamp.from() | ✅ |
+| BUG-A-003 | P1 | 新增 ServicesPage | ✅ |
+| BUG-A-004 | P1 | 新增 AuditPage | ✅ |
+| BUG-A-005 | P2 | tenantHealth 补租户名称映射 | ✅ |
+| BUG-A-006 | P2 | 健康度中文语义标签 | ✅ |
+| BUG-A-007 | P3 | DevicePage Space wrap | ✅ |
+| BUG-A-008 | P1 | PromptVersionService callAsSystem | ✅ |
+
+第二轮复测（全新会话清缓存）6/6 通过，无回归。提交：b5e48cf（A-001~007）、6acd52b（A-008）。

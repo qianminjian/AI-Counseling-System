@@ -12,11 +12,13 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.util.UriComponentsBuilder;
 
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.net.URI;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -154,11 +156,12 @@ public class DegradationEventDetector {
         }
     }
 
-    /** 查询 Prometheus 即时向量：result 非空即存在匹配样本 */
+    /** 查询 Prometheus 即时向量：result 非空即存在匹配样本（AUDIT-DEEP-008：UriComponentsBuilder 统一编码，对齐 MetricsQueryService M1 修复） */
     private boolean queryHasValue(String expr) {
         @SuppressWarnings("unchecked")
         Map<String, Object> body = restTemplate.getForObject(
-                prometheusUrl + "/api/v1/query?query=" + expr, Map.class);
+                UriComponentsBuilder.fromHttpUrl(prometheusUrl + "/api/v1/query")
+                        .queryParam("query", expr).build().encode().toUri(), Map.class);
         if (body == null || !"success".equals(body.get("status"))) {
             return false;
         }

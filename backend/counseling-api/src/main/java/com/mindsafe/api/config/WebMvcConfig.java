@@ -19,7 +19,9 @@ public class WebMvcConfig implements WebMvcConfigurer {
 
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
+        // AUDIT-DEEP-011（P3-04）：公开端点（voiceprint/verify、device report/config）注册 IP 限流
         registry.addInterceptor(rateLimitInterceptor)
-                .addPathPatterns("/api/v1/chat/**", "/api/v1/tts/synthesize");
+                .addPathPatterns("/api/v1/chat/**", "/api/v1/tts/synthesize",
+                        "/api/v1/voiceprint/verify", "/api/v1/device/report/**", "/api/v1/device/config/pull");
     }
 }

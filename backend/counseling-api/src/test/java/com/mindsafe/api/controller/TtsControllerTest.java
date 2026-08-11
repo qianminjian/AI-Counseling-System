@@ -266,14 +266,26 @@ class TtsControllerTest {
     }
 
     @Test
-    @DisplayName("status 可用 → cosyvoice2/edge-tts")
+    @DisplayName("status 可用 → 透传 /health 真实引擎（AUDIT-DEEP-009）")
     void status_available() {
         when(ttsService.isAvailable()).thenReturn(true);
+        when(ttsService.currentEngine()).thenReturn("cosyvoice-cloud");
 
         var resp = controller.status();
 
         assertThat(resp.data().get("available")).isEqualTo(true);
-        assertThat(resp.data().get("engine")).isEqualTo("cosyvoice2/edge-tts");
+        assertThat(resp.data().get("engine")).isEqualTo("cosyvoice-cloud");
+    }
+
+    @Test
+    @DisplayName("status 可用但引擎查询异常 → 兜底 unknown（AUDIT-DEEP-009）")
+    void status_availableEngineUnknown() {
+        when(ttsService.isAvailable()).thenReturn(true);
+        when(ttsService.currentEngine()).thenReturn(null);
+
+        var resp = controller.status();
+
+        assertThat(resp.data().get("engine")).isEqualTo("unknown");
     }
 
     @Test

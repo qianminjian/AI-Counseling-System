@@ -1,5 +1,6 @@
 package com.mindsafe.service.device;
 
+import com.mindsafe.common.exception.BizException;
 import com.mindsafe.domain.entity.Device;
 import com.mindsafe.domain.entity.DeviceBindCode;
 import com.mindsafe.domain.entity.DeviceBinding;
@@ -11,6 +12,7 @@ import com.mindsafe.domain.util.DeviceCodeUtil;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 import java.time.Instant;
 import java.util.List;
@@ -36,6 +38,7 @@ class DeviceServiceTest {
     private DeviceMapper deviceMapper;
     private DeviceBindingMapper bindingMapper;
     private DeviceBindCodeMapper bindCodeMapper;
+    private DeviceSecurityService securityService;
     private DeviceService service;
 
     private final String deviceCode = DeviceCodeUtil.generate("BB-2026-000123");
@@ -46,7 +49,7 @@ class DeviceServiceTest {
         deviceMapper = mock(DeviceMapper.class);
         bindingMapper = mock(DeviceBindingMapper.class);
         bindCodeMapper = mock(DeviceBindCodeMapper.class);
-        DeviceSecurityService securityService = mock(DeviceSecurityService.class);
+        securityService = mock(DeviceSecurityService.class);
         when(securityService.issueCredentials(any())).thenReturn(
                 new DeviceSecurityService.DeviceSecurityCredentials("DVC_test_token_abc", 9999999999999L));
         service = new DeviceService(deviceMapper, bindingMapper, bindCodeMapper,
@@ -72,7 +75,7 @@ class DeviceServiceTest {
         when(deviceMapper.selectOne(any())).thenReturn(null);
         when(deviceMapper.selectCount(any())).thenReturn(0L);
 
-        Map<String, Object> result = service.reportOnline(deviceCode, "BB-2026-000123", "v0.1.0", "https://mindsafe.local");
+        Map<String, Object> result = service.reportOnline(deviceCode, "BB-2026-000123", "v0.1.0", "https://mindsafe.local", null);
 
         assertThat(result.get("status")).isEqualTo(Device.STATUS_ONLINE_UNBOUND);
         verify(deviceMapper).insert(any(Device.class));
@@ -84,8 +87,9 @@ class DeviceServiceTest {
         Device bound = unboundDevice();
         bound.setStatus(Device.STATUS_ONLINE_BOUND);
         when(deviceMapper.selectOne(any())).thenReturn(bound);
+        when(securityService.validateToken(any(), any())).thenReturn(true);
 
-        Map<String, Object> result = service.reportOnline(deviceCode, "BB-2026-000123", "v0.1.0", null);
+        Map<String, Object> result = service.reportOnline(deviceCode, "BB-2026-000123", "v0.1.0", null, "DVC_VALID");
 
         assertThat(result.get("status")).isEqualTo(Device.STATUS_ONLINE_BOUND);
         verify(deviceMapper, never()).insert(any(Device.class));
@@ -94,7 +98,7 @@ class DeviceServiceTest {
     @Test
     @DisplayName("非法设备码上报被拒绝")
     void reportOnlineRejectsInvalidCode() {
-        assertThatThrownBy(() -> service.reportOnline("BADCODE", "SN1", "v1", null))
+        assertThatThrownBy(() -> service.reportOnline("BADCODE", "SN1", "v1", null, null))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("设备码不合法");
     }
@@ -104,7 +108,7 @@ class DeviceServiceTest {
     void reportOnlineRejectsDuplicateSn() {
         when(deviceMapper.selectOne(any())).thenReturn(null);
         when(deviceMapper.selectCount(any())).thenReturn(1L);
-        assertThatThrownBy(() -> service.reportOnline(deviceCode, "OTHER-SN", "v1", null))
+        assertThatThrownBy(() -> service.reportOnline(deviceCode, "OTHER-SN", "v1", null, null))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("SN 已被其他设备码占用");
     }
@@ -275,16 +279,72 @@ class DeviceServiceTest {
     // ===== 配置拉取 =====
 
     @Test
-    @DisplayName("配置拉取返回服务器地址")
+    @DisplayName("回连已存在设备无有效 token → 拒绝（AUDIT-DEEP-002 code-review P0-1）")
+    void reportOnlineExistingRequiresToken() {
+        Device d = unboundDevice();
+        d.setServerUrl("https://mindsafe.school.local");
+        when(deviceMapper.selectOne(any())).thenReturn(d);
+        when(securityService.validateToken(null, deviceCode)).thenReturn(false);
+
+        assertThatThrownBy(() -> service.reportOnline(deviceCode, "SN-1", "v1.0", "https://evil.local", null))
+                .isInstanceOf(BizException.class)
+                .hasMessageContaining("token");
+    }
+
+    @Test
+    @DisplayName("已存在设备携带有效 token → serverUrl 不可改写（仅首次设置，code-review P1-1）")
+    void reportOnlineExistingCannotRewriteServerUrl() {
+        Device d = unboundDevice();
+        d.setServerUrl("https://mindsafe.school.local");
+        when(deviceMapper.selectOne(any())).thenReturn(d);
+        when(securityService.validateToken("DVC_VALID", deviceCode)).thenReturn(true);
+        when(deviceMapper.updateById(any(Device.class))).thenReturn(1);
+
+        service.reportOnline(deviceCode, "SN-1", "v1.1", "https://evil.local", "DVC_VALID");
+
+        // 捕获 update：serverUrl 不应被改写（保持原值不设置）
+        ArgumentCaptor<Device> captor = ArgumentCaptor.forClass(Device.class);
+        verify(deviceMapper).updateById(captor.capture());
+        assertThat(captor.getValue().getServerUrl()).isNull();
+    }
+
+    @Test
+    @DisplayName("配置拉取返回服务器地址（未绑定匿名可拉取）")
     void pullConfigReturnsServerUrl() {
         Device d = unboundDevice();
         d.setServerUrl("https://mindsafe.school.local");
         when(deviceMapper.selectOne(any())).thenReturn(d);
 
-        Map<String, Object> config = service.pullConfig(deviceCode);
+        Map<String, Object> config = service.pullConfig(deviceCode, null);
 
         assertThat(config.get("serverUrl")).isEqualTo("https://mindsafe.school.local");
         assertThat(config.get("heartbeatIntervalSeconds")).isEqualTo(30L);
+    }
+
+    @Test
+    @DisplayName("配置拉取：已绑定设备无有效 token → 拒绝（AUDIT-DEEP-002）")
+    void pullConfigBoundRequiresToken() {
+        Device d = unboundDevice();
+        d.setStatus(Device.STATUS_ONLINE_BOUND);
+        when(deviceMapper.selectOne(any())).thenReturn(d);
+
+        assertThatThrownBy(() -> service.pullConfig(deviceCode, null))
+                .isInstanceOf(BizException.class)
+                .hasMessageContaining("token");
+    }
+
+    @Test
+    @DisplayName("配置拉取：已绑定设备携带有效 token → 放行（AUDIT-DEEP-002）")
+    void pullConfigBoundWithValidToken() {
+        Device d = unboundDevice();
+        d.setStatus(Device.STATUS_ONLINE_BOUND);
+        d.setServerUrl("https://mindsafe.school.local");
+        when(deviceMapper.selectOne(any())).thenReturn(d);
+        when(securityService.validateToken("DVC_VALID", deviceCode)).thenReturn(true);
+
+        Map<String, Object> config = service.pullConfig(deviceCode, "DVC_VALID");
+
+        assertThat(config.get("serverUrl")).isEqualTo("https://mindsafe.school.local");
     }
 
     // ===== CFG-008 M13：设备操作（ota/reboot/factory-reset） =====
