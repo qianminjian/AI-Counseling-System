@@ -29,12 +29,15 @@ public class UsageTimeLimitService {
 
     private final StringRedisTemplate redisTemplate;
     private final int maxDailyMinutes;
+    private final io.micrometer.core.instrument.MeterRegistry meterRegistry;
 
     public UsageTimeLimitService(
             StringRedisTemplate redisTemplate,
-            @Value("${mindsafe.security.usage-limit.max-daily-minutes:30}") int maxDailyMinutes) {
+            @Value("${mindsafe.security.usage-limit.max-daily-minutes:30}") int maxDailyMinutes,
+            io.micrometer.core.instrument.MeterRegistry meterRegistry) {
         this.redisTemplate = redisTemplate;
         this.maxDailyMinutes = maxDailyMinutes;
+        this.meterRegistry = meterRegistry;
     }
 
     /** 累加使用时长（秒） */
@@ -49,6 +52,8 @@ public class UsageTimeLimitService {
                 redisTemplate.expire(key, KEY_TTL);
             }
         } catch (Exception e) {
+            // doing/92 R-014：fail-open 保留但记录计数（对齐 AUD-014，供告警发现上限静默失效）
+            meterRegistry.counter("mindsafe_usage_limit_failopen_total").increment();
             log.warn("累计使用时长失败（不影响对话）: userId={}, error={}", userId, e.getMessage());
         }
     }
@@ -59,6 +64,7 @@ public class UsageTimeLimitService {
             String val = redisTemplate.opsForValue().get(key(tenantId, userId));
             return val == null ? 0 : Long.parseLong(val);
         } catch (Exception e) {
+            meterRegistry.counter("mindsafe_usage_limit_failopen_total").increment();
             return 0;
         }
     }

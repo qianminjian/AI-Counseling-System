@@ -78,7 +78,10 @@ public class GuardianConsentService {
         // 发送验证码
         phoneVerificationService.sendCode(guardianPhone, "监护人同意确认");
         log.info("监护人同意验证码已发送: studentUserId={}, phone={}", studentUserId,
-                guardianPhone.substring(0, 3) + "****" + guardianPhone.substring(guardianPhone.length() - 4));
+                // doing/92 R-008：脱敏长度守卫（<7 位不截断，防 StringIndexOutOfBounds）
+                guardianPhone.length() >= 7
+                        ? guardianPhone.substring(0, 3) + "****" + guardianPhone.substring(guardianPhone.length() - 4)
+                        : "****");
     }
 
     /**

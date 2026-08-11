@@ -6,7 +6,7 @@
 #   1. DESIGN-OVERVIEW 合并文档表格中的全部 .md 链接指向的文件必须存在
 #   2. design/ 根目录合并文档编号 01~N 必须连续（防删改跳号）
 #   3. design/frozen/ 下文件编号必须在 DESIGN-OVERVIEW 声明的冻结白名单内
-#      （34、38-43、58；新增冻结文档需同步更新白名单与 OVERVIEW）
+#      （34、38-43、58-62、73、74（doing 迁移中）、87-90；doing/92 R-028：注释与代码 FROZEN_WHITELIST 对齐——新增冻结文档需同步更新白名单与 OVERVIEW）
 #
 # 用法：
 #   ./scripts/verify-doc-numbers.sh                # 校验真实 design/（默认）
