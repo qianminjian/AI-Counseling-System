@@ -1,7 +1,8 @@
 # doing/89 认证与身份解析深化 SPEC（N-001 + N-003）
 
 > 编号：DOC-110 | 创建：2026-08-11 | 来源：doing/89 非 device 域架构深化候选清单——首要建议批次（N-001 认证域 + N-003 家长域 withdrawn 旁路）
-> 状态：SPEC（待议决实施）| 与 frozen/89 同号异题（文件名可区分）
+> 状态：SPEC（6/8 AC 闭环，待收尾）| 与 frozen/89 同号异题（文件名可区分）
+> 核验（2026-08-11）：AC-89-01/02/03/06/07/08 已闭环（805eacc/7de2b0a/f57c6af + 四端回归 28+61 全绿）；**AC-89-04（ParentIdentityResolver 统一）与 AC-89-05（AuthProvider 统一签发）未实施**——暂不归档
 > 关联：doing/89 候选清单（全量 N-001~013）、his/83 §7.6（平台认证）、design/13（领域词汇表）
 
 ---
@@ -83,14 +84,14 @@ class ParentIdentityResolver {
 
 | # | 需求（EARS） | 验收 |
 |---|-------------|------|
-| AC-89-01 | WHEN 家长账号连续 5 次密码错误 THEN 锁定 15 分钟 AND 锁定期间登录被拒 | 与 LoginLockoutService 语义一致（家长端接入后） |
-| AC-89-02 | WHEN 家长账号锁定期间调用登录 THEN 返回 401/锁定提示 AND 不校验密码 | 锁定语义生效 |
-| AC-89-03 | WHEN 已撤回同意的家长通过新登录路径访问 THEN 请求被拒（withdrawn 拦截生效） | 旁路修复（原新路径绕过） |
-| AC-89-04 | WHEN 旧链接（sub=studentUserId）与登录（sub=parentId）访问家长端点 THEN 统一经 ParentIdentityResolver 解析 AND withdrawn 校验一致 | 两条路径行为一致 |
-| AC-89-05 | WHEN 任一体系登录成功 THEN token 由对应 AuthProvider 签发 AND 格式不变（PLATFORM_/业务/toc） | 签发层统一，格式兼容 |
-| AC-89-06 | WHEN TocAuthController.login/register 调用 THEN token 签发在 Service 层（非 Controller） | 分层倒挂修复 |
-| AC-89-07 | WHEN 周报端点调用 THEN 聚合逻辑在 WeeklyReportService AND Controller 仅编排 | 口径收敛（N-004 关联） |
-| AC-89-08 | WHEN 全量回归 THEN 四端登录（业务/平台/toc/家长）零回归 | 兼容性 |
+| AC-89-01 | WHEN 家长账号连续 5 次密码错误 THEN 锁定 15 分钟 AND 锁定期间登录被拒 | ✅ 805eacc（doLogin 接入 LoginLockoutService） |
+| AC-89-02 | WHEN 家长账号锁定期间调用登录 THEN 返回 401/锁定提示 AND 不校验密码 | ✅ 805eacc（checkLockout 前置拦截） |
+| AC-89-03 | WHEN 已撤回同意的家长通过新登录路径访问 THEN 请求被拒（withdrawn 拦截生效） | ✅ f57c6af 验证（requireLinkedStudent(true) 现存生效，测试通过） |
+| AC-89-04 | WHEN 旧链接（sub=studentUserId）与登录（sub=parentId）访问家长端点 THEN 统一经 ParentIdentityResolver 解析 AND withdrawn 校验一致 | ❌ 未实施（双路径仍在 ParentController L128/L190；withdrawn 靠端点传 true/false） |
+| AC-89-05 | WHEN 任一体系登录成功 THEN token 由对应 AuthProvider 签发 AND 格式不变（PLATFORM_/业务/toc） | ❌ 未实施（仅 TocAuthProvider；无 AuthProvider 接口，业务/平台/家长未接入） |
+| AC-89-06 | WHEN TocAuthController.login/register 调用 THEN token 签发在 Service 层（非 Controller） | ✅ 7de2b0a（TocAuthProvider.buildSession 承载签发） |
+| AC-89-07 | WHEN 周报端点调用 THEN 聚合逻辑在 WeeklyReportService AND Controller 仅编排 | ✅ 7de2b0a（WeeklyReportService 下沉） |
+| AC-89-08 | WHEN 全量回归 THEN 四端登录（业务/平台/toc/家长）零回归 | ✅ 2026-08-11 四端登录测试 28+61 全绿 |
 
 ## 5. 边界与依赖
 
