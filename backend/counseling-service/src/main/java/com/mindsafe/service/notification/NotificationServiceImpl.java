@@ -2,6 +2,8 @@ package com.mindsafe.service.notification;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.mindsafe.common.dto.ErrorCode;
+import com.mindsafe.common.exception.BizException;
 import com.mindsafe.domain.entity.Notification;
 import com.mindsafe.domain.entity.RiskEvent;
 import com.mindsafe.domain.entity.User;

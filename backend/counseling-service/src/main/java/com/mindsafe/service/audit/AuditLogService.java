@@ -1,6 +1,7 @@
 package com.mindsafe.service.audit;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.mindsafe.common.util.ClientIpResolver;
 import com.mindsafe.domain.entity.AuditLog;
 import com.mindsafe.domain.mapper.AuditLogMapper;
 import org.slf4j.Logger;
