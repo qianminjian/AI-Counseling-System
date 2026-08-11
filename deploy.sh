@@ -39,6 +39,10 @@ if [ -z "${SERVER}" ]; then
 fi
 REMOTE_DIR="/guju/mindsafe"
 PROJECT_ROOT="$(cd "$(dirname "$0")" && pwd)"
+# 防呆（2026-08-11 教训）：脚本锚定仓库根目录，消除对调用者 cwd 的隐式依赖——
+# 前端构建块 cd 进 frontend/<app> 后未恢复 cwd，后续相对路径会在子目录下解析失败
+# （open .../frontend/parent-h5/deploy/docker-compose.prod.yml: no such file，部署 45s 中断）
+cd "$PROJECT_ROOT"
 STATE_FILE="$PROJECT_ROOT/.deploy-state"
 # 服务器上 compose 位于 $REMOTE_DIR/deploy/，挂载/构建上下文为仓库镜像结构：
 #   ../frontend/<app>/dist、../backend/<svc>（compose build context）
@@ -416,7 +420,10 @@ $DEPLOY_VOICE && BUILD_TARGETS="$BUILD_TARGETS voice-service"
 # 相对路径在 frontend/<app>/ 下解析失败（open .../frontend/parent-h5/deploy/docker-compose.prod.yml: no such file）
 if ! docker compose -f "$PROJECT_ROOT/deploy/docker-compose.prod.yml" config --quiet 2>/tmp/compose-config.err; then
   echo "❌ compose 配置校验失败（本地预检，未上传服务器）："
-  grep -E "Additional property|error|invalid" /tmp/compose-config.err | head -5
+  echo "---- compose 校验完整错误输出 ----"
+  cat /tmp/compose-config.err
+  echo "----------------------------------"
+  grep -E "Additional property|error|invalid|no such file" /tmp/compose-config.err | head -5
   exit 1
 fi
 echo "✅ compose 配置校验通过（本地预检）"
