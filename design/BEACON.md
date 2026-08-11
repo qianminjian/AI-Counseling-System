@@ -88,6 +88,7 @@
 
 | 日期 | 变更 | 原因 |
 |------|------|------|
+| 2026-08-11 | **P-003 冻结移交独立专题（DOC-112）**：doing/90 P-003 ❄️→frozen/90 声纹向量化独立专题（生产数据迁移 + 阈值调优，独立批次）；doing/90 全部处理完毕（9 实施 + 1 冻结移交） | 项目负责人指令：独立专题移入冻结跟踪（2026-08-11） |
 | 2026-08-11 | **第三轮架构深化候选清单 + SPEC（DOC-111）**：improve-codebase-architecture 第三轮（排除前三轮范围）——doing/90 双文档（候选 P-001~010 + 前端缺陷与 IP 解析 SPEC：ClientIpResolver 最右语义/LoginPage 双引号与 PIN 修复，AC-90-01~06）；接线状态更正 5 项已接线 | 项目负责人指令：输出 md 到 doing 并生成 spec（2026-08-11） |
 | 2026-08-11 | **非 device 域架构深化候选清单 + SPEC（DOC-110）**：improve-codebase-architecture 第二轮（排除 device/toc 域）——doing/89 双文档（候选清单 N-001~013 + 认证与身份解析 SPEC：LoginRateLimiter/AuthProvider/ParentIdentityResolver/WeeklyReportService，AC-89-01~08；与 frozen/89 同号异题） | 项目负责人指令：输出到 doing 下以 md 格式并生成 spec（2026-08-11） |
 | 2026-08-11 | **无屏终端域架构深化候选清单（DOC-109）**：improve-codebase-architecture 近三天变更聚焦——doing/88 新建（AD-001~009 候选）；走查修复 4c64ad9 编译回归（84e78df，auditOperation 类外方法）；首要建议 AD-002→AD-004 设备身份与归属校验合并批次 | 项目负责人指令：以 md 格式输出到 doing（2026-08-11） |
