@@ -15,7 +15,7 @@
 | 1 | **4 套认证体系并存**：业务端 AuthController（11 端点 token 内联 4 处）/ 平台端 PlatformAuthController（PLATFORM_ 前缀）/ toC 端 TocAuthController（手机号验证码，token 签发在 Controller）/ 家长端 ParentAuthService（手机号+密码） | AuthController.java、PlatformAuthController.java、TocAuthController.java L87-88、ParentAuthService.java |
 | 2 | **锁定向 3 种实现**：LoginLockoutService（按用户名，Redis）/ PlatformLoginGuard（按 IP）/ TocAuthService.rateLimitCheck（按手机号） | 三文件独立实现 |
 | 3 | **家长端零锁定向防护**：ParentAuthService.doLogin 无失败计数/锁定/限速——家长账号是唯一可无限暴力尝试的入口 | ParentAuthService.java L129-147 |
-| 4 | **withdrawn 拦截旁路**：ParentController.resolveParentToken（旧链接，含 withdrawn 拦截）vs resolveParentIdentity（新登录，仅签名校验）——新登录路径绕过同意撤回校验（隐私合规漏洞） | ParentController.java L162-241 |
+| 4 | **双解析器并存（潜在旁路）**：resolveParentToken（旧链接，resolver 内含 withdrawn 拦截）vs resolveParentIdentity（新登录，withdrawn 拦截在端点层 requireLinkedStudent(true)）——**现存拦截已生效**（2026-08-11 验证：ParentControllerTest L195 getWeeklyReport 撤回→410 通过），潜在旁路 = 未来新端点漏传 true 时才会出现 | ParentController.java L162-241、L245-256 |
 | 5 | **周报聚合留在 Controller**：doGetWeeklyReport 手工聚合情绪/风险；ParentService 83 行空壳；TenantContextHolder 模板重复 4 处 | ParentController.java L71-115 |
 
 ### 1.2 影响
@@ -61,7 +61,7 @@ class ParentIdentityResolver {
 ```
 
 - 旧链接（sub=studentUserId）与新登录（sub=parentId）两种语义统一出口
-- **withdrawn 校验对两条路径都生效**（修复旁路）
+- **withdrawn 校验统一收进 resolver（消除潜在旁路）**——现存拦截经验证已生效（AC-89-03 已测），统一收口后新端点无需记挂"传 true"
 - Controller 移除 resolveParentToken/resolveParentIdentity 双实现
 
 ### 2.4 WeeklyReportService（周报下沉，N-003 附带）
