@@ -300,10 +300,8 @@ public class DeviceService {
         if (preferences != null) {
             config.put("preferences", preferences);
         }
-        // P0-1：reportOnline 成功后签发的 device_token 下发备后续鉴权
-        if (device.getDeviceToken() != null) {
-            config.put("deviceToken", device.getDeviceToken());
-        }
+        // AD-002：config/pull 为匿名通道（permitAll），不在此下发 deviceToken（防凭证泄露）
+        // deviceToken 仅由 reportOnline 返回（设备上线时获取，后续请求走 DVC_ token）
         return config;
     }
 

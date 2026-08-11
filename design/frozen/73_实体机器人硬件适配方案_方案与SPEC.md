@@ -410,7 +410,7 @@
 | 硬件测试/阶段 1 硬件准备 | §11 阶段 1 | doc/NST-HW-02 | ❄️ 冻结 |
 | 实体机器人互补 | 74 与 frozen/73 交叉部分 | 本文件（frozen/73） | 🧊 冻结待议决（下一步③项） |
 | **CFG-012 L1 动态码 + 加密配网**（84 号，Security 1 / WeXin-BLE-Provision） | doing/84 §六.2 | doc/NST-HW-02 二期（固件安全能力） | ❄️ 冻结移交（2026-08-11 DOC-105 追加归口，解冻条件=NST-HW-02 二期启动） |
-| **设备签名鉴权**（P0-1，设备上报通道 HMAC-SHA256 签名） | doing/84 §六.2（security） | doc/NST-HW-02 二期（后端 V44 device_secret/device_token 基础设施已就绪，固件侧对接后启用签名校验） | ❄️ 冻结跟踪（2026-08-11 审计追认：后端 SignatureFilter + DVC_ token 已部署，当前 report/online 公开其余 report/* 需 token；固件签名待二期） |
+| **设备签名鉴权**（AD-002，设备上报通道 HMAC-SHA256 签名） | doing/84 §六.2（security） | doc/NST-HW-02 二期（后端 V44 device_secret + DeviceSecurityService 就绪，固件侧对接后启用 HMAC 签名 + 开启 validated()） | ❄️ 冻结跟踪（2026-08-11 更新：report/** 暂回 permitAll（固件签名未就绪，authenticated() 导致设备 401）；config/pull 已停发 deviceToken（防匿名泄漏）。固件侧 NST-HW-02 二期对接后启用 SecurityConfig validated() + DeviceSecurityService.validateToken 接线） |
 | **TOC-006 灯光/固件执行**（85 号，远程管理偏好固件侧） | doing/85 §四 | doc/NST-HW-02 二期 | ❄️ 冻结移交（2026-08-11 DOC-105 追加归口：软件侧偏好已实施 c6bb2cc，灯光/固件执行待二期） |
 
 **解冻流程**：NST-HW-02 波波蛋硬件落地实施方案排期启动（含固件二期）时，由项目负责人发起解冻；CFG-009 实施时回 doing/84 §六.2 验收（AC-84-09）。
