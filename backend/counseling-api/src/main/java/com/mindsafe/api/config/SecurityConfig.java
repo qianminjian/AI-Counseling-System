@@ -81,9 +81,10 @@ public class SecurityConfig {
                         .requestMatchers("/api/v1/auth/refresh").permitAll()
                         // CFG-001（V39）：无屏终端设备上报/脱敏查询（设备端无 JWT，扫码入口匿名可查）；
                         // 绑定类端点（bind-code/bind/unbind）默认需登录态
-                        // P0-1：report/online 公开（首次上线必须），其余 report/*、info/status/config/pull 需设备 token 鉴权
-                        .requestMatchers("/api/v1/device/report/online").permitAll()
-                        .requestMatchers("/api/v1/device/report/**").authenticated()
+                        // P0-1/AD-002：设备 report 通道暂回 permitAll（固件侧 HMAC 签名未就绪，
+                        // 见 frozen/73 §九「设备签名鉴权」跟踪项）。reportOnline 保留公开（首次上线必须），
+                        // DeviceSecurityService.validateToken 已就绪待 NST-HW-02 固件二期对接。
+                        .requestMatchers("/api/v1/device/report/**").permitAll()
                         .requestMatchers("/api/v1/device/*/info").permitAll()
                         .requestMatchers("/api/v1/device/*/status").permitAll()
                         .requestMatchers("/api/v1/device/config/pull").permitAll()

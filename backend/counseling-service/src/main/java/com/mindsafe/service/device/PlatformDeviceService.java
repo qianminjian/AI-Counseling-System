@@ -31,12 +31,15 @@ public class PlatformDeviceService {
     private final DeviceMapper deviceMapper;
     private final DeviceBindingMapper bindingMapper;
     private final DeviceQrIssuanceMapper qrIssuanceMapper;
+    private final DeviceOperationMapper operationMapper;
 
     public PlatformDeviceService(DeviceMapper deviceMapper, DeviceBindingMapper bindingMapper,
-                                 DeviceQrIssuanceMapper qrIssuanceMapper) {
+                                 DeviceQrIssuanceMapper qrIssuanceMapper,
+                                 DeviceOperationMapper operationMapper) {
         this.deviceMapper = deviceMapper;
         this.bindingMapper = bindingMapper;
         this.qrIssuanceMapper = qrIssuanceMapper;
+        this.operationMapper = operationMapper;
     }
 
     /**
@@ -175,6 +178,17 @@ public class PlatformDeviceService {
                 continue;
             }
             accepted.add(code);
+        }
+        // P1 审计落库
+        String auditAction = "batch-" + action;
+        for (String code : accepted) {
+            DeviceOperation op = new DeviceOperation();
+            op.setOperationId(java.util.UUID.randomUUID());
+            op.setDeviceCode(code);
+            op.setAction(auditAction);
+            op.setOperator(operator);
+            op.setAcceptedAt(java.time.Instant.now());
+            operationMapper.insert(op);
         }
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("action", action);
