@@ -5,6 +5,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mindsafe.common.dto.ErrorCode;
 import com.mindsafe.common.exception.BizException;
+import com.mindsafe.common.util.ClientIpResolver;
 import jakarta.servlet.http.HttpServletRequest;
 
 import java.security.MessageDigest;
@@ -101,18 +102,9 @@ public final class VoiceprintDomain {
      * - 直连：使用 remoteAddr
      */
     public static String resolveClientIp(HttpServletRequest request) {
+        // doing/90 P-001：收敛至 ClientIpResolver（语义不变，最右不可伪造，AC-90-05）
         String forwarded = request.getHeader("X-Forwarded-For");
-        if (forwarded != null && !forwarded.isBlank()) {
-            // 从右往左取第一个非空段（尾随逗号/重复逗号等脏数据 → 跳过空段）
-            String[] entries = forwarded.split(",");
-            for (int i = entries.length - 1; i >= 0; i--) {
-                String entry = entries[i].trim();
-                if (!entry.isEmpty()) {
-                    return entry;
-                }
-            }
-        }
-        return request.getRemoteAddr();
+        return ClientIpResolver.parseClientIp(forwarded, request.getRemoteAddr());
     }
 
     /** embedding 存储序列化（失败抛业务异常，调用方可见） */

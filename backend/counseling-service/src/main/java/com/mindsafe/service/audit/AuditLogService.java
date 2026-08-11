@@ -108,15 +108,12 @@ public class AuditLogService {
     }
 
     private String extractClientIp(HttpServletRequest request) {
+        // doing/90 P-001：收敛至 ClientIpResolver（最右不可伪造语义，AC-90-04）
+        // 原实现取最左可被伪造 XFF 前缀污染——审计 IP 失真
         String xff = request.getHeader("X-Forwarded-For");
-        if (xff != null && !xff.isBlank()) {
-            return xff.split(",")[0].trim();
-        }
         String realIp = request.getHeader("X-Real-IP");
-        if (realIp != null && !realIp.isBlank()) {
-            return realIp;
-        }
-        return request.getRemoteAddr();
+        String fallback = realIp != null && !realIp.isBlank() ? realIp : request.getRemoteAddr();
+        return ClientIpResolver.parseClientIp(xff, fallback);
     }
 
     private String sha256Short(String input) {

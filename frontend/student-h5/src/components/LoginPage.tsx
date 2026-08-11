@@ -221,7 +221,7 @@ function PinLoginForm({ themeId, onLogin }) {
       setPin((p) => p.slice(0, -1))
     } else {
       // 修复 BUG-S-S01-02：上限 5→6，与文案「4-6 位」对齐
-      if (pin.length < 7) setPin((p) => p + key)
+      if (pin.length < 6) setPin((p) => p + key)
     }
   }
 
@@ -251,7 +251,7 @@ function PinLoginForm({ themeId, onLogin }) {
   return (
     <div>
       {/* 昵称 */}
-      <div className="login-field login-field--${themeId}">
+      <div className={`login-field login-field--${themeId}`}>
         <label htmlFor="login-name">你的昵称</label>
         <input
           id="login-name"
@@ -372,7 +372,7 @@ function RegisterForm({ themeId, onRegister }) {
     if (pinStep === 'input') {
       if (key === 'del') setPin((p) => p.slice(0, -1))
       // 修复 BUG-S-S01-02：上限 5→6，与文案「4-6 位」对齐
-      else if (pin.length < 7) setPin((p) => p + key)
+      else if (pin.length < 6) setPin((p) => p + key)
     } else {
       if (key === 'del') setPinConfirm((p) => p.slice(0, -1))
       else if (pinConfirm.length < 7) setPinConfirm((p) => p + key)
