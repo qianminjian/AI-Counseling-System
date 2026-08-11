@@ -24,7 +24,8 @@ import java.util.UUID;
  * 功能：
  * 1. 一键开通：创建 tenant + school + admin 用户（事务原子性）
  * 2. 租户配额：学生数上限、会话数上限
- * 3. 租户状态管理：active / suspended / archived
+ * 3. 租户状态管理：active / suspended（doing/90 P-008：原声明 archived 无实现路径，
+ *    YAGNI 收敛——archived 状态待归档需求出现后补实现；状态→计划映射由 billing TenantPlanResolver 单点解释）
  * 4. 健康检查：验证租户数据完整性
  */
 @Service
@@ -32,9 +33,6 @@ public class TenantProvisioningService {
 
     private static final Logger log = LoggerFactory.getLogger(TenantProvisioningService.class);
 
-    /** 默认配额 */
-    private static final int DEFAULT_MAX_STUDENTS = 500;
-    private static final int DEFAULT_MAX_SESSIONS_PER_DAY = 200;
 
     private final TenantMapper tenantMapper;
     private final SchoolMapper schoolMapper;

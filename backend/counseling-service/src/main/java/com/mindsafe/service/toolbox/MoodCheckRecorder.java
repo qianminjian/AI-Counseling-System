@@ -7,6 +7,8 @@ import org.springframework.stereotype.Component;
  * <p>
  * 练习前后各一次 1-5 表情打分，差值记录为工具效果。
  * 效果数据为 S3 级（进画像 + design/39 实验指标）。
+ * doing/90 P-002：experiment 消费域尚未实现（design/39 冻结中），本类为纯函数
+ * 计算器，效果数据落库/消费待 design/39 解冻后接线（YAGNI 裁决：不提前建空壳域）。
  * <p>
  * 纯函数实现：计算效果分 + 判定有效性。
  */
