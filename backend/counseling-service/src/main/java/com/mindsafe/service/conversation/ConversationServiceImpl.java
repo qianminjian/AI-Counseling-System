@@ -410,7 +410,9 @@ public class ConversationServiceImpl implements ConversationService {
         StringBuilder aiResponseCollector = new StringBuilder();
         Flux<StreamMessageEvent> aiStream = aiChatService.chatWithPrompt(sessionId, session.getEmotionTag(), safeContent, finalSystemPrompt)
                 .doOnNext(event -> {
-                    if (event.type() != null && event.type().equals("token") && event.content() != null) {
+                    if (event.type() != null && event.type().equals("token") && event.content() != null
+                            && (event.metadata() == null || !Boolean.TRUE.equals(event.metadata().fallback()))) {
+                        // doing/92 Q-004：fallback 标记（降级话术）不进入摘要/记录——防数据面污染
                         aiResponseCollector.append(event.content());
                     }
                 })
@@ -530,7 +532,9 @@ public class ConversationServiceImpl implements ConversationService {
 
         return aiChatService.chatProactive(sessionId, session.getEmotionTag(), nudgeContextBrief, systemPromptContent)
                 .doOnNext(event -> {
-                    if (event.type() != null && event.type().equals("token") && event.content() != null) {
+                    if (event.type() != null && event.type().equals("token") && event.content() != null
+                            && (event.metadata() == null || !Boolean.TRUE.equals(event.metadata().fallback()))) {
+                        // doing/92 Q-004：fallback 标记（降级话术）不进入摘要/记录——防数据面污染
                         aiResponseCollector.append(event.content());
                     }
                 })

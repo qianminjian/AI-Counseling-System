@@ -1,6 +1,8 @@
 package com.mindsafe.service.toc;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.mindsafe.common.dto.ErrorCode;
+import com.mindsafe.common.exception.BizException;
 import com.mindsafe.domain.entity.TocFamilyAccount;
 import com.mindsafe.domain.mapper.TocFamilyAccountMapper;
 import com.mindsafe.service.auth.LoginRateLimiter;
@@ -67,12 +69,12 @@ public class TocAuthService implements EnvironmentAware, LoginRateLimiter {
     public Map<String, Object> sendCode(String phone) {
         rateLimitCheck(phone);
         if (phone == null || !phone.matches("^1\\d{10}$")) {
-            throw new IllegalArgumentException("手机号格式非法");
+            throw new BizException(ErrorCode.PARAM_INVALID, "手机号格式非法");
         }
         String cooldownKey = CODE_KEY_PREFIX + phone + ":cd";
         String lastSent = redisTemplate.opsForValue().get(cooldownKey);
         if (lastSent != null) {
-            throw new IllegalArgumentException("发送过于频繁，请 60 秒后再试");
+            throw new BizException(ErrorCode.PARAM_INVALID, "发送过于频繁，请 60 秒后再试");
         }
         String code = String.format("%06d", ThreadLocalRandom.current().nextInt(1000000));
         redisTemplate.opsForValue().set(CODE_KEY_PREFIX + phone, code, CODE_TTL);
@@ -99,7 +101,7 @@ public class TocAuthService implements EnvironmentAware, LoginRateLimiter {
         TocFamilyAccount existing = accountMapper.selectOne(
                 new LambdaQueryWrapper<TocFamilyAccount>().eq(TocFamilyAccount::getPhone, encryptedPhone));
         if (existing != null) {
-            throw new IllegalArgumentException("该手机号已注册，请直接登录");
+            throw new BizException(ErrorCode.PARAM_INVALID, "该手机号已注册，请直接登录");
         }
         TocFamilyAccount account = new TocFamilyAccount();
         account.setFamilyAccountId(UUID.randomUUID());
@@ -122,10 +124,10 @@ public class TocAuthService implements EnvironmentAware, LoginRateLimiter {
         TocFamilyAccount account = accountMapper.selectOne(
                 new LambdaQueryWrapper<TocFamilyAccount>().eq(TocFamilyAccount::getPhone, encryptionService.encrypt(phone)));
         if (account == null) {
-            throw new IllegalArgumentException("账号不存在，请先注册");
+            throw new BizException(ErrorCode.PARAM_INVALID, "账号不存在，请先注册");
         }
         if (!TocFamilyAccount.STATUS_ACTIVE.equals(account.getStatus())) {
-            throw new IllegalArgumentException("账号已禁用");
+            throw new BizException(ErrorCode.PARAM_INVALID, "账号已禁用");
         }
         return account;
     }
@@ -137,11 +139,11 @@ public class TocAuthService implements EnvironmentAware, LoginRateLimiter {
 
     private void verifyCode(String phone, String code) {
         if (code == null || !code.matches("^\\d{6}$")) {
-            throw new IllegalArgumentException("验证码为 6 位数字");
+            throw new BizException(ErrorCode.PARAM_INVALID, "验证码为 6 位数字");
         }
         String expected = redisTemplate.opsForValue().get(CODE_KEY_PREFIX + phone);
         if (expected == null || !expected.equals(code)) {
-            throw new IllegalArgumentException("验证码错误或已过期");
+            throw new BizException(ErrorCode.PARAM_INVALID, "验证码错误或已过期");
         }
         redisTemplate.delete(CODE_KEY_PREFIX + phone);
     }
@@ -176,7 +178,7 @@ public class TocAuthService implements EnvironmentAware, LoginRateLimiter {
             redisTemplate.expire(key, RATE_WINDOW.toSeconds(), TimeUnit.SECONDS);
         }
         if (count != null && count > RATE_MAX_ATTEMPTS) {
-            throw new IllegalArgumentException("操作过于频繁，请稍后再试");
+            throw new BizException(ErrorCode.PARAM_INVALID, "操作过于频繁，请稍后再试");
         }
     }
 }

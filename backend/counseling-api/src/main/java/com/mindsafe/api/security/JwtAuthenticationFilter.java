@@ -47,14 +47,18 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 var auth = new UsernamePasswordAuthenticationToken(adminId, null, authorities);
                 SecurityContextHolder.getContext().setAuthentication(auth);
             }
-        } else if (token != null
-                && jwtTokenProvider.validateToken(token)
-                && jwtTokenProvider.isAccessToken(token)
-                && !blacklistService.isBlacklisted(jwtTokenProvider.getTokenId(token))) {
+        } else if (token != null) {
+            // doing/92 R-017：单次 parse（原 6 次 parse/请求：validate+isAccess+getTokenId+getUserId+getUserType+getTenantId）
+            var parsed = jwtTokenProvider.parseOnce(token);
+            if (!"access".equals(parsed.tokenType())
+                    || blacklistService.isBlacklisted(parsed.tokenId())) {
+                // 非 access 类型 或 已撤销（黑名单）token → 不建立认证
+                return;
+            }
 
-            UUID userId = jwtTokenProvider.getUserId(token);
-            String userType = jwtTokenProvider.getUserType(token);
-            UUID tenantId = jwtTokenProvider.getTenantId(token);
+            UUID userId = parsed.userId();
+            String userType = parsed.userType();
+            UUID tenantId = parsed.tenantId();
 
             var authorities = List.of(new SimpleGrantedAuthority("ROLE_" + userType.toUpperCase()));
             var auth = new UsernamePasswordAuthenticationToken(userId, null, authorities);

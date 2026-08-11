@@ -184,6 +184,26 @@ public class JwtTokenProvider {
     }
 
     /** 验证是否为 access token（防止用 refresh token 访问 API） */
+    /** doing/92 R-017：单次 parse + 签名校验（filter 每请求 6 次 parse → 1 次），返回快照 */
+    public ParsedToken parseOnce(String token) {
+        if (token == null) {
+            throw new com.mindsafe.common.exception.BizException(
+                    com.mindsafe.common.dto.ErrorCode.UNAUTHORIZED, "token 缺失");
+        }
+        String raw = token.startsWith(PLATFORM_TOKEN_PREFIX) ? stripPlatformPrefix(token) : token;
+        Claims claims = parseToken(raw);
+        return new ParsedToken(
+                claims.getId(),
+                UUID.fromString(claims.getSubject()),
+                claims.get("userType", String.class),
+                claims.get("tenantId", String.class) == null ? null : UUID.fromString(claims.get("tenantId", String.class)),
+                claims.get("tokenType", String.class));
+    }
+
+    /** doing/92 R-017：单次 parse 快照（filter 认证链用） */
+    public record ParsedToken(String tokenId, UUID userId, String userType, UUID tenantId, String tokenType) {
+    }
+
     public boolean isAccessToken(String token) {
         try {
             Claims claims = parseToken(token);

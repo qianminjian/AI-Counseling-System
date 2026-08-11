@@ -55,6 +55,7 @@ VALUES ('90000000-0000-0000-0000-000000000011', '90000000-0000-0000-0000-0000000
 ON CONFLICT (tenant_id, school_code) DO NOTHING;
 
 -- 试用咨询师（临时密码: Trial@MindSafe2026!，首次登录强制改密）
+-- doing/92 R-024 核实：密码哈希已被 V27 失效化（'!INVALIDATED' 前缀恒 false，2026-07-28 处置裁决）——本行为历史参照，勿在未失效环境执行
 INSERT INTO tenant_template.users (user_id, tenant_id, school_id, user_type, pseudonym, status, password_hash, must_change_password)
 VALUES (
     '90000000-0000-0000-0000-000000000002',
