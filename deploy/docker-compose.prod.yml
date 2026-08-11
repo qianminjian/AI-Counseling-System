@@ -173,13 +173,13 @@ services:
     build:
       context: ../backend/tts-service
       dockerfile: Dockerfile
+    container_name: mindsafe-tts
+    restart: unless-stopped
+    environment:
       # doing/87 RUNTIME-004：覆盖键读取（直连 Redis，fail-open）
       REDIS_HOST: redis
       REDIS_PORT: "6379"
       REDIS_PASSWORD: ${REDIS_PASSWORD}
-    container_name: mindsafe-tts
-    restart: unless-stopped
-    environment:
       DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:-}
       # DC-003：TTS 运行时参数透传（与 .env.example 声明、tts-service 消费对齐）
       DASHSCOPE_TTS_MODEL: ${DASHSCOPE_TTS_MODEL:-cosyvoice-v3-flash}
