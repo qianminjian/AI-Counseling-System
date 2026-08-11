@@ -123,4 +123,22 @@ public class TtsService {
             return false;
         }
     }
+
+    /**
+     * 当前生效引擎（AUDIT-DEEP-009，P3-02）：透传 tts-service /health 的 engine 字段
+     * （cosyvoice-cloud / edge-tts / none），与真实运行档位一致；不可达返回 unavailable。
+     */
+    @SuppressWarnings("unchecked")
+    public String currentEngine() {
+        try {
+            Map<String, Object> health = webClient.get()
+                    .uri("/health")
+                    .retrieve()
+                    .bodyToMono(Map.class)
+                    .block(Duration.ofSeconds(5));
+            return health != null && health.get("engine") != null ? String.valueOf(health.get("engine")) : "none";
+        } catch (Exception e) {
+            return null; // 调用方兜底（TtsController.status unknown 分支）
+        }
+    }
 }

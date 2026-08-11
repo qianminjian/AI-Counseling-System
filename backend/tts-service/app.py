@@ -19,7 +19,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response, StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from tts_engines import DashScopeBackend, EdgeBackend
 from tts_policy import DegradationPolicy, TTSSynthesisFailed
@@ -253,6 +253,10 @@ def build_instruction(persona_cfg: dict, dialect: Optional[str], emotion: str,
 # ===== 数据模型 =====
 
 class TtsRequest(BaseModel):
+    # AUDIT-DEEP-010（P3-03）：废弃字段清理——language_mode 已移除，
+    # extra=ignore 吸收旧请求体多余字段（兼容历史客户端，不报错）
+    model_config = ConfigDict(extra="ignore")
+
     text: str                           # 要合成的文本
     persona: str = "xiaoxing"           # 音色人设
     emotion: str = "neutral"            # 孩子当前情绪（用于调整语气）
@@ -260,7 +264,6 @@ class TtsRequest(BaseModel):
     pitch: float = 1.0                  # 音高基调（TMATCH-001 prosody，<1 更低沉安抚）
     pause_style: int = 1                # 停顿风格（0=轻快 1=自然 2=多停顿安抚）
     dialect: Optional[str] = None       # 方言代码（可选，仅方言音色 qiqiu 生效）
-    language_mode: str = "mandarin"     # [已废弃 v4] 保留向后兼容，不再生效
 
 
 class TtsInfoResponse(BaseModel):

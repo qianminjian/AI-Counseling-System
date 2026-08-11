@@ -95,7 +95,9 @@ public class DegradationMatrixService {
     }
 
     /**
-     * 手动切换：写 Redis 覆盖键（即时生效，重启回落默认）+ degradation_events manual 事件。
+     * 手动切换（AUDIT-DEEP-005 口径统一，2026-08-11）：写 Redis 覆盖键 = **记录型意图登记**
+     * （矩阵展示 + 检测器 auto 抑制消费；tts/voice 运行时读取见 doing/87 运行时档位联动，
+     * 当前不改变真实运行档位）+ degradation_events manual 事件。
      * 仅 ops_admin/super_admin（SecurityConfig 端点级强制）。
      */
     public void override(String point, String to, String operator, String reason) {

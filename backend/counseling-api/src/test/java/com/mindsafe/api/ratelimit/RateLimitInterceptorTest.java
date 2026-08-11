@@ -14,6 +14,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -128,14 +129,31 @@ class RateLimitInterceptorTest {
     }
 
     @Test
-    @DisplayName("未认证请求由 Security 层处理，不触发限流")
-    void unauthenticatedNotRateLimited() throws Exception {
+    @DisplayName("未认证请求走 IP 限流（公开端点，AUDIT-DEEP-011）")
+    void unauthenticatedRateLimitedByIp() throws Exception {
         SecurityContextHolder.clearContext();
-        MockHttpServletRequest req = new MockHttpServletRequest("POST", "/api/v1/chat/sessions");
+        when(rateLimiter.tryAcquire(any(String.class), any(String.class), anyInt(), any()))
+                .thenReturn(true);
+        MockHttpServletRequest req = new MockHttpServletRequest("POST", "/api/v1/voiceprint/verify");
+        req.setRemoteAddr("10.0.0.1");
         MockHttpServletResponse resp = new MockHttpServletResponse();
 
         assertThat(interceptor.preHandle(req, resp, new Object())).isTrue();
 
-        verify(rateLimiter, never()).tryAcquire(any(UUID.class), any(String.class));
+        verify(rateLimiter).tryAcquire(eq("ip:10.0.0.1"), eq("voiceprint_verify"), anyInt(), any());
+    }
+
+    @Test
+    @DisplayName("IP 限流触发 → 429")
+    void ipLimitExceededReturns429() throws Exception {
+        SecurityContextHolder.clearContext();
+        when(rateLimiter.tryAcquire(any(String.class), any(String.class), anyInt(), any()))
+                .thenReturn(false);
+        MockHttpServletRequest req = new MockHttpServletRequest("POST", "/api/v1/device/config/pull");
+        req.setRemoteAddr("10.0.0.2");
+        MockHttpServletResponse resp = new MockHttpServletResponse();
+
+        assertThat(interceptor.preHandle(req, resp, new Object())).isFalse();
+        assertThat(resp.getStatus()).isEqualTo(429);
     }
 }

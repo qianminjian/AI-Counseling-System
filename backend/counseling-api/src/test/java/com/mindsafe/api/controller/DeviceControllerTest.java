@@ -135,9 +135,9 @@ class DeviceControllerTest {
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("status", "ONLINE_UNBOUND");
-        when(deviceService.reportOnline(deviceCode, "BB-2026-000123", null, null)).thenReturn(result);
+        when(deviceService.reportOnline(deviceCode, "BB-2026-000123", null, null, null)).thenReturn(result);
 
-        var response = controller.reportOnline(body);
+        var response = controller.reportOnline(body, null);
         assertThat(response.code()).isEqualTo(0);
         assertThat(response.data().get("status")).isEqualTo("ONLINE_UNBOUND");
     }
@@ -167,9 +167,9 @@ class DeviceControllerTest {
         Map<String, Object> config = new LinkedHashMap<>();
         config.put("serverUrl", "https://mindsafe.local");
         when(deviceService.exists(deviceCode)).thenReturn(true);
-        when(deviceService.pullConfig(deviceCode)).thenReturn(config);
+        when(deviceService.pullConfig(deviceCode, null)).thenReturn(config);
 
-        var response = controller.pullConfig(body);
+        var response = controller.pullConfig(body, null);
         assertThat(response.code()).isEqualTo(0);
         assertThat(response.data().get("serverUrl")).isEqualTo("https://mindsafe.local");
     }

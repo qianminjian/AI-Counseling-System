@@ -9,7 +9,11 @@ import com.mindsafe.domain.entity.DeviceBinding;
 import com.mindsafe.domain.mapper.DeviceBindCodeMapper;
 import com.mindsafe.domain.mapper.DeviceBindingMapper;
 import com.mindsafe.domain.mapper.DeviceMapper;
+import com.mindsafe.common.dto.ErrorCode;
+import com.mindsafe.common.exception.BizException;
 import com.mindsafe.domain.util.DeviceCodeUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -33,6 +37,8 @@ import java.util.UUID;
  */
 @Service
 public class DeviceService {
+
+    private static final Logger log = LoggerFactory.getLogger(DeviceService.class);
 
     private final DeviceMapper deviceMapper;
     private final DeviceBindingMapper bindingMapper;
@@ -59,7 +65,8 @@ public class DeviceService {
      * 设备首次上线/回连检查上报（AC-84-24）：不存在则自动注册（UNACTIVATED → ONLINE_UNBOUND），
      * 已绑定保持 ONLINE_BOUND；更新最近在线时间与固件版本。
      */
-    public Map<String, Object> reportOnline(String deviceCode, String sn, String firmwareVersion, String serverUrl) {
+    public Map<String, Object> reportOnline(String deviceCode, String sn, String firmwareVersion, String serverUrl,
+                                            String deviceToken) {
         if (deviceCode == null || !DeviceCodeUtil.isValid(deviceCode)) {
             throw new IllegalArgumentException("设备码不合法");
         }
@@ -88,11 +95,19 @@ public class DeviceService {
             if (device.getStatus().equals(Device.STATUS_RETIRED)) {
                 throw new IllegalArgumentException("设备已注销");
             }
+            // AUDIT-DEEP-002 code-review P0-1：已存在设备回连必须携带有效 DVC_ token——
+            // 否则攻击者可匿名重签 token 后绕过 pullConfig 校验 + 轮换 secret 使真设备失联
+            if (!securityService.validateToken(deviceToken, deviceCode)) {
+                throw new BizException(ErrorCode.UNAUTHORIZED, "设备回连需携带有效设备 token");
+            }
             boolean bound = device.getStatus().equals(Device.STATUS_ONLINE_BOUND);
             Device update = new Device();
             update.setDeviceId(device.getDeviceId());
             update.setFirmwareVersion(firmwareVersion != null ? firmwareVersion : device.getFirmwareVersion());
-            if (serverUrl != null && !serverUrl.isBlank()) {
+            // AUDIT-DEEP-002（P1-02）：serverUrl 仅允许首次设置（新增设备时写入）与已绑定设备拒绝匿名改写；
+            // 已存在未绑定设备同样禁止改写（防配网阶段劫持链，code-review P1-1——重试仅回传相同地址无业务损失）
+            if (serverUrl != null && !serverUrl.isBlank()
+                    && (device.getServerUrl() == null || device.getServerUrl().isBlank())) {
                 update.setServerUrl(serverUrl);
             }
             update.setStatus(bound ? Device.STATUS_ONLINE_BOUND : Device.STATUS_ONLINE_UNBOUND);
@@ -290,9 +305,18 @@ public class DeviceService {
         return result;
     }
 
-    /** 配置拉取（心跳时调用）：返回服务器地址 + 设备偏好下发（TOC-006 远程管理软件侧）。 */
-    public Map<String, Object> pullConfig(String deviceCode) {
+    /**
+     * 配置拉取（心跳时调用）：返回服务器地址 + 设备偏好下发（TOC-006 远程管理软件侧）。
+     * AUDIT-DEEP-002（P1-02）：已绑定设备必须携带 DVC_ token（X-Device-Token），
+     * 未绑定设备允许匿名（配网阶段拉配置语义）——防攻击者匿名探取任意设备 serverUrl。
+     */
+    public Map<String, Object> pullConfig(String deviceCode, String deviceToken) {
         Device device = requireDevice(deviceCode);
+        if (Device.STATUS_ONLINE_BOUND.equals(device.getStatus())) {
+            if (!securityService.validateToken(deviceToken, deviceCode)) {
+                throw new BizException(ErrorCode.UNAUTHORIZED, "已绑定设备配置拉取需有效设备 token");
+            }
+        }
         Map<String, Object> config = new LinkedHashMap<>();
         config.put("serverUrl", device.getServerUrl());
         config.put("heartbeatIntervalSeconds", 30L);

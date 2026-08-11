@@ -2,6 +2,8 @@ package com.mindsafe.service.teacher;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.mindsafe.common.tenant.TenantContextHolder;
+import com.mindsafe.domain.entity.SysConfig;
+import com.mindsafe.domain.mapper.SysConfigMapper;
 import com.mindsafe.domain.entity.RiskEvent;
 import com.mindsafe.domain.entity.SlaEscalationLog;
 import com.mindsafe.domain.mapper.RiskEventMapper;
@@ -63,33 +65,62 @@ public class SlaEscalationScanner {
     /** OPS-MON-008 同源 Mapper：升级留痕（ADMIN-P1-05：sla_escalation_log） */
     private final SlaEscalationLogMapper slaEscalationLogMapper;
 
+    /** AUDIT-DEEP-003（P2-01）：sys_config 运行时消费——V38 种子键 mindsafe.security.sla-escalation.enabled（HOT，DB 覆盖 yml 默认） */
+    private static final String SYS_CONFIG_ENABLED_KEY = "mindsafe.security.sla-escalation.enabled";
+
+    private final SysConfigMapper sysConfigMapper;
+
     public SlaEscalationScanner(
             RiskEventMapper riskEventMapper,
             AlertSlaPolicy slaPolicy,
             AlertService alertService,
             SlaEscalationLogMapper slaEscalationLogMapper,
+            SysConfigMapper sysConfigMapper,
             @Value("${mindsafe.security.sla-escalation.enabled:true}") boolean enabled,
             @Value("${mindsafe.security.sla-escalation.re-alert-cooldown-minutes:60}") int reAlertCooldownMinutes) {
         this.riskEventMapper = riskEventMapper;
         this.slaPolicy = slaPolicy;
         this.alertService = alertService;
         this.slaEscalationLogMapper = slaEscalationLogMapper;
+        this.sysConfigMapper = sysConfigMapper;
         this.enabled = enabled;
         this.reAlertCooldownMinutes = reAlertCooldownMinutes;
     }
 
     /**
      * 每分钟扫描一次未处理的风险事件，检测 SLA 超时并升级。
+     * AUDIT-DEEP-003：运行时开关 = sys_config（DB，HOT 键）优先于 yml 默认——
+     * 管理端配置注册表修改立即生效（false 暂停扫描，true 恢复）。
      */
     @Scheduled(cron = "${mindsafe.security.sla-escalation.scan-cron:0 * * * * ?}")
     public void scan() {
         // 并发互斥（code-review L2）：扫描重叠会双发告警 + 双写留痕，重叠直接跳过
         synchronized (this) {
-            if (!enabled) {
+            if (!isEnabled()) {
                 return;
             }
             TenantContextHolder.runAsSystem(this::doScan);
         }
+    }
+
+    /** 运行时启用判定：sys_config 键存在 → DB 值（HOT 覆盖）；键缺失/异常 → yml 默认（fail-open 不阻断扫描） */
+    private boolean isEnabled() {
+        try {
+            SysConfig config = TenantContextHolder.callAsSystem(() ->
+                    sysConfigMapper.selectOne(new LambdaQueryWrapper<SysConfig>()
+                            .eq(SysConfig::getConfigKey, SYS_CONFIG_ENABLED_KEY)));
+            if (config != null && config.getValue() != null) {
+                String v = config.getValue().trim();
+                // P2-1（code-review）：非法值告警并回落 yml（fail-open），而非 parseBoolean 静默 false 关闭安全兜底
+                if ("true".equalsIgnoreCase(v) || "false".equalsIgnoreCase(v)) {
+                    return Boolean.parseBoolean(v);
+                }
+                log.warn("sys_config 键 {} 值非法（{}），回落 yml 默认: {}", SYS_CONFIG_ENABLED_KEY, v, enabled);
+            }
+        } catch (Exception e) {
+            log.warn("sys_config 读取失败，回落 yml 默认: {}", e.getMessage());
+        }
+        return enabled;
     }
 
     private void doScan() {
