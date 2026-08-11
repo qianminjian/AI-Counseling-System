@@ -412,7 +412,9 @@ $DEPLOY_VOICE && BUILD_TARGETS="$BUILD_TARGETS voice-service"
 
 # DEPLOY-OPT-1（2026-08-11）：compose 配置本地预检——防配置错误上传服务器后才暴露
 # （教训：RUNTIME-004 REDIS_* 误插 tts build 段，docker compose build 阶段才报 Additional property）
-if ! docker compose -f deploy/docker-compose.prod.yml config --quiet 2>/tmp/compose-config.err; then
+# 修复 2026-08-11：用 $PROJECT_ROOT 绝对路径——前端构建块 cd 进子目录后未恢复 cwd，
+# 相对路径在 frontend/<app>/ 下解析失败（open .../frontend/parent-h5/deploy/docker-compose.prod.yml: no such file）
+if ! docker compose -f "$PROJECT_ROOT/deploy/docker-compose.prod.yml" config --quiet 2>/tmp/compose-config.err; then
   echo "❌ compose 配置校验失败（本地预检，未上传服务器）："
   grep -E "Additional property|error|invalid" /tmp/compose-config.err | head -5
   exit 1
