@@ -6,14 +6,27 @@ set -euo pipefail
 
 BASE="$(cd "$(dirname "$0")/.." && pwd)"
 
-# 已登记存量（合法：常量值无注入面；收敛完成后移除）
+# 已登记存量（实测 2026-08-11：14 个文件——原 MybatisPlusConfig 注释 6 处登记不全；
+# doing/92 R-022 价值实证。合法：常量值无注入面；收敛完成后逐步移除）
 LEGACY=(
-  "service/trial/TrialAuthService.java"
+  "service/auth/TrialAuthService.java"
   "service/auth/ParentAuthService.java"
   "service/wecom/WeComOAuthService.java"
   "service/prompt/PromptVersionService.java"
   "service/profile/StudentProfileService.java"
-  "service/quality/TeacherQualityService.java"
+  "service/teacher/TeacherQualityService.java"
+  "service/toc/TocDeviceService.java"
+  "service/config/SysConfigService.java"
+  "service/notification/NotificationServiceImpl.java"
+  "service/consent/ConsentWithdrawalService.java"
+  "service/ops/OpsInsightsService.java"
+  "service/device/DevicePreferenceService.java"
+  "service/device/DeviceSecurityService.java"
+  "service/device/DeviceService.java"
+  "service/monitoring/OpsService.java"
+  "service/monitoring/DegradationMatrixService.java"
+  "service/teacher/TeacherService.java"
+  "tenant/MybatisPlusConfig.java"
 )
 
 fail=0
