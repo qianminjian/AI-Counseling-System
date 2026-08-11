@@ -48,7 +48,10 @@ public class LongTermMemoryService {
     /** 记忆最大保留条数（超出时淘汰低重要性旧记忆） */
     private static final int MAX_MEMORIES_PER_STUDENT = 50;
 
-    /** 高敏感情绪标签集合（用于 evaluateForget 敏感度判定） */
+    /** 高敏感情绪标签集合（用于 evaluateForget 敏感度判定）
+     * doing/91 Q-001：风险类别权威源为 RiskKeywordRegistry.HIGH_SENSITIVITY_CATEGORIES（DC-001 已收敛），
+     * 本集合为情绪标签专用（英文 emotion label + 中文标签交集）——isSensitiveEmotion 双源并查，
+     * 新增高敏语义时同步两处（或迁移至注册表）。 */
     private static final Set<String> SENSITIVE_EMOTIONS = Set.of(
             "self_harm", "suicidal", "abuse", "violence", "crisis", "自伤", "虐待");
 
@@ -404,7 +407,9 @@ public class LongTermMemoryService {
 
     private boolean isSensitiveEmotion(String emotion) {
         if (emotion == null) return false;
-        return SENSITIVE_EMOTIONS.contains(emotion.toLowerCase());
+        // doing/91 Q-001：双源并查——情绪标签集合 + 风险类别权威注册表（中文类别漏判方向消除）
+        return SENSITIVE_EMOTIONS.contains(emotion.toLowerCase())
+                || com.mindsafe.ai.risk.RiskKeywordRegistry.isHighSensitivityCategory(emotion);
     }
 
     private void updateRecallCount(List<LongTermMemory> memories) {
