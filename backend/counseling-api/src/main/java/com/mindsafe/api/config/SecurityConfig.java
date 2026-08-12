@@ -58,6 +58,21 @@ public class SecurityConfig {
                     );
                 })
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                // BUG-A-TOKEN-01 语义收口（2026-08-12，UI-TEST-016）：未认证 → 401（前端 authFetch
+                // 刷新/登出链依赖），已认证无权限 → 403（前端区分展示）；此前默认 entry point 对
+                // 未认证请求返回 403，前端不触发刷新链，会话过期只能手动刷新页面。
+                .exceptionHandling(ex -> ex
+                        .authenticationEntryPoint((request, response, authException) -> {
+                            response.setStatus(jakarta.servlet.http.HttpServletResponse.SC_UNAUTHORIZED);
+                            response.setContentType("application/json;charset=UTF-8");
+                            response.getWriter().write("{\"code\":20001,\"message\":\"未认证或登录已过期\",\"success\":false}");
+                        })
+                        .accessDeniedHandler((request, response, accessDeniedException) -> {
+                            response.setStatus(jakarta.servlet.http.HttpServletResponse.SC_FORBIDDEN);
+                            response.setContentType("application/json;charset=UTF-8");
+                            response.getWriter().write("{\"code\":20002,\"message\":\"无权限访问\",\"success\":false}");
+                        })
+                )
                 // doing/90 P3-2（2026-08-11）：安全头部——防点击劫持/XSS/MIME 嗅探
                 .headers(headers -> headers
                     .frameOptions(f -> f.deny())
