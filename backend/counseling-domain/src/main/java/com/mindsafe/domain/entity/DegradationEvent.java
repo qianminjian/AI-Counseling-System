@@ -46,6 +46,14 @@ public class DegradationEvent {
     /** 事件时间 */
     private Instant occurredAt;
 
+    /**
+     * 幂等去重键（V48，专题 F P1-4 联动板块05 P0-4）。
+     * auto 事件由检测器生成（trigger:point:from->to:时间桶，防抖窗口内唯一），
+     * 配合 degradation_events.dedup_key partial 唯一索引 + ON CONFLICT DO NOTHING 做 DB 幂等兜底；
+     * manual 事件（管理端切换写库）不填（NULL，partial 索引不约束）。
+     */
+    private String dedupKey;
+
     public UUID getEventId() {
         return eventId;
     }
@@ -108,5 +116,13 @@ public class DegradationEvent {
 
     public void setOccurredAt(Instant occurredAt) {
         this.occurredAt = occurredAt;
+    }
+
+    public String getDedupKey() {
+        return dedupKey;
+    }
+
+    public void setDedupKey(String dedupKey) {
+        this.dedupKey = dedupKey;
     }
 }

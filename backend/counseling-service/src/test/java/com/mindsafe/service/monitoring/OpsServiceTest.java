@@ -1,5 +1,6 @@
 package com.mindsafe.service.monitoring;
 
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.mindsafe.common.exception.BizException;
 import com.mindsafe.domain.entity.AlertEvent;
 import com.mindsafe.domain.entity.AuditLog;
@@ -56,7 +57,9 @@ class OpsServiceTest {
     void healthHistoryClampsLimit() {
         ServiceHealthSnapshot snapshot = new ServiceHealthSnapshot();
         snapshot.setService("tts");
-        when(snapshotMapper.selectList(any())).thenReturn(List.of(snapshot));
+        // AUD-043：healthHistory 已改 selectPage（分页插件安全化）
+        when(snapshotMapper.selectPage(any(), any())).thenReturn(
+                new Page<ServiceHealthSnapshot>(1, 500, false).setRecords(List.of(snapshot)));
 
         List<ServiceHealthSnapshot> low = opsService.healthHistory("tts", 0);
         List<ServiceHealthSnapshot> high = opsService.healthHistory("tts", 9999);
@@ -94,7 +97,9 @@ class OpsServiceTest {
     void auditLogsParametric() {
         AuditLog log = new AuditLog();
         log.setAction("PLATFORM_LOGIN");
-        when(auditLogMapper.selectList(any())).thenReturn(List.of(log));
+        // AUD-043：auditLogs 已改 selectPage（分页插件安全化）
+        when(auditLogMapper.selectPage(any(), any())).thenReturn(
+                new Page<AuditLog>(1, 500, false).setRecords(List.of(log)));
 
         List<AuditLog> result = opsService.auditLogs(
                 UUID.randomUUID(), "PLATFORM_LOGIN",
@@ -112,7 +117,9 @@ class OpsServiceTest {
         AlertEvent event = new AlertEvent();
         event.setEventId(UUID.randomUUID());
         event.setStatus(AlertEvent.STATUS_FIRING);
-        when(alertEventMapper.selectList(any())).thenReturn(List.of(event));
+        // AUD-043：alertEvents 已改 selectPage（分页插件安全化）
+        when(alertEventMapper.selectPage(any(), any())).thenReturn(
+                new Page<AlertEvent>(1, 500, false).setRecords(List.of(event)));
 
         List<AlertEvent> result = opsService.alertEvents("firing", 100);
 

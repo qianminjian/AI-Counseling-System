@@ -2,6 +2,7 @@ package com.mindsafe.service.monitoring;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.mindsafe.common.dto.ErrorCode;
 import com.mindsafe.common.exception.BizException;
 import com.mindsafe.common.tenant.TenantContextHolder;
@@ -62,10 +63,13 @@ public class OpsService {
     /** 服务健康快照历史（按服务 + 时间倒序，limit 默认 100） */
     public List<ServiceHealthSnapshot> healthHistory(String service, int limit) {
         int safeLimit = Math.min(Math.max(limit, 1), 500);
-        return snapshotMapper.selectList(new LambdaQueryWrapper<ServiceHealthSnapshot>()
-                .eq(service != null && !service.isBlank(), ServiceHealthSnapshot::getService, service)
-                .orderByDesc(ServiceHealthSnapshot::getSampledAt)
-                .last("LIMIT " + safeLimit));
+        // AUD-043：分页插件安全化（selectPage 替代 .last("LIMIT ...") 字符串拼接）
+        Page<ServiceHealthSnapshot> pageResult = snapshotMapper.selectPage(
+                new Page<>(1, safeLimit, false),
+                new LambdaQueryWrapper<ServiceHealthSnapshot>()
+                        .eq(service != null && !service.isBlank(), ServiceHealthSnapshot::getService, service)
+                        .orderByDesc(ServiceHealthSnapshot::getSampledAt));
+        return pageResult.getRecords();
     }
 
     /** AlertManager active 告警只读代理（P0-06：直读不落库，历史落库属 OPS-MON-008） */
@@ -88,14 +92,18 @@ public class OpsService {
      */
     public List<AuditLog> auditLogs(UUID tenantId, String action, Instant startTime, Instant endTime, int limit) {
         int safeLimit = Math.min(Math.max(limit, 1), 500);
-        return TenantContextHolder.callAsSystem(() ->
-                auditLogMapper.selectList(new LambdaQueryWrapper<AuditLog>()
-                        .eq(tenantId != null, AuditLog::getTenantId, tenantId)
-                        .eq(action != null && !action.isBlank(), AuditLog::getAction, action)
-                        .ge(startTime != null, AuditLog::getCreatedAt, startTime)
-                        .le(endTime != null, AuditLog::getCreatedAt, endTime)
-                        .orderByDesc(AuditLog::getCreatedAt)
-                        .last("LIMIT " + safeLimit)));
+        // AUD-043：分页插件安全化（selectPage 替代 .last("LIMIT ...") 字符串拼接）
+        return TenantContextHolder.callAsSystem(() -> {
+            Page<AuditLog> pageResult = auditLogMapper.selectPage(
+                    new Page<>(1, safeLimit, false),
+                    new LambdaQueryWrapper<AuditLog>()
+                            .eq(tenantId != null, AuditLog::getTenantId, tenantId)
+                            .eq(action != null && !action.isBlank(), AuditLog::getAction, action)
+                            .ge(startTime != null, AuditLog::getCreatedAt, startTime)
+                            .le(endTime != null, AuditLog::getCreatedAt, endTime)
+                            .orderByDesc(AuditLog::getCreatedAt));
+            return pageResult.getRecords();
+        });
     }
 
     // ===== M2 告警事件中心（ADMIN-P1-08：alert_events 落库消费 + ack） =====
@@ -106,11 +114,15 @@ public class OpsService {
      */
     public List<AlertEvent> alertEvents(String status, int limit) {
         int safeLimit = Math.min(Math.max(limit, 1), 500);
-        return TenantContextHolder.callAsSystem(() ->
-                alertEventMapper.selectList(new LambdaQueryWrapper<AlertEvent>()
-                        .eq(status != null && !status.isBlank(), AlertEvent::getStatus, status)
-                        .orderByDesc(AlertEvent::getFiredAt)
-                        .last("LIMIT " + safeLimit)));
+        // AUD-043：分页插件安全化（selectPage 替代 .last("LIMIT ...") 字符串拼接）
+        return TenantContextHolder.callAsSystem(() -> {
+            Page<AlertEvent> pageResult = alertEventMapper.selectPage(
+                    new Page<>(1, safeLimit, false),
+                    new LambdaQueryWrapper<AlertEvent>()
+                            .eq(status != null && !status.isBlank(), AlertEvent::getStatus, status)
+                            .orderByDesc(AlertEvent::getFiredAt));
+            return pageResult.getRecords();
+        });
     }
 
     /**
