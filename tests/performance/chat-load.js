@@ -6,6 +6,16 @@
 //   k6 run --env BASE_URL=https://staging.example.com --env INVITE_CODE=xxxxxxxx tests/performance/chat-load.js
 //   k6 run --env TOKEN=<jwt> tests/performance/chat-load.js          # 使用已有用户
 //
+// ===== 基线登记（板块12 P1-4，2026-08-12）=====
+// 不做 CI 调度（手工触发）；目标基线即脚本内 thresholds（准入线）：
+//   - sse_first_token_ms  p(95) < 1000ms   首 token（TTFB 真实近似）
+//   - sse_total_ms        p(95) < 5000ms   完整 SSE 流时长
+//   - sse_errors / api_errors  rate < 0.01 错误率 < 1%
+//   - http_req_duration   p(95) < 3000ms   普通 API
+// 实测基线：尚未有正式记录——首次压测（建议 staging 同环境、同数据量、同 k6 版本）后回填此处，
+// 后续对比须同环境同参数复跑（基线随硬件/网络/模型负载漂移，跨环境不可直接比）。
+// 登记格式建议：{日期} {环境} {k6 版本} {首token P95} {总时长 P95} {错误率}
+//
 // 认证（P1-DEP 修复：此前用假 token 'test-token-placeholder'，真实接口会 401）：
 //   - 提供 TOKEN 则直接使用（压测已注册/登录用户）
 //   - 否则用 POST /api/v1/auth/trial/register 注册试用用户（需 INVITE_CODE；

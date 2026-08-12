@@ -221,9 +221,13 @@ public class PromptVersionService {
         return tag;
     }
 
-    /** 清除缓存（版本切换后调用；doing/90 P-004：Redis SCAN 删除，多实例一致） */
+    /**
+     * 清除缓存（版本切换后调用；doing/90 P-004：多实例一致）。
+     * 注：当前实现为 redisTemplate.keys 全量匹配，非 SCAN 游标；prompt:* 键规模有限，
+     * 阻塞风险可接受；若键规模增长需改 SCAN 游标防阻塞（P2-1 已登记）。
+     */
     public void invalidateCache() {
-        // SCAN 防阻塞（KEYS 在单实例阻塞）
+        // 全量 keys 匹配（prompt:* 键有限；大键集场景需改 SCAN 游标，见类注释）
         java.util.Set<String> keys = redisTemplate.keys("prompt:*");
         if (keys != null && !keys.isEmpty()) {
             redisTemplate.delete(keys);

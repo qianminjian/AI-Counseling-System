@@ -3,6 +3,7 @@ package com.mindsafe.service.sms;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.mindsafe.common.util.PhoneMasker;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -59,6 +60,9 @@ public class AliyunSmsService implements SmsService {
     @Value("${mindsafe.sms.aliyun.template-code}")
     private String templateCode;
 
+    // P2-2：连接超时 10s（HttpClient 级）+ 请求读超时 10s（HttpRequest 级 timeout）。
+    // 注意：JDK 25 起 HttpClient.Builder 已移除 requestTimeout（javap 实证），
+    // 等价读超时语义走 HttpRequest.timeout（Java 11 标准 API，每次请求生效）。
     private final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10))
             .build();
@@ -109,6 +113,7 @@ public class AliyunSmsService implements SmsService {
 
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(ENDPOINT))
+                    .timeout(Duration.ofSeconds(10))
                     .header("Content-Type", "application/json")
                     .header("Host", "dysmsapi.aliyuncs.com")
                     .header("x-acs-action", "SendSms")
@@ -123,14 +128,14 @@ public class AliyunSmsService implements SmsService {
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
 
             if (response.statusCode() == 200 && response.body().contains("\"OK\"")) {
-                log.info("[SMS] 验证码发送成功 | phone={}", maskPhone(phone));
+                log.info("[SMS] 验证码发送成功 | phone={}", PhoneMasker.mask(phone));
                 return true;
             } else {
-                log.error("[SMS] 发送失败 | phone={} | status={} | body={}", maskPhone(phone), response.statusCode(), response.body());
+                log.error("[SMS] 发送失败 | phone={} | status={} | body={}", PhoneMasker.mask(phone), response.statusCode(), response.body());
                 return false;
             }
         } catch (Exception e) {
-            log.error("[SMS] 发送异常 | phone={}", maskPhone(phone), e);
+            log.error("[SMS] 发送异常 | phone={}", PhoneMasker.mask(phone), e);
             return false;
         }
     }
@@ -158,10 +163,5 @@ public class AliyunSmsService implements SmsService {
         mac.init(new SecretKeySpec(key.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
         byte[] hash = mac.doFinal(data.getBytes(StandardCharsets.UTF_8));
         return HexFormat.of().formatHex(hash);
-    }
-
-    private String maskPhone(String phone) {
-        if (phone == null || phone.length() < 7) return "***";
-        return phone.substring(0, 3) + "****" + phone.substring(phone.length() - 4);
     }
 }

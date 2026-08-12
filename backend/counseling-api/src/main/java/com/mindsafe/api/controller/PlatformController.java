@@ -1,9 +1,9 @@
 package com.mindsafe.api.controller;
 
+import com.mindsafe.api.dto.vo.SchoolVO;
 import com.mindsafe.common.dto.ApiResponse;
 import com.mindsafe.common.dto.ErrorCode;
 import com.mindsafe.common.exception.BizException;
-import com.mindsafe.domain.entity.School;
 import com.mindsafe.service.platform.PlatformService;
 import org.springframework.web.bind.annotation.*;
 
@@ -50,9 +50,12 @@ public class PlatformController {
         return ApiResponse.ok(detail);
     }
 
-    /** 学校列表（跨租户） */
+    /** 学校列表（跨租户；F9：响应收敛为 SchoolVO） */
     @GetMapping("/schools")
-    public ApiResponse<List<School>> getSchools() {
-        return ApiResponse.ok(platformService.schools());
+    public ApiResponse<List<SchoolVO>> getSchools() {
+        List<SchoolVO> voList = platformService.schools().stream()
+                .map(SchoolVO::from)
+                .toList();
+        return ApiResponse.ok(voList);
     }
 }

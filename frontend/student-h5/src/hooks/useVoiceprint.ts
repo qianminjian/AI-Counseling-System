@@ -28,9 +28,13 @@ import { createModelStatusStore, type ModelStatus } from '../utils/modelStatusSt
 // DC-009：Transformers.js 初始化收敛到共享 loader（SPEC §23）
 import { loadTransformersModel, createProgressHandler, formatModelError } from '../utils/transformersLoader'
 
-/** F-25 轨迹时间戳日志：与 useWakeWord 同格式，所有关键动作带相对/绝对时间（生产可见，诊断用） */
+/**
+ * P2-1（audit-report-07 P2-1）：F-25 轨迹日志降噪——console.info → console.debug
+ *（与 useWakeWord tslog 同策略：生产默认零噪音，诊断时 DevTools verbose 可见；
+ * error/warn 全量保留）。
+ */
 const tslog = (...args: unknown[]) => {
-  console.info(`[TS ${(performance.now() / 1000).toFixed(2)}s ${new Date().toLocaleTimeString('zh-CN', { hour12: false })}]`, ...args)
+  console.debug(`[TS ${(performance.now() / 1000).toFixed(2)}s ${new Date().toLocaleTimeString('zh-CN', { hour12: false })}]`, ...args)
 }
 
 // ===== 全局模型加载状态（ARCH-006 收敛 A：复用 createModelStatusStore 基座） =====

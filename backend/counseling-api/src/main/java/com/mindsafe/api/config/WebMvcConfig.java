@@ -20,8 +20,8 @@ public class WebMvcConfig implements WebMvcConfigurer {
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
         // AUDIT-DEEP-011（P3-04）：公开端点（voiceprint/verify、device report/config）注册 IP 限流
+        // F3：注册范围收敛 RouteCatalog.RATE_LIMIT_PATH_PATTERNS（路径知识单一事实源）
         registry.addInterceptor(rateLimitInterceptor)
-                .addPathPatterns("/api/v1/chat/**", "/api/v1/tts/synthesize",
-                        "/api/v1/voiceprint/verify", "/api/v1/device/report/**", "/api/v1/device/config/pull");
+                .addPathPatterns(RouteCatalog.RATE_LIMIT_PATH_PATTERNS.toArray(String[]::new));
     }
 }

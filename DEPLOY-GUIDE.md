@@ -465,3 +465,5 @@ docker compose -f docker-compose.monitoring.yml up -d
 告警通道：Alertmanager → 企业微信应用消息（复用 .env 的 `WECOM_CORP_ID`/`WECOM_AGENT_ID`/`WECOM_SECRET`），
 接收人 `WECOM_ALERT_TO_USER`（企微 userid，`@all` 需全员权限）；未配置时告警仅留存 Alertmanager 不推送（日志可见）。
 业务告警（SlaEscalationScanner）仍走企业微信 Webhook（`ALERT_WECOM_WEBHOOK_URL`），两者独立。
+
+- **nginx 宿主服务探测**（F-30，板块11 P1-1 修复 2026-08-12）：后端容器经 `MINDSAFE_MONITORING_SERVICE_PROBES_NGINX` 探测宿主机 nginx `/health`。**默认空 = 不探测**（配置库不再硬编码公网 IP：换机部署不会静默指向旧主机地址产生假健康，公网地址也不外露入库）；真实部署时在 .env 填写宿主机可达地址，如 `MINDSAFE_MONITORING_SERVICE_PROBES_NGINX=http://<宿主机内网IP>`——未配置时该探测缺失会显式告警而非静默假健康。

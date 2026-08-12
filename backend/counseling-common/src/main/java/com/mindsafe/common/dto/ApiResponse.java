@@ -1,5 +1,6 @@
 package com.mindsafe.common.dto;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
 
 import java.time.Instant;
@@ -32,6 +33,12 @@ public record ApiResponse<T>(
         return new ApiResponse<>(errorCode.code(), errorCode.message(), null, Instant.now());
     }
 
+    /**
+     * 审计 F6：统一序列化形状 {code,message,data,timestamp}。
+     * 不加 {@code @JsonIgnore} 时 Jackson 会把本布尔 getter 序列化为额外 success 字段，
+     * 前端 authFetch 被迫兼容多形状；Java 侧调用语义不受影响。
+     */
+    @JsonIgnore
     public boolean isSuccess() {
         return code == 0;
     }

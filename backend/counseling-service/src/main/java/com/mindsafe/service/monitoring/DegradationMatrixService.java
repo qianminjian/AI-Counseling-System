@@ -1,6 +1,7 @@
 package com.mindsafe.service.monitoring;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.mindsafe.common.dto.ErrorCode;
 import com.mindsafe.common.exception.BizException;
 import com.mindsafe.common.tenant.TenantContextHolder;
@@ -134,11 +135,15 @@ public class DegradationMatrixService {
     /** 降级事件时间线（P2-02，消费 degradation_events，倒序） */
     public List<DegradationEvent> events(String point, int limit) {
         int safeLimit = Math.min(Math.max(limit, 1), 200);
-        return TenantContextHolder.callAsSystem(() ->
-                degradationEventMapper.selectList(new LambdaQueryWrapper<DegradationEvent>()
-                        .eq(point != null && !point.isBlank(), DegradationEvent::getPoint, point)
-                        .orderByDesc(DegradationEvent::getOccurredAt)
-                        .last("LIMIT " + safeLimit)));
+        // AUD-043：分页插件安全化（selectPage 替代 .last("LIMIT ...") 字符串拼接）
+        return TenantContextHolder.callAsSystem(() -> {
+            Page<DegradationEvent> pageResult = degradationEventMapper.selectPage(
+                    new Page<>(1, safeLimit, false),
+                    new LambdaQueryWrapper<DegradationEvent>()
+                            .eq(point != null && !point.isBlank(), DegradationEvent::getPoint, point)
+                            .orderByDesc(DegradationEvent::getOccurredAt));
+            return pageResult.getRecords();
+        });
     }
 
     private void validatePoint(String point) {
@@ -219,12 +224,14 @@ public class DegradationMatrixService {
     }
 
     private DegradationEvent latestEvent(String point) {
+        // AUD-043：LIMIT 1 类改 selectPage 首条（分页插件安全化，多记录不抛异常）
         return TenantContextHolder.callAsSystem(() -> {
-            List<DegradationEvent> list = degradationEventMapper.selectList(
+            Page<DegradationEvent> pageResult = degradationEventMapper.selectPage(
+                    new Page<>(1, 1, false),
                     new LambdaQueryWrapper<DegradationEvent>()
                             .eq(DegradationEvent::getPoint, point)
-                            .orderByDesc(DegradationEvent::getOccurredAt)
-                            .last("LIMIT 1"));
+                            .orderByDesc(DegradationEvent::getOccurredAt));
+            List<DegradationEvent> list = pageResult.getRecords();
             return list.isEmpty() ? null : list.get(0);
         });
     }

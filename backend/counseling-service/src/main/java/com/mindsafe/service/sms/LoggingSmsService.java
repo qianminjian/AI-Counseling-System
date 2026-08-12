@@ -1,6 +1,8 @@
 package com.mindsafe.service.sms;
 
 import jakarta.annotation.PostConstruct;
+import com.mindsafe.common.util.PhoneMasker;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -38,15 +40,10 @@ public class LoggingSmsService implements SmsService {
 
     @Override
     public boolean sendVerificationCode(String phone, String code, String purpose) {
-        // 脱敏手机号用于日志（138****7890）
-        String masked = maskPhone(phone);
+        // 脱敏手机号用于日志（138****7890，P2-1 收敛至 PhoneMasker 单源）
+        String masked = PhoneMasker.mask(phone);
         // AUDIT-P0-5：醒目标记，防止生产日志被误读为真实短信已发送
         log.info("[SMS-DEV-ONLY][生产环境禁用-验证码未真实发送] phone={} | code={} | purpose={}", masked, code, purpose);
         return true;
-    }
-
-    private String maskPhone(String phone) {
-        if (phone == null || phone.length() < 7) return "***";
-        return phone.substring(0, 3) + "****" + phone.substring(phone.length() - 4);
     }
 }

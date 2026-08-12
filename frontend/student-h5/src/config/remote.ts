@@ -23,6 +23,8 @@ import { fetchSystemConfig } from '../api'
  * - wakeWord.modelId：模型加载走本地 WAKE_MODEL_ID（worker 配置链路），远程改无意义
  * - tts.defaultPersona/personas：前端默认音色走性别匹配（男→小太阳/女→小星）与
  *   VOICE_PERSONAS 内置字典，远程配置会覆盖性别匹配造成行为变更，故不声明
+ * - P1-3：voiceCall.* 三键供 useVoiceCallMode 消费（会话窗冷却/聆听重启/防抖时长，
+ *   体验敏感参数，运维线上可调免发版）
  */
 export interface RemoteConfig {
   voiceprint?: {
@@ -32,6 +34,14 @@ export interface RemoteConfig {
   wakeWord?: {
     windowSeconds?: number
     silenceRmsThreshold?: number
+  }
+  voiceCall?: {
+    /** 会话窗沉默超时（秒）：AI 说完后孩子未接话时长 → 关窗回待唤醒态（useVoiceCallMode） */
+    cooldownSeconds?: number
+    /** 聆听回合重启间隔（毫秒） */
+    restartDelayMs?: number
+    /** 语音结束防抖（毫秒）：用户停止说话后延迟发送最终结果，避免中间停顿截断 */
+    speechEndDebounceMs?: number
   }
   guideScripts?: {
     verify?: Array<{ prompt: string; hint: string; duration: number }>

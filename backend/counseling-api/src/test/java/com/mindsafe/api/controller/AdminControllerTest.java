@@ -264,10 +264,10 @@ class AdminControllerTest {
     }
 
     @Test
-    @DisplayName("importStudents 成功：透传 Service 结果")
+    @DisplayName("importStudents 成功：透传 Service 结果（含初始密码列）")
     void importStudents_success() {
         when(adminService.importStudents(eq(tenantId), eq(adminUserId), any(InputStream.class)))
-                .thenReturn(new AdminService.ImportResult(2, 0, List.of()));
+                .thenReturn(new AdminService.ImportResult(2, 0, List.of(), List.of("123456", "654321")));
         MockMultipartFile file = new MockMultipartFile("file", "students.csv",
                 "text/csv", "\uFEFF昵称,年级,班级\n小明,四年级,2班\n小红,五年级,1班\n".getBytes(StandardCharsets.UTF_8));
 
@@ -276,6 +276,7 @@ class AdminControllerTest {
         assertThat(resp.code()).isEqualTo(0);
         assertThat(resp.data().get("created")).isEqualTo(2);
         assertThat(resp.data().get("skipped")).isEqualTo(0);
+        assertThat(resp.data().get("initPasswords")).asList().containsExactly("123456", "654321");
         verify(adminService).importStudents(eq(tenantId), eq(adminUserId), any(InputStream.class));
     }
 
@@ -283,7 +284,7 @@ class AdminControllerTest {
     @DisplayName("importStudents 重复昵称跳过 → 透传 skipped/errors")
     void importStudents_skipDuplicates() {
         when(adminService.importStudents(eq(tenantId), eq(adminUserId), any(InputStream.class)))
-                .thenReturn(new AdminService.ImportResult(1, 1, List.of("第3行：\"小明\" 已存在，跳过")));
+                .thenReturn(new AdminService.ImportResult(1, 1, List.of("第3行：\"小明\" 已存在，跳过"), List.of("123456")));
         MockMultipartFile file = new MockMultipartFile("file", "students.csv",
                 "text/csv", "昵称,年级,班级\n\n小明,四年级,2班\n小红,五年级,1班\n".getBytes(StandardCharsets.UTF_8));
 
@@ -298,7 +299,7 @@ class AdminControllerTest {
     @DisplayName("importStudents 缺昵称行 → 透传 errors + skipped")
     void importStudents_missingPseudonym() {
         when(adminService.importStudents(eq(tenantId), eq(adminUserId), any(InputStream.class)))
-                .thenReturn(new AdminService.ImportResult(1, 1, List.of("第2行：缺少昵称")));
+                .thenReturn(new AdminService.ImportResult(1, 1, List.of("第2行：缺少昵称"), List.of()));
         MockMultipartFile file = new MockMultipartFile("file", "students.csv",
                 "text/csv", "小明,四年级,2班\n,五年级,1班\n".getBytes(StandardCharsets.UTF_8));
 

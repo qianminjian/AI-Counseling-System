@@ -277,26 +277,18 @@ public class DeviceService {
         return result;
     }
 
-    /** 解绑（reason 由调用方审计，此处仅状态流转）：绑定置 UNBOUND，设备回 ONLINE_UNBOUND。 */
+    /** 解绑：绑定置 UNBOUND，设备回 ONLINE_UNBOUND（P1-1 收敛：解绑写审计与 factoryReset 同单点）。 */
     public Map<String, Object> unbind(String deviceCode, String operator) {
         Device device = requireDevice(deviceCode);
-        List<DeviceBinding> actives = bindingMapper.selectList(
-                new LambdaQueryWrapper<DeviceBinding>()
-                        .eq(DeviceBinding::getDeviceId, device.getDeviceId())
-                        .eq(DeviceBinding::getStatus, DeviceBinding.STATUS_ACTIVE));
         Instant now = Instant.now();
-        for (DeviceBinding binding : actives) {
-            DeviceBinding update = new DeviceBinding();
-            update.setBindingId(binding.getBindingId());
-            update.setStatus(DeviceBinding.STATUS_UNBOUND);
-            update.setUnboundAt(now);
-            bindingMapper.updateById(update);
-        }
+        int unbound = unbindAllBindings(device.getDeviceId(), now);
         Device deviceUpdate = new Device();
         deviceUpdate.setDeviceId(device.getDeviceId());
         deviceUpdate.setStatus(Device.STATUS_ONLINE_UNBOUND);
         deviceUpdate.setUpdatedAt(now);
         deviceMapper.updateById(deviceUpdate);
+        // P1-1（板块03）：解绑写操作审计（与 ota/reboot/factory-reset 同一 auditOperation 单点）
+        auditOperation(deviceCode, "unbind", operator, "解绑" + unbound + "个绑定");
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("deviceCode", deviceCode);
@@ -359,18 +351,8 @@ public class DeviceService {
     public Map<String, Object> factoryReset(String deviceCode, String operator) {
         Device device = requireDevice(deviceCode);
         Instant now = Instant.now();
-        List<DeviceBinding> actives = bindingMapper.selectList(
-                new LambdaQueryWrapper<DeviceBinding>()
-                        .eq(DeviceBinding::getDeviceId, device.getDeviceId())
-                        .eq(DeviceBinding::getStatus, DeviceBinding.STATUS_ACTIVE));
-        for (DeviceBinding binding : actives) {
-            DeviceBinding update = new DeviceBinding();
-            update.setBindingId(binding.getBindingId());
-            update.setStatus(DeviceBinding.STATUS_UNBOUND);
-            update.setUnboundAt(now);
-            bindingMapper.updateById(update);
-        }
-        auditOperation(deviceCode, "factory-reset", operator, "解绑" + actives.size() + "个绑定 + 状态回 UNACTIVATED");
+        int unbound = unbindAllBindings(device.getDeviceId(), now);
+        auditOperation(deviceCode, "factory-reset", operator, "解绑" + unbound + "个绑定 + 状态回 UNACTIVATED");
         Device deviceUpdate = new Device();
         deviceUpdate.setDeviceId(device.getDeviceId());
         deviceUpdate.setStatus(Device.STATUS_UNACTIVATED);
@@ -381,7 +363,7 @@ public class DeviceService {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("deviceCode", deviceCode);
         result.put("status", Device.STATUS_UNACTIVATED);
-        result.put("unboundCount", actives.size());
+        result.put("unboundCount", unbound);
         result.put("operator", operator);
         return result;
     }
@@ -426,6 +408,25 @@ public class DeviceService {
             throw new BizException(ErrorCode.PARAM_INVALID, "设备不存在");
         }
         return device;
+    }
+
+    /**
+     * P1-1（板块03）解绑收敛单点：将设备全部 ACTIVE 绑定置 UNBOUND（unbind/factoryReset 共用），
+     * 返回解绑数量。审计由调用方各自触发（action 不同：unbind / factory-reset）。
+     */
+    private int unbindAllBindings(UUID deviceId, Instant now) {
+        List<DeviceBinding> actives = bindingMapper.selectList(
+                new LambdaQueryWrapper<DeviceBinding>()
+                        .eq(DeviceBinding::getDeviceId, deviceId)
+                        .eq(DeviceBinding::getStatus, DeviceBinding.STATUS_ACTIVE));
+        for (DeviceBinding binding : actives) {
+            DeviceBinding update = new DeviceBinding();
+            update.setBindingId(binding.getBindingId());
+            update.setStatus(DeviceBinding.STATUS_UNBOUND);
+            update.setUnboundAt(now);
+            bindingMapper.updateById(update);
+        }
+        return actives.size();
     }
 
     private Device findByCode(String deviceCode) {

@@ -196,13 +196,14 @@ class LoginOrchestratorTest {
     }
 
     @Test
-    @DisplayName("issueLoginSession：签发 + 审计（租户上下文绑定后清除）")
+    @DisplayName("issueLoginSession：签发 + 审计（租户上下文绑定后清除；F9 签名收敛为 LoginCandidate）")
     void issueLoginSession_auditsWithTenantContext() {
         User user = activeStudent();
         when(passwordPolicyService.isExpired(user.getPasswordChangedAt())).thenReturn(false);
         mockIssue();
 
-        LoginOrchestrator.LoginSession session = orchestrator.issueLoginSession(user, "VOICE_LOGIN");
+        // F9：签发接口不再接收 User 实体，边界处转为 LoginCandidate（含 passwordHash 供过期判定）
+        LoginOrchestrator.LoginSession session = orchestrator.issueLoginSession(LoginCandidate.from(user), "VOICE_LOGIN");
 
         verify(auditLogService).log(tenantId, userId, "VOICE_LOGIN", "user", userId, null);
         assertThat(session.refreshToken()).isEqualTo(REFRESH);

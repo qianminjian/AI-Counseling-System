@@ -1,13 +1,12 @@
 package com.mindsafe.api.controller;
 
+import com.mindsafe.api.dto.vo.AlertEventVO;
+import com.mindsafe.api.dto.vo.AuditLogVO;
+import com.mindsafe.api.dto.vo.DegradationEventVO;
+import com.mindsafe.api.dto.vo.ServiceHealthSnapshotVO;
 import com.mindsafe.common.dto.ApiResponse;
 import com.mindsafe.common.dto.ErrorCode;
 import com.mindsafe.common.exception.BizException;
-import com.mindsafe.domain.entity.AlertEvent;
-import com.mindsafe.domain.entity.AuditLog;
-import com.mindsafe.domain.entity.DegradationEvent;
-import com.mindsafe.domain.entity.RiskEvent;
-import com.mindsafe.domain.entity.ServiceHealthSnapshot;
 import com.mindsafe.service.knowledge.KnowledgeBaseService;
 import com.mindsafe.service.monitoring.DegradationMatrixService;
 import com.mindsafe.service.monitoring.MetricsQueryService;
@@ -46,14 +45,6 @@ public class OpsController {
     /** 高危操作确认短语（code-review M2：任意非空值不构成二次确认） */
     private static final String CONFIRM_PHRASE = "CONFIRM";
 
-    /**
-     * N-008（2026-08-11）：确认短语统一校验（原 5 处同构 if 拷贝收编）。
-     * 危险操作端点（重启/恢复出厂/降级切换等）需 X-Confirm: CONFIRM 头显式确认。
-     */
-    private void requireConfirm(String confirm) {
-        requireConfirm(confirm);
-    }
-
     private final OpsService opsService;
     private final RiskOverviewService riskOverviewService;
     private final DegradationMatrixService degradationMatrixService;
@@ -81,10 +72,13 @@ public class OpsController {
     }
 
     @GetMapping("/services/health-history")
-    public ApiResponse<List<ServiceHealthSnapshot>> healthHistory(
+    public ApiResponse<List<ServiceHealthSnapshotVO>> healthHistory(
             @RequestParam(required = false) String service,
             @RequestParam(defaultValue = "100") int limit) {
-        return ApiResponse.ok(opsService.healthHistory(service, limit));
+        List<ServiceHealthSnapshotVO> voList = opsService.healthHistory(service, limit).stream()
+                .map(ServiceHealthSnapshotVO::from)
+                .toList();
+        return ApiResponse.ok(voList);
     }
 
     @GetMapping("/alerts")
@@ -100,12 +94,15 @@ public class OpsController {
         return ApiResponse.ok(metricsQueryService.query(expr));
     }
 
-    /** 告警事件历史（alert_events 落库消费，聚合 alertmanager + alertservice 台账，P1-08） */
+    /** 告警事件历史（alert_events 落库消费，聚合 alertmanager + alertservice 台账，P1-08；F9：响应收敛为 AlertEventVO） */
     @GetMapping("/alert-events")
-    public ApiResponse<List<AlertEvent>> alertEvents(
+    public ApiResponse<List<AlertEventVO>> alertEvents(
             @RequestParam(required = false) String status,
             @RequestParam(defaultValue = "100") int limit) {
-        return ApiResponse.ok(opsService.alertEvents(status, limit));
+        List<AlertEventVO> voList = opsService.alertEvents(status, limit).stream()
+                .map(AlertEventVO::from)
+                .toList();
+        return ApiResponse.ok(voList);
     }
 
     /** 告警确认（firing → ack，仅 ops/super——SecurityConfig 强制，audit 只读） */
@@ -121,13 +118,16 @@ public class OpsController {
     }
 
     @GetMapping("/audit-logs")
-    public ApiResponse<List<AuditLog>> auditLogs(
+    public ApiResponse<List<AuditLogVO>> auditLogs(
             @RequestParam(required = false) UUID tenantId,
             @RequestParam(required = false) String action,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant startTime,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant endTime,
             @RequestParam(defaultValue = "100") int limit) {
-        return ApiResponse.ok(opsService.auditLogs(tenantId, action, startTime, endTime, limit));
+        List<AuditLogVO> voList = opsService.auditLogs(tenantId, action, startTime, endTime, limit).stream()
+                .map(AuditLogVO::from)
+                .toList();
+        return ApiResponse.ok(voList);
     }
 
     // ===== M8 业务信号（ADMIN-P1-04：风险全景 + 时效监控，纯查询） =====
@@ -220,10 +220,13 @@ public class OpsController {
     }
 
     @GetMapping("/degradation/events")
-    public ApiResponse<List<DegradationEvent>> degradationEvents(
+    public ApiResponse<List<DegradationEventVO>> degradationEvents(
             @RequestParam(required = false) String point,
             @RequestParam(defaultValue = "100") int limit) {
-        return ApiResponse.ok(degradationMatrixService.events(point, limit));
+        List<DegradationEventVO> voList = degradationMatrixService.events(point, limit).stream()
+                .map(DegradationEventVO::from)
+                .toList();
+        return ApiResponse.ok(voList);
     }
 
     public record DegradationOverrideRequest(@NotBlank(message = "to 必填") String to,

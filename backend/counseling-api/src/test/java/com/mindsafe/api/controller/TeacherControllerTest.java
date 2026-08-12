@@ -1,5 +1,6 @@
 package com.mindsafe.api.controller;
 
+import com.mindsafe.api.dto.teacher.TransitionCaseRequest;
 import com.mindsafe.api.security.JwtAuthenticationFilter.TenantContext;
 import com.mindsafe.api.security.JwtTokenProvider;
 import com.mindsafe.common.dto.ErrorCode;
@@ -22,7 +23,6 @@ import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -99,7 +99,7 @@ class TeacherControllerTest {
 
         assertThatThrownBy(() -> controller.transitionCase(
                 studentUserId,
-                Map.of("targetStage", "NOT_A_STAGE"),
+                new TransitionCaseRequest("NOT_A_STAGE"),
                 teacherAuth("psych_teacher")))
                 .isExactlyInstanceOf(BizException.class)
                 .extracting("code")
@@ -118,7 +118,7 @@ class TeacherControllerTest {
 
         var resp = controller.transitionCase(
                 studentUserId,
-                Map.of("targetStage", "ASSESSMENT"),
+                new TransitionCaseRequest("ASSESSMENT"),
                 teacherAuth("psych_teacher"));
 
         assertThat(resp.code()).isEqualTo(0);

@@ -126,6 +126,17 @@ class TestConfigLoading:
         cfg = load_config("/nonexistent/config.yaml")
         assert cfg["model"]["dashscope"] == "cosyvoice-v3-flash"
 
+    def test_default_path_loads_service_own_config_yaml(self):
+        """config_path=None 时默认加载本服务 config.yaml（板块10 收编回归：
+        config_loader 单源化至 py-common 后默认路径失效，曾静默回退兜底矩阵丢 7 音色）"""
+        from app import load_config
+
+        cfg = load_config()
+        assert len(cfg["voice_personas"]) == 7
+        assert "qiqiu" in cfg["voice_personas"]
+        assert len(cfg["dialects"]) == 8
+        assert len(cfg["emotion_instruct_map"]) == 10
+
 
 class TestConfigStructure:
     """配置结构完整性（验证 config.yaml 权威单源，D1 后矩阵不再存在于代码）"""

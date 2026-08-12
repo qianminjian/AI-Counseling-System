@@ -1,5 +1,7 @@
 package com.mindsafe.api.filter;
 
+import com.mindsafe.api.config.ErrorResponseWriter;
+import com.mindsafe.api.config.RouteCatalog;
 import com.mindsafe.common.tenant.TenantContextHolder;
 import com.mindsafe.service.billing.EntitlementChecker;
 import com.mindsafe.service.billing.TenantPlanResolver;
@@ -16,6 +18,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.util.Optional;
 
 /**
  * 权益过滤器（BILL-001，design/38 §4.2）
@@ -59,51 +62,26 @@ public class EntitlementFilter extends OncePerRequestFilter {
             return;
         }
 
-        // 路径→功能权益映射
-        String feature = mapPathToFeature(path);
-        if (feature == null) {
+        // 路径→功能权益映射（F3：收敛 RouteCatalog 注册表，行为与原 mapPathToFeature 逐条等价）
+        Optional<String> featureOpt = RouteCatalog.entitlementFeature(path);
+        if (featureOpt.isEmpty()) {
             // 非受控路径，直接放行
             filterChain.doFilter(request, response);
             return;
         }
+        String feature = featureOpt.get();
 
         EntitlementChecker.Plan plan = tenantPlanResolver.resolve(TenantContextHolder.get());
 
         EntitlementChecker.CheckResult result = entitlementChecker.checkFeature(plan, feature, path);
         if (!result.allowed()) {
             log.warn("权益拦截: path={}, feature={}, status={}, code={}", path, feature, result.httpStatus(), result.code());
-            response.setStatus(result.httpStatus());
-            response.setContentType("application/json;charset=UTF-8");
-            response.getWriter().write(
-                    "{\"code\":" + result.code() + ",\"message\":\"" + result.message() + "\"}");
+            // F6：统一 ApiResponse 序列化出口（原手拼 {code,message} 缺 data/timestamp）
+            ErrorResponseWriter.write(response, result.httpStatus(),
+                    Integer.parseInt(result.code()), result.message());
             return;
         }
 
         filterChain.doFilter(request, response);
-    }
-
-    /**
-     * 路径→功能权益映射（仅映射受控路径，其余返回 null 放行）。
-     */
-    private String mapPathToFeature(String path) {
-        if (path.startsWith("/api/v1/chat") || path.startsWith("/api/v1/conversations")) {
-            return EntitlementChecker.FEAT_AI_CHAT;
-        }
-        if (path.startsWith("/api/v1/tts")) {
-            return EntitlementChecker.FEAT_TTS;
-        }
-        if (path.startsWith("/api/v1/voice")) {
-            return EntitlementChecker.FEAT_VOICE_INPUT;
-        }
-        if (path.startsWith("/api/v1/parent")) {
-            return EntitlementChecker.FEAT_PARENT_H5;
-        }
-        if (path.startsWith("/api/v1/admin/export")) {
-            return EntitlementChecker.FEAT_EXPORT;
-        }
-        if (path.startsWith("/api/v1/admin/dashboard")) {
-            return EntitlementChecker.FEAT_DATA_DASHBOARD;
-        }
-        return null; // 非受控路径
     }
 }

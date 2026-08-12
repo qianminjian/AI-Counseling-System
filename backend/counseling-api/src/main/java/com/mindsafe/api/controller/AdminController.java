@@ -136,8 +136,8 @@ public class AdminController {
 
     /**
      * 批量导入学生（CSV 格式）
-     * CSV 列：昵称,年级,班级（如：小明,四年级,2班）
-     * 自动分配初始密码（学号后 6 位），首次登录强制改密
+     * CSV 列：昵称,年级,班级（如：小明,四年级,2班）；昵称可加双引号含逗号
+     * 自动分配随机 6 位数字初始密码（随响应返回），首次登录强制改密
      */
     @PostMapping("/import-students")
     public ApiResponse<Map<String, Object>> importStudents(
@@ -160,6 +160,7 @@ public class AdminController {
             result.put("created", r.created());
             result.put("skipped", r.skipped());
             result.put("errors", r.errors());
+            result.put("initPasswords", r.initPasswords());
             return ApiResponse.ok(result);
         } catch (IOException e) {
             throw new BizException(ErrorCode.INTERNAL_ERROR, "CSV 解析失败: " + e.getMessage());

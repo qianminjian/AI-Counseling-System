@@ -1,22 +1,20 @@
 /** 平台管理端 API（ADMIN-P0-02/04：登录 + token 存取 + 服务状态）
  * P0 backlog ②（L1）：token 从 localStorage 迁 sessionStorage（会话级，关闭浏览器自动清除，
  * 对齐 teacher-web AUD-007 先例）；httpOnly cookie 长期方案留作远期。
- * FE-004（doing/95）：认证传输收敛 shared auth-transport——createPlatformTokens 统一 token 存取
- * （单 token 无 refresh：createAuthFetch 401 时 refreshTokens 因无 rt 直接 false → 返回原始 401，
- * 由调用方登出，语义与「管理端不续期」一致），storage 存取经安全封装防隐私模式 SecurityError。 */
+ * 板块08 P1-1（2026-08-12）：端点路径收敛至 api/endpoints.ts 常量表单一事实源
+ * （对齐 teacher-web FA-15），本文件不再出现 API 路径字面量；请求行为不变。
+ * FE-004（doing/95，merge develop 合并保留）：token 存取经 shared auth-transport 安全封装
+ * （StorageLike 防隐私模式 SecurityError，与三端一致）。 */
 
+import { ENDPOINTS, fillPath } from './api/endpoints'
 // DC-005：认证传输共享模块（token 存取/authFetch/登出）
 import { createPlatformTokens, type StorageLike } from '../../shared/src/auth-transport/tokenStorage'
-import { createAuthFetch } from '../../shared/src/auth-transport/authFetch'
 
 export interface PlatformLoginResult {
   token: string
   role: string
   displayName: string
 }
-
-const ROLE_KEY = 'admin_role'
-const NAME_KEY = 'admin_name'
 
 /** 会话级存储安全适配（隐私模式/存储禁用下不抛 SecurityError，FE-004 对齐三端 storage 安全封装） */
 const sessionStore: StorageLike = {
@@ -45,12 +43,14 @@ const sessionStore: StorageLike = {
 
 /** 平台单 token 存取（键 admin_token，与历史会话兼容；admin_role/admin_name 另行管理） */
 const storage = createPlatformTokens('admin_', sessionStore)
+const ROLE_KEY = 'admin_role'
+const NAME_KEY = 'admin_name'
 
-/** 401/403 后分发的登出事件（App.tsx 监听后跳登录页） */
-export const UNAUTHORIZED_EVENT = 'admin:unauthorized'
-
+/** 平台登录（DEC-007：独立登录端点，PLATFORM_ 登录态与业务 JWT 有意解耦）。
+ * 有意保留裸 fetch 不走 postAdmin：登录场景 401 = 账号密码错误（业务失败），
+ * 而非会话过期——登出联动/清 token 对登录页无意义，语义不同不合并。 */
 export async function platformLogin(username: string, password: string): Promise<PlatformLoginResult> {
-  const resp = await fetch('/api/v1/platform/auth/login', {
+  const resp = await fetch(ENDPOINTS.platformLogin.path, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ username, password }),
@@ -85,9 +85,16 @@ export function adminLogout(): void {
   sessionStore.remove(NAME_KEY)
 }
 
-/** 平台鉴权请求封装（PLATFORM_ token 前缀由后端签发，此处原样携带） */
-export async function adminFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const resp = await authFetch(path, init)
+/** 登录态失效事件（401/403 时触发，App 监听后回登录页，code-review M2） */
+export const UNAUTHORIZED_EVENT = 'admin:unauthorized'
+
+/** 平台鉴权 GET 请求封装（PLATFORM_ token 前缀由后端签发，此处原样携带）
+ * 板块08 P1-1：path 一律由调用方从 ENDPOINTS 常量表派生（fillPath + query 拼接），本封装不感知具体端点 */
+export async function adminFetch<T>(path: string): Promise<T> {
+  const token = getAdminToken()
+  const resp = await fetch(path, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  })
   if (resp.status === 401 || resp.status === 403) {
     adminLogout()
     window.dispatchEvent(new Event(UNAUTHORIZED_EVENT))
@@ -100,8 +107,44 @@ export async function adminFetch<T>(path: string, init?: RequestInit): Promise<T
   return body.data as T
 }
 
-/** 认证 fetch（FE-004：shared createAuthFetch，自动携带 Bearer；单 token 无刷新） */
-const authFetch = createAuthFetch(storage)
+interface PostAdminOptions {
+  /** 后端无 body.message 时的兜底文案（语义化错误，替换原各 POST 的“XX 失败”） */
+  fallbackMessage?: string
+  /** X-Confirm 二次确认头（降级切换/告警确认等高风险操作） */
+  xConfirm?: boolean
+  /** 403 专属语义化文案（默认“无权限访问”，高风险操作可细化） */
+  forbiddenMessage?: string
+}
+
+/**
+ * 平台 POST 统一封装（板块08 P1-2）：鉴权头 + 401/403 → adminLogout + UNAUTHORIZED_EVENT + 语义化错误。
+ * 此前 6 个 POST 封装各自手写 fetch，token 过期时只抛“XX 失败/修改失败”，
+ * 用户停留登录失效页却不知已失效——会话过期静默化掩盖真实失败原因。
+ * 与 adminFetch 共用同一登出联动模式后，失效态统一回登录页，错误归因不再误导运维。
+ */
+export async function postAdmin<T = void>(path: string, body?: unknown, options: PostAdminOptions = {}): Promise<T> {
+  const token = getAdminToken()
+  const resp = await fetch(path, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(options.xConfirm ? { 'X-Confirm': 'CONFIRM' } : {}),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  })
+  if (resp.status === 401 || resp.status === 403) {
+    adminLogout()
+    window.dispatchEvent(new Event(UNAUTHORIZED_EVENT))
+    throw new Error(resp.status === 403 ? (options.forbiddenMessage ?? '无权限访问') : '登录已过期')
+  }
+  if (!resp.ok) {
+    const b = await resp.json().catch((): null => null)
+    throw new Error(b?.message ?? options.fallbackMessage ?? '操作失败')
+  }
+  const b = await resp.json().catch((): null => null)
+  return (b?.data ?? undefined) as T
+}
 
 /** 服务健康状态（P0-05） */
 export interface ServiceStatus {
@@ -110,12 +153,12 @@ export interface ServiceStatus {
 
 // ===== 平台总览（P0 backlog ⑤ 双轨收敛：从 teacher-web 迁移至 admin-web） =====
 
-/** 平台总览指标（/api/v1/platform/overview） */
+/** 平台总览指标 */
 export function fetchPlatformOverview(): Promise<Record<string, unknown>> {
-  return adminFetch<Record<string, unknown>>('/api/v1/platform/overview')
+  return adminFetch<Record<string, unknown>>(ENDPOINTS.platformOverview.path)
 }
 
-/** 租户列表（/api/v1/platform/tenants） */
+/** 租户列表 */
 export interface PlatformTenant {
   tenantName: string
   status: string
@@ -128,11 +171,11 @@ export interface PlatformTenant {
 }
 
 export function fetchPlatformTenants(): Promise<PlatformTenant[]> {
-  return adminFetch<PlatformTenant[]>('/api/v1/platform/tenants')
+  return adminFetch<PlatformTenant[]>(ENDPOINTS.platformTenants.path)
 }
 
 export function fetchServicesStatus(): Promise<ServiceStatus> {
-  return adminFetch<ServiceStatus>('/api/v1/ops/services/status')
+  return adminFetch<ServiceStatus>(ENDPOINTS.servicesStatus.path)
 }
 
 // ===== P1（ADMIN-P1-01/04：配置注册表 + 风险全景） =====
@@ -149,19 +192,15 @@ export interface SysConfigItem {
 
 export function fetchConfigs(domain?: string): Promise<SysConfigItem[]> {
   const q = domain ? `?domain=${encodeURIComponent(domain)}` : ''
-  return adminFetch<SysConfigItem[]>(`/api/v1/platform/config/registry${q}`)
+  return adminFetch<SysConfigItem[]>(ENDPOINTS.configRegistry.path + q)
 }
 
-export async function updateConfig(key: string, value: string, reason: string): Promise<void> {
-  const resp = await authFetch(`/api/v1/platform/config/${encodeURIComponent(key)}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ value, reason }),
-  })
-  if (!resp.ok) {
-    const body = await resp.json().catch((): null => null)
-    throw new Error(body?.message ?? '配置修改失败')
-  }
+export function updateConfig(key: string, value: string, reason: string): Promise<void> {
+  return postAdmin(
+    fillPath(ENDPOINTS.updateConfig.path, { key: encodeURIComponent(key) }),
+    { value, reason },
+    { fallbackMessage: '配置修改失败' },
+  )
 }
 
 // BUG-A-03-01（2026-08-12，UI-TEST-015）：配置变更历史（审计留痕展示）
@@ -176,7 +215,7 @@ export interface ConfigHistoryItem {
 }
 
 export function fetchConfigHistory(key: string): Promise<ConfigHistoryItem[]> {
-  return adminFetch<ConfigHistoryItem[]>(`/api/v1/platform/config/${encodeURIComponent(key)}/history`)
+  return adminFetch<ConfigHistoryItem[]>(fillPath(ENDPOINTS.configHistory.path, { key: encodeURIComponent(key) }))
 }
 
 export interface RiskOverview {
@@ -187,11 +226,11 @@ export interface RiskOverview {
 }
 
 export function fetchRiskOverview(): Promise<RiskOverview> {
-  return adminFetch<RiskOverview>('/api/v1/ops/risk/overview')
+  return adminFetch<RiskOverview>(ENDPOINTS.riskOverview.path)
 }
 
 export function fetchRiskOverdue(): Promise<Array<Record<string, unknown>>> {
-  return adminFetch<Array<Record<string, unknown>>>('/api/v1/ops/risk/overdue')
+  return adminFetch<Array<Record<string, unknown>>>(ENDPOINTS.riskOverdue.path)
 }
 
 // ===== P2（ADMIN-P2-01/02：降级矩阵 + 事件时间线） =====
@@ -206,7 +245,7 @@ export interface DegradationRow {
 }
 
 export function fetchDegradationMatrix(): Promise<DegradationRow[]> {
-  return adminFetch<DegradationRow[]>('/api/v1/ops/degradation/matrix')
+  return adminFetch<DegradationRow[]>(ENDPOINTS.degradationMatrix.path)
 }
 
 export interface DegradationEventItem {
@@ -220,39 +259,25 @@ export interface DegradationEventItem {
 
 export function fetchDegradationEvents(point?: string): Promise<DegradationEventItem[]> {
   const q = point ? `?point=${encodeURIComponent(point)}` : ''
-  return adminFetch<DegradationEventItem[]>(`/api/v1/ops/degradation/events${q}`)
+  return adminFetch<DegradationEventItem[]>(ENDPOINTS.degradationEvents.path + q)
 }
 
 /** 手动切换（X-Confirm 固定短语 + reason） */
-export async function degradationOverride(point: string, to: string, reason: string): Promise<void> {
-  const resp = await authFetch(`/api/v1/ops/degradation/${encodeURIComponent(point)}/override`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Confirm': 'CONFIRM',
-    },
-    body: JSON.stringify({ to, reason }),
-  })
-  if (!resp.ok) {
-    const body = await resp.json().catch((): null => null)
-    throw new Error(body?.message ?? '切换失败')
-  }
+export function degradationOverride(point: string, to: string, reason: string): Promise<void> {
+  return postAdmin(
+    fillPath(ENDPOINTS.degradationOverride.path, { point: encodeURIComponent(point) }),
+    { to, reason },
+    { fallbackMessage: '切换失败', xConfirm: true },
+  )
 }
 
 /** 取消覆盖（回配置默认，X-Confirm + reason） */
-export async function cancelDegradationOverride(point: string, reason: string): Promise<void> {
-  const resp = await authFetch(`/api/v1/ops/degradation/${encodeURIComponent(point)}/override/cancel`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Confirm': 'CONFIRM',
-    },
-    body: JSON.stringify({ reason }),
-  })
-  if (!resp.ok) {
-    const body = await resp.json().catch((): null => null)
-    throw new Error(body?.message ?? '取消失败')
-  }
+export function cancelDegradationOverride(point: string, reason: string): Promise<void> {
+  return postAdmin(
+    fillPath(ENDPOINTS.cancelDegradationOverride.path, { point: encodeURIComponent(point) }),
+    { reason },
+    { fallbackMessage: '取消失败', xConfirm: true },
+  )
 }
 
 // ===== 前端余页（P1-09/P2-06/P3-02：Prompt 管理/时效/台账/知识库/洞察/用量/合规） =====
@@ -268,20 +293,13 @@ export interface PromptVersionItem {
   contentLength: number
 }
 
-export async function promptAction(path: string, body?: unknown): Promise<void> {
-  const resp = await authFetch(`/api/v1/admin/prompts${path}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: body ? JSON.stringify(body) : undefined,
-  })
-  if (!resp.ok) {
-    const b = await resp.json().catch((): null => null)
-    throw new Error(b?.message ?? '操作失败')
-  }
+/** Prompt 操作（提交审核/审核/激活，子路径由调用方传入，基路径取自常量表） */
+export function promptAction(path: string, body?: unknown): Promise<void> {
+  return postAdmin(ENDPOINTS.promptAction.path + path, body, { fallbackMessage: '操作失败' })
 }
 
 export function fetchSlaStats(): Promise<Array<Record<string, unknown>>> {
-  return adminFetch<Array<Record<string, unknown>>>('/api/v1/ops/risk/sla-stats')
+  return adminFetch<Array<Record<string, unknown>>>(ENDPOINTS.slaStats.path)
 }
 
 export interface DeadLedgerItem {
@@ -295,48 +313,48 @@ export interface DeadLedgerItem {
 }
 
 export function fetchDeadLedger(): Promise<DeadLedgerItem[]> {
-  return adminFetch<DeadLedgerItem[]>('/api/v1/ops/insights/dead-ledger')
+  return adminFetch<DeadLedgerItem[]>(ENDPOINTS.deadLedger.path)
 }
 
 export function fetchKnowledgeStats(): Promise<Record<string, unknown>> {
-  return adminFetch<Record<string, unknown>>('/api/v1/ops/knowledge/stats')
+  return adminFetch<Record<string, unknown>>(ENDPOINTS.knowledgeStats.path)
 }
 
 export function fetchQualityTrend(): Promise<Record<string, unknown>> {
-  return adminFetch<Record<string, unknown>>('/api/v1/ops/insights/quality-trend')
+  return adminFetch<Record<string, unknown>>(ENDPOINTS.qualityTrend.path)
 }
 
 export function fetchAlertFunnel(): Promise<Record<string, unknown>> {
-  return adminFetch<Record<string, unknown>>('/api/v1/ops/insights/alert-funnel')
+  return adminFetch<Record<string, unknown>>(ENDPOINTS.alertFunnel.path)
 }
 
 export function fetchTenantHealth(): Promise<Array<Record<string, unknown>>> {
-  return adminFetch<Array<Record<string, unknown>>>('/api/v1/ops/insights/tenant-health')
+  return adminFetch<Array<Record<string, unknown>>>(ENDPOINTS.tenantHealth.path)
 }
 
 export function fetchUsageSummary(days = 30): Promise<Record<string, unknown>> {
-  return adminFetch<Record<string, unknown>>(`/api/v1/ops/usage/summary?days=${days}`)
+  return adminFetch<Record<string, unknown>>(`${ENDPOINTS.usageSummary.path}?days=${days}`)
 }
 
 export function fetchConsentStats(): Promise<Record<string, unknown>> {
-  return adminFetch<Record<string, unknown>>('/api/v1/ops/compliance/consent-stats')
+  return adminFetch<Record<string, unknown>>(ENDPOINTS.consentStats.path)
 }
 
 /** Prompt 版本列表（M7，走 adminFetch 统一鉴权/登出联动） */
 export function fetchPromptVersions(templateKey: string): Promise<PromptVersionItem[]> {
-  return adminFetch<PromptVersionItem[]>(`/api/v1/admin/prompts/versions?templateKey=${encodeURIComponent(templateKey)}`)
+  return adminFetch<PromptVersionItem[]>(`${ENDPOINTS.promptVersions.path}?templateKey=${encodeURIComponent(templateKey)}`)
 }
 
 /** 通知渠道统计（M10） */
 export function fetchChannelStats(): Promise<Record<string, unknown>> {
-  return adminFetch<Record<string, unknown>>('/api/v1/ops/insights/channel-stats')
+  return adminFetch<Record<string, unknown>>(ENDPOINTS.channelStats.path)
 }
 
 // ===== M2 指标看板 + 告警中心（ADMIN-P1-07/08/09） =====
 
 /** 指标看板：白名单表达式代理查询 Prometheus（P1-07） */
 export function fetchMetricsQuery(expr: string): Promise<Record<string, unknown>> {
-  return adminFetch<Record<string, unknown>>(`/api/v1/ops/metrics/query?expr=${encodeURIComponent(expr)}`)
+  return adminFetch<Record<string, unknown>>(`${ENDPOINTS.metricsQuery.path}?expr=${encodeURIComponent(expr)}`)
 }
 
 /** 告警事件历史（alert_events 落库台账，P1-08） */
@@ -356,28 +374,16 @@ export interface AlertEventItem {
 
 export function fetchAlertEvents(status?: string): Promise<AlertEventItem[]> {
   const q = status ? `?status=${encodeURIComponent(status)}` : ''
-  return adminFetch<AlertEventItem[]>(`/api/v1/ops/alert-events${q}`)
+  return adminFetch<AlertEventItem[]>(ENDPOINTS.alertEvents.path + q)
 }
 
 /** 告警确认（firing → ack，X-Confirm 二次确认 + reason 必填，仅 ops/super） */
-export async function ackAlertEvent(eventId: string, reason: string): Promise<void> {
-  const resp = await authFetch(`/api/v1/ops/alerts/${eventId}/ack`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Confirm': 'CONFIRM',
-    },
-    body: JSON.stringify({ reason }),
-  })
-  if (resp.status === 401 || resp.status === 403) {
-    adminLogout()
-    window.dispatchEvent(new Event(UNAUTHORIZED_EVENT))
-    throw new Error(resp.status === 403 ? '无权限访问（仅运维/超管可确认告警）' : '登录已过期')
-  }
-  if (!resp.ok) {
-    const b = await resp.json().catch((): null => null)
-    throw new Error(b?.message ?? '确认失败')
-  }
+export function ackAlertEvent(eventId: string, reason: string): Promise<void> {
+  return postAdmin(
+    fillPath(ENDPOINTS.ackAlertEvent.path, { eventId }),
+    { reason },
+    { fallbackMessage: '确认失败', xConfirm: true, forbiddenMessage: '无权限访问（仅运维/超管可确认告警）' },
+  )
 }
 
 // ===== M13 无屏终端设备管理（CFG-008，doing/84 §六.2 平台管理域） =====
@@ -399,54 +405,47 @@ export function fetchPlatformDevices(status?: string, bindTargetId?: string): Pr
   if (status) qs.set('status', status)
   if (bindTargetId) qs.set('bindTargetId', bindTargetId)
   const query = qs.toString()
-  return adminFetch<PlatformDeviceItem[]>(`/api/v1/platform/devices${query ? `?${query}` : ''}`)
+  return adminFetch<PlatformDeviceItem[]>(ENDPOINTS.platformDevices.path + (query ? `?${query}` : ''))
 }
 
 /** 设备详情（含绑定历史） */
 export function fetchPlatformDeviceDetail(deviceId: string): Promise<Record<string, unknown>> {
-  return adminFetch<Record<string, unknown>>(`/api/v1/platform/devices/${deviceId}`)
+  return adminFetch<Record<string, unknown>>(fillPath(ENDPOINTS.platformDeviceDetail.path, { deviceId }))
 }
 
 /** 二维码批量签发（印刷包留痕） */
-export async function exportDeviceQr(deviceCodes: string[]): Promise<{ issuedCount: number; notFound: string[] }> {
-  const resp = await authFetch('/api/v1/platform/devices/export-qr', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ deviceCodes, issuedBy: getAdminName() }),
-  })
-  if (!resp.ok) {
-    const body = await resp.json().catch((): null => null)
-    throw new Error(body?.message ?? '二维码签发失败')
-  }
-  const body = await resp.json()
-  return body.data as { issuedCount: number; notFound: string[] }
+export function exportDeviceQr(deviceCodes: string[]): Promise<{ issuedCount: number; notFound: string[] }> {
+  return postAdmin<{ issuedCount: number; notFound: string[] }>(
+    ENDPOINTS.exportDeviceQr.path,
+    { deviceCodes, issuedBy: getAdminName() },
+    { fallbackMessage: '二维码签发失败' },
+  )
 }
 
 /** 批量操作受理（ota / reboot / factory-reset） */
-export async function batchDeviceOperation(deviceCodes: string[], action: string): Promise<Record<string, unknown>> {
-  const resp = await authFetch('/api/v1/platform/devices/batch', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ deviceCodes, action, operator: getAdminName() }),
-  })
-  if (!resp.ok) {
-    const body = await resp.json().catch((): null => null)
-    throw new Error(body?.message ?? '批量操作失败')
-  }
-  const body = await resp.json()
-  return body.data as Record<string, unknown>
+export function batchDeviceOperation(deviceCodes: string[], action: string): Promise<Record<string, unknown>> {
+  return postAdmin<Record<string, unknown>>(
+    ENDPOINTS.batchDeviceOperation.path,
+    { deviceCodes, action, operator: getAdminName() },
+    { fallbackMessage: '批量操作失败' },
+  )
 }
 
-/** 跨租户审计日志（ADMIN-P0-07：tenantId/action/时间范围筛选，BUG-A-004 补前端消费） */
+/** 跨租户审计日志（ADMIN-P0-07：tenantId/action/时间范围筛选，BUG-A-004 补前端消费）
+ * D-联动（板块08 P1-4）：与 teacher-web AuditLogVO 收敛为后端 AuditLog 实体同一契约字段命名 */
 export interface AuditLogItem {
   auditLogId: string
   tenantId?: string
   userId?: string
   action: string
+  resourceType: string
+  resourceId?: string
   detail?: string
+  ipHash?: string
+  userAgent?: string
   createdAt: string
 }
 
 export function fetchAuditLogs(limit = 100): Promise<AuditLogItem[]> {
-  return adminFetch<AuditLogItem[]>(`/api/v1/ops/audit-logs?limit=${limit}`)
+  return adminFetch<AuditLogItem[]>(`${ENDPOINTS.auditLogs.path}?limit=${limit}`)
 }

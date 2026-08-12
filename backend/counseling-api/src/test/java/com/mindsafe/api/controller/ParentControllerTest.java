@@ -67,12 +67,7 @@ class ParentControllerTest {
                 mock(com.mindsafe.service.parent.WeeklyReportService.class));
 
         // 默认：有效 parent token（sub=parentId，BUG-P-BASE-04 语义）
-        when(jwtTokenProvider.validateToken(VALID_PARENT_TOKEN)).thenReturn(true);
-        when(jwtTokenProvider.isRefreshToken(VALID_PARENT_TOKEN)).thenReturn(false);
-        when(jwtTokenProvider.isVoiceCredential(VALID_PARENT_TOKEN)).thenReturn(false);
-        when(jwtTokenProvider.getUserType(VALID_PARENT_TOKEN)).thenReturn("parent");
-        when(jwtTokenProvider.getUserId(VALID_PARENT_TOKEN)).thenReturn(parentId);
-        when(jwtTokenProvider.getTenantId(VALID_PARENT_TOKEN)).thenReturn(tenantId);
+        // 解析统一在 ParentIdentityResolver（mock），JwtTokenProvider 旧 API 已随 F2 收敛删除，不再 stub
         // BUG-P-BASE-04：默认家长-学生已绑定（resolver mock 默认通过）
         // AC-89-04：解析统一在 ParentIdentityResolver——mock 默认返回身份，requireLinked* 默认无操作
         when(parentIdentityResolver.resolveLoginIdentity(any()))
@@ -238,8 +233,7 @@ class ParentControllerTest {
         @Test
         @DisplayName("verifyPhone 撤回后 → CONSENT_WITHDRAWN（不签发新 token）")
         void verifyPhoneRejected() {
-            // 旧链接流程：parent_report token 的 sub=studentUserId
-            when(jwtTokenProvider.getUserId(VALID_PARENT_TOKEN)).thenReturn(studentUserId);
+            // 旧链接流程：parent_report token 的 sub=studentUserId（解析在 resolver mock，无需 stub JwtTokenProvider）
             mockWithdrawnStudent();
 
             assertThatThrownBy(() -> controller.verifyPhone(
@@ -342,8 +336,7 @@ class ParentControllerTest {
     @Test
     @DisplayName("verifyPhone 验证通过后签发正式 parent_report token")
     void verifyPhoneIssuesToken() {
-        // 旧链接流程：parent_report token 的 sub=studentUserId
-        when(jwtTokenProvider.getUserId(VALID_PARENT_TOKEN)).thenReturn(studentUserId);
+        // 旧链接流程：parent_report token 的 sub=studentUserId（解析在 resolver mock，无需 stub JwtTokenProvider）
         User student = studentUser();
         when(parentService.getStudent(tenantId, studentUserId)).thenReturn(student);
         when(phoneVerificationService.verifyCode("13800000001", "123456")).thenReturn(true);

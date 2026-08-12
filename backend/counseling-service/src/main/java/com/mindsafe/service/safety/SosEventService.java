@@ -4,8 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.mindsafe.common.enums.RiskLevel;
 import com.mindsafe.domain.entity.RiskEvent;
 import com.mindsafe.domain.mapper.RiskEventMapper;
-import com.mindsafe.service.notification.NotificationService;
-import com.mindsafe.service.notification.RiskNotifyOutboxService;
+import com.mindsafe.service.risk.RiskEventWriter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -33,15 +32,14 @@ public class SosEventService {
     /** 同一学生 SOS 事件去重窗口 */
     private static final long DEDUP_WINDOW_MINUTES = 5;
 
+    /** 去重查询专用（近 5 分钟已有 SOS 事件判断）；写入统一走 {@link RiskEventWriter} */
     private final RiskEventMapper riskEventMapper;
-    private final NotificationService notificationService;
-    private final RiskNotifyOutboxService riskNotifyOutboxService;
+    /** S-009（doing/93）：风险事件统一写入入口（SOS 需教师通知 → write(event, true)） */
+    private final RiskEventWriter riskEventWriter;
 
-    public SosEventService(RiskEventMapper riskEventMapper, NotificationService notificationService,
-                           RiskNotifyOutboxService riskNotifyOutboxService) {
+    public SosEventService(RiskEventMapper riskEventMapper, RiskEventWriter riskEventWriter) {
         this.riskEventMapper = riskEventMapper;
-        this.notificationService = notificationService;
-        this.riskNotifyOutboxService = riskNotifyOutboxService;
+        this.riskEventWriter = riskEventWriter;
     }
 
     /** SOS 上报结果 */
@@ -80,20 +78,13 @@ public class SosEventService {
         event.setUpdatedAt(Instant.now());
 
         try {
-            riskEventMapper.insert(event);
+            // S-009（doing/93）：统一写入入口——落库 fail-fast（writer 内 insert 失败直接上抛），
+            // 教师通知尽力而为（失败由 writer 标记 failed 进补偿队列 P0-4）
+            riskEventWriter.write(event, true);
             log.info("SOS 事件已持久化: riskEventId={}, studentId={}", event.getRiskEventId(), studentUserId);
         } catch (Exception e) {
             log.error("SOS 事件持久化失败(fail-fast 上抛): studentId={}", studentUserId, e);
             throw new IllegalStateException("SOS 事件持久化失败", e);
-        }
-
-        // 教师通知 + outbox 状态标记（P0-4）：失败不再静默，进补偿队列
-        try {
-            notificationService.notifyRiskEvent(event);
-            riskNotifyOutboxService.markSent(event);
-        } catch (Exception e) {
-            log.error("SOS 教师通知失败(已标记 failed 进补偿队列): riskEventId={}", event.getRiskEventId(), e);
-            riskNotifyOutboxService.markFailed(event);
         }
 
         return new SosResult(event.getRiskEventId(), false);

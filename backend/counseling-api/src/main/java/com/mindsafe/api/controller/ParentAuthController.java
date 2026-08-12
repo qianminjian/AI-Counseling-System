@@ -107,8 +107,9 @@ public class ParentAuthController {
     @GetMapping("/children")
     public ApiResponse<List<Map<String, Object>>> getChildren(
             @RequestHeader("Authorization") String authHeader) {
-        String token = authHeader.replace("Bearer ", "");
-        UUID parentId = jwtTokenProvider.getUserId(token);
+        // F2：单次 parse（原 getUserId 二次 parse；非法 token → UNAUTHORIZED 401 而非 500）
+        JwtTokenProvider.ParsedToken parsed = jwtTokenProvider.parseOnce(authHeader.replace("Bearer ", ""));
+        UUID parentId = parsed.userId();
 
         List<User> students = parentAuthService.getLinkedStudents(parentId);
         List<Map<String, Object>> children = students.stream().map(s -> {

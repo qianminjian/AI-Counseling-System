@@ -40,7 +40,9 @@ class DegradationMatrixServiceTest {
     @DisplayName("矩阵：覆盖态展示（override 存在时显示覆盖目标）")
     void matrixShowsOverride() {
         when(valueOps.get(DegradationMatrixService.OVERRIDE_KEY_PREFIX + "tts")).thenReturn("edge_tts");
-        when(eventMapper.selectList(any(Wrapper.class))).thenReturn(List.of());
+        // AUD-043：latestEvent 已改 selectPage（分页插件安全化），mock 返回空页（无最近事件）
+        when(eventMapper.selectPage(any(), any(Wrapper.class)))
+                .thenReturn(new com.baomidou.mybatisplus.extension.plugins.pagination.Page<DegradationEvent>());
 
         var matrix = service.matrix();
 

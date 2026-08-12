@@ -1,5 +1,7 @@
 package com.mindsafe.domain.util;
 
+import com.mindsafe.common.util.TextUtils;
+
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -79,10 +81,11 @@ public final class MessageSummarySummarizer {
             sb.append(s);
         }
         // doing/92 R-021：按 code point 截断（UTF-16 substring 可能切断 emoji 代理对 → 显示 �）
+        // P1-6：与 service 层共用 TextUtils.truncateByCodePoint 单点（消除同构实现）
         if (sb.length() <= MAX_SUMMARY_LENGTH) {
             return sb.toString();
         }
-        return sb.substring(0, sb.offsetByCodePoints(0, MAX_SUMMARY_LENGTH));
+        return TextUtils.truncateByCodePoint(sb.toString(), MAX_SUMMARY_LENGTH);
     }
 
     /** 单句清理：去句尾语气词；整句为噪声（语气词/标点）时返回 null */

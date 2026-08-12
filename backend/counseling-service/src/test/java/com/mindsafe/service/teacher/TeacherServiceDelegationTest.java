@@ -37,7 +37,6 @@ class TeacherServiceDelegationTest {
                 mock(CounselingSessionMapper.class),
                 mock(com.mindsafe.domain.mapper.UserMapper.class),
                 mock(TeacherNoteStore.class),
-                mock(com.mindsafe.domain.mapper.NotificationMapper.class),
                 mock(com.mindsafe.domain.mapper.MessageSummaryMapper.class),
                 mock(com.mindsafe.service.security.FieldEncryptionService.class),
                 mock(com.mindsafe.service.session.SessionAccessService.class),

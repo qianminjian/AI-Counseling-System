@@ -3,13 +3,7 @@
  * 复用 parent-h5 平台请求工厂（Bearer 注入 / 401 刷新重放），与家长 API 同构。
  * 扫码入口页（/p/:v/:deviceCode）为匿名可查端点（info/status），绑定类端点需登录态。
  */
-import { createPlatformRequest } from '../platform/request'
-import { createPlatformTokens } from '../../../shared/src/auth-transport/tokenStorage'
-import { sessionStorageImpl } from '../platform/storage'
-
-const request = createPlatformRequest({
-  storage: createPlatformTokens('parent_', sessionStorageImpl),
-})
+import { parentRequest, tocRequest } from './request'
 
 // ========== 设备 API ==========
 
@@ -45,17 +39,17 @@ export interface BindResult {
 
 /** 扫码入口自检分流（匿名） */
 export function getDeviceInfo(deviceCode: string) {
-  return request<DeviceInfo>(`/device/${deviceCode}/info`, { method: 'GET' })
+  return parentRequest<DeviceInfo>(`/device/${deviceCode}/info`, { method: 'GET' })
 }
 
 /** 回连检查轮询（匿名，3s 间隔） */
 export function getDeviceStatus(deviceCode: string) {
-  return request<DeviceStatus>(`/device/${deviceCode}/status`, { method: 'GET' })
+  return parentRequest<DeviceStatus>(`/device/${deviceCode}/status`, { method: 'GET' })
 }
 
 /** 生成绑定验证码会话（登录态，触发设备语音播报） */
 export function createBindCode(deviceCode: string) {
-  return request<BindCodeResult>(`/device/${deviceCode}/bind-code`, { method: 'POST' })
+  return parentRequest<BindCodeResult>(`/device/${deviceCode}/bind-code`, { method: 'POST' })
 }
 
 /** 绑定设备（登录态，归属 + 验证码双因子） */
@@ -63,16 +57,12 @@ export function bindDevice(
   deviceCode: string,
   data: { bindType: string; bindTargetId: string; code: string }
 ) {
-  return request<BindResult>(`/device/${deviceCode}/bind`, { method: 'POST', data })
+  return parentRequest<BindResult>(`/device/${deviceCode}/bind`, { method: 'POST', data })
 }
 
 // ========== 家庭登录上下文适配器（AD-008，2026-08-11） ==========
-// 设备域按身份上下文收进单一模块：匿名扫码（上方 parent_ request）+ 家庭登录（本段 toc_ request），
+// 设备域按身份上下文收进单一模块：匿名扫码（上方 parentRequest）+ 家庭登录（本段 tocRequest），
 // 共享类型语义（DeviceInfo/TocDeviceItem 同源设备概念）。原 toc.ts 设备段迁移至此。
-
-const tocRequest = createPlatformRequest({
-  storage: createPlatformTokens('toc_', sessionStorageImpl),
-})
 
 export interface TocDeviceItem {
   deviceCode: string

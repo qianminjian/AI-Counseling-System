@@ -2,8 +2,7 @@ package com.mindsafe.service.safety;
 
 import com.mindsafe.domain.entity.RiskEvent;
 import com.mindsafe.domain.mapper.RiskEventMapper;
-import com.mindsafe.service.notification.NotificationService;
-import com.mindsafe.service.notification.RiskNotifyOutboxService;
+import com.mindsafe.service.risk.RiskEventWriter;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -17,6 +16,8 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 /**
@@ -29,10 +30,7 @@ class SosEventServiceTest {
     private RiskEventMapper riskEventMapper;
 
     @Mock
-    private NotificationService notificationService;
-
-    @Mock
-    private RiskNotifyOutboxService riskNotifyOutboxService;
+    private RiskEventWriter riskEventWriter;
 
     private SosEventService service;
 
@@ -41,22 +39,22 @@ class SosEventServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new SosEventService(riskEventMapper, notificationService, riskNotifyOutboxService);
+        service = new SosEventService(riskEventMapper, riskEventWriter);
     }
 
     @Test
-    @DisplayName("正常上报：落 S2(YELLOW) 风险事件 sourceType=sos 并通知教师")
+    @DisplayName("正常上报：落 S2(YELLOW) 风险事件 sourceType=sos 并经统一入口通知教师（write(event, true)）")
     void recordSosEvent_insertsS2Event_andNotifies() {
         when(riskEventMapper.selectCount(any())).thenReturn(0L);
-        when(riskEventMapper.insert(any(RiskEvent.class))).thenReturn(1);
 
         SosEventService.SosResult result = service.recordSosEvent(tenantId, studentId);
 
         assertThat(result.deduplicated()).isFalse();
         assertThat(result.riskEventId()).isNotNull();
 
+        // S-009：落库 + 通知义务统一由 RiskEventWriter 承担（SOS 需教师通知 → true）
         ArgumentCaptor<RiskEvent> captor = ArgumentCaptor.forClass(RiskEvent.class);
-        verify(riskEventMapper).insert(captor.capture());
+        verify(riskEventWriter).write(captor.capture(), eq(true));
         RiskEvent event = captor.getValue();
         assertThat(event.getTenantId()).isEqualTo(tenantId);
         assertThat(event.getStudentUserId()).isEqualTo(studentId);
@@ -66,10 +64,6 @@ class SosEventServiceTest {
         assertThat(event.getRiskLevel()).isEqualTo(1); // S2 = YELLOW
         assertThat(event.getDetectedBy()).isEqualTo("sos_button");
         assertThat(event.getStatus()).isEqualTo("open");
-
-        verify(notificationService).notifyRiskEvent(event);
-        // P0-4：通知成功 → 状态标记 sent
-        verify(riskNotifyOutboxService).markSent(event);
     }
 
     @Test
@@ -80,30 +74,26 @@ class SosEventServiceTest {
         SosEventService.SosResult result = service.recordSosEvent(tenantId, studentId);
 
         assertThat(result.deduplicated()).isTrue();
-        verify(riskEventMapper, never()).insert(any(RiskEvent.class));
-        verify(notificationService, never()).notifyRiskEvent(any());
+        verify(riskEventWriter, never()).write(any(RiskEvent.class), anyBoolean());
     }
 
     @Test
-    @DisplayName("通知失败不阻断：事件已落库，标记 failed 进补偿队列（P0-4）")
+    @DisplayName("通知失败语义已收敛至 RiskEventWriter（P0-4：内部 catch + markFailed 进补偿队列），本层不阻断")
     void recordSosEvent_notificationFailure_swallowed() {
         when(riskEventMapper.selectCount(any())).thenReturn(0L);
-        when(riskEventMapper.insert(any(RiskEvent.class))).thenReturn(1);
-        doThrow(new RuntimeException("通知服务宕机")).when(notificationService).notifyRiskEvent(any());
 
         SosEventService.SosResult result = service.recordSosEvent(tenantId, studentId);
 
         assertThat(result.deduplicated()).isFalse();
         assertThat(result.riskEventId()).isNotNull();
-        verify(riskEventMapper).insert(any(RiskEvent.class));
-        verify(riskNotifyOutboxService).markFailed(any(RiskEvent.class));
+        verify(riskEventWriter).write(any(RiskEvent.class), eq(true));
     }
 
     @Test
     @DisplayName("落库失败 fail-fast：安全关键记录不允许静默丢失")
     void recordSosEvent_insertFailure_throws() {
         when(riskEventMapper.selectCount(any())).thenReturn(0L);
-        when(riskEventMapper.insert(any(RiskEvent.class)))
+        when(riskEventWriter.write(any(RiskEvent.class), anyBoolean()))
                 .thenThrow(new RuntimeException("DB 不可用"));
 
         assertThatThrownBy(() -> service.recordSosEvent(tenantId, studentId))

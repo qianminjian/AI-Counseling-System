@@ -48,13 +48,9 @@ class RiskMetricsJobTest {
     @Test
     @DisplayName("刷新：逾期计数（超 SLA 未处置）+ dead 计数")
     void refreshCounts() {
-        Instant now = Instant.now();
-        when(mapper.selectList(any(Wrapper.class))).thenReturn(List.of(
-                event(3, now.minus(1, ChronoUnit.HOURS), RiskEvent.STATUS_OPEN, "sent"),      // 逾期（>15min）
-                event(3, now.minus(1, ChronoUnit.MINUTES), RiskEvent.STATUS_OPEN, "sent"),     // 未逾期
-                event(1, now.minus(1, ChronoUnit.DAYS), RiskEvent.STATUS_CLAIMED, "sent")      // 逾期（>8h）
-        ));
-        when(mapper.selectCount(any(Wrapper.class))).thenReturn(3L);
+        // P2-4：逾期过滤已 SQL 下推（selectCount 返回），不再全表拉取内存过滤
+        when(mapper.selectCount(any(Wrapper.class))).thenReturn(2L, 3L);   // overdue=2, dead=3
+        when(mapper.selectList(any(Wrapper.class))).thenReturn(List.of()); // refreshTenantGauges 无事件
 
         job.refresh();
 
@@ -71,6 +67,7 @@ class RiskMetricsJobTest {
         open.setTenantId(tenantA);
         RiskEvent claimed = event(2, now.minus(1, ChronoUnit.HOURS), RiskEvent.STATUS_CLAIMED, "sent");
         claimed.setTenantId(tenantA);
+        when(mapper.selectCount(any(Wrapper.class))).thenReturn(0L); // overdue/dead 无事件
         when(mapper.selectList(any(Wrapper.class))).thenReturn(List.of(open, claimed));
 
         job.refresh();
@@ -90,9 +87,10 @@ class RiskMetricsJobTest {
         UUID tenantA = UUID.randomUUID();
         RiskEvent e = event(3, now.minus(2, ChronoUnit.HOURS), RiskEvent.STATUS_OPEN, "sent");
         e.setTenantId(tenantA);
-        // selectList 调用序：每次 refresh 先 countOverdue 后 refreshTenantGauges（两次 refresh 共 4 次）
+        when(mapper.selectCount(any(Wrapper.class))).thenReturn(0L); // overdue/dead 无事件
+        // selectList 调用序：P2-4 后仅 refreshTenantGauges 消费（两次 refresh 共 2 次）
         when(mapper.selectList(any(Wrapper.class))).thenReturn(
-                List.of(e), List.of(e), List.of(), List.of());
+                List.of(e), List.of());
 
         job.refresh();
         job.refresh();
@@ -110,6 +108,7 @@ class RiskMetricsJobTest {
         UUID tenantA = UUID.randomUUID();
         RiskEvent e = event(3, now.minus(2, ChronoUnit.HOURS), RiskEvent.STATUS_OPEN, "sent");
         e.setTenantId(tenantA);
+        when(mapper.selectCount(any(Wrapper.class))).thenReturn(0L); // overdue/dead 无事件
         when(mapper.selectList(any(Wrapper.class))).thenReturn(List.of(e));
 
         job.refresh();

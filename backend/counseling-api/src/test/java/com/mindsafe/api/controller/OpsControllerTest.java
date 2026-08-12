@@ -82,7 +82,8 @@ class OpsControllerTest {
         var response = controller.healthHistory("tts", 50);
 
         assertThat(response.data()).hasSize(1);
-        assertThat(response.data().get(0).getService()).isEqualTo("tts");
+        // F9：响应收敛为 ServiceHealthSnapshotVO（record 访问器）
+        assertThat(response.data().get(0).service()).isEqualTo("tts");
     }
 
     @Test
@@ -107,7 +108,8 @@ class OpsControllerTest {
         var response = controller.auditLogs(null, "CONFIG_UPDATE", null, null, 100);
 
         assertThat(response.data()).hasSize(1);
-        assertThat(response.data().get(0).getAction()).isEqualTo("CONFIG_UPDATE");
+        // F9：响应收敛为 AuditLogVO（record 访问器）
+        assertThat(response.data().get(0).action()).isEqualTo("CONFIG_UPDATE");
     }
 
     @Test
@@ -359,7 +361,8 @@ class OpsControllerTest {
         var response = controller.alertEvents("firing", 100);
 
         assertThat(response.data()).hasSize(1);
-        assertThat(response.data().get(0).getStatus()).isEqualTo(AlertEvent.STATUS_FIRING);
+        // F9：响应收敛为 AlertEventVO（record 访问器）
+        assertThat(response.data().get(0).status()).isEqualTo(AlertEvent.STATUS_FIRING);
     }
 
     @Test

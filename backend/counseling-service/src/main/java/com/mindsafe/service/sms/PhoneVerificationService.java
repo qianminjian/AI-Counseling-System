@@ -2,6 +2,7 @@ package com.mindsafe.service.sms;
 
 import com.mindsafe.common.dto.ErrorCode;
 import com.mindsafe.common.exception.BizException;
+import com.mindsafe.common.util.PhoneMasker;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -13,7 +14,7 @@ import java.util.concurrent.TimeUnit;
 /**
  * 手机验证码服务（AUTH-013）
  * <p>
- * 流程：生成 6 位验证码 → Redis 存储（5 分钟 TTL）→ 通过 SmsService 发送 → 校验。
+ * 流程：生成 6 位验证码 → 通过 SmsService 发送成功 → Redis 存储（5 分钟 TTL）→ 校验。
  * 防刷：同一手机号 60 秒内不可重复发送；验证 5 次失败即废码（O3 防爆破）。
  */
 @Service
@@ -56,20 +57,21 @@ public class PhoneVerificationService {
         // 生成验证码
         String code = generateCode();
 
-        // 存储（5 分钟有效）+ 清除旧失败计数
+        // P2-3：先发短信，发送成功后再写 Redis（失败不占冷却键，消除“冷却占位假死窗口”；
+        // 验证码语义与冷却时长不变）
+        boolean sent = smsService.sendVerificationCode(phone, code, purpose);
+        if (!sent) {
+            throw new BizException(ErrorCode.INTERNAL_ERROR, "短信发送失败，请稍后重试");
+        }
+
+        // 发送成功：存储（5 分钟有效）+ 清除旧失败计数
         String codeKey = CODE_KEY_PREFIX + phone;
         String attemptKey = ATTEMPT_KEY_PREFIX + phone;
         redisTemplate.opsForValue().set(codeKey, code, CODE_TTL_MINUTES, TimeUnit.MINUTES);
         redisTemplate.opsForValue().set(cooldownKey, "1", COOLDOWN_SECONDS, TimeUnit.SECONDS);
         redisTemplate.delete(attemptKey);
 
-        // 发送
-        boolean sent = smsService.sendVerificationCode(phone, code, purpose);
-        if (!sent) {
-            throw new BizException(ErrorCode.INTERNAL_ERROR, "短信发送失败，请稍后重试");
-        }
-
-        log.info("验证码已发送: phone={}, purpose={}", maskPhone(phone), purpose);
+        log.info("验证码已发送: phone={}, purpose={}", PhoneMasker.mask(phone), purpose);
     }
 
     /**
@@ -93,7 +95,7 @@ public class PhoneVerificationService {
             // 超限废码：删除验证码，确保攻击者无法继续尝试
             redisTemplate.delete(codeKey);
             redisTemplate.delete(attemptKey);
-            log.warn("验证码暴力尝试锁定: phone={}, attempts={}", maskPhone(phone), attempts);
+            log.warn("验证码暴力尝试锁定: phone={}, attempts={}", PhoneMasker.mask(phone), attempts);
             return false;
         }
 
@@ -125,10 +127,5 @@ public class PhoneVerificationService {
         if (phone == null || !phone.matches("^1[3-9]\\d{9}$")) {
             throw new BizException(ErrorCode.PARAM_INVALID, "手机号格式不正确");
         }
-    }
-
-    private String maskPhone(String phone) {
-        if (phone == null || phone.length() < 7) return "***";
-        return phone.substring(0, 3) + "****" + phone.substring(phone.length() - 4);
     }
 }

@@ -35,7 +35,7 @@ const codes = [
   { codeId: 'c-3', code: 'OLD00001', usedCount: 2, maxUses: 20, status: 'active', expiresAt: '2026-01-01T00:00:00', createdAt: '2026-01-01T00:00:00' },
 ];
 const auditLogs = [
-  { auditLogId: 'a-1', action: 'CREATE_INVITE_CODE', resourceType: 'INVITE_CODE', detail: '生成邀请码', createdAt: '2026-07-28T09:00:00' },
+  { auditLogId: 'a-1', tenantId: 't-1', userId: 'u-12345678', action: 'CREATE_INVITE_CODE', resourceType: 'INVITE_CODE', detail: '生成邀请码', createdAt: '2026-07-28T09:00:00' },
 ];
 
 describe('AdminPanel 管理面板', () => {
@@ -129,6 +129,8 @@ describe('AdminPanel 管理面板', () => {
     expect(await screen.findByText('操作审计日志')).toBeInTheDocument();
     expect(screen.getByText('CREATE_INVITE_CODE')).toBeInTheDocument();
     expect(screen.getByText('INVITE_CODE')).toBeInTheDocument();
+    // D-联动：操作人列展示 userId 前 8 位（与 admin-web AuditPage 同口径）
+    expect(screen.getByText('u-123456')).toBeInTheDocument();
   });
 
   it('邀请码加载失败不崩溃', async () => {

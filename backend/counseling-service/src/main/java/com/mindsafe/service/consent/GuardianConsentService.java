@@ -13,6 +13,7 @@ import com.mindsafe.service.sms.PhoneVerificationService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.UUID;
 
@@ -87,12 +88,17 @@ public class GuardianConsentService {
 
     /**
      * 确认监护人同意：验证码校验 + 写入同意记录。
+     * <p>
+     * 事务边界（专题 E P0-1）：同意记录写入 + 账号 reactivate + 审计三处写操作同事务，
+     * 避免「有同意记录但账号仍 withdrawn」或「账号恢复但同意证据缺失」的中间态——
+     * PIPL §31 同意记录是合规证据核心，部分写入破坏证据完整性。
      *
      * @param tenantId      租户 ID
      * @param studentUserId 学生用户 ID
      * @param guardianPhone 监护人手机号
      * @param code          验证码
      */
+    @Transactional
     public void confirmConsent(UUID tenantId, UUID studentUserId, String guardianPhone, String code) {
         // 验证码校验
         boolean verified = phoneVerificationService.verifyCode(guardianPhone, code);

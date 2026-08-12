@@ -8,9 +8,6 @@ import com.mindsafe.ai.risk.SemanticRiskClassifier;
 import com.mindsafe.common.dto.risk.RiskDetectionResult;
 import com.mindsafe.common.enums.RiskLevel;
 import com.mindsafe.domain.entity.RiskEvent;
-import com.mindsafe.domain.mapper.RiskEventMapper;
-import com.mindsafe.service.notification.NotificationService;
-import com.mindsafe.service.notification.RiskNotifyOutboxService;
 import com.mindsafe.ai.risk.RiskKeywordRegistry;
 import com.mindsafe.service.risk.RiskEventWriter;
 import org.junit.jupiter.api.BeforeEach;
@@ -45,9 +42,6 @@ class ConversationRiskProcessorTest {
     private RiskDetectorService riskDetectorService;
     private SemanticRiskClassifier semanticRiskClassifier;
     private RiskScoreCalculator riskScoreCalculator;
-    private RiskEventMapper riskEventMapper;
-    private NotificationService notificationService;
-    private RiskNotifyOutboxService riskNotifyOutboxService;
     private RiskEventWriter riskEventWriter;
 
     private ConversationRiskProcessor processor;
@@ -57,14 +51,10 @@ class ConversationRiskProcessorTest {
         riskDetectorService = mock(RiskDetectorService.class);
         semanticRiskClassifier = mock(SemanticRiskClassifier.class);
         riskScoreCalculator = mock(RiskScoreCalculator.class);
-        riskEventMapper = mock(RiskEventMapper.class);
-        notificationService = mock(NotificationService.class);
-        riskNotifyOutboxService = mock(RiskNotifyOutboxService.class);
         riskEventWriter = mock(RiskEventWriter.class);
 
         processor = new ConversationRiskProcessor(
                 riskDetectorService, semanticRiskClassifier, riskScoreCalculator,
-                riskEventMapper, notificationService, riskNotifyOutboxService,
                 new ObjectMapper(), riskEventWriter, new RiskKeywordRegistry());
 
         // 默认评分结果

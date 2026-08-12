@@ -59,13 +59,12 @@ class TeacherAlertWorkflowTest {
         when(fieldEncryptionService.encrypt(any())).thenAnswer(inv -> inv.getArgument(0));
         when(fieldEncryptionService.decrypt(any())).thenAnswer(inv -> inv.getArgument(0));
         alertLifecycleService = new AlertLifecycleService(
-                riskEventMapper, new TeacherNoteStore(teacherNoteMapper), userMapper, fieldEncryptionService);
+                riskEventMapper, new TeacherNoteStore(teacherNoteMapper, fieldEncryptionService), userMapper, fieldEncryptionService);
         teacherService = new TeacherService(
                 riskEventMapper,
                 mock(CounselingSessionMapper.class),
                 userMapper,
-                new TeacherNoteStore(teacherNoteMapper),
-                mock(NotificationMapper.class),
+                new TeacherNoteStore(teacherNoteMapper, fieldEncryptionService),
                 mock(MessageSummaryMapper.class),
                 fieldEncryptionService,
                 mock(SessionAccessService.class),

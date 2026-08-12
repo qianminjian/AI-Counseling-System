@@ -28,6 +28,9 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -62,7 +65,7 @@ class TeacherStatsPerformanceTest {
     @BeforeEach
     void setUp() {
         service = new TeacherService(riskEventMapper, sessionMapper, userMapper,
-                new TeacherNoteStore(teacherNoteMapper), notificationMapper, messageSummaryMapper, fieldEncryptionService,
+                new TeacherNoteStore(teacherNoteMapper, fieldEncryptionService), messageSummaryMapper, fieldEncryptionService,
                 sessionAccessService, mock(AuditLogService.class),
                 new com.mindsafe.service.teacher.AlertTodoMutePolicy(),
                 new com.mindsafe.service.casemanage.CaseLifecycleService(), mock(MessageSummaryService.class),
@@ -72,7 +75,9 @@ class TeacherStatsPerformanceTest {
         lenient().when(riskEventMapper.selectList(any())).thenReturn(List.of());
         lenient().when(userMapper.selectList(any())).thenReturn(List.of());
         lenient().when(sessionMapper.selectList(any())).thenReturn(List.of());
-        lenient().when(messageSummaryMapper.selectMaps(any())).thenReturn(List.of());
+        // P1-3（板块06）：情绪分布聚合已下移 Mapper 层 @Select 方法
+        lenient().when(messageSummaryMapper.countEmotionDistribution(eq(tenantId), anyString(), any()))
+                .thenReturn(List.of());
         // B5：班级范围查询下沉 SessionAccessService（本文件仅 classScope 测试触碰）
         lenient().when(sessionAccessService.listClassStudents(any(), any())).thenReturn(List.of());
     }
@@ -109,7 +114,7 @@ class TeacherStatsPerformanceTest {
     @Test
     @DisplayName("getStats 情绪分布：DB GROUP BY 聚合，不再整表加载 message_summaries")
     void emotionDistribution_dbAggregation() {
-        when(messageSummaryMapper.selectMaps(any())).thenReturn(List.of(
+        when(messageSummaryMapper.countEmotionDistribution(eq(tenantId), anyString(), any())).thenReturn(List.of(
                 Map.of("emotion_label", "angry", "cnt", 1L),
                 Map.of("emotion_label", "sad", "cnt", 3L)));
 
@@ -127,11 +132,13 @@ class TeacherStatsPerformanceTest {
     void satisfactionStats_dbAggregation() {
         // 全量：5星×2、4星×1、3星×1 → total=4, avg=4.25→4.3
         // 近 7 天：5星×1
-        when(sessionMapper.selectMaps(any())).thenReturn(
-                List.of(Map.of("rating", 5, "cnt", 2L),
-                        Map.of("rating", 4, "cnt", 1L),
-                        Map.of("rating", 3, "cnt", 1L)),
-                List.of(Map.of("rating", 5, "cnt", 1L)));
+        // P1-3（板块06）：评分分布聚合下移 Mapper 层 @Select（since 可空 → nullable 匹配两次调用按序返回）
+        when(sessionMapper.countRatingDistribution(eq(tenantId), nullable(Instant.class)))
+                .thenReturn(
+                        List.of(Map.of("rating", 5, "cnt", 2L),
+                                Map.of("rating", 4, "cnt", 1L),
+                                Map.of("rating", 3, "cnt", 1L)),
+                        List.of(Map.of("rating", 5, "cnt", 1L)));
 
         TeacherService.SatisfactionStatsVO stats = service.getSatisfactionStats(tenantId, null);
 
@@ -151,7 +158,7 @@ class TeacherStatsPerformanceTest {
     @Test
     @DisplayName("getSatisfactionStats：无评价数据 → 全零不除零异常")
     void satisfactionStats_emptySafe() {
-        when(sessionMapper.selectMaps(any())).thenReturn(List.of());
+        when(sessionMapper.countRatingDistribution(eq(tenantId), nullable(Instant.class))).thenReturn(List.of());
 
         TeacherService.SatisfactionStatsVO stats = service.getSatisfactionStats(tenantId, null);
 

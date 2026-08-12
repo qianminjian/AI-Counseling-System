@@ -76,7 +76,8 @@ class AiChatServiceImplTest {
         service = new AiChatServiceImpl(builder, chatMemory, outputContentFilter,
                 outputReviewService,
                 new LlmStreamEnhancer(3000, 60000, 1, 2000, new SimpleMeterRegistry(), new PromptTemplateService()),
-                mock(com.mindsafe.domain.mapper.ModelCallLogMapper.class), new SimpleMeterRegistry());
+                mock(com.mindsafe.domain.mapper.ModelCallLogMapper.class), new SimpleMeterRegistry(),
+                new PromptTemplateService(), Runnable::run);
     }
 
     @Test
@@ -145,7 +146,8 @@ class AiChatServiceImplTest {
         AiChatServiceImpl fallbackService = new AiChatServiceImpl(
                 mock(ChatClient.Builder.class), chatMemory,
                 mock(OutputContentFilter.class), outputReviewService, enhancer,
-                mock(com.mindsafe.domain.mapper.ModelCallLogMapper.class), new SimpleMeterRegistry());
+                mock(com.mindsafe.domain.mapper.ModelCallLogMapper.class), new SimpleMeterRegistry(),
+                new PromptTemplateService(), Runnable::run);
 
         List<StreamMessageEvent> events = fallbackService
                 .chatWithPrompt(sessionId, "sad", "孩子消息", "【预渲染】SYS_001")

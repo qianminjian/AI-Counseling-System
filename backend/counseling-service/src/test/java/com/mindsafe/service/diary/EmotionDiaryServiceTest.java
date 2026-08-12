@@ -66,6 +66,19 @@ class EmotionDiaryServiceTest {
     }
 
     @Test
+    @DisplayName("P2-2（板块06）：upsertCheckin 显式 tenant_id 与调用上下文一致（@InterceptorIgnore 纵深防线）")
+    void checkin_upsertTenantMatchesContext() {
+        service.checkin(tenantId, studentUserId, "sad", 2, "备注");
+
+        ArgumentCaptor<EmotionDiary> captor = ArgumentCaptor.forClass(EmotionDiary.class);
+        verify(diaryMapper).upsertCheckin(captor.capture());
+        EmotionDiary diary = captor.getValue();
+        // 纵深防线：upsertCheckin 经 @InterceptorIgnore 绕过租户拦截，显式 tenant_id 必须
+        // 与调用上下文一致且非空，否则将发生静默跨租户写入
+        assertThat(diary.getTenantId()).isNotNull().isEqualTo(tenantId);
+    }
+
+    @Test
     @DisplayName("checkin：upsert 后回读今日记录返回（覆盖场景返回最终态）")
     void checkin_returnsTodayAfterUpsert() {
         EmotionDiary persisted = new EmotionDiary();

@@ -1,5 +1,7 @@
 package com.mindsafe.service.toc;
 
+import com.mindsafe.common.dto.ErrorCode;
+import com.mindsafe.common.exception.BizException;
 import com.mindsafe.domain.entity.DeviceBinding;
 import com.mindsafe.domain.mapper.DeviceBindingMapper;
 import com.mindsafe.domain.mapper.DeviceMapper;
@@ -53,7 +55,7 @@ public class TocDeviceService {
                         .eq(com.mindsafe.domain.entity.Device::getDeviceCode, deviceCode)
                         .last("LIMIT 1"));
         if (device == null) {
-            throw new IllegalArgumentException("设备不存在");
+            throw new BizException(ErrorCode.RESOURCE_NOT_FOUND, "设备不存在");
         }
         long count = bindingMapper.selectCount(
                 new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<DeviceBinding>()
@@ -62,7 +64,7 @@ public class TocDeviceService {
                         .eq(DeviceBinding::getBindType, DeviceBinding.BIND_TYPE_FAMILY)
                         .eq(DeviceBinding::getStatus, DeviceBinding.STATUS_ACTIVE));
         if (count == 0) {
-            throw new IllegalArgumentException("该设备不属于当前家庭");
+            throw new BizException(ErrorCode.FORBIDDEN, "该设备不属于当前家庭");
         }
         return deviceService.unbind(deviceCode, operator);
     }

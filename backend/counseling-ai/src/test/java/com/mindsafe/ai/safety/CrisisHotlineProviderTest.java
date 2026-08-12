@@ -9,8 +9,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * CrisisHotlineProvider 契约测试（DOC-073 B1，doing/77 §22）
  * <p>
- * 锁死全链：改配置 → RED 硬短路 / Layer2 召回 / Layer1 安全模板 / 热线显示文本
- * 四路径输出全部为新号码；默认配置回退兜底常量。
+ * 锁死全链：改配置 → RED 硬短路 / Layer2 召回 / Layer1 安全模板
+ * 三路径输出全部为新号码（P1-2 板块02：CrisisResourceProvider 已删除，
+ * 热线显示文本与紧急联系方式等死方法不再存在，渲染统一收敛至 render）；
+ * 默认配置回退兜底常量。
  */
 class CrisisHotlineProviderTest {
 
@@ -71,12 +73,11 @@ class CrisisHotlineProviderTest {
     class ChainContract {
 
         @Test
-        @DisplayName("RED 硬短路话术经配置渲染，不含默认号码")
+        @DisplayName("RED 硬短路话术经配置渲染，不含默认号码（年级模板选择已内联 RiskResponseStrategy）")
         void redReplyRenderedFromConfig() {
             CrisisHotlineProvider provider = new CrisisHotlineProvider(CUSTOM_HOTLINE);
-            CrisisResourceProvider crisis = new CrisisResourceProvider(provider);
 
-            String redReply = crisis.getRedSafetyReply(4);
+            String redReply = provider.render(CrisisResources.RED_SAFETY_REPLY);
 
             assertThat(redReply).contains(CUSTOM_HOTLINE)
                     .doesNotContain(CrisisResources.NATIONAL_PSYCHOLOGICAL_AID)
@@ -108,25 +109,12 @@ class CrisisHotlineProviderTest {
         }
 
         @Test
-        @DisplayName("热线显示文本经配置渲染（getCrisisHotlineText）")
-        void hotlineTextRenderedFromConfig() {
-            CrisisResourceProvider crisis = new CrisisResourceProvider(new CrisisHotlineProvider(CUSTOM_HOTLINE));
-
-            assertThat(crisis.getCrisisHotlineText(java.util.UUID.randomUUID()))
-                    .contains(CUSTOM_HOTLINE)
-                    .doesNotContain(CrisisResources.NATIONAL_PSYCHOLOGICAL_AID);
-        }
-
-        @Test
-        @DisplayName("默认配置下四路径输出与兜底号码一致（回归基线）")
+        @DisplayName("默认配置下三路径输出与兜底号码一致（回归基线）")
         void defaultChainMatchesFallback() {
-            CrisisResourceProvider crisis = new CrisisResourceProvider();
             CrisisHotlineProvider provider = new CrisisHotlineProvider();
 
-            assertThat(crisis.getRedSafetyReply(4)).contains(CrisisResources.NATIONAL_PSYCHOLOGICAL_AID);
+            assertThat(provider.render(CrisisResources.RED_SAFETY_REPLY)).contains(CrisisResources.NATIONAL_PSYCHOLOGICAL_AID);
             assertThat(provider.render(RecallPhrases.ESCALATE_RECALL)).contains(CrisisResources.NATIONAL_PSYCHOLOGICAL_AID);
-            assertThat(crisis.getCrisisHotlineText(java.util.UUID.randomUUID()))
-                    .contains(CrisisResources.NATIONAL_PSYCHOLOGICAL_AID);
         }
     }
 }

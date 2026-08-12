@@ -162,12 +162,13 @@ public class TocAuthService implements EnvironmentAware, LoginRateLimiter {
 
     @Override
     public void recordFailure(String identifier) {
-        // 频率模型不按失败计数锁定（每分钟 10 次已覆盖），无操作
+        // 有意 no-op（审计 03-P1-3 契约声明）：频率窗口模型不按失败计数锁定
+        // （每分钟 10 次已覆盖爆破防护，窗口自动过期无持久计数），见 LoginRateLimiter javadoc
     }
 
     @Override
     public void clearFailures(String identifier) {
-        // 频率窗口自动过期，无操作
+        // 有意 no-op：频率窗口自动过期，无需显式清零（见 LoginRateLimiter javadoc 契约说明）
     }
 
     /** P1 速率限制：同一手机号每分钟最多 10 次认证请求 */

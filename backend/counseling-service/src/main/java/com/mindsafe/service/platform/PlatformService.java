@@ -1,6 +1,7 @@
 package com.mindsafe.service.platform;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.mindsafe.domain.entity.CounselingSession;
 import com.mindsafe.domain.entity.RiskEvent;
 import com.mindsafe.domain.entity.School;
@@ -12,10 +13,12 @@ import com.mindsafe.domain.mapper.RiskEventMapper;
 import com.mindsafe.domain.mapper.SchoolMapper;
 import com.mindsafe.domain.mapper.TenantMapper;
 import com.mindsafe.domain.mapper.UserMapper;
+import com.mindsafe.service.common.CounselingTimeZone;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -95,33 +98,67 @@ public class PlatformService {
         List<Tenant> tenants = tenantMapper.selectList(
                 new LambdaQueryWrapper<Tenant>().orderByDesc(Tenant::getCreatedAt));
 
-        return tenants.stream().map(t -> {
-            long schools = schoolMapper.selectCount(
-                    new LambdaQueryWrapper<School>().eq(School::getTenantId, t.getTenantId()));
-            long students = userMapper.selectCount(
-                    new LambdaQueryWrapper<User>()
-                            .eq(User::getTenantId, t.getTenantId())
-                            .eq(User::getUserType, User.USER_TYPE_STUDENT));
-            long teachers = userMapper.selectCount(
-                    new LambdaQueryWrapper<User>()
-                            .eq(User::getTenantId, t.getTenantId())
-                            .in(User::getUserType, User.USER_TYPE_TEACHER, User.USER_TYPE_PSYCH_TEACHER, User.USER_TYPE_CLASS_TEACHER, User.USER_TYPE_HEAD_TEACHER, User.USER_TYPE_ADMIN));
-            long sessions = sessionMapper.selectCount(
-                    new LambdaQueryWrapper<CounselingSession>().eq(CounselingSession::getTenantId, t.getTenantId()));
+        // P1-7（板块05）：每租户 4 次 selectCount 的 N+1 → GROUP BY 聚合一次取回
+        //（对齐 TeacherService:726 情绪分布 selectMaps 范式），4 张表各 1 次聚合查询，
+        // 循环内 getOrDefault 填充——租户数越多收益越显著
+        Map<UUID, Long> schoolCounts = tenantCountMap(schoolMapper.selectMaps(
+                new QueryWrapper<School>()
+                        .select("tenant_id, COUNT(*) AS cnt")
+                        .groupBy("tenant_id")));
+        Map<UUID, Long> studentCounts = tenantCountMap(userMapper.selectMaps(
+                new QueryWrapper<User>()
+                        .select("tenant_id, COUNT(*) AS cnt")
+                        .eq("user_type", User.USER_TYPE_STUDENT)
+                        .groupBy("tenant_id")));
+        Map<UUID, Long> teacherCounts = tenantCountMap(userMapper.selectMaps(
+                new QueryWrapper<User>()
+                        .select("tenant_id, COUNT(*) AS cnt")
+                        .in("user_type", User.USER_TYPE_TEACHER, User.USER_TYPE_PSYCH_TEACHER,
+                                User.USER_TYPE_CLASS_TEACHER, User.USER_TYPE_HEAD_TEACHER, User.USER_TYPE_ADMIN)
+                        .groupBy("tenant_id")));
+        Map<UUID, Long> sessionCounts = tenantCountMap(sessionMapper.selectMaps(
+                new QueryWrapper<CounselingSession>()
+                        .select("tenant_id, COUNT(*) AS cnt")
+                        .groupBy("tenant_id")));
 
+        return tenants.stream().map(t -> {
             Map<String, Object> item = new LinkedHashMap<>();
             item.put("tenantId", t.getTenantId());
             item.put("tenantCode", t.getTenantCode());
             item.put("tenantName", t.getTenantName());
             item.put("status", t.getStatus());
             item.put("createdAt", t.getCreatedAt());
-            item.put("schoolCount", schools);
-            item.put("studentCount", students);
-            item.put("teacherCount", teachers);
-            item.put("sessionCount", sessions);
+            item.put("schoolCount", schoolCounts.getOrDefault(t.getTenantId(), 0L));
+            item.put("studentCount", studentCounts.getOrDefault(t.getTenantId(), 0L));
+            item.put("teacherCount", teacherCounts.getOrDefault(t.getTenantId(), 0L));
+            item.put("sessionCount", sessionCounts.getOrDefault(t.getTenantId(), 0L));
             return item;
         }).collect(Collectors.toList());
         });
+    }
+
+    /**
+     * P1-7：GROUP BY tenant_id 聚合行 → Map&lt;tenantId, count&gt;。
+     * selectMaps 返回 key 为小写物理列名；DB 驱动可能返回 UUID 或字符串，兼容转换。
+     */
+    private static Map<UUID, Long> tenantCountMap(List<Map<String, Object>> rows) {
+        Map<UUID, Long> result = new HashMap<>();
+        if (rows == null) {
+            return result;
+        }
+        for (Map<String, Object> row : rows) {
+            Object tidVal = row.get("tenant_id");
+            Object cntVal = row.get("cnt");
+            if (tidVal == null || !(cntVal instanceof Number)) {
+                continue;
+            }
+            UUID tid = tidVal instanceof UUID u ? u
+                    : tidVal instanceof String s ? UUID.fromString(s) : null;
+            if (tid != null) {
+                result.put(tid, ((Number) cntVal).longValue());
+            }
+        }
+        return result;
     }
 
     /** 单租户详情（学校列表 + 近 7 天会话趋势）；租户不存在返回 null */
@@ -141,10 +178,11 @@ public class PlatformService {
                         .eq(CounselingSession::getTenantId, tenantId)
                         .ge(CounselingSession::getStartedAt, weekAgo));
 
+        // R-010（doing/92）：日桶收敛走 CounselingTimeZone.dateKey，原 systemDefault 依赖宿主机时区（跨部署漂移，G-P0-3）
         Map<String, Long> dailyTrend = recentSessions.stream()
                 .filter(s -> s.getStartedAt() != null)
                 .collect(Collectors.groupingBy(
-                        s -> s.getStartedAt().atZone(java.time.ZoneId.systemDefault()).toLocalDate().toString(),
+                        s -> CounselingTimeZone.dateKey(s.getStartedAt()),
                         Collectors.counting()));
 
         Map<String, Object> detail = new LinkedHashMap<>();

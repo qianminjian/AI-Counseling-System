@@ -5,9 +5,7 @@ import com.mindsafe.common.enums.RiskLevel;
 import com.mindsafe.domain.entity.CounselingSession;
 import com.mindsafe.domain.entity.RiskEvent;
 import com.mindsafe.domain.mapper.CounselingSessionMapper;
-import com.mindsafe.domain.mapper.RiskEventMapper;
-import com.mindsafe.service.notification.NotificationService;
-import com.mindsafe.service.notification.RiskNotifyOutboxService;
+import com.mindsafe.service.risk.RiskEventWriter;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -22,6 +20,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
@@ -40,9 +39,8 @@ import static org.mockito.Mockito.when;
 class OutputSafetyReporterImplTest {
 
     @Mock private CounselingSessionMapper sessionMapper;
-    @Mock private RiskEventMapper riskEventMapper;
-    @Mock private NotificationService notificationService;
-    @Mock private RiskNotifyOutboxService riskNotifyOutboxService;
+    /** S-009（doing/93）：写入统一由 RiskEventWriter 承担（本测试仅验证 needsNotify 传参语义） */
+    @Mock private RiskEventWriter riskEventWriter;
     @Mock private ChatMemoryAppender chatMemoryAppender;
 
     private OutputSafetyReporterImpl reporter;
@@ -53,8 +51,7 @@ class OutputSafetyReporterImplTest {
 
     @BeforeEach
     void setUp() {
-        reporter = new OutputSafetyReporterImpl(sessionMapper, riskEventMapper,
-                notificationService, riskNotifyOutboxService, chatMemoryAppender);
+        reporter = new OutputSafetyReporterImpl(sessionMapper, riskEventWriter, chatMemoryAppender);
     }
 
     private CounselingSession session() {
@@ -69,34 +66,29 @@ class OutputSafetyReporterImplTest {
     class Layer1 {
 
         @Test
-        @DisplayName("会话存在 → RED 事件落库 + 教师通知 + outbox 标记 sent")
+        @DisplayName("会话存在 → RED 事件经统一入口落库并通知（write(event, true)）")
         void block_reportsRedAndNotifies() {
             when(sessionMapper.selectById(sessionId)).thenReturn(session());
 
             reporter.reportLayer1Block(sessionId, "self_harm", "关键词", "片段");
 
+            // S-009：落库 + 通知义务登记统一由 RiskEventWriter 承担（RED 需通知 → true）
             ArgumentCaptor<RiskEvent> captor = ArgumentCaptor.forClass(RiskEvent.class);
-            verify(riskEventMapper).insert(captor.capture());
+            verify(riskEventWriter).write(captor.capture(), eq(true));
             RiskEvent event = captor.getValue();
             assertThat(event.getRiskType()).isEqualTo("output_safety:self_harm");
             assertThat(event.getRiskLevel()).isEqualTo(RiskLevel.RED.severity());
             assertThat(event.getDetectedBy()).isEqualTo("output_filter");
-            verify(notificationService).notifyRiskEvent(event);
-            // P0-4：通知成功 → 状态标记 sent
-            verify(riskNotifyOutboxService).markSent(event);
         }
 
         @Test
-        @DisplayName("教师通知失败：不抛出（不影响对话流），标记 failed 进补偿队列（P0-4）")
-        void notifyFailure_marksFailed() {
+        @DisplayName("教师通知失败语义已收敛至 RiskEventWriter（P0-4：内部 catch + markFailed），本层不感知不阻断")
+        void notifyFailure_delegatedToWriter() {
             when(sessionMapper.selectById(sessionId)).thenReturn(session());
-            doThrow(new RuntimeException("企业微信不可用"))
-                    .when(notificationService).notifyRiskEvent(any(RiskEvent.class));
 
             reporter.reportLayer1Block(sessionId, "self_harm", "关键词", "片段");
 
-            verify(riskEventMapper).insert(any(RiskEvent.class));
-            verify(riskNotifyOutboxService).markFailed(any(RiskEvent.class));
+            verify(riskEventWriter).write(any(RiskEvent.class), eq(true));
         }
 
         @Test
@@ -106,19 +98,16 @@ class OutputSafetyReporterImplTest {
 
             reporter.reportLayer1Block(sessionId, "self_harm", "关键词", "片段");
 
-            verify(riskEventMapper, never()).insert(any(RiskEvent.class));
-            verifyNoInteractions(notificationService);
+            verify(riskEventWriter, never()).write(any(RiskEvent.class), anyBoolean());
         }
 
         @Test
         @DisplayName("持久化异常 → 吞掉不抛出（不影响对话主流程）")
         void persistenceFailure_swallowed() {
             when(sessionMapper.selectById(sessionId)).thenReturn(session());
-            when(riskEventMapper.insert(any(RiskEvent.class))).thenThrow(new RuntimeException("db down"));
+            when(riskEventWriter.write(any(RiskEvent.class), eq(true))).thenThrow(new RuntimeException("db down"));
 
             reporter.reportLayer1Block(sessionId, "violence", "关键词", "片段");
-
-            verifyNoInteractions(notificationService);
         }
     }
 
@@ -127,22 +116,20 @@ class OutputSafetyReporterImplTest {
     class Layer2Violation {
 
         @Test
-        @DisplayName("会话存在 → YELLOW 留痕，不触发教师通知（人工抽检），outbox 标记完成防误重试")
+        @DisplayName("会话存在 → YELLOW 留痕不通知（write(event, false) 防补偿误重试）")
         void violation_recordsYellowWithoutNotify() {
             when(sessionMapper.selectById(sessionId)).thenReturn(session());
 
             reporter.reportLayer2Violation(sessionId, "rewrite", "{}");
 
+            // S-009：低危留痕无通知义务 → write(event, false)，完成态标记由 writer 承担（P0-4）
             ArgumentCaptor<RiskEvent> captor = ArgumentCaptor.forClass(RiskEvent.class);
-            verify(riskEventMapper).insert(captor.capture());
+            verify(riskEventWriter).write(captor.capture(), eq(false));
             assertThat(captor.getValue().getRiskType()).isEqualTo("output_safety");
             assertThat(captor.getValue().getRiskLevel()).isEqualTo(RiskLevel.YELLOW.severity());
             assertThat(captor.getValue().getDetectedBy()).isEqualTo("output_review");
             // doing/92 R-015：审查 JSON 随事件落库（TC260 人工抽检依据）
             assertThat(captor.getValue().getReviewJson()).isEqualTo("{}");
-            verifyNoInteractions(notificationService);
-            // P0-4：无通知义务的事件标记 sent（完成态），防止补偿任务误重试留痕事件
-            verify(riskNotifyOutboxService).markSent(captor.getValue());
         }
 
         @Test
@@ -152,7 +139,7 @@ class OutputSafetyReporterImplTest {
 
             reporter.reportLayer2Violation(sessionId, "block", "{}");
 
-            verify(riskEventMapper, never()).insert(any(RiskEvent.class));
+            verify(riskEventWriter, never()).write(any(RiskEvent.class), anyBoolean());
         }
     }
 
@@ -163,7 +150,7 @@ class OutputSafetyReporterImplTest {
         private final String replacement = "抱歉，刚才的话不合适。我们换个方式聊聊。";
 
         @Test
-        @DisplayName("rewrite → 追加更正消息，YELLOW 留痕（含 reviewJson）不通知，outbox 标记完成")
+        @DisplayName("rewrite → 追加更正消息，YELLOW 留痕不通知（write(event, false)）")
         void rewrite_appendsCorrectionYellowNoNotify() {
             when(sessionMapper.selectById(sessionId)).thenReturn(session());
             when(chatMemoryAppender.hasMessages(anyString())).thenReturn(true);
@@ -176,18 +163,16 @@ class OutputSafetyReporterImplTest {
             assertThat(appendCaptor.getValue().getText()).isEqualTo(replacement);
             verify(chatMemoryAppender, never()).append(anyString(), org.mockito.ArgumentMatchers.isNull());
 
+            // S-009：rewrite 无通知义务 → write(event, false)
             ArgumentCaptor<RiskEvent> eventCaptor = ArgumentCaptor.forClass(RiskEvent.class);
-            verify(riskEventMapper).insert(eventCaptor.capture());
+            verify(riskEventWriter).write(eventCaptor.capture(), eq(false));
             assertThat(eventCaptor.getValue().getRiskType()).isEqualTo("output_safety:recall:rewrite");
             assertThat(eventCaptor.getValue().getRiskLevel()).isEqualTo(RiskLevel.YELLOW.severity());
             assertThat(eventCaptor.getValue().getReviewJson()).isEqualTo("{}");
-            verifyNoInteractions(notificationService);
-            // P0-4：无通知义务 → 标记完成态
-            verify(riskNotifyOutboxService).markSent(eventCaptor.getValue());
         }
 
         @Test
-        @DisplayName("block → 追加更正消息 + ORANGE 事件 + 教师通知 + outbox 标记 sent")
+        @DisplayName("block → 追加更正消息 + ORANGE 事件 + 教师通知（write(event, true)）")
         void block_orangeAndNotifies() {
             when(sessionMapper.selectById(sessionId)).thenReturn(session());
             when(chatMemoryAppender.hasMessages(anyString())).thenReturn(true);
@@ -195,17 +180,16 @@ class OutputSafetyReporterImplTest {
             reporter.applyLayer2Recall(sessionId, "block", replacement, "{}");
 
             verify(chatMemoryAppender).append(eq(sessionId.toString()), org.mockito.ArgumentMatchers.any(AssistantMessage.class));
+            // S-009：block=ORANGE 需教师通知 → write(event, true)
             ArgumentCaptor<RiskEvent> captor = ArgumentCaptor.forClass(RiskEvent.class);
-            verify(riskEventMapper).insert(captor.capture());
+            verify(riskEventWriter).write(captor.capture(), eq(true));
             assertThat(captor.getValue().getRiskType()).isEqualTo("output_safety:recall:block");
             assertThat(captor.getValue().getRiskLevel()).isEqualTo(RiskLevel.ORANGE.severity());
             assertThat(captor.getValue().getReviewJson()).isEqualTo("{}");
-            verify(notificationService).notifyRiskEvent(captor.getValue());
-            verify(riskNotifyOutboxService).markSent(captor.getValue());
         }
 
         @Test
-        @DisplayName("escalate → 追加更正消息 + RED 事件 + 教师通知 + outbox 标记 sent")
+        @DisplayName("escalate → 追加更正消息 + RED 事件 + 教师通知（write(event, true)）")
         void escalate_redAndNotifies() {
             when(sessionMapper.selectById(sessionId)).thenReturn(session());
             when(chatMemoryAppender.hasMessages(anyString())).thenReturn(true);
@@ -213,13 +197,12 @@ class OutputSafetyReporterImplTest {
             reporter.applyLayer2Recall(sessionId, "escalate", replacement, "{}");
 
             verify(chatMemoryAppender).append(eq(sessionId.toString()), org.mockito.ArgumentMatchers.any(AssistantMessage.class));
+            // S-009：escalate=RED 需教师通知 → write(event, true)
             ArgumentCaptor<RiskEvent> captor = ArgumentCaptor.forClass(RiskEvent.class);
-            verify(riskEventMapper).insert(captor.capture());
+            verify(riskEventWriter).write(captor.capture(), eq(true));
             assertThat(captor.getValue().getRiskType()).isEqualTo("output_safety:recall:escalate");
             assertThat(captor.getValue().getRiskLevel()).isEqualTo(RiskLevel.RED.severity());
             assertThat(captor.getValue().getReviewJson()).isEqualTo("{}");
-            verify(notificationService).notifyRiskEvent(captor.getValue());
-            verify(riskNotifyOutboxService).markSent(captor.getValue());
         }
 
         @Test
@@ -229,7 +212,7 @@ class OutputSafetyReporterImplTest {
 
             reporter.applyLayer2Recall(sessionId, "block", replacement, "{}");
 
-            verifyNoInteractions(chatMemoryAppender, riskEventMapper, notificationService);
+            verifyNoInteractions(chatMemoryAppender, riskEventWriter);
         }
 
         @Test
@@ -242,7 +225,7 @@ class OutputSafetyReporterImplTest {
 
             verify(chatMemoryAppender, never()).append(anyString(), org.mockito.ArgumentMatchers.any(AssistantMessage.class));
             ArgumentCaptor<RiskEvent> eventCaptor = ArgumentCaptor.forClass(RiskEvent.class);
-            verify(riskEventMapper).insert(eventCaptor.capture());
+            verify(riskEventWriter).write(eventCaptor.capture(), eq(false));
             assertThat(eventCaptor.getValue().getRiskType()).isEqualTo("output_safety:recall:rewrite");
             assertThat(eventCaptor.getValue().getReviewJson()).isEqualTo("{}");
         }
@@ -257,7 +240,7 @@ class OutputSafetyReporterImplTest {
 
             reporter.applyLayer2Recall(sessionId, "escalate", replacement, "{}");
 
-            verify(riskEventMapper, never()).insert(any(RiskEvent.class));
+            verify(riskEventWriter, never()).write(any(RiskEvent.class), anyBoolean());
         }
     }
 }

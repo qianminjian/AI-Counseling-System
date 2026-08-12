@@ -111,7 +111,7 @@ class PlatformControllerTest {
     }
 
     @Test
-    @DisplayName("getSchools 透传学校列表")
+    @DisplayName("getSchools 透传学校列表（F9：响应收敛为 SchoolVO）")
     void schools() {
         School s = new School();
         s.setSchoolId(UUID.randomUUID());
@@ -121,6 +121,6 @@ class PlatformControllerTest {
         var resp = controller.getSchools();
 
         assertThat(resp.data()).hasSize(1);
-        assertThat(resp.data().get(0).getSchoolName()).isEqualTo("第一小学");
+        assertThat(resp.data().get(0).schoolName()).isEqualTo("第一小学");
     }
 }

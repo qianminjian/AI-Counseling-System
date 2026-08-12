@@ -105,6 +105,18 @@ class EntityStatusConstantsTest {
     }
 
     @Test
+    @DisplayName("CounselingSession 状态常量：taken_over 对应会话转人工接管（frozen/58 转人工升级终态）")
+    void sessionStatusTakenOver() {
+        assertThat(CounselingSession.STATUS_TAKEN_OVER).isEqualTo("taken_over");
+    }
+
+    @Test
+    @DisplayName("CounselingSession 状态常量：escalated 对应会话风险升级（frozen/58 转人工升级终态）")
+    void sessionStatusEscalated() {
+        assertThat(CounselingSession.STATUS_ESCALATED).isEqualTo("escalated");
+    }
+
+    @Test
     @DisplayName("Tenant 状态常量：active 对应租户正常")
     void tenantStatusActive() {
         assertThat(Tenant.STATUS_ACTIVE).isEqualTo("active");

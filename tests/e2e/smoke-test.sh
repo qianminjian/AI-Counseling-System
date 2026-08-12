@@ -6,6 +6,11 @@
 # 用法：BASE_URL=https://your-domain.com ./smoke-test.sh
 #       或指定教师账号：TEACHER_USER=xxx TEACHER_PASS=xxx ./smoke-test.sh
 #       管理员账号：ADMIN_USER=xxx ADMIN_PASS=xxx ./smoke-test.sh
+# 决策登记（DA-04，2026-08-08）：CI 不跑 Playwright E2E（全栈成本高），部署现场冒烟走本脚本
+# 板块12 P1-3（2026-08-12）：Playwright 骨架已移除（playwright.config.ts/package*.json/
+#   node_modules/playwright-report/test-results 全部清理）——本目录仅保留本脚本，零死配置；
+#   若未来恢复 E2E：先补 tests/e2e/specs 再接入 CI，避免半配置状态；
+#   .gitignore 已由仓库根目录全局排除 node_modules/ 与 tests/e2e 报告产物，无需单目录配置
 # ============================================================
 set -euo pipefail
 

@@ -1,8 +1,8 @@
 package com.mindsafe.service.teacher;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.mindsafe.common.dto.ErrorCode;
 import com.mindsafe.common.exception.BizException;
@@ -39,7 +39,6 @@ public class TeacherService {
     private final UserMapper userMapper;
     /** S-007①（doing/93）：备注读写单点 */
     private final TeacherNoteStore teacherNoteStore;
-    private final NotificationMapper notificationMapper;
     private final MessageSummaryMapper messageSummaryMapper;
     /** S-006（doing/93）：转写读取单点（BA-10），教师侧读路径收敛 */
     private final MessageSummaryService messageSummaryService;
@@ -84,7 +83,6 @@ public class TeacherService {
                           CounselingSessionMapper sessionMapper,
                           UserMapper userMapper,
                           TeacherNoteStore teacherNoteStore,
-                          NotificationMapper notificationMapper,
                           MessageSummaryMapper messageSummaryMapper,
                           FieldEncryptionService fieldEncryptionService,
                           SessionAccessService sessionAccessService,
@@ -98,7 +96,6 @@ public class TeacherService {
         this.sessionMapper = sessionMapper;
         this.userMapper = userMapper;
         this.teacherNoteStore = teacherNoteStore;
-        this.notificationMapper = notificationMapper;
         this.messageSummaryMapper = messageSummaryMapper;
         this.fieldEncryptionService = fieldEncryptionService;
         this.sessionAccessService = sessionAccessService;
@@ -186,7 +183,7 @@ public class TeacherService {
         }
         CounselingSession update = new CounselingSession();
         update.setSessionId(sessionId);
-        update.setSessionStatus("taken_over");
+        update.setSessionStatus(CounselingSession.STATUS_TAKEN_OVER);
         update.setUpdatedAt(Instant.now());
         sessionMapper.updateById(update);
         auditLogService.log(tenantId, userId, "SESSION_TAKEOVER", "session", sessionId, null);
@@ -425,7 +422,7 @@ public class TeacherService {
     public boolean isCaseTracking(UUID tenantId, UUID studentUserId) {
         // S-007①：备注读写单点（AUD-043 分页安全语义由 TeacherNoteStore 承担）
         return teacherNoteStore.latest(tenantId, studentUserId, CASE_TRACKING_NOTE_TYPE)
-                .map(note -> CASE_TRACKING_ACTIVE.equals(fieldEncryptionService.decrypt(note.getContent())))
+                .map(note -> CASE_TRACKING_ACTIVE.equals(teacherNoteStore.decryptContent(note)))
                 .orElse(false);
     }
 
@@ -434,7 +431,7 @@ public class TeacherService {
         // S-007①：按学生取最新一条（备注单点）
         Map<UUID, TeacherNote> latestByStudent = teacherNoteStore.latestByStudent(tenantId, CASE_TRACKING_NOTE_TYPE);
         return latestByStudent.values().stream()
-                .filter(n -> CASE_TRACKING_ACTIVE.equals(fieldEncryptionService.decrypt(n.getContent())))
+                .filter(n -> CASE_TRACKING_ACTIVE.equals(teacherNoteStore.decryptContent(n)))
                 .map(TeacherNote::getStudentUserId)
                 .collect(Collectors.toSet());
     }
@@ -492,7 +489,7 @@ public class TeacherService {
             }
         }
         try {
-            return CaseLifecycleService.CaseStage.valueOf(fieldEncryptionService.decrypt(latest.getContent()));
+            return CaseLifecycleService.CaseStage.valueOf(teacherNoteStore.decryptContent(latest));
         } catch (IllegalArgumentException e) {
             // 存量脏数据兜底：无法解析的阶段名按建案处理
             log.warn("个案阶段备注内容非法，按 INTAKE 处理: student={}, content={}",
@@ -553,7 +550,7 @@ public class TeacherService {
                     student.getStatus(), null, 0,
                     null, null,
                     notes.stream().map(n -> new NoteVO(
-                            n.getNoteId(), n.getTeacherUserId(), fieldEncryptionService.decrypt(n.getContent()),
+                            n.getNoteId(), n.getTeacherUserId(), teacherNoteStore.decryptContent(n),
                             n.getNoteType(), n.getCreatedAt()
                     )).toList()
             );
@@ -605,7 +602,7 @@ public class TeacherService {
                         alertTodoMutePolicy.isMutedFromTodo(e.getRiskLevel(), caseTracking)
                 )).toList(),
                 notes.stream().map(n -> new NoteVO(
-                        n.getNoteId(), n.getTeacherUserId(), fieldEncryptionService.decrypt(n.getContent()),
+                        n.getNoteId(), n.getTeacherUserId(), teacherNoteStore.decryptContent(n),
                         n.getNoteType(), n.getCreatedAt()
                 )).toList()
         );
@@ -614,21 +611,21 @@ public class TeacherService {
     /** 高风险学生列表 */
     public List<HighRiskStudentVO> getHighRiskStudents(UUID tenantId, String classScope) {
         // 查询所有 open/claimed 状态的风险事件，按学生分组取最高风险
-        List<RiskEvent> openEvents = riskEventMapper.selectList(
-                new LambdaQueryWrapper<RiskEvent>()
-                        .eq(RiskEvent::getTenantId, tenantId)
-                        .in(RiskEvent::getStatus, RiskEvent.STATUS_OPEN, RiskEvent.STATUS_CLAIMED)
-                        .orderByDesc(RiskEvent::getRiskLevel)
-        );
-
-        // 班主任班级过滤：只保留本班学生的事件（B5：查询下沉 SessionAccessService）
-        Set<UUID> classStudentIds = null;
+        LambdaQueryWrapper<RiskEvent> wrapper = new LambdaQueryWrapper<RiskEvent>()
+                .eq(RiskEvent::getTenantId, tenantId)
+                .in(RiskEvent::getStatus, RiskEvent.STATUS_OPEN, RiskEvent.STATUS_CLAIMED);
+        // P1-3（板块05，对齐 getAlerts 范式）：班主任班级范围下推 SQL（in 本班学生集合），
+        // 不再全校拉取后内存过滤——避免本班外事件无谓传输，空班提前返回
         if (classScope != null) {
             List<User> classStudents = sessionAccessService.listClassStudents(tenantId, classScope);
-            classStudentIds = classStudents.stream().map(User::getUserId).collect(Collectors.toSet());
-            Set<UUID> finalIds = classStudentIds;
-            openEvents = openEvents.stream().filter(e -> finalIds.contains(e.getStudentUserId())).toList();
+            if (classStudents.isEmpty()) {
+                return List.of();
+            }
+            Set<UUID> classStudentIds = classStudents.stream().map(User::getUserId).collect(Collectors.toSet());
+            wrapper.in(RiskEvent::getStudentUserId, classStudentIds);
         }
+        wrapper.orderByDesc(RiskEvent::getRiskLevel);
+        List<RiskEvent> openEvents = riskEventMapper.selectList(wrapper);
 
         // 按学生分组
         Map<UUID, List<RiskEvent>> byStudent = openEvents.stream()
@@ -771,18 +768,12 @@ public class TeacherService {
                     sessionsByDay.getOrDefault(dayStart, 0L)));
         }
 
-        // 4. 情绪分布（近 30 天 student 消息的 emotion_label）：DB GROUP BY 聚合，
+        // 4. 情绪分布（近 30 天 student 消息的 emotion_label）：DB GROUP BY 聚合（P1-3 板块06：
+        //    聚合 SQL 下移 MessageSummaryMapper.countEmotionDistribution，Service 不再拼装 select 字符串），
         //    不再将全租户 30 天 message_summaries 加载进内存
         Instant monthAgo = now.minus(30, ChronoUnit.DAYS);
-        List<Map<String, Object>> emotionRows = messageSummaryMapper.selectMaps(
-                new QueryWrapper<MessageSummary>()
-                        .select("emotion_label, COUNT(*) AS cnt")
-                        .eq("tenant_id", tenantId)
-                        .eq("sender_type", User.USER_TYPE_STUDENT)
-                        .ge("created_at", monthAgo)
-                        .isNotNull("emotion_label")
-                        .groupBy("emotion_label")
-        );
+        List<Map<String, Object>> emotionRows = messageSummaryMapper.countEmotionDistribution(
+                tenantId, User.USER_TYPE_STUDENT, monthAgo);
         List<EmotionItem> emotionDistribution = emotionRows.stream()
                 .filter(r -> r.get("emotion_label") != null && r.get("cnt") instanceof Number)
                 .map(r -> new EmotionItem((String) r.get("emotion_label"),
@@ -906,8 +897,9 @@ public class TeacherService {
         if (since != null) {
             wrapper.ge("started_at", since);
         }
+
         Map<Integer, Long> result = new HashMap<>();
-        for (Map<String, Object> row : sessionMapper.selectMaps(wrapper)) {
+        for (Map<String, Object> row : sessionMapper.countRatingDistribution(tenantId, since)) {
             if (row.get("rating") instanceof Number rating && row.get("cnt") instanceof Number cnt) {
                 result.put(rating.intValue(), cnt.longValue());
             }

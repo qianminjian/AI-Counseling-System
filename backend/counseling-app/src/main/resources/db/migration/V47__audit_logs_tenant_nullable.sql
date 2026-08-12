@@ -1,0 +1,12 @@
+-- =====================================================================
+-- 专题 D：合规留痕链基建（audit_logs.tenant_id 放开 NOT NULL，支持系统级审计落库）
+-- ---------------------------------------------------------------------
+-- 背景：audit_logs.tenant_id 原为 NOT NULL（V7__commercial_schema.sql），
+-- 而系统级操作以 tenantId=null 表示全局操作（DataRetentionCleanupJob 3 处：
+-- DATA_RETENTION_CLEANUP / DATA_RETENTION_CLEANUP_ERROR /
+-- DATA_RETENTION_WITHDRAWAL_CLEANUP）——数据删除等最敏感操作此前无法落库，
+-- 审计链失效（审计报告 05 P0-1 / 06 联动 DDL / 00 §3 专题 D）。
+-- 本迁移仅放开 NOT NULL 约束（tenant_id 为 null 表示系统级/平台级操作），
+-- 不改既有行数据与索引；租户级审计仍照常写入 tenant_id，行级隔离不受影响。
+-- =====================================================================
+ALTER TABLE tenant_template.audit_logs ALTER COLUMN tenant_id DROP NOT NULL;

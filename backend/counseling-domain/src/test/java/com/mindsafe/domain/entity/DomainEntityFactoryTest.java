@@ -54,7 +54,7 @@ class DomainEntityFactoryTest {
         assertEquals("self_harm", e.getRiskType());
         assertEquals(3, e.getRiskLevel());
         assertEquals("keyword_agent", e.getDetectedBy());
-        assertEquals("open", e.getStatus());
+        assertEquals(RiskEvent.STATUS_OPEN, e.getStatus());
         assertNotNull(e.getDetectedAt());
     }
 
@@ -72,18 +72,18 @@ class DomainEntityFactoryTest {
         assertEquals("risk_alert", n.getTemplateCode());
         assertEquals("risk_event", n.getRelatedType());
         assertEquals(riskEventId, n.getRelatedId());
-        assertEquals("pending", n.getDeliveryStatus());
+        assertEquals(Notification.DELIVERY_PENDING, n.getDeliveryStatus());
     }
 
     @Test
-    @DisplayName("markSent / markRead 状态流转")
+    @DisplayName("markSent / markRead 状态流转（P1-2：readAt 唯一已读权威，已读不改投递态）")
     void notification_stateTransitions() {
         Notification n = Notification.riskAlert(tenantId, userId, "psych_teacher", "t", "b", UUID.randomUUID());
         n.markSent();
-        assertEquals("sent", n.getDeliveryStatus());
+        assertEquals(Notification.DELIVERY_SENT, n.getDeliveryStatus());
         assertNotNull(n.getSentAt());
         n.markRead();
-        assertEquals("read", n.getDeliveryStatus());
+        assertEquals(Notification.DELIVERY_SENT, n.getDeliveryStatus());
         assertNotNull(n.getReadAt());
     }
 
@@ -95,10 +95,10 @@ class DomainEntityFactoryTest {
         CounselingSession s = CounselingSession.create(tenantId, userId, "开心", "web");
         assertNotNull(s.getSessionId());
         assertEquals("web", s.getChannel());
-        assertEquals("text", s.getInteractionMode());
+        assertEquals(CounselingSession.INTERACTION_MODE_TEXT, s.getInteractionMode());
         assertEquals("active", s.getSessionStatus());
         assertEquals(0, s.getRiskLevelSnapshot());
-        assertEquals("summary_only", s.getTranscriptPolicy());
+        assertEquals(CounselingSession.TRANSCRIPT_POLICY_SUMMARY_ONLY, s.getTranscriptPolicy());
         assertEquals("开心", s.getEmotionTag());
         assertNotNull(s.getStartedAt());
     }

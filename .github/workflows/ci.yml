@@ -318,9 +318,11 @@ jobs:
   frontend-build:
     name: Frontend Build Check
     runs-on: ubuntu-latest
+    # 板块12 P1-1：四端统一 CI 门禁（admin-web 加入，其 vitest 阈值 70/60/55/70 就绪，
+    # 19 个测试文件直接进入门禁——板块08 P1-1/P1-2 修复项获得回归保护）
     strategy:
       matrix:
-        app: [student-h5, teacher-web, parent-h5]
+        app: [student-h5, teacher-web, parent-h5, admin-web]
     defaults:
       run:
         working-directory: frontend/${{ matrix.app }}
@@ -342,12 +344,12 @@ jobs:
           npm ci
           npm run build
 
-      # lint/test 按需执行（ARCH-009 E-5：parent-h5 已补 .oxlintrc.json，三端均接 lint；
-      # 三端均有 vitest：student-h5/teacher-web 用 vitest.config.js，parent-h5 用 vitest.config.ts（doing/73 迁移后））
+      # lint/test 按需执行（ARCH-009 E-5：parent-h5 已补 .oxlintrc.json，四端均接 lint；
+      # 四端均有 vitest：student-h5/teacher-web/admin-web 用 vitest.config.js，parent-h5 用 vitest.config.ts（doing/73 迁移后））
       - name: Lint
         run: npm run lint --if-present
 
       # 审计 P1-11：覆盖率门禁强制生效——此前 CI 只跑 npm test（无 coverage），
-      # vitest.config 中的 thresholds 从未被强制执行；现统一跑 test:coverage（三端均已配置阈值）
+      # vitest.config 中的 thresholds 从未被强制执行；现统一跑 test:coverage（四端均已配置阈值）
       - name: Test (with coverage gate)
         run: npm run test:coverage

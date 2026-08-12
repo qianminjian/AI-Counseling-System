@@ -44,36 +44,6 @@ public record KnowledgeMetadata(
         boolean safetySensitive
 ) {
 
-    /** 年级段常量 */
-    public static final String GRADE_LOW = "low";
-    public static final String GRADE_MID = "mid";
-    public static final String GRADE_HIGH = "high";
-    public static final String GRADE_ALL = "all";
-
-    /**
-     * 判断给定年级是否匹配此元数据的年级段。
-     *
-     * @param grade 年级（1-6）
-     * @return true=匹配
-     */
-    public boolean matchesGrade(int grade) {
-        if (GRADE_ALL.equals(gradeBand)) return true;
-        return switch (gradeBand) {
-            case GRADE_LOW -> grade >= 1 && grade <= 2;
-            case GRADE_MID -> grade >= 3 && grade <= 4;
-            case GRADE_HIGH -> grade >= 5 && grade <= 6;
-            default -> true; // 未知年级段默认放行
-        };
-    }
-
-    /**
-     * 是否可被 RAG 检索（published + 年级匹配）。
-     */
-    public boolean isSearchableForGrade(int grade) {
-        return reviewStatus == ReviewWorkflowStateMachine.ReviewStatus.PUBLISHED
-                && matchesGrade(grade);
-    }
-
     /**
      * 创建草稿元数据（初始状态）。
      */

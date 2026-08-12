@@ -1,11 +1,11 @@
 package com.mindsafe.api.controller;
 
+import com.mindsafe.api.dto.vo.TocChildProfileVO;
 import com.mindsafe.api.security.JwtAuthenticationFilter.TenantContext;
 import com.mindsafe.api.security.SecuritySupport;
 import com.mindsafe.common.dto.ApiResponse;
 import com.mindsafe.common.dto.ErrorCode;
 import com.mindsafe.common.exception.BizException;
-import com.mindsafe.domain.entity.TocChildProfile;
 import com.mindsafe.service.toc.TocFamilyService;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
@@ -30,28 +30,31 @@ public class TocProfileController {
         this.tocFamilyService = tocFamilyService;
     }
 
-    /** 档案列表（本人账号） */
+    /** 档案列表（本人账号；F9：响应收敛为 TocChildProfileVO） */
     @GetMapping
-    public ApiResponse<List<TocChildProfile>> list(Authentication auth) {
-        return ApiResponse.ok(tocFamilyService.listProfiles(accountId(auth)));
+    public ApiResponse<List<TocChildProfileVO>> list(Authentication auth) {
+        List<TocChildProfileVO> voList = tocFamilyService.listProfiles(accountId(auth)).stream()
+                .map(TocChildProfileVO::from)
+                .toList();
+        return ApiResponse.ok(voList);
     }
 
     /** 创建档案 */
     @PostMapping
-    public ApiResponse<TocChildProfile> create(Authentication auth, @RequestBody Map<String, Object> body) {
+    public ApiResponse<TocChildProfileVO> create(Authentication auth, @RequestBody Map<String, Object> body) {
         try {
-            return ApiResponse.ok(tocFamilyService.createProfile(accountId(auth), body));
+            return ApiResponse.ok(TocChildProfileVO.from(tocFamilyService.createProfile(accountId(auth), body)));
         } catch (IllegalArgumentException e) {
             throw new BizException(ErrorCode.PARAM_INVALID, e.getMessage());
         }
     }
 
-    /** 更新档案（归属校验） */
+    /** 更新档案（归属校验；F9：响应收敛为 TocChildProfileVO） */
     @PutMapping("/{profileId}")
-    public ApiResponse<TocChildProfile> update(Authentication auth, @PathVariable UUID profileId,
+    public ApiResponse<TocChildProfileVO> update(Authentication auth, @PathVariable UUID profileId,
                                                @RequestBody Map<String, Object> body) {
         try {
-            return ApiResponse.ok(tocFamilyService.updateProfile(accountId(auth), profileId, body));
+            return ApiResponse.ok(TocChildProfileVO.from(tocFamilyService.updateProfile(accountId(auth), profileId, body)));
         } catch (IllegalArgumentException e) {
             throw new BizException(ErrorCode.PARAM_INVALID, e.getMessage());
         }

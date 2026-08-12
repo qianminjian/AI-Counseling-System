@@ -1,5 +1,7 @@
 package com.mindsafe.service.notification;
 
+import com.baomidou.mybatisplus.core.MybatisConfiguration;
+import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.mindsafe.common.exception.BizException;
 import com.mindsafe.domain.entity.Notification;
@@ -8,6 +10,8 @@ import com.mindsafe.domain.mapper.NotificationMapper;
 import com.mindsafe.domain.mapper.UserMapper;
 import com.mindsafe.domain.mapper.RiskEventMapper;
 import com.mindsafe.domain.entity.RiskEvent;
+import org.apache.ibatis.builder.MapperBuilderAssistant;
+import org.apache.ibatis.type.ObjectTypeHandler;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -45,6 +49,11 @@ class NotificationServiceImplTest {
 
     @BeforeEach
     void setUp() {
+        // getSqlSegment 断言需 lambda 列名解析（P1-1 双口径收敛测试）
+        MybatisConfiguration configuration = new MybatisConfiguration();
+        configuration.getTypeHandlerRegistry().register(UUID.class, ObjectTypeHandler.class);
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(configuration, ""), Notification.class);
+
         notificationMapper = mock(NotificationMapper.class);
         userMapper = mock(UserMapper.class);
         eventPublisher = mock(ApplicationEventPublisher.class);
@@ -70,7 +79,8 @@ class NotificationServiceImplTest {
 
         ArgumentCaptor<Notification> captor = ArgumentCaptor.forClass(Notification.class);
         verify(notificationMapper).updateById(captor.capture());
-        assertEquals("read", captor.getValue().getDeliveryStatus());
+        // P1-2（板块06）：已读只更新 readAt（唯一已读权威），不再触碰投递态 deliveryStatus
+        assertNull(captor.getValue().getDeliveryStatus());
         assertNotNull(captor.getValue().getReadAt());
     }
 
@@ -128,11 +138,19 @@ class NotificationServiceImplTest {
     }
 
     @Test
-    @DisplayName("countUnread 排除已读")
+    @DisplayName("countUnread 排除已读：readAt 为空口径（与列表 UNREAD 筛选单一口径，P1-1 板块05）")
     void countUnread_excludesRead() {
         when(notificationMapper.selectCount(any())).thenReturn(2L);
 
         assertEquals(2L, service.countUnread(teacherId));
+
+        // 断言统计口径：readAt IS NULL，而非 deliveryStatus != 'read'（双口径漂移修复）
+        ArgumentCaptor<com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper> cap =
+                ArgumentCaptor.forClass(com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper.class);
+        verify(notificationMapper).selectCount(cap.capture());
+        String sqlSegment = cap.getValue().getSqlSegment();
+        assertTrue(sqlSegment.contains("read_at IS NULL"), "应使用 readAt 为空口径: " + sqlSegment);
+        assertFalse(sqlSegment.contains("delivery_status"), "不应再按 deliveryStatus 统计: " + sqlSegment);
     }
 
     // ===== notifyRiskEvent =====

@@ -166,8 +166,8 @@ public class MessageSummaryService {
         try {
             // BA-04（DOC-074）：D-7 两级策略收敛到 service 单一入口——risk ≥ 2 原文保真截断 1024；risk < 2 语义提炼 ≤200 字（再截断兜底）
             String summarized = riskLevel >= FULL_FIDELITY_RISK_LEVEL
-                    ? truncate(content, MAX_CONTENT_LENGTH)
-                    : truncate(MessageSummarySummarizer.summarize(content), MAX_CONTENT_LENGTH);
+                    ? TextUtils.truncateByCodePoint(content, MAX_CONTENT_LENGTH)
+                    : TextUtils.truncateByCodePoint(MessageSummarySummarizer.summarize(content), MAX_CONTENT_LENGTH);
 
             MessageSummary summary = new MessageSummary();
             summary.setSummaryId(UUID.randomUUID());
@@ -204,7 +204,7 @@ public class MessageSummaryService {
             summary.setStudentUserId(session.getStudentUserId());
             summary.setTurnCount(turn);
             summary.setSenderType("ai");
-            summary.setContentSummary(truncate(aiResponse, MAX_CONTENT_LENGTH));
+            summary.setContentSummary(TextUtils.truncateByCodePoint(aiResponse, MAX_CONTENT_LENGTH));
             summary.setRiskLevel(0);
             summary.setEmotionTags("[]");
             summary.setRiskSignals("[]");
@@ -249,7 +249,7 @@ public class MessageSummaryService {
         noticeRecord.setStudentUserId(studentUserId);
         noticeRecord.setTurnCount(0);
         noticeRecord.setSenderType("ai");
-        noticeRecord.setContentSummary(truncate(notice, MAX_CONTENT_LENGTH));
+        noticeRecord.setContentSummary(TextUtils.truncateByCodePoint(notice, MAX_CONTENT_LENGTH));
         noticeRecord.setRiskLevel(0);
         noticeRecord.setEmotionTags("[]");
         noticeRecord.setRiskSignals("[]");
@@ -409,11 +409,6 @@ public class MessageSummaryService {
     }
 
     // ===== BA-04：摘要装配私有工具（策略单一入口） =====
-
-    private static String truncate(String s, int maxLen) {
-        if (s == null) return null;
-        return s.length() <= maxLen ? s : s.substring(0, maxLen);
-    }
 
     /** 单元素 JSON 数组（null → "[]"）；序列化失败兜底 "[]" 不阻断落库 */
     private String toJsonArray(String value) {

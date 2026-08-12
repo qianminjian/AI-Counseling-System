@@ -6,7 +6,6 @@ import com.mindsafe.api.dto.chat.SendMessageRequest;
 import com.mindsafe.api.security.JwtAuthenticationFilter.TenantContext;
 import com.mindsafe.common.dto.ErrorCode;
 import com.mindsafe.common.exception.BizException;
-import com.mindsafe.service.consent.GuardianConsentService;
 import com.mindsafe.service.conversation.ConversationService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -18,26 +17,22 @@ import reactor.core.publisher.Flux;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 /**
- * ChatController 单元测试（R-03 监护人同意门禁）
+ * ChatController 单元测试（对话编排；F10 后门禁已下沉 GuardianConsentGate 切面，门禁行为见 GuardianConsentGateTest）。
  * <p>
- * 覆盖：createSession / sendMessage / sendNudge 三个对话入口在缺少监护人同意时
- * 抛 CONSENT_REQUIRED 且不触达 ConversationService；已同意时正常放行。
+ * 覆盖：createSession / sendMessage / sendNudge 正常放行至 ConversationService；
+ * 旧关闭接口 TTL 语义（到期 410 / 配置非法防御降级 / endSession 不受门禁限制）。
  */
 class ChatControllerTest {
 
     private ConversationService conversationService;
-    private GuardianConsentService guardianConsentService;
     private ChatController controller;
     private Authentication authentication;
 
@@ -48,65 +43,20 @@ class ChatControllerTest {
     @BeforeEach
     void setUp() {
         conversationService = mock(ConversationService.class);
-        guardianConsentService = mock(GuardianConsentService.class);
         // ARCH-010 D5：旧关闭接口 TTL 默认空配置 = 未到期（保留可用）
-        controller = new ChatController(conversationService, guardianConsentService, "");
+        // F10：GuardianConsentService 已从 controller 构造器移除（门禁下沉切面）
+        controller = new ChatController(conversationService, "");
 
         authentication = mock(Authentication.class);
         when(authentication.getDetails()).thenReturn(new TenantContext(tenantId, studentId, "student"));
     }
 
     @Nested
-    @DisplayName("缺少监护人同意 → CONSENT_REQUIRED，且不触达对话服务")
-    class ConsentMissing {
-
-        @BeforeEach
-        void noConsent() {
-            when(guardianConsentService.hasGuardianConsent(tenantId, studentId)).thenReturn(false);
-        }
+    @DisplayName("对话入口放行（门禁由 GuardianConsentGate 切面强制，controller 仅编排）")
+    class ConversationEntry {
 
         @Test
-        @DisplayName("createSession 被门禁拦截")
-        void createSessionBlocked() {
-            assertThatThrownBy(() -> controller.createSession(
-                    new CreateSessionRequest("happy", "web"), authentication))
-                    .isInstanceOf(BizException.class)
-                    .extracting("code").isEqualTo(ErrorCode.CONSENT_REQUIRED.code());
-            verifyNoInteractions(conversationService);
-        }
-
-        @Test
-        @DisplayName("sendMessage 被门禁拦截")
-        void sendMessageBlocked() {
-            assertThatThrownBy(() -> controller.sendMessage(sessionId,
-                    new SendMessageRequest("你好", null, null, "text", null, null), authentication))
-                    .isInstanceOf(BizException.class)
-                    .extracting("code").isEqualTo(ErrorCode.CONSENT_REQUIRED.code());
-            verifyNoInteractions(conversationService);
-        }
-
-        @Test
-        @DisplayName("sendNudge 被门禁拦截")
-        void sendNudgeBlocked() {
-            assertThatThrownBy(() -> controller.sendNudge(sessionId,
-                    new NudgeRequest(30), authentication))
-                    .isInstanceOf(BizException.class)
-                    .extracting("code").isEqualTo(ErrorCode.CONSENT_REQUIRED.code());
-            verifyNoInteractions(conversationService);
-        }
-    }
-
-    @Nested
-    @DisplayName("已获监护人同意 → 正常放行至对话服务")
-    class ConsentPresent {
-
-        @BeforeEach
-        void withConsent() {
-            when(guardianConsentService.hasGuardianConsent(tenantId, studentId)).thenReturn(true);
-        }
-
-        @Test
-        @DisplayName("createSession 放行")
+        @DisplayName("createSession 放行至服务层")
         void createSessionAllowed() {
             controller.createSession(new CreateSessionRequest("happy", "web"), authentication);
 
@@ -126,9 +76,22 @@ class ChatControllerTest {
         }
 
         @Test
+        @DisplayName("sendMessage 放行（带语音情绪走 6 参重载）")
+        void sendMessageWithVoiceEmotionAllowed() {
+            when(conversationService.sendMessageStream(eq(tenantId), eq(studentId), eq(sessionId), anyString(),
+                    anyString(), eq(0.8)))
+                    .thenReturn(Flux.empty());
+
+            controller.sendMessage(sessionId,
+                    new SendMessageRequest("你好", "anxious", 0.8, "voice", null, null), authentication);
+
+            verify(conversationService).sendMessageStream(tenantId, studentId, sessionId, "你好", "anxious", 0.8);
+        }
+
+        @Test
         @DisplayName("sendNudge 放行")
         void sendNudgeAllowed() {
-            when(conversationService.sendNudgeStream(eq(tenantId), eq(studentId), eq(sessionId), anyInt()))
+            when(conversationService.sendNudgeStream(eq(tenantId), eq(studentId), eq(sessionId), org.mockito.ArgumentMatchers.anyInt()))
                     .thenReturn(Flux.empty());
 
             controller.sendNudge(sessionId, new NudgeRequest(30), authentication);
@@ -143,14 +106,12 @@ class ChatControllerTest {
         controller.endSession(sessionId, authentication);
 
         verify(conversationService).endSession(tenantId, studentId, sessionId);
-        verify(guardianConsentService, never()).hasGuardianConsent(any(), any());
     }
 
     @Test
     @DisplayName("ARCH-010 D5：旧关闭接口 TTL 到期 → 410 拒绝且不触达对话服务")
     void endSessionTtlExpiredGone() {
-        ChatController expiredController = new ChatController(
-                conversationService, guardianConsentService, "2000-01-01T00:00:00Z");
+        ChatController expiredController = new ChatController(conversationService, "2000-01-01T00:00:00Z");
 
         assertThatThrownBy(() -> expiredController.endSession(sessionId, authentication))
                 .isInstanceOf(BizException.class)
@@ -161,8 +122,7 @@ class ChatControllerTest {
     @Test
     @DisplayName("ARCH-010 D5：expires-at 配置非法 → 视为未到期（防御降级，不拒绝请求）")
     void endSessionInvalidExpiresAtDegradesOpen() {
-        ChatController invalidController = new ChatController(
-                conversationService, guardianConsentService, "not-a-date");
+        ChatController invalidController = new ChatController(conversationService, "not-a-date");
 
         controller = invalidController;
         controller.endSession(sessionId, authentication);

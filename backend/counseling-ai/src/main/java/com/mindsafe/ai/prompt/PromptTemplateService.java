@@ -78,6 +78,12 @@ public class PromptTemplateService {
     public static final String TSK_003 = "prompts/tasks/session_close_zh-CN_v1.0.0.md";
     public static final String TSK_004 = "prompts/tasks/proactive_nudge_zh-CN_v1.0.0.md";
     public static final String EMO_001 = "prompts/emotion/emotion_strategy_zh-CN_v1.0.0.md";
+    // P0-1 ①：AiChatServiceImpl 4 个辅助 LLM prompt 下沉 prompts/aux/（会话摘要/洞察提炼/质量评估/进展摘要），
+    // 与既有模板同目录管理（版本路由语义预留：注册进 PromptVersionService.KEY_TO_CLASSPATH 即可纳入 DB 版本覆盖）
+    public static final String AUX_001 = "prompts/aux/session_summary_zh-CN_v1.0.0.md";
+    public static final String AUX_002 = "prompts/aux/conversation_insights_zh-CN_v1.0.0.md";
+    public static final String AUX_003 = "prompts/aux/quality_judge_zh-CN_v1.0.0.md";
+    public static final String AUX_004 = "prompts/aux/session_progress_summary_zh-CN_v1.0.0.md";
     // B4：性别×年级沟通风格模板（PROF-014，design/29 §3.10），文案下沉 prompts/ 后经版本路由
     public static final String GENDER_STYLE_MALE_LOW = "prompts/style/gender_style_male_low_zh-CN_v1.0.0.md";
     public static final String GENDER_STYLE_MALE_MID = "prompts/style/gender_style_male_mid_zh-CN_v1.0.0.md";

@@ -89,6 +89,8 @@ class DataAnalyticsServiceTest {
         r.setStudentUserId(studentUserId);
         r.setCreatedAt(createdAt);
         r.setUpdatedAt(createdAt);
+        // P2-5：口径统一 detectedAt（查询/时间线均以 detectedAt 为准）
+        r.setDetectedAt(createdAt);
         r.setRiskLevel(level);
         r.setRiskType("self_harm");
         r.setStatus(status);

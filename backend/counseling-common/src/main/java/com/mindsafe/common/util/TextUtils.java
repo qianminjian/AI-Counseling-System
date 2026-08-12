@@ -34,4 +34,22 @@ public final class TextUtils {
         }
         return s;
     }
+
+    /**
+     * 按 Unicode code point 截断到 maxLen 个字符（R-021：UTF-16 substring 可能劈开
+     * emoji/生僻字代理对 → 显示为 �；字段级加密后解密可能损坏摘要）。
+     *
+     * @param s      原始文本（可为 null）
+     * @param maxLen 最大字符数（code point 口径，须 ≥ 0）
+     * @return 截断后的文本；null 输入返回 null；不足 maxLen 原样返回
+     */
+    public static String truncateByCodePoint(String s, int maxLen) {
+        if (s == null) {
+            return null;
+        }
+        if (s.length() <= maxLen) {
+            return s;
+        }
+        return s.substring(0, s.offsetByCodePoints(0, maxLen));
+    }
 }

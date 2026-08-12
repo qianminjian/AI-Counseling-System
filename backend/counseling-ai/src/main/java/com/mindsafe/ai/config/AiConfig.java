@@ -215,4 +215,42 @@ public class AiConfig {
         // ThreadPoolTaskExecutor 实现 InitializingBean，由 Spring 生命周期统一 initialize（避免显式调用产生双池）
         return executor;
     }
+
+    /**
+     * 辅助 LLM 调用专用线程池（doing/92 Q-005：同步辅助调用统一超时）。
+     * <p>
+     * P1-3 板块02：原 AiChatServiceImpl 自建静态 daemon 池（newFixedThreadPool(4)）
+     * 收敛为受管 Bean——线程数保持既有 4 核行为；由 Spring 生命周期统一关闭
+     * （ThreadPoolTaskExecutor 实现 DisposableBean，@PreDestroy 自动 shutdown）；
+     * BA-15：经 TenantContextTaskDecorator 传播租户上下文（与专题 D 已修
+     * TaskDecorator 机制一致，异步出口不再丢上下文）。
+     */
+    @Bean(name = "llmAuxExecutor")
+    public Executor llmAuxExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(4);
+        executor.setMaxPoolSize(4);
+        executor.setThreadNamePrefix("llm-aux-");
+        executor.setTaskDecorator(new TenantContextTaskDecorator());
+        return executor;
+    }
+
+    /**
+     * 语义风险分类专用线程池（RISK-202：分诊段延迟门禁 ≤800ms）。
+     * <p>
+     * P1-3 板块02：原 SemanticRiskClassifier 构造器自建 daemon 池收敛为受管 Bean——
+     * 线程数保持既有 max(2, availableProcessors) 行为；由 Spring 生命周期统一关闭；
+     * BA-15：经 TenantContextTaskDecorator 传播租户上下文（语义分类可能触发
+     * DB/记忆写入，缺上下文将触发租户行隔离 fail-fast）。
+     */
+    @Bean(name = "semanticRiskExecutor")
+    public Executor semanticRiskExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        int size = Math.max(2, Runtime.getRuntime().availableProcessors());
+        executor.setCorePoolSize(size);
+        executor.setMaxPoolSize(size);
+        executor.setThreadNamePrefix("semantic-risk-");
+        executor.setTaskDecorator(new TenantContextTaskDecorator());
+        return executor;
+    }
 }

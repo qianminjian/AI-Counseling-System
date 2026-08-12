@@ -44,6 +44,49 @@ export interface ChatSessionOptions {
 }
 
 /**
+ * 请求体构造纯函数（doing/94 R-004：sendMessage 编排拆分）
+ * 手动打字仅 content；语音自动发送附加 voiceEmotion 三件套 + inputMode
+ */
+export function buildMessageBody(
+  text: string,
+  emotion: VoiceEmotion | null | undefined,
+  ttsMuted: boolean,
+  wakeEnabled: boolean,
+): Record<string, unknown> {
+  const body: Record<string, unknown> = { content: text }
+  if (emotion) {
+    body.voiceEmotion = emotion.labelEn
+    body.voiceEmotionConfidence = emotion.confidence
+    body.inputMode = 'voice'
+  }
+  // 同步前端设置状态，让 AI 知道自己的能力边界（TTS是否开启/唤醒是否开启）
+  body.ttsMuted = ttsMuted
+  body.wakeEnabled = wakeEnabled
+  return body
+}
+
+/**
+ * 流收尾纯函数（doing/94 R-004：sendMessage 编排拆分）
+ * 未静音：有内容 endStreaming 冲刷缓冲，无内容 stop 重置；本轮无情绪标签则波波回落 idle
+ */
+export function settleStreamEnd(
+  tts: ChatTtsLike,
+  fullResponse: string,
+  replyEmotionReceived: boolean,
+  bobo: BoboExpressionLike,
+): void {
+  if (!tts.muted) {
+    if (fullResponse) {
+      tts.endStreaming()
+    } else {
+      tts.stop()
+    }
+  }
+  // 流结束：本轮无情绪标签则波波回落 idle（有则保持情绪表情）
+  if (!replyEmotionReceived) bobo.dispatch({ type: 'idle' })
+}
+
+/**
  * 聊天会话状态 Hook（UX-006 拆分，design/17 §chat/hooks）
  *
  * 职责边界：消息列表/输入/发送编排（TTS 联动、情绪总线、波波状态机、错误降级、关闭会话），
@@ -88,15 +131,8 @@ export function useChatSession(opts: ChatSessionOptions) {
     // 语音自动发送时用传入的 emotion（服务端情绪存入 state）；手动打字时无情绪标注
     const emotion = autoEmotion
 
-    const body: Record<string, unknown> = { content: text }
-    if (emotion) {
-      body.voiceEmotion = emotion.labelEn
-      body.voiceEmotionConfidence = emotion.confidence
-      body.inputMode = 'voice'
-    }
-    // 同步前端设置状态，让 AI 知道自己的能力边界（TTS是否开启/唤醒是否开启）
-    body.ttsMuted = tts.muted
-    body.wakeEnabled = wakeEnabled
+    // doing/94 R-004：请求体构造收敛为纯函数
+    const body = buildMessageBody(text, emotion, tts.muted, wakeEnabled)
 
     const msgEmotion = emotion?.labelEn
     setInput('')
@@ -172,16 +208,8 @@ export function useChatSession(opts: ChatSessionOptions) {
         })
       }
     } finally {
-      // 流式 TTS 结束：冲刷剩余缓冲 + 等待播放完毕；无内容时重置状态
-      if (!tts.muted) {
-        if (fullResponse) {
-          tts.endStreaming()
-        } else {
-          tts.stop()
-        }
-      }
-      // 流结束：本轮无情绪标签则波波回落 idle（有则保持情绪表情）
-      if (!replyEmotionReceived) bobo.dispatch({ type: 'idle' })
+      // doing/94 R-004：流收尾收敛为纯函数（endStreaming 冲刷/stop 重置/idle 回落）
+      settleStreamEnd(tts, fullResponse, replyEmotionReceived, bobo)
     }
     return true
   }

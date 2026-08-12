@@ -2,7 +2,8 @@ package com.mindsafe.api.websocket;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mindsafe.api.security.JwtTokenProvider;
-import com.mindsafe.domain.entity.User;
+import com.mindsafe.api.security.RoleConstants;
+import com.mindsafe.api.security.TokenType;
 import com.mindsafe.service.auth.TokenBlacklistService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -35,9 +36,6 @@ public class AlertWebSocketHandler extends TextWebSocketHandler implements SubPr
     /** 协商子协议：前端连接必须携带该标识（与 auth.&lt;jwt&gt; 项一并提交） */
     private static final List<String> SUB_PROTOCOLS = List.of("alerts.v1");
 
-    /** 允许接入预警推送的角色（与 SecurityConfig /api/v1/alerts/** 对齐，学生/家长严禁接入） */
-    private static final Set<String> ALERT_ROLES = Set.of(User.USER_TYPE_TEACHER, User.USER_TYPE_PSYCH_TEACHER, User.USER_TYPE_CLASS_TEACHER, User.USER_TYPE_HEAD_TEACHER, User.USER_TYPE_ADMIN);
-
     /** tenantId → 该租户下所有在线教师 session */
     private final Map<UUID, Set<WebSocketSession>> tenantSessions = new ConcurrentHashMap<>();
 
@@ -62,25 +60,32 @@ public class AlertWebSocketHandler extends TextWebSocketHandler implements SubPr
     public void afterConnectionEstablished(WebSocketSession session) {
         // token 由 AlertAuthHandshakeInterceptor 在握手时从 Sec-WebSocket-Protocol 提取（P1-FE-4）
         String token = (String) session.getAttributes().get(AlertAuthHandshakeInterceptor.TOKEN_ATTR);
-        if (token == null || token.isBlank()
-                || !jwtTokenProvider.validateToken(token)
-                || !jwtTokenProvider.isAccessToken(token)
-                || blacklistService.isBlacklisted(jwtTokenProvider.getTokenId(token))) {
+        if (token == null || token.isBlank()) {
+            log.warn("WebSocket 连接拒绝：缺少 token");
+            closeQuietly(session);
+            return;
+        }
+        // doing/92 R-017 单点化（审计 F2）：原 validate + isAccess + getTokenId + getUserType
+        // + getTenantId + getUserId 共 6 次 parse → parseOnce 1 次；非法/过期 → null（拒绝）
+        JwtTokenProvider.ParsedToken parsed = jwtTokenProvider.parseOrNull(token);
+        if (parsed == null || parsed.tokenType() != TokenType.ACCESS
+                || blacklistService.isBlacklisted(parsed.tokenId())) {
             log.warn("WebSocket 连接拒绝：无效/非 access/已登出 token");
             closeQuietly(session);
             return;
         }
 
         // 角色检查：仅教师/管理员可接收预警（学生 token 接入会泄漏全租户未成年人预警数据）
-        String userType = jwtTokenProvider.getUserType(token);
-        if (userType == null || !ALERT_ROLES.contains(userType)) {
+        // 审计 F4：角色清单收敛 RoleConstants（与 SecurityConfig /api/v1/alerts/** 同一单源）
+        String userType = parsed.userType();
+        if (userType == null || !RoleConstants.ALERT_ACCESS_USER_TYPES.contains(userType)) {
             log.warn("WebSocket 连接拒绝：角色无权接收预警, userType={}", userType);
             closeQuietly(session);
             return;
         }
 
-        UUID tenantId = jwtTokenProvider.getTenantId(token);
-        UUID userId = jwtTokenProvider.getUserId(token);
+        UUID tenantId = parsed.tenantId();
+        UUID userId = parsed.userId();
         if (tenantId == null || userId == null) {
             closeQuietly(session);
             return;

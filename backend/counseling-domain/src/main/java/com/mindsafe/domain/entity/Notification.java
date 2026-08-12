@@ -7,9 +7,26 @@ import java.util.UUID;
 
 /**
  * 通知实体（对应 tenant_template.notifications）
+ * <p>
+ * 状态语义（P1-2，板块06 收敛；对齐板块 05 P1-1 未读单口径）：
+ * <ul>
+ *   <li>{@code deliveryStatus} 仅表达<b>投递态</b>（{@link #DELIVERY_PENDING} 待投递 / {@link #DELIVERY_SENT} 已投递）；
+ *       历史存量 {@code "read"} 值不再产生（兼容读）</li>
+ *   <li>{@code readAt} 为<b>唯一已读权威</b>：已读判定/未读统计一律 {@code readAt} 是否为空（countUnread 与
+ *       列表 UNREAD 筛选单一口径），{@link #markRead()} 不再改 deliveryStatus</li>
+ * </ul>
  */
 @TableName(value = "notifications", schema = TenantSchema.TENANT_TEMPLATE)
 public class Notification {
+
+    /** C2 收敛（P1-2，板块06）：投递态——待投递 */
+    public static final String DELIVERY_PENDING = "pending";
+
+    /** C2 收敛（P1-2，板块06）：投递态——已投递（站内消息立即可达） */
+    public static final String DELIVERY_SENT = "sent";
+
+    /** 存量兼容值：已读（历史数据；语义收敛后不再产生——readAt 为唯一已读权威） */
+    public static final String DELIVERY_READ = "read";
 
     @TableId(value = "notification_id", type = IdType.INPUT)
     private UUID notificationId;
@@ -51,18 +68,21 @@ public class Notification {
         n.bodySummary = bodySummary;
         n.relatedType = "risk_event";
         n.relatedId = riskEventId;
-        n.deliveryStatus = "pending";
+        n.deliveryStatus = DELIVERY_PENDING;
         n.createdAt = Instant.now();
         return n;
     }
 
     public void markSent() {
-        this.deliveryStatus = "sent";
+        this.deliveryStatus = DELIVERY_SENT;
         this.sentAt = Instant.now();
     }
 
+    /**
+     * 标记已读（P1-2 板块06 语义收敛：readAt 为唯一已读权威，
+     * deliveryStatus 仅表达投递态，已读不再改投递态——历史存量 read 值不再产生）。
+     */
     public void markRead() {
-        this.deliveryStatus = "read";
         this.readAt = Instant.now();
     }
 

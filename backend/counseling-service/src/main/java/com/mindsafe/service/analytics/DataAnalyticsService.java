@@ -11,13 +11,13 @@ import com.mindsafe.domain.mapper.CounselingSessionMapper;
 import com.mindsafe.domain.mapper.MessageSummaryMapper;
 import com.mindsafe.domain.mapper.QualityScoreMapper;
 import com.mindsafe.domain.mapper.RiskEventMapper;
+import com.mindsafe.service.common.CounselingTimeZone;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
 import java.time.LocalDate;
-import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -34,7 +34,7 @@ public class DataAnalyticsService {
 
     /** S-008（doing/93）：负向/正向判定收敛至 EmotionVocabulary 单一源（原私有 NEGATIVE_LABELS 与 8 模块权威词表分叉，tired 等码值口径不一致） */
     private static final Logger log = LoggerFactory.getLogger(DataAnalyticsService.class);
-    private static final ZoneId ZONE_CN = ZoneId.of("Asia/Shanghai");
+    // R-010（doing/92）：业务日界统一走 CounselingTimeZone 收敛口（SHANGHAI/dateKey），不再维护私有 ZONE_CN（G-P0-3）
 
     private final CounselingSessionMapper sessionMapper;
     private final MessageSummaryMapper messageSummaryMapper;
@@ -66,7 +66,7 @@ public class DataAnalyticsService {
      */
     public Map<String, Object> interventionEffect(UUID tenantId, UUID studentUserId,
                                                    LocalDate interventionDate, int windowDays) {
-        Instant splitPoint = interventionDate.atStartOfDay(ZONE_CN).toInstant();
+        Instant splitPoint = interventionDate.atStartOfDay(CounselingTimeZone.SHANGHAI).toInstant();
         Instant preStart = splitPoint.minus(windowDays, ChronoUnit.DAYS);
         Instant postEnd = splitPoint.plus(windowDays, ChronoUnit.DAYS);
 
@@ -121,8 +121,8 @@ public class DataAnalyticsService {
      */
     public Map<String, Object> growthTrajectory(UUID tenantId, UUID studentUserId,
                                                  LocalDate semesterStart, LocalDate semesterEnd) {
-        Instant start = semesterStart.atStartOfDay(ZONE_CN).toInstant();
-        Instant end = semesterEnd.plusDays(1).atStartOfDay(ZONE_CN).toInstant();
+        Instant start = semesterStart.atStartOfDay(CounselingTimeZone.SHANGHAI).toInstant();
+        Instant end = semesterEnd.plusDays(1).atStartOfDay(CounselingTimeZone.SHANGHAI).toInstant();
 
         List<CounselingSession> sessions = getSessions(tenantId, studentUserId, start, end);
         List<RiskEvent> riskEvents = getRiskEvents(tenantId, studentUserId, start, end);
@@ -139,10 +139,10 @@ public class DataAnalyticsService {
         // 2. 里程碑
         result.put("milestones", buildMilestones(sessions, riskEvents));
 
-        // 3. 风险事件时间线
+        // 3. 风险事件时间线（P2-5：口径统一 detectedAt）
         List<Map<String, Object>> riskTimeline = riskEvents.stream().map(re -> {
             Map<String, Object> m = new LinkedHashMap<>();
-            m.put("date", re.getCreatedAt().atZone(ZONE_CN).toLocalDate().toString());
+            m.put("date", CounselingTimeZone.dateKey(re.getDetectedAt()));
             m.put("level", re.getRiskLevel());
             m.put("category", re.getRiskType());
             m.put("status", re.getStatus());
@@ -162,8 +162,8 @@ public class DataAnalyticsService {
      * 校级报告：月度/学期 anonymized 统计
      */
     public Map<String, Object> schoolReport(UUID tenantId, LocalDate periodStart, LocalDate periodEnd) {
-        Instant start = periodStart.atStartOfDay(ZONE_CN).toInstant();
-        Instant end = periodEnd.plusDays(1).atStartOfDay(ZONE_CN).toInstant();
+        Instant start = periodStart.atStartOfDay(CounselingTimeZone.SHANGHAI).toInstant();
+        Instant end = periodEnd.plusDays(1).atStartOfDay(CounselingTimeZone.SHANGHAI).toInstant();
 
         // 全会话
         List<CounselingSession> allSessions = sessionMapper.selectList(
@@ -176,12 +176,12 @@ public class DataAnalyticsService {
         Set<UUID> activeStudents = allSessions.stream()
                 .map(CounselingSession::getStudentUserId).collect(Collectors.toSet());
 
-        // 风险事件
+        // 风险事件（P2-5：口径统一 detectedAt）
         List<RiskEvent> riskEvents = riskEventMapper.selectList(
                 new LambdaQueryWrapper<RiskEvent>()
                         .eq(RiskEvent::getTenantId, tenantId)
-                        .ge(RiskEvent::getCreatedAt, start)
-                        .lt(RiskEvent::getCreatedAt, end));
+                        .ge(RiskEvent::getDetectedAt, start)
+                        .lt(RiskEvent::getDetectedAt, end));
 
         // 质量评分
         List<QualityScore> scores = qualityScoreMapper.selectList(
@@ -252,12 +252,13 @@ public class DataAnalyticsService {
     }
 
     private List<RiskEvent> getRiskEvents(UUID tenantId, UUID studentUserId, Instant from, Instant to) {
+        // P2-5：口径统一 detectedAt（与 TeacherService detectedAt 对齐，不再用 createdAt 双源）
         return riskEventMapper.selectList(new LambdaQueryWrapper<RiskEvent>()
                 .eq(RiskEvent::getTenantId, tenantId)
                 .eq(RiskEvent::getStudentUserId, studentUserId)
-                .ge(RiskEvent::getCreatedAt, from)
-                .lt(RiskEvent::getCreatedAt, to)
-                .orderByAsc(RiskEvent::getCreatedAt));
+                .ge(RiskEvent::getDetectedAt, from)
+                .lt(RiskEvent::getDetectedAt, to)
+                .orderByAsc(RiskEvent::getDetectedAt));
     }
 
     private double negativeEmotionRatio(UUID tenantId, UUID studentUserId, Instant from, Instant to) {
@@ -277,11 +278,12 @@ public class DataAnalyticsService {
     }
 
     private double riskEventFrequency(UUID tenantId, UUID studentUserId, Instant from, Instant to, int windowDays) {
+        // P2-5：口径统一 detectedAt
         long count = riskEventMapper.selectCount(new LambdaQueryWrapper<RiskEvent>()
                 .eq(RiskEvent::getTenantId, tenantId)
                 .eq(RiskEvent::getStudentUserId, studentUserId)
-                .ge(RiskEvent::getCreatedAt, from)
-                .lt(RiskEvent::getCreatedAt, to));
+                .ge(RiskEvent::getDetectedAt, from)
+                .lt(RiskEvent::getDetectedAt, to));
         double weeks = windowDays / 7.0;
         return weeks > 0 ? count / weeks : 0;
     }
@@ -341,7 +343,7 @@ public class DataAnalyticsService {
         // 按周分组
         Map<String, List<String>> byWeek = new LinkedHashMap<>();
         for (MessageSummary s : summaries) {
-            String week = s.getCreatedAt().atZone(ZONE_CN).toLocalDate()
+            String week = s.getCreatedAt().atZone(CounselingTimeZone.SHANGHAI).toLocalDate()
                     .with(java.time.DayOfWeek.MONDAY).toString();
             byWeek.computeIfAbsent(week, k -> new ArrayList<>()).add(s.getEmotionLabel());
         }
@@ -390,7 +392,7 @@ public class DataAnalyticsService {
     private Map<String, Object> milestone(String type, Instant date, String label) {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("type", type);
-        m.put("date", date.atZone(ZONE_CN).toLocalDate().toString());
+        m.put("date", CounselingTimeZone.dateKey(date));
         m.put("label", label);
         return m;
     }
@@ -399,7 +401,7 @@ public class DataAnalyticsService {
     private List<Map<String, Object>> buildWeeklySessionTrend(List<CounselingSession> sessions) {
         Map<String, Long> byWeek = sessions.stream()
                 .collect(Collectors.groupingBy(
-                        s -> s.getStartedAt().atZone(ZONE_CN).toLocalDate()
+                        s -> s.getStartedAt().atZone(CounselingTimeZone.SHANGHAI).toLocalDate()
                                 .with(java.time.DayOfWeek.MONDAY).toString(),
                         Collectors.counting()));
         return byWeek.entrySet().stream().sorted(Map.Entry.comparingByKey()).map(e -> {

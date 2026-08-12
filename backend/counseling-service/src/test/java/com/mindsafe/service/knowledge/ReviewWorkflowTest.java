@@ -203,42 +203,6 @@ class ReviewWorkflowTest {
     class MetadataTests {
 
         @Test
-        @DisplayName("grade_band 匹配：low=1-2, mid=3-4, high=5-6, all=全")
-        void gradeBand_matching() {
-            KnowledgeMetadata low = KnowledgeMetadata.draft("d", "cbt_technique", "low");
-            assertThat(low.matchesGrade(1)).isTrue();
-            assertThat(low.matchesGrade(2)).isTrue();
-            assertThat(low.matchesGrade(3)).isFalse();
-
-            KnowledgeMetadata mid = KnowledgeMetadata.draft("d", "cbt_technique", "mid");
-            assertThat(mid.matchesGrade(3)).isTrue();
-            assertThat(mid.matchesGrade(4)).isTrue();
-            assertThat(mid.matchesGrade(5)).isFalse();
-
-            KnowledgeMetadata high = KnowledgeMetadata.draft("d", "cbt_technique", "high");
-            assertThat(high.matchesGrade(5)).isTrue();
-            assertThat(high.matchesGrade(6)).isTrue();
-            assertThat(high.matchesGrade(4)).isFalse();
-
-            KnowledgeMetadata all = KnowledgeMetadata.draft("d", "cbt_technique", "all");
-            assertThat(all.matchesGrade(1)).isTrue();
-            assertThat(all.matchesGrade(6)).isTrue();
-        }
-
-        @Test
-        @DisplayName("isSearchableForGrade：published + 年级匹配")
-        void searchableForGrade() {
-            KnowledgeMetadata published = new KnowledgeMetadata(
-                    "d", "sel", "mid", "official", "high",
-                    ReviewStatus.PUBLISHED, 1, "rev", Instant.now(), false);
-            assertThat(published.isSearchableForGrade(3)).isTrue();
-            assertThat(published.isSearchableForGrade(1)).isFalse();
-
-            KnowledgeMetadata draft = KnowledgeMetadata.draft("d", "sel", "mid");
-            assertThat(draft.isSearchableForGrade(3)).isFalse();
-        }
-
-        @Test
         @DisplayName("draft 工厂：crisis_intervention 自动 safety_sensitive=true")
         void draftFactory_crisisSensitive() {
             KnowledgeMetadata crisis = KnowledgeMetadata.draft("d", "crisis_intervention", "all");

@@ -4,6 +4,7 @@ import com.mindsafe.common.exception.BizException;
 import com.mindsafe.domain.entity.Device;
 import com.mindsafe.domain.entity.DeviceBindCode;
 import com.mindsafe.domain.entity.DeviceBinding;
+import com.mindsafe.domain.entity.DeviceOperation;
 import com.mindsafe.domain.mapper.DeviceBindCodeMapper;
 import com.mindsafe.domain.mapper.DeviceBindingMapper;
 import com.mindsafe.domain.mapper.DeviceMapper;
@@ -39,6 +40,7 @@ class DeviceServiceTest {
     private DeviceBindingMapper bindingMapper;
     private DeviceBindCodeMapper bindCodeMapper;
     private DeviceSecurityService securityService;
+    private DeviceOperationMapper operationMapper;
     private DeviceService service;
 
     private final String deviceCode = DeviceCodeUtil.generate("BB-2026-000123");
@@ -52,8 +54,9 @@ class DeviceServiceTest {
         securityService = mock(DeviceSecurityService.class);
         when(securityService.issueCredentials(any())).thenReturn(
                 new DeviceSecurityService.DeviceSecurityCredentials("DVC_test_token_abc", 9999999999999L));
+        operationMapper = mock(DeviceOperationMapper.class);
         service = new DeviceService(deviceMapper, bindingMapper, bindCodeMapper,
-                mock(DevicePreferenceService.class), securityService, mock(DeviceOperationMapper.class));
+                mock(DevicePreferenceService.class), securityService, operationMapper);
     }
 
     private Device unboundDevice() {
@@ -274,6 +277,8 @@ class DeviceServiceTest {
         assertThat(result.get("status")).isEqualTo(Device.STATUS_ONLINE_UNBOUND);
         verify(bindingMapper).updateById(any(DeviceBinding.class));
         verify(deviceMapper).updateById(any(Device.class));
+        // P1-1（板块03）：解绑写审计（与 factoryReset 同单点）
+        verify(operationMapper).insert(any(DeviceOperation.class));
     }
 
     // ===== 配置拉取 =====
@@ -385,6 +390,8 @@ class DeviceServiceTest {
         assertThat(result.get("unboundCount")).isEqualTo(1);
         verify(bindingMapper).updateById(any(DeviceBinding.class));
         verify(deviceMapper).updateById(any(Device.class));
+        // P1-1（板块03）：factory-reset 审计走同一 auditOperation 单点
+        verify(operationMapper).insert(any(DeviceOperation.class));
     }
 
     private static String sha256(String input) {

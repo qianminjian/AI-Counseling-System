@@ -146,6 +146,7 @@ public class AdminService {
         int created = 0;
         int skipped = 0;
         List<String> errors = new ArrayList<>();
+        List<String> initPasswords = new ArrayList<>();
 
         try (BufferedReader reader = new BufferedReader(
                 new InputStreamReader(csvStream, StandardCharsets.UTF_8))) {
@@ -161,16 +162,28 @@ public class AdminService {
                 line = line.trim();
                 if (line.isEmpty()) continue;
 
-                String[] parts = line.split(",");
-                if (parts.length < 1 || parts[0].trim().isEmpty()) {
+                List<String> parts = parseCsvLine(line);
+                if (parts.isEmpty() || parts.get(0).trim().isEmpty()) {
                     errors.add("第" + lineNo + "行：缺少昵称");
                     skipped++;
                     continue;
                 }
 
-                String pseudonym = parts[0].trim();
-                String gradeCode = parts.length > 1 ? parts[1].trim() : "";
-                String classCode = parts.length > 2 ? parts[2].trim() : "";
+                String pseudonym = parts.get(0).trim();
+                String gradeCode = parts.size() > 1 ? parts.get(1).trim() : "";
+                String classCode = parts.size() > 2 ? parts.get(2).trim() : "";
+
+                // P1-5：classCode 预校验（无班级字典表，降级为必填 + 格式校验）
+                if (classCode.isEmpty()) {
+                    errors.add("第" + lineNo + "行：\"" + pseudonym + "\" 缺少班级，跳过");
+                    skipped++;
+                    continue;
+                }
+                if (classCode.length() > 32) {
+                    errors.add("第" + lineNo + "行：\"" + pseudonym + "\" 班级字段超长（>32），跳过");
+                    skipped++;
+                    continue;
+                }
 
                 // 检查同租户下是否已存在同名学生
                 Long exists = userMapper.selectCount(
@@ -188,12 +201,13 @@ public class AdminService {
                 // 创建学生用户
                 User student = User.createStudent(tenantId, null, pseudonym, gradeCode, classCode);
                 student.setUserId(UUID.randomUUID());
-                // 初始密码：随机 6 位数字
+                // 初始密码：随机 6 位数字（随结果返回，供管理员线下分发；首次登录强制改密）
                 String initPwd = String.format("%06d", RANDOM.nextInt(1000000));
                 student.setPasswordHash(passwordEncoder.encode(initPwd));
                 student.setMustChangePassword(true);
                 userMapper.insert(student);
                 created++;
+                initPasswords.add(initPwd);
             }
         } catch (BizException e) {
             throw e;
@@ -201,10 +215,44 @@ public class AdminService {
             throw new BizException(ErrorCode.INTERNAL_ERROR, "CSV 解析失败: " + e.getMessage());
         }
 
-        // 审计：批量导入
+        // 审计：批量导入（初始密码属敏感信息，不进审计）
         auditLogService.log(tenantId, userId, "IMPORT_STUDENTS", "batch",
                 null, "{\"created\":" + created + ",\"skipped\":" + skipped + "}");
-        return new ImportResult(created, skipped, errors);
+        return new ImportResult(created, skipped, errors, initPasswords);
+    }
+
+    /**
+     * RFC4180 基础版 CSV 行解析：支持双引号包裹字段（含逗号/引号内分隔符）与 "" 转义。
+     * 项目无 CSV 库依赖，自写单行解析（导入模板每行一个学生，字段不跨行）。
+     */
+    static List<String> parseCsvLine(String line) {
+        List<String> fields = new ArrayList<>();
+        StringBuilder cur = new StringBuilder();
+        boolean inQuotes = false;
+        for (int i = 0; i < line.length(); i++) {
+            char c = line.charAt(i);
+            if (inQuotes) {
+                if (c == '"') {
+                    if (i + 1 < line.length() && line.charAt(i + 1) == '"') {
+                        cur.append('"');
+                        i++;
+                    } else {
+                        inQuotes = false;
+                    }
+                } else {
+                    cur.append(c);
+                }
+            } else if (c == '"') {
+                inQuotes = true;
+            } else if (c == ',') {
+                fields.add(cur.toString());
+                cur.setLength(0);
+            } else {
+                cur.append(c);
+            }
+        }
+        fields.add(cur.toString());
+        return fields;
     }
 
     /** 审计日志查询（admin 专用，最近 limit 条；AUD-043 分页插件安全化） */
@@ -240,7 +288,11 @@ public class AdminService {
     public record BatchResult(String batchId, int count, List<String> codes) {
     }
 
-    /** 学生导入结果 */
-    public record ImportResult(int created, int skipped, List<String> errors) {
+    /**
+     * 学生导入结果。
+     * initPasswords：与 created 一一对应的初始密码（随机 6 位数字），由管理员线下分发；
+     * 学生首次登录强制改密（mustChangePassword=true）。
+     */
+    public record ImportResult(int created, int skipped, List<String> errors, List<String> initPasswords) {
     }
 }
