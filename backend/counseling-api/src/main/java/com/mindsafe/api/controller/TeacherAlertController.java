@@ -1,6 +1,7 @@
 package com.mindsafe.api.controller;
 
 import com.mindsafe.api.security.JwtAuthenticationFilter.TenantContext;
+import com.mindsafe.api.security.SecuritySupport;
 import com.mindsafe.common.dto.ApiResponse;
 import com.mindsafe.domain.entity.User;
 import com.mindsafe.service.audit.AuditLogService;
@@ -37,14 +38,14 @@ public class TeacherAlertController {
             @RequestParam(required = false) String status,
             @RequestParam(required = false) Integer minLevel,
             @RequestParam(defaultValue = "50") int limit) {
-        TenantContext ctx = (TenantContext) auth.getDetails();
+        TenantContext ctx = SecuritySupport.requireContext(auth);
         return ApiResponse.ok(teacherService.getAlerts(ctx.tenantId(), status, minLevel, limit));
     }
 
     /** 认领预警 */
     @PostMapping("/alerts/{id}/claim")
     public ApiResponse<Void> claimAlert(@PathVariable UUID id, Authentication auth) {
-        TenantContext ctx = (TenantContext) auth.getDetails();
+        TenantContext ctx = SecuritySupport.requireContext(auth);
         UUID userId = (UUID) auth.getPrincipal();
         teacherService.claimAlert(ctx.tenantId(), id, userId);
         auditLogService.log(ctx.tenantId(), userId, "ALERT_CLAIM", "risk_event", id, null);
@@ -54,7 +55,7 @@ public class TeacherAlertController {
     /** 标记误报 */
     @PatchMapping("/alerts/{id}/false-positive")
     public ApiResponse<Void> markFalsePositive(@PathVariable UUID id, Authentication auth) {
-        TenantContext ctx = (TenantContext) auth.getDetails();
+        TenantContext ctx = SecuritySupport.requireContext(auth);
         UUID userId = (UUID) auth.getPrincipal();
         teacherService.markFalsePositive(ctx.tenantId(), id, userId);
         return ApiResponse.ok(null);
@@ -65,7 +66,7 @@ public class TeacherAlertController {
     public ApiResponse<Void> resolveAlert(@PathVariable UUID id,
                                           @RequestBody(required = false) Map<String, String> body,
                                           Authentication auth) {
-        TenantContext ctx = (TenantContext) auth.getDetails();
+        TenantContext ctx = SecuritySupport.requireContext(auth);
         UUID userId = (UUID) auth.getPrincipal();
         String note = body != null ? body.get("resolutionNote") : null;
         teacherService.resolveAlert(ctx.tenantId(), id, userId, note);
@@ -78,7 +79,7 @@ public class TeacherAlertController {
     public ApiResponse<Void> transferAlert(@PathVariable UUID id,
                                            @RequestBody Map<String, String> body,
                                            Authentication auth) {
-        TenantContext ctx = (TenantContext) auth.getDetails();
+        TenantContext ctx = SecuritySupport.requireContext(auth);
         UUID userId = (UUID) auth.getPrincipal();
         String target = body.get("targetTeacherId");
         if (target == null || target.isBlank()) {
@@ -95,7 +96,7 @@ public class TeacherAlertController {
     public ApiResponse<Void> setCaseTracking(@PathVariable UUID studentId,
                                              @RequestBody Map<String, Object> body,
                                              Authentication auth) {
-        TenantContext ctx = (TenantContext) auth.getDetails();
+        TenantContext ctx = SecuritySupport.requireContext(auth);
         UUID userId = (UUID) auth.getPrincipal();
         boolean enabled = Boolean.TRUE.equals(body.get("enabled"));
         teacherService.setCaseTracking(ctx.tenantId(), studentId, userId, enabled);
@@ -108,7 +109,7 @@ public class TeacherAlertController {
     public ApiResponse<Void> scheduleFollowUp(@PathVariable UUID id,
                                               @RequestBody Map<String, String> body,
                                               Authentication auth) {
-        TenantContext ctx = (TenantContext) auth.getDetails();
+        TenantContext ctx = SecuritySupport.requireContext(auth);
         UUID userId = (UUID) auth.getPrincipal();
         String followUpAt = body.get("followUpAt");
         if (followUpAt == null || followUpAt.isBlank()) {
@@ -124,7 +125,7 @@ public class TeacherAlertController {
     public ApiResponse<Void> completeFollowUp(@PathVariable UUID id,
                                               @RequestBody Map<String, String> body,
                                               Authentication auth) {
-        TenantContext ctx = (TenantContext) auth.getDetails();
+        TenantContext ctx = SecuritySupport.requireContext(auth);
         UUID userId = (UUID) auth.getPrincipal();
         String note = body.get("followUpNote");
         String outcome = body.get("outcome");
@@ -136,7 +137,7 @@ public class TeacherAlertController {
     /** DATA-004：待回访列表 */
     @GetMapping("/alerts/pending-followups")
     public ApiResponse<List<Map<String, Object>>> getPendingFollowUps(Authentication auth) {
-        TenantContext ctx = (TenantContext) auth.getDetails();
+        TenantContext ctx = SecuritySupport.requireContext(auth);
         var events = teacherService.getPendingFollowUps(ctx.tenantId());
         List<Map<String, Object>> result = events.stream().map(e -> {
             Map<String, Object> row = new LinkedHashMap<>();

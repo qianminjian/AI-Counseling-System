@@ -1,6 +1,7 @@
 package com.mindsafe.api.controller;
 
 import com.mindsafe.api.security.JwtAuthenticationFilter.TenantContext;
+import com.mindsafe.api.security.SecuritySupport;
 import com.mindsafe.common.dto.ApiResponse;
 import com.mindsafe.service.audit.AuditLogService;
 import com.mindsafe.service.knowledge.EditorialWorkflowService;
@@ -53,7 +54,7 @@ public class KnowledgeBaseController {
     @PostMapping("/documents")
     public ApiResponse<Map<String, Object>> ingest(
             @RequestBody Map<String, String> body, Authentication auth) {
-        TenantContext ctx = (TenantContext) auth.getDetails();
+        TenantContext ctx = SecuritySupport.requireContext(auth);
         String title = body.get("title");
         String category = body.getOrDefault("category", "general");
         String content = body.get("content");
@@ -81,7 +82,7 @@ public class KnowledgeBaseController {
     @PostMapping(value = "/corpus", consumes = "text/plain;charset=UTF-8")
     public ApiResponse<KnowledgeCorpusIngestService.IngestReport> ingestCorpus(
             @RequestBody String corpusMarkdown, Authentication auth) {
-        TenantContext ctx = (TenantContext) auth.getDetails();
+        TenantContext ctx = SecuritySupport.requireContext(auth);
         KnowledgeCorpusIngestService.IngestReport report =
                 corpusIngestService.ingestCorpus(corpusMarkdown);
 
@@ -99,7 +100,7 @@ public class KnowledgeBaseController {
             @RequestParam String query,
             @RequestParam(defaultValue = "3") int topK,
             Authentication auth) {
-        TenantContext ctx = (TenantContext) auth.getDetails();
+        TenantContext ctx = SecuritySupport.requireContext(auth);
         List<KnowledgeBaseService.KnowledgeChunk> results =
                 knowledgeBaseService.search(ctx.tenantId(), query, topK);
         return ApiResponse.ok(results);
@@ -110,14 +111,14 @@ public class KnowledgeBaseController {
     public ApiResponse<List<Map<String, Object>>> list(
             @RequestParam(required = false) String category,
             Authentication auth) {
-        TenantContext ctx = (TenantContext) auth.getDetails();
+        TenantContext ctx = SecuritySupport.requireContext(auth);
         return ApiResponse.ok(knowledgeBaseService.listDocuments(ctx.tenantId(), category));
     }
 
     /** 删除文档 */
     @DeleteMapping("/documents/{docId}")
     public ApiResponse<Void> delete(@PathVariable UUID docId, Authentication auth) {
-        TenantContext ctx = (TenantContext) auth.getDetails();
+        TenantContext ctx = SecuritySupport.requireContext(auth);
         knowledgeBaseService.deleteDocument(ctx.tenantId(), docId);
         auditLogService.log(ctx.tenantId(), ctx.userId(), "KNOWLEDGE_DELETE",
                 "knowledge_document", docId, null);
@@ -135,7 +136,7 @@ public class KnowledgeBaseController {
             @PathVariable UUID docId,
             @RequestBody Map<String, String> body,
             Authentication auth) {
-        TenantContext ctx = (TenantContext) auth.getDetails();
+        TenantContext ctx = SecuritySupport.requireContext(auth);
 
         String targetStatus = body.get("targetStatus");
         if (targetStatus == null || targetStatus.isBlank()) {
@@ -202,7 +203,7 @@ public class KnowledgeBaseController {
             @PathVariable UUID docId,
             @RequestBody Map<String, String> body,
             Authentication auth) {
-        TenantContext ctx = (TenantContext) auth.getDetails();
+        TenantContext ctx = SecuritySupport.requireContext(auth);
         String action = body.get("action");
         if (action == null || action.isBlank()) {
             return ApiResponse.error(400, "缺少 action 参数（submit/publish/reject/deprecate）");
@@ -250,7 +251,7 @@ public class KnowledgeBaseController {
     public ApiResponse<EditorialWorkflowService.OperationalReport> operationalReport(
             @RequestParam(value = "missedQueries", required = false) String missedQueriesParam,
             Authentication auth) {
-        TenantContext ctx = (TenantContext) auth.getDetails();
+        TenantContext ctx = SecuritySupport.requireContext(auth);
 
         // 分类 × 状态覆盖输入：文档列表（含全部审核状态）
         Map<String, List<String>> docsByCategory =

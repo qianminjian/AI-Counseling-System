@@ -5,6 +5,7 @@ import com.mindsafe.api.auth.LoginOrchestrator;
 import com.mindsafe.api.auth.TrialAuthStrategy;
 import com.mindsafe.api.auth.TrialRegisterRequest;
 import com.mindsafe.api.security.JwtAuthenticationFilter.TenantContext;
+import com.mindsafe.api.security.SecuritySupport;
 import com.mindsafe.api.security.BusinessAuthProvider;
 import com.mindsafe.api.security.JwtTokenProvider;
 import com.mindsafe.common.dto.ApiResponse;
@@ -370,7 +371,7 @@ public class AuthController {
     @PostMapping("/guardian-consent/request")
     public ApiResponse<Map<String, String>> requestGuardianConsent(
             @RequestBody GuardianConsentRequest request, Authentication auth) {
-        TenantContext ctx = (TenantContext) auth.getDetails();
+        TenantContext ctx = SecuritySupport.requireContext(auth);
         UUID studentUserId = (UUID) auth.getPrincipal();
         guardianConsentService.requestConsent(ctx.tenantId(), studentUserId, request.guardianPhone());
         return ApiResponse.ok(Map.of("status", "sent", "message", "验证码已发送到监护人手机"));
@@ -382,7 +383,7 @@ public class AuthController {
     @PostMapping("/guardian-consent/confirm")
     public ApiResponse<Map<String, Object>> confirmGuardianConsent(
             @RequestBody GuardianConsentConfirmRequest request, Authentication auth) {
-        TenantContext ctx = (TenantContext) auth.getDetails();
+        TenantContext ctx = SecuritySupport.requireContext(auth);
         UUID studentUserId = (UUID) auth.getPrincipal();
         guardianConsentService.confirmConsent(ctx.tenantId(), studentUserId,
                 request.guardianPhone(), request.code());

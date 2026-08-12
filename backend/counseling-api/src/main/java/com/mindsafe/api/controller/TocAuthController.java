@@ -1,6 +1,7 @@
 package com.mindsafe.api.controller;
 
 import com.mindsafe.api.security.JwtAuthenticationFilter.TenantContext;
+import com.mindsafe.api.security.SecuritySupport;
 import com.mindsafe.common.dto.ApiResponse;
 import com.mindsafe.domain.entity.TocFamilyAccount;
 import com.mindsafe.service.toc.TocAuthService;
@@ -70,7 +71,7 @@ public class TocAuthController {
     /** 当前账号信息（登录态） */
     @GetMapping("/me")
     public ApiResponse<Map<String, Object>> me(Authentication auth) {
-        TenantContext ctx = (TenantContext) auth.getDetails();
+        TenantContext ctx = SecuritySupport.requireContext(auth);
         TocFamilyAccount account = tocAuthService.getById(ctx.userId());
         if (account == null) {
             return ApiResponse.error(404, "账号不存在");

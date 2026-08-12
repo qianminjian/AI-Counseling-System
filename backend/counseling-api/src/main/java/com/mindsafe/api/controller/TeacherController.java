@@ -1,6 +1,7 @@
 package com.mindsafe.api.controller;
 
 import com.mindsafe.api.security.JwtAuthenticationFilter.TenantContext;
+import com.mindsafe.api.security.SecuritySupport;
 import com.mindsafe.api.security.JwtTokenProvider;
 import com.mindsafe.common.dto.ApiResponse;
 import com.mindsafe.common.dto.ErrorCode;
@@ -69,7 +70,7 @@ public class TeacherController {
     /** 工作台概览（待处理预警数/今日任务/周趋势） */
     @GetMapping("/teacher/dashboard")
     public ApiResponse<TeacherService.DashboardVO> getDashboard(Authentication auth) {
-        TenantContext ctx = (TenantContext) auth.getDetails();
+        TenantContext ctx = SecuritySupport.requireContext(auth);
         UUID userId = (UUID) auth.getPrincipal();
         return ApiResponse.ok(teacherService.getDashboard(ctx.tenantId(), userId));
     }
@@ -77,7 +78,7 @@ public class TeacherController {
     /** 数据看板统计（风隩分布/班级对比/会话趋势/情绪分布） */
     @GetMapping("/teacher/stats")
     public ApiResponse<TeacherService.StatsVO> getStats(Authentication auth) {
-        TenantContext ctx = (TenantContext) auth.getDetails();
+        TenantContext ctx = SecuritySupport.requireContext(auth);
         String classScope = teacherService.resolveClassScope(ctx.tenantId(), ctx.userId(), ctx.userType());
         return ApiResponse.ok(teacherService.getStats(ctx.tenantId(), classScope));
     }
@@ -85,7 +86,7 @@ public class TeacherController {
     /** 满意度统计（平均评分/分布/近 7 天趋势） */
     @GetMapping("/teacher/satisfaction")
     public ApiResponse<TeacherService.SatisfactionStatsVO> getSatisfaction(Authentication auth) {
-        TenantContext ctx = (TenantContext) auth.getDetails();
+        TenantContext ctx = SecuritySupport.requireContext(auth);
         return ApiResponse.ok(teacherService.getSatisfactionStats(ctx.tenantId()));
     }
 
@@ -102,7 +103,7 @@ public class TeacherController {
     /** 高风险学生列表 */
     @GetMapping("/teacher/students/high-risk")
     public ApiResponse<List<TeacherService.HighRiskStudentVO>> getHighRiskStudents(Authentication auth) {
-        TenantContext ctx = (TenantContext) auth.getDetails();
+        TenantContext ctx = SecuritySupport.requireContext(auth);
         String classScope = teacherService.resolveClassScope(ctx.tenantId(), ctx.userId(), ctx.userType());
         return ApiResponse.ok(teacherService.getHighRiskStudents(ctx.tenantId(), classScope));
     }
@@ -111,7 +112,7 @@ public class TeacherController {
     @GetMapping("/teacher/students/{id}")
     public ApiResponse<TeacherService.StudentProfileVO> getStudentProfile(
             @PathVariable UUID id, Authentication auth) {
-        TenantContext ctx = (TenantContext) auth.getDetails();
+        TenantContext ctx = SecuritySupport.requireContext(auth);
         return ApiResponse.ok(teacherService.getStudentProfile(ctx.tenantId(), id, ctx.userType()));
     }
 
@@ -119,7 +120,7 @@ public class TeacherController {
     @GetMapping("/teacher/students/{id}/radar")
     public ApiResponse<Map<String, Object>> getStudentRadar(
             @PathVariable UUID id, Authentication auth) {
-        TenantContext ctx = (TenantContext) auth.getDetails();
+        TenantContext ctx = SecuritySupport.requireContext(auth);
         return ApiResponse.ok(profileRadarService.getRadarData(ctx.tenantId(), id));
     }
 
@@ -129,7 +130,7 @@ public class TeacherController {
             @PathVariable UUID id,
             @RequestBody Map<String, String> body,
             Authentication auth) {
-        TenantContext ctx = (TenantContext) auth.getDetails();
+        TenantContext ctx = SecuritySupport.requireContext(auth);
         UUID userId = (UUID) auth.getPrincipal();
         String content = body.get("content");
         String noteType = body.getOrDefault("noteType", "general");
@@ -141,7 +142,7 @@ public class TeacherController {
     @GetMapping("/teacher/sessions/{sessionId}/messages")
     public ApiResponse<List<TeacherService.MessageSummaryVO>> getSessionMessages(
             @PathVariable UUID sessionId, Authentication auth) {
-        TenantContext ctx = (TenantContext) auth.getDetails();
+        TenantContext ctx = SecuritySupport.requireContext(auth);
         return ApiResponse.ok(teacherService.getSessionMessages(ctx.tenantId(), sessionId));
     }
 
@@ -149,7 +150,7 @@ public class TeacherController {
     @GetMapping("/teacher/sessions/{sessionId}/summary")
     public ApiResponse<Map<String, Object>> getSessionSummary(
             @PathVariable UUID sessionId, Authentication auth) {
-        TenantContext ctx = (TenantContext) auth.getDetails();
+        TenantContext ctx = SecuritySupport.requireContext(auth);
         // T4 批次A：归属校验单点（租户条件强制内置，杜绝跨租户越权）
         CounselingSession session = sessionAccessService.getTenantSession(ctx.tenantId(), sessionId);
         if (session == null) {
@@ -165,7 +166,7 @@ public class TeacherController {
     @PostMapping("/teacher/sessions/{sessionId}/takeover")
     public ApiResponse<Map<String, Object>> takeoverSession(
             @PathVariable UUID sessionId, Authentication auth) {
-        TenantContext ctx = (TenantContext) auth.getDetails();
+        TenantContext ctx = SecuritySupport.requireContext(auth);
         UUID userId = (UUID) auth.getPrincipal();
         // T4 批次A/B：归属校验 + 状态更新 + 审计整体下沉 TeacherService（事务内）
         TeacherService.TakeoverResult result = teacherService.takeoverSession(ctx.tenantId(), userId, sessionId);
@@ -179,7 +180,7 @@ public class TeacherController {
     @PostMapping("/teacher/students/{studentId}/parent-link")
     public ApiResponse<Map<String, String>> generateParentLink(
             @PathVariable UUID studentId, Authentication auth) {
-        TenantContext ctx = (TenantContext) auth.getDetails();
+        TenantContext ctx = SecuritySupport.requireContext(auth);
         // 验证学生属于同租户（T4 批次C：查询下沉 TeacherService，租户条件强制内置）
         User student = teacherService.findStudentInTenant(ctx.tenantId(), studentId);
         if (student == null) {
@@ -195,7 +196,7 @@ public class TeacherController {
      * BUG-UI-03：改用 listVisibleStudents——冻结（withdrawn）学生须可见并带状态标识 */
     @GetMapping("/teacher/students")
     public ApiResponse<List<StudentVO>> getStudents(Authentication auth) {
-        TenantContext ctx = (TenantContext) auth.getDetails();
+        TenantContext ctx = SecuritySupport.requireContext(auth);
         String classScope = teacherService.resolveClassScope(ctx.tenantId(), ctx.userId(), ctx.userType());
         List<User> students = teacherService.listVisibleStudents(ctx.tenantId(), classScope);
         List<StudentVO> voList = students.stream()
@@ -235,7 +236,7 @@ public class TeacherController {
     public ApiResponse<List<RiskEvent>> getRiskEvents(
             Authentication auth,
             @RequestParam(defaultValue = "50") int limit) {
-        TenantContext ctx = (TenantContext) auth.getDetails();
+        TenantContext ctx = SecuritySupport.requireContext(auth);
         return ApiResponse.ok(teacherService.pageRiskEvents(ctx.tenantId(), limit));
     }
 
@@ -250,7 +251,7 @@ public class TeacherController {
     /** 导出预警记录 CSV */
     @GetMapping("/teacher/export/alerts")
     public void exportAlerts(Authentication auth, HttpServletResponse response) throws IOException {
-        TenantContext ctx = (TenantContext) auth.getDetails();
+        TenantContext ctx = SecuritySupport.requireContext(auth);
         UUID userId = (UUID) auth.getPrincipal();
         auditLogService.log(ctx.tenantId(), userId, "EXPORT_ALERTS", "export");
         // P1 审计修复：导出跟随数据范围（班主任仅导出本班，不再全校可见）
@@ -283,7 +284,7 @@ public class TeacherController {
     /** 导出学生列表 CSV（T4 批次C：查询下沉 TeacherService，与 getStudents 共用 DRY） */
     @GetMapping("/teacher/export/students")
     public void exportStudents(Authentication auth, HttpServletResponse response) throws IOException {
-        TenantContext ctx = (TenantContext) auth.getDetails();
+        TenantContext ctx = SecuritySupport.requireContext(auth);
         // P1 审计修复：导出跟随数据范围（班主任仅导出本班，不再全校可见）
         String classScope = teacherService.resolveClassScope(ctx.tenantId(), ctx.userId(), ctx.userType());
         List<User> students = teacherService.listActiveStudents(ctx.tenantId(), classScope);
@@ -327,7 +328,7 @@ public class TeacherController {
             @PathVariable UUID studentId,
             @RequestBody Map<String, String> body,
             Authentication auth) {
-        TenantContext ctx = (TenantContext) auth.getDetails();
+        TenantContext ctx = SecuritySupport.requireContext(auth);
         UUID userId = (UUID) auth.getPrincipal();
         String targetStage = body.getOrDefault("targetStage", "ASSESSMENT");
 
@@ -354,7 +355,7 @@ public class TeacherController {
     /** 生成周报告 HTML（教师浏览器 Ctrl+P 保存 PDF） */
     @GetMapping(value = "/teacher/report/weekly", produces = "text/html; charset=UTF-8")
     public void weeklyReport(Authentication auth, HttpServletResponse response) throws IOException {
-        TenantContext ctx = (TenantContext) auth.getDetails();
+        TenantContext ctx = SecuritySupport.requireContext(auth);
         UUID userId = (UUID) auth.getPrincipal();
         auditLogService.log(ctx.tenantId(), userId, "EXPORT_WEEKLY_REPORT", "report");
 
@@ -418,7 +419,7 @@ public class TeacherController {
     /** 单会话导出（个案存档，可打印 HTML） */
     @GetMapping(value = "/teacher/sessions/{sessionId}/export", produces = "text/html; charset=UTF-8")
     public void exportSession(@PathVariable UUID sessionId, Authentication auth, HttpServletResponse response) throws IOException {
-        TenantContext ctx = (TenantContext) auth.getDetails();
+        TenantContext ctx = SecuritySupport.requireContext(auth);
         auditLogService.log(ctx.tenantId(), (UUID) auth.getPrincipal(), "EXPORT_SESSION", "counseling_session", sessionId, null);
 
         var messages = teacherService.getSessionMessages(ctx.tenantId(), sessionId);

@@ -1,6 +1,7 @@
 package com.mindsafe.api.controller;
 
 import com.mindsafe.api.security.JwtAuthenticationFilter.TenantContext;
+import com.mindsafe.api.security.SecuritySupport;
 import com.mindsafe.common.dto.ApiResponse;
 import com.mindsafe.common.dto.ErrorCode;
 import com.mindsafe.domain.entity.PromptVersion;
@@ -74,7 +75,7 @@ public class AdminPromptController {
     public ApiResponse<Map<String, Object>> createVersion(
             @RequestBody Map<String, String> body,
             Authentication auth) {
-        TenantContext ctx = (TenantContext) auth.getDetails();
+        TenantContext ctx = SecuritySupport.requireContext(auth);
         String templateKey = body.get("templateKey");
         String content = body.get("content");
         String description = body.get("description");
@@ -101,7 +102,7 @@ public class AdminPromptController {
     public ApiResponse<Void> activateVersion(@PathVariable UUID versionId,
                                              @RequestBody(required = false) Map<String, Object> body,
                                              Authentication auth) {
-        TenantContext ctx = (TenantContext) auth.getDetails();
+        TenantContext ctx = SecuritySupport.requireContext(auth);
         Map<String, Object> b = body != null ? body : Map.of();
         String reviewer = b.get("reviewer") != null ? String.valueOf(b.get("reviewer")).trim() : "";
         if (reviewer.isBlank()) {

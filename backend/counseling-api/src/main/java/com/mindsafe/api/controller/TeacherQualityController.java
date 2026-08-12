@@ -1,6 +1,7 @@
 package com.mindsafe.api.controller;
 
 import com.mindsafe.api.security.JwtAuthenticationFilter.TenantContext;
+import com.mindsafe.api.security.SecuritySupport;
 import com.mindsafe.common.dto.ApiResponse;
 import com.mindsafe.service.audit.AuditLogService;
 import com.mindsafe.service.teacher.TeacherQualityService;
@@ -39,14 +40,14 @@ public class TeacherQualityController {
     /** 质量监控：低分会话列表（rating <= 2） */
     @GetMapping("/teacher/quality/flagged")
     public ApiResponse<List<Map<String, Object>>> getFlaggedSessions(Authentication auth) {
-        TenantContext ctx = (TenantContext) auth.getDetails();
+        TenantContext ctx = SecuritySupport.requireContext(auth);
         return ApiResponse.ok(teacherQualityService.flaggedSessions(ctx.tenantId()));
     }
 
     /** 质量监控：概览指标 */
     @GetMapping("/teacher/quality/stats")
     public ApiResponse<Map<String, Object>> getQualityStats(Authentication auth) {
-        TenantContext ctx = (TenantContext) auth.getDetails();
+        TenantContext ctx = SecuritySupport.requireContext(auth);
         var stats = teacherService.getSatisfactionStats(ctx.tenantId());
         long flaggedCount = stats.distribution().stream()
                 .filter(d -> d.stars() <= 2).mapToLong(d -> d.count()).sum();
@@ -71,7 +72,7 @@ public class TeacherQualityController {
             @RequestParam(required = false) UUID studentUserId,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size) {
-        TenantContext ctx = (TenantContext) auth.getDetails();
+        TenantContext ctx = SecuritySupport.requireContext(auth);
         return ApiResponse.ok(teacherQualityService.qualityScores(ctx.tenantId(), flaggedOnly, studentUserId, page, size));
     }
 
@@ -80,7 +81,7 @@ public class TeacherQualityController {
      */
     @GetMapping("/teacher/quality/ai-stats")
     public ApiResponse<Map<String, Object>> getAiQualityStats(Authentication auth) {
-        TenantContext ctx = (TenantContext) auth.getDetails();
+        TenantContext ctx = SecuritySupport.requireContext(auth);
         return ApiResponse.ok(teacherQualityService.aiQualityStats(ctx.tenantId()));
     }
 
@@ -89,7 +90,7 @@ public class TeacherQualityController {
      */
     @GetMapping("/teacher/quality/sessions/{sessionId}/replay")
     public ApiResponse<Map<String, Object>> replaySession(@PathVariable UUID sessionId, Authentication auth) {
-        TenantContext ctx = (TenantContext) auth.getDetails();
+        TenantContext ctx = SecuritySupport.requireContext(auth);
         auditLogService.log(ctx.tenantId(), (UUID) auth.getPrincipal(), "QUALITY_REPLAY", "counseling_session", sessionId, null);
 
         Map<String, Object> replay = teacherQualityService.replaySession(ctx.tenantId(), sessionId);

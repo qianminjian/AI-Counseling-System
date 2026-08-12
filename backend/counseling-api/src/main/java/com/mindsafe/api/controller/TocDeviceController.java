@@ -1,6 +1,7 @@
 package com.mindsafe.api.controller;
 
 import com.mindsafe.api.security.JwtAuthenticationFilter.TenantContext;
+import com.mindsafe.api.security.SecuritySupport;
 import com.mindsafe.common.dto.ApiResponse;
 import com.mindsafe.service.toc.TocDeviceService;
 import org.springframework.security.core.Authentication;
@@ -55,12 +56,12 @@ public class TocDeviceController {
     }
 
     private UUID accountId(Authentication auth) {
-        TenantContext ctx = (TenantContext) auth.getDetails();
+        TenantContext ctx = SecuritySupport.requireContext(auth);
         return ctx.userId();
     }
 
     private String operator(Authentication auth) {
-        TenantContext ctx = (TenantContext) auth.getDetails();
+        TenantContext ctx = SecuritySupport.requireContext(auth);
         return ctx.userId() == null ? null : ctx.userId().toString();
     }
 }

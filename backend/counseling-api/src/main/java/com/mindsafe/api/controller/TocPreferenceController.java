@@ -1,6 +1,7 @@
 package com.mindsafe.api.controller;
 
 import com.mindsafe.api.security.JwtAuthenticationFilter.TenantContext;
+import com.mindsafe.api.security.SecuritySupport;
 import com.mindsafe.common.dto.ApiResponse;
 import com.mindsafe.service.device.DevicePreferenceService;
 import org.springframework.security.core.Authentication;
@@ -51,7 +52,7 @@ public class TocPreferenceController {
     }
 
     private UUID accountId(Authentication auth) {
-        TenantContext ctx = (TenantContext) auth.getDetails();
+        TenantContext ctx = SecuritySupport.requireContext(auth);
         return ctx.userId();
     }
 }
