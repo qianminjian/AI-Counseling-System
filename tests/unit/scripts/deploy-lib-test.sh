@@ -52,6 +52,13 @@ frontend/teacher-web/src/App.tsx
 frontend/parent-h5/src/App.tsx")
 [ "$M" = "student teacher parent" ] && ok "三端映射正确" || bad "三端映射异常（${M}）"
 
+# ---- 6b. 路径映射：admin-web → admin 组件（2026-08-12 部署体系收编） ----
+M=$(deploy_map_changes "frontend/admin-web/src/pages/ConfigPage.tsx")
+[ "$M" = "admin" ] && ok "admin-web → admin 组件" || bad "admin-web 映射异常（${M}）"
+M=$(deploy_map_changes "frontend/admin-web/src/pages/ConfigPage.tsx
+frontend/teacher-web/src/pages/Dashboard.tsx")
+[ "$M" = "teacher admin" ] && ok "teacher+admin 多组件映射" || bad "teacher+admin 映射异常（${M}）"
+
 # ---- 7. 路径映射：deploy.sh / deploy/ 变更 → 全量 ----
 M=$(deploy_map_changes "deploy.sh")
 [ "$M" = "backend tts voice" ] && ok "deploy.sh 变更 → backend+tts+voice" || bad "deploy.sh 映射异常（${M}）"

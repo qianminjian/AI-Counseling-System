@@ -12,6 +12,7 @@
 #   ./deploy.sh --student    强制部署学生端
 #   ./deploy.sh --teacher    强制部署教师端
 #   ./deploy.sh --parent     强制部署家长端
+#   ./deploy.sh --admin      强制部署管理端（admin-web）
 #   ./deploy.sh --tts        强制部署 TTS 服务
 #   ./deploy.sh --voice      强制部署 Voice 服务（ASR+SER）
 #   ./deploy.sh --rollback backend   回滚后端到上一版本
@@ -57,6 +58,7 @@ FORCE_BACKEND=false
 FORCE_STUDENT=false
 FORCE_TEACHER=false
 FORCE_PARENT=false
+FORCE_ADMIN=false
 FORCE_TTS=false
 FORCE_VOICE=false
 ROLLBACK_TARGET=""
@@ -68,6 +70,7 @@ while [[ $# -gt 0 ]]; do
     --student)  FORCE_STUDENT=true; shift ;;
     --teacher)  FORCE_TEACHER=true; shift ;;
     --parent)   FORCE_PARENT=true; shift ;;
+    --admin)    FORCE_ADMIN=true; shift ;;
     --tts)      FORCE_TTS=true; shift ;;
     --voice)    FORCE_VOICE=true; shift ;;
     --rollback) ROLLBACK_TARGET="${2:-backend}"; shift 2 ;;
@@ -182,6 +185,7 @@ DEPLOY_BACKEND=$FORCE_BACKEND
 DEPLOY_STUDENT=$FORCE_STUDENT
 DEPLOY_TEACHER=$FORCE_TEACHER
 DEPLOY_PARENT=$FORCE_PARENT
+DEPLOY_ADMIN=$FORCE_ADMIN
 DEPLOY_TTS=$FORCE_TTS
 DEPLOY_VOICE=$FORCE_VOICE
 
@@ -190,9 +194,10 @@ if $FORCE_ALL; then
   DEPLOY_STUDENT=true
   DEPLOY_TEACHER=true
   DEPLOY_PARENT=true
+  DEPLOY_ADMIN=true
   DEPLOY_TTS=true
   DEPLOY_VOICE=true
-elif ! $FORCE_BACKEND && ! $FORCE_STUDENT && ! $FORCE_TEACHER && ! $FORCE_PARENT && ! $FORCE_TTS && ! $FORCE_VOICE; then
+elif ! $FORCE_BACKEND && ! $FORCE_STUDENT && ! $FORCE_TEACHER && ! $FORCE_PARENT && ! $FORCE_ADMIN && ! $FORCE_TTS && ! $FORCE_VOICE; then
   # 自动检测模式：基于 git diff
   if [ -f "$STATE_FILE" ]; then
     LAST_COMMIT=$(grep '^LAST_DEPLOYED_COMMIT=' "$STATE_FILE" | cut -d= -f2)
@@ -204,6 +209,7 @@ elif ! $FORCE_BACKEND && ! $FORCE_STUDENT && ! $FORCE_TEACHER && ! $FORCE_PARENT
     DEPLOY_STUDENT=true
     DEPLOY_TEACHER=true
     DEPLOY_PARENT=true
+    DEPLOY_ADMIN=true
     DEPLOY_TTS=true
     DEPLOY_VOICE=true
   else
@@ -223,6 +229,7 @@ elif ! $FORCE_BACKEND && ! $FORCE_STUDENT && ! $FORCE_TEACHER && ! $FORCE_PARENT
         student) DEPLOY_STUDENT=true ;;
         teacher) DEPLOY_TEACHER=true ;;
         parent)  DEPLOY_PARENT=true ;;
+        admin)   DEPLOY_ADMIN=true ;;
         tts)     DEPLOY_TTS=true ;;
         voice)   DEPLOY_VOICE=true ;;
       esac
@@ -236,6 +243,7 @@ $DEPLOY_BACKEND && COMPONENTS="$COMPONENTS backend"
 $DEPLOY_STUDENT && COMPONENTS="$COMPONENTS student"
 $DEPLOY_TEACHER && COMPONENTS="$COMPONENTS teacher"
 $DEPLOY_PARENT && COMPONENTS="$COMPONENTS parent"
+$DEPLOY_ADMIN && COMPONENTS="$COMPONENTS admin"
 $DEPLOY_TTS && COMPONENTS="$COMPONENTS tts"
 $DEPLOY_VOICE && COMPONENTS="$COMPONENTS voice"
 
@@ -296,6 +304,15 @@ if $DEPLOY_PARENT; then
   echo "✅ 家长端构建完成"
 fi
 
+if $DEPLOY_ADMIN; then
+  echo "📦 构建管理端..."
+  dm_start build-admin
+  cd "$PROJECT_ROOT/frontend/admin-web"
+  npm run build --silent
+  dm_end build-admin
+  echo "✅ 管理端构建完成"
+fi
+
 # ===== rsync 降速自愈（DOC-077 L2） =====
 # retry 执行器由 deploy-lib.sh 提供（DA-11 抽取，deploy.sh 不再内嵌）
 # 3Mbps 上行带宽下常规速率重传易失败（doing/72 教训）；常规 2 次失败后自动降速重试
@@ -340,6 +357,7 @@ fi
 $DEPLOY_STUDENT && rsync_deploy -avz --delete "$PROJECT_ROOT/frontend/student-h5/dist/" "$SERVER:$REMOTE_DIR/frontend/student-h5/dist/"
 $DEPLOY_TEACHER && rsync_deploy -avz --delete "$PROJECT_ROOT/frontend/teacher-web/dist/" "$SERVER:$REMOTE_DIR/frontend/teacher-web/dist/"
 $DEPLOY_PARENT && rsync_deploy -avz --delete "$PROJECT_ROOT/frontend/parent-h5/dist/" "$SERVER:$REMOTE_DIR/frontend/parent-h5/dist/"
+$DEPLOY_ADMIN && rsync_deploy -avz --delete "$PROJECT_ROOT/frontend/admin-web/dist/" "$SERVER:$REMOTE_DIR/frontend/admin-web/dist/"
 
 
 if $DEPLOY_TTS; then
@@ -538,12 +556,13 @@ check_nginx_paths() {
   return 0
 }
 NGINX_PATH_FAIL=false
-if $DEPLOY_STUDENT || $DEPLOY_TEACHER || $DEPLOY_PARENT; then
+if $DEPLOY_STUDENT || $DEPLOY_TEACHER || $DEPLOY_PARENT || $DEPLOY_ADMIN; then
   dm_start nginx-check
   NGINX_SPECS=""
   $DEPLOY_STUDENT && NGINX_SPECS="${NGINX_SPECS} student:${REMOTE_DIR}/frontend/student-h5/dist/"
   $DEPLOY_TEACHER && NGINX_SPECS="${NGINX_SPECS} teacher:${REMOTE_DIR}/frontend/teacher-web/dist/"
   $DEPLOY_PARENT && NGINX_SPECS="${NGINX_SPECS} parent:${REMOTE_DIR}/frontend/parent-h5/dist/"
+  $DEPLOY_ADMIN && NGINX_SPECS="${NGINX_SPECS} admin:${REMOTE_DIR}/frontend/admin-web/dist/"
   ! check_nginx_paths "$NGINX_SPECS" && NGINX_PATH_FAIL=true
   dm_end nginx-check
 fi

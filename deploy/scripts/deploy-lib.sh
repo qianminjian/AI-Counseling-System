@@ -4,7 +4,7 @@
 # 供 deploy.sh source 使用；独立库保证可测试性（tests/unit/scripts/deploy-lib-test.sh）
 #
 # 功能：
-#   deploy_map_changes   变更路径 → 组件映射（backend/student/teacher/parent/tts/voice）
+#   deploy_map_changes   变更路径 → 组件映射（backend/student/teacher/parent/admin/tts/voice）
 #   retry                带重试的统一执行器（D4 收敛 rsync/build/nginx 三处重试变体）
 #   nginx_build_cmd      nginx 路径校验远程命令构建（app:path specs → ssh 命令串）
 #   nginx_parse_out      nginx 校验输出解析（OK:/MISS: 行 → 状态输出 + 退出码）
@@ -15,11 +15,11 @@
 
 # ===== 变更路径 → 组件映射 =====
 # deploy_map_changes <changed>：<changed> 为 git diff --name-only 多行文本
-# 输出：空格分隔组件名，固定顺序 backend student teacher parent tts voice
+# 输出：空格分隔组件名，固定顺序 backend student teacher parent admin tts voice
 #       （与 deploy.sh COMPONENTS 汇总顺序一致）
 # 规则（原 deploy.sh L193-204，DA-11 抽取为单一事实源）：
 #   backend/ 下除 tts-service/ voice-service/ 外 → backend
-#   frontend/student-h5|teacher-web|parent-h5 → student/teacher/parent
+#   frontend/student-h5|teacher-web|parent-h5|admin-web → student/teacher/parent/admin
 #   backend/tts-service|voice-service → tts/voice
 #   deploy.sh 或 deploy/ 变更 → backend+tts+voice 全量（compose/nginx 配置全局生效）
 deploy_map_changes() {
@@ -32,6 +32,7 @@ deploy_map_changes() {
   echo "$changed" | grep -q '^frontend/student-h5/' && out="${out} student"
   echo "$changed" | grep -q '^frontend/teacher-web/' && out="${out} teacher"
   echo "$changed" | grep -q '^frontend/parent-h5/' && out="${out} parent"
+  echo "$changed" | grep -q '^frontend/admin-web/' && out="${out} admin"
   echo "$changed" | grep -q '^backend/tts-service/' && out="${out} tts"
   echo "$changed" | grep -q '^backend/voice-service/' && out="${out} voice"
   # deploy.sh / docker-compose 变更 → 全量（幂等追加，避免重复）
@@ -45,7 +46,7 @@ deploy_map_changes() {
   fi
   # 固定顺序输出（backend student teacher parent tts voice，与 COMPONENTS 汇总一致）
   local ordered="" c
-  for c in backend student teacher parent tts voice; do
+  for c in backend student teacher parent admin tts voice; do
     case " ${out} " in
       *" ${c} "*)
         if [ -z "$ordered" ]; then ordered="$c"; else ordered="${ordered} ${c}"; fi
