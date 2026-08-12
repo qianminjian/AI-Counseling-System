@@ -58,13 +58,16 @@
 - 期望：重复打卡应覆盖更新当天记录（design/05 §4.6「重复打卡 覆盖更新（非新增）」）或返回明确业务提示
 - 控制台：`[EmotionDiary] 打卡失败: ApiError: 系统内部错误`（msgid=293/295）
 - 截图：UI-TEST-012-student/S-08-05-B-打卡500错误提示.png、S-08-06-B-重复打卡500失败.png
-- 状态：OPEN（待修复）
+- 根因：EmotionDiary.create 插入日界用 LocalDate.now()（JVM 默认 UTC），查询用 CounselingTimeZone.today()（Asia/Shanghai）——上海 00:00~08:00 窗口期两次打卡双 insert 触发唯一索引冲突 500
+- **修复 commit**：`f72ecc2`（EmotionDiaryService 插入日界统一 CounselingTimeZone + BadgeService.computeStreak 同源 + 新增 EmotionDiaryServiceTest 回归）
+- 状态：FIXED | 复测结果：**VERIFIED ✅（2026-08-12，UI-TEST-016）**——UI 拦截重复打卡；API 幂等 200 覆盖更新（同 diaryId），趋势图/streak 正常
 
 ### BUG-S-08-2 [P3] 打卡失败提示文案误导
 - 场景：S-08 情绪日记
 - 实际：「打卡没成功，请检查网络」——实际是服务端 500 非网络故障，且未区分「当天已打卡」
 - 期望：按错误码展示准确原因
-- 状态：OPEN（随 BUG-S-08-1 一并修复）
+- **修复 commit**：`05c1fe6`（EmotionDiary 按 ApiError.code 区分 10001/业务提示/网络三类文案）
+- 状态：FIXED | 复测结果：**VERIFIED ✅（2026-08-12）**——全程未出现「打卡没成功，请检查网络」
 
 ### BUG-S-04-01 [P3] 拒绝语音唤醒授权后设置面板仍显示「语音唤醒已开启」
 - 场景：S-04 对话室设置面板
