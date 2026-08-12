@@ -184,7 +184,12 @@ public class TeacherService {
      * BUG-UI-03：教师端学生列表可见学生（active + withdrawn 冻结等全部非删除学生）——撤回同意冻结的
      * 学生须在列表可见并带状态标识（教师端可识别），导出/统计仍走 active 过滤的 listActiveStudents。
      */
-    public List<User> listVisibleStudents(UUID tenantId, String classScope) {
+    /**
+     * 学生列表（同租户，班主任仅本班；BUG-UI-03：冻结学生可见并带状态标识）。
+     * BUG-T-04-03（2026-08-12）：支持年级/班级筛选 + 昵称搜索。
+     */
+    public List<User> listVisibleStudents(UUID tenantId, String classScope,
+                                          String gradeCode, String classCode, String keyword) {
         LambdaQueryWrapper<User> wrapper = new LambdaQueryWrapper<User>()
                 .eq(User::getTenantId, tenantId)
                 .eq(User::getUserType, User.USER_TYPE_STUDENT)
@@ -193,7 +198,51 @@ public class TeacherService {
         if (classScope != null) {
             wrapper.eq(User::getClassCode, classScope);
         }
+        if (gradeCode != null && !gradeCode.isBlank()) {
+            wrapper.eq(User::getGradeCode, gradeCode);
+        }
+        if (classCode != null && !classCode.isBlank()) {
+            wrapper.eq(User::getClassCode, classCode);
+        }
+        if (keyword != null && !keyword.isBlank()) {
+            wrapper.like(User::getPseudonym, keyword.trim());
+        }
         return userMapper.selectList(wrapper);
+    }
+
+    /**
+     * 学生最高风险等级批量关联（BUG-T-04-03，2026-08-12）：open/claimed 预警 ∪ 最近会话
+     * 风险快照，取最大值（两次批量查询，避免 N+1）。
+     */
+    public Map<UUID, Integer> batchStudentMaxRisk(UUID tenantId, List<User> students) {
+        if (students == null || students.isEmpty()) {
+            return Map.of();
+        }
+        List<UUID> studentIds = students.stream().map(User::getUserId).toList();
+        Map<UUID, Integer> risk = new java.util.HashMap<>();
+
+        // 1) 未关闭预警（open/claimed）风险等级
+        List<RiskEvent> openEvents = riskEventMapper.selectList(
+                new LambdaQueryWrapper<RiskEvent>()
+                        .eq(RiskEvent::getTenantId, tenantId)
+                        .in(RiskEvent::getStudentUserId, studentIds)
+                        .in(RiskEvent::getStatus, RiskEvent.STATUS_OPEN, RiskEvent.STATUS_CLAIMED));
+        for (RiskEvent e : openEvents) {
+            risk.merge(e.getStudentUserId(), e.getRiskLevel(), Math::max);
+        }
+
+        // 2) 最近会话风险快照兜底（risk_event 缺失时会话级风险仍可见）
+        List<CounselingSession> snapshots = sessionMapper.selectList(
+                new LambdaQueryWrapper<CounselingSession>()
+                        .eq(CounselingSession::getTenantId, tenantId)
+                        .in(CounselingSession::getStudentUserId, studentIds)
+                        .isNotNull(CounselingSession::getRiskLevelSnapshot));
+        for (CounselingSession s : snapshots) {
+            if (s.getRiskLevelSnapshot() != null) {
+                risk.merge(s.getStudentUserId(), s.getRiskLevelSnapshot(), Math::max);
+            }
+        }
+        return risk;
     }
 
     /** 风险事件列表（同租户，最近 limit 条；AUD-043 分页插件安全化） */
@@ -664,10 +713,15 @@ public class TeacherService {
                         .orderByDesc(RiskEvent::getDetectedAt)
         ).getRecords();
 
-        // 最高风险等级
+        // 最高风险等级（BUG-T-04-02，2026-08-12：综合预警历史 ∪ 会话风险快照——
+        // risk_event 缺失（如升级转人工链路）时会话 riskLevelSnapshot 兜底，不再恒显示绿色）
         int maxRisk = riskHistory.stream()
                 .mapToInt(RiskEvent::getRiskLevel)
                 .max().orElse(0);
+        int sessionMaxRisk = recentSessions.stream()
+                .mapToInt(s -> s.getRiskLevelSnapshot() != null ? s.getRiskLevelSnapshot() : 0)
+                .max().orElse(0);
+        maxRisk = Math.max(maxRisk, sessionMaxRisk);
 
         // 个案跟踪状态（提前计算避免 stream 内重复查询）
         boolean caseTracking = isCaseTracking(tenantId, studentUserId);

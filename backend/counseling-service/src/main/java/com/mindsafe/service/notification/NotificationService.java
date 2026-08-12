@@ -17,9 +17,14 @@ public interface NotificationService {
     void notifyRiskEvent(RiskEvent event);
 
     /**
-     * 查询用户的通知列表（按创建时间倒序）
+     * 查询用户的通知列表（按创建时间倒序；BUG-T-06-02/03：状态筛选 + 分页 + 学生昵称）
+     *
+     * @param status ALL/UNREAD/READ（大小写不敏感）
      */
-    List<Notification> getNotifications(UUID recipientUserId, int limit);
+    NotificationPage getNotifications(UUID recipientUserId, String status, int page, int size);
+
+    /** 通知分页结果（items + 总条数） */
+    record NotificationPage(java.util.List<Notification> items, long total) {}
 
     /**
      * 查询未读通知数量

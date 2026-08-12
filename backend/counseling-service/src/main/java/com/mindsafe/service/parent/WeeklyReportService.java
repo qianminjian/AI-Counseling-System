@@ -65,7 +65,36 @@ public class WeeklyReportService {
             case 1 -> "平稳";
             default -> "良好";
         });
+        // OBS-P-03-01（2026-08-12）：AI 建议区块——规则化生成（design/12 §4.3，不调 LLM 保稳定低成本）
+        report.put("aiAdvice", buildAdvice(maxRisk, sessions.size(), emotionDist));
         report.put("generatedAt", Instant.now().toString());
         return report;
+    }
+
+    /**
+     * 周报建议文案（规则化：风险等级主导 + 情绪分布/对话频度补充，非 LLM 生成）。
+     * 口径与 design/12 §4.3 对齐：风险状态 + 鼓励沟通 + 具体关注点。
+     */
+    private static String buildAdvice(int maxRisk, int sessionCount, Map<String, Long> emotionDist) {
+        String riskPart = switch (maxRisk) {
+            case 3 -> "本周孩子出现过需要重点关注的情绪波动，建议近期多陪伴沟通，如有需要可联系学校心理老师。";
+            case 2 -> "本周孩子情绪有轻度波动，建议留意其状态变化，保持温和沟通。";
+            case 1 -> "本周孩子情绪整体平稳，偶有起伏属正常，继续保持日常交流即可。";
+            default -> "本周孩子情绪状态良好，保持了积极的表达习惯，非常棒！";
+        };
+        // 高频情绪提示（仅当存在统计且非良好基线时附加）
+        String emotionPart = "";
+        if (!emotionDist.isEmpty()) {
+            Map.Entry<String, Long> top = emotionDist.entrySet().stream()
+                    .max(java.util.Map.Entry.comparingByValue())
+                    .orElse(null);
+            if (top != null && !"happy".equals(top.getKey()) && !"calm".equals(top.getKey())) {
+                emotionPart = " 孩子本周表达最多的情绪是「" + top.getKey() + "」，可以多聊聊感受背后的原因。";
+            }
+        }
+        String sessionPart = sessionCount == 0
+                ? " 本周暂无对话记录，鼓励孩子和波波聊聊天。"
+                : " 本周共进行 " + sessionCount + " 次倾诉，愿意表达本身就是很好的习惯。";
+        return riskPart + emotionPart + sessionPart;
     }
 }

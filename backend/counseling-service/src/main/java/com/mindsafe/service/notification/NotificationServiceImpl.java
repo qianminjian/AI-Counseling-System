@@ -31,12 +31,15 @@ public class NotificationServiceImpl implements NotificationService {
     private final NotificationMapper notificationMapper;
     private final UserMapper userMapper;
     private final ApplicationEventPublisher eventPublisher;
+    private final com.mindsafe.domain.mapper.RiskEventMapper riskEventMapper;
 
     public NotificationServiceImpl(NotificationMapper notificationMapper, UserMapper userMapper,
-                                   ApplicationEventPublisher eventPublisher) {
+                                   ApplicationEventPublisher eventPublisher,
+                                   com.mindsafe.domain.mapper.RiskEventMapper riskEventMapper) {
         this.notificationMapper = notificationMapper;
         this.userMapper = userMapper;
         this.eventPublisher = eventPublisher;
+        this.riskEventMapper = riskEventMapper;
     }
 
     /**
@@ -92,15 +95,52 @@ public class NotificationServiceImpl implements NotificationService {
     }
 
     @Override
-    public List<Notification> getNotifications(UUID recipientUserId, int limit) {
-        // AUD-043：分页插件安全化，替代 .last("LIMIT ...") 字符串拼接
+    public NotificationPage getNotifications(UUID recipientUserId, String status, int page, int size) {
+        // BUG-T-06-02/03（2026-08-12）：状态筛选（ALL/UNREAD/READ）+ 分页 + 学生昵称关联
+        LambdaQueryWrapper<Notification> wrapper = new LambdaQueryWrapper<Notification>()
+                .eq(Notification::getRecipientUserId, recipientUserId);
+        if ("UNREAD".equalsIgnoreCase(status)) {
+            wrapper.isNull(Notification::getReadAt);
+        } else if ("READ".equalsIgnoreCase(status)) {
+            wrapper.isNotNull(Notification::getReadAt);
+        }
+        wrapper.orderByDesc(Notification::getCreatedAt);
         Page<Notification> pageResult = notificationMapper.selectPage(
-                new Page<>(1, Math.min(limit, 100), false),
-                new LambdaQueryWrapper<Notification>()
-                        .eq(Notification::getRecipientUserId, recipientUserId)
-                        .orderByDesc(Notification::getCreatedAt)
+                new Page<>(Math.max(1, page), Math.min(Math.max(1, size), 100), false),
+                wrapper
         );
-        return pageResult.getRecords();
+        List<Notification> items = pageResult.getRecords();
+        fillStudentNickname(items);
+        return new NotificationPage(items, pageResult.getTotal());
+    }
+
+    /**
+     * 学生昵称批量关联（BUG-T-06-03）：relatedId=risk_event → student_user_id → user.pseudonym，
+     * 两次批量查询避免 N+1；无关联（如非风险类通知）保持 null。
+     */
+    private void fillStudentNickname(List<Notification> items) {
+        if (items == null || items.isEmpty()) return;
+        List<UUID> riskIds = items.stream()
+                .filter(n -> n.getRelatedId() != null)
+                .map(Notification::getRelatedId)
+                .distinct().toList();
+        if (riskIds.isEmpty()) return;
+        List<RiskEvent> events = riskEventMapper.selectList(
+                new LambdaQueryWrapper<RiskEvent>().in(RiskEvent::getRiskEventId, riskIds));
+        if (events.isEmpty()) return;
+        List<UUID> studentIds = events.stream().map(RiskEvent::getStudentUserId).distinct().toList();
+        List<User> students = userMapper.selectList(
+                new LambdaQueryWrapper<User>().in(User::getUserId, studentIds));
+        java.util.Map<UUID, String> nicknameByStudent = students.stream()
+                .collect(java.util.stream.Collectors.toMap(User::getUserId, User::getPseudonym));
+        java.util.Map<UUID, UUID> studentByRisk = events.stream()
+                .collect(java.util.stream.Collectors.toMap(RiskEvent::getRiskEventId, RiskEvent::getStudentUserId));
+        for (Notification n : items) {
+            UUID studentId = studentByRisk.get(n.getRelatedId());
+            if (studentId != null) {
+                n.setStudentNickname(nicknameByStudent.get(studentId));
+            }
+        }
     }
 
     @Override

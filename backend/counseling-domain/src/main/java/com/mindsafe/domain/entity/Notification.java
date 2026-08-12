@@ -30,6 +30,10 @@ public class Notification {
     private Instant readAt;
     private Instant createdAt;
 
+    /** BUG-T-06-03（2026-08-12）：学生昵称（列表展示用，非表字段，service 层关联填充） */
+    @com.baomidou.mybatisplus.annotation.TableField(exist = false)
+    private String studentNickname;
+
     public Notification() {
     }
 
@@ -111,4 +115,7 @@ public class Notification {
 
     public Instant getCreatedAt() { return createdAt; }
     public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }
+
+    public String getStudentNickname() { return studentNickname; }
+    public void setStudentNickname(String studentNickname) { this.studentNickname = studentNickname; }
 }

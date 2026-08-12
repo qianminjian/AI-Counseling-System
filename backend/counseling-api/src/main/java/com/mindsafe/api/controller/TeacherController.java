@@ -192,27 +192,40 @@ public class TeacherController {
     }
 
     /** 获取学生列表（同租户，班主任仅看本班；T4 批次C：查询下沉 TeacherService）
-     * BUG-UI-03：改用 listVisibleStudents——冻结（withdrawn）学生须可见并带状态标识 */
+     * BUG-UI-03：改用 listVisibleStudents——冻结（withdrawn）学生须可见并带状态标识
+     * BUG-T-04-03（2026-08-12）：年级/班级筛选 + 昵称搜索 + 风险等级列 */
     @GetMapping("/teacher/students")
-    public ApiResponse<List<StudentVO>> getStudents(Authentication auth) {
+    public ApiResponse<List<StudentVO>> getStudents(
+            Authentication auth,
+            @RequestParam(required = false) String gradeCode,
+            @RequestParam(required = false) String classCode,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) Integer minRisk) {
         TenantContext ctx = (TenantContext) auth.getDetails();
         String classScope = teacherService.resolveClassScope(ctx.tenantId(), ctx.userId(), ctx.userType());
-        List<User> students = teacherService.listVisibleStudents(ctx.tenantId(), classScope);
+        List<User> students = teacherService.listVisibleStudents(ctx.tenantId(), classScope, gradeCode, classCode, keyword);
+        // 风险等级批量关联（open/claimed 预警 ∪ 会话快照，避免 N+1）
+        Map<UUID, Integer> riskByStudent = teacherService.batchStudentMaxRisk(ctx.tenantId(), students);
         List<StudentVO> voList = students.stream()
-                .map(s -> new StudentVO(s.getUserId(), s.getPseudonym(), s.getGradeCode(), s.getClassCode(), s.getStatus()))
+                .filter(s -> minRisk == null || (riskByStudent.getOrDefault(s.getUserId(), 0) >= minRisk))
+                .map(s -> new StudentVO(s.getUserId(), s.getPseudonym(), s.getGradeCode(), s.getClassCode(),
+                        s.getStatus(), riskByStudent.getOrDefault(s.getUserId(), 0)))
                 .toList();
         return ApiResponse.ok(voList);
     }
 
     // ===== 通知（保留 M1 接口） =====
 
-    /** 获取当前教师的通知列表 */
+    /** 获取当前教师的通知列表（BUG-T-06-02/03：状态筛选 + 分页 + 学生昵称） */
     @GetMapping("/teacher/notifications")
-    public ApiResponse<List<Notification>> getNotifications(
+    public ApiResponse<Map<String, Object>> getNotifications(
             Authentication auth,
-            @RequestParam(defaultValue = "50") int limit) {
+            @RequestParam(defaultValue = "ALL") String status,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int size) {
         UUID userId = (UUID) auth.getPrincipal();
-        return ApiResponse.ok(notificationService.getNotifications(userId, limit));
+        NotificationService.NotificationPage pageResult = notificationService.getNotifications(userId, status, page, size);
+        return ApiResponse.ok(Map.of("items", pageResult.items(), "total", pageResult.total()));
     }
 
     /** 获取未读通知数量 */
@@ -316,8 +329,8 @@ public class TeacherController {
                 .replace("\"", "&quot;").replace("'", "&#39;");
     }
 
-    /** 学生视图对象（BUG-UI-03：+ status 账号状态，前端展示冻结标识） */
-    public record StudentVO(UUID userId, String displayName, String gradeCode, String classCode, String status) {}
+    /** 学生视图对象（BUG-UI-03：+ status 账号状态；BUG-T-04-03：+ riskLevel 风险等级列） */
+    public record StudentVO(UUID userId, String displayName, String gradeCode, String classCode, String status, int riskLevel) {}
 
     // ===== 个案管理（WB-003，design/35 M3） =====
 
