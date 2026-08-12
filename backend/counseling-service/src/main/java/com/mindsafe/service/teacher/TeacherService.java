@@ -13,6 +13,7 @@ import com.mindsafe.service.casemanage.CaseLifecycleService;
 import com.mindsafe.service.security.FieldEncryptionService;
 import com.mindsafe.service.audit.AuditLogService;
 import com.mindsafe.service.session.SessionAccessService;
+import com.mindsafe.service.conversation.MessageSummaryService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -39,6 +40,8 @@ public class TeacherService {
     private final TeacherNoteMapper teacherNoteMapper;
     private final NotificationMapper notificationMapper;
     private final MessageSummaryMapper messageSummaryMapper;
+    /** S-006（doing/93）：转写读取单点（BA-10），教师侧读路径收敛 */
+    private final MessageSummaryService messageSummaryService;
     private final FieldEncryptionService fieldEncryptionService;
     /** T4 批次A：会话归属校验单点（租户条件强制内置，防跨租户越权） */
     private final SessionAccessService sessionAccessService;
@@ -82,7 +85,8 @@ public class TeacherService {
                           SessionAccessService sessionAccessService,
                           AuditLogService auditLogService,
                           AlertTodoMutePolicy alertTodoMutePolicy,
-                          CaseLifecycleService caseLifecycleService) {
+                          CaseLifecycleService caseLifecycleService,
+                          MessageSummaryService messageSummaryService) {
         this.riskEventMapper = riskEventMapper;
         this.sessionMapper = sessionMapper;
         this.userMapper = userMapper;
@@ -94,6 +98,7 @@ public class TeacherService {
         this.auditLogService = auditLogService;
         this.alertTodoMutePolicy = alertTodoMutePolicy;
         this.caseLifecycleService = caseLifecycleService;
+        this.messageSummaryService = messageSummaryService;
     }
 
     // ===== 数据范围解析（RBAC） =====
@@ -754,17 +759,11 @@ public class TeacherService {
 
     /** 查看某次会话的消息摘要列表 */
     public List<MessageSummaryVO> getSessionMessages(UUID tenantId, UUID sessionId) {
-        List<MessageSummary> summaries = messageSummaryMapper.selectList(
-                new LambdaQueryWrapper<MessageSummary>()
-                        .eq(MessageSummary::getTenantId, tenantId)
-                        .eq(MessageSummary::getSessionId, sessionId)
-                        .orderByAsc(MessageSummary::getTurnCount)
-                        .orderByAsc(MessageSummary::getCreatedAt)
-        );
+        // S-006（doing/93）：收敛至 BA-10 转写单点（查询+解密+保密告知过滤，语义与摘要链路一致）
+        List<MessageSummary> summaries = messageSummaryService.readDecryptedMessages(tenantId, sessionId);
         return summaries.stream().map(m -> new MessageSummaryVO(
                 m.getSummaryId(), m.getSenderType(), m.getTurnCount(),
-                // R-01：contentSummary 字段级加密，教师端读取时解密（明文兼容透传）
-                fieldEncryptionService.decrypt(m.getContentSummary()), m.getEmotionLabel(),
+                m.getContentSummary(), m.getEmotionLabel(),
                 m.getRiskLevel() != null ? m.getRiskLevel() : 0,
                 m.getCreatedAt()
         )).toList();

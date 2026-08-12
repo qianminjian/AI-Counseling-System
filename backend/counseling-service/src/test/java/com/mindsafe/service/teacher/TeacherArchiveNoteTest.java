@@ -1,5 +1,6 @@
 package com.mindsafe.service.teacher;
 
+import com.mindsafe.service.conversation.MessageSummaryService;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.mindsafe.common.exception.BizException;
 import com.mindsafe.domain.entity.CounselingSession;
@@ -40,6 +41,7 @@ class TeacherArchiveNoteTest {
     private UserMapper userMapper;
     private TeacherNoteMapper teacherNoteMapper;
     private MessageSummaryMapper messageSummaryMapper;
+    private MessageSummaryService messageSummaryService;
     private SessionAccessService sessionAccessService;
     private TeacherService teacherService;
 
@@ -53,6 +55,7 @@ class TeacherArchiveNoteTest {
         userMapper = mock(UserMapper.class);
         teacherNoteMapper = mock(TeacherNoteMapper.class);
         messageSummaryMapper = mock(MessageSummaryMapper.class);
+        messageSummaryService = mock(MessageSummaryService.class);
         FieldEncryptionService fieldEncryptionService = mock(FieldEncryptionService.class);
         when(fieldEncryptionService.encrypt(any())).thenAnswer(inv -> inv.getArgument(0));
         when(fieldEncryptionService.decrypt(any())).thenAnswer(inv -> inv.getArgument(0));
@@ -68,7 +71,7 @@ class TeacherArchiveNoteTest {
                 sessionAccessService,
                 mock(AuditLogService.class),
                 new com.mindsafe.service.teacher.AlertTodoMutePolicy(),
-                new com.mindsafe.service.casemanage.CaseLifecycleService());
+                new com.mindsafe.service.casemanage.CaseLifecycleService(), messageSummaryService);
     }
 
     private User givenStudent() {
@@ -234,7 +237,7 @@ class TeacherArchiveNoteTest {
         noRisk.setTurnCount(4);
         noRisk.setContentSummary("要跟老师说哦");
         noRisk.setCreatedAt(Instant.now());
-        when(messageSummaryMapper.selectList(any())).thenReturn(List.of(summary, noRisk));
+        when(messageSummaryService.readDecryptedMessages(any(), any())).thenReturn(List.of(summary, noRisk));
 
         List<TeacherService.MessageSummaryVO> result =
                 teacherService.getSessionMessages(tenantId, UUID.randomUUID());

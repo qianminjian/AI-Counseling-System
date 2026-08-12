@@ -1,5 +1,6 @@
 package com.mindsafe.service.teacher;
 
+import com.mindsafe.service.conversation.MessageSummaryService;
 import com.mindsafe.domain.entity.CounselingSession;
 import com.mindsafe.domain.entity.RiskEvent;
 import com.mindsafe.domain.mapper.*;
@@ -52,7 +53,7 @@ class TeacherDashboardTest {
                 mock(SessionAccessService.class),
                 mock(AuditLogService.class),
                 new com.mindsafe.service.teacher.AlertTodoMutePolicy(),
-                new com.mindsafe.service.casemanage.CaseLifecycleService());
+                new com.mindsafe.service.casemanage.CaseLifecycleService(), mock(MessageSummaryService.class));
     }
 
     private CounselingSession ratedSession(int rating) {

@@ -303,6 +303,23 @@ public class MessageSummaryService {
     }
 
     /**
+     * 教师侧结构化转写读取（S-006，doing/93）：复用 BA-10 单点查询+解密，
+     * 默认排除保密告知（turnCount=0，与摘要链路口径一致）；返回解密后的消息列表供 VO 映射。
+     */
+    public List<MessageSummary> readDecryptedMessages(UUID tenantId, UUID sessionId) {
+        return readDecryptedMessages(tenantId, sessionId, new TranscriptFilter(null, 1));
+    }
+
+    /** 结构化转写读取（可指定过滤；解密后原地写入 contentSummary） */
+    public List<MessageSummary> readDecryptedMessages(UUID tenantId, UUID sessionId, TranscriptFilter filter) {
+        List<MessageSummary> messages = selectMessages(tenantId, sessionId, filter);
+        for (MessageSummary m : messages) {
+            m.setContentSummary(fieldEncryptionService.decrypt(m.getContentSummary()));
+        }
+        return messages;
+    }
+
+    /**
      * 学生消息明文列表（ORCH-008 会话深度量化输入，BA-10 收编自 loadStudentMessages）。
      * 复用单点查询解密；失败降级空列表（分析本身异步可降级）。
      */

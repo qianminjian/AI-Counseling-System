@@ -1,5 +1,6 @@
 package com.mindsafe.service.teacher;
 
+import com.mindsafe.service.conversation.MessageSummaryService;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.mindsafe.common.exception.BizException;
 import com.mindsafe.domain.entity.RiskEvent;
@@ -66,7 +67,7 @@ class TeacherAlertWorkflowTest {
                 mock(SessionAccessService.class),
                 mock(AuditLogService.class),
                 new com.mindsafe.service.teacher.AlertTodoMutePolicy(),
-                new com.mindsafe.service.casemanage.CaseLifecycleService());
+                new com.mindsafe.service.casemanage.CaseLifecycleService(), mock(MessageSummaryService.class));
     }
 
     private RiskEvent givenEvent() {
