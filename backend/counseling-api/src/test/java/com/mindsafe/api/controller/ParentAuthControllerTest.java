@@ -1,7 +1,10 @@
 package com.mindsafe.api.controller;
 
 import com.mindsafe.api.security.JwtTokenProvider;
+import com.mindsafe.api.security.TokenType;
 import com.mindsafe.common.dto.ApiResponse;
+import com.mindsafe.common.dto.ErrorCode;
+import com.mindsafe.common.exception.BizException;
 import com.mindsafe.domain.entity.ParentAccount;
 import com.mindsafe.domain.entity.User;
 import com.mindsafe.service.auth.ParentAuthService;
@@ -14,6 +17,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -143,7 +147,9 @@ class ParentAuthControllerTest {
     @Test
     @DisplayName("getChildren 解析 Bearer token → 学生列表（null 原样返回）")
     void getChildren() {
-        when(jwtTokenProvider.getUserId("tk")).thenReturn(parentId);
+        // F2：单次 parse——parseOnce 返回快照（原 getUserId 二次 parse）
+        when(jwtTokenProvider.parseOnce("tk")).thenReturn(
+                new JwtTokenProvider.ParsedToken("jti-p", parentId, "parent", tenantId, TokenType.ACCESS));
         when(parentAuthService.getLinkedStudents(parentId))
                 .thenReturn(List.of(childWithCodes(), childWithoutCodes()));
 
@@ -156,18 +162,30 @@ class ParentAuthControllerTest {
         // getChildren 用 LinkedHashMap → null 原样返回（与 register 的 Map.of 兜底不同）
         assertThat(resp.data().get(1).get("gradeCode")).isNull();
         assertThat(resp.data().get(1).get("classCode")).isNull();
-        verify(jwtTokenProvider).getUserId("tk");
+        verify(jwtTokenProvider).parseOnce("tk");
     }
 
     @Test
     @DisplayName("getChildren 无绑定学生 → 空列表")
     void getChildren_empty() {
-        when(jwtTokenProvider.getUserId("tk")).thenReturn(parentId);
+        when(jwtTokenProvider.parseOnce("tk")).thenReturn(
+                new JwtTokenProvider.ParsedToken("jti-p", parentId, "parent", tenantId, TokenType.ACCESS));
         when(parentAuthService.getLinkedStudents(parentId)).thenReturn(List.of());
 
         ApiResponse<List<Map<String, Object>>> resp = controller.getChildren("Bearer tk");
 
         assertThat(resp.data()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("getChildren 非法 token → UNAUTHORIZED（F2：强转/二次解析 500 收敛为 401）")
+    void getChildren_invalidToken() {
+        when(jwtTokenProvider.parseOnce("bad")).thenThrow(
+                new BizException(ErrorCode.UNAUTHORIZED, "token 缺失"));
+
+        assertThatThrownBy(() -> controller.getChildren("Bearer bad"))
+                .isInstanceOf(BizException.class)
+                .extracting("code").isEqualTo(ErrorCode.UNAUTHORIZED.code());
     }
 
     @Test

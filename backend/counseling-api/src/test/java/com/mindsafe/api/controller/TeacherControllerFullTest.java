@@ -4,6 +4,7 @@ import com.mindsafe.api.security.JwtAuthenticationFilter.TenantContext;
 import com.mindsafe.api.security.JwtTokenProvider;
 import com.mindsafe.common.dto.ApiResponse;
 import com.mindsafe.domain.entity.CounselingSession;
+import com.mindsafe.api.dto.teacher.AddNoteRequest;
 import com.mindsafe.domain.entity.RiskEvent;
 import com.mindsafe.domain.entity.TeacherNote;
 import com.mindsafe.domain.entity.User;
@@ -178,26 +179,26 @@ class TeacherControllerFullTest {
     }
 
     @Test
-    @DisplayName("addNote 默认 noteType=general")
+    @DisplayName("addNote 默认 noteType=general（F11：请求体为 AddNoteRequest）")
     void addNote_defaultType() {
         TeacherNote note = new TeacherNote();
         when(teacherService.addNote(tenantId, studentUserId, teacherUserId, "内容", "general"))
                 .thenReturn(note);
 
-        var resp = controller.addNote(studentUserId, Map.of("content", "内容"), teacherAuth("psych_teacher"));
+        var resp = controller.addNote(studentUserId, new AddNoteRequest("内容", null), teacherAuth("psych_teacher"));
 
         assertThat(resp.code()).isEqualTo(0);
         verify(teacherService).addNote(tenantId, studentUserId, teacherUserId, "内容", "general");
     }
 
     @Test
-    @DisplayName("addNote 自定义 noteType 透传")
+    @DisplayName("addNote 自定义 noteType 透传（F11：请求体为 AddNoteRequest）")
     void addNote_customType() {
         when(teacherService.addNote(eq(tenantId), eq(studentUserId), eq(teacherUserId),
                 eq("内容"), eq("intervention")))
                 .thenReturn(new TeacherNote());
 
-        controller.addNote(studentUserId, Map.of("content", "内容", "noteType", "intervention"),
+        controller.addNote(studentUserId, new AddNoteRequest("内容", "intervention"),
                 teacherAuth("psych_teacher"));
 
         verify(teacherService).addNote(tenantId, studentUserId, teacherUserId, "内容", "intervention");

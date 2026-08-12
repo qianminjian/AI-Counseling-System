@@ -1,6 +1,7 @@
 package com.mindsafe.api.controller;
 
 import com.mindsafe.api.auth.AuthenticatedUser;
+import com.mindsafe.api.auth.LoginCandidate;
 import com.mindsafe.api.auth.LoginOrchestrator;
 import com.mindsafe.api.auth.TrialAuthStrategy;
 import com.mindsafe.api.auth.TrialRegisterRequest;
@@ -17,6 +18,7 @@ import com.mindsafe.api.controller.AuthController.TrialRegisterResponse;
 import com.mindsafe.api.controller.AuthController.VoiceLoginRequest;
 import com.mindsafe.api.security.JwtAuthenticationFilter.TenantContext;
 import com.mindsafe.api.security.JwtTokenProvider;
+import com.mindsafe.api.security.TokenType;
 import com.mindsafe.common.dto.ApiResponse;
 import com.mindsafe.common.dto.ErrorCode;
 import com.mindsafe.common.exception.BizException;
@@ -49,6 +51,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -153,6 +156,20 @@ class AuthControllerTest {
     private void mockTokenIssuance() {
         when(businessAuthProvider.issueAccessToken(userId, "student", tenantId)).thenReturn(ACCESS_TOKEN);
         when(businessAuthProvider.issueRefreshToken(userId, "student", tenantId)).thenReturn(REFRESH_TOKEN);
+    }
+
+    // ===== F2：单次 parse 快照（原 validate/isXxx/getXxx 多次 parse 收敛 parseOrNull） =====
+
+    private JwtTokenProvider.ParsedToken voiceParsed() {
+        return new JwtTokenProvider.ParsedToken(VOICE_JTI, userId, "student", tenantId, TokenType.VOICE_CREDENTIAL);
+    }
+
+    private JwtTokenProvider.ParsedToken refreshParsed() {
+        return new JwtTokenProvider.ParsedToken(REFRESH_JTI, userId, "student", tenantId, TokenType.REFRESH);
+    }
+
+    private JwtTokenProvider.ParsedToken accessParsed() {
+        return new JwtTokenProvider.ParsedToken(ACCESS_JTI, userId, "student", tenantId, TokenType.ACCESS);
     }
 
     // ===== login（S-001：编排下沉 LoginOrchestrator，链细节见 LoginOrchestratorTest） =====
@@ -307,11 +324,11 @@ class AuthControllerTest {
     // ===== pinLogin =====
 
     @Test
-    @DisplayName("pinLogin 成功 → 双 token + PIN_LOGIN 审计")
+    @DisplayName("pinLogin 成功 → 双 token + PIN_LOGIN 审计（F9：orchestrator 入参收敛为 LoginCandidate）")
     void pinLogin_success() {
         User user = activeStudent();
         when(trialAuthService.loginWithPin("小星", "1234")).thenReturn(user);
-        when(loginOrchestrator.issueLoginSession(user, "PIN_LOGIN")).thenReturn(loginSession());
+        when(loginOrchestrator.issueLoginSession(any(LoginCandidate.class), eq("PIN_LOGIN"))).thenReturn(loginSession());
 
         ApiResponse<LoginResponse> resp = controller.pinLogin(new PinLoginRequest("小星", "1234"));
 
@@ -319,9 +336,9 @@ class AuthControllerTest {
         assertEquals(ACCESS_TOKEN, resp.data().token());
         verify(lockoutService).checkLockout("pin:小星");
         verify(lockoutService).clearFailures("pin:小星");
-        // S-001：门禁补齐 + 审计/签发统一在 orchestrator
-        verify(loginOrchestrator).guardTenantLogin(user);
-        verify(loginOrchestrator).issueLoginSession(user, "PIN_LOGIN");
+        // S-001：门禁补齐 + 审计/签发统一在 orchestrator；实体在边界即快照为 LoginCandidate
+        verify(loginOrchestrator).guardTenantLogin(any(LoginCandidate.class));
+        verify(loginOrchestrator).issueLoginSession(any(LoginCandidate.class), eq("PIN_LOGIN"));
     }
 
     @Test
@@ -343,7 +360,7 @@ class AuthControllerTest {
     @Test
     @DisplayName("voiceLogin 凭证无效（签名/过期）→ UNAUTHORIZED")
     void voiceLogin_invalidCredential() {
-        when(jwtTokenProvider.validateToken(VOICE_CRED)).thenReturn(false);
+        when(jwtTokenProvider.parseOrNull(VOICE_CRED)).thenReturn(null);
 
         assertThatThrownBy(() -> controller.voiceLogin(new VoiceLoginRequest(VOICE_CRED)))
                 .isExactlyInstanceOf(BizException.class)
@@ -354,8 +371,7 @@ class AuthControllerTest {
     @Test
     @DisplayName("voiceLogin 非声纹凭证（access token 冒充）→ UNAUTHORIZED")
     void voiceLogin_notVoiceCredential() {
-        when(jwtTokenProvider.validateToken(VOICE_CRED)).thenReturn(true);
-        when(jwtTokenProvider.isVoiceCredential(VOICE_CRED)).thenReturn(false);
+        when(jwtTokenProvider.parseOrNull(VOICE_CRED)).thenReturn(accessParsed());
 
         assertThatThrownBy(() -> controller.voiceLogin(new VoiceLoginRequest(VOICE_CRED)))
                 .isExactlyInstanceOf(BizException.class)
@@ -366,9 +382,7 @@ class AuthControllerTest {
     @Test
     @DisplayName("voiceLogin 凭证已拉黑 → UNAUTHORIZED")
     void voiceLogin_blacklisted() {
-        when(jwtTokenProvider.validateToken(VOICE_CRED)).thenReturn(true);
-        when(jwtTokenProvider.isVoiceCredential(VOICE_CRED)).thenReturn(true);
-        when(jwtTokenProvider.getTokenId(VOICE_CRED)).thenReturn(VOICE_JTI);
+        when(jwtTokenProvider.parseOrNull(VOICE_CRED)).thenReturn(voiceParsed());
         when(tokenBlacklistService.isBlacklisted(VOICE_JTI)).thenReturn(true);
 
         assertThatThrownBy(() -> controller.voiceLogin(new VoiceLoginRequest(VOICE_CRED)))
@@ -380,11 +394,8 @@ class AuthControllerTest {
     @Test
     @DisplayName("voiceLogin 用户不存在或非 active → UNAUTHORIZED")
     void voiceLogin_userUnavailable() {
-        when(jwtTokenProvider.validateToken(VOICE_CRED)).thenReturn(true);
-        when(jwtTokenProvider.isVoiceCredential(VOICE_CRED)).thenReturn(true);
-        when(jwtTokenProvider.getTokenId(VOICE_CRED)).thenReturn(VOICE_JTI);
+        when(jwtTokenProvider.parseOrNull(VOICE_CRED)).thenReturn(voiceParsed());
         when(tokenBlacklistService.isBlacklisted(VOICE_JTI)).thenReturn(false);
-        when(jwtTokenProvider.getUserId(VOICE_CRED)).thenReturn(userId);
         when(authUserService.findByIdAsSystem(userId)).thenReturn(null);
 
         assertThatThrownBy(() -> controller.voiceLogin(new VoiceLoginRequest(VOICE_CRED)))
@@ -394,25 +405,22 @@ class AuthControllerTest {
     }
 
     @Test
-    @DisplayName("voiceLogin 成功 → 双 token + VOICE_LOGIN 审计 + 更新 lastLoginAt")
+    @DisplayName("voiceLogin 成功 → 双 token + VOICE_LOGIN 审计 + 更新 lastLoginAt（F9：orchestrator 入参收敛为 LoginCandidate）")
     void voiceLogin_success() {
         User user = activeStudent();
-        when(jwtTokenProvider.validateToken(VOICE_CRED)).thenReturn(true);
-        when(jwtTokenProvider.isVoiceCredential(VOICE_CRED)).thenReturn(true);
-        when(jwtTokenProvider.getTokenId(VOICE_CRED)).thenReturn(VOICE_JTI);
+        when(jwtTokenProvider.parseOrNull(VOICE_CRED)).thenReturn(voiceParsed());
         when(tokenBlacklistService.isBlacklisted(VOICE_JTI)).thenReturn(false);
-        when(jwtTokenProvider.getUserId(VOICE_CRED)).thenReturn(userId);
         when(authUserService.findByIdAsSystem(userId)).thenReturn(user);
-        when(loginOrchestrator.issueLoginSession(user, "VOICE_LOGIN")).thenReturn(loginSession());
+        when(loginOrchestrator.issueLoginSession(any(LoginCandidate.class), eq("VOICE_LOGIN"))).thenReturn(loginSession());
 
         ApiResponse<LoginResponse> resp = controller.voiceLogin(new VoiceLoginRequest(VOICE_CRED));
 
         assertThat(resp.code()).isEqualTo(0);
         assertEquals(ACCESS_TOKEN, resp.data().token());
         verify(authUserService).touchLastLogin(userId);
-        // S-001：门禁补齐 + 审计/签发统一在 orchestrator
-        verify(loginOrchestrator).guardTenantLogin(user);
-        verify(loginOrchestrator).issueLoginSession(user, "VOICE_LOGIN");
+        // S-001：门禁补齐 + 审计/签发统一在 orchestrator；实体在边界即快照为 LoginCandidate
+        verify(loginOrchestrator).guardTenantLogin(any(LoginCandidate.class));
+        verify(loginOrchestrator).issueLoginSession(any(LoginCandidate.class), eq("VOICE_LOGIN"));
     }
 
     // ===== me =====
@@ -460,7 +468,7 @@ class AuthControllerTest {
     @Test
     @DisplayName("refresh 无效 token → UNAUTHORIZED")
     void refresh_invalid() {
-        when(jwtTokenProvider.validateToken(REFRESH_TOKEN)).thenReturn(false);
+        when(jwtTokenProvider.parseOrNull(REFRESH_TOKEN)).thenReturn(null);
 
         assertThatThrownBy(() -> controller.refresh(new RefreshRequest(REFRESH_TOKEN)))
                 .isExactlyInstanceOf(BizException.class)
@@ -471,8 +479,7 @@ class AuthControllerTest {
     @Test
     @DisplayName("refresh 非 refresh token（access 冒充）→ UNAUTHORIZED")
     void refresh_notRefreshToken() {
-        when(jwtTokenProvider.validateToken(REFRESH_TOKEN)).thenReturn(true);
-        when(jwtTokenProvider.isRefreshToken(REFRESH_TOKEN)).thenReturn(false);
+        when(jwtTokenProvider.parseOrNull(REFRESH_TOKEN)).thenReturn(accessParsed());
 
         assertThatThrownBy(() -> controller.refresh(new RefreshRequest(REFRESH_TOKEN)))
                 .isExactlyInstanceOf(BizException.class)
@@ -483,9 +490,7 @@ class AuthControllerTest {
     @Test
     @DisplayName("refresh 已拉黑 → UNAUTHORIZED（防重放）")
     void refresh_blacklisted() {
-        when(jwtTokenProvider.validateToken(REFRESH_TOKEN)).thenReturn(true);
-        when(jwtTokenProvider.isRefreshToken(REFRESH_TOKEN)).thenReturn(true);
-        when(jwtTokenProvider.getTokenId(REFRESH_TOKEN)).thenReturn(REFRESH_JTI);
+        when(jwtTokenProvider.parseOrNull(REFRESH_TOKEN)).thenReturn(refreshParsed());
         when(tokenBlacklistService.isBlacklisted(REFRESH_JTI)).thenReturn(true);
 
         assertThatThrownBy(() -> controller.refresh(new RefreshRequest(REFRESH_TOKEN)))
@@ -498,13 +503,8 @@ class AuthControllerTest {
     @Test
     @DisplayName("refresh 成功 → 新双 token + 旧 refresh 拉黑")
     void refresh_success() {
-        when(jwtTokenProvider.validateToken(REFRESH_TOKEN)).thenReturn(true);
-        when(jwtTokenProvider.isRefreshToken(REFRESH_TOKEN)).thenReturn(true);
-        when(jwtTokenProvider.getTokenId(REFRESH_TOKEN)).thenReturn(REFRESH_JTI);
+        when(jwtTokenProvider.parseOrNull(REFRESH_TOKEN)).thenReturn(refreshParsed());
         when(tokenBlacklistService.isBlacklisted(REFRESH_JTI)).thenReturn(false);
-        when(jwtTokenProvider.getUserId(REFRESH_TOKEN)).thenReturn(userId);
-        when(jwtTokenProvider.getUserType(REFRESH_TOKEN)).thenReturn("student");
-        when(jwtTokenProvider.getTenantId(REFRESH_TOKEN)).thenReturn(tenantId);
         when(jwtTokenProvider.getRemainingMs(REFRESH_TOKEN)).thenReturn(3600000L);
         when(businessAuthProvider.issueAccessToken(userId, "student", tenantId)).thenReturn("new-access");
         when(businessAuthProvider.issueRefreshToken(userId, "student", tenantId)).thenReturn("new-refresh");
@@ -522,10 +522,9 @@ class AuthControllerTest {
     @Test
     @DisplayName("logout 成功：access + refresh 双拉黑 + 审计")
     void logout_success() {
-        when(jwtTokenProvider.getTokenId(ACCESS_TOKEN)).thenReturn(ACCESS_JTI);
+        when(jwtTokenProvider.parseOrNull(ACCESS_TOKEN)).thenReturn(accessParsed());
         when(jwtTokenProvider.getRemainingMs(ACCESS_TOKEN)).thenReturn(7200000L);
-        when(jwtTokenProvider.validateToken(REFRESH_TOKEN)).thenReturn(true);
-        when(jwtTokenProvider.getTokenId(REFRESH_TOKEN)).thenReturn(REFRESH_JTI);
+        when(jwtTokenProvider.parseOrNull(REFRESH_TOKEN)).thenReturn(refreshParsed());
         when(jwtTokenProvider.getRemainingMs(REFRESH_TOKEN)).thenReturn(604800000L);
 
         ApiResponse<Void> resp = controller.logout("Bearer " + ACCESS_TOKEN,
@@ -540,7 +539,7 @@ class AuthControllerTest {
     @Test
     @DisplayName("logout 未传 refresh → 仅拉黑 access")
     void logout_noRefresh() {
-        when(jwtTokenProvider.getTokenId(ACCESS_TOKEN)).thenReturn(ACCESS_JTI);
+        when(jwtTokenProvider.parseOrNull(ACCESS_TOKEN)).thenReturn(accessParsed());
         when(jwtTokenProvider.getRemainingMs(ACCESS_TOKEN)).thenReturn(7200000L);
 
         controller.logout("Bearer " + ACCESS_TOKEN, null, null);
@@ -550,11 +549,11 @@ class AuthControllerTest {
     }
 
     @Test
-    @DisplayName("logout refresh 已过期（validateToken false）→ 跳过拉黑不报错")
+    @DisplayName("logout refresh 已过期（parseOrNull null）→ 跳过拉黑不报错")
     void logout_invalidRefresh() {
-        when(jwtTokenProvider.getTokenId(ACCESS_TOKEN)).thenReturn(ACCESS_JTI);
+        when(jwtTokenProvider.parseOrNull(ACCESS_TOKEN)).thenReturn(accessParsed());
         when(jwtTokenProvider.getRemainingMs(ACCESS_TOKEN)).thenReturn(7200000L);
-        when(jwtTokenProvider.validateToken(REFRESH_TOKEN)).thenReturn(false);
+        when(jwtTokenProvider.parseOrNull(REFRESH_TOKEN)).thenReturn(null);
 
         ApiResponse<Void> resp = controller.logout("Bearer " + ACCESS_TOKEN,
                 new LogoutRequest(REFRESH_TOKEN), null);

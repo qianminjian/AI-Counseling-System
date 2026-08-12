@@ -1,11 +1,14 @@
 package com.mindsafe.api.controller;
 
 import com.mindsafe.api.auth.AuthenticatedUser;
+import com.mindsafe.api.auth.LoginCandidate;
 import com.mindsafe.api.auth.LoginOrchestrator;
 import com.mindsafe.api.auth.TrialAuthStrategy;
 import com.mindsafe.api.auth.TrialRegisterRequest;
+import com.mindsafe.api.auth.UserSnapshot;
 import com.mindsafe.api.security.JwtAuthenticationFilter.TenantContext;
 import com.mindsafe.api.security.SecuritySupport;
+import com.mindsafe.api.security.TokenType;
 import com.mindsafe.api.security.BusinessAuthProvider;
 import com.mindsafe.api.security.JwtTokenProvider;
 import com.mindsafe.common.dto.ApiResponse;
@@ -102,7 +105,8 @@ public class AuthController {
         AuthenticatedUser authUser = trialAuthStrategy.authenticate(request);
 
         // 查询完整用户信息（含 familyCode）+ 监护人同意状态——注册响应期尚无 JWT 上下文，系统作用域执行（M1-003）
-        User fullUser = authUserService.findByIdAsSystem(authUser.userId());
+        // F9：实体立即快照为 UserSnapshot（不含 passwordHash/pinHash），仅取 familyCode 字段
+        UserSnapshot fullUser = UserSnapshot.from(authUserService.findByIdAsSystem(authUser.userId()));
         // age<14 且尚无同意记录 → 前端须引导 SMS 闭环（AUTH-040；试运行 auto-grant 时注册已写入，此处为 false）
         boolean guardianConsentPending = request.age() < 14
                 && !TenantContextHolder.callAsSystem(
@@ -120,7 +124,7 @@ public class AuthController {
                 authUser.tenantId(),
                 authUser.userType(),
                 authUser.pseudonym(),
-                fullUser != null ? fullUser.getFamilyCode() : null,
+                fullUser != null ? fullUser.familyCode() : null,
                 guardianConsentPending
         ));
     }
@@ -132,9 +136,7 @@ public class AuthController {
     public ApiResponse<Void> changePassword(
             @Valid @RequestBody ChangePasswordRequest request,
             Authentication authentication) {
-        if (authentication == null || !(authentication.getDetails() instanceof TenantContext ctx)) {
-            throw new BizException(ErrorCode.UNAUTHORIZED);
-        }
+        TenantContext ctx = SecuritySupport.requireContext(authentication);
         trialAuthService.changePassword(ctx.userId(), request.oldPassword(), request.newPassword());
         return ApiResponse.ok();
     }
@@ -146,9 +148,7 @@ public class AuthController {
     public ApiResponse<Void> setPin(
             @Valid @RequestBody SetPinRequest request,
             Authentication authentication) {
-        if (authentication == null || !(authentication.getDetails() instanceof TenantContext ctx)) {
-            throw new BizException(ErrorCode.UNAUTHORIZED);
-        }
+        TenantContext ctx = SecuritySupport.requireContext(authentication);
         trialAuthService.setPin(ctx.userId(), request.pin());
         return ApiResponse.ok();
     }
@@ -161,11 +161,12 @@ public class AuthController {
         String lockKey = "pin:" + request.pseudonym();
         lockoutService.checkLockout(lockKey);
         try {
-            User user = trialAuthService.loginWithPin(request.pseudonym(), request.pin());
+            // F9：service 返回的 User 实体在边界立即快照为 LoginCandidate（含 passwordHash 供签发期判定改密）
+            LoginCandidate candidate = LoginCandidate.from(trialAuthService.loginWithPin(request.pseudonym(), request.pin()));
             lockoutService.clearFailures(lockKey);
             // S-001：补齐租户门禁 + 统一签发/审计（原路径缺失门禁、手工 TenantContextHolder）
-            loginOrchestrator.guardTenantLogin(user);
-            LoginOrchestrator.LoginSession session = loginOrchestrator.issueLoginSession(user, "PIN_LOGIN");
+            loginOrchestrator.guardTenantLogin(candidate);
+            LoginOrchestrator.LoginSession session = loginOrchestrator.issueLoginSession(candidate, "PIN_LOGIN");
             return ApiResponse.ok(new LoginResponse(
                     session.accessToken(), session.refreshToken(), session.userId(),
                     session.pseudonym(), session.userType(),
@@ -187,9 +188,7 @@ public class AuthController {
      */
     @PostMapping("/voice-credential")
     public ApiResponse<Map<String, String>> issueVoiceCredential(Authentication authentication) {
-        if (authentication == null || !(authentication.getDetails() instanceof TenantContext ctx)) {
-            throw new BizException(ErrorCode.UNAUTHORIZED);
-        }
+        TenantContext ctx = SecuritySupport.requireContext(authentication);
         String credential = jwtTokenProvider.generateVoiceCredential(
                 ctx.userId(), ctx.userType(), ctx.tenantId());
         auditLogService.log(ctx.tenantId(), ctx.userId(), "VOICE_CREDENTIAL_ISSUE", "user", ctx.userId(), null);
@@ -202,27 +201,29 @@ public class AuthController {
     @PostMapping("/voice-login")
     public ApiResponse<LoginResponse> voiceLogin(@Valid @RequestBody VoiceLoginRequest request) {
         String vc = request.voiceCredential();
-        if (vc == null || !jwtTokenProvider.validateToken(vc) || !jwtTokenProvider.isVoiceCredential(vc)) {
+        // F2：单次 parse（原 validate + isVoiceCredential + getTokenId + getUserId 4 次 → 1 次）
+        JwtTokenProvider.ParsedToken parsed = jwtTokenProvider.parseOrNull(vc);
+        if (parsed == null || parsed.tokenType() != TokenType.VOICE_CREDENTIAL) {
             throw new BizException(ErrorCode.UNAUTHORIZED, "设备凭证无效或已过期，请重新录入声纹");
         }
-        if (tokenBlacklistService.isBlacklisted(jwtTokenProvider.getTokenId(vc))) {
+        if (tokenBlacklistService.isBlacklisted(parsed.tokenId())) {
             throw new BizException(ErrorCode.UNAUTHORIZED, "设备凭证已失效，请重新录入声纹");
         }
 
         // 声纹登录是 permitAll 端点，无 Authorization header → JwtAuthenticationFilter 不设置租户上下文
         // 需显式声明系统作用域，否则多租户拦截器拒绝 SQL（M1-003）
-        // T4 批次B：查询下沉 AuthUserService（系统作用域在 Service 内声明）
-        User user = authUserService.findByIdAsSystem(jwtTokenProvider.getUserId(vc));
-        if (user == null || !User.STATUS_ACTIVE.equals(user.getStatus())) {
+        // T4 批次B：查询下沉 AuthUserService（系统作用域在 Service 内声明）；F9：实体边界立即快照
+        LoginCandidate candidate = LoginCandidate.from(authUserService.findByIdAsSystem(parsed.userId()));
+        if (candidate == null || !User.STATUS_ACTIVE.equals(candidate.status())) {
             throw new BizException(ErrorCode.UNAUTHORIZED, "账号不可用，请联系老师");
         }
 
         // 更新最后登录时间（T4 批次B：下沉 AuthUserService）
-        authUserService.touchLastLogin(user.getUserId());
+        authUserService.touchLastLogin(candidate.userId());
 
         // S-001：补齐租户门禁 + 统一签发/审计（原路径缺失门禁）
-        loginOrchestrator.guardTenantLogin(user);
-        LoginOrchestrator.LoginSession session = loginOrchestrator.issueLoginSession(user, "VOICE_LOGIN");
+        loginOrchestrator.guardTenantLogin(candidate);
+        LoginOrchestrator.LoginSession session = loginOrchestrator.issueLoginSession(candidate, "VOICE_LOGIN");
         return ApiResponse.ok(new LoginResponse(
                 session.accessToken(), session.refreshToken(), session.userId(),
                 session.pseudonym(), session.userType(),
@@ -235,23 +236,22 @@ public class AuthController {
      */
     @GetMapping("/me")
     public ApiResponse<Map<String, Object>> me(Authentication authentication) {
-        if (authentication == null || !(authentication.getDetails() instanceof TenantContext ctx)) {
-            throw new BizException(ErrorCode.UNAUTHORIZED);
-        }
-        User user = authUserService.findById(ctx.userId());
+        TenantContext ctx = SecuritySupport.requireContext(authentication);
+        // F9：展示快照 UserSnapshot（不含 passwordHash/pinHash），实体不再流入响应组装
+        UserSnapshot user = UserSnapshot.from(authUserService.findById(ctx.userId()));
         if (user == null) {
             throw new BizException(ErrorCode.RESOURCE_NOT_FOUND, "用户不存在");
         }
         Map<String, Object> info = new java.util.LinkedHashMap<>();
-        info.put("userId", user.getUserId());
-        info.put("displayName", user.getPseudonym());
-        info.put("userType", user.getUserType());
-        info.put("tenantId", user.getTenantId());
-        info.put("schoolId", user.getSchoolId());
-        info.put("gradeCode", user.getGradeCode());
-        info.put("classCode", user.getClassCode());
-        info.put("mustChangePassword", Boolean.TRUE.equals(user.getMustChangePassword()));
-        info.put("familyCode", user.getFamilyCode());
+        info.put("userId", user.userId());
+        info.put("displayName", user.pseudonym());
+        info.put("userType", user.userType());
+        info.put("tenantId", user.tenantId());
+        info.put("schoolId", user.schoolId());
+        info.put("gradeCode", user.gradeCode());
+        info.put("classCode", user.classCode());
+        info.put("mustChangePassword", Boolean.TRUE.equals(user.mustChangePassword()));
+        info.put("familyCode", user.familyCode());
         return ApiResponse.ok(info);
     }
 
@@ -261,23 +261,26 @@ public class AuthController {
     @PostMapping("/refresh")
     public ApiResponse<Map<String, String>> refresh(@RequestBody RefreshRequest request) {
         String rt = request.refreshToken();
-        if (rt == null || !jwtTokenProvider.validateToken(rt) || !jwtTokenProvider.isRefreshToken(rt)) {
+        // F2：单次 parse（原 validate + isRefresh + getTokenId×2 + getUserId + getUserType
+        // + getTenantId + getRemainingMs 共 8 次 parse → 2 次）
+        JwtTokenProvider.ParsedToken parsed = jwtTokenProvider.parseOrNull(rt);
+        if (parsed == null || parsed.tokenType() != TokenType.REFRESH) {
             throw new BizException(ErrorCode.UNAUTHORIZED, "刷新令牌无效或已过期，请重新登录");
         }
-        if (tokenBlacklistService.isBlacklisted(jwtTokenProvider.getTokenId(rt))) {
+        if (tokenBlacklistService.isBlacklisted(parsed.tokenId())) {
             throw new BizException(ErrorCode.UNAUTHORIZED, "令牌已失效，请重新登录");
         }
 
-        UUID userId = jwtTokenProvider.getUserId(rt);
-        String userType = jwtTokenProvider.getUserType(rt);
-        UUID tenantId = jwtTokenProvider.getTenantId(rt);
+        UUID userId = parsed.userId();
+        String userType = parsed.userType();
+        UUID tenantId = parsed.tenantId();
 
         // 签发新双 token
         String newAccess = businessAuthProvider.issueAccessToken(userId, userType, tenantId);
         String newRefresh = businessAuthProvider.issueRefreshToken(userId, userType, tenantId);
 
         // 旧 refresh token 拉黑（防重放；AUDIT-P1-13 按 jti 粒度）
-        tokenBlacklistService.blacklist(jwtTokenProvider.getTokenId(rt), jwtTokenProvider.getRemainingMs(rt));
+        tokenBlacklistService.blacklist(parsed.tokenId(), jwtTokenProvider.getRemainingMs(rt));
 
         return ApiResponse.ok(Map.of("token", newAccess, "refreshToken", newRefresh));
     }
@@ -290,15 +293,20 @@ public class AuthController {
             @RequestHeader("Authorization") String authHeader,
             @RequestBody(required = false) LogoutRequest request,
             Authentication authentication) {
-        // 拉黑 access token（AUDIT-P1-13：按 jti 粒度）
+        // 拉黑 access token（AUDIT-P1-13：按 jti 粒度；F2：parseOrNull 容错——
+        // token 已过期/签名非法时跳过拉黑，登出幂等返回 200，不再 500）
         String accessToken = authHeader.replace("Bearer ", "");
-        tokenBlacklistService.blacklist(jwtTokenProvider.getTokenId(accessToken), jwtTokenProvider.getRemainingMs(accessToken));
+        JwtTokenProvider.ParsedToken parsedAccess = jwtTokenProvider.parseOrNull(accessToken);
+        if (parsedAccess != null) {
+            tokenBlacklistService.blacklist(parsedAccess.tokenId(), jwtTokenProvider.getRemainingMs(accessToken));
+        }
 
         // 拉黑 refresh token（如果前端传了）
         if (request != null && request.refreshToken() != null && !request.refreshToken().isBlank()) {
             String rt = request.refreshToken();
-            if (jwtTokenProvider.validateToken(rt)) {
-                tokenBlacklistService.blacklist(jwtTokenProvider.getTokenId(rt), jwtTokenProvider.getRemainingMs(rt));
+            JwtTokenProvider.ParsedToken parsedRefresh = jwtTokenProvider.parseOrNull(rt);
+            if (parsedRefresh != null) {
+                tokenBlacklistService.blacklist(parsedRefresh.tokenId(), jwtTokenProvider.getRemainingMs(rt));
             }
         }
 
@@ -372,7 +380,7 @@ public class AuthController {
     public ApiResponse<Map<String, String>> requestGuardianConsent(
             @RequestBody GuardianConsentRequest request, Authentication auth) {
         TenantContext ctx = SecuritySupport.requireContext(auth);
-        UUID studentUserId = (UUID) auth.getPrincipal();
+        UUID studentUserId = ctx.userId();
         guardianConsentService.requestConsent(ctx.tenantId(), studentUserId, request.guardianPhone());
         return ApiResponse.ok(Map.of("status", "sent", "message", "验证码已发送到监护人手机"));
     }
@@ -384,7 +392,7 @@ public class AuthController {
     public ApiResponse<Map<String, Object>> confirmGuardianConsent(
             @RequestBody GuardianConsentConfirmRequest request, Authentication auth) {
         TenantContext ctx = SecuritySupport.requireContext(auth);
-        UUID studentUserId = (UUID) auth.getPrincipal();
+        UUID studentUserId = ctx.userId();
         guardianConsentService.confirmConsent(ctx.tenantId(), studentUserId,
                 request.guardianPhone(), request.code());
         return ApiResponse.ok(Map.of("status", "confirmed", "message", "监护人同意已确认"));

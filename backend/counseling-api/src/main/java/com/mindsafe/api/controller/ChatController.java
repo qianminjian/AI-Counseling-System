@@ -2,12 +2,12 @@ package com.mindsafe.api.controller;
 
 import com.mindsafe.api.dto.chat.*;
 import com.mindsafe.api.security.JwtAuthenticationFilter.TenantContext;
+import com.mindsafe.api.security.SecuritySupport;
 import com.mindsafe.common.dto.ApiResponse;
 import com.mindsafe.common.dto.ErrorCode;
 import com.mindsafe.common.dto.chat.SessionInfo;
 import com.mindsafe.common.dto.chat.StreamMessageEvent;
 import com.mindsafe.common.exception.BizException;
-import com.mindsafe.service.consent.GuardianConsentService;
 import com.mindsafe.service.conversation.ConversationService;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
@@ -35,15 +35,12 @@ public class ChatController {
     private static final Logger log = LoggerFactory.getLogger(ChatController.class);
 
     private final ConversationService conversationService;
-    private final GuardianConsentService guardianConsentService;
     /** ARCH-010 D5（OVD-4）：旧关闭接口 TTL 到期时间（ISO-8601）；空 = 未设置（TTL 窗口内） */
     private final String endSessionExpiresAt;
 
     public ChatController(ConversationService conversationService,
-                          GuardianConsentService guardianConsentService,
                           @Value("${mindsafe.deprecated.end-session.expires-at:}") String endSessionExpiresAt) {
         this.conversationService = conversationService;
-        this.guardianConsentService = guardianConsentService;
         this.endSessionExpiresAt = endSessionExpiresAt;
     }
 
@@ -54,8 +51,8 @@ public class ChatController {
     public ApiResponse<SessionInfo> createSession(
             @Valid @RequestBody CreateSessionRequest request,
             Authentication authentication) {
-        TenantContext ctx = extractContext(authentication);
-        requireGuardianConsent(ctx);
+        TenantContext ctx = SecuritySupport.requireContext(authentication);
+        // F10：监护人同意门禁已下沉 GuardianConsentGate 切面（service 层强制，消除漏调风险）
 
         SessionInfo response = conversationService.createSession(
                 ctx.tenantId(), ctx.userId(), request.emotionTag(), request.channel());
@@ -71,8 +68,8 @@ public class ChatController {
             @PathVariable UUID sessionId,
             @Valid @RequestBody SendMessageRequest request,
             Authentication authentication) {
-        TenantContext ctx = extractContext(authentication);
-        requireGuardianConsent(ctx);
+        TenantContext ctx = SecuritySupport.requireContext(authentication);
+        // F10：监护人同意门禁已下沉 GuardianConsentGate 切面（service 层强制，消除漏调风险）
 
         // 同步前端设置状态（TTS静音/唤醒开关），让 AI 知道自己的能力边界
         if (request.ttsMuted() != null || request.wakeEnabled() != null) {
@@ -98,8 +95,8 @@ public class ChatController {
             @PathVariable UUID sessionId,
             @Valid @RequestBody NudgeRequest request,
             Authentication authentication) {
-        TenantContext ctx = extractContext(authentication);
-        requireGuardianConsent(ctx);
+        TenantContext ctx = SecuritySupport.requireContext(authentication);
+        // F10：监护人同意门禁已下沉 GuardianConsentGate 切面（service 层强制，消除漏调风险）
         return conversationService.sendNudgeStream(ctx.tenantId(), ctx.userId(), sessionId, request.silenceSeconds());
     }
 
@@ -114,7 +111,7 @@ public class ChatController {
     public ApiResponse<Void> endSession(@PathVariable UUID sessionId,
                                         Authentication authentication) {
         ensureEndSessionAlive();
-        TenantContext ctx = extractContext(authentication);
+        TenantContext ctx = SecuritySupport.requireContext(authentication);
         log.warn("DEPRECATED-API（TTL 窗口内，到期下线）: POST /api/v1/chat/sessions/{}/end, tenantId={}",
                 sessionId, ctx.tenantId());
         conversationService.endSession(ctx.tenantId(), ctx.userId(), sessionId);
@@ -132,25 +129,6 @@ public class ChatController {
             }
         } catch (DateTimeParseException e) {
             log.error("mindsafe.deprecated.end-session.expires-at 配置非法，视为未到期: {}", endSessionExpiresAt, e);
-        }
-    }
-
-    /** 从 Authentication 提取租户上下文 */
-    private TenantContext extractContext(Authentication authentication) {
-        if (authentication == null || !(authentication.getDetails() instanceof TenantContext ctx)) {
-            throw new BizException(ErrorCode.UNAUTHORIZED);
-        }
-        return ctx;
-    }
-
-    /**
-     * 监护人同意门禁（R-03，PIPL §31 未成年人单独同意）
-     * <p>
-     * 学生进入对话（创建会话/发消息/暖场）前必须已完成监护人同意闭环，否则拒绝。
-     */
-    private void requireGuardianConsent(TenantContext ctx) {
-        if (!guardianConsentService.hasGuardianConsent(ctx.tenantId(), ctx.userId())) {
-            throw new BizException(ErrorCode.CONSENT_REQUIRED, "需要先完成监护人同意才能开始对话");
         }
     }
 }

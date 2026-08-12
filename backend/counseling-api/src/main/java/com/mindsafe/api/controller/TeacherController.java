@@ -1,5 +1,12 @@
 package com.mindsafe.api.controller;
 
+import com.mindsafe.api.dto.teacher.AddNoteRequest;
+import com.mindsafe.api.dto.teacher.TransitionCaseRequest;
+import com.mindsafe.api.dto.vo.RiskEventVO;
+import com.mindsafe.api.dto.vo.TeacherNoteVO;
+import com.mindsafe.api.render.CsvExportWriter;
+import com.mindsafe.api.render.SessionExportRenderer;
+import com.mindsafe.api.render.WeeklyReportRenderer;
 import com.mindsafe.api.security.JwtAuthenticationFilter.TenantContext;
 import com.mindsafe.api.security.SecuritySupport;
 import com.mindsafe.api.security.JwtTokenProvider;
@@ -7,9 +14,6 @@ import com.mindsafe.common.dto.ApiResponse;
 import com.mindsafe.common.dto.ErrorCode;
 import com.mindsafe.common.exception.BizException;
 import com.mindsafe.domain.entity.CounselingSession;
-import com.mindsafe.domain.entity.Notification;
-import com.mindsafe.domain.entity.RiskEvent;
-import com.mindsafe.domain.entity.TeacherNote;
 import com.mindsafe.domain.entity.User;
 import com.mindsafe.service.notification.NotificationService;
 import com.mindsafe.service.casemanage.CaseLifecycleService;
@@ -24,9 +28,6 @@ import org.springframework.web.bind.annotation.*;
 
 import java.io.IOException;
 import java.io.PrintWriter;
-import java.nio.charset.StandardCharsets;
-import java.time.ZoneId;
-import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -71,8 +72,7 @@ public class TeacherController {
     @GetMapping("/teacher/dashboard")
     public ApiResponse<TeacherService.DashboardVO> getDashboard(Authentication auth) {
         TenantContext ctx = SecuritySupport.requireContext(auth);
-        UUID userId = (UUID) auth.getPrincipal();
-        return ApiResponse.ok(teacherService.getDashboard(ctx.tenantId(), userId));
+        return ApiResponse.ok(teacherService.getDashboard(ctx.tenantId(), ctx.userId()));
     }
 
     /** 数据看板统计（风隩分布/班级对比/会话趋势/情绪分布） */
@@ -124,18 +124,16 @@ public class TeacherController {
         return ApiResponse.ok(profileRadarService.getRadarData(ctx.tenantId(), id));
     }
 
-    /** 添加备注 */
+    /** 添加备注（F11：请求体类型化为 AddNoteRequest；F9：响应收敛为 TeacherNoteVO） */
     @PostMapping("/teacher/students/{id}/notes")
-    public ApiResponse<TeacherNote> addNote(
+    public ApiResponse<TeacherNoteVO> addNote(
             @PathVariable UUID id,
-            @RequestBody Map<String, String> body,
+            @RequestBody AddNoteRequest body,
             Authentication auth) {
         TenantContext ctx = SecuritySupport.requireContext(auth);
-        UUID userId = (UUID) auth.getPrincipal();
-        String content = body.get("content");
-        String noteType = body.getOrDefault("noteType", "general");
-        TeacherNote note = teacherService.addNote(ctx.tenantId(), id, userId, content, noteType);
-        return ApiResponse.ok(note);
+        TeacherNoteVO vo = TeacherNoteVO.from(teacherService.addNote(
+                ctx.tenantId(), id, ctx.userId(), body.content(), body.noteType()));
+        return ApiResponse.ok(vo);
     }
 
     /** 查看某次会话的对话摘要（教师端） */
@@ -167,9 +165,8 @@ public class TeacherController {
     public ApiResponse<Map<String, Object>> takeoverSession(
             @PathVariable UUID sessionId, Authentication auth) {
         TenantContext ctx = SecuritySupport.requireContext(auth);
-        UUID userId = (UUID) auth.getPrincipal();
         // T4 批次A/B：归属校验 + 状态更新 + 审计整体下沉 TeacherService（事务内）
-        TeacherService.TakeoverResult result = teacherService.takeoverSession(ctx.tenantId(), userId, sessionId);
+        TeacherService.TakeoverResult result = teacherService.takeoverSession(ctx.tenantId(), ctx.userId(), sessionId);
         if (!result.success()) {
             return ApiResponse.ok(Map.of("success", false, "reason", result.reason()));
         }
@@ -225,110 +222,75 @@ public class TeacherController {
             @RequestParam(defaultValue = "ALL") String status,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size) {
-        UUID userId = (UUID) auth.getPrincipal();
-        NotificationService.NotificationPage pageResult = notificationService.getNotifications(userId, status, page, size);
+        // F1：原直接强转 principal（无 requireContext）——非法认证 → 500；统一收口后 401
+        TenantContext ctx = SecuritySupport.requireContext(auth);
+        NotificationService.NotificationPage pageResult = notificationService.getNotifications(ctx.userId(), status, page, size);
         return ApiResponse.ok(Map.of("items", pageResult.items(), "total", pageResult.total()));
     }
 
     /** 获取未读通知数量 */
     @GetMapping("/teacher/notifications/unread-count")
     public ApiResponse<Long> getUnreadCount(Authentication auth) {
-        UUID userId = (UUID) auth.getPrincipal();
-        return ApiResponse.ok(notificationService.countUnread(userId));
+        TenantContext ctx = SecuritySupport.requireContext(auth);
+        return ApiResponse.ok(notificationService.countUnread(ctx.userId()));
     }
 
     /** 标记通知为已读（P1 审计修复：携带收件人 ID，防 IDOR） */
     @PutMapping("/teacher/notifications/{id}/read")
     public ApiResponse<Void> markAsRead(@PathVariable UUID id, Authentication auth) {
-        UUID userId = (UUID) auth.getPrincipal();
-        notificationService.markAsRead(id, userId);
+        TenantContext ctx = SecuritySupport.requireContext(auth);
+        notificationService.markAsRead(id, ctx.userId());
         return ApiResponse.ok(null);
     }
 
-    /** 获取风险事件列表（同租户；T4 批次C：分页查询下沉 TeacherService） */
+    /** 获取风险事件列表（同租户；T4 批次C：分页查询下沉 TeacherService；F9：响应收敛为 RiskEventVO） */
     @GetMapping("/teacher/risk-events")
-    public ApiResponse<List<RiskEvent>> getRiskEvents(
+    public ApiResponse<List<RiskEventVO>> getRiskEvents(
             Authentication auth,
             @RequestParam(defaultValue = "50") int limit) {
         TenantContext ctx = SecuritySupport.requireContext(auth);
-        return ApiResponse.ok(teacherService.pageRiskEvents(ctx.tenantId(), limit));
+        List<RiskEventVO> voList = teacherService.pageRiskEvents(ctx.tenantId(), limit).stream()
+                .map(RiskEventVO::from)
+                .toList();
+        return ApiResponse.ok(voList);
     }
 
     // ===== 数据导出 =====
 
-    private static final DateTimeFormatter CSV_DATE_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
-            .withZone(ZoneId.of("Asia/Shanghai"));
-
     /** 预警导出上限（B-01：导出路径独立上限，与列表 100 钳制解耦；超限显式提示截断） */
     private static final int EXPORT_ALERTS_HARD_LIMIT = 5000;
 
-    /** 导出预警记录 CSV */
+    /** 导出预警记录 CSV（F8：渲染整体下沉 CsvExportWriter） */
     @GetMapping("/teacher/export/alerts")
     public void exportAlerts(Authentication auth, HttpServletResponse response) throws IOException {
         TenantContext ctx = SecuritySupport.requireContext(auth);
-        UUID userId = (UUID) auth.getPrincipal();
-        auditLogService.log(ctx.tenantId(), userId, "EXPORT_ALERTS", "export");
+        auditLogService.log(ctx.tenantId(), ctx.userId(), "EXPORT_ALERTS", "export");
         // P1 审计修复：导出跟随数据范围（班主任仅导出本班，不再全校可见）
-        // B-01：导出路径独立上限 5000（不再被列表 100 钳制静默截断）
-        // M1（CodeReview）：limit 传 EXPORT_ALERTS_HARD_LIMIT——分页大小 = min(limit, 5000)，
-        // 若传 500 则最多取 500 条，下方截断提示永不触发（死代码）
+        // B-01：导出路径独立上限 5000（不再被列表 100 钳制静默截断；M1：limit 固定传上限值，截断提示方可达）
         String classScope = teacherService.resolveClassScope(ctx.tenantId(), ctx.userId(), ctx.userType());
         List<TeacherService.AlertVO> alerts = teacherService.getAlertsForExport(ctx.tenantId(), classScope, null, null, EXPORT_ALERTS_HARD_LIMIT);
 
         response.setContentType("text/csv; charset=UTF-8");
         response.setHeader("Content-Disposition", "attachment; filename=alerts_export.csv");
-        // BOM for Excel 中文兼容（先取 Writer 再写 BOM，避免 getOutputStream/getWriter 混用抛 IllegalStateException）
-        PrintWriter w = response.getWriter();
-        w.print('\uFEFF');
-        // B-01：显式截断提示（不再静默）
-        if (alerts.size() >= EXPORT_ALERTS_HARD_LIMIT) {
-            w.println("# 提示：预警记录达到导出上限 " + EXPORT_ALERTS_HARD_LIMIT + " 条，数据已截断，请缩小范围后分批导出");
-        }
-        w.println("学生,风险类型,风险等级,状态,检测时间,处理人");
-        for (var a : alerts) {
-            w.printf("%s,%s,%d,%s,%s,%s%n",
-                    csv(a.studentName()), csv(a.riskType()), a.riskLevel(),
-                    csv(a.status()),
-                    a.detectedAt() != null ? CSV_DATE_FMT.format(a.detectedAt()) : "",
-                    a.assignedUserId() != null ? a.assignedUserId().toString().substring(0, 8) : "");
-        }
-        w.flush();
+        // F8：BOM/转义/截断提示/行渲染全部下沉 CsvExportWriter（先取 Writer 再写 BOM，避免混用抛 IllegalStateException）
+        CsvExportWriter.writeAlerts(response.getWriter(), alerts, EXPORT_ALERTS_HARD_LIMIT);
     }
 
-    /** 导出学生列表 CSV（T4 批次C：查询下沉 TeacherService，与 getStudents 共用 DRY） */
+    /** 导出学生列表 CSV（T4 批次C：查询下沉 TeacherService，与 getStudents 共用 DRY；F8：渲染下沉 CsvExportWriter） */
     @GetMapping("/teacher/export/students")
     public void exportStudents(Authentication auth, HttpServletResponse response) throws IOException {
         TenantContext ctx = SecuritySupport.requireContext(auth);
         // P1 审计修复：导出跟随数据范围（班主任仅导出本班，不再全校可见）
         String classScope = teacherService.resolveClassScope(ctx.tenantId(), ctx.userId(), ctx.userType());
         List<User> students = teacherService.listActiveStudents(ctx.tenantId(), classScope);
+        // F9：渲染层仅接收 StudentRow（不含实体，杜绝 User 流入渲染层）
+        List<CsvExportWriter.StudentRow> rows = students.stream()
+                .map(s -> new CsvExportWriter.StudentRow(s.getPseudonym(), s.getGradeCode(), s.getClassCode(), s.getStatus()))
+                .toList();
 
         response.setContentType("text/csv; charset=UTF-8");
         response.setHeader("Content-Disposition", "attachment; filename=students_export.csv");
-        PrintWriter w = response.getWriter();
-        w.print('\uFEFF');
-        w.println("昵称,年级,班级,状态");
-        for (var s : students) {
-            w.printf("%s,%s,%s,%s%n",
-                    csv(s.getPseudonym()), csv(s.getGradeCode()), csv(s.getClassCode()), csv(s.getStatus()));
-        }
-        w.flush();
-    }
-
-    /** CSV 字段转义（含逗号/引号/换行的值加双引号包裹） */
-    private static String csv(String value) {
-        if (value == null) return "";
-        if (value.contains(",") || value.contains("\"") || value.contains("\n")) {
-            return "\"" + value.replace("\"", "\"\"") + "\"";
-        }
-        return value;
-    }
-
-    /** HTML 字段转义（B-04：导出 HTML 防 XSS——& < > 引号全量转义） */
-    private static String html(String value) {
-        if (value == null) return "";
-        return value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-                .replace("\"", "&quot;").replace("'", "&#39;");
+        CsvExportWriter.writeStudents(response.getWriter(), rows);
     }
 
     /** 学生视图对象（BUG-UI-03：+ status 账号状态；BUG-T-04-03：+ riskLevel 风险等级列） */
@@ -336,15 +298,14 @@ public class TeacherController {
 
     // ===== 个案管理（WB-003，design/35 M3） =====
 
-    /** 个案阶段推进（建案→评估→干预跟踪→结案，P1 审计修复：读取真实当前阶段并持久化） */
+    /** 个案阶段推进（建案→评估→干预跟踪→结案，P1 审计修复：读取真实当前阶段并持久化；F11：请求体类型化） */
     @PostMapping("/teacher/cases/{studentId}/transition")
     public ApiResponse<Map<String, Object>> transitionCase(
             @PathVariable UUID studentId,
-            @RequestBody Map<String, String> body,
+            @RequestBody TransitionCaseRequest body,
             Authentication auth) {
         TenantContext ctx = SecuritySupport.requireContext(auth);
-        UUID userId = (UUID) auth.getPrincipal();
-        String targetStage = body.getOrDefault("targetStage", "ASSESSMENT");
+        String targetStage = body.targetStage();
 
         // P1 审计修复：非法阶段值 → 400 参数错误（不再 500）
         CaseLifecycleService.CaseStage target;
@@ -355,9 +316,9 @@ public class TeacherController {
         }
 
         CaseLifecycleService.StageTransition result =
-                teacherService.transitionCaseStage(ctx.tenantId(), studentId, userId, target);
+                teacherService.transitionCaseStage(ctx.tenantId(), studentId, ctx.userId(), target);
 
-        auditLogService.log(ctx.tenantId(), userId, "CASE_TRANSITION", User.USER_TYPE_STUDENT, studentId, targetStage);
+        auditLogService.log(ctx.tenantId(), ctx.userId(), "CASE_TRANSITION", User.USER_TYPE_STUDENT, studentId, targetStage);
         return ApiResponse.ok(Map.of(
                 "allowed", result.allowed(),
                 "newStage", result.to().name(),
@@ -370,63 +331,17 @@ public class TeacherController {
     @GetMapping(value = "/teacher/report/weekly", produces = "text/html; charset=UTF-8")
     public void weeklyReport(Authentication auth, HttpServletResponse response) throws IOException {
         TenantContext ctx = SecuritySupport.requireContext(auth);
-        UUID userId = (UUID) auth.getPrincipal();
-        auditLogService.log(ctx.tenantId(), userId, "EXPORT_WEEKLY_REPORT", "report");
+        auditLogService.log(ctx.tenantId(), ctx.userId(), "EXPORT_WEEKLY_REPORT", "report");
 
         // P1 审计修复：周报跟随数据范围（班主任仅统计本班，不再全校可见）
         String classScope = teacherService.resolveClassScope(ctx.tenantId(), ctx.userId(), ctx.userType());
         var stats = teacherService.getStats(ctx.tenantId(), classScope);
         String now = java.time.LocalDate.now().toString();
 
-        StringBuilder html = new StringBuilder();
-        html.append("<!DOCTYPE html><html><head><meta charset='UTF-8'>");
-        html.append("<title>心理辅导周报 - ").append(now).append("</title>");
-        html.append("<style>body{font-family:'PingFang SC',sans-serif;padding:40px;color:#333}");
-        html.append("h1{font-size:22px;border-bottom:2px solid #1890ff;padding-bottom:8px}");
-        html.append("table{width:100%;border-collapse:collapse;margin:16px 0}");
-        html.append("th,td{border:1px solid #ddd;padding:8px 12px;text-align:left;font-size:13px}");
-        html.append("th{background:#f5f7fa}.stat{display:inline-block;margin:0 24px 12px 0}");
-        html.append(".stat b{font-size:28px;color:#1890ff;display:block}.stat span{font-size:12px;color:#999}");
-        html.append("@media print{body{padding:20px}}</style></head><body>");
-        html.append("<h1>🧠 AI 心理辅导系统 — 周报</h1>");
-        html.append("<p style='color:#999;font-size:12px'>报告日期：").append(now).append("</p>");
-
-        // 概览统计
-        html.append("<div>");
-        long totalAlerts = stats.riskDistribution().stream().mapToLong(TeacherService.RiskDistItem::count).sum();
-        html.append("<div class='stat'><b>").append(totalAlerts).append("</b><span>预警总数</span></div>");
-        html.append("<div class='stat'><b>").append(stats.sessionTrend().size()).append("</b><span>活跃天数</span></div>");
-        long totalSessions = stats.sessionTrend().stream().mapToLong(TeacherService.DailyCount::count).sum();
-        html.append("<div class='stat'><b>").append(totalSessions).append("</b><span>会话总数</span></div>");
-        html.append("</div>");
-
-        // 风隩分布表
-        html.append("<h3>风隩分布</h3><table><tr><th>等级</th><th>数量</th></tr>");
-        for (var item : stats.riskDistribution()) {
-            html.append("<tr><td>").append(item.label()).append("</td><td>").append(item.count()).append("</td></tr>");
-        }
-        html.append("</table>");
-
-        // 班级对比表
-        html.append("<h3>班级对比</h3><table><tr><th>班级</th><th>预警数</th><th>学生数</th></tr>");
-        for (var item : stats.classComparison()) {
-            html.append("<tr><td>").append(html(item.classCode())).append("</td><td>")
-                .append(item.alertCount()).append("</td><td>").append(item.studentCount()).append("</td></tr>");
-        }
-        html.append("</table>");
-
-        // 情绪分布
-        html.append("<h3>情绪分布</h3><table><tr><th>情绪</th><th>次数</th></tr>");
-        for (var item : stats.emotionDistribution()) {
-            html.append("<tr><td>").append(emotionZh(item.emotion())).append("</td><td>").append(item.count()).append("</td></tr>");
-        }
-        html.append("</table>");
-
-        html.append("<p style='margin-top:32px;color:#bbb;font-size:11px'>—— MindSafe AI 心理辅导系统自动生成 ——</p>");
-        html.append("</body></html>");
-
+        // F8：HTML 模板/转义/情绪翻译整体下沉 WeeklyReportRenderer（B-04 防 XSS 语义保留）
+        String html = WeeklyReportRenderer.render(stats, now);
         response.setContentType("text/html; charset=UTF-8");
-        response.getWriter().write(html.toString());
+        response.getWriter().write(html);
         response.getWriter().flush();
     }
 
@@ -434,43 +349,15 @@ public class TeacherController {
     @GetMapping(value = "/teacher/sessions/{sessionId}/export", produces = "text/html; charset=UTF-8")
     public void exportSession(@PathVariable UUID sessionId, Authentication auth, HttpServletResponse response) throws IOException {
         TenantContext ctx = SecuritySupport.requireContext(auth);
-        auditLogService.log(ctx.tenantId(), (UUID) auth.getPrincipal(), "EXPORT_SESSION", "counseling_session", sessionId, null);
+        auditLogService.log(ctx.tenantId(), ctx.userId(), "EXPORT_SESSION", "counseling_session", sessionId, null);
 
         var messages = teacherService.getSessionMessages(ctx.tenantId(), sessionId);
+        String exportedAt = java.time.LocalDateTime.now().toString().substring(0, 16);
 
-        StringBuilder html = new StringBuilder();
-        html.append("<!DOCTYPE html><html><head><meta charset='UTF-8'>");
-        html.append("<title>会话记录 - ").append(sessionId).append("</title>");
-        html.append("<style>body{font-family:'PingFang SC',sans-serif;padding:40px;color:#333;max-width:700px;margin:0 auto}");
-        html.append("h1{font-size:18px;border-bottom:2px solid #1890ff;padding-bottom:8px}");
-        html.append(".msg{margin:12px 0;padding:10px 14px;border-radius:8px;font-size:13px;line-height:1.6}");
-        html.append(".student{background:#e6f7ff;margin-left:40px}.ai{background:#f6ffed;margin-right:40px}");
-        html.append(".meta{font-size:11px;color:#999;margin-bottom:4px}");
-        html.append("@media print{body{padding:20px}}</style></head><body>");
-        html.append("<h1>🛡️ MindSafe 会话记录（个案存档）</h1>");
-        html.append("<p style='color:#999;font-size:12px'>会话 ID：").append(sessionId).append(" | 导出时间：")
-            .append(java.time.LocalDateTime.now().toString().substring(0, 16)).append("</p><hr>");
-
-        for (var msg : messages) {
-            boolean isStudent = User.USER_TYPE_STUDENT.equals(msg.senderType());
-            html.append("<div class='msg ").append(isStudent ? "student" : "ai").append("'>");
-            html.append("<div class='meta'>").append(isStudent ? "🧒 学生" : "🤖 AI");
-            if (msg.emotionLabel() != null) html.append(" · ").append(emotionZh(msg.emotionLabel()));
-            html.append("</div>");
-            html.append("<div>").append(html(msg.contentSummary())).append("</div>");
-            html.append("</div>");
-        }
-
-        html.append("<p style='margin-top:32px;color:#bbb;font-size:11px'>—— MindSafe AI 心理辅导系统 · 机密文件 ——</p>");
-        html.append("</body></html>");
-
+        // F8：HTML 模板/转义/情绪翻译整体下沉 SessionExportRenderer（B-04 防 XSS 语义保留）
+        String html = SessionExportRenderer.render(sessionId, messages, exportedAt);
         response.setContentType("text/html; charset=UTF-8");
-        response.getWriter().write(html.toString());
+        response.getWriter().write(html);
         response.getWriter().flush();
-    }
-
-    /** 情绪码值 → 中文标签（DC-008：EmotionVocabulary.ZH_LABELS 单一标签源，anxious→紧张 全系统单译） */
-    private static String emotionZh(String code) {
-        return com.mindsafe.ai.risk.EmotionVocabulary.labelOf(code);
     }
 }
