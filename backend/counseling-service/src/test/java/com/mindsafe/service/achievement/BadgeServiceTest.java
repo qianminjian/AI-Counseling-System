@@ -89,7 +89,7 @@ class BadgeServiceTest {
     @Test
     @DisplayName("打卡 1 次 → first_diary 解锁")
     void evaluate_firstDiary() {
-        mockDiaries(List.of(diary(LocalDate.now())));
+        mockDiaries(List.of(diary(com.mindsafe.service.common.CounselingTimeZone.today())));
         mockSessions(List.of());
 
         List<Badge> badges = badgeService.evaluate(tenantId, studentUserId);
@@ -101,7 +101,7 @@ class BadgeServiceTest {
     @Test
     @DisplayName("连续 7 天 → streak_3/streak_7 解锁；断档则只按连续段计算")
     void evaluate_streak() {
-        LocalDate today = LocalDate.now();
+        LocalDate today = com.mindsafe.service.common.CounselingTimeZone.today();
         mockDiaries(List.of(
                 diary(today), diary(today.minusDays(1)), diary(today.minusDays(2)),
                 diary(today.minusDays(3)), diary(today.minusDays(4)),
@@ -117,7 +117,7 @@ class BadgeServiceTest {
     @Test
     @DisplayName("累计 30 天 → diary_10/diary_30 解锁（连续天数仅 1，streak 徽章不解锁）")
     void evaluate_diaryCount() {
-        LocalDate today = LocalDate.now();
+        LocalDate today = com.mindsafe.service.common.CounselingTimeZone.today();
         List<EmotionDiary> diaries = new java.util.ArrayList<>();
         for (int i = 0; i < 30; i++) {
             diaries.add(diary(today.minusDays(i * 2L)));
@@ -137,7 +137,7 @@ class BadgeServiceTest {
     @Test
     @DisplayName("computeStreak 今天+昨天连续 → 2")
     void computeStreak_consecutive() {
-        LocalDate today = LocalDate.now();
+        LocalDate today = com.mindsafe.service.common.CounselingTimeZone.today();
         int streak = BadgeService.computeStreak(List.of(diary(today), diary(today.minusDays(1))));
 
         assertThat(streak).isEqualTo(2);
@@ -146,7 +146,7 @@ class BadgeServiceTest {
     @Test
     @DisplayName("computeStreak 昨天断档 → 0")
     void computeStreak_broken() {
-        LocalDate today = LocalDate.now();
+        LocalDate today = com.mindsafe.service.common.CounselingTimeZone.today();
         int streak = BadgeService.computeStreak(List.of(diary(today.minusDays(2))));
 
         assertThat(streak).isEqualTo(0);
@@ -155,7 +155,7 @@ class BadgeServiceTest {
     @Test
     @DisplayName("computeStreak 今天未打卡但昨天起连续 → 0（连续从今天起算）")
     void computeStreak_notToday() {
-        LocalDate today = LocalDate.now();
+        LocalDate today = com.mindsafe.service.common.CounselingTimeZone.today();
         int streak = BadgeService.computeStreak(List.of(diary(today.minusDays(1)), diary(today.minusDays(2))));
 
         assertThat(streak).isEqualTo(0);

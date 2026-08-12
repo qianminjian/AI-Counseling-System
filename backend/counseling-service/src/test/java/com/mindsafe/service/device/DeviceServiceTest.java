@@ -99,7 +99,7 @@ class DeviceServiceTest {
     @DisplayName("非法设备码上报被拒绝")
     void reportOnlineRejectsInvalidCode() {
         assertThatThrownBy(() -> service.reportOnline("BADCODE", "SN1", "v1", null, null))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(BizException.class)
                 .hasMessageContaining("设备码不合法");
     }
 
@@ -109,7 +109,7 @@ class DeviceServiceTest {
         when(deviceMapper.selectOne(any())).thenReturn(null);
         when(deviceMapper.selectCount(any())).thenReturn(1L);
         assertThatThrownBy(() -> service.reportOnline(deviceCode, "OTHER-SN", "v1", null, null))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(BizException.class)
                 .hasMessageContaining("SN 已被其他设备码占用");
     }
 
@@ -182,7 +182,7 @@ class DeviceServiceTest {
         when(deviceMapper.selectOne(any())).thenReturn(bound);
 
         assertThatThrownBy(() -> service.createBindCode(deviceCode, "t"))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(BizException.class)
                 .hasMessageContaining("已绑定");
     }
 
@@ -227,7 +227,7 @@ class DeviceServiceTest {
 
         assertThatThrownBy(() -> service.bind(deviceCode, DeviceBinding.BIND_TYPE_CLASS,
                 UUID.randomUUID(), null, "999999", "t"))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(BizException.class)
                 .hasMessageContaining("已锁定");
 
         verify(bindCodeMapper).updateById(any(DeviceBindCode.class)); // fail_count=3 + locked_until
@@ -251,7 +251,7 @@ class DeviceServiceTest {
 
         assertThatThrownBy(() -> service.bind(deviceCode, DeviceBinding.BIND_TYPE_CLASS,
                 UUID.randomUUID(), null, "123456", "t"))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(BizException.class)
                 .hasMessageContaining("过期");
     }
 

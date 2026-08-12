@@ -49,7 +49,11 @@ public class EmotionDiaryService {
             return existing;
         }
 
+        // BUG-S-08-1 修复（2026-08-12，UI-TEST-012）：插入日期必须与查询日界同源——
+        // 此前 EmotionDiary.create 用 LocalDate.now()（JVM 默认 UTC），查询用 CounselingTimeZone.today()
+        // （Asia/Shanghai），上海 00:00~08:00 窗口期两次打卡走双 insert 触发唯一索引冲突 500。
         EmotionDiary diary = EmotionDiary.create(tenantId, studentUserId, emotion, intensity, note);
+        diary.setDiaryDate(com.mindsafe.service.common.CounselingTimeZone.today());
         diaryMapper.insert(diary);
         return diary;
     }

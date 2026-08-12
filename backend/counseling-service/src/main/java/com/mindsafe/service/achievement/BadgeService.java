@@ -80,7 +80,9 @@ public class BadgeService {
     /** 连续打卡天数（纯函数，EmotionDiaryService.getStreak 复用） */
     public static int computeStreak(List<EmotionDiary> all) {
         int streak = 0;
-        LocalDate expected = LocalDate.now();
+        // BUG-S-08-1 同源修复（2026-08-12）：streak 基准与打卡插入日界统一为业务时区，
+        // 避免 UTC 日界窗口期 streak 计算错位（打卡数据为上海日界，此处不可用 JVM 默认时区）
+        LocalDate expected = com.mindsafe.service.common.CounselingTimeZone.today();
         for (EmotionDiary d : all) {
             if (d.getDiaryDate().equals(expected)) {
                 streak++;

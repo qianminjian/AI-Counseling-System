@@ -1,5 +1,7 @@
 package com.mindsafe.service.toc;
 
+import com.mindsafe.common.exception.BizException;
+
 import com.mindsafe.domain.entity.TocFamilyAccount;
 import com.mindsafe.domain.mapper.TocFamilyAccountMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -59,7 +61,7 @@ class TocAuthServiceTest {
     @DisplayName("sendCode：非法手机号拒绝")
     void sendCodeInvalidPhone() {
         assertThatThrownBy(() -> service.sendCode("12345"))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(BizException.class)
                 .hasMessageContaining("手机号");
     }
 
@@ -68,7 +70,7 @@ class TocAuthServiceTest {
     void sendCodeCooldown() {
         when(valueOps.get("toccode:13800138000:cd")).thenReturn("1720000000000");
         assertThatThrownBy(() -> service.sendCode("13800138000"))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(BizException.class)
                 .hasMessageContaining("60 秒");
     }
 
@@ -88,7 +90,7 @@ class TocAuthServiceTest {
     void registerWrongCode() {
         when(valueOps.get("toccode:13800138000")).thenReturn("654321");
         assertThatThrownBy(() -> service.register("13800138000", "123456"))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(BizException.class)
                 .hasMessageContaining("验证码");
     }
 
@@ -98,7 +100,7 @@ class TocAuthServiceTest {
         when(valueOps.get("toccode:13800138000")).thenReturn("123456");
         when(accountMapper.selectOne(any())).thenReturn(new TocFamilyAccount());
         assertThatThrownBy(() -> service.register("13800138000", "123456"))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(BizException.class)
                 .hasMessageContaining("已注册");
     }
 
@@ -119,7 +121,7 @@ class TocAuthServiceTest {
         when(valueOps.get("toccode:13800138000")).thenReturn("123456");
         when(accountMapper.selectOne(any())).thenReturn(null);
         assertThatThrownBy(() -> service.login("13800138000", "123456"))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(BizException.class)
                 .hasMessageContaining("先注册");
     }
 
@@ -131,7 +133,7 @@ class TocAuthServiceTest {
         existing.setStatus(TocFamilyAccount.STATUS_DISABLED);
         when(accountMapper.selectOne(any())).thenReturn(existing);
         assertThatThrownBy(() -> service.login("13800138000", "123456"))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(BizException.class)
                 .hasMessageContaining("禁用");
     }
 }
