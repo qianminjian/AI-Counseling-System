@@ -8,7 +8,11 @@
 """
 from abc import ABC, abstractmethod
 
+import logging
+
 import numpy as np
+
+logger = logging.getLogger("voice-service.ser")
 
 
 class SERBackendError(Exception):
@@ -73,6 +77,9 @@ def load_ser_backend(config: dict, enabled: bool, asr_engine: str):
         model = AutoModel(model=config["ser"]["model"], device="cpu")
         labels = [tuple(item) for item in config["emotion_labels"]]
         return FunasrSERBackend(model, labels)
-    except Exception:
+    except Exception as exc:  # noqa: BLE001
         # 降级为中性情绪：调用方经 is_available()==False 处理（DA-02：仅"启用但加载失败"触发告警）
+        # OPS-P1-02（doing/96）：加载失败必须留痕（此前静默 return None，生产 SER 长期失效无人知晓）；
+        # 路径不一致（模型未投放/挂载点错位）是最常见根因，日志含异常细节便于定位。
+        logger.error("SER 模型加载失败，情感识别降级为中性（检查模型缓存路径与挂载点）: %s", exc)
         return None

@@ -1,9 +1,12 @@
 # AUD-028：tts-service 构建上下文排除（此前无 .dockerignore）
+# OPS-P3-02（doing/96）：测试文件不入生产镜像（此前 COPY *.py 通配带入 test_*.py/conftest.py）
 __pycache__/
 **/__pycache__/
 .pytest_cache/
 *.pyc
 wheels/
+test_*.py
+conftest.py
 .venv/
 .git/
 .DS_Store
