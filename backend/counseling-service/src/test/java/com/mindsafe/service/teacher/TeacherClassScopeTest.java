@@ -74,8 +74,7 @@ class TeacherClassScopeTest {
                 riskEventMapper,
                 sessionMapper,
                 userMapper,
-                new TeacherNoteStore(teacherNoteMapper),
-                mock(NotificationMapper.class),
+                new TeacherNoteStore(teacherNoteMapper, fieldEncryptionService),
                 messageSummaryMapper,
                 fieldEncryptionService,
                 sessionAccessService,
@@ -269,7 +268,8 @@ class TeacherClassScopeTest {
         when(userMapper.selectList(any(Wrapper.class))).thenReturn(List.of(student(inClass, "CLASS_1")));
         when(riskEventMapper.selectList(any(Wrapper.class))).thenReturn(List.of());
         when(sessionMapper.selectList(any(Wrapper.class))).thenReturn(List.of());
-        when(messageSummaryMapper.selectMaps(any(Wrapper.class))).thenReturn(List.of());
+        // P1-3（板块06）：情绪分布聚合已下移 Mapper 层 @Select 方法
+        when(messageSummaryMapper.countEmotionDistribution(any(), any(), any())).thenReturn(List.of());
 
         TeacherService.StatsVO stats = teacherService.getStats(tenantId, "CLASS_1");
 

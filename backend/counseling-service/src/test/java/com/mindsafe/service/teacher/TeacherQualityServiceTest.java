@@ -93,7 +93,10 @@ class TeacherQualityServiceTest {
     @Test
     @DisplayName("flaggedSessions：仅返回 tenant 内 rating<=2 的会话")
     void flaggedSessionsFiltersByTenantAndRating() {
-        when(sessionMapper.selectList(any())).thenReturn(List.of(session(sessionId, 2), session(UUID.randomUUID(), 5)));
+        // AUD-043：flaggedSessions 已改 selectPage（分页插件安全化），mock selectPage 返回低分页
+        Page<CounselingSession> page = new Page<CounselingSession>(1, 50, false).setRecords(
+                List.of(session(sessionId, 2), session(UUID.randomUUID(), 5)));
+        when(sessionMapper.selectPage(any(), any())).thenReturn(page);
         // service 负责过滤条件，mock 返回后按条件再次校验——此处验证返回透传
         var result = service.flaggedSessions(tenantId);
         assertThat(result).hasSize(2);

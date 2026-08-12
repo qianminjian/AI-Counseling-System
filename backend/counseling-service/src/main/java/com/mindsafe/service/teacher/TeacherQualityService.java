@@ -54,14 +54,16 @@ public class TeacherQualityService {
 
     /** 质量监控：低分会话列表（rating <= 2） */
     public List<Map<String, Object>> flaggedSessions(UUID tenantId) {
-        var flagged = sessionMapper.selectList(
+        // AUD-043：分页插件安全化（selectPage 替代 .last("LIMIT 50") 字符串拼接）
+        Page<CounselingSession> pageResult = sessionMapper.selectPage(
+                new Page<>(1, 50, false),
                 new LambdaQueryWrapper<CounselingSession>()
                         .eq(CounselingSession::getTenantId, tenantId)
                         .isNotNull(CounselingSession::getSatisfactionRating)
                         .le(CounselingSession::getSatisfactionRating, 2)
                         .orderByDesc(CounselingSession::getStartedAt)
-                        .last("LIMIT 50")
         );
+        var flagged = pageResult.getRecords();
         return flagged.stream().map(s -> {
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("sessionId", s.getSessionId());

@@ -1,6 +1,8 @@
 package com.mindsafe.service.teacher;
 
 import com.mindsafe.service.conversation.MessageSummaryService;
+import com.baomidou.mybatisplus.core.MybatisConfiguration;
+import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.mindsafe.common.exception.BizException;
 import com.mindsafe.domain.entity.CounselingSession;
@@ -12,6 +14,8 @@ import com.mindsafe.domain.mapper.*;
 import com.mindsafe.service.audit.AuditLogService;
 import com.mindsafe.service.security.FieldEncryptionService;
 import com.mindsafe.service.session.SessionAccessService;
+import org.apache.ibatis.builder.MapperBuilderAssistant;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -48,6 +52,14 @@ class TeacherArchiveNoteTest {
     private final UUID tenantId = UUID.randomUUID();
     private final UUID studentId = UUID.randomUUID();
 
+    @BeforeAll
+    static void initTableInfo() {
+        // lambda wrapper 断言（getSqlSegment）需要 MyBatis-Plus 实体元数据缓存（同 TeacherClassScopeTest/PlatformServiceTest 先例）
+        MybatisConfiguration configuration = new MybatisConfiguration();
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(configuration, ""), User.class);
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(configuration, ""), RiskEvent.class);
+    }
+
     @BeforeEach
     void setUp() {
         riskEventMapper = mock(RiskEventMapper.class);
@@ -64,8 +76,7 @@ class TeacherArchiveNoteTest {
                 riskEventMapper,
                 sessionMapper,
                 userMapper,
-                new TeacherNoteStore(teacherNoteMapper),
-                mock(NotificationMapper.class),
+                new TeacherNoteStore(teacherNoteMapper, fieldEncryptionService),
                 messageSummaryMapper,
                 fieldEncryptionService,
                 sessionAccessService,
@@ -179,13 +190,12 @@ class TeacherArchiveNoteTest {
     }
 
     @Test
-    @DisplayName("getHighRiskStudents：班级过滤只保留本班学生")
+    @DisplayName("getHighRiskStudents：班级过滤下推 SQL（P1-3 板块05，对齐 getAlerts 范式）")
     void highRiskStudents_classScopeFilter() {
         UUID studentA = UUID.randomUUID();
-        UUID studentB = UUID.randomUUID();
         RiskEvent a1 = RiskEvent.fromDetection(tenantId, studentA, UUID.randomUUID(), "self_harm", 3);
-        RiskEvent b1 = RiskEvent.fromDetection(tenantId, studentB, UUID.randomUUID(), "anxiety", 2);
-        when(riskEventMapper.selectList(any())).thenReturn(List.of(a1, b1));
+        // SQL 下推后：DB 侧已按 in(本班学生集合) 过滤，mock 仅返回本班事件
+        when(riskEventMapper.selectList(any())).thenReturn(List.of(a1));
 
         User classA = new User();
         classA.setUserId(studentA);
@@ -200,6 +210,25 @@ class TeacherArchiveNoteTest {
 
         assertEquals(1, result.size());
         assertEquals(studentA, result.get(0).studentUserId());
+        // 断言班级范围已下推：wrapper 含 in(student_user_id, ...)，不再全量拉取后内存过滤
+        ArgumentCaptor<com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper> cap =
+                ArgumentCaptor.forClass(com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper.class);
+        verify(riskEventMapper).selectList(cap.capture());
+        String sql = cap.getValue().getSqlSegment();
+        assertTrue(sql.contains("student_user_id IN"), "班级范围应下推 SQL: " + sql);
+        assertTrue(sql.contains("tenant_id"), "应保留租户条件: " + sql);
+    }
+
+    @Test
+    @DisplayName("getHighRiskStudents：空班直接返回空（无全量查询）")
+    void highRiskStudents_emptyClassReturnsEmpty() {
+        when(sessionAccessService.listClassStudents(tenantId, "C1")).thenReturn(List.of());
+
+        List<TeacherService.HighRiskStudentVO> result =
+                teacherService.getHighRiskStudents(tenantId, "C1");
+
+        assertEquals(0, result.size());
+        verify(riskEventMapper, never()).selectList(any());
     }
 
     @Test

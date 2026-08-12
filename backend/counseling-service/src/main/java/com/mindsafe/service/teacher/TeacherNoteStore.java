@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.mindsafe.domain.entity.TeacherNote;
 import com.mindsafe.domain.mapper.TeacherNoteMapper;
+import com.mindsafe.service.security.FieldEncryptionService;
 import org.springframework.stereotype.Component;
 
 import java.util.HashMap;
@@ -26,14 +27,26 @@ import java.util.stream.Collectors;
 public class TeacherNoteStore {
 
     private final TeacherNoteMapper teacherNoteMapper;
+    /** P2-4：解密收敛至此（原 TeacherService 5 处直接 decrypt 无单点；加密仍由调用方负责） */
+    private final FieldEncryptionService fieldEncryptionService;
 
-    public TeacherNoteStore(TeacherNoteMapper teacherNoteMapper) {
+    public TeacherNoteStore(TeacherNoteMapper teacherNoteMapper, FieldEncryptionService fieldEncryptionService) {
         this.teacherNoteMapper = teacherNoteMapper;
+        this.fieldEncryptionService = fieldEncryptionService;
     }
 
     /** 插入一条备注（调用方负责构造与加密） */
     public void insert(TeacherNote note) {
         teacherNoteMapper.insert(note);
+    }
+
+    /**
+     * 备注内容解密读单点（P2-4，参照 S-006 readDecryptedMessages 模式）。
+     * 读侧一律经此解密，换加密算法/失效策略只改本处；未加密存量数据由
+     * FieldEncryptionService.isEncrypted 兜底，行为与调用方直解完全一致。
+     */
+    public String decryptContent(TeacherNote note) {
+        return fieldEncryptionService.decrypt(note.getContent());
     }
 
     /** 某学生某类型的最新一条备注（空则 Optional.empty） */

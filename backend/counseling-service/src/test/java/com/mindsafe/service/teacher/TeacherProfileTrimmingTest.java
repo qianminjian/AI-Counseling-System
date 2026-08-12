@@ -50,11 +50,12 @@ class TeacherProfileTrimmingTest {
 
     @BeforeEach
     void setUp() {
+        // R-01：未启用加密的真实加密服务 → 明文透传（P2-4：TeacherNoteStore 与 TeacherService 共用同一实例）
+        var fieldEncryptionService = new com.mindsafe.service.security.FieldEncryptionService(
+                false, "", 1, "", new org.springframework.core.env.StandardEnvironment());
         service = new TeacherService(riskEventMapper, sessionMapper, userMapper,
-                new TeacherNoteStore(teacherNoteMapper), notificationMapper, messageSummaryMapper,
-                // R-01：未启用加密的真实加密服务 → 明文透传
-                new com.mindsafe.service.security.FieldEncryptionService(
-                        false, "", 1, "", new org.springframework.core.env.StandardEnvironment()),
+                new TeacherNoteStore(teacherNoteMapper, fieldEncryptionService), messageSummaryMapper,
+                fieldEncryptionService,
                 mock(SessionAccessService.class),
                 mock(AuditLogService.class),
                 new com.mindsafe.service.teacher.AlertTodoMutePolicy(),
