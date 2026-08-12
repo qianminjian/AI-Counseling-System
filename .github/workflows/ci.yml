@@ -211,18 +211,20 @@ jobs:
 
       - name: Install dependencies
         # tts：requirements-lite.txt（轻量，含 fastapi/httpx/edge-tts）；
-        # voice：当前测试仅需 pytest+pyyaml（避免 torch 2.6 大依赖拖慢 CI，未来测试新增依赖时在此补充）
+        # voice：requirements-lite.txt（OPS-003，doing/95——此前仅 pytest+pyyaml，
+        # 而 test_app.py 模块级 import app 需 numpy/soundfile/fastapi，CI 静态必失败导致门禁失真）
         run: |
           if [ -f requirements-lite.txt ]; then
             pip install -r requirements-lite.txt
+          else
+            pip install pytest pyyaml
           fi
-          pip install pytest pyyaml
 
       - name: Run pytest
         run: python -m pytest -q
 
   shell-tools-test:
-    # DA-05 + D-10 + DA-09 + DA-11：tests/unit/scripts 九件套 CI 入口（此前覆盖运维关键路径的测试存在但永不执行，等于没测）
+    # DA-05 + D-10 + DA-09 + DA-11：tests/unit/scripts 十四件套 CI 入口（OPS-012：注释数字过期，实际 glob 全跑无遗漏）
     # check-commit/db-rollback-drill/gen-changelog/gen-openapi-snapshot/prepare-funasr/verify-doc-numbers/verify-config-passthrough/verify-model-names/deploy-lib + backup-common
     # 自带 temp repo/mock docker，无需额外依赖，<2min
     name: Shell Tools Test (scripts)
@@ -271,13 +273,15 @@ jobs:
           cache-to: type=gha,mode=max
 
       # DA-01/DA-03 验收：镜像内模块可导入（voice 有 ENTRYPOINT，需 --entrypoint 覆盖）
+      # OPS-004（doing/95）：import 清单覆盖 app.py 全部直接依赖模块（含 ser_engines，
+      # 此前仅 asr_engines/metrics_common，COPY 漏拷 ser_engines.py 无法拦截）
       - name: Import smoke (tts)
         if: matrix.service == 'tts-service'
         run: docker run --rm mindsafe/tts-service:smoke python -c "import tts_engines, tts_policy, metrics_common"
 
       - name: Import smoke (voice)
         if: matrix.service == 'voice-service'
-        run: docker run --rm --entrypoint python mindsafe/voice-service:smoke -c "import asr_engines, metrics_common"
+        run: docker run --rm --entrypoint python mindsafe/voice-service:smoke -c "import asr_engines, ser_engines, config, metrics_common"
 
   dependency-scan:
     name: Dependency Vulnerability Scan

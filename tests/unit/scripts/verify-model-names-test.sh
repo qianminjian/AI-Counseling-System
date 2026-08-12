@@ -61,8 +61,13 @@ EOF
 cat > "$F/backend/voice-service/app.py" <<'EOF'
 _CONFIG = load_config()
 asr_model = AutoModel(model=_CONFIG["asr"]["funasr_model"], vad_model=_CONFIG["asr"]["vad_model"], device="cpu")
-emotion_model = AutoModel(model=_CONFIG["ser"]["model"], device="cpu")
 health = {"asr_model": "SenseVoiceSmall", "ser_model": "emotion2vec_plus_large"}
+EOF
+
+cat > "$F/backend/voice-service/ser_engines.py" <<'EOF'
+# OPS-016（doing/95）：ser.model 消费点在 ser_engines.py（S-017 重构后移出 app.py）
+_CONFIG = load_config()
+model = AutoModel(model=_CONFIG["ser"]["model"], device="cpu")
 EOF
 
 # B.1 完整 fixture → 退出 0

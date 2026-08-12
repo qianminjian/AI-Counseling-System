@@ -44,6 +44,9 @@ SER_ENABLED=
 VOICE_PROCESS_TIMEOUT=
 VOICE_ANALYZE_TIMEOUT=
 VOICE_CORS_ORIGINS=
+REDIS_HOST=
+REDIS_PORT=
+REDIS_PASSWORD=
 EOF
 
 write_compose() {  # $1=compose 路径
@@ -56,6 +59,9 @@ services:
       DASHSCOPE_TTS_MODEL: ${DASHSCOPE_TTS_MODEL:-}
       TTS_SYNTHESIZE_TIMEOUT: ${TTS_SYNTHESIZE_TIMEOUT:-}
       TTS_CORS_ORIGINS: ${TTS_CORS_ORIGINS:-}
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
   voice-service:
     image: mock
     environment:
@@ -65,6 +71,9 @@ services:
       VOICE_PROCESS_TIMEOUT: ${VOICE_PROCESS_TIMEOUT:-}
       VOICE_ANALYZE_TIMEOUT: ${VOICE_ANALYZE_TIMEOUT:-}
       VOICE_CORS_ORIGINS: ${VOICE_CORS_ORIGINS:-}
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
 EOF
 }
 write_compose "$F/deploy/docker-compose.yml"
@@ -76,6 +85,9 @@ os.getenv("DASHSCOPE_API_KEY")
 os.getenv("DASHSCOPE_TTS_MODEL")
 os.getenv("TTS_SYNTHESIZE_TIMEOUT")
 os.getenv("TTS_CORS_ORIGINS")
+os.getenv("REDIS_HOST")
+os.getenv("REDIS_PORT")
+os.getenv("REDIS_PASSWORD")
 EOF
 
 cat > "$F/backend/voice-service/app.py" <<'EOF'
@@ -86,6 +98,9 @@ os.getenv("DASHSCOPE_API_KEY")
 os.getenv("VOICE_PROCESS_TIMEOUT")
 os.getenv("VOICE_ANALYZE_TIMEOUT")
 os.getenv("VOICE_CORS_ORIGINS")
+os.getenv("REDIS_HOST")
+os.getenv("REDIS_PORT")
+os.getenv("REDIS_PASSWORD")
 EOF
 
 # B.1 完整 fixture → 退出 0

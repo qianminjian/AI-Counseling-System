@@ -331,9 +331,11 @@ dm_start rsync
 
 if $DEPLOY_BACKEND; then
   # backend compose build context = ../backend（多阶段源码构建），排除构建产物与大文件
+  # OPS-006（doing/95）：排除 .env*——本地 .env 含密钥，--delete 下随同步上服务器成明文副本（虽不被 compose 消费）
   rsync_deploy -avz --delete \
     --exclude 'target/' --exclude '.git/' \
     --exclude 'tts-service/wheels/' \
+    --exclude '.env' --exclude '.env.*' \
     "$PROJECT_ROOT/backend/" "$SERVER:$REMOTE_DIR/backend/"
   # 同步 backend 根 Dockerfile（context=backend）
 fi

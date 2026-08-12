@@ -106,8 +106,14 @@ log "恢复完成"
 # 验证
 log "验证数据库连接..."
 # fix-deploy：users 表在 tenant_template schema 中，需限定 schema（D6：schema 已参数化）
-docker exec "${CONTAINER_NAME}" psql -U "${DB_USER}" -d "${DB_NAME}" -c "SELECT count(*) AS user_count FROM ${TENANT_SCHEMA}.users;" 2>/dev/null && \
-    log "验证通过" || log "WARNING: 验证查询失败，请手动检查"
+# OPS-013（doing/95）：验证失败必须 exit 1——此前仅 WARNING 仍报"恢复任务结束"，
+# 与备份侧校验阻断语义对齐（恢复半途而废不可静默通过）
+if docker exec "${CONTAINER_NAME}" psql -U "${DB_USER}" -d "${DB_NAME}" -c "SELECT count(*) AS user_count FROM ${TENANT_SCHEMA}.users;" 2>/dev/null; then
+    log "验证通过"
+else
+    log "ERROR: 验证查询失败，请手动检查"
+    exit 1
+fi
 
 # D-02：恢复校验通过后重启 backend（若 pg_restore 失败脚本已由 set -e 中止，backend 保持停止，
 # 需用恢复前快照回滚后手动 up：docker compose -f deploy/docker-compose.prod.yml up -d backend）

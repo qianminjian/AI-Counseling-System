@@ -103,8 +103,10 @@ except Exception:
       case "$engine" in
         cosyvoice-cloud) return 0 ;;
         edge-tts) log_warn "TTS 降级运行（engine=edge-tts，云端 CosyVoice 不可用），请关注上游 API Key/配额"; return 0 ;;
-        none)     log_warn "TTS 引擎全部不可用（engine=none），合成请求将 503——请检查服务配置"; return 0 ;;
-        *)        log_warn "tts /health engine 未知（engine=${engine:-空}）——请人工检查 TTS 状态"; return 0 ;;
+        # OPS-007（doing/95）：engine=none 视为不健康——合成请求将 503 属业务中断而非降级，
+        # 此前 return 0 导致部署回滚健康门禁与部署后 health 在 TTS 全灭时仍绿灯（告警兜底但无门禁）
+        none)     log_warn "TTS 引擎全部不可用（engine=none），合成请求将 503——判定不健康（部署门禁红灯）"; return 1 ;;
+        *)        log_warn "tts /health engine 未知（engine=${engine:-空}）——请 人工检查 TTS 状态"; return 0 ;;
       esac
       ;;
     voice)

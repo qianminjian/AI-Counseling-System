@@ -59,10 +59,11 @@ grep -q "$SB" "$PREPARE" && ok "prepare-funasr.sh 含 ${SB}（下载清单）" |
 grep -q "$FB" "$APP" && ok "app.py 含 ${FB}（health 展示）" || fail "app.py 缺 ${FB}"
 grep -q "$SB" "$APP" && ok "app.py 含 ${SB}（health 展示）" || fail "app.py 缺 ${SB}"
 
-# 2.4 app.py 运行时消费（配置未失效）：funasr/vad 引擎加载键
+# 2.4 app.py/ser_engines.py 运行时消费（配置未失效）：funasr/vad 引擎加载键在 app.py，
+#     ser.model 在 ser_engines.py（OPS-016，doing/95：S-017 重构后 SER 消费点移出 app.py，脚本同步）
 grep -q '"asr"\]\["funasr_model"' "$APP" && ok "app.py 运行时消费 funasr_model（config.yaml 驱动）" || fail "app.py 未消费 funasr_model（配置失效）"
 grep -q '"asr"\]\["vad_model"' "$APP" && ok "app.py 运行时消费 vad_model（config.yaml 驱动）" || fail "app.py 未消费 vad_model（配置失效）"
-grep -q '"ser"\]\["model"' "$APP" && ok "app.py 运行时消费 ser.model（config.yaml 驱动）" || fail "app.py 未消费 ser.model（配置失效）"
+grep -q '"ser"\]\["model"' "$ROOT/backend/voice-service/ser_engines.py" && ok "ser_engines.py 运行时消费 ser.model（config.yaml 驱动）" || fail "ser_engines.py 未消费 ser.model（配置失效）"
 
 echo ""
 if [ "$FAILURES" -eq 0 ]; then

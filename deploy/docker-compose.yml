@@ -53,6 +53,10 @@ services:
       # DC-003：TTS 运行时参数透传（与 .env.example 声明、tts-service 消费对齐）
       TTS_SYNTHESIZE_TIMEOUT: ${TTS_SYNTHESIZE_TIMEOUT:-30}
       TTS_CORS_ORIGINS: ${TTS_CORS_ORIGINS:-}
+      # OPS-016（doing/95）：REDIS 覆盖键读取器（RUNTIME-002 _read_override）透传，与 prod 对齐
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
 
   # ===== 语音识别与情绪分析微服务（ASR + SER 解耦） =====
   voice-service:
@@ -69,6 +73,10 @@ services:
       VOICE_PROCESS_TIMEOUT: ${VOICE_PROCESS_TIMEOUT:-30}
       VOICE_ANALYZE_TIMEOUT: ${VOICE_ANALYZE_TIMEOUT:-60}
       VOICE_CORS_ORIGINS: ${VOICE_CORS_ORIGINS:-}
+      # OPS-016（doing/95）：REDIS 覆盖键读取器（RUNTIME-002 _read_override）透传，与 prod 对齐
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
     volumes:
       # 模型缓存：宿主机持久化（emotion2vec ~300MB + SenseVoice ~1GB）
       # 使用前需运行: bash deploy/scripts/prepare-funasr.sh
