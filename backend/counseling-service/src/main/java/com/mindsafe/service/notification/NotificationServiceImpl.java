@@ -146,10 +146,13 @@ public class NotificationServiceImpl implements NotificationService {
 
     @Override
     public long countUnread(UUID recipientUserId) {
+        // P1-1（板块05）：未读口径与列表 UNREAD 筛选收敛单一口径（readAt 为空）——
+        // 不再用 ne(deliveryStatus,"read") 双口径：deliveryStatus 表示投递态（sent/failed），
+        // 与已读态（readAt）语义不同，历史通知可能出现 sent 且已读的混杂态，双口径计数漂移。
         return notificationMapper.selectCount(
                 new LambdaQueryWrapper<Notification>()
                         .eq(Notification::getRecipientUserId, recipientUserId)
-                        .ne(Notification::getDeliveryStatus, "read")
+                        .isNull(Notification::getReadAt)
         );
     }
 
@@ -166,7 +169,8 @@ public class NotificationServiceImpl implements NotificationService {
         }
         Notification update = new Notification();
         update.setNotificationId(notificationId);
-        update.setDeliveryStatus("read");
+        // P1-2（板块06）：readAt 为唯一已读权威——已读判定/未读统计一律 readAt 是否为空（板块 05 P1-1 单口径），
+        // deliveryStatus 仅表达投递态（pending/sent），已读不再改投递态（历史存量 read 值不再产生）
         update.setReadAt(Instant.now());
         notificationMapper.updateById(update);
     }

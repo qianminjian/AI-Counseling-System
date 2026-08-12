@@ -1,9 +1,9 @@
 package com.mindsafe.service.ops;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.mindsafe.service.common.CounselingTimeZone;
 import com.mindsafe.common.tenant.TenantContextHolder;
-import com.mindsafe.domain.entity.Notification;
 import com.mindsafe.domain.entity.QualityScore;
 import com.mindsafe.domain.entity.RiskEvent;
 import com.mindsafe.domain.entity.Tenant;
@@ -12,6 +12,7 @@ import com.mindsafe.domain.mapper.NotificationMapper;
 import com.mindsafe.domain.mapper.QualityScoreMapper;
 import com.mindsafe.domain.mapper.RiskEventMapper;
 import com.mindsafe.domain.mapper.TenantMapper;
+import com.mindsafe.service.teacher.AlertSlaPolicy;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
@@ -42,33 +43,49 @@ public class OpsInsightsService {
     private final ConsentRecordMapper consentRecordMapper;
     private final TenantMapper tenantMapper;
     private final JdbcTemplate jdbcTemplate;
+    private final AlertSlaPolicy slaPolicy;
 
     public OpsInsightsService(NotificationMapper notificationMapper,
                               RiskEventMapper riskEventMapper,
                               QualityScoreMapper qualityScoreMapper,
                               ConsentRecordMapper consentRecordMapper,
                               TenantMapper tenantMapper,
-                              JdbcTemplate jdbcTemplate) {
+                              JdbcTemplate jdbcTemplate,
+                              AlertSlaPolicy slaPolicy) {
         this.notificationMapper = notificationMapper;
         this.riskEventMapper = riskEventMapper;
         this.qualityScoreMapper = qualityScoreMapper;
         this.consentRecordMapper = consentRecordMapper;
         this.tenantMapper = tenantMapper;
         this.jdbcTemplate = jdbcTemplate;
+        this.slaPolicy = slaPolicy;
     }
 
-    /** 通知渠道统计（近 30 天，按 channel 计数） */
+    /**
+     * 通知渠道统计（近 30 天，按 channel 计数）。
+     * P2-7：DB GROUP BY 下推（复用 usageSummary 的 JdbcTemplate 范式），
+     * 不再全量加载近 30 天通知到内存分组。
+     */
     public Map<String, Object> channelStats() {
         Instant since = Instant.now().minus(30, ChronoUnit.DAYS);
-        List<Notification> notifications = TenantContextHolder.callAsSystem(() ->
-                notificationMapper.selectList(new LambdaQueryWrapper<Notification>()
-                        .ge(Notification::getCreatedAt, since)));
-        Map<String, Long> byChannel = notifications.stream()
-                .collect(Collectors.groupingBy(
-                        n -> n.getChannel() == null ? "unknown" : n.getChannel(), Collectors.counting()));
+        List<Map<String, Object>> rows = TenantContextHolder.callAsSystem(() ->
+                jdbcTemplate.queryForList("""
+                        SELECT COALESCE(channel, 'unknown') AS channel, COUNT(*) AS cnt
+                        FROM tenant_template.notifications
+                        WHERE created_at >= ?
+                        GROUP BY COALESCE(channel, 'unknown')
+                        ORDER BY cnt DESC
+                        """, Timestamp.from(since)));
+        Map<String, Long> byChannel = new LinkedHashMap<>();
+        long total = 0;
+        for (Map<String, Object> row : rows) {
+            long cnt = ((Number) row.get("cnt")).longValue();
+            byChannel.put(String.valueOf(row.get("channel")), cnt);
+            total += cnt;
+        }
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("byChannel", byChannel);
-        result.put("total", notifications.size());
+        result.put("total", total);
         return result;
     }
 
@@ -76,11 +93,15 @@ public class OpsInsightsService {
      *  仅暴露补发所需最小字段，不含 studentUserId/schoolId 等学生级标识（code-review M2） */
     public List<DeadLedgerEntry> deadLedger(int limit) {
         int safeLimit = Math.min(Math.max(limit, 1), 200);
-        List<RiskEvent> events = TenantContextHolder.callAsSystem(() ->
-                riskEventMapper.selectList(new LambdaQueryWrapper<RiskEvent>()
-                        .eq(RiskEvent::getNotifyStatus, "dead")
-                        .orderByDesc(RiskEvent::getDetectedAt)
-                        .last("LIMIT " + safeLimit)));
+        // AUD-043：分页插件安全化（selectPage 替代 .last("LIMIT ...") 字符串拼接）
+        List<RiskEvent> events = TenantContextHolder.callAsSystem(() -> {
+            Page<RiskEvent> pageResult = riskEventMapper.selectPage(
+                    new Page<>(1, safeLimit, false),
+                    new LambdaQueryWrapper<RiskEvent>()
+                            .eq(RiskEvent::getNotifyStatus, "dead")
+                            .orderByDesc(RiskEvent::getDetectedAt));
+            return pageResult.getRecords();
+        });
         return events.stream().map(e -> new DeadLedgerEntry(
                 e.getRiskEventId(), e.getTenantId(), e.getRiskLevel(), e.getRiskType(),
                 e.getStatus(), e.getDetectedAt(), e.getNotifyStatus())).toList();
@@ -177,7 +198,7 @@ public class OpsInsightsService {
                     .count();
             long overdue = tenantEvents.stream()
                     .filter(e -> RiskEvent.STATUS_OPEN.equals(e.getStatus()) || RiskEvent.STATUS_CLAIMED.equals(e.getStatus()))
-                    .filter(e -> e.getDetectedAt() != null && DurationBetween(e.getDetectedAt(), now) > 60)
+                    .filter(e -> isOverdue(e, now))
                     .count();
             Map<String, Object> row = new LinkedHashMap<>();
             row.put("tenantId", entry.getKey());
@@ -194,8 +215,31 @@ public class OpsInsightsService {
         return health;
     }
 
-    private long DurationBetween(Instant start, Instant end) {
+    private long durationBetween(Instant start, Instant end) {
         return java.time.Duration.between(start, end).toMinutes();
+    }
+
+    /**
+     * P1-2（板块05）：逾期口径由硬编码 60 分钟改为消费 AlertSlaPolicy 分级阈值
+     * （按 riskLevel 映射：3/S0→5min、2/S1→15min、1/S2→60min、其余无 SLA 不计逾期）。
+     * 阈值不变（SLA 策略单点定义），仅消除租户健康度的双阈值漂移。
+     */
+    private boolean isOverdue(RiskEvent event, Instant now) {
+        if (event.getDetectedAt() == null) return false;
+        int slaMinutes = slaPolicy.getSlaMinutes(riskLevelToSlaLevel(event.getRiskLevel()));
+        if (slaMinutes <= 0) return false; // S3/GREEN 无 SLA
+        return durationBetween(event.getDetectedAt(), now) > slaMinutes;
+    }
+
+    /** riskLevel 数字等级 → SLA 等级串（与 NotificationServiceImpl 等级口径一致：3=红/S0、2=橙/S1、1=黄/S2） */
+    private static String riskLevelToSlaLevel(Integer riskLevel) {
+        if (riskLevel == null) return "GREEN";
+        return switch (riskLevel) {
+            case 3 -> "RED";
+            case 2 -> "ORANGE";
+            case 1 -> "YELLOW";
+            default -> "GREEN";
+        };
     }
 
     // ===== M4 用量报表（ADMIN-P3-02，计量非计费） =====
