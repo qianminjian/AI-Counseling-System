@@ -71,7 +71,9 @@ class TeacherArchiveNoteTest {
                 sessionAccessService,
                 mock(AuditLogService.class),
                 new com.mindsafe.service.teacher.AlertTodoMutePolicy(),
-                new com.mindsafe.service.casemanage.CaseLifecycleService(), messageSummaryService);
+                new com.mindsafe.service.casemanage.CaseLifecycleService(), messageSummaryService,
+                mock(AlertLifecycleService.class),
+                mock(TeacherDashboardService.class));
     }
 
     private User givenStudent() {

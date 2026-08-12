@@ -42,6 +42,8 @@ class TeacherAlertWorkflowTest {
     private TeacherNoteMapper teacherNoteMapper;
     private FieldEncryptionService fieldEncryptionService;
     private TeacherService teacherService;
+    /** S-007②：直测预警生命周期状态机（行为断言迁移） */
+    private AlertLifecycleService alertLifecycleService;
 
     private final UUID tenantId = UUID.randomUUID();
     private final UUID eventId = UUID.randomUUID();
@@ -56,6 +58,8 @@ class TeacherAlertWorkflowTest {
         fieldEncryptionService = mock(FieldEncryptionService.class);
         when(fieldEncryptionService.encrypt(any())).thenAnswer(inv -> inv.getArgument(0));
         when(fieldEncryptionService.decrypt(any())).thenAnswer(inv -> inv.getArgument(0));
+        alertLifecycleService = new AlertLifecycleService(
+                riskEventMapper, new TeacherNoteStore(teacherNoteMapper), userMapper, fieldEncryptionService);
         teacherService = new TeacherService(
                 riskEventMapper,
                 mock(CounselingSessionMapper.class),
@@ -67,7 +71,9 @@ class TeacherAlertWorkflowTest {
                 mock(SessionAccessService.class),
                 mock(AuditLogService.class),
                 new com.mindsafe.service.teacher.AlertTodoMutePolicy(),
-                new com.mindsafe.service.casemanage.CaseLifecycleService(), mock(MessageSummaryService.class));
+                new com.mindsafe.service.casemanage.CaseLifecycleService(), mock(MessageSummaryService.class),
+                mock(AlertLifecycleService.class),
+                mock(TeacherDashboardService.class));
     }
 
     private RiskEvent givenEvent() {
@@ -81,7 +87,7 @@ class TeacherAlertWorkflowTest {
     void claimAlert() {
         RiskEvent event = givenEvent();
 
-        teacherService.claimAlert(tenantId, eventId, teacherUserId);
+        alertLifecycleService.claimAlert(tenantId, eventId, teacherUserId);
 
         assertEquals("claimed", event.getStatus());
         assertEquals(teacherUserId, event.getAssignedUserId());
@@ -94,7 +100,7 @@ class TeacherAlertWorkflowTest {
     void markFalsePositive() {
         RiskEvent event = givenEvent();
 
-        teacherService.markFalsePositive(tenantId, eventId, teacherUserId);
+        alertLifecycleService.markFalsePositive(tenantId, eventId, teacherUserId);
 
         assertEquals("false_positive", event.getStatus());
         assertEquals(teacherUserId, event.getAssignedUserId());
@@ -107,7 +113,7 @@ class TeacherAlertWorkflowTest {
     void resolveAlert_withNote() {
         RiskEvent event = givenEvent();
 
-        teacherService.resolveAlert(tenantId, eventId, teacherUserId, "已线下约谈家长");
+        alertLifecycleService.resolveAlert(tenantId, eventId, teacherUserId, "已线下约谈家长");
 
         assertEquals("resolved", event.getStatus());
         assertEquals("已线下约谈家长", event.getResolutionNote());
@@ -124,7 +130,7 @@ class TeacherAlertWorkflowTest {
     void resolveAlert_withoutNote() {
         givenEvent();
 
-        teacherService.resolveAlert(tenantId, eventId, teacherUserId, null);
+        alertLifecycleService.resolveAlert(tenantId, eventId, teacherUserId, null);
 
         verify(teacherNoteMapper, never()).insert(any(TeacherNote.class));
     }
@@ -135,7 +141,7 @@ class TeacherAlertWorkflowTest {
         RiskEvent event = givenEvent();
         String followUpAtIso = "2026-08-01T10:00:00Z";
 
-        teacherService.scheduleFollowUp(tenantId, eventId, teacherUserId, followUpAtIso);
+        alertLifecycleService.scheduleFollowUp(tenantId, eventId, teacherUserId, followUpAtIso);
 
         assertEquals("follow_up_scheduled", event.getStatus());
         assertEquals(Instant.parse(followUpAtIso), event.getFollowUpAt());
@@ -148,7 +154,7 @@ class TeacherAlertWorkflowTest {
     void completeFollowUp() {
         RiskEvent event = givenEvent();
 
-        teacherService.completeFollowUp(tenantId, eventId, teacherUserId, "已恢复", "IMPROVED");
+        alertLifecycleService.completeFollowUp(tenantId, eventId, teacherUserId, "已恢复", "IMPROVED");
 
         assertEquals("closed", event.getStatus());
         assertTrue(event.getFollowUpDone());
@@ -166,7 +172,7 @@ class TeacherAlertWorkflowTest {
         pending.setFollowUpDone(false);
         when(riskEventMapper.selectList(any())).thenReturn(List.of(pending));
 
-        List<RiskEvent> result = teacherService.getPendingFollowUps(tenantId);
+        List<RiskEvent> result = alertLifecycleService.getPendingFollowUps(tenantId);
 
         assertEquals(1, result.size());
         assertFalse(result.get(0).getFollowUpDone());
@@ -179,7 +185,7 @@ class TeacherAlertWorkflowTest {
         when(riskEventMapper.selectById(eventId)).thenReturn(foreign);
 
         assertThrows(BizException.class,
-                () -> teacherService.claimAlert(tenantId, eventId, teacherUserId));
+                () -> alertLifecycleService.claimAlert(tenantId, eventId, teacherUserId));
         verify(riskEventMapper, never()).updateById(any(RiskEvent.class));
     }
 
@@ -189,7 +195,7 @@ class TeacherAlertWorkflowTest {
         when(riskEventMapper.selectById(eventId)).thenReturn(null);
 
         assertThrows(BizException.class,
-                () -> teacherService.resolveAlert(tenantId, eventId, teacherUserId, null));
+                () -> alertLifecycleService.resolveAlert(tenantId, eventId, teacherUserId, null));
     }
 
     @Test

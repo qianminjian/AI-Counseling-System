@@ -75,6 +75,10 @@ public class TeacherService {
 
     // N-007（2026-08-11）：CaseLifecycleService/AlertTodoMutePolicy 反哺 Spring 注入（替换内联 new，恢复替换接缝）
     private final CaseLifecycleService caseLifecycleService;
+    /** S-007②（doing/93）：预警生命周期状态机 */
+    private final AlertLifecycleService alertLifecycleService;
+    /** S-007②（doing/93）：工作台看板统计 */
+    private final TeacherDashboardService dashboardService;
 
     public TeacherService(RiskEventMapper riskEventMapper,
                           CounselingSessionMapper sessionMapper,
@@ -87,7 +91,9 @@ public class TeacherService {
                           AuditLogService auditLogService,
                           AlertTodoMutePolicy alertTodoMutePolicy,
                           CaseLifecycleService caseLifecycleService,
-                          MessageSummaryService messageSummaryService) {
+                          MessageSummaryService messageSummaryService,
+                             AlertLifecycleService alertLifecycleService,
+                             TeacherDashboardService dashboardService) {
         this.riskEventMapper = riskEventMapper;
         this.sessionMapper = sessionMapper;
         this.userMapper = userMapper;
@@ -99,6 +105,8 @@ public class TeacherService {
         this.auditLogService = auditLogService;
         this.alertTodoMutePolicy = alertTodoMutePolicy;
         this.caseLifecycleService = caseLifecycleService;
+        this.alertLifecycleService = alertLifecycleService;
+        this.dashboardService = dashboardService;
         this.messageSummaryService = messageSummaryService;
     }
 
@@ -206,81 +214,9 @@ public class TeacherService {
 
     // ===== 工作台概览 =====
 
+    /** 工作台概览（S-007②：委托 TeacherDashboardService 统计子域） */
     public DashboardVO getDashboard(UUID tenantId, UUID teacherUserId) {
-        Instant now = Instant.now();
-        Instant todayStart = CounselingTimeZone.startOfDay(now); // B-03：上海日边界（UTC 截断会在 08:00 前漂移前一天）
-        Instant weekAgo = now.minus(7, ChronoUnit.DAYS);
-
-        // 待处理预警数
-        long pendingAlerts = riskEventMapper.selectCount(
-                new LambdaQueryWrapper<RiskEvent>()
-                        .eq(RiskEvent::getTenantId, tenantId)
-                        .eq(RiskEvent::getStatus, RiskEvent.STATUS_OPEN)
-        );
-
-        // 今日新增预警
-        long todayAlerts = riskEventMapper.selectCount(
-                new LambdaQueryWrapper<RiskEvent>()
-                        .eq(RiskEvent::getTenantId, tenantId)
-                        .ge(RiskEvent::getDetectedAt, todayStart)
-        );
-
-        // 今日活跃会话数
-        long todaySessions = sessionMapper.selectCount(
-                new LambdaQueryWrapper<CounselingSession>()
-                        .eq(CounselingSession::getTenantId, tenantId)
-                        .ge(CounselingSession::getStartedAt, todayStart)
-        );
-
-        // 今日活跃学生数（今日有会话的去重学生）：单次 DISTINCT 查询，避免全量 会话查列表（P1-FE-2）
-        List<Object> activeStudentIds = sessionMapper.selectObjs(
-                new QueryWrapper<CounselingSession>()
-                        .select("DISTINCT student_user_id")
-                        .eq("tenant_id", tenantId)
-                        .ge("started_at", todayStart));
-        long activeStudents = activeStudentIds.stream().filter(Objects::nonNull).count();
-        
-        // 累计会话数（该租户全部会话，P1-FE-2 大屏"累计会话"卡片）
-        long totalSessions = sessionMapper.selectCount(
-                new LambdaQueryWrapper<CounselingSession>()
-                        .eq(CounselingSession::getTenantId, tenantId)
-        );
-        
-        // 周趋势（最近 7 天每天的风险事件数）：单次查询 + 内存分桶，替代 7 次循环 count
-        Instant weekStart = CounselingTimeZone.truncateToDay(now.minus(6, ChronoUnit.DAYS));
-        Instant tomorrowStart = CounselingTimeZone.startOfNextDay(now);
-        List<RiskEvent> weekEvents = riskEventMapper.selectList(
-                new LambdaQueryWrapper<RiskEvent>()
-                        .eq(RiskEvent::getTenantId, tenantId)
-                        .ge(RiskEvent::getDetectedAt, weekStart)
-                        .lt(RiskEvent::getDetectedAt, tomorrowStart)
-        );
-        Map<Instant, Long> eventsByDay = weekEvents.stream()
-                .map(RiskEvent::getDetectedAt)
-                .filter(Objects::nonNull)
-                .collect(Collectors.groupingBy(CounselingTimeZone::truncateToDay, Collectors.counting()));
-        List<DailyCount> weeklyTrend = new ArrayList<>();
-        for (int i = 6; i >= 0; i--) {
-            Instant dayStart = CounselingTimeZone.truncateToDay(now.minus(i, ChronoUnit.DAYS));
-            weeklyTrend.add(new DailyCount(CounselingTimeZone.dateKey(dayStart),
-                    eventsByDay.getOrDefault(dayStart, 0L)));
-        }
-
-        // 满意度统计（近 30 天有评价的会话）
-        Instant monthAgo = now.minus(30, ChronoUnit.DAYS);
-        List<CounselingSession> ratedSessions = sessionMapper.selectList(
-                new LambdaQueryWrapper<CounselingSession>()
-                        .eq(CounselingSession::getTenantId, tenantId)
-                        .ge(CounselingSession::getStartedAt, monthAgo)
-                        .isNotNull(CounselingSession::getSatisfactionRating)
-        );
-        double avgSatisfaction = ratedSessions.stream()
-                .mapToInt(CounselingSession::getSatisfactionRating)
-                .average().orElse(0.0);
-        long satisfactionCount = ratedSessions.size();
-
-        return new DashboardVO(pendingAlerts, todayAlerts, todaySessions, activeStudents, totalSessions,
-                weeklyTrend, Math.round(avgSatisfaction * 10) / 10.0, satisfactionCount);
+        return dashboardService.getDashboard(tenantId);
     }
 
     // ===== 预警队列 =====
@@ -362,30 +298,11 @@ public class TeacherService {
      * 转派预警（design/35 §4.1）。
      * 规则：转派后重置为 open（目标教师的"新预警"）；重置认领但不重置 SLA（detectedAt 不变）。
      */
+    /** 预警转派（S-007②：委托预警生命周期状态机） */
     @Transactional
     public void transferAlert(UUID tenantId, UUID riskEventId, UUID fromTeacherId,
                               UUID targetTeacherId, String note) {
-        RiskEvent event = getEventWithTenantCheck(tenantId, riskEventId);
-
-        // 目标教师必须存在且同租户（防止跨租户转派泄露学生数据）
-        User target = userMapper.selectById(targetTeacherId);
-        if (target == null || !tenantId.equals(target.getTenantId())) {
-            throw new BizException(ErrorCode.RESOURCE_NOT_FOUND, "目标教师不存在: " + targetTeacherId);
-        }
-
-        event.setStatus(RiskEvent.STATUS_OPEN);
-        event.setAssignedUserId(targetTeacherId);
-        event.setUpdatedAt(Instant.now());
-        riskEventMapper.updateById(event);
-
-        if (note != null && !note.isBlank()) {
-            TeacherNote transferNote = TeacherNote.create(
-                    tenantId, event.getStudentUserId(), fromTeacherId,
-                    fieldEncryptionService.encrypt("【预警转派】" + note), "transfer"
-            );
-            teacherNoteStore.insert(transferNote);
-        }
-        log.info("预警已转派: riskEventId={}, from={}, target={}", riskEventId, fromTeacherId, targetTeacherId);
+        alertLifecycleService.transferAlert(tenantId, riskEventId, fromTeacherId, targetTeacherId, note);
     }
 
     /**
@@ -426,106 +343,35 @@ public class TeacherService {
 
     /** 认领预警 */
     @Transactional
+    /** 认领预警（S-007②：委托预警生命周期状态机） */
     public void claimAlert(UUID tenantId, UUID riskEventId, UUID teacherUserId) {
-        RiskEvent event = getEventWithTenantCheck(tenantId, riskEventId);
-        event.setStatus(RiskEvent.STATUS_CLAIMED);
-        event.setAssignedUserId(teacherUserId);
-        event.setUpdatedAt(Instant.now());
-        riskEventMapper.updateById(event);
-        log.info("预警已认领: riskEventId={}, teacher={}", riskEventId, teacherUserId);
+        alertLifecycleService.claimAlert(tenantId, riskEventId, teacherUserId);
     }
 
-    /** 标记误报 */
-    @Transactional
+    /** 标记误报（S-007②：委托预警生命周期状态机） */
     public void markFalsePositive(UUID tenantId, UUID riskEventId, UUID teacherUserId) {
-        RiskEvent event = getEventWithTenantCheck(tenantId, riskEventId);
-        event.setStatus("false_positive");
-        event.setAssignedUserId(teacherUserId);
-        event.setClosedAt(Instant.now());
-        event.setUpdatedAt(Instant.now());
-        riskEventMapper.updateById(event);
-        log.info("预警标记误报: riskEventId={}, teacher={}", riskEventId, teacherUserId);
+        alertLifecycleService.markFalsePositive(tenantId, riskEventId, teacherUserId);
     }
 
-    /** 处理完成（线下干预后标记 resolved） */
-    @Transactional
+    /** 处理完成（S-007②：委托预警生命周期状态机） */
     public void resolveAlert(UUID tenantId, UUID riskEventId, UUID teacherUserId, String resolutionNote) {
-        RiskEvent event = getEventWithTenantCheck(tenantId, riskEventId);
-        event.setStatus(RiskEvent.STATUS_RESOLVED);
-        event.setAssignedUserId(teacherUserId);
-        event.setResolutionNote(resolutionNote);
-        event.setResolvedAt(Instant.now());
-        event.setClosedAt(Instant.now());
-        event.setUpdatedAt(Instant.now());
-        riskEventMapper.updateById(event);
-
-        // 将处理记录存为教师备注（type=intervention）
-        if (resolutionNote != null && !resolutionNote.isBlank()) {
-            TeacherNote note = TeacherNote.create(
-                    event.getTenantId(), event.getStudentUserId(), teacherUserId,
-                    "【预警处理】" + resolutionNote, "intervention"
-            );
-            teacherNoteStore.insert(note);
-        }
-
-        log.info("预警已处理: riskEventId={}, teacher={}", riskEventId, teacherUserId);
+        alertLifecycleService.resolveAlert(tenantId, riskEventId, teacherUserId, resolutionNote);
     }
 
-    /** DATA-004：安排回访（处置后不直接关闭，而是计划回访确认效果） */
-    @Transactional
+    /** 安排回访（S-007②：委托预警生命周期状态机） */
     public void scheduleFollowUp(UUID tenantId, UUID riskEventId, UUID teacherUserId, String followUpAtIso) {
-        RiskEvent event = getEventWithTenantCheck(tenantId, riskEventId);
-        event.setStatus("follow_up_scheduled");
-        event.setAssignedUserId(teacherUserId);
-        event.setFollowUpAt(Instant.parse(followUpAtIso));
-        event.setFollowUpDone(false);
-        event.setUpdatedAt(Instant.now());
-        riskEventMapper.updateById(event);
-        log.info("预警安排回访: riskEventId={}, followUpAt={}", riskEventId, followUpAtIso);
+        alertLifecycleService.scheduleFollowUp(tenantId, riskEventId, teacherUserId, followUpAtIso);
     }
 
-    /** DATA-004：完成回访（填写回访记录 + 最终评估） */
-    @Transactional
+    /** 完成回访（S-007②：委托预警生命周期状态机） */
     public void completeFollowUp(UUID tenantId, UUID riskEventId, UUID teacherUserId,
                                  String followUpNote, String outcome) {
-        RiskEvent event = getEventWithTenantCheck(tenantId, riskEventId);
-        event.setStatus(RiskEvent.STATUS_CLOSED);
-        event.setFollowUpDone(true);
-        event.setFollowUpNote(followUpNote);
-        event.setOutcome(outcome);
-        event.setClosedAt(Instant.now());
-        event.setUpdatedAt(Instant.now());
-        riskEventMapper.updateById(event);
-
-        // 回访记录存为教师备注
-        if (followUpNote != null && !followUpNote.isBlank()) {
-            TeacherNote note = TeacherNote.create(
-                    event.getTenantId(), event.getStudentUserId(), teacherUserId,
-                    "【回访记录】" + followUpNote, "follow_up"
-            );
-            teacherNoteStore.insert(note);
-        }
-        log.info("预警回访完成: riskEventId={}, outcome={}", riskEventId, outcome);
+        alertLifecycleService.completeFollowUp(tenantId, riskEventId, teacherUserId, followUpNote, outcome);
     }
 
-    /** DATA-004：查询待回访事件列表 */
+    /** 查询待回访事件列表（S-007②：委托预警生命周期状态机） */
     public List<RiskEvent> getPendingFollowUps(UUID tenantId) {
-        return riskEventMapper.selectList(
-                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<RiskEvent>()
-                        .eq(RiskEvent::getTenantId, tenantId)
-                        .eq(RiskEvent::getFollowUpDone, false)
-                        .isNotNull(RiskEvent::getFollowUpAt)
-                        .orderByAsc(RiskEvent::getFollowUpAt)
-        );
-    }
-
-    /** 租户校验：预警必须属于当前租户（防 IDOR 跨租户操作） */
-    private RiskEvent getEventWithTenantCheck(UUID tenantId, UUID riskEventId) {
-        RiskEvent event = riskEventMapper.selectById(riskEventId);
-        if (event == null || !event.getTenantId().equals(tenantId)) {
-            throw new BizException(ErrorCode.ALERT_NOT_FOUND, "预警不存在: " + riskEventId);
-        }
-        return event;
+        return alertLifecycleService.getPendingFollowUps(tenantId);
     }
 
     // ===== 个案阶段推进（P1 审计修复：transitionCase 伪 API 无持久化 → 落地 teacher_notes） =====

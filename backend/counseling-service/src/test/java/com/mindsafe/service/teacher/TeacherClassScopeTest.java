@@ -81,7 +81,9 @@ class TeacherClassScopeTest {
                 sessionAccessService,
                 mock(AuditLogService.class),
                 new com.mindsafe.service.teacher.AlertTodoMutePolicy(),
-                new com.mindsafe.service.casemanage.CaseLifecycleService(), mock(MessageSummaryService.class));
+                new com.mindsafe.service.casemanage.CaseLifecycleService(), mock(MessageSummaryService.class),
+                mock(AlertLifecycleService.class),
+                mock(TeacherDashboardService.class));
     }
 
     private User teacherWithClass(String classCode) {
