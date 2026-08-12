@@ -32,4 +32,5 @@
 
 - **Q-002 一致性测试**（已实施）：平台表必入 IGNORE_TABLES——schema 边界修复前名单是唯一兜底，勿删
 - **R-023 schema 快照门禁**（已实施）：01_schema.sql 生成含 schema 归属——搬迁后自动反映
-- **37 实体 @TableName schema 硬编码**（doing/92 R-020）：随 Q-003 批次收敛为公共常量
+- **37 实体 @TableName schema 硬编码**（doing/92 R-020 第一步，已实施）：随 Q-003 批次收敛为公共常量（TenantSchema.TENANT_TEMPLATE）
+- **IGNORE_TABLES 注解化**（doing/92 R-020 第二步，doing/94 DOC-120 审计归口 2026-08-12）：手工清单改 @TenantIgnored 注解声明，消除清单手工膨胀；随 Q-003 批次一并处理
