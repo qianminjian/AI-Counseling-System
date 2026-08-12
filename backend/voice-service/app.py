@@ -27,6 +27,7 @@ from pydantic import BaseModel
 
 from config import load_config
 from asr_engines import ASRBackendError, DashScopeASRBackend, FunASRBackend
+from ser_engines import SERBackendError, load_ser_backend
 from metrics_common import Metrics
 
 logging.basicConfig(level=logging.INFO)
@@ -150,7 +151,7 @@ def metrics():
                 f"voice_asr_ready {1 if asr_model is not None or ASR_ENGINE == 'dashscope' else 0}",
                 "# HELP voice_ser_ready SER model readiness (1=ready 0=unavailable)",
                 "# TYPE voice_ser_ready gauge",
-                f"voice_ser_ready {1 if emotion_model is not None else 0}",
+                f"voice_ser_ready {1 if ser_backend is not None and ser_backend.is_available() else 0}",
                 # DA-02：ser_enabled 与 ready 解耦——显式禁用（SER_ENABLED=false）不触发降级告警，
                 # 仅「启用但加载失败」才告警（告警表达式 voice_ser_ready == 0 and voice_ser_enabled == 1）
                 "# HELP voice_ser_enabled SER feature enabled (1=enabled 0=disabled via SER_ENABLED)",
@@ -175,7 +176,6 @@ app.add_middleware(
 # ===== 模型初始化（ASR 与 SER 解耦） =====
 
 asr_model = None
-emotion_model = None
 
 if ASR_ENGINE == "funasr":
     from funasr import AutoModel
@@ -196,22 +196,16 @@ elif ASR_ENGINE == "dashscope":
     logger.info("DashScope Paraformer-V2 ASR 就绪")
     logger.info("  DashScope API Key: ...%s", DASHSCOPE_API_KEY[-6:] if len(DASHSCOPE_API_KEY) > 6 else "***")
 
-# SER（emotion2vec+）独立于 ASR 引擎加载：无论 ASR 走云端还是本地，
-# 只要 SER_ENABLED=true 且资源允许就加载本地情感模型
-if SER_ENABLED:
-    try:
-        if ASR_ENGINE != "funasr":
-            from funasr import AutoModel  # dashscope 模式也需要 funasr 包来加载 emotion2vec
-        logger.info("正在加载 SER 模型 (%s)...", _CONFIG["ser"]["model"])
-        emotion_model = AutoModel(model=_CONFIG["ser"]["model"], device="cpu")
-        logger.info("SER 模型加载完成")
-    except Exception as e:
-        logger.warning(f"⚠️ SER 模型加载失败（降级为中性情绪）: {e}")
-        emotion_model = None
-else:
+# SER（emotion2vec+）独立于 ASR 引擎加载（S-017：生命周期收敛至 ser_engines 装配工厂）
+ser_backend = load_ser_backend(_CONFIG, SER_ENABLED, ASR_ENGINE)
+if SER_ENABLED and ser_backend is None:
+    logger.warning("⚠️ SER 模型加载失败（降级为中性情绪）")
+elif not SER_ENABLED:
     logger.info("SER 已通过 SER_ENABLED=false 显式禁用")
+else:
+    logger.info("SER 模型加载完成")
 
-logger.info(f"✅ 语音分析服务就绪 [ASR={ASR_ENGINE}, SER={'emotion2vec+' if emotion_model else 'disabled'}]，端口 10095")
+logger.info(f"✅ 语音分析服务就绪 [ASR={ASR_ENGINE}, SER={'emotion2vec+' if ser_backend and ser_backend.is_available() else 'disabled'}]，端口 10095")
 
 # ===== ASR 引擎装配（D2：适配器 seam，实现与测试见 asr_engines.py / test_asr_engines.py） =====
 if ASR_ENGINE == "dashscope":
@@ -251,22 +245,7 @@ _ALLOWED_AUDIO_SUFFIXES = {".webm", ".wav", ".mp3", ".m4a", ".ogg", ".opus", ".a
 
 # ===== 情绪映射（从 config.yaml 加载） =====
 
-EMOTION_LABELS = [tuple(item) for item in _CONFIG["emotion_labels"]]
 
-
-def parse_emotion_result(raw: dict) -> EmotionResult:
-    """解析 emotion2vec 输出"""
-    scores = raw.get("scores", [0.0] * 9)
-    # 确保 scores 是 float 列表
-    scores = [float(s) for s in scores]
-    max_idx = int(np.argmax(scores))
-    label_en, label_cn = EMOTION_LABELS[max_idx]
-    return EmotionResult(
-        label=label_cn,
-        label_en=label_en,
-        confidence=scores[max_idx],
-        scores=scores,
-    )
 
 
 # ===== API 端点 =====
@@ -279,7 +258,7 @@ def health():
     - DOWN：ASR 未就绪（核心链路不可用；funasr 加载失败实际在启动期崩溃，此为防御语义）
     """
     asr_ready = asr_model is not None or ASR_ENGINE == "dashscope"
-    ser_ready = emotion_model is not None
+    ser_ready = ser_backend is not None and ser_backend.is_available()
     if not asr_ready:
         status = "DOWN"
     elif not ser_ready and SER_ENABLED:
@@ -290,7 +269,7 @@ def health():
         "status": status,
         "asr_engine": _resolve_asr_engine(),  # RUNTIME-002：覆盖值优先
         "asr_model": "SenseVoiceSmall" if _resolve_asr_engine() == "funasr" else "DashScope-Paraformer-V2",
-        "ser_model": "emotion2vec_plus_large" if emotion_model is not None else "disabled",
+        "ser_model": "emotion2vec_plus_large" if ser_backend is not None and ser_backend.is_available() else "disabled",
         "ser_enabled": int(_resolve_ser_enabled()),  # RUNTIME-002：覆盖值优先
         "asr_ready": int(asr_ready),
         "ser_ready": int(ser_ready),
@@ -300,12 +279,6 @@ def health():
 # ===== ASR 实现（D2：已收敛至 asr_engines.py 适配器层，端点经 _ASR_BACKEND.transcribe 调用） =====
 
 
-def _funasr_ser(wav_path: str) -> EmotionResult:
-    """本地 emotion2vec+ 情感识别"""
-    result = emotion_model.generate(input=wav_path)
-    if result and len(result) > 0:
-        return parse_emotion_result(result[0])
-    return EmotionResult(label="未知", label_en="unknown", confidence=0.0, scores=[0.0] * 9)
 
 
 @app.post("/api/v1/voice/analyze", response_model=VoiceAnalysisResponse)
@@ -355,7 +328,7 @@ async def analyze_voice(file: UploadFile = File(...)):
         # ===== ASR + SER 并行执行（RUNTIME-002：请求时覆盖档位判定） =====
         runtime_asr = _resolve_asr_engine()
         asr_fn = _resolve_asr_backend(runtime_asr).transcribe
-        ser_on = _resolve_ser_enabled() and emotion_model is not None
+        ser_on = _resolve_ser_enabled() and ser_backend is not None and ser_backend.is_available()
 
         if ser_on:
             # ASR 和 SER 并行（ASR 可能是网络IO或CPU，SER 是CPU，并行提升响应速度）
