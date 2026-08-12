@@ -29,17 +29,37 @@
 
 ### 2.2 思考模式现状
 
+> 修订记录（2026-08-12，audit-report-02 P0-2）：调用点由“2 处”修订为代码现状 **7 处**（主对话流 1 + 辅助调用 4 + 语义分类 1 + Layer2 审查 1）；
+> 辅助调用与 Layer2 审查的“期望思考模式”列为 87-02 实施时的差异化清单项，当前实际统一关闭（未实施）。
+
 | 调用点 | 延迟敏感 | 期望思考模式 | 当前实际 | 来源 |
 |--------|:---:|------|--------|------|
-| `AiChatServiceImpl` 对话主链路（5 个调用点） | ✅ 高 | 关闭 | **关闭**（`LlmExtraBodyConfig` 拦截器自动注入 `enable_thinking=false`） | 06 文档 D2 行为兼容 + 06 文档 D5 决策 |
-| `SemanticRiskClassifier` 语义风险分类（SAF_001 模板） | 否 | 开启 | **关闭**（全局默认） | 06 文档 D5 暂未实施 |
+| `AiChatServiceImpl.streamChat` 对话主链路（chatWithPrompt/chatProactive 共用，流式） | ✅ 高 | 关闭 | **关闭**（`LlmExtraBodyConfig` 拦截器自动注入 `enable_thinking=false`） | 06 文档 D2 行为兼容 + 06 文档 D5 决策 |
+| `AiChatServiceImpl.generateSessionSummary` 会话摘要（辅助，非流式） | 否 | 待 87-02 实施时评估（同步调用，建议关闭） | **关闭**（全局默认） | 审计 2026-08-12 |
+| `AiChatServiceImpl.extractConversationInsights` 会话洞察提炼（辅助，非流式） | 否 | 待 87-02 实施时评估 | **关闭**（全局默认） | 审计 2026-08-12 |
+| `AiChatServiceImpl.evaluateConversationQuality` 质量评估（辅助，非流式） | 否 | 待 87-02 实施时评估 | **关闭**（全局默认） | 审计 2026-08-12 |
+| `AiChatServiceImpl.summarizeSessionProgress` 进展摘要（辅助，非流式） | 否 | 待 87-02 实施时评估 | **关闭**（全局默认） | 审计 2026-08-12 |
+| `SemanticRiskClassifier` 语义风险分类（SAF_001 模板） | 否 | 开启 | **关闭**（全局默认） | 06 文档 D5 决策暂未实施 |
+| `OutputReviewService.review` Layer2 输出审查（SAF_002，独立 reviewClient，异步） | 否 | 待 87-02 实施时评估 | **关闭**（全局默认） | 审计 2026-08-12 |
 
 ### 2.3 技术约束
 
 - **spring-ai 1.0.0** `OpenAiChatOptions.Builder` **无** `customBody`/`extraBody` 方法（社区确认 issue #4324）
-- LLM 调用入口仅 2 处（`AiChatServiceImpl` 对话 + `SemanticRiskClassifier` 语义分类）
-- RedTeamRegressionRunner 是**纯静态规则**（forbidden patterns + required markers），无 LLM 调用——"动态 LLM 红队"实际不存在
-- `PromptEvalScoreReader` 是**从库读数**（非 LLM 调用），"PEVAL-004 eval"实际无 LLM 评估
+- **LLM 调用入口实际 7 处**（2026-08-12 按代码现状核查，修订审计前“仅 2 处”快照）：
+  1. `AiChatServiceImpl.streamChat` 主对话流（chatWithPrompt/chatProactive 共用，经 `LlmStreamEnhancer` 超时/重试/降级）
+  2. `AiChatServiceImpl.generateSessionSummary` 会话摘要（AUX_001，callWithTimeout 15s 超时）
+  3. `AiChatServiceImpl.extractConversationInsights` 会话洞察提炼（AUX_002，15s 超时）
+  4. `AiChatServiceImpl.evaluateConversationQuality` 质量评估（AUX_003，15s 超时）
+  5. `AiChatServiceImpl.summarizeSessionProgress` 进展摘要（AUX_004，15s 超时）
+  6. `SemanticRiskClassifier.doClassify` 语义风险分类（SAF_001，800ms 门禁）
+  7. `OutputReviewService.review` Layer2 输出审查（SAF_002，独立 `reviewClient`，异步不阻塞主流）
+  其中 2-5/7 与主对话共用同一 ChatModel（经 `ResilientChatModel` 主备路由）；主对话另经 `LlmStreamEnhancer` 首 token/整体双超时兜底。
+- RedTeamRegressionRunner 是**纯静态规则**（forbidden patterns + required markers），无 LLM 调用——“动态 LLM 红队”实际不存在
+- `PromptEvalScoreReader` 是**从库读数**（非 LLM 调用），“PEVAL-004 eval”实际无 LLM 评估
+
+> **基线修正说明（登记 2026-08-12，audit-report-02 P0-2）**：
+> - **87-01 单生成本基线**（15-20 元/生/年，07 文档 §2.8）按“2 入口”估算，未计入 4 个辅助调用与 Layer2 审查；实际调用量为 7 处，成本基线偏低——解冻后账单复核须按 7 调用点拆分核对（建议按 agent_name 维度统计 `model_call_log`）。
+> - **87-02 思考模式差异化清单**原仅覆盖 2 入口（对话主链路关闭 + 语义分类开启）；实施时差异化开关清单须覆盖全部 7 个调用点，各辅助调用与 Layer2 审查按延迟敏感度/正确性需求逐项定档。
 
 ---
 
