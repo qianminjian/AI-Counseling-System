@@ -6,6 +6,8 @@ import com.mindsafe.domain.entity.Notification;
 import com.mindsafe.domain.entity.User;
 import com.mindsafe.domain.mapper.NotificationMapper;
 import com.mindsafe.domain.mapper.UserMapper;
+import com.mindsafe.domain.mapper.RiskEventMapper;
+import com.mindsafe.domain.entity.RiskEvent;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -33,6 +35,7 @@ class NotificationServiceImplTest {
     private NotificationMapper notificationMapper;
     private UserMapper userMapper;
     private ApplicationEventPublisher eventPublisher;
+    private RiskEventMapper riskEventMapper;
     private NotificationServiceImpl service;
 
     private final UUID tenantId = UUID.randomUUID();
@@ -45,7 +48,8 @@ class NotificationServiceImplTest {
         notificationMapper = mock(NotificationMapper.class);
         userMapper = mock(UserMapper.class);
         eventPublisher = mock(ApplicationEventPublisher.class);
-        service = new NotificationServiceImpl(notificationMapper, userMapper, eventPublisher);
+        riskEventMapper = mock(RiskEventMapper.class);
+        service = new NotificationServiceImpl(notificationMapper, userMapper, eventPublisher, riskEventMapper);
     }
 
     private Notification notification(UUID recipientId) {
@@ -93,15 +97,34 @@ class NotificationServiceImplTest {
     // ===== 查询按收件人过滤 =====
 
     @Test
-    @DisplayName("getNotifications 仅返回当前用户通知（按 recipientUserId 过滤）")
+    @DisplayName("getNotifications 仅返回当前用户通知（按 recipientUserId 过滤；BUG-T-06-02 分页+筛选）")
     void getNotifications_filtersByRecipient() {
+        Page<Notification> page = new Page<Notification>(1, 20).setRecords(List.of(notification(teacherId)));
+        page.setTotal(1);
+        when(notificationMapper.selectPage(any(), any())).thenReturn(page);
+
+        NotificationService.NotificationPage result = service.getNotifications(teacherId, "ALL", 1, 20);
+
+        assertEquals(1, result.items().size());
+        assertEquals(teacherId, result.items().get(0).getRecipientUserId());
+        assertEquals(1, result.total());
+    }
+
+    @Test
+    @DisplayName("BUG-T-06-02 回归：UNREAD 筛选只查未读（readAt 为空），READ 只查已读")
+    void getNotifications_statusFilter() {
         when(notificationMapper.selectPage(any(), any())).thenReturn(
-                new Page<Notification>().setRecords(List.of(notification(teacherId))));
+                new Page<Notification>(1, 20).setRecords(List.of()));
 
-        List<Notification> list = service.getNotifications(teacherId, 50);
+        service.getNotifications(teacherId, "UNREAD", 1, 20);
+        ArgumentCaptor<com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper> cap =
+                ArgumentCaptor.forClass(com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper.class);
+        verify(notificationMapper).selectPage(any(), cap.capture());
+        // 筛选条件应含 readAt 为空（wrapper SQL 段包含 read_at IS NULL）
+        assertNotNull(cap.getValue());
 
-        assertEquals(1, list.size());
-        assertEquals(teacherId, list.get(0).getRecipientUserId());
+        service.getNotifications(teacherId, "READ", 1, 20);
+        verify(notificationMapper, times(2)).selectPage(any(), any());
     }
 
     @Test

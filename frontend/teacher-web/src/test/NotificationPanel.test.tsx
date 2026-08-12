@@ -30,7 +30,8 @@ const notifications = [
 
 describe('NotificationPanel 通知中心', () => {
   beforeEach(() => {
-    mockGetNotifications.mockReset().mockResolvedValue(notifications);
+    // BUG-T-06-02：响应结构 {items, total}（分页）
+    mockGetNotifications.mockReset().mockResolvedValue({ items: notifications, total: notifications.length });
     mockMarkRead.mockReset().mockResolvedValue(null);
   });
 
@@ -44,15 +45,16 @@ describe('NotificationPanel 通知中心', () => {
   it('未读通知显示已读按钮，已读通知显示 Tag', async () => {
     render(<NotificationPanel />);
     await screen.findByText('红色预警：小明');
-    // 未读行按钮 + 已读行 Tag 各一个
-    expect(screen.getAllByText('已读')).toHaveLength(2);
+    // 未读行操作按钮 + 已读行 Tag（Segmented 筛选「已读」选项亦计入文本匹配，共 3 处）
+    expect(screen.getByRole('button', { name: /已读/ })).toBeInTheDocument();
+    expect(screen.getAllByText('已读')).toHaveLength(3); // Segmented 选项 + 按钮 + 已读 Tag
   });
 
   it('点击已读调用 markNotificationRead 并刷新', async () => {
     render(<NotificationPanel />);
     await screen.findByText('红色预警：小明');
-    // 第一个「已读」为未读行的操作按钮
-    fireEvent.click(screen.getAllByText('已读')[0]);
+    // 未读行的「已读」操作按钮（Segmented 选项非 button role 精确匹配）
+    fireEvent.click(screen.getByRole('button', { name: /已读/ }));
     await waitFor(() => expect(mockMarkRead).toHaveBeenCalledWith('n-1'));
     // 标记后重新加载列表（加载次数 ≥2）
     await waitFor(() => expect(mockGetNotifications.mock.calls.length).toBeGreaterThanOrEqual(2));

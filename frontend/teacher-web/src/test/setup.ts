@@ -3,6 +3,23 @@ import { afterAll, afterEach, vi } from 'vitest';
 import { message, notification } from 'antd';
 import { act } from '@testing-library/react';
 
+// 存量环境兜底（2026-08-12 发现）：部分 jsdom 配置下 window.localStorage 缺失，
+// App.test 等直接访问 localStorage 的用例报 undefined。jsdom 正常时本段不生效。
+if (typeof globalThis.localStorage === 'undefined') {
+  const store = new Map<string, string>();
+  Object.defineProperty(globalThis, 'localStorage', {
+    configurable: true,
+    value: {
+      getItem: (k: string) => store.get(k) ?? null,
+      setItem: (k: string, v: string) => { store.set(k, String(v)); },
+      removeItem: (k: string) => { store.delete(k); },
+      clear: () => { store.clear(); },
+      key: (i: number) => Array.from(store.keys())[i] ?? null,
+      get length() { return store.size; },
+    },
+  });
+}
+
 // antd 全局单例（message/notification）的自动关闭定时器（默认 3s）在测试结束后
 // 才到期，触发关闭动画 → React 更新 → scheduler 排 setImmediate → jsdom teardown
 // 后访问 window 抛 ReferenceError（vitest 4 记为 unhandled errors，CI 判定失败）。

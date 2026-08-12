@@ -302,9 +302,11 @@ class TeacherControllerFullTest {
     @DisplayName("getStudents 心理老师（scope=null）→ 全校学生（含冻结，BUG-UI-03）")
     void students_schoolWide() {
         when(teacherService.resolveClassScope(tenantId, teacherUserId, "psych_teacher")).thenReturn(null);
-        when(teacherService.listVisibleStudents(tenantId, null)).thenReturn(List.of(student()));
+        when(teacherService.listVisibleStudents(tenantId, null, null, null, null)).thenReturn(List.of(student()));
+        // BUG-T-04-03：风险等级批量关联
+        when(teacherService.batchStudentMaxRisk(tenantId, List.of(student()))).thenReturn(java.util.Map.of(student().getUserId(), 0));
 
-        ApiResponse<List<TeacherController.StudentVO>> resp = controller.getStudents(teacherAuth("psych_teacher"));
+        ApiResponse<List<TeacherController.StudentVO>> resp = controller.getStudents(teacherAuth("psych_teacher"), null, null, null, null);
 
         assertThat(resp.data()).hasSize(1);
         assertThat(resp.data().get(0).displayName()).isEqualTo("小星");
@@ -314,23 +316,25 @@ class TeacherControllerFullTest {
     @DisplayName("getStudents 班主任（scope=CLASS_1）→ 本班过滤")
     void students_classScope() {
         when(teacherService.resolveClassScope(tenantId, teacherUserId, "class_teacher")).thenReturn("CLASS_1");
-        when(teacherService.listVisibleStudents(tenantId, "CLASS_1")).thenReturn(List.of(student()));
+        when(teacherService.listVisibleStudents(tenantId, "CLASS_1", null, null, null)).thenReturn(List.of(student()));
+        when(teacherService.batchStudentMaxRisk(tenantId, List.of(student()))).thenReturn(java.util.Map.of(student().getUserId(), 0));
 
-        controller.getStudents(teacherAuth("class_teacher"));
+        controller.getStudents(teacherAuth("class_teacher"), null, null, null, null);
 
-        verify(teacherService).listVisibleStudents(tenantId, "CLASS_1");
+        verify(teacherService).listVisibleStudents(tenantId, "CLASS_1", null, null, null);
     }
 
     // ===== 通知 =====
 
     @Test
-    @DisplayName("getNotifications 透传用户与 limit")
+    @DisplayName("getNotifications 透传用户与分页参数（BUG-T-06-02）")
     void notifications() {
-        when(notificationService.getNotifications(teacherUserId, 50)).thenReturn(List.of());
+        when(notificationService.getNotifications(teacherUserId, "ALL", 1, 20))
+                .thenReturn(new NotificationService.NotificationPage(List.of(), 0));
 
-        controller.getNotifications(teacherAuth("psych_teacher"), 50);
+        controller.getNotifications(teacherAuth("psych_teacher"), "ALL", 1, 20);
 
-        verify(notificationService).getNotifications(teacherUserId, 50);
+        verify(notificationService).getNotifications(teacherUserId, "ALL", 1, 20);
     }
 
     @Test
