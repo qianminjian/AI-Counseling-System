@@ -129,4 +129,41 @@ class AiChatServiceImplTest {
         assertThat(system.indexOf("【上下文简报】偏沉默"))
                 .isGreaterThan(system.indexOf("【预渲染】SYS_001+语言模板+TSK_004暖场指令"));
     }
+
+    @Test
+    @DisplayName("降级话术（fallback 标记）不写入会话记忆、不触发 Layer2 审查（OPS-P2-01/doing/96）")
+    @SuppressWarnings("unchecked")
+    void fallbackToken_doesNotPolluteMemoryOrReview() {
+        when(chatMemory.get(conversationId)).thenReturn(List.of());
+
+        // 模拟 enhance 降级输出：fallback 标记 token + done（前端仍可见，数据面应排除）
+        LlmStreamEnhancer enhancer = mock(LlmStreamEnhancer.class);
+        Flux<StreamMessageEvent> fallbackFlux = Flux.just(
+                StreamMessageEvent.fallback("网络开小差了，我们重试一下吧～"),
+                StreamMessageEvent.done(null));
+        when(enhancer.enhance(any(java.util.function.Supplier.class), any(UUID.class))).thenReturn(fallbackFlux);
+        AiChatServiceImpl fallbackService = new AiChatServiceImpl(
+                mock(ChatClient.Builder.class), chatMemory,
+                mock(OutputContentFilter.class), outputReviewService, enhancer,
+                mock(com.mindsafe.domain.mapper.ModelCallLogMapper.class), new SimpleMeterRegistry());
+
+        List<StreamMessageEvent> events = fallbackService
+                .chatWithPrompt(sessionId, "sad", "孩子消息", "【预渲染】SYS_001")
+                .collectList().block();
+
+        // 降级话术仍以 token 形式透传给前端（孩子可见，不阻断响应）
+        assertThat(events).hasSize(2);
+        assertThat(events.get(0).type()).isEqualTo("token");
+        assertThat(events.get(0).content()).isNotBlank();
+
+        // 但不得写入会话记忆：chatMemory.add 仅记录前置用户消息，AI 降级话术不写
+        ArgumentCaptor<List<Message>> captor = ArgumentCaptor.forClass(List.class);
+        verify(chatMemory, times(1)).add(eq(conversationId), captor.capture());
+        List<Message> written = captor.getValue();
+        assertThat(written).hasSize(1);
+        assertThat(written.get(0)).isInstanceOf(UserMessage.class);
+
+        // 不触发 Layer2 审查（降级话术无审查价值，避免无效 LLM 调用与误报面）
+        verify(outputReviewService, times(0)).reviewAsync(any(), any(), any());
+    }
 }

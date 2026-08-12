@@ -162,7 +162,10 @@ public class LlmStreamEnhancer {
     /**
      * 兼容旧签名：直接传入 Flux（无法重试，仅做超时保护）。
      * 新代码应使用 Supplier 版本以启用重试。
+     * @deprecated OPS-P3-03（doing/96）：生产仅 Supplier 版被调用（AiChatServiceImpl:78），
+     *     兼容签名保留供测试/旧调用方；新代码一律使用 {@link #enhance(Supplier, UUID)}。
      */
+    @Deprecated
     public Flux<StreamMessageEvent> enhance(Flux<StreamMessageEvent> rawStream, UUID sessionId) {
         return enhance(() -> rawStream, sessionId);
     }

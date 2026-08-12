@@ -26,6 +26,7 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -136,8 +137,10 @@ class AiChatServiceImplLlmCallTest {
             assertThat(events).isNotEmpty();
             assertThat(events.get(0).content()).contains("深呼吸");
 
-            // 降级流正常 complete：降级话术写入记忆 + Layer2 审查照常（孩子实际看到的内容）
-            verify(outputReviewService).reviewAsync(eq(sessionId), anyString(), eq("sad"));
+            // OPS-P2-01（doing/96，BACK-101）：降级话术属展示产物不进数据面（Q-004 承诺）——
+            // 全降级（无真实 token）时不写记忆、不触发 Layer2 审查（原断言"照常审查"为旧行为快照，已修正）
+            verify(outputReviewService, times(0)).reviewAsync(any(), any(), any());
+            verify(chatMemory, times(1)).add(eq(conversationId), anyList()); // 仅前置用户消息
         }
     }
 

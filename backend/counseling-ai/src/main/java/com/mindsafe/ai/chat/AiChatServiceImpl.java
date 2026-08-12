@@ -81,15 +81,23 @@ public class AiChatServiceImpl implements AiChatService {
                         sessionId),
                 sessionId)
                 .doOnNext(evt -> {
-                    if ("token".equals(evt.type()) && evt.content() != null) {
+                    // OPS-P2-01（doing/96，BACK-101）：降级话术（fallback 标记）不进入会话记忆——
+                    // 与 ConversationServiceImpl 摘要收集同源过滤（Q-004 承诺"降级话术不进数据面"），
+                    // 否则降级话术会作为历史上下文发给 LLM 且触发一次无意义的 Layer2 审查。
+                    if ("token".equals(evt.type()) && evt.content() != null
+                            && (evt.metadata() == null || !Boolean.TRUE.equals(evt.metadata().fallback()))) {
                         responseCollector.append(evt.content());
                     }
                 })
                 .doOnComplete(() -> {
                     String fullReply = responseCollector.toString();
-                    chatMemory.add(conversationId, List.of(new AssistantMessage(fullReply)));
+                    // OPS-P2-01（doing/96，BACK-101）：全降级（无真实 token，如 LLM 超时/不可用）
+                    // 时跳过记忆回写与 Layer2 审查——降级话术属展示产物，不进数据面（Q-004 承诺）
+                    if (!fullReply.isBlank()) {
+                        chatMemory.add(conversationId, List.of(new AssistantMessage(fullReply)));
+                        outputReviewService.reviewAsync(sessionId, fullReply, emotionTag);
+                    }
                     log.debug("{}完成: sessionId={}, responseLength={}", logTag, sessionId, fullReply.length());
-                    outputReviewService.reviewAsync(sessionId, fullReply, emotionTag);
                     if (recordMetrics) {
                         logModelCall(sessionId, "chat", System.currentTimeMillis() - streamStart, "success", null);
                     }
