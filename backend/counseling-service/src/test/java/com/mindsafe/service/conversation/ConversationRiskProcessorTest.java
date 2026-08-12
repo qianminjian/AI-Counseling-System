@@ -11,6 +11,7 @@ import com.mindsafe.domain.entity.RiskEvent;
 import com.mindsafe.domain.mapper.RiskEventMapper;
 import com.mindsafe.service.notification.NotificationService;
 import com.mindsafe.service.notification.RiskNotifyOutboxService;
+import com.mindsafe.service.risk.RiskEventWriter;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -25,6 +26,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -44,6 +47,7 @@ class ConversationRiskProcessorTest {
     private RiskEventMapper riskEventMapper;
     private NotificationService notificationService;
     private RiskNotifyOutboxService riskNotifyOutboxService;
+    private RiskEventWriter riskEventWriter;
 
     private ConversationRiskProcessor processor;
 
@@ -55,11 +59,12 @@ class ConversationRiskProcessorTest {
         riskEventMapper = mock(RiskEventMapper.class);
         notificationService = mock(NotificationService.class);
         riskNotifyOutboxService = mock(RiskNotifyOutboxService.class);
+        riskEventWriter = mock(RiskEventWriter.class);
 
         processor = new ConversationRiskProcessor(
                 riskDetectorService, semanticRiskClassifier, riskScoreCalculator,
                 riskEventMapper, notificationService, riskNotifyOutboxService,
-                new ObjectMapper());
+                new ObjectMapper(), riskEventWriter);
 
         // 默认评分结果
         when(riskScoreCalculator.calculate(any()))
@@ -271,11 +276,9 @@ class ConversationRiskProcessorTest {
 
             processor.persistRiskEvent(session, risk);
 
-            verify(riskEventMapper).insert(any(RiskEvent.class));
+            // S-009：落库+通知义务统一由 RiskEventWriter 承担（write 行为见 RiskEventWriterTest）
+            verify(riskEventWriter).write(any(RiskEvent.class), eq(true));
             verify(riskScoreCalculator).calculate(any());
-            verify(notificationService).notifyRiskEvent(any(RiskEvent.class));
-            // P0-4：通知成功 → 状态标记 sent，避免补偿任务重复通知
-            verify(riskNotifyOutboxService).markSent(any(RiskEvent.class));
         }
 
         @Test
@@ -286,11 +289,10 @@ class ConversationRiskProcessorTest {
                     "sad", "web", "male", null, 4);
             RiskDetectionResult risk = new RiskDetectionResult(
                     RiskLevel.RED, "self_harm", List.of(), 90, true, "");
-            when(riskEventMapper.insert(any(RiskEvent.class))).thenThrow(new RuntimeException("DB 连接失败"));
+            when(riskEventWriter.write(any(RiskEvent.class), anyBoolean())).thenThrow(new RuntimeException("DB 连接失败"));
 
             org.junit.jupiter.api.Assertions.assertThrows(IllegalStateException.class,
                     () -> processor.persistRiskEvent(session, risk));
-            verify(notificationService, org.mockito.Mockito.never()).notifyRiskEvent(any(RiskEvent.class));
         }
 
         @Test
@@ -301,13 +303,10 @@ class ConversationRiskProcessorTest {
                     "sad", "web", "male", null, 4);
             RiskDetectionResult risk = new RiskDetectionResult(
                     RiskLevel.ORANGE, "bullying", List.of("被打"), 60, false, "建议关注");
-            org.mockito.Mockito.doThrow(new RuntimeException("企业微信不可用"))
-                    .when(notificationService).notifyRiskEvent(any(RiskEvent.class));
-
-            // 不应抛出异常（事件已落库），通知失败进补偿队列
+            // S-009：通知失败降级语义移至 RiskEventWriter（write 内部 catch + markFailed），
+            // 本用例验证委托透传——writer 不抛则 persistRiskEvent 不抛
             processor.persistRiskEvent(session, risk);
-            verify(riskEventMapper).insert(any(RiskEvent.class));
-            verify(riskNotifyOutboxService).markFailed(any(RiskEvent.class));
+            verify(riskEventWriter).write(any(RiskEvent.class), eq(true));
         }
 
         @Test
@@ -324,7 +323,7 @@ class ConversationRiskProcessorTest {
             processor.persistRiskEvent(session, risk);
 
             ArgumentCaptor<RiskEvent> captor = ArgumentCaptor.forClass(RiskEvent.class);
-            verify(riskEventMapper).insert(captor.capture());
+            verify(riskEventWriter).write(captor.capture(), eq(true));
             RiskEvent event = captor.getValue();
             assertThat(event.getRiskScore()).as("结构化评分应随事件落库").isEqualTo(72);
             JsonNode reasons = new ObjectMapper().readTree(event.getReasonCodes());

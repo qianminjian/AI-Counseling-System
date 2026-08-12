@@ -12,6 +12,7 @@ import com.mindsafe.domain.entity.RiskEvent;
 import com.mindsafe.domain.mapper.RiskEventMapper;
 import com.mindsafe.service.notification.NotificationService;
 import com.mindsafe.service.notification.RiskNotifyOutboxService;
+import com.mindsafe.service.risk.RiskEventWriter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -43,6 +44,8 @@ public class ConversationRiskProcessor {
     private final NotificationService notificationService;
     private final RiskNotifyOutboxService riskNotifyOutboxService;
     private final ObjectMapper objectMapper;
+    /** S-009（doing/93）：风险事件统一写入入口 */
+    private final RiskEventWriter riskEventWriter;
 
     public ConversationRiskProcessor(RiskDetectorService riskDetectorService,
                                      SemanticRiskClassifier semanticRiskClassifier,
@@ -50,7 +53,8 @@ public class ConversationRiskProcessor {
                                      RiskEventMapper riskEventMapper,
                                      NotificationService notificationService,
                                      RiskNotifyOutboxService riskNotifyOutboxService,
-                                     ObjectMapper objectMapper) {
+                                     ObjectMapper objectMapper,
+                                     RiskEventWriter riskEventWriter) {
         this.riskDetectorService = riskDetectorService;
         this.semanticRiskClassifier = semanticRiskClassifier;
         this.riskScoreCalculator = riskScoreCalculator;
@@ -58,6 +62,7 @@ public class ConversationRiskProcessor {
         this.notificationService = notificationService;
         this.riskNotifyOutboxService = riskNotifyOutboxService;
         this.objectMapper = objectMapper;
+        this.riskEventWriter = riskEventWriter;
     }
 
     /**
@@ -193,22 +198,14 @@ public class ConversationRiskProcessor {
             log.info("风险评分计算: sessionId={}, score={}, level={}, reasons={}",
                     session.getSessionId(), scoreResult.score(), scoreResult.level(), scoreResult.reasonCodes());
 
-            riskEventMapper.insert(event);
+            // S-009（doing/93）：统一写入入口（落库 + 通知义务登记；会话风险需教师通知）
+            riskEventWriter.write(event, true);
             log.info("风险事件已持久化: riskEventId={}, level={}, score={}",
                     event.getRiskEventId(), riskResult.level(), scoreResult.score());
         } catch (Exception e) {
             log.error("风险事件持久化失败(fail-fast 上抛): sessionId={}, level={}",
                     session.getSessionId(), riskResult.level(), e);
             throw new IllegalStateException("风险事件持久化失败", e);
-        }
-
-        // 教师通知 + outbox 状态标记（P0-4）：失败不再静默，进补偿队列
-        try {
-            notificationService.notifyRiskEvent(event);
-            riskNotifyOutboxService.markSent(event);
-        } catch (Exception e) {
-            log.error("风险教师通知失败(已标记 failed 进补偿队列): riskEventId={}", event.getRiskEventId(), e);
-            riskNotifyOutboxService.markFailed(event);
         }
     }
 

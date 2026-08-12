@@ -6,6 +6,7 @@ import com.mindsafe.common.enums.RiskLevel;
 import com.mindsafe.domain.entity.RiskEvent;
 import com.mindsafe.domain.mapper.RiskEventMapper;
 import com.mindsafe.service.notification.RiskNotifyOutboxService;
+import com.mindsafe.service.risk.RiskEventWriter;
 import com.mindsafe.service.profile.ProfileEffectivenessTracker;
 import com.mindsafe.service.voice.TrendAnomalySignaler;
 import com.mindsafe.service.voice.VoiceEmotionTrendAnalyzer;
@@ -41,19 +42,23 @@ public class SessionEndAnalyticsService {
     private final ProfileEffectivenessTracker effectivenessTracker;
     private final RiskEventMapper riskEventMapper;
     private final RiskNotifyOutboxService riskNotifyOutboxService;
+    /** S-009（doing/93）：风险事件统一写入入口 */
+    private final RiskEventWriter riskEventWriter;
 
     public SessionEndAnalyticsService(VoiceEmotionTrendAnalyzer trendAnalyzer,
                                       TrendAnomalySignaler anomalySignaler,
                                       EmotionOrchestrationEvaluator orchestrationEvaluator,
                                       ProfileEffectivenessTracker effectivenessTracker,
                                       RiskEventMapper riskEventMapper,
-                                      RiskNotifyOutboxService riskNotifyOutboxService) {
+                                      RiskNotifyOutboxService riskNotifyOutboxService,
+                                      RiskEventWriter riskEventWriter) {
         this.trendAnalyzer = trendAnalyzer;
         this.anomalySignaler = anomalySignaler;
         this.orchestrationEvaluator = orchestrationEvaluator;
         this.effectivenessTracker = effectivenessTracker;
         this.riskEventMapper = riskEventMapper;
         this.riskNotifyOutboxService = riskNotifyOutboxService;
+        this.riskEventWriter = riskEventWriter;
     }
 
     /** 会话结束分析结果 */
@@ -163,9 +168,8 @@ public class SessionEndAnalyticsService {
             event.setStatus(RiskEvent.STATUS_OPEN);
             event.setCreatedAt(java.time.Instant.now());
             event.setUpdatedAt(java.time.Instant.now());
-            riskEventMapper.insert(event);
-            // P0-4：无通知义务的事件标记完成态，防止补偿任务误重试留痕事件
-            riskNotifyOutboxService.markSent(event);
+            // S-009（doing/93）：统一写入入口（趋势关注无通知义务 → 标记完成态防误重试）
+            riskEventWriter.write(event, false);
             log.info("RISK-204 趋势关注信号已持久化: riskEventId={}, type={}", event.getRiskEventId(), signal.signalType());
         } catch (Exception e) {
             log.warn("RISK-204 持久化降级（不影响业务）: {}", e.getMessage());
