@@ -74,7 +74,7 @@ class TeacherClassScopeTest {
                 riskEventMapper,
                 sessionMapper,
                 userMapper,
-                teacherNoteMapper,
+                new TeacherNoteStore(teacherNoteMapper),
                 mock(NotificationMapper.class),
                 messageSummaryMapper,
                 fieldEncryptionService,

@@ -37,7 +37,8 @@ public class TeacherService {
     private final RiskEventMapper riskEventMapper;
     private final CounselingSessionMapper sessionMapper;
     private final UserMapper userMapper;
-    private final TeacherNoteMapper teacherNoteMapper;
+    /** S-007①（doing/93）：备注读写单点 */
+    private final TeacherNoteStore teacherNoteStore;
     private final NotificationMapper notificationMapper;
     private final MessageSummaryMapper messageSummaryMapper;
     /** S-006（doing/93）：转写读取单点（BA-10），教师侧读路径收敛 */
@@ -78,7 +79,7 @@ public class TeacherService {
     public TeacherService(RiskEventMapper riskEventMapper,
                           CounselingSessionMapper sessionMapper,
                           UserMapper userMapper,
-                          TeacherNoteMapper teacherNoteMapper,
+                          TeacherNoteStore teacherNoteStore,
                           NotificationMapper notificationMapper,
                           MessageSummaryMapper messageSummaryMapper,
                           FieldEncryptionService fieldEncryptionService,
@@ -90,7 +91,7 @@ public class TeacherService {
         this.riskEventMapper = riskEventMapper;
         this.sessionMapper = sessionMapper;
         this.userMapper = userMapper;
-        this.teacherNoteMapper = teacherNoteMapper;
+        this.teacherNoteStore = teacherNoteStore;
         this.notificationMapper = notificationMapper;
         this.messageSummaryMapper = messageSummaryMapper;
         this.fieldEncryptionService = fieldEncryptionService;
@@ -382,7 +383,7 @@ public class TeacherService {
                     tenantId, event.getStudentUserId(), fromTeacherId,
                     fieldEncryptionService.encrypt("【预警转派】" + note), "transfer"
             );
-            teacherNoteMapper.insert(transferNote);
+            teacherNoteStore.insert(transferNote);
         }
         log.info("预警已转派: riskEventId={}, from={}, target={}", riskEventId, fromTeacherId, targetTeacherId);
     }
@@ -401,40 +402,22 @@ public class TeacherService {
                 tenantId, studentUserId, teacherUserId,
                 fieldEncryptionService.encrypt(enabled ? CASE_TRACKING_ACTIVE : "inactive"), CASE_TRACKING_NOTE_TYPE
         );
-        teacherNoteMapper.insert(note);
+        teacherNoteStore.insert(note);
         log.info("个案跟踪标志更新: student={}, enabled={}", studentUserId, enabled);
     }
 
     /** 学生是否在个案跟踪中（最新一条 case_tracking 备注为 active） */
     public boolean isCaseTracking(UUID tenantId, UUID studentUserId) {
-        // AUD-043：分页插件安全化，替代 .last("LIMIT 1") 字符串拼接
-        List<TeacherNote> notes = teacherNoteMapper.selectPage(
-                new Page<>(1, 1, false),
-                new LambdaQueryWrapper<TeacherNote>()
-                        .eq(TeacherNote::getTenantId, tenantId)
-                        .eq(TeacherNote::getStudentUserId, studentUserId)
-                        .eq(TeacherNote::getNoteType, CASE_TRACKING_NOTE_TYPE)
-                        .orderByDesc(TeacherNote::getCreatedAt)
-        ).getRecords();
-        return !notes.isEmpty() && CASE_TRACKING_ACTIVE.equals(fieldEncryptionService.decrypt(notes.get(0).getContent()));
+        // S-007①：备注读写单点（AUD-043 分页安全语义由 TeacherNoteStore 承担）
+        return teacherNoteStore.latest(tenantId, studentUserId, CASE_TRACKING_NOTE_TYPE)
+                .map(note -> CASE_TRACKING_ACTIVE.equals(fieldEncryptionService.decrypt(note.getContent())))
+                .orElse(false);
     }
 
     /** 租户内全部个案跟踪中的学生 ID 集合（批量查询避免 N+1） */
     private Set<UUID> getCaseTrackedStudentIds(UUID tenantId) {
-        List<TeacherNote> notes = teacherNoteMapper.selectList(
-                new LambdaQueryWrapper<TeacherNote>()
-                        .eq(TeacherNote::getTenantId, tenantId)
-                        .eq(TeacherNote::getNoteType, CASE_TRACKING_NOTE_TYPE)
-        );
-        // 按学生取最新一条，仅保留 active
-        Map<UUID, TeacherNote> latestByStudent = new HashMap<>();
-        for (TeacherNote note : notes) {
-            TeacherNote current = latestByStudent.get(note.getStudentUserId());
-            if (current == null || (note.getCreatedAt() != null && current.getCreatedAt() != null
-                    && note.getCreatedAt().isAfter(current.getCreatedAt()))) {
-                latestByStudent.put(note.getStudentUserId(), note);
-            }
-        }
+        // S-007①：按学生取最新一条（备注单点）
+        Map<UUID, TeacherNote> latestByStudent = teacherNoteStore.latestByStudent(tenantId, CASE_TRACKING_NOTE_TYPE);
         return latestByStudent.values().stream()
                 .filter(n -> CASE_TRACKING_ACTIVE.equals(fieldEncryptionService.decrypt(n.getContent())))
                 .map(TeacherNote::getStudentUserId)
@@ -482,7 +465,7 @@ public class TeacherService {
                     event.getTenantId(), event.getStudentUserId(), teacherUserId,
                     "【预警处理】" + resolutionNote, "intervention"
             );
-            teacherNoteMapper.insert(note);
+            teacherNoteStore.insert(note);
         }
 
         log.info("预警已处理: riskEventId={}, teacher={}", riskEventId, teacherUserId);
@@ -520,7 +503,7 @@ public class TeacherService {
                     event.getTenantId(), event.getStudentUserId(), teacherUserId,
                     "【回访记录】" + followUpNote, "follow_up"
             );
-            teacherNoteMapper.insert(note);
+            teacherNoteStore.insert(note);
         }
         log.info("预警回访完成: riskEventId={}, outcome={}", riskEventId, outcome);
     }
@@ -551,13 +534,8 @@ public class TeacherService {
      * 读取学生当前个案阶段：teacher_notes（note_type=case_stage）最新一条，无记录 → INTAKE。
      */
     public CaseLifecycleService.CaseStage getCurrentCaseStage(UUID tenantId, UUID studentUserId) {
-        List<TeacherNote> notes = teacherNoteMapper.selectList(
-                new LambdaQueryWrapper<TeacherNote>()
-                        .eq(TeacherNote::getTenantId, tenantId)
-                        .eq(TeacherNote::getStudentUserId, studentUserId)
-                        .eq(TeacherNote::getNoteType, CASE_STAGE_NOTE_TYPE)
-                        .orderByDesc(TeacherNote::getCreatedAt)
-        );
+        // S-007①：备注读写单点
+        List<TeacherNote> notes = teacherNoteStore.list(tenantId, studentUserId, CASE_STAGE_NOTE_TYPE);
         if (notes.isEmpty()) {
             return CaseLifecycleService.CaseStage.INTAKE;
         }
@@ -603,7 +581,7 @@ public class TeacherService {
                     tenantId, studentUserId, teacherUserId,
                     fieldEncryptionService.encrypt(targetStage.name()), CASE_STAGE_NOTE_TYPE
             );
-            teacherNoteMapper.insert(note);
+            teacherNoteStore.insert(note);
             log.info("个案阶段推进: student={}, {} -> {}", studentUserId, current, targetStage);
         }
         return result;
@@ -620,13 +598,8 @@ public class TeacherService {
         // 班主任（class_teacher）只见沟通建议，不见风险轨迹与对话摘要（design/35 §3.3/§六：服务端裁剪）
         boolean fullAccess = !User.USER_TYPE_CLASS_TEACHER.equals(userType);
 
-        // 教师备注（所有角色可见，沟通建议来源）
-        List<TeacherNote> notes = teacherNoteMapper.selectList(
-                new LambdaQueryWrapper<TeacherNote>()
-                        .eq(TeacherNote::getTenantId, tenantId)
-                        .eq(TeacherNote::getStudentUserId, studentUserId)
-                        .orderByDesc(TeacherNote::getCreatedAt)
-        );
+        // 教师备注（所有角色可见，沟通建议来源；S-007① 备注读写单点）
+        List<TeacherNote> notes = teacherNoteStore.listAll(tenantId, studentUserId);
 
         // 班主任裁剪：不查询也不返回会话/预警/风险等级
         if (!fullAccess) {
@@ -749,7 +722,7 @@ public class TeacherService {
                                String content, String noteType) {
         TeacherNote note = TeacherNote.create(tenantId, studentUserId, teacherUserId,
                 fieldEncryptionService.encrypt(content), noteType);
-        teacherNoteMapper.insert(note);
+        teacherNoteStore.insert(note);
         note.setContent(content); // API 响应返回明文
         log.info("教师备注已添加: noteId={}, student={}", note.getNoteId(), studentUserId);
         return note;

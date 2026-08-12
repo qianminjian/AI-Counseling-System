@@ -62,7 +62,7 @@ class TeacherStatsPerformanceTest {
     @BeforeEach
     void setUp() {
         service = new TeacherService(riskEventMapper, sessionMapper, userMapper,
-                teacherNoteMapper, notificationMapper, messageSummaryMapper, fieldEncryptionService,
+                new TeacherNoteStore(teacherNoteMapper), notificationMapper, messageSummaryMapper, fieldEncryptionService,
                 sessionAccessService, mock(AuditLogService.class),
                 new com.mindsafe.service.teacher.AlertTodoMutePolicy(),
                 new com.mindsafe.service.casemanage.CaseLifecycleService(), mock(MessageSummaryService.class));

@@ -46,7 +46,7 @@ class TeacherDashboardTest {
                 riskEventMapper,
                 sessionMapper,
                 mock(UserMapper.class),
-                mock(TeacherNoteMapper.class),
+                new TeacherNoteStore(mock(TeacherNoteMapper.class)),
                 mock(NotificationMapper.class),
                 mock(MessageSummaryMapper.class),
                 mock(FieldEncryptionService.class),

@@ -52,7 +52,7 @@ class TeacherAlertTransferTest {
                 riskEventMapper,
                 mock(CounselingSessionMapper.class),
                 userMapper,
-                teacherNoteMapper,
+                new TeacherNoteStore(teacherNoteMapper),
                 mock(NotificationMapper.class),
                 mock(MessageSummaryMapper.class),
                 fieldEncryptionService,
