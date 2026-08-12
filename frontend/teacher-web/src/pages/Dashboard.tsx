@@ -1,10 +1,11 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
-import { Layout, Menu, Badge, message, notification } from 'antd'
+import { useState, useEffect, useRef, useCallback, useMemo, type ComponentType, type ReactNode } from 'react'
+import { Layout, Menu, Badge, message } from 'antd'
 import {
   BellOutlined, WarningOutlined, TeamOutlined, LogoutOutlined,
   DashboardOutlined, AlertOutlined, SettingOutlined, DesktopOutlined,
 } from '@ant-design/icons'
 import { getUnreadCount } from '../api'
+import { playAlertSound, sendDesktopNotification } from '../utils/notify'
 import { useAlertWebSocket } from '../hooks/useAlertWebSocket'
 import { usePolling } from '../hooks/usePolling'
 import OverviewPanel from '../components/teacher/OverviewPanel'
@@ -20,54 +21,23 @@ const { Header, Sider, Content } = Layout
 
 const POLL_INTERVAL = 15000
 
-// F-10：AudioContext 单例复用（预警高频触发时避免每次 new + 不 close 的泄漏）
-let alertAudioCtx: AudioContext | null = null
+// 板块08 P1-3（2026-08-12，对齐 admin-web AD-009）：面板注册表——菜单 label / Header 标题 / 内容渲染
+// 单一规则源。此前 MENU_ITEMS 与 TITLES 双表登记（key 各登记一次，漏改则标题空串），
+// 现在菜单与标题均由本表派生；OverviewPanel 的 onNavigate 与 AdminPanel 的 isAdmin 守卫
+// 属组件级特例参数，收敛在 renderPanel 内。新增面板只需：PanelKey 类型 + 本表登记。
+type PanelKey = 'overview' | 'alerts' | 'students' | 'quality' | 'notifications' | 'devices' | 'admin'
 
-function playAlertSound() {
-  try {
-    const Ctor = window.AudioContext || (window as any).webkitAudioContext
-    if (!alertAudioCtx) {
-      alertAudioCtx = new Ctor()
-    }
-    const ctx = alertAudioCtx
-    const osc = ctx.createOscillator()
-    const gain = ctx.createGain()
-    osc.connect(gain)
-    gain.connect(ctx.destination)
-    osc.frequency.value = 880
-    osc.type = 'sine'
-    gain.gain.setValueAtTime(0.3, ctx.currentTime)
-    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.5)
-    osc.start(ctx.currentTime)
-    osc.stop(ctx.currentTime + 0.5)
-  } catch { /* 音频不可用环境静默降级 */ }
-}
-
-function sendDesktopNotification(title: string, body: string) {
-  // 桌面通知不可用或未授权时，降级为页内通知（不静默丢弃）
-  if ('Notification' in window && Notification.permission === 'granted') {
-    try {
-      new Notification(title, { body, icon: '🛡️' })
-      return
-    } catch { /* 部分移动浏览器构造器不可用，落入页内通知 */ }
-  }
-  notification.warning({ message: title, description: body, placement: 'topRight', duration: 6 })
-}
-
-const MENU_ITEMS = [
-  { key: 'overview', icon: <DashboardOutlined />, label: '工作台' },
-  { key: 'alerts', icon: <AlertOutlined />, label: '预警队列' },
-  { key: 'students', icon: <TeamOutlined />, label: '学生管理' },
-  { key: 'quality', icon: <WarningOutlined />, label: '质量监控' },
-  { key: 'notifications', icon: <BellOutlined />, label: '通知中心' },
+const PANEL_REGISTRY: Record<PanelKey, { label: string; icon: ReactNode; Panel: ComponentType<any> }> = {
+  overview: { label: '工作台', icon: <DashboardOutlined />, Panel: OverviewPanel },
+  alerts: { label: '预警队列', icon: <AlertOutlined />, Panel: AlertQueue },
+  students: { label: '学生管理', icon: <TeamOutlined />, Panel: StudentPanel },
+  quality: { label: '质量监控', icon: <WarningOutlined />, Panel: QualityPanel },
+  notifications: { label: '通知中心', icon: <BellOutlined />, Panel: NotificationPanel },
   // CFG-006/007/008（doing/84 §四.6）：无屏终端设备管理
-  { key: 'devices', icon: <DesktopOutlined />, label: '终端设备' },
-]
-
-const ADMIN_MENU_ITEMS = [
+  devices: { label: '终端设备', icon: <DesktopOutlined />, Panel: DeviceManagement },
   // P0 backlog ⑤ 双轨收敛：平台总览已迁 admin-web（平台角色域），业务 ADMIN 仅保留管理控制台
-  { key: 'admin', icon: <SettingOutlined />, label: '管理控制台' },
-]
+  admin: { label: '管理控制台', icon: <SettingOutlined />, Panel: AdminPanel },
+}
 
 export default function Dashboard({ user, onLogout, darkMode, toggleDark }: {
   user: { userType: string; displayName: string }
@@ -154,24 +124,28 @@ export default function Dashboard({ user, onLogout, darkMode, toggleDark }: {
   })
 
   // AUD-049：menuItems 依赖 unreadCount/isAdmin，用 useMemo 缓存避免每次渲染重建
-  const menuItems = useMemo(() => [
-    ...MENU_ITEMS.map((item) =>
-      item.key === 'notifications'
-        ? { ...item, icon: <Badge count={unreadCount} size="small"><BellOutlined /></Badge> }
-        : item
-    ),
-    ...(isAdmin ? ADMIN_MENU_ITEMS : []),
-  ], [unreadCount, isAdmin])
+  // P1-3：从 PANEL_REGISTRY 派生（admin 面板按角色过滤；通知中心 icon 带未读徽标）
+  const menuItems = useMemo(() =>
+    (Object.keys(PANEL_REGISTRY) as PanelKey[])
+      .filter((k) => k !== 'admin' || isAdmin)
+      .map((k) => ({
+        key: k,
+        icon: k === 'notifications'
+          ? <Badge count={unreadCount} size="small"><BellOutlined /></Badge>
+          : PANEL_REGISTRY[k].icon,
+        label: PANEL_REGISTRY[k].label,
+      })),
+    [unreadCount, isAdmin],
+  )
 
-  const TITLES: Record<string, string> = {
-    overview: '工作台',
-    alerts: '预警队列',
-    students: '学生管理',
-    quality: '质量监控',
-    notifications: '通知中心',
-    devices: '终端设备',
-    admin: '管理控制台',
-  }
+  // 渲染当前面板（P1-3）：overview 需 onNavigate（工作台跳转），admin 需 isAdmin 守卫，
+  // 其余面板从注册表取组件直接渲染；未登记 key 返回 null（防御）
+  const renderPanel = useCallback((key: string) => {
+    if (key === 'overview') return <OverviewPanel onNavigate={setTab} />
+    if (key === 'admin') return isAdmin ? <AdminPanel /> : null
+    const { Panel } = PANEL_REGISTRY[key as PanelKey] ?? { Panel: null }
+    return Panel ? <Panel /> : null
+  }, [isAdmin, setTab])
 
   return (
     <Layout style={{ minHeight: '100vh' }}>
@@ -207,7 +181,7 @@ export default function Dashboard({ user, onLogout, darkMode, toggleDark }: {
           borderBottom: '1px solid var(--ms-border)', height: 56,
         }}>
           <span style={{ fontSize: 16, fontWeight: 600 }}>
-            {isMobile && '🛡️ '}{TITLES[tab]}
+            {isMobile && '🛡️ '}{PANEL_REGISTRY[tab as PanelKey]?.label ?? ''}
           </span>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <span onClick={toggleDark} style={{ cursor: 'pointer', fontSize: 16 }} title={darkMode ? '切换亮色' : '切换暗色'}>
@@ -224,13 +198,7 @@ export default function Dashboard({ user, onLogout, darkMode, toggleDark }: {
           padding: isMobile ? 12 : 24, background: 'var(--ms-bg)', overflow: 'auto',
           paddingBottom: isMobile ? 72 : 24, // 底部 Tab 栏留白
         }}>
-          {tab === 'overview' && <OverviewPanel onNavigate={setTab} />}
-          {tab === 'alerts' && <AlertQueue />}
-          {tab === 'students' && <StudentPanel />}
-          {tab === 'quality' && <QualityPanel />}
-          {tab === 'notifications' && <NotificationPanel />}
-          {tab === 'devices' && <DeviceManagement />}
-          {tab === 'admin' && isAdmin && <AdminPanel />}
+          {renderPanel(tab)}
         </Content>
       </Layout>
 
