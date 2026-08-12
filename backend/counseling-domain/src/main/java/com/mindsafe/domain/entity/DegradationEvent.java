@@ -13,7 +13,7 @@ import java.util.UUID;
  * OPS-MON-007/008：自动降级（auto，检测器写）与手动切换（manual，管理端 API 写）
  * 统一事件时间线，供管理端 M3 降级矩阵消费。设计见 doing/83 服务降级监控 §6.5。
  */
-@TableName(value = "degradation_events", schema = "tenant_template")
+@TableName(value = "degradation_events", schema = TenantSchema.TENANT_TEMPLATE)
 public class DegradationEvent {
 
     /** 触发方式：监控检测器自动落库 */

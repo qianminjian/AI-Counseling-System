@@ -1,5 +1,6 @@
 package com.mindsafe.api.controller;
 
+import com.mindsafe.common.exception.BizException;
 import com.mindsafe.ai.voice.VoiceAnalysisResult;
 import com.mindsafe.ai.voice.VoiceAnalysisService;
 import com.mindsafe.common.dto.ApiResponse;
@@ -13,6 +14,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -48,10 +50,9 @@ class VoiceControllerTest {
         MultipartFile file = mock(MultipartFile.class);
         when(file.isEmpty()).thenReturn(true);
 
-        ApiResponse<Map<String, Object>> resp = controller.analyzeVoice(file);
-
-        assertThat(resp.code()).isEqualTo(400);
-        assertThat(resp.message()).contains("音频文件不能为空");
+        assertThatThrownBy(() -> controller.analyzeVoice(file))
+                .isInstanceOf(BizException.class)
+                .hasMessageContaining("音频文件不能为空");
     }
 
     @Test
@@ -61,10 +62,9 @@ class VoiceControllerTest {
         when(file.isEmpty()).thenReturn(false);
         when(file.getContentType()).thenReturn("text/plain");
 
-        ApiResponse<Map<String, Object>> resp = controller.analyzeVoice(file);
-
-        assertThat(resp.code()).isEqualTo(400);
-        assertThat(resp.message()).contains("仅支持音频文件");
+        assertThatThrownBy(() -> controller.analyzeVoice(file))
+                .isInstanceOf(BizException.class)
+                .hasMessageContaining("仅支持音频文件");
     }
 
     @Test
@@ -74,9 +74,8 @@ class VoiceControllerTest {
         when(file.isEmpty()).thenReturn(false);
         when(file.getContentType()).thenReturn(null);
 
-        ApiResponse<Map<String, Object>> resp = controller.analyzeVoice(file);
-
-        assertThat(resp.code()).isEqualTo(400);
+        assertThatThrownBy(() -> controller.analyzeVoice(file))
+                .isInstanceOf(BizException.class);
     }
 
     @Test
@@ -87,10 +86,9 @@ class VoiceControllerTest {
         when(file.getContentType()).thenReturn("audio/mp3");
         when(file.getSize()).thenReturn(10L * 1024 * 1024 + 1);
 
-        ApiResponse<Map<String, Object>> resp = controller.analyzeVoice(file);
-
-        assertThat(resp.code()).isEqualTo(400);
-        assertThat(resp.message()).contains("10MB");
+        assertThatThrownBy(() -> controller.analyzeVoice(file))
+                .isInstanceOf(BizException.class)
+                .hasMessageContaining("10MB");
         verify(voiceAnalysisService, never()).analyze(any(), any(), any());
     }
 

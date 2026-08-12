@@ -5,7 +5,7 @@ import ch.qos.logback.core.Appender;
 import ch.qos.logback.core.UnsynchronizedAppenderBase;
 import ch.qos.logback.core.spi.AppenderAttachable;
 import ch.qos.logback.core.spi.AppenderAttachableImpl;
-import com.mindsafe.ai.safety.PiiDesensitizer;
+import com.mindsafe.common.util.PiiDesensitizer;
 
 import java.util.Iterator;
 

@@ -8,7 +8,7 @@ import java.util.UUID;
 /**
  * 模型调用日志实体（对应 tenant_template.model_call_logs）
  */
-@TableName(value = "model_call_logs", schema = "tenant_template")
+@TableName(value = "model_call_logs", schema = TenantSchema.TENANT_TEMPLATE)
 public class ModelCallLog {
 
     @TableId(value = "call_log_id", type = IdType.INPUT)

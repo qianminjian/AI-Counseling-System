@@ -306,22 +306,8 @@ export function useWakeWord({ active, paused, onDetected }) {
     let totalSamples = 0
     let analyzing = false
 
-    // 构建 Worker 配置（同源部署路径，绝对 URL 确保 get_file_metadata 的 Range 请求能正确验证文件存在性）
-    const base = import.meta.env.BASE_URL || '/'
-    // 始终用非 asyncify 变体（ORT 主代码非 asyncify 编译）
-    const variant = 'ort-wasm-simd-threaded'
-    let workerRemoteHost = WAKE_MODEL_REMOTE_HOST === 'SAME_ORIGIN' ? `${base}models/` : WAKE_MODEL_REMOTE_HOST
-    if (workerRemoteHost && !workerRemoteHost.startsWith('http')) {
-      workerRemoteHost = window.location.origin + workerRemoteHost
-    }
-    const workerConfig = {
-      modelId: WAKE_MODEL_ID,
-      remoteHost: workerRemoteHost,
-      wasmPaths: {
-        mjs: `${base}ort/${variant}.mjs`,
-        wasm: `${base}ort/${variant}.wasm`,
-      },
-    }
+    // 构建 Worker 配置（S-014：复用 buildWorkerConfig 单一推导，与预启动路径恒等）
+    const workerConfig = buildWorkerConfig()
 
     /** 处理转写结果（Worker 和主线程共用） */
     const handleTranscribeResult = (text: string) => {

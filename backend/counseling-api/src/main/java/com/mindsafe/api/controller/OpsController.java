@@ -2,6 +2,7 @@ package com.mindsafe.api.controller;
 
 import com.mindsafe.common.dto.ApiResponse;
 import com.mindsafe.common.dto.ErrorCode;
+import com.mindsafe.common.exception.BizException;
 import com.mindsafe.domain.entity.AlertEvent;
 import com.mindsafe.domain.entity.AuditLog;
 import com.mindsafe.domain.entity.DegradationEvent;
@@ -113,7 +114,7 @@ public class OpsController {
                                       @RequestHeader(value = "X-Confirm", required = false) String confirm,
                                       @Valid @RequestBody RiskCloseRequest request) {
         if (!CONFIRM_PHRASE.equals(confirm)) {
-            return ApiResponse.error(ErrorCode.PARAM_INVALID.code(), "高危操作需 X-Confirm: CONFIRM 头（操作二次确认）");
+            throw new BizException(ErrorCode.PARAM_INVALID, "高危操作需 X-Confirm: CONFIRM 头（操作二次确认）");
         }
         opsService.ackAlert(eventId, operatorName(), request.reason());
         return ApiResponse.ok(null);
@@ -152,7 +153,7 @@ public class OpsController {
                                       @RequestHeader(value = "X-Confirm", required = false) String confirm,
                                       @Valid @RequestBody RiskTransferRequest request) {
         if (!CONFIRM_PHRASE.equals(confirm)) {
-            return ApiResponse.error(ErrorCode.PARAM_INVALID.code(), "高危操作需 X-Confirm: CONFIRM 头（操作二次确认）");
+            throw new BizException(ErrorCode.PARAM_INVALID, "高危操作需 X-Confirm: CONFIRM 头（操作二次确认）");
         }
         // 操作人取认证主体（code-review M3：不信任请求体，防审计身份伪造）
         riskOverviewService.transfer(riskEventId, request.assignToUserId(), operatorName(), request.reason());
@@ -165,7 +166,7 @@ public class OpsController {
                                         @RequestHeader(value = "X-Confirm", required = false) String confirm,
                                         @Valid @RequestBody RiskCloseRequest request) {
         if (!CONFIRM_PHRASE.equals(confirm)) {
-            return ApiResponse.error(ErrorCode.PARAM_INVALID.code(), "高危操作需 X-Confirm: CONFIRM 头（操作二次确认）");
+            throw new BizException(ErrorCode.PARAM_INVALID, "高危操作需 X-Confirm: CONFIRM 头（操作二次确认）");
         }
         riskOverviewService.forceClose(riskEventId, operatorName(), request.reason());
         return ApiResponse.ok(null);
@@ -200,7 +201,7 @@ public class OpsController {
                                       @RequestHeader(value = "X-Confirm", required = false) String confirm,
                                       @Valid @RequestBody DegradationOverrideRequest request) {
         if (!CONFIRM_PHRASE.equals(confirm)) {
-            return ApiResponse.error(ErrorCode.PARAM_INVALID.code(), "高危操作需 X-Confirm: CONFIRM 头（操作二次确认）");
+            throw new BizException(ErrorCode.PARAM_INVALID, "高危操作需 X-Confirm: CONFIRM 头（操作二次确认）");
         }
         degradationMatrixService.override(point, request.to(), operatorName(), request.reason());
         return ApiResponse.ok(null);
@@ -212,7 +213,7 @@ public class OpsController {
                                             @RequestHeader(value = "X-Confirm", required = false) String confirm,
                                             @Valid @RequestBody RiskCloseRequest request) {
         if (!CONFIRM_PHRASE.equals(confirm)) {
-            return ApiResponse.error(ErrorCode.PARAM_INVALID.code(), "高危操作需 X-Confirm: CONFIRM 头（操作二次确认）");
+            throw new BizException(ErrorCode.PARAM_INVALID, "高危操作需 X-Confirm: CONFIRM 头（操作二次确认）");
         }
         degradationMatrixService.cancelOverride(point, operatorName(), request.reason());
         return ApiResponse.ok(null);

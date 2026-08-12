@@ -11,7 +11,7 @@ import java.util.UUID;
 /**
  * 对话质量评估实体（AI-001 + AI-002）
  */
-@TableName(value = "quality_scores", schema = "tenant_template")
+@TableName(value = "quality_scores", schema = TenantSchema.TENANT_TEMPLATE)
 public class QualityScore {
 
     @TableId(value = "score_id", type = IdType.ASSIGN_UUID)

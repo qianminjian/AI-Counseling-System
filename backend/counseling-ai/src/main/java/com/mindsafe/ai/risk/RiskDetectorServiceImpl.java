@@ -1,5 +1,6 @@
 package com.mindsafe.ai.risk;
 
+import com.mindsafe.ai.risk.RiskKeywordRegistry;
 import com.mindsafe.common.dto.risk.RiskDetectionResult;
 import com.mindsafe.common.enums.RiskLevel;
 import org.slf4j.Logger;
@@ -29,6 +30,13 @@ public class RiskDetectorServiceImpl implements RiskDetectorService {
 
     private static final Logger log = LoggerFactory.getLogger(RiskDetectorServiceImpl.class);
 
+    /** S-013（doing/93）：风险词典可注入组件 */
+    private final RiskKeywordRegistry riskKeywords;
+
+    public RiskDetectorServiceImpl(RiskKeywordRegistry riskKeywords) {
+        this.riskKeywords = riskKeywords;
+    }
+
     @Override
     public RiskDetectionResult detect(String message) {
         if (message == null || message.isBlank()) {
@@ -38,24 +46,24 @@ public class RiskDetectorServiceImpl implements RiskDetectorService {
         String normalized = message.toLowerCase().trim();
 
         // 1. 检查引用/假设语境
-        boolean hasContext = RiskKeywordRegistry.CONTEXT_PATTERN.matcher(normalized).find();
+        boolean hasContext = riskKeywords.CONTEXT_PATTERN.matcher(normalized).find();
 
         // 2. 红色硬规则检测（不可被引用语境降级，但排除直接否定前缀）
-        List<String> redMatches = matchKeywords(normalized, RiskKeywordRegistry.RED_HARD);
+        List<String> redMatches = matchKeywords(normalized, riskKeywords.RED_HARD);
         if (!redMatches.isEmpty()) {
             log.warn("🚨 红色硬规则命中: keywords={}", redMatches);
             return new RiskDetectionResult(
                     RiskLevel.RED,
-                    RiskKeywordRegistry.findCategory(redMatches),
+                    riskKeywords.findCategory(redMatches),
                     redMatches,
-                    RiskKeywordRegistry.SCORE_HARD,
+                    riskKeywords.SCORE_HARD,
                     true,
                     "立即中断普通对话，进入安全响应，通知心理老师"
             );
         }
 
         // 3. 橙色关键词检测
-        List<String> orangeMatches = matchKeywords(normalized, RiskKeywordRegistry.ORANGE);
+        List<String> orangeMatches = matchKeywords(normalized, riskKeywords.ORANGE);
         if (!orangeMatches.isEmpty()) {
             // 检查每个命中关键词是否有否定前缀
             boolean allNegated = orangeMatches.stream().allMatch(kw -> hasNegationPrefix(normalized, kw));
@@ -63,9 +71,9 @@ public class RiskDetectorServiceImpl implements RiskDetectorService {
                 log.info("橙色关键词命中但含否定/引用语境，降为黄色: keywords={}", orangeMatches);
                 return new RiskDetectionResult(
                         RiskLevel.YELLOW,
-                        RiskKeywordRegistry.findCategory(orangeMatches),
+                        riskKeywords.findCategory(orangeMatches),
                         orangeMatches,
-                        RiskKeywordRegistry.SCORE_YELLOW,
+                        riskKeywords.SCORE_YELLOW,
                         false,
                         "标记关注，允许继续对话，生成摘要给心理老师"
                 );
@@ -73,16 +81,16 @@ public class RiskDetectorServiceImpl implements RiskDetectorService {
             log.warn("⚠️ 橙色风险命中: keywords={}", orangeMatches);
             return new RiskDetectionResult(
                     RiskLevel.ORANGE,
-                    RiskKeywordRegistry.findCategory(orangeMatches),
+                    riskKeywords.findCategory(orangeMatches),
                     orangeMatches,
-                    RiskKeywordRegistry.SCORE_ORANGE,
+                    riskKeywords.SCORE_ORANGE,
                     false,
                     "转人工队列，AI 只做稳定和求助引导"
             );
         }
 
         // 4. 黄色关键词检测
-        List<String> yellowMatches = matchKeywords(normalized, RiskKeywordRegistry.YELLOW);
+        List<String> yellowMatches = matchKeywords(normalized, riskKeywords.YELLOW);
         if (!yellowMatches.isEmpty()) {
             boolean allNegated = yellowMatches.stream().allMatch(kw -> hasNegationPrefix(normalized, kw));
             if (allNegated || hasContext) {
@@ -91,9 +99,9 @@ public class RiskDetectorServiceImpl implements RiskDetectorService {
             log.debug("黄色风险命中: keywords={}", yellowMatches);
             return new RiskDetectionResult(
                     RiskLevel.YELLOW,
-                    RiskKeywordRegistry.findCategory(yellowMatches),
+                    riskKeywords.findCategory(yellowMatches),
                     yellowMatches,
-                    RiskKeywordRegistry.SCORE_ORANGE_MIN,
+                    riskKeywords.SCORE_ORANGE_MIN,
                     false,
                     "允许继续 CBT 微干预，趋势观察"
             );
@@ -110,9 +118,9 @@ public class RiskDetectorServiceImpl implements RiskDetectorService {
         // 取关键词前 6 个字符
         String before = text.substring(Math.max(0, idx - 6), idx);
         // 检查 before 是否以否定词结尾（如「我没有」+「离家出走」）
-        if (RiskKeywordRegistry.NEGATION_WORDS.stream().anyMatch(before::endsWith)) return true;
+        if (riskKeywords.NEGATION_WORDS.stream().anyMatch(before::endsWith)) return true;
         // 检查否定词是否与关键词开头重叠（如「不想」+「想死」，「不」在 before 中，「想」在 keyword 中）
-        for (String neg : RiskKeywordRegistry.NEGATION_WORDS) {
+        for (String neg : riskKeywords.NEGATION_WORDS) {
             for (int i = 1; i < neg.length(); i++) {
                 if (before.endsWith(neg.substring(0, i)) && keyword.startsWith(neg.substring(i))) {
                     return true;
@@ -140,7 +148,7 @@ public class RiskDetectorServiceImpl implements RiskDetectorService {
 
     /** 判断是否为不可降级的敏感类别（性侵/虐待，DC-001：RiskKeywordRegistry 单一类别源） */
     private boolean isSensitiveCategory(List<String> matchedKeywords) {
-        String category = RiskKeywordRegistry.findCategory(matchedKeywords);
-        return RiskKeywordRegistry.isNonDegradableCategory(category);
+        String category = riskKeywords.findCategory(matchedKeywords);
+        return riskKeywords.isNonDegradableCategory(category);
     }
 }

@@ -2,6 +2,8 @@ package com.mindsafe.api.controller;
 
 import com.mindsafe.api.security.JwtTokenProvider;
 import com.mindsafe.common.dto.ApiResponse;
+import com.mindsafe.common.dto.ErrorCode;
+import com.mindsafe.common.exception.BizException;
 import com.mindsafe.domain.entity.User;
 import com.mindsafe.service.wecom.WeComOAuthService;
 import org.slf4j.Logger;
@@ -62,7 +64,7 @@ public class WeComOAuthController {
     @GetMapping("/auth-url")
     public ApiResponse<Map<String, Object>> getAuthUrl() {
         if (corpId.isBlank()) {
-            return ApiResponse.error(501, "企业微信未配置");
+            throw new BizException(ErrorCode.INTERNAL_ERROR, "企业微信未配置");
         }
         String url = String.format(
                 "https://open.weixin.qq.com/connect/oauth2/authorize?appid=%s&redirect_uri=%s&response_type=code&scope=snsapi_privateinfo&agentid=%s#wechat_redirect",
@@ -79,11 +81,11 @@ public class WeComOAuthController {
     public ApiResponse<Map<String, Object>> callback(@RequestBody Map<String, String> body) {
         String code = body.get("code");
         if (code == null || code.isBlank()) {
-            return ApiResponse.error(400, "缺少授权码");
+            throw new BizException(ErrorCode.PARAM_INVALID, "缺少授权码");
         }
 
         if (corpId.isBlank()) {
-            return ApiResponse.error(501, "企业微信未配置");
+            throw new BizException(ErrorCode.INTERNAL_ERROR, "企业微信未配置");
         }
 
         try {
@@ -100,7 +102,7 @@ public class WeComOAuthController {
             String wecomUserId = (String) userResp.get("userid");
 
             if (wecomUserId == null) {
-                return ApiResponse.error(401, "企微授权失败，未获取到用户身份");
+                throw new BizException(ErrorCode.UNAUTHORIZED, "企微授权失败，未获取到用户身份");
             }
 
             // Step 3: 匹配系统用户（用 pseudonym 字段匹配企微 userId，待 wecom_user_id 字段上线后切换）
@@ -136,7 +138,7 @@ public class WeComOAuthController {
             return ApiResponse.ok(result);
         } catch (Exception e) {
             log.error("企微 OAuth 回调处理失败", e);
-            return ApiResponse.error(500, "企微登录处理失败: " + e.getMessage());
+            throw new BizException(ErrorCode.INTERNAL_ERROR, "企微登录处理失败: " + e.getMessage());
         }
     }
 }

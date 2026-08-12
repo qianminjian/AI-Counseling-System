@@ -1,5 +1,6 @@
 package com.mindsafe.service.auth;
 
+import com.mindsafe.common.dto.ErrorCode;
 import com.mindsafe.common.exception.BizException;
 import com.mindsafe.domain.entity.ParentAccount;
 import com.mindsafe.domain.entity.ParentStudentLink;
@@ -20,6 +21,7 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
@@ -38,6 +40,10 @@ class ParentAuthServiceTest {
     private UserMapper userMapper;
     @Mock
     private PasswordEncoder passwordEncoder;
+    @Mock
+    private LoginLockoutService lockoutService;
+    @Mock
+    private TenantAccessGuard tenantAccessGuard;
 
     private ParentAuthService service;
 
@@ -46,8 +52,10 @@ class ParentAuthServiceTest {
 
     @BeforeEach
     void setUp() {
+        // S-001：家长登录门禁默认放行（门禁拒绝场景单独用例覆盖；部分测试不走门禁需 lenient）
+        lenient().when(tenantAccessGuard.isLoginAllowed(any())).thenReturn(true);
         service = new ParentAuthService(parentAccountMapper, parentStudentLinkMapper,
-                userMapper, passwordEncoder, mock(LoginLockoutService.class));
+                userMapper, passwordEncoder, lockoutService, tenantAccessGuard);
     }
 
     private User student() {
@@ -147,6 +155,21 @@ class ParentAuthServiceTest {
         when(parentAccountMapper.selectOne(any())).thenReturn(account);
         when(passwordEncoder.matches("wrong", "pw-hash")).thenReturn(false);
         assertThrows(BizException.class, () -> service.login("13800138000", "wrong"));
+    }
+
+    @Test
+    @DisplayName("S-001：租户 suspended/archived → 家长登录 FORBIDDEN")
+    void loginTenantSuspendedRejected() {
+        ParentAccount account = new ParentAccount();
+        account.setParentId(UUID.randomUUID());
+        account.setTenantId(tenantId);
+        account.setPasswordHash("pw-hash");
+        when(parentAccountMapper.selectOne(any())).thenReturn(account);
+        when(passwordEncoder.matches("pass123", "pw-hash")).thenReturn(true);
+        when(tenantAccessGuard.isLoginAllowed(tenantId)).thenReturn(false);
+
+        BizException ex = assertThrows(BizException.class, () -> service.login("13800138000", "pass123"));
+        assertThat(ex.getCode()).isEqualTo(ErrorCode.FORBIDDEN.code());
     }
 
     @Test

@@ -12,7 +12,7 @@ import java.time.Instant;
  * M2 服务拓扑历史曲线与 SLA 统计数据源（30s 采样，保留 30 天）。
  * 设计见 doing/83 后台管理端 §6.3。
  */
-@TableName(value = "service_health_snapshots", schema = "tenant_template")
+@TableName(value = "service_health_snapshots", schema = TenantSchema.TENANT_TEMPLATE)
 public class ServiceHealthSnapshot {
 
     /** 状态：健康 */

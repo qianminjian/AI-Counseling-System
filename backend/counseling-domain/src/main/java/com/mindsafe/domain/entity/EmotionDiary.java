@@ -9,7 +9,7 @@ import java.util.UUID;
 /**
  * 情绪日记实体（对应 tenant_template.emotion_diaries）
  */
-@TableName(value = "emotion_diaries", schema = "tenant_template")
+@TableName(value = "emotion_diaries", schema = TenantSchema.TENANT_TEMPLATE)
 public class EmotionDiary {
 
     @TableId(value = "diary_id", type = IdType.INPUT)

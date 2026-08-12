@@ -8,7 +8,7 @@ import java.util.UUID;
 /**
  * 通知实体（对应 tenant_template.notifications）
  */
-@TableName(value = "notifications", schema = "tenant_template")
+@TableName(value = "notifications", schema = TenantSchema.TENANT_TEMPLATE)
 public class Notification {
 
     @TableId(value = "notification_id", type = IdType.INPUT)

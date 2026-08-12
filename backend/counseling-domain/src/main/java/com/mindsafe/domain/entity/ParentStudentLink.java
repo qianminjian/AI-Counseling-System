@@ -8,7 +8,7 @@ import java.util.UUID;
 /**
  * 家长-学生关联（对应 tenant_template.parent_student_links）
  */
-@TableName(value = "parent_student_links", schema = "tenant_template")
+@TableName(value = "parent_student_links", schema = TenantSchema.TENANT_TEMPLATE)
 public class ParentStudentLink {
 
     @TableId(value = "link_id", type = IdType.INPUT)

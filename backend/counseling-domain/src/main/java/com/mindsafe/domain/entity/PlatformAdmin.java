@@ -13,7 +13,7 @@ import java.util.UUID;
  * M6 平台基础：独立于租户 users 表的平台账号体系（DEC-007：独立表 + 独立登录
  * 端点 + PLATFORM_ token 前缀）。设计见 doing/83 后台管理端 §6.8。
  */
-@TableName(value = "platform_admin", schema = "tenant_template")
+@TableName(value = "platform_admin", schema = TenantSchema.TENANT_TEMPLATE)
 public class PlatformAdmin {
 
     /** 角色：超级管理员（全部权限） */

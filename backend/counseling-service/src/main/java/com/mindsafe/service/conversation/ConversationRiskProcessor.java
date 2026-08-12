@@ -12,6 +12,7 @@ import com.mindsafe.domain.entity.RiskEvent;
 import com.mindsafe.domain.mapper.RiskEventMapper;
 import com.mindsafe.service.notification.NotificationService;
 import com.mindsafe.service.notification.RiskNotifyOutboxService;
+import com.mindsafe.service.risk.RiskEventWriter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -43,6 +44,10 @@ public class ConversationRiskProcessor {
     private final NotificationService notificationService;
     private final RiskNotifyOutboxService riskNotifyOutboxService;
     private final ObjectMapper objectMapper;
+    /** S-009（doing/93）：风险事件统一写入入口 */
+    private final RiskEventWriter riskEventWriter;
+    /** S-013（doing/93）：风险词典可注入组件 */
+    private final RiskKeywordRegistry riskKeywords;
 
     public ConversationRiskProcessor(RiskDetectorService riskDetectorService,
                                      SemanticRiskClassifier semanticRiskClassifier,
@@ -50,7 +55,9 @@ public class ConversationRiskProcessor {
                                      RiskEventMapper riskEventMapper,
                                      NotificationService notificationService,
                                      RiskNotifyOutboxService riskNotifyOutboxService,
-                                     ObjectMapper objectMapper) {
+                                     ObjectMapper objectMapper,
+                                     RiskEventWriter riskEventWriter,
+                                     RiskKeywordRegistry riskKeywords) {
         this.riskDetectorService = riskDetectorService;
         this.semanticRiskClassifier = semanticRiskClassifier;
         this.riskScoreCalculator = riskScoreCalculator;
@@ -58,6 +65,8 @@ public class ConversationRiskProcessor {
         this.notificationService = notificationService;
         this.riskNotifyOutboxService = riskNotifyOutboxService;
         this.objectMapper = objectMapper;
+        this.riskEventWriter = riskEventWriter;
+        this.riskKeywords = riskKeywords;
     }
 
     /**
@@ -84,9 +93,9 @@ public class ConversationRiskProcessor {
             return keywordResult; // 无语义风险或未超过关键词档位（只升不降）
         }
         log.warn("语义分类升级风险等级: keyword={}, semantic={}", keywordResult.level(), semanticLevel);
-        int score = semanticLevel == RiskLevel.RED ? RiskKeywordRegistry.SCORE_HARD
-                : semanticLevel == RiskLevel.ORANGE ? RiskKeywordRegistry.SCORE_ORANGE
-                : RiskKeywordRegistry.SCORE_SEMANTIC_YELLOW;
+        int score = semanticLevel == RiskLevel.RED ? riskKeywords.SCORE_HARD
+                : semanticLevel == RiskLevel.ORANGE ? riskKeywords.SCORE_ORANGE
+                : riskKeywords.SCORE_SEMANTIC_YELLOW;
         // DC-001（doing/72 §16）：语义升级时保留关键词真实类别（真实类别落库 + 高敏门控可命中）；
         // 无类别（未分类/null）时维持 llm_semantic 兜底标识
         String category = (keywordResult.category() != null
@@ -175,12 +184,12 @@ public class ConversationRiskProcessor {
                     riskResult.score(),               // categoryBaseScore
                     factors.intentWeight(),           // intentWeight（明确+15/含混+8）
                     factors.planWeight(),             // planWeight（方法类每+5 上限 20）
-                    RiskKeywordRegistry.WEIGHT_RECENCY,      // recencyWeight（当前会话=今天）
-                    RiskKeywordRegistry.WEIGHT_ACTION,       // actionWeight
-                    RiskKeywordRegistry.WEIGHT_REPETITION,   // repetitionWeight
-                    RiskKeywordRegistry.WEIGHT_PROTECTIVE,   // protectiveWeight
+                    riskKeywords.WEIGHT_RECENCY,      // recencyWeight（当前会话=今天）
+                    riskKeywords.WEIGHT_ACTION,       // actionWeight
+                    riskKeywords.WEIGHT_REPETITION,   // repetitionWeight
+                    riskKeywords.WEIGHT_PROTECTIVE,   // protectiveWeight
                     0,                                // falsePositivePenalty
-                    RiskKeywordRegistry.WEIGHT_CONFIDENCE,   // confidenceAdjustment（硬规则默认 0.8）
+                    riskKeywords.WEIGHT_CONFIDENCE,   // confidenceAdjustment（硬规则默认 0.8）
                     riskResult.level().severity() >= RiskLevel.RED.severity() ? riskResult.level() : null,
                     factors.cssrsIdeation(),      // C-SSRS 意念强度轴（被动抽取）
                     factors.cssrsBehavior()       // C-SSRS 行为轴（被动抽取）
@@ -193,22 +202,14 @@ public class ConversationRiskProcessor {
             log.info("风险评分计算: sessionId={}, score={}, level={}, reasons={}",
                     session.getSessionId(), scoreResult.score(), scoreResult.level(), scoreResult.reasonCodes());
 
-            riskEventMapper.insert(event);
+            // S-009（doing/93）：统一写入入口（落库 + 通知义务登记；会话风险需教师通知）
+            riskEventWriter.write(event, true);
             log.info("风险事件已持久化: riskEventId={}, level={}, score={}",
                     event.getRiskEventId(), riskResult.level(), scoreResult.score());
         } catch (Exception e) {
             log.error("风险事件持久化失败(fail-fast 上抛): sessionId={}, level={}",
                     session.getSessionId(), riskResult.level(), e);
             throw new IllegalStateException("风险事件持久化失败", e);
-        }
-
-        // 教师通知 + outbox 状态标记（P0-4）：失败不再静默，进补偿队列
-        try {
-            notificationService.notifyRiskEvent(event);
-            riskNotifyOutboxService.markSent(event);
-        } catch (Exception e) {
-            log.error("风险教师通知失败(已标记 failed 进补偿队列): riskEventId={}", event.getRiskEventId(), e);
-            riskNotifyOutboxService.markFailed(event);
         }
     }
 
@@ -233,10 +234,10 @@ public class ConversationRiskProcessor {
 
     // ===== 评分因子关键词映射（ARCH-003：词典统一收编至 RiskKeywordRegistry，design/04 §十权重表） =====
 
-    /** 明确自伤意图（I=+15）："我不想活了" 等直接表达 → RiskKeywordRegistry.EXPLICIT_INTENT_KEYWORDS */
-    /** 含混死亡愿望（I=+8）："活着没意思" 等间接表达 → RiskKeywordRegistry.VAGUE_INTENT_KEYWORDS */
-    /** 自伤方法/工具关键词（P 每类 +5，上限 20） → RiskKeywordRegistry.SELF_HARM_METHOD_KEYWORDS */
-    /** 准备行为关键词（C-SSRS 行为轴 PREPARATORY） → RiskKeywordRegistry.PREPARATORY_KEYWORDS */
+    /** 明确自伤意图（I=+15）："我不想活了" 等直接表达 → riskKeywords.EXPLICIT_INTENT_KEYWORDS */
+    /** 含混死亡愿望（I=+8）："活着没意思" 等间接表达 → riskKeywords.VAGUE_INTENT_KEYWORDS */
+    /** 自伤方法/工具关键词（P 每类 +5，上限 20） → riskKeywords.SELF_HARM_METHOD_KEYWORDS */
+    /** 准备行为关键词（C-SSRS 行为轴 PREPARATORY） → riskKeywords.PREPARATORY_KEYWORDS */
 
     /**
      * RISK-203 审计修复：从命中的风险关键词抽取评分因子，替代恒 0/恒 null。
@@ -244,29 +245,29 @@ public class ConversationRiskProcessor {
      * 纯函数、可解释：命中词来自硬规则词典（RiskDetectorServiceImpl），
      * 语义层路径（matchedKeywords 为空）返回全零，不越权加分。
      */
-    public static ScoreFactors extractScoreFactors(List<String> matchedKeywords) {
+    public ScoreFactors extractScoreFactors(List<String> matchedKeywords) {
         if (matchedKeywords == null || matchedKeywords.isEmpty()) {
             return ScoreFactors.zero();
         }
 
         // 意图权重：明确 > 含混（只取最高一档，不叠加）
-        boolean explicitIntent = containsAny(matchedKeywords, RiskKeywordRegistry.EXPLICIT_INTENT_KEYWORDS);
-        boolean vagueIntent = containsAny(matchedKeywords, RiskKeywordRegistry.VAGUE_INTENT_KEYWORDS);
-        int intentWeight = explicitIntent ? RiskKeywordRegistry.INTENT_EXPLICIT_WEIGHT
-                : vagueIntent ? RiskKeywordRegistry.INTENT_VAGUE_WEIGHT : 0;
+        boolean explicitIntent = containsAny(matchedKeywords, riskKeywords.EXPLICIT_INTENT_KEYWORDS);
+        boolean vagueIntent = containsAny(matchedKeywords, riskKeywords.VAGUE_INTENT_KEYWORDS);
+        int intentWeight = explicitIntent ? riskKeywords.INTENT_EXPLICIT_WEIGHT
+                : vagueIntent ? riskKeywords.INTENT_VAGUE_WEIGHT : 0;
 
         // 计划权重：方法类关键词每个 +5，上限 20
         int planWeight = matchedKeywords.stream()
-                .filter(RiskKeywordRegistry.SELF_HARM_METHOD_KEYWORDS::contains)
-                .limit(RiskKeywordRegistry.PLAN_WEIGHT_CAP / RiskKeywordRegistry.PLAN_WEIGHT_PER_KEYWORD) // 5*4=20 封顶
-                .mapToInt(kw -> RiskKeywordRegistry.PLAN_WEIGHT_PER_KEYWORD)
+                .filter(riskKeywords.SELF_HARM_METHOD_KEYWORDS::contains)
+                .limit(riskKeywords.PLAN_WEIGHT_CAP / riskKeywords.PLAN_WEIGHT_PER_KEYWORD) // 5*4=20 封顶
+                .mapToInt(kw -> riskKeywords.PLAN_WEIGHT_PER_KEYWORD)
                 .sum();
 
         // C-SSRS 意念强度轴：取最高档（计划 > 方法 > 主动 > 死亡愿望）
         RiskScoreCalculator.CssrsIdeation ideation = null;
-        if (containsAny(matchedKeywords, RiskKeywordRegistry.PREPARATORY_KEYWORDS)) {
+        if (containsAny(matchedKeywords, riskKeywords.PREPARATORY_KEYWORDS)) {
             ideation = RiskScoreCalculator.CssrsIdeation.WITH_PLAN_INTENT;
-        } else if (containsAny(matchedKeywords, RiskKeywordRegistry.SELF_HARM_METHOD_KEYWORDS)) {
+        } else if (containsAny(matchedKeywords, riskKeywords.SELF_HARM_METHOD_KEYWORDS)) {
             ideation = RiskScoreCalculator.CssrsIdeation.WITH_METHOD;
         } else if (explicitIntent) {
             ideation = RiskScoreCalculator.CssrsIdeation.ACTIVE_IDEATION;
@@ -275,7 +276,7 @@ public class ConversationRiskProcessor {
         }
 
         // C-SSRS 行为轴：准备行为（写遗书）
-        RiskScoreCalculator.CssrsBehavior behavior = containsAny(matchedKeywords, RiskKeywordRegistry.PREPARATORY_KEYWORDS)
+        RiskScoreCalculator.CssrsBehavior behavior = containsAny(matchedKeywords, riskKeywords.PREPARATORY_KEYWORDS)
                 ? RiskScoreCalculator.CssrsBehavior.PREPARATORY
                 : null;
 

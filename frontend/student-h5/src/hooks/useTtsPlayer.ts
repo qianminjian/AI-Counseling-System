@@ -208,14 +208,11 @@ export function useTtsPlayer({ persona = 'xiaoxing', emotion = 'neutral', speed 
   }, [synthesizeSentence, playBlob, speed, persona])
 
   /** 播放完整 AI 回复（短句合并 + 全句并行合成，消除句间停顿） */
-  const speak = useCallback(async (text) => {
-    if (muted) return
-
-    stop()
-
-    const sentences = mergeShortSentences(splitSentences(text))
-    if (sentences.length === 0) return
-
+  /**
+   * S-016（doing/93）：共享播放编排——切句 → 并行合成 → 串行播放（speak/speakSentence 两路合并；
+   * trackFallback 仅整段播放需要：追踪浏览器降级以恢复 backend 引擎标记）
+   */
+  const playSentences = useCallback(async (sentences: string[], trackFallback: boolean): Promise<boolean> => {
     abortRef.current = false
     setSentences(sentences)
     setPlaying(true)
@@ -233,16 +230,26 @@ export function useTtsPlayer({ persona = 'xiaoxing', emotion = 'neutral', speed 
       }
     }
 
-    // 播放完毕
     setPlaying(false)
     setCurrentSentenceIdx(-1)
     setSentences([])
-    // 如果整段都用了浏览器降级且引擎不可用，恢复 backend 标记（下次重试）
+    return trackFallback ? usedBrowserFallback : false
+  }, [synthesizeSentence, playSentence])
+
+  const speak = useCallback(async (text) => {
+    if (muted) return
+    stop()
+
+    const sentences = mergeShortSentences(splitSentences(text))
+    if (sentences.length === 0) return
+
+    // S-016：共享播放编排（追踪浏览器降级，恢复 backend 标记）
+    const usedBrowserFallback = await playSentences(sentences, true)
     // F-13：恢复阈值与切换阈值（>= 2 进降级窗口）对齐——< 2 表示未触发降级窗口，可恢复
     if (usedBrowserFallback && backendFailCount.current < 2) {
       setEngine('backend')
     }
-  }, [muted, synthesizeSentence, playBlob, playSentence, speed])
+  }, [muted, playSentences])
 
   /** 播放单条消息（点击气泡重播）—— 与自动播放相同的分句 + 并行合成逻辑，避免长文本单次合成音质下降 */
   const speakSentence = useCallback(async (text) => {
@@ -252,24 +259,9 @@ export function useTtsPlayer({ persona = 'xiaoxing', emotion = 'neutral', speed 
     const sentences = mergeShortSentences(splitSentences(text))
     if (sentences.length === 0) return
 
-    abortRef.current = false
-    setSentences(sentences)
-    setPlaying(true)
-
-    // 并行合成所有句子，播放第 i 句时后续句已在后台合成
-    const audioPromises = sentences.map(s => synthesizeSentence(s))
-
-    for (let i = 0; i < audioPromises.length; i++) {
-      if (abortRef.current) break
-      const audioBlob = await audioPromises[i]
-      if (abortRef.current) break
-      await playSentence(sentences[i], i, audioBlob)
-    }
-
-    setPlaying(false)
-    setCurrentSentenceIdx(-1)
-    setSentences([])
-  }, [muted, synthesizeSentence, playBlob, playSentence, speed])
+    // S-016：共享播放编排（气泡重播不追踪降级标记）
+    await playSentences(sentences, false)
+  }, [muted, playSentences])
 
   /** 停止播放 */
   const stop = useCallback(() => {
@@ -309,6 +301,28 @@ export function useTtsPlayer({ persona = 'xiaoxing', emotion = 'neutral', speed 
   }, [muted, stop])
 
   /** 流式嗂入 token：累积到句末即切分并加入播放队列（后台合成 + 顺序播放） */
+  /**
+   * S-016（doing/93）：流式句子入队辅助——预合成 + 串入播放链 + 更新 UI
+   * （feedToken 句末切句与 endStreaming 尾部冲刷共用，消除重复）
+   */
+  const enqueueStreamedSentences = useCallback((newSentences: string[]) => {
+    if (newSentences.length === 0) return
+    streamQueueRef.current.push(...newSentences)
+    setSentences([...streamQueueRef.current])
+    // BUG-TTS-02：立即并行发起合成（预取），播放链只 await 对应 blob
+    const precomputed = newSentences.map(s => synthesizeSentence(s))
+    for (let i = 0; i < newSentences.length; i++) {
+      const idx = streamIdxRef.current++
+      const blobPromise = precomputed[i]
+      streamPlayChainRef.current = streamPlayChainRef.current.then(async () => {
+        if (abortRef.current) return
+        const blob = await blobPromise
+        if (abortRef.current) return
+        await playSentence(newSentences[i], idx, blob)
+      })
+    }
+  }, [synthesizeSentence, playSentence])
+
   const feedToken = useCallback((token: string) => {
     if (muted || abortRef.current) return
     streamBufferRef.current += token
@@ -324,23 +338,9 @@ export function useTtsPlayer({ persona = 'xiaoxing', emotion = 'neutral', speed 
     streamBufferRef.current = buf.slice(cutPos + 1)
     const newSentences = mergeShortSentences(splitSentences(completePart))
     if (newSentences.length === 0) return
-    // 加入队列 + 更新 UI
-    streamQueueRef.current.push(...newSentences)
-    setSentences([...streamQueueRef.current])
-    // BUG-TTS-02：立即并行发起合成（预取），播放链只 await 对应 blob——
-    // 旧实现每句合成+播放完全串行，句间等待 ≈ 单句合成耗时（1~2.5s）→ 播放停顿不连贯
-    const precomputed = newSentences.map(s => synthesizeSentence(s))
-    for (let i = 0; i < newSentences.length; i++) {
-      const idx = streamIdxRef.current++
-      const blobPromise = precomputed[i]
-      streamPlayChainRef.current = streamPlayChainRef.current.then(async () => {
-        if (abortRef.current) return
-        const blob = await blobPromise
-        if (abortRef.current) return
-        await playSentence(newSentences[i], idx, blob)
-      })
-    }
-  }, [muted, synthesizeSentence, playBlob, playSentence, speed, persona])
+    // S-016：统一入队辅助（预合成 + 播放链）
+    enqueueStreamedSentences(newSentences)
+  }, [muted, enqueueStreamedSentences])
 
   /** 结束流式 TTS：冲刷剩余缓冲，等待播放完毕 */
   const endStreaming = useCallback(async () => {
@@ -351,20 +351,8 @@ export function useTtsPlayer({ persona = 'xiaoxing', emotion = 'neutral', speed 
     if (remaining && !abortRef.current) {
       const tailSentences = mergeShortSentences(splitSentences(remaining))
       if (tailSentences.length > 0) {
-        streamQueueRef.current.push(...tailSentences)
-        setSentences([...streamQueueRef.current])
-        // BUG-TTS-02：尾部句子同样并行预合成
-        const precomputed = tailSentences.map(s => synthesizeSentence(s))
-        for (let i = 0; i < tailSentences.length; i++) {
-          const idx = streamIdxRef.current++
-          const blobPromise = precomputed[i]
-          streamPlayChainRef.current = streamPlayChainRef.current.then(async () => {
-            if (abortRef.current) return
-            const blob = await blobPromise
-            if (abortRef.current) return
-            await playSentence(tailSentences[i], idx, blob)
-          })
-        }
+        // S-016：统一入队辅助（尾部冲刷与句末切句共用）
+        enqueueStreamedSentences(tailSentences)
       }
     }
     // 等待播放链完成

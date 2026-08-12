@@ -18,6 +18,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 class RiskRegistryConsistencyTest {
 
+    private static final RiskKeywordRegistry registry = new RiskKeywordRegistry();
+
     @Nested
     @DisplayName("四级词典互斥（RED ∩ ORANGE ∩ YELLOW = ∅）")
     class DictionaryDisjointness {
@@ -25,22 +27,22 @@ class RiskRegistryConsistencyTest {
         @Test
         @DisplayName("RED_HARD 与 ORANGE 无交集")
         void redHardDisjointOrange() {
-            assertThat(RiskKeywordRegistry.RED_HARD)
-                    .doesNotContainAnyElementsOf(RiskKeywordRegistry.ORANGE);
+            assertThat(registry.RED_HARD)
+                    .doesNotContainAnyElementsOf(registry.ORANGE);
         }
 
         @Test
         @DisplayName("RED_HARD 与 YELLOW 无交集")
         void redHardDisjointYellow() {
-            assertThat(RiskKeywordRegistry.RED_HARD)
-                    .doesNotContainAnyElementsOf(RiskKeywordRegistry.YELLOW);
+            assertThat(registry.RED_HARD)
+                    .doesNotContainAnyElementsOf(registry.YELLOW);
         }
 
         @Test
         @DisplayName("ORANGE 与 YELLOW 无交集")
         void orangeDisjointYellow() {
-            assertThat(RiskKeywordRegistry.ORANGE)
-                    .doesNotContainAnyElementsOf(RiskKeywordRegistry.YELLOW);
+            assertThat(registry.ORANGE)
+                    .doesNotContainAnyElementsOf(registry.YELLOW);
         }
 
         @Test
@@ -48,10 +50,10 @@ class RiskRegistryConsistencyTest {
         void methodWordsAreAlsoGradeWords() {
             // 跳楼/上吊/割腕/带刀 高危方法词必须为 RED 硬规则；
             // "吃药" 为含混工具词（原设计：需语境判断，仅存于 SELF_HARM_METHOD）
-            assertThat(RiskKeywordRegistry.RED_HARD)
+            assertThat(registry.RED_HARD)
                     .contains("跳楼", "上吊", "割腕", "带刀");
-            assertThat(RiskKeywordRegistry.RED_HARD)
-                    .containsAll(RiskKeywordRegistry.PREPARATORY_KEYWORDS);
+            assertThat(registry.RED_HARD)
+                    .containsAll(registry.PREPARATORY_KEYWORDS);
         }
     }
 
@@ -107,24 +109,24 @@ class RiskRegistryConsistencyTest {
         @ValueSource(strings = {"想死", "割腕", "跳楼", "遗书"})
         @DisplayName("红色硬信号在风险判定入口结论一致")
         void redSignalConsistent(String signal) {
-            assertThat(RiskKeywordRegistry.matchLevel(signal))
+            assertThat(registry.matchLevel(signal))
                     .as("风险信号 %s 必须一致命中 RED_HARD", signal)
                     .isEqualTo(Level.RED_HARD);
             // 评分入口一致（行为零变更锚点）
-            assertThat(RiskKeywordRegistry.scoreFor(signal)).isEqualTo(RiskKeywordRegistry.SCORE_HARD);
+            assertThat(registry.scoreFor(signal)).isEqualTo(registry.SCORE_HARD);
         }
 
         @ParameterizedTest
         @ValueSource(strings = {"被欺负", "打我", "离家出走"})
         @DisplayName("橙色信号在风险判定入口结论一致")
         void orangeSignalConsistent(String signal) {
-            assertThat(RiskKeywordRegistry.matchLevel(signal)).isEqualTo(Level.ORANGE);
+            assertThat(registry.matchLevel(signal)).isEqualTo(Level.ORANGE);
         }
 
         @Test
         @DisplayName("意图/方法/准备词与评分因子抽取一致（C-SSRS 行为轴）")
         void methodConsistentWithScoreFactors() {
-            assertThat(RiskKeywordRegistry.matchMethod("我想死，写了遗书，准备跳楼"))
+            assertThat(registry.matchMethod("我想死，写了遗书，准备跳楼"))
                     .contains("想死", "遗书", "跳楼");
         }
     }
@@ -136,22 +138,22 @@ class RiskRegistryConsistencyTest {
         @Test
         @DisplayName("高敏类别 ⊆ RISK_KEYWORDS 类别表（中文权威类别子集）")
         void highSensitivitySubset() {
-            assertThat(RiskKeywordRegistry.HIGH_SENSITIVITY_CATEGORIES)
-                    .isSubsetOf(RiskKeywordRegistry.RISK_KEYWORDS.keySet());
+            assertThat(registry.HIGH_SENSITIVITY_CATEGORIES)
+                    .isSubsetOf(registry.RISK_KEYWORDS.keySet());
         }
 
         @Test
         @DisplayName("不降级类别 ⊆ RISK_KEYWORDS 类别表")
         void nonDegradableSubset() {
-            assertThat(RiskKeywordRegistry.NON_DEGRADABLE_CATEGORIES)
-                    .isSubsetOf(RiskKeywordRegistry.RISK_KEYWORDS.keySet());
+            assertThat(registry.NON_DEGRADABLE_CATEGORIES)
+                    .isSubsetOf(registry.RISK_KEYWORDS.keySet());
         }
 
         @Test
         @DisplayName("不降级类别 ⊆ 高敏类别（语义：不可降级必高敏）")
         void nonDegradableSubsetOfHighSensitivity() {
-            assertThat(RiskKeywordRegistry.NON_DEGRADABLE_CATEGORIES)
-                    .isSubsetOf(RiskKeywordRegistry.HIGH_SENSITIVITY_CATEGORIES);
+            assertThat(registry.NON_DEGRADABLE_CATEGORIES)
+                    .isSubsetOf(registry.HIGH_SENSITIVITY_CATEGORIES);
         }
     }
 }

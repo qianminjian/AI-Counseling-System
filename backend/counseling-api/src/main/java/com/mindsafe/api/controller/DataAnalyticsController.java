@@ -1,6 +1,7 @@
 package com.mindsafe.api.controller;
 
 import com.mindsafe.api.security.JwtAuthenticationFilter.TenantContext;
+import com.mindsafe.api.security.SecuritySupport;
 import com.mindsafe.common.dto.ApiResponse;
 import com.mindsafe.service.analytics.DataAnalyticsService;
 import com.mindsafe.service.audit.AuditLogService;
@@ -47,7 +48,7 @@ public class DataAnalyticsController {
             @RequestParam UUID studentUserId,
             @RequestParam String interventionDate,
             @RequestParam(defaultValue = "30") int windowDays) {
-        TenantContext ctx = (TenantContext) auth.getDetails();
+        TenantContext ctx = SecuritySupport.requireContext(auth);
         LocalDate date = LocalDate.parse(interventionDate);
         // AUD-013：个人级数据访问留痕
         auditLogService.log(ctx.tenantId(), ctx.userId(), "analytics.intervention-effect",
@@ -65,7 +66,7 @@ public class DataAnalyticsController {
             @RequestParam UUID studentUserId,
             @RequestParam String semesterStart,
             @RequestParam String semesterEnd) {
-        TenantContext ctx = (TenantContext) auth.getDetails();
+        TenantContext ctx = SecuritySupport.requireContext(auth);
         // AUD-013：个人级数据访问留痕
         auditLogService.log(ctx.tenantId(), ctx.userId(), "analytics.growth-trajectory",
                 "student", studentUserId, "semester=" + semesterStart + "~" + semesterEnd);
@@ -83,7 +84,7 @@ public class DataAnalyticsController {
             Authentication auth,
             @RequestParam String periodStart,
             @RequestParam String periodEnd) {
-        TenantContext ctx = (TenantContext) auth.getDetails();
+        TenantContext ctx = SecuritySupport.requireContext(auth);
         // AUD-013：校级聚合数据访问留痕（含风险分布等敏感聚合）
         auditLogService.log(ctx.tenantId(), ctx.userId(), "analytics.school-report",
                 "tenant", null, "period=" + periodStart + "~" + periodEnd);

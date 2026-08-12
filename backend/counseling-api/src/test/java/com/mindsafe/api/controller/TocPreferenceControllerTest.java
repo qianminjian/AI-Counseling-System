@@ -1,5 +1,6 @@
 package com.mindsafe.api.controller;
 
+import com.mindsafe.common.exception.BizException;
 import com.mindsafe.api.security.JwtAuthenticationFilter.TenantContext;
 import com.mindsafe.service.device.DevicePreferenceService;
 import org.junit.jupiter.api.BeforeEach;
@@ -11,6 +12,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -38,7 +40,7 @@ class TocPreferenceControllerTest {
     @DisplayName("get：无偏好返回 404")
     void getNotFound() {
         when(preferenceService.getPreferences(familyAccountId, "K7M2P9XW4AQ")).thenReturn(null);
-        assertThat(controller.get(auth, "K7M2P9XW4AQ").code()).isEqualTo(404);
+        assertThatThrownBy(() -> controller.get(auth, "K7M2P9XW4AQ")).isInstanceOf(BizException.class);
     }
 
     @Test
@@ -58,8 +60,8 @@ class TocPreferenceControllerTest {
     void setInvalidVolume() {
         when(preferenceService.setPreferences(familyAccountId, "K7M2P9XW4AQ", 150, null, null))
                 .thenThrow(new IllegalArgumentException("音量范围为 0-100"));
-        var response = controller.set(auth, "K7M2P9XW4AQ", Map.of("volume", 150));
-        assertThat(response.code()).isEqualTo(400);
-        assertThat(response.message()).contains("0-100");
+        assertThatThrownBy(() -> controller.set(auth, "K7M2P9XW4AQ", Map.of("volume", 150)))
+                .isInstanceOf(BizException.class)
+                .hasMessageContaining("0-100");
     }
 }

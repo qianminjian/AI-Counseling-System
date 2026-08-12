@@ -3,6 +3,8 @@ package com.mindsafe.api.controller;
 import com.mindsafe.ai.voice.VoiceAnalysisResult;
 import com.mindsafe.ai.voice.VoiceAnalysisService;
 import com.mindsafe.common.dto.ApiResponse;
+import com.mindsafe.common.dto.ErrorCode;
+import com.mindsafe.common.exception.BizException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.web.bind.annotation.*;
@@ -38,17 +40,17 @@ public class VoiceController {
     @PostMapping("/analyze")
     public ApiResponse<Map<String, Object>> analyzeVoice(@RequestParam("file") MultipartFile file) throws IOException {
         if (file.isEmpty()) {
-            return ApiResponse.error(400, "音频文件不能为空");
+            throw new BizException(ErrorCode.PARAM_INVALID, "音频文件不能为空");
         }
 
         String contentType = file.getContentType();
         if (contentType == null || !contentType.startsWith("audio/")) {
-            return ApiResponse.error(400, "仅支持音频文件");
+            throw new BizException(ErrorCode.PARAM_INVALID, "仅支持音频文件");
         }
 
         // BUG-VOICE-01：转发前校验 10MB 上限（原无校验 → voice-service 400 被 Java 包装为 500）
         if (file.getSize() > 10L * 1024 * 1024) {
-            return ApiResponse.error(400, "音频文件不能超过 10MB");
+            throw new BizException(ErrorCode.PARAM_INVALID, "音频文件不能超过 10MB");
         }
 
         byte[] audioBytes = file.getBytes();

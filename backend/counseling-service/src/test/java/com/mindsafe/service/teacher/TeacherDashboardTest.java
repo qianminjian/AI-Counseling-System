@@ -1,5 +1,6 @@
 package com.mindsafe.service.teacher;
 
+import com.mindsafe.service.conversation.MessageSummaryService;
 import com.mindsafe.domain.entity.CounselingSession;
 import com.mindsafe.domain.entity.RiskEvent;
 import com.mindsafe.domain.mapper.*;
@@ -33,6 +34,8 @@ class TeacherDashboardTest {
     private RiskEventMapper riskEventMapper;
     private CounselingSessionMapper sessionMapper;
     private TeacherService teacherService;
+    /** S-007②：直测看板统计子域（行为断言迁移） */
+    private TeacherDashboardService dashboardService;
 
     private final UUID tenantId = UUID.randomUUID();
     private final UUID teacherUserId = UUID.randomUUID();
@@ -41,18 +44,21 @@ class TeacherDashboardTest {
     void setUp() {
         riskEventMapper = mock(RiskEventMapper.class);
         sessionMapper = mock(CounselingSessionMapper.class);
+        dashboardService = new TeacherDashboardService(riskEventMapper, sessionMapper);
         teacherService = new TeacherService(
                 riskEventMapper,
                 sessionMapper,
                 mock(UserMapper.class),
-                mock(TeacherNoteMapper.class),
+                new TeacherNoteStore(mock(TeacherNoteMapper.class)),
                 mock(NotificationMapper.class),
                 mock(MessageSummaryMapper.class),
                 mock(FieldEncryptionService.class),
                 mock(SessionAccessService.class),
                 mock(AuditLogService.class),
                 new com.mindsafe.service.teacher.AlertTodoMutePolicy(),
-                new com.mindsafe.service.casemanage.CaseLifecycleService());
+                new com.mindsafe.service.casemanage.CaseLifecycleService(), mock(MessageSummaryService.class),
+                mock(AlertLifecycleService.class),
+                mock(TeacherDashboardService.class));
     }
 
     private CounselingSession ratedSession(int rating) {
@@ -82,7 +88,7 @@ class TeacherDashboardTest {
         // 近 30 天有评价会话 2 条（4★、5★）
         when(sessionMapper.selectList(any())).thenReturn(List.of(ratedSession(4), ratedSession(5)));
 
-        TeacherService.DashboardVO vo = teacherService.getDashboard(tenantId, teacherUserId);
+        TeacherService.DashboardVO vo = dashboardService.getDashboard(tenantId);
 
         assertEquals(2L, vo.pendingAlerts());
         assertEquals(5L, vo.todayAlerts());
@@ -102,7 +108,7 @@ class TeacherDashboardTest {
         when(sessionMapper.selectObjs(any())).thenReturn(List.of());
         when(sessionMapper.selectList(any())).thenReturn(List.of());
 
-        TeacherService.DashboardVO vo = teacherService.getDashboard(tenantId, teacherUserId);
+        TeacherService.DashboardVO vo = dashboardService.getDashboard(tenantId);
 
         assertEquals(0L, vo.pendingAlerts());
         assertEquals(0L, vo.todayAlerts());
@@ -120,7 +126,7 @@ class TeacherDashboardTest {
         // List.of 不允许 null 元素，用 Arrays.asList
         when(sessionMapper.selectObjs(any())).thenReturn(Arrays.asList(UUID.randomUUID(), null, UUID.randomUUID()));
 
-        TeacherService.DashboardVO vo = teacherService.getDashboard(tenantId, teacherUserId);
+        TeacherService.DashboardVO vo = dashboardService.getDashboard(tenantId);
 
         assertEquals(2L, vo.activeStudents());
     }

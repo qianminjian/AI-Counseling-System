@@ -1,6 +1,8 @@
 package com.mindsafe.api.controller;
 
 import com.mindsafe.common.dto.ApiResponse;
+import com.mindsafe.common.dto.ErrorCode;
+import com.mindsafe.common.exception.BizException;
 import com.mindsafe.domain.entity.School;
 import com.mindsafe.service.platform.PlatformService;
 import org.springframework.web.bind.annotation.*;
@@ -43,7 +45,7 @@ public class PlatformController {
     public ApiResponse<Map<String, Object>> getTenantDetail(@PathVariable UUID tenantId) {
         Map<String, Object> detail = platformService.tenantDetail(tenantId);
         if (detail == null) {
-            return ApiResponse.error(404, "租户不存在");
+            throw new BizException(ErrorCode.RESOURCE_NOT_FOUND, "租户不存在");
         }
         return ApiResponse.ok(detail);
     }

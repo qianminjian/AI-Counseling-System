@@ -3,6 +3,10 @@
 -- 合并 Flyway V3/V4/V6 种子数据最终态 | 生成日期：2026-08-02
 -- 用途：新环境建库后初始化必需静态数据
 -- 前置：先执行 01_schema.sql
+--
+-- ⚠️ doing/92 R-024：本脚本仅限灾备/演示环境执行，禁止生产执行——
+--    生产凭据与邀请码按 V27 处置（minjianq 哈希失效、TRIAL 码禁用、
+--    DEMO2026 保留为有意演示入口）；prod 误执行会复活已知凭据。
 -- ============================================================
 
 -- ==================== 1. 系统预置角色 ====================
@@ -55,7 +59,9 @@ VALUES ('90000000-0000-0000-0000-000000000011', '90000000-0000-0000-0000-0000000
 ON CONFLICT (tenant_id, school_code) DO NOTHING;
 
 -- 试用咨询师（临时密码: Trial@MindSafe2026!，首次登录强制改密）
--- doing/92 R-024 核实：密码哈希已被 V27 失效化（'!INVALIDATED' 前缀恒 false，2026-07-28 处置裁决）——本行为历史参照，勿在未失效环境执行
+-- doing/92 R-024：密码哈希已置为 V27 失效标记（'!' 前缀恒 false）——
+-- 原 BCrypt 哈希已明文泄露（V6 注释），本脚本在新环境执行不得复活可用凭据；
+-- 生产部署后由管理员重置新密码再启用登录（V27 处置裁决，2026-07-28）。
 INSERT INTO tenant_template.users (user_id, tenant_id, school_id, user_type, pseudonym, status, password_hash, must_change_password)
 VALUES (
     '90000000-0000-0000-0000-000000000002',
@@ -64,7 +70,7 @@ VALUES (
     'psych_teacher',
     'minjianq',
     'active',
-    '$2a$10$Zw1t498ud1DXDEBUUlYzQu2IHBy/cx69RJAbB0ZdwS8P7ziDZqF5C',
+    '!INVALIDATED-BY-V27-LEAKED-IN-MIGRATION',
     true
 ) ON CONFLICT (user_id) DO NOTHING;
 
@@ -79,15 +85,17 @@ VALUES (
 ) ON CONFLICT (user_role_id) DO NOTHING;
 
 -- ==================== 5. 试用邀请码 ====================
+-- doing/92 R-024：MINDSAFE-TRIAL-00x 与 V27 处置一致置为 disabled（生产试用由运营经管理接口签发）；
+-- 演示环境经 DEMO2026 注册（V27 裁决保留）。
 
 INSERT INTO tenant_template.trial_invite_codes (code_id, tenant_id, code, max_uses, expires_at, status)
 VALUES
-    ('91000000-0000-0000-0000-000000000001', '90000000-0000-0000-0000-000000000001', 'MINDSAFE-TRIAL-001', 50, '2027-06-30 23:59:59+08', 'active'),
-    ('91000000-0000-0000-0000-000000000002', '90000000-0000-0000-0000-000000000001', 'MINDSAFE-TRIAL-002', 50, '2027-06-30 23:59:59+08', 'active'),
-    ('91000000-0000-0000-0000-000000000003', '90000000-0000-0000-0000-000000000001', 'MINDSAFE-TRIAL-003', 50, '2027-06-30 23:59:59+08', 'active')
+    ('91000000-0000-0000-0000-000000000001', '90000000-0000-0000-0000-000000000001', 'MINDSAFE-TRIAL-001', 50, '2027-06-30 23:59:59+08', 'disabled'),
+    ('91000000-0000-0000-0000-000000000002', '90000000-0000-0000-0000-000000000001', 'MINDSAFE-TRIAL-002', 50, '2027-06-30 23:59:59+08', 'disabled'),
+    ('91000000-0000-0000-0000-000000000003', '90000000-0000-0000-0000-000000000001', 'MINDSAFE-TRIAL-003', 50, '2027-06-30 23:59:59+08', 'disabled')
 ON CONFLICT (tenant_id, code) DO NOTHING;
 
--- 演示邀请码（长期有效）
+-- 演示邀请码（V27 处置裁决保留：有意演示入口，承载 TRIAL 租户注册链路；到期 2027-12-31）
 INSERT INTO tenant_template.trial_invite_codes (code_id, tenant_id, code, max_uses, expires_at, status)
 VALUES
     ('91000000-0000-0000-0000-000000000010', '90000000-0000-0000-0000-000000000001', 'DEMO2026', 100, '2027-12-31 23:59:59+08', 'active')

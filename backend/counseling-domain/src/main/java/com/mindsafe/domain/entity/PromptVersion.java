@@ -8,7 +8,7 @@ import java.util.UUID;
 /**
  * Prompt 版本实体（AI-005：版本管理 + A/B 测试分组）
  */
-@TableName(value = "prompt_versions", schema = "tenant_template")
+@TableName(value = "prompt_versions", schema = TenantSchema.TENANT_TEMPLATE)
 public class PromptVersion {
 
     /** M7 审核发布流状态（V36）：草稿 */

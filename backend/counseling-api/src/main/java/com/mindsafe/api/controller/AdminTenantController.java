@@ -1,6 +1,7 @@
 package com.mindsafe.api.controller;
 
 import com.mindsafe.api.security.JwtAuthenticationFilter.TenantContext;
+import com.mindsafe.api.security.SecuritySupport;
 import com.mindsafe.common.dto.ApiResponse;
 import com.mindsafe.domain.entity.Tenant;
 import com.mindsafe.service.audit.AuditLogService;
@@ -53,7 +54,7 @@ public class AdminTenantController {
     @PostMapping("/provision")
     public ApiResponse<Map<String, Object>> provision(
             @RequestBody Map<String, String> body, Authentication auth) {
-        TenantContext ctx = (TenantContext) auth.getDetails();
+        TenantContext ctx = SecuritySupport.requireContext(auth);
         String tenantCode = body.get("tenantCode");
         String tenantName = body.get("tenantName");
         String adminPhone = body.get("adminPhone");
@@ -87,7 +88,7 @@ public class AdminTenantController {
     public ApiResponse<Void> suspend(@PathVariable UUID tenantId,
                                      @RequestBody(required = false) Map<String, String> body,
                                      Authentication auth) {
-        TenantContext ctx = (TenantContext) auth.getDetails();
+        TenantContext ctx = SecuritySupport.requireContext(auth);
         String reason = body != null ? body.get("reason") : null;
         provisioningService.suspendTenant(tenantId, reason);
         auditLogService.log(ctx.tenantId(), ctx.userId(), "TENANT_SUSPEND", "tenant", tenantId, reason);
@@ -97,7 +98,7 @@ public class AdminTenantController {
     /** 恢复租户 */
     @PostMapping("/{tenantId}/resume")
     public ApiResponse<Void> resume(@PathVariable UUID tenantId, Authentication auth) {
-        TenantContext ctx = (TenantContext) auth.getDetails();
+        TenantContext ctx = SecuritySupport.requireContext(auth);
         provisioningService.resumeTenant(tenantId);
         auditLogService.log(ctx.tenantId(), ctx.userId(), "TENANT_RESUME", "tenant", tenantId, null);
         return ApiResponse.ok(null);

@@ -1,7 +1,10 @@
 package com.mindsafe.api.controller;
 
 import com.mindsafe.api.security.JwtAuthenticationFilter.TenantContext;
+import com.mindsafe.api.security.SecuritySupport;
 import com.mindsafe.common.dto.ApiResponse;
+import com.mindsafe.common.dto.ErrorCode;
+import com.mindsafe.common.exception.BizException;
 import com.mindsafe.service.toc.TocPrivacyService;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
@@ -30,7 +33,7 @@ public class TocPrivacyController {
         try {
             return ApiResponse.ok(tocPrivacyService.getDataOverview(accountId(auth)));
         } catch (IllegalArgumentException e) {
-            return ApiResponse.error(400, e.getMessage());
+            throw new BizException(ErrorCode.PARAM_INVALID, e.getMessage());
         }
     }
 
@@ -39,17 +42,17 @@ public class TocPrivacyController {
     public ApiResponse<Map<String, Object>> deleteAll(Authentication auth,
                                                       @RequestHeader(value = "X-Confirm", required = false) String confirm) {
         if (!"CONFIRM".equals(confirm)) {
-            return ApiResponse.error(400, "需要 X-Confirm: CONFIRM 二次确认");
+            throw new BizException(ErrorCode.PARAM_INVALID, "需要 X-Confirm: CONFIRM 二次确认");
         }
         try {
             return ApiResponse.ok(tocPrivacyService.deleteAllData(accountId(auth)));
         } catch (IllegalArgumentException e) {
-            return ApiResponse.error(400, e.getMessage());
+            throw new BizException(ErrorCode.PARAM_INVALID, e.getMessage());
         }
     }
 
     private UUID accountId(Authentication auth) {
-        TenantContext ctx = (TenantContext) auth.getDetails();
+        TenantContext ctx = SecuritySupport.requireContext(auth);
         return ctx.userId();
     }
 }

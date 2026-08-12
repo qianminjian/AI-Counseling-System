@@ -14,7 +14,7 @@ import java.util.UUID;
  * 业务告警同步写（source=alertservice），供管理端 M2 告警中心历史查询。
  * 设计见 doing/83 服务降级监控 §6.4。
  */
-@TableName(value = "alert_events", schema = "tenant_template")
+@TableName(value = "alert_events", schema = TenantSchema.TENANT_TEMPLATE)
 public class AlertEvent {
 
     /** 来源：AlertManager 采集器拉取 */

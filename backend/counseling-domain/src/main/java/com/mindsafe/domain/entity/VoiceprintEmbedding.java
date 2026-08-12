@@ -10,7 +10,7 @@ import java.util.UUID;
  * 声纹 embedding 向量（remote 模式：前端提取后传服务端存储/比对）
  * 隐私：仅存 256-dim 特征向量，不存原始音频
  */
-@TableName(value = "voiceprint_embeddings", schema = "tenant_template", autoResultMap = true)
+@TableName(value = "voiceprint_embeddings", schema = TenantSchema.TENANT_TEMPLATE, autoResultMap = true)
 public class VoiceprintEmbedding {
 
     @TableId(value = "id", type = IdType.AUTO)

@@ -6,12 +6,15 @@ import com.mindsafe.ai.chat.AiChatService;
 import com.mindsafe.ai.orchestrator.EmotionStateMachine;
 import com.mindsafe.ai.orchestrator.EntryMoodStrategyResolver;
 import com.mindsafe.ai.orchestrator.PromptOrchestrationService;
+import com.mindsafe.ai.orchestrator.ReplyEmotionResolver;
+import com.mindsafe.ai.risk.RiskKeywordRegistry;
+import com.mindsafe.ai.safety.HighSensitivityCategories;
 import com.mindsafe.ai.prompt.PromptTemplateService;
 import com.mindsafe.ai.safety.ConfidentialityNotice;
 import com.mindsafe.ai.safety.CrisisHotlineProvider;
 import com.mindsafe.ai.safety.CrisisResourceProvider;
 import com.mindsafe.ai.safety.CrisisResources;
-import com.mindsafe.ai.safety.PiiDesensitizer;
+import com.mindsafe.common.util.PiiDesensitizer;
 import com.mindsafe.common.dto.chat.SessionInfo;
 import com.mindsafe.common.dto.chat.StreamMessageEvent;
 import com.mindsafe.common.dto.risk.RiskDetectionResult;
@@ -196,7 +199,7 @@ class ConversationServiceImplTest {
                 new ObjectMapper(), new SimpleMeterRegistry(), sessionStateStore);
 
         service = new ConversationServiceImpl(aiChatService,
-                riskProcessor, piiDesensitizer, sessionStore,
+                riskProcessor, sessionStore,
                 userMapper, profileService,
                 usageTimeLimitService, longTermMemoryService,
                 ragAdvisorService,
@@ -208,7 +211,8 @@ class ConversationServiceImplTest {
                 allianceEnhancer, cbtStageRouter,
                 sessionEndAnalyticsService, sessionStateStore,
                 contextAgent, new ObjectMapper(),
-                personalInfoExtractor, promptAssemblyService, themeEvolutionEngine, new NudgeProperties());
+                personalInfoExtractor, promptAssemblyService, themeEvolutionEngine, new NudgeProperties(),
+                new NudgeDecisionModel(), new ReplyEmotionResolver(), new HighSensitivityCategories(new RiskKeywordRegistry()));
     }
 
     /** createSession 并捕获内部生成的 sessionId */
@@ -381,7 +385,7 @@ class ConversationServiceImplTest {
                     new com.mindsafe.service.security.FieldEncryptionService(
                             true, TEST_KEY, 1, "", new org.springframework.core.env.StandardEnvironment());
             ConversationServiceImpl keyedService = new ConversationServiceImpl(aiChatService,
-                    riskProcessor, piiDesensitizer, sessionStore,
+                    riskProcessor, sessionStore,
                     userMapper, profileService,
                     usageTimeLimitService, longTermMemoryService,
                     ragAdvisorService,
@@ -394,7 +398,8 @@ class ConversationServiceImplTest {
                     allianceEnhancer, cbtStageRouter,
                 sessionEndAnalyticsService, sessionStateStore,
                 contextAgent, new ObjectMapper(),
-                personalInfoExtractor, promptAssemblyService, themeEvolutionEngine, new NudgeProperties());
+                personalInfoExtractor, promptAssemblyService, themeEvolutionEngine, new NudgeProperties(),
+                new NudgeDecisionModel(), new ReplyEmotionResolver(), new HighSensitivityCategories(new RiskKeywordRegistry()));
 
             User user = new User();
             user.setPseudonym("小明");
@@ -847,13 +852,13 @@ class ConversationServiceImplTest {
         @DisplayName("语义分类只收脱敏文（原始 PII 不进 LLM）")
         void classifierReceivesDesensitizedText() {
             UUID sessionId = createSession("sad");
-            when(piiDesensitizer.desensitize(anyString())).thenReturn("我住在[地址]，很难过");
+            // S-012：脱敏器下沉 common 后服务内联真实实例（纯正则无状态），不再 mock——断言真实脱敏输出
             when(usageTimeLimitService.isExceeded(any(), any())).thenReturn(false);
             mockLlmReply();
 
             service.sendMessageStream(tenantId, studentId, sessionId, "我住在幸福路1号，很难过").collectList().block();
 
-            verify(riskProcessor).applySemanticRisk(any(RiskDetectionResult.class), eq("我住在[地址]，很难过"), anyInt());
+            verify(riskProcessor).applySemanticRisk(any(RiskDetectionResult.class), eq("某地，很难过"), anyInt());
         }
     }
 

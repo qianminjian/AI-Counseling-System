@@ -1,6 +1,7 @@
 package com.mindsafe.api.controller;
 
 import com.mindsafe.api.security.JwtAuthenticationFilter.TenantContext;
+import com.mindsafe.api.security.SecuritySupport;
 import com.mindsafe.common.dto.ApiResponse;
 import com.mindsafe.service.safety.SosEventService;
 import org.springframework.security.core.Authentication;
@@ -31,7 +32,7 @@ public class SosController {
      */
     @PostMapping("/events")
     public ApiResponse<Map<String, Object>> reportSosEvent(Authentication auth) {
-        TenantContext ctx = (TenantContext) auth.getDetails();
+        TenantContext ctx = SecuritySupport.requireContext(auth);
         SosEventService.SosResult result = sosEventService.recordSosEvent(ctx.tenantId(), ctx.userId());
         return ApiResponse.ok(Map.of(
                 "deduplicated", result.deduplicated(),

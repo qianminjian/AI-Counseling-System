@@ -75,8 +75,8 @@ def metrics():
             extra_lines=[
                 "# HELP tts_engine_available TTS engine availability (1=ready 0=unavailable)",
                 "# TYPE tts_engine_available gauge",
-                f'tts_engine_available{{engine="cosyvoice"}} {1 if _TTS_POLICY.backends[0].is_available() else 0}',
-                f'tts_engine_available{{engine="edge_tts"}} {1 if _TTS_POLICY.backends[1].is_available() else 0}',
+                f'tts_engine_available{{engine="cosyvoice"}} {1 if _TTS_POLICY.primary.is_available() else 0}',
+                f'tts_engine_available{{engine="edge_tts"}} {1 if _TTS_POLICY.secondary.is_available() else 0}',
             ],
         )
         + _degraded_metrics.render(
@@ -212,13 +212,14 @@ _TTS_POLICY = DegradationPolicy(
     override_reader=_read_tts_override,
 )
 # X-TTS-Engine 响应头映射（内部引擎名 → 对外契约名）
+# S-018（doing/93）：对外名映射（name→对外展示），与装配顺序无关；消费点经 policy.primary/secondary 取引擎
 _ENGINE_HEADER_MAP = {"cosyvoice": "cosyvoice-cloud", "edge_tts": "edge-tts"}
 
-if _TTS_POLICY.backends[0].is_available():
+if _TTS_POLICY.primary.is_available():
     logger.info("✅ 阿里云 CosyVoice TTS 就绪 (model=%s)", DASHSCOPE_TTS_MODEL)
 else:
     logger.warning("阿里云 CosyVoice 不可用（API Key 缺失或 SDK 未安装）")
-if _TTS_POLICY.backends[1].is_available():
+if _TTS_POLICY.secondary.is_available():
     logger.info("✅ edge-tts 备用方案就绪")
 else:
     logger.warning("edge-tts 未安装，备用方案不可用")
@@ -308,9 +309,9 @@ def health():
         engine = "cosyvoice-cloud"
     elif override == "edge_tts":
         engine = "edge-tts"
-    elif _TTS_POLICY.backends[0].is_available():
+    elif _TTS_POLICY.primary.is_available():
         engine = "cosyvoice-cloud"
-    elif _TTS_POLICY.backends[1].is_available():
+    elif _TTS_POLICY.secondary.is_available():
         engine = "edge-tts"
     else:
         engine = "none"
@@ -383,8 +384,8 @@ async def synthesize(req: TtsRequest):
     _metrics.record(engine_label, time.time() - t_start)
     # OPS-MON-002（BUG-TTS-01）：运行期降级事件计数——主引擎失效但兜底可用
     # 判定：实际引擎 ≠ 首选引擎 且 非 retried（instruct 无指令重试成功不算降级）；全失败 503 走 except 不计数
-    if result.engine != _TTS_POLICY.backends[0].name and not result.retried:
-        _degraded_metrics.record(f"{_TTS_POLICY.backends[0].name}->{result.engine}", 0.0)
+    if result.engine != _TTS_POLICY.primary.name and not result.retried:
+        _degraded_metrics.record(f"{_TTS_POLICY.primary.name}->{result.engine}", 0.0)
     # doing/87 RUNTIME-001（AC-2）：覆盖目标不可用走兜底 → overridden-fallback 事件（不静默）
     if result.overridden and result.engine != _read_tts_override():
         _degraded_metrics.record("overridden-fallback", 0.0)

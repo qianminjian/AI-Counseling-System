@@ -13,7 +13,7 @@ import java.util.UUID;
  * TOC-006 远程管理软件侧：家长设置设备偏好（音量/音色/对话偏好），
  * 设备端拉取配置时下发；按 family_account_id 隔离（doing/85 §四）。
  */
-@TableName(value = "device_preferences", schema = "tenant_template")
+@TableName(value = "device_preferences", schema = TenantSchema.TENANT_TEMPLATE)
 public class DevicePreference {
 
     @TableId(type = IdType.INPUT)

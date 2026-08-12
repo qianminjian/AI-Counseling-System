@@ -79,9 +79,9 @@ public class PromptOrchestrationService {
                 ? ctx.currentEmotion() : ctx.entryMood();
         String mood = moodResolver.normalize(rawMood);
     
-        // 3. 情绪状态机转移（ORCH-003，design/44 §7.2）
+        // 3. 情绪状态机转移（ORCH-003，design/44 §7.2；S-005：风险裁决已在上方短路，不再传死参数）
         EmotionStateMachine.Transition transition = stateMachine.transition(
-                ctx.previousEmotionState(), ctx.previousReliefCount(), mood, false);
+                ctx.previousEmotionState(), ctx.previousReliefCount(), mood);
     
         // 4. 情绪策略映射 + 门控
         EntryMoodStrategyResolver.MoodStrategy strategy = moodResolver.resolve(mood);

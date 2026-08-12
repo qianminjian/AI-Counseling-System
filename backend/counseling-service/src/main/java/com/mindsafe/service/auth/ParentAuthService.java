@@ -32,17 +32,21 @@ public class ParentAuthService {
     private final UserMapper userMapper;
     private final PasswordEncoder passwordEncoder;
     private final LoginLockoutService lockoutService;
+    /** S-001（doing/93）：家长登录租户门禁（SEC-004 补齐） */
+    private final TenantAccessGuard tenantAccessGuard;
 
     public ParentAuthService(ParentAccountMapper parentAccountMapper,
                              ParentStudentLinkMapper parentStudentLinkMapper,
                              UserMapper userMapper,
                              PasswordEncoder passwordEncoder,
-                             LoginLockoutService lockoutService) {
+                             LoginLockoutService lockoutService,
+                             TenantAccessGuard tenantAccessGuard) {
         this.parentAccountMapper = parentAccountMapper;
         this.parentStudentLinkMapper = parentStudentLinkMapper;
         this.userMapper = userMapper;
         this.passwordEncoder = passwordEncoder;
         this.lockoutService = lockoutService;
+        this.tenantAccessGuard = tenantAccessGuard;
     }
 
     /**
@@ -143,6 +147,11 @@ public class ParentAuthService {
             throw new BizException(ErrorCode.UNAUTHORIZED, "手机号或密码错误");
         }
         lockoutService.clearFailures(phone);
+
+        // S-001（doing/93）：家长登录补齐租户门禁（SEC-004，原路径缺失——与业务登录不对称）
+        if (!tenantAccessGuard.isLoginAllowed(account.getTenantId())) {
+            throw new BizException(ErrorCode.FORBIDDEN, "学校账号暂时不可用，请联系管理员");
+        }
 
         // 更新最后登录时间
         ParentAccount update = new ParentAccount();

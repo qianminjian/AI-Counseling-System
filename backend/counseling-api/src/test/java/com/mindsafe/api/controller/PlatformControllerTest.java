@@ -1,5 +1,6 @@
 package com.mindsafe.api.controller;
 
+import com.mindsafe.common.exception.BizException;
 import com.mindsafe.domain.entity.School;
 import com.mindsafe.service.platform.PlatformService;
 import org.junit.jupiter.api.BeforeEach;
@@ -12,6 +13,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -87,10 +89,9 @@ class PlatformControllerTest {
     void tenantDetail_notFound() {
         when(platformService.tenantDetail(tenantId)).thenReturn(null);
 
-        var resp = controller.getTenantDetail(tenantId);
-
-        assertThat(resp.code()).isEqualTo(404);
-        assertThat(resp.message()).isEqualTo("租户不存在");
+        assertThatThrownBy(() -> controller.getTenantDetail(tenantId))
+                .isInstanceOf(BizException.class)
+                .hasMessageContaining("租户不存在");
     }
 
     @Test

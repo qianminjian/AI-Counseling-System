@@ -1,3 +1,4 @@
+import { deriveActivityState } from '../utils/activityState'
 import { useState, useRef, useEffect, useCallback } from 'react'
 import ChatRoomHeader from './ChatRoomHeader'
 import VoiceConsentDialog, { useVoiceConsent } from './VoiceConsentDialog'
@@ -143,12 +144,19 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: Se
     }
   }, [pipelineError, showNotice])
 
+  // S-015（doing/93）：会话活动状态单一派生（busy/idle/micWanted 单一事实源，消费方只读）
+  const activity = deriveActivityState({
+    streaming, ttsPlaying: tts.playing, ttsMuted: tts.muted,
+    recording, analyzing,
+    wakeEnabled, hasConsent: wakeConsent.hasConsent(),
+  })
+
   /* ===== 语音唤醒状态机（design/28 §1.1）：off / standby（待唤醒）/ active（会话窗）
      监听严格限定在本次对话内：仅 ChatRoom 挂载期间由 enabled 控制，卸载即释放麦克风 ===== */
   const voiceCall = useVoiceCallMode({
     enabled: wakeEnabled && wakeConsent.hasConsent(),
     tts,
-    busy: streaming || tts.playing || recording || analyzing,
+    busy: activity.busy,
     onFinalTranscript: (text) => {
       // 唤醒后孩子说话 → 走与按住说话相同的自动发送流程
       // 失败时回填输入框防丢字（与 handleRecordingComplete 保持一致）
@@ -163,7 +171,7 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: Se
   const { recordInteraction, resetSilenceBase } = useSilenceNudge({
     sessionId: session.sessionId,
     // AI 忙碌（流式/录音/识别/朗读）或静音时不做冷场检测；唤醒模式（standby/active）时互斥
-    idle: !streaming && !recording && !analyzing && !tts.playing && !tts.muted && voiceCall.mode === 'off',
+    idle: activity.idleBase && voiceCall.mode === 'off',
     onNudge: (text) => {
       // 暖场回复：追加 AI 消息气泡 + TTS 朗读（复用现有体验，跟随所选音色）
       setMessages((prev) => [...prev, { role: 'assistant', content: text, emotion: session.emotionTag }])
@@ -186,7 +194,7 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: Se
   // DC-012：安卓音频路由保护抽离（SPEC §26）——播放中释放麦克风；结束 600ms 预热（userInteracted 联动在 hook 内部）
   useAndroidAudioRouting({
     playing: tts.playing,
-    micWanted: hasConsent() && wakeEnabled,
+    micWanted: activity.micWanted,
     releaseStream,
     warmUpMic,
   })

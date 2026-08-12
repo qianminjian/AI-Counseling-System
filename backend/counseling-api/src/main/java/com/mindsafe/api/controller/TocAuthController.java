@@ -1,7 +1,10 @@
 package com.mindsafe.api.controller;
 
 import com.mindsafe.api.security.JwtAuthenticationFilter.TenantContext;
+import com.mindsafe.api.security.SecuritySupport;
 import com.mindsafe.common.dto.ApiResponse;
+import com.mindsafe.common.dto.ErrorCode;
+import com.mindsafe.common.exception.BizException;
 import com.mindsafe.domain.entity.TocFamilyAccount;
 import com.mindsafe.service.toc.TocAuthService;
 import com.mindsafe.api.security.TocAuthProvider;
@@ -32,48 +35,48 @@ public class TocAuthController {
 
     /** 发送验证码（注册/登录共用，匿名） */
     @PostMapping("/send-code")
-    public ApiResponse<Map<String, Object>> sendCode(@RequestBody Map<String, String> body) {
-        String phone = body.get("phone");
+    public ApiResponse<Map<String, Object>> sendCode(@RequestBody PhoneCodeRequest body) {
+        String phone = body.phone();
         try {
             return ApiResponse.ok(tocAuthService.sendCode(phone));
         } catch (IllegalArgumentException e) {
-            return ApiResponse.error(400, e.getMessage());
+            throw new BizException(ErrorCode.PARAM_INVALID, e.getMessage());
         }
     }
 
     /** 注册：手机号 + 验证码 → 家庭账号 + token */
     @PostMapping("/register")
-    public ApiResponse<Map<String, Object>> register(@RequestBody Map<String, String> body) {
-        String phone = body.get("phone");
-        String code = body.get("code");
+    public ApiResponse<Map<String, Object>> register(@RequestBody RegisterRequest body) {
+        String phone = body.phone();
+        String code = body.code();
         try {
             TocFamilyAccount account = tocAuthService.register(phone, code);
             return ApiResponse.ok(tocAuthProvider.buildSession(account));
         } catch (IllegalArgumentException e) {
-            return ApiResponse.error(400, e.getMessage());
+            throw new BizException(ErrorCode.PARAM_INVALID, e.getMessage());
         }
     }
 
     /** 登录：手机号 + 验证码 → token */
     @PostMapping("/login")
-    public ApiResponse<Map<String, Object>> login(@RequestBody Map<String, String> body) {
-        String phone = body.get("phone");
-        String code = body.get("code");
+    public ApiResponse<Map<String, Object>> login(@RequestBody RegisterRequest body) {
+        String phone = body.phone();
+        String code = body.code();
         try {
             TocFamilyAccount account = tocAuthService.login(phone, code);
             return ApiResponse.ok(tocAuthProvider.buildSession(account));
         } catch (IllegalArgumentException e) {
-            return ApiResponse.error(400, e.getMessage());
+            throw new BizException(ErrorCode.PARAM_INVALID, e.getMessage());
         }
     }
 
     /** 当前账号信息（登录态） */
     @GetMapping("/me")
     public ApiResponse<Map<String, Object>> me(Authentication auth) {
-        TenantContext ctx = (TenantContext) auth.getDetails();
+        TenantContext ctx = SecuritySupport.requireContext(auth);
         TocFamilyAccount account = tocAuthService.getById(ctx.userId());
         if (account == null) {
-            return ApiResponse.error(404, "账号不存在");
+            throw new BizException(ErrorCode.RESOURCE_NOT_FOUND, "账号不存在");
         }
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("familyAccountId", account.getFamilyAccountId());
@@ -85,5 +88,12 @@ public class TocAuthController {
     private static String maskPhone(String phone) {
         return phone == null || phone.length() < 7 ? phone
                 : phone.substring(0, 3) + "****" + phone.substring(7);
+    }
+
+    /** S-011③（doing/93）：请求类型化 record（替代 Map 手工解析） */
+    public record PhoneCodeRequest(String phone) {
+    }
+
+    public record RegisterRequest(String phone, String code) {
     }
 }

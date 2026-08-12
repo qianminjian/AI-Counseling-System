@@ -9,7 +9,7 @@ import java.util.UUID;
 /**
  * 风险事件实体（对应 tenant_template.risk_events）
  */
-@TableName(value = "risk_events", schema = "tenant_template")
+@TableName(value = "risk_events", schema = TenantSchema.TENANT_TEMPLATE)
 public class RiskEvent {
 
     /** C2（2026-08-05）：状态魔法值收敛——待处理（非实时报警/留痕事件均使用） */
@@ -41,6 +41,10 @@ public class RiskEvent {
     /** reason_codes JSON 数组文本（如 ["intent_explicit","plan_method"]） */
     @TableField(typeHandler = JsonbTypeHandler.class)
     private String reasonCodes;
+
+    // doing/92 R-015：Layer2 输出安全审查 JSON 留痕（TC260 人工抽检依据，V46）
+    @TableField(typeHandler = JsonbTypeHandler.class)
+    private String reviewJson;
 
     private String detectedBy;
     private Instant detectedAt;
@@ -116,6 +120,9 @@ public class RiskEvent {
 
     public String getReasonCodes() { return reasonCodes; }
     public void setReasonCodes(String reasonCodes) { this.reasonCodes = reasonCodes; }
+
+    public String getReviewJson() { return reviewJson; }
+    public void setReviewJson(String reviewJson) { this.reviewJson = reviewJson; }
 
     public String getDetectedBy() { return detectedBy; }
     public void setDetectedBy(String detectedBy) { this.detectedBy = detectedBy; }

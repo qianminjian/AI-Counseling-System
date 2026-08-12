@@ -1,5 +1,6 @@
 package com.mindsafe.service.teacher;
 
+import com.mindsafe.service.conversation.MessageSummaryService;
 import com.baomidou.mybatisplus.core.conditions.Wrapper;
 import com.mindsafe.common.exception.BizException;
 import com.mindsafe.domain.entity.TeacherNote;
@@ -54,14 +55,16 @@ class TeacherCaseStageTransitionTest {
                 riskEventMapper,
                 mock(CounselingSessionMapper.class),
                 userMapper,
-                teacherNoteMapper,
+                new TeacherNoteStore(teacherNoteMapper),
                 mock(NotificationMapper.class),
                 mock(MessageSummaryMapper.class),
                 fieldEncryptionService,
                 mock(SessionAccessService.class),
                 mock(AuditLogService.class),
                 new com.mindsafe.service.teacher.AlertTodoMutePolicy(),
-                new com.mindsafe.service.casemanage.CaseLifecycleService());
+                new com.mindsafe.service.casemanage.CaseLifecycleService(), mock(MessageSummaryService.class),
+                mock(AlertLifecycleService.class),
+                mock(TeacherDashboardService.class));
     }
 
     private void givenStudent() {

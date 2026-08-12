@@ -1,7 +1,10 @@
 package com.mindsafe.api.controller;
 
 import com.mindsafe.api.security.JwtAuthenticationFilter.TenantContext;
+import com.mindsafe.api.security.SecuritySupport;
 import com.mindsafe.common.dto.ApiResponse;
+import com.mindsafe.common.dto.ErrorCode;
+import com.mindsafe.common.exception.BizException;
 import com.mindsafe.service.audit.AuditLogService;
 import com.mindsafe.service.knowledge.EditorialWorkflowService;
 import com.mindsafe.service.knowledge.KnowledgeBaseService;
@@ -52,12 +55,12 @@ public class KnowledgeBaseController {
     /** 摄入文档（分块 + 嵌入） */
     @PostMapping("/documents")
     public ApiResponse<Map<String, Object>> ingest(
-            @RequestBody Map<String, String> body, Authentication auth) {
-        TenantContext ctx = (TenantContext) auth.getDetails();
-        String title = body.get("title");
-        String category = body.getOrDefault("category", "general");
-        String content = body.get("content");
-        String source = body.get("source");
+            @RequestBody IngestDocumentRequest body, Authentication auth) {
+        TenantContext ctx = SecuritySupport.requireContext(auth);
+        String title = body.title();
+        String category = body.category() == null ? "general" : body.category();
+        String content = body.content();
+        String source = body.source();
 
         if (title == null || content == null || content.isBlank()) {
             return ApiResponse.ok(Map.of("error", "title 和 content 为必填项"));
@@ -81,7 +84,7 @@ public class KnowledgeBaseController {
     @PostMapping(value = "/corpus", consumes = "text/plain;charset=UTF-8")
     public ApiResponse<KnowledgeCorpusIngestService.IngestReport> ingestCorpus(
             @RequestBody String corpusMarkdown, Authentication auth) {
-        TenantContext ctx = (TenantContext) auth.getDetails();
+        TenantContext ctx = SecuritySupport.requireContext(auth);
         KnowledgeCorpusIngestService.IngestReport report =
                 corpusIngestService.ingestCorpus(corpusMarkdown);
 
@@ -99,7 +102,7 @@ public class KnowledgeBaseController {
             @RequestParam String query,
             @RequestParam(defaultValue = "3") int topK,
             Authentication auth) {
-        TenantContext ctx = (TenantContext) auth.getDetails();
+        TenantContext ctx = SecuritySupport.requireContext(auth);
         List<KnowledgeBaseService.KnowledgeChunk> results =
                 knowledgeBaseService.search(ctx.tenantId(), query, topK);
         return ApiResponse.ok(results);
@@ -110,14 +113,14 @@ public class KnowledgeBaseController {
     public ApiResponse<List<Map<String, Object>>> list(
             @RequestParam(required = false) String category,
             Authentication auth) {
-        TenantContext ctx = (TenantContext) auth.getDetails();
+        TenantContext ctx = SecuritySupport.requireContext(auth);
         return ApiResponse.ok(knowledgeBaseService.listDocuments(ctx.tenantId(), category));
     }
 
     /** 删除文档 */
     @DeleteMapping("/documents/{docId}")
     public ApiResponse<Void> delete(@PathVariable UUID docId, Authentication auth) {
-        TenantContext ctx = (TenantContext) auth.getDetails();
+        TenantContext ctx = SecuritySupport.requireContext(auth);
         knowledgeBaseService.deleteDocument(ctx.tenantId(), docId);
         auditLogService.log(ctx.tenantId(), ctx.userId(), "KNOWLEDGE_DELETE",
                 "knowledge_document", docId, null);
@@ -133,19 +136,19 @@ public class KnowledgeBaseController {
     @PutMapping("/documents/{docId}/review")
     public ApiResponse<Map<String, Object>> transitionReviewStatus(
             @PathVariable UUID docId,
-            @RequestBody Map<String, String> body,
+            @RequestBody ReviewTransitionRequest body,
             Authentication auth) {
-        TenantContext ctx = (TenantContext) auth.getDetails();
+        TenantContext ctx = SecuritySupport.requireContext(auth);
 
-        String targetStatus = body.get("targetStatus");
+        String targetStatus = body.targetStatus();
         if (targetStatus == null || targetStatus.isBlank()) {
-            return ApiResponse.error(400, "缺少 targetStatus 参数");
+            throw new BizException(ErrorCode.PARAM_INVALID, "缺少 targetStatus 参数");
         }
 
         // 当前状态以 DB 真实值为准（不信请求体，防绕过状态机）
         String dbStatus = knowledgeBaseService.findDocumentStatus(ctx.tenantId(), docId);
         if (dbStatus == null) {
-            return ApiResponse.error(404, "知识文档不存在: " + docId);
+            throw new BizException(ErrorCode.RESOURCE_NOT_FOUND, "知识文档不存在: " + docId);
         }
 
         ReviewStatus from = ReviewWorkflowStateMachine.fromDbStatus(dbStatus);
@@ -154,33 +157,33 @@ public class KnowledgeBaseController {
         // 构建元数据（从请求体提取门禁所需字段）
         KnowledgeMetadata metadata = new KnowledgeMetadata(
                 docId.toString(),
-                body.get("category"),
-                body.get("gradeBand"),
-                body.get("sourceType"),
-                body.get("evidenceLevel"),
+                body.category(),
+                body.gradeBand(),
+                body.sourceType(),
+                body.evidenceLevel(),
                 from,
                 0,
-                body.get("reviewer"),
+                body.reviewer(),
                 null,
-                "crisis_intervention".equals(body.get("category")));
+                "crisis_intervention".equals(body.category()));
 
         // 状态机 + 门禁组合校验
         ReviewGateValidator.GateResult gateResult =
                 reviewGateValidator.validateTransition(reviewStateMachine, from, to, metadata);
 
         if (!gateResult.passed()) {
-            return ApiResponse.error(400, "门禁校验失败: " + String.join("; ", gateResult.violations()));
+            throw new BizException(ErrorCode.PARAM_INVALID, "门禁校验失败: " + String.join("; ", gateResult.violations()));
         }
 
         // 门禁通过 → 状态与审核字段落库（KB-102，V30）
         knowledgeBaseService.transitionReviewStatus(ctx.tenantId(), docId,
                 ReviewWorkflowStateMachine.toDbStatus(to),
-                body.get("gradeBand"), body.get("sourceType"),
-                body.get("evidenceLevel"), body.get("reviewer"));
+                body.gradeBand(), body.sourceType(),
+                body.evidenceLevel(), body.reviewer());
 
         auditLogService.log(ctx.tenantId(), ctx.userId(), "KNOWLEDGE_REVIEW_TRANSITION",
                 "knowledge_document", docId,
-                from + " → " + to + ", reviewer=" + body.get("reviewer"));
+                from + " → " + to + ", reviewer=" + body.reviewer());
 
         return ApiResponse.ok(Map.of(
                 "docId", docId,
@@ -200,17 +203,17 @@ public class KnowledgeBaseController {
     @PostMapping("/documents/{docId}/editorial")
     public ApiResponse<Map<String, Object>> editorialAction(
             @PathVariable UUID docId,
-            @RequestBody Map<String, String> body,
+            @RequestBody EditorialActionRequest body,
             Authentication auth) {
-        TenantContext ctx = (TenantContext) auth.getDetails();
-        String action = body.get("action");
+        TenantContext ctx = SecuritySupport.requireContext(auth);
+        String action = body.action();
         if (action == null || action.isBlank()) {
-            return ApiResponse.error(400, "缺少 action 参数（submit/publish/reject/deprecate）");
+            throw new BizException(ErrorCode.PARAM_INVALID, "缺少 action 参数（submit/publish/reject/deprecate）");
         }
 
         EditorialWorkflowService.EditorialRequest request = new EditorialWorkflowService.EditorialRequest(
-                body.get("category"), body.get("gradeBand"), body.get("sourceType"),
-                body.get("evidenceLevel"), body.get("reviewer"));
+                body.category(), body.gradeBand(), body.sourceType(),
+                body.evidenceLevel(), body.reviewer());
 
         EditorialWorkflowService.TransitionResult result = switch (action) {
             case "submit" -> editorialWorkflowService.submitForReview(
@@ -218,17 +221,17 @@ public class KnowledgeBaseController {
             case "publish" -> editorialWorkflowService.publish(
                     ctx.tenantId(), ctx.userId(), docId, request);
             case "reject" -> editorialWorkflowService.reject(
-                    ctx.tenantId(), ctx.userId(), docId, body.get("reason"));
+                    ctx.tenantId(), ctx.userId(), docId, body.reason());
             case "deprecate" -> editorialWorkflowService.deprecate(
-                    ctx.tenantId(), ctx.userId(), docId, body.get("reason"));
+                    ctx.tenantId(), ctx.userId(), docId, body.reason());
             default -> null;
         };
 
         if (result == null) {
-            return ApiResponse.error(400, "未知 action: " + action);
+            throw new BizException(ErrorCode.PARAM_INVALID, "未知 action: " + action);
         }
         if (!result.success()) {
-            return ApiResponse.error(400, "采编门禁拒绝: " + String.join("; ", result.violations()));
+            throw new BizException(ErrorCode.PARAM_INVALID, "采编门禁拒绝: " + String.join("; ", result.violations()));
         }
 
         return ApiResponse.ok(Map.of(
@@ -250,7 +253,7 @@ public class KnowledgeBaseController {
     public ApiResponse<EditorialWorkflowService.OperationalReport> operationalReport(
             @RequestParam(value = "missedQueries", required = false) String missedQueriesParam,
             Authentication auth) {
-        TenantContext ctx = (TenantContext) auth.getDetails();
+        TenantContext ctx = SecuritySupport.requireContext(auth);
 
         // 分类 × 状态覆盖输入：文档列表（含全部审核状态）
         Map<String, List<String>> docsByCategory =
@@ -271,5 +274,17 @@ public class KnowledgeBaseController {
                 "knowledge_document");
 
         return ApiResponse.ok(report);
+    }
+
+    /** S-011③（doing/93）：请求类型化 record（替代 Map 手工解析） */
+    public record IngestDocumentRequest(String title, String category, String content, String source) {
+    }
+
+    public record ReviewTransitionRequest(String targetStatus, String category, String gradeBand,
+                                           String sourceType, String evidenceLevel, String reviewer) {
+    }
+
+    public record EditorialActionRequest(String action, String category, String gradeBand,
+                                         String sourceType, String evidenceLevel, String reason, String reviewer) {
     }
 }

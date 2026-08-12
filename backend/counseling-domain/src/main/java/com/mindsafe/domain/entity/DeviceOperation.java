@@ -12,7 +12,7 @@ import java.util.UUID;
  * <p>
  * P1：batchOperation/ota/reboot/factory-reset 受理留痕（审计发现无落库，管理员误以为已执行）。
  */
-@TableName(value = "device_operations", schema = "tenant_template")
+@TableName(value = "device_operations", schema = TenantSchema.TENANT_TEMPLATE)
 public class DeviceOperation {
 
     @TableId(type = IdType.INPUT)

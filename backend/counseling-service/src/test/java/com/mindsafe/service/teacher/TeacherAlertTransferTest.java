@@ -1,5 +1,6 @@
 package com.mindsafe.service.teacher;
 
+import com.mindsafe.service.conversation.MessageSummaryService;
 import com.mindsafe.common.exception.BizException;
 import com.mindsafe.domain.entity.RiskEvent;
 import com.mindsafe.domain.entity.TeacherNote;
@@ -34,6 +35,8 @@ class TeacherAlertTransferTest {
     private TeacherNoteMapper teacherNoteMapper;
     private FieldEncryptionService fieldEncryptionService;
     private TeacherService teacherService;
+    /** S-007②：直测预警生命周期状态机（行为断言迁移） */
+    private AlertLifecycleService alertLifecycleService;
 
     private final UUID tenantId = UUID.randomUUID();
     private final UUID eventId = UUID.randomUUID();
@@ -47,18 +50,22 @@ class TeacherAlertTransferTest {
         teacherNoteMapper = mock(TeacherNoteMapper.class);
         fieldEncryptionService = mock(FieldEncryptionService.class);
         when(fieldEncryptionService.encrypt(any())).thenAnswer(inv -> inv.getArgument(0));
+        alertLifecycleService = new AlertLifecycleService(
+                riskEventMapper, new TeacherNoteStore(teacherNoteMapper), userMapper, fieldEncryptionService);
         teacherService = new TeacherService(
                 riskEventMapper,
                 mock(CounselingSessionMapper.class),
                 userMapper,
-                teacherNoteMapper,
+                new TeacherNoteStore(teacherNoteMapper),
                 mock(NotificationMapper.class),
                 mock(MessageSummaryMapper.class),
                 fieldEncryptionService,
                 mock(SessionAccessService.class),
                 mock(AuditLogService.class),
                 new com.mindsafe.service.teacher.AlertTodoMutePolicy(),
-                new com.mindsafe.service.casemanage.CaseLifecycleService());
+                new com.mindsafe.service.casemanage.CaseLifecycleService(), mock(MessageSummaryService.class),
+                mock(AlertLifecycleService.class),
+                mock(TeacherDashboardService.class));
     }
 
     private RiskEvent givenOpenEvent() {
@@ -82,7 +89,7 @@ class TeacherAlertTransferTest {
         RiskEvent event = givenOpenEvent();
         givenTargetTeacher(tenantId);
 
-        teacherService.transferAlert(tenantId, eventId, fromTeacherId, targetTeacherId, "请心理老师跟进");
+        alertLifecycleService.transferAlert(tenantId, eventId, fromTeacherId, targetTeacherId, "请心理老师跟进");
 
         ArgumentCaptor<RiskEvent> captor = ArgumentCaptor.forClass(RiskEvent.class);
         verify(riskEventMapper).updateById(captor.capture());
@@ -98,7 +105,7 @@ class TeacherAlertTransferTest {
         givenOpenEvent();
         givenTargetTeacher(tenantId);
 
-        teacherService.transferAlert(tenantId, eventId, fromTeacherId, targetTeacherId, "请心理老师跟进");
+        alertLifecycleService.transferAlert(tenantId, eventId, fromTeacherId, targetTeacherId, "请心理老师跟进");
 
         ArgumentCaptor<TeacherNote> captor = ArgumentCaptor.forClass(TeacherNote.class);
         verify(teacherNoteMapper).insert(captor.capture());
@@ -111,7 +118,7 @@ class TeacherAlertTransferTest {
         givenOpenEvent();
         givenTargetTeacher(tenantId);
 
-        teacherService.transferAlert(tenantId, eventId, fromTeacherId, targetTeacherId, null);
+        alertLifecycleService.transferAlert(tenantId, eventId, fromTeacherId, targetTeacherId, null);
 
         verify(teacherNoteMapper, never()).insert(any(TeacherNote.class));
     }
@@ -122,7 +129,7 @@ class TeacherAlertTransferTest {
         when(userMapper.selectById(targetTeacherId)).thenReturn(null);
 
         assertThrows(BizException.class,
-                () -> teacherService.transferAlert(tenantId, eventId, fromTeacherId, targetTeacherId, null));
+                () -> alertLifecycleService.transferAlert(tenantId, eventId, fromTeacherId, targetTeacherId, null));
         verify(riskEventMapper, never()).updateById(any(RiskEvent.class));
     }
 
@@ -132,7 +139,7 @@ class TeacherAlertTransferTest {
         givenTargetTeacher(UUID.randomUUID()); // 其他租户
 
         assertThrows(BizException.class,
-                () -> teacherService.transferAlert(tenantId, eventId, fromTeacherId, targetTeacherId, null));
+                () -> alertLifecycleService.transferAlert(tenantId, eventId, fromTeacherId, targetTeacherId, null));
         verify(riskEventMapper, never()).updateById(any(RiskEvent.class));
     }
 
@@ -141,6 +148,6 @@ class TeacherAlertTransferTest {
         when(riskEventMapper.selectById(eventId)).thenReturn(null);
 
         assertThrows(BizException.class,
-                () -> teacherService.transferAlert(tenantId, eventId, fromTeacherId, targetTeacherId, null));
+                () -> alertLifecycleService.transferAlert(tenantId, eventId, fromTeacherId, targetTeacherId, null));
     }
 }

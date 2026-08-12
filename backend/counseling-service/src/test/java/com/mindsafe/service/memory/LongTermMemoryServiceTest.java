@@ -1,5 +1,6 @@
 package com.mindsafe.service.memory;
 
+import com.mindsafe.ai.risk.RiskKeywordRegistry;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -85,7 +86,7 @@ class LongTermMemoryServiceTest {
         service = new LongTermMemoryService(
                 memoryMapper, backfillService,
                 memoryRiskCorrelator, memoryRelevanceScorer, themeEvolutionEngine, riskEventMapper,
-                riskNotifyOutboxService, registry);
+                riskNotifyOutboxService, registry, new RiskKeywordRegistry());
         // selectCount 两处调用（幂等检查 + evict），返回 0 同时满足
         when(memoryMapper.selectCount(any())).thenReturn(0L);
     }

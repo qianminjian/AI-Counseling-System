@@ -91,7 +91,7 @@ class JwtAuthenticationFilterTest {
         when(jwtTokenProvider.isPlatformToken("biz-token")).thenReturn(false);
         // doing/92 R-017：filter 单次 parse——mock parseOnce 返回快照 record
         when(jwtTokenProvider.parseOnce("biz-token"))
-                .thenReturn(new JwtTokenProvider.ParsedToken("tid-2", userId, "STUDENT", tenantId, "access"));
+                .thenReturn(new JwtTokenProvider.ParsedToken("tid-2", userId, "STUDENT", tenantId, TokenType.ACCESS));
         when(blacklistService.isBlacklisted("tid-2")).thenReturn(false);
 
         filter.doFilter(request, response, filterChain);

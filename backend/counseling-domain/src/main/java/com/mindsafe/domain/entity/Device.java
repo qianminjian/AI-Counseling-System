@@ -13,7 +13,7 @@ import java.util.UUID;
  * CFG-001：toB 第四端（无屏交互终端）设备全生命周期——扫码配网→回连注册→
  * 验证码绑定→日常管理。设计见 doing/84 §六.1。
  */
-@TableName(value = "device", schema = "tenant_template")
+@TableName(value = "device", schema = TenantSchema.TENANT_TEMPLATE)
 public class Device {
 
     /** 状态：未激活（出厂） */

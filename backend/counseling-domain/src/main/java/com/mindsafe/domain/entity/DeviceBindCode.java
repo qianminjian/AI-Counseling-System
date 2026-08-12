@@ -14,7 +14,7 @@ import java.util.UUID;
  * 3 次失败锁定 5 分钟、绑定成功即作废（一次性）。
  * 设计见 doing/84 §五.3/§六.1。
  */
-@TableName(value = "device_bind_codes", schema = "tenant_template")
+@TableName(value = "device_bind_codes", schema = TenantSchema.TENANT_TEMPLATE)
 public class DeviceBindCode {
 
     /** 验证码有效期（分钟） */

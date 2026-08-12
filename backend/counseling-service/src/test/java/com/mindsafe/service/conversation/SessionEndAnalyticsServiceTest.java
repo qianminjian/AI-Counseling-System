@@ -5,6 +5,7 @@ import com.mindsafe.domain.entity.RiskEvent;
 import com.mindsafe.domain.mapper.RiskEventMapper;
 import com.mindsafe.service.profile.ProfileEffectivenessTracker;
 import com.mindsafe.service.notification.RiskNotifyOutboxService;
+import com.mindsafe.service.risk.RiskEventWriter;
 import com.mindsafe.service.voice.TrendAnomalySignaler;
 import com.mindsafe.service.voice.VoiceEmotionTrendAnalyzer;
 import org.junit.jupiter.api.BeforeEach;
@@ -25,7 +26,9 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyDouble;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.mock;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -46,6 +49,7 @@ class SessionEndAnalyticsServiceTest {
     @Mock private ProfileEffectivenessTracker effectivenessTracker;
     @Mock private RiskEventMapper riskEventMapper;
     @Mock private RiskNotifyOutboxService riskNotifyOutboxService;
+    @Mock private RiskEventWriter riskEventWriter;
 
     private SessionEndAnalyticsService service;
 
@@ -56,7 +60,7 @@ class SessionEndAnalyticsServiceTest {
     void setUp() {
         service = new SessionEndAnalyticsService(
                 trendAnalyzer, anomalySignaler, orchestrationEvaluator, effectivenessTracker,
-                riskEventMapper, riskNotifyOutboxService);
+                riskEventMapper, riskNotifyOutboxService, riskEventWriter);
     }
 
     private VoiceEmotionTrendAnalyzer.TrendResult trend(double negRatio) {
@@ -85,7 +89,7 @@ class SessionEndAnalyticsServiceTest {
             assertThat(r.attentionSignal()).isNull();
             assertThat(r.recoveryResult().recovered()).isTrue();
             assertThat(r.sessionDepth()).isEqualTo(2);
-            verify(riskEventMapper, never()).insert(any(RiskEvent.class));
+            verify(riskEventWriter, never()).write(any(RiskEvent.class), anyBoolean());
         }
 
         @Test
@@ -105,8 +109,9 @@ class SessionEndAnalyticsServiceTest {
             assertThat(r.attentionSignal()).isEqualTo(signal);
             // countWorsening：尾部连续负面 = 3（sad/angry/fearful）
             verify(anomalySignaler).evaluate(eq(studentId.toString()), eq(3), eq(0.8), anyDouble());
+            // S-009：落库统一由 RiskEventWriter 承担（无通知义务 → write(event, false)）
             ArgumentCaptor<RiskEvent> captor = ArgumentCaptor.forClass(RiskEvent.class);
-            verify(riskEventMapper).insert(captor.capture());
+            verify(riskEventWriter).write(captor.capture(), eq(false));
             RiskEvent event = captor.getValue();
             assertThat(event.getSourceType()).isEqualTo("attention");
             assertThat(event.getRiskLevel()).isEqualTo(1);
@@ -114,8 +119,7 @@ class SessionEndAnalyticsServiceTest {
             assertThat(event.getTenantId()).isEqualTo(tenantId);
             assertThat(event.getStudentUserId()).isEqualTo(studentId);
             assertThat(event.getStatus()).isEqualTo("open");
-            // P0-4：无通知义务（BL-08 关注通道）→ 标记完成态，防止补偿任务误重试
-            verify(riskNotifyOutboxService).markSent(event);
+            // S-009：无通知义务语义由 RiskEventWriter.write(event, false) 统一承担（见 RiskEventWriterTest）
         }
 
         @Test
@@ -129,7 +133,7 @@ class SessionEndAnalyticsServiceTest {
                     tenantId, studentId, List.of("sad"), List.of(), List.of(), "neutral");
 
             assertThat(r.attentionSignal()).isNull();
-            verify(riskEventMapper, never()).insert(any(RiskEvent.class));
+            verify(riskEventWriter, never()).write(any(RiskEvent.class), anyBoolean());
         }
 
         @Test
@@ -165,7 +169,7 @@ class SessionEndAnalyticsServiceTest {
             when(anomalySignaler.evaluate(anyString(), anyInt(), anyDouble(), anyDouble()))
                     .thenReturn(new TrendAnomalySignaler.AttentionSignal(
                             studentId.toString(), "HIGH_NEGATIVE_RATIO", "负面占比高", false, true, 0));
-            when(riskEventMapper.insert(any(RiskEvent.class))).thenThrow(new RuntimeException("db down"));
+            when(riskEventWriter.write(any(RiskEvent.class), anyBoolean())).thenThrow(new RuntimeException("db down"));
 
             assertThatCode(() -> service.analyze(
                     tenantId, studentId, List.of("sad"), List.of(), List.of(), "neutral"))

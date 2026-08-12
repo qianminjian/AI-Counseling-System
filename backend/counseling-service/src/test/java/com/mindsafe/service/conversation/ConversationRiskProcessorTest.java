@@ -11,6 +11,8 @@ import com.mindsafe.domain.entity.RiskEvent;
 import com.mindsafe.domain.mapper.RiskEventMapper;
 import com.mindsafe.service.notification.NotificationService;
 import com.mindsafe.service.notification.RiskNotifyOutboxService;
+import com.mindsafe.ai.risk.RiskKeywordRegistry;
+import com.mindsafe.service.risk.RiskEventWriter;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -25,6 +27,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -44,6 +48,7 @@ class ConversationRiskProcessorTest {
     private RiskEventMapper riskEventMapper;
     private NotificationService notificationService;
     private RiskNotifyOutboxService riskNotifyOutboxService;
+    private RiskEventWriter riskEventWriter;
 
     private ConversationRiskProcessor processor;
 
@@ -55,11 +60,12 @@ class ConversationRiskProcessorTest {
         riskEventMapper = mock(RiskEventMapper.class);
         notificationService = mock(NotificationService.class);
         riskNotifyOutboxService = mock(RiskNotifyOutboxService.class);
+        riskEventWriter = mock(RiskEventWriter.class);
 
         processor = new ConversationRiskProcessor(
                 riskDetectorService, semanticRiskClassifier, riskScoreCalculator,
                 riskEventMapper, notificationService, riskNotifyOutboxService,
-                new ObjectMapper());
+                new ObjectMapper(), riskEventWriter, new RiskKeywordRegistry());
 
         // 默认评分结果
         when(riskScoreCalculator.calculate(any()))
@@ -271,11 +277,9 @@ class ConversationRiskProcessorTest {
 
             processor.persistRiskEvent(session, risk);
 
-            verify(riskEventMapper).insert(any(RiskEvent.class));
+            // S-009：落库+通知义务统一由 RiskEventWriter 承担（write 行为见 RiskEventWriterTest）
+            verify(riskEventWriter).write(any(RiskEvent.class), eq(true));
             verify(riskScoreCalculator).calculate(any());
-            verify(notificationService).notifyRiskEvent(any(RiskEvent.class));
-            // P0-4：通知成功 → 状态标记 sent，避免补偿任务重复通知
-            verify(riskNotifyOutboxService).markSent(any(RiskEvent.class));
         }
 
         @Test
@@ -286,11 +290,10 @@ class ConversationRiskProcessorTest {
                     "sad", "web", "male", null, 4);
             RiskDetectionResult risk = new RiskDetectionResult(
                     RiskLevel.RED, "self_harm", List.of(), 90, true, "");
-            when(riskEventMapper.insert(any(RiskEvent.class))).thenThrow(new RuntimeException("DB 连接失败"));
+            when(riskEventWriter.write(any(RiskEvent.class), anyBoolean())).thenThrow(new RuntimeException("DB 连接失败"));
 
             org.junit.jupiter.api.Assertions.assertThrows(IllegalStateException.class,
                     () -> processor.persistRiskEvent(session, risk));
-            verify(notificationService, org.mockito.Mockito.never()).notifyRiskEvent(any(RiskEvent.class));
         }
 
         @Test
@@ -301,13 +304,10 @@ class ConversationRiskProcessorTest {
                     "sad", "web", "male", null, 4);
             RiskDetectionResult risk = new RiskDetectionResult(
                     RiskLevel.ORANGE, "bullying", List.of("被打"), 60, false, "建议关注");
-            org.mockito.Mockito.doThrow(new RuntimeException("企业微信不可用"))
-                    .when(notificationService).notifyRiskEvent(any(RiskEvent.class));
-
-            // 不应抛出异常（事件已落库），通知失败进补偿队列
+            // S-009：通知失败降级语义移至 RiskEventWriter（write 内部 catch + markFailed），
+            // 本用例验证委托透传——writer 不抛则 persistRiskEvent 不抛
             processor.persistRiskEvent(session, risk);
-            verify(riskEventMapper).insert(any(RiskEvent.class));
-            verify(riskNotifyOutboxService).markFailed(any(RiskEvent.class));
+            verify(riskEventWriter).write(any(RiskEvent.class), eq(true));
         }
 
         @Test
@@ -324,7 +324,7 @@ class ConversationRiskProcessorTest {
             processor.persistRiskEvent(session, risk);
 
             ArgumentCaptor<RiskEvent> captor = ArgumentCaptor.forClass(RiskEvent.class);
-            verify(riskEventMapper).insert(captor.capture());
+            verify(riskEventWriter).write(captor.capture(), eq(true));
             RiskEvent event = captor.getValue();
             assertThat(event.getRiskScore()).as("结构化评分应随事件落库").isEqualTo(72);
             JsonNode reasons = new ObjectMapper().readTree(event.getReasonCodes());
@@ -340,27 +340,27 @@ class ConversationRiskProcessorTest {
         @Test
         @DisplayName("明确自伤意图关键词 → intentWeight=15")
         void explicitIntent_weights15() {
-            var f = ConversationRiskProcessor.extractScoreFactors(List.of("想死"));
+            var f = processor.extractScoreFactors(List.of("想死"));
             assertThat(f.intentWeight()).isEqualTo(15);
 
-            var f2 = ConversationRiskProcessor.extractScoreFactors(List.of("不想活了"));
+            var f2 = processor.extractScoreFactors(List.of("不想活了"));
             assertThat(f2.intentWeight()).isEqualTo(15);
         }
 
         @Test
         @DisplayName("含混死亡愿望关键词 → intentWeight=8")
         void vagueIntent_weights8() {
-            var f = ConversationRiskProcessor.extractScoreFactors(List.of("活着没意思"));
+            var f = processor.extractScoreFactors(List.of("活着没意思"));
             assertThat(f.intentWeight()).isEqualTo(8);
 
-            var f2 = ConversationRiskProcessor.extractScoreFactors(List.of("把东西送人", "告别"));
+            var f2 = processor.extractScoreFactors(List.of("把东西送人", "告别"));
             assertThat(f2.intentWeight()).isEqualTo(8);
         }
 
         @Test
         @DisplayName("非自伤类关键词（霸凌）→ intentWeight=0")
         void nonSelfHarmKeyword_zeroIntent() {
-            var f = ConversationRiskProcessor.extractScoreFactors(List.of("被打", "霸凌"));
+            var f = processor.extractScoreFactors(List.of("被打", "霸凌"));
             assertThat(f.intentWeight()).isZero();
             assertThat(f.cssrsIdeation()).isNull();
         }
@@ -368,36 +368,36 @@ class ConversationRiskProcessorTest {
         @Test
         @DisplayName("自伤方法关键词每个 +5，上限 20")
         void methods_accumulatePlanWeight() {
-            assertThat(ConversationRiskProcessor.extractScoreFactors(List.of("跳楼")).planWeight()).isEqualTo(5);
-            assertThat(ConversationRiskProcessor.extractScoreFactors(List.of("跳楼", "上吊")).planWeight()).isEqualTo(10);
-            assertThat(ConversationRiskProcessor.extractScoreFactors(List.of("跳楼", "上吊", "割腕", "吃药", "带刀")).planWeight()).isEqualTo(20);
+            assertThat(processor.extractScoreFactors(List.of("跳楼")).planWeight()).isEqualTo(5);
+            assertThat(processor.extractScoreFactors(List.of("跳楼", "上吊")).planWeight()).isEqualTo(10);
+            assertThat(processor.extractScoreFactors(List.of("跳楼", "上吊", "割腕", "吃药", "带刀")).planWeight()).isEqualTo(20);
         }
 
         @Test
         @DisplayName("仅死亡愿望 → cssrsIdeation=DEATH_WISH")
         void deathWish_mapsIdeation() {
-            var f = ConversationRiskProcessor.extractScoreFactors(List.of("没希望"));
+            var f = processor.extractScoreFactors(List.of("没希望"));
             assertThat(f.cssrsIdeation()).isEqualTo(RiskScoreCalculator.CssrsIdeation.DEATH_WISH);
         }
 
         @Test
         @DisplayName("明确意图 → cssrsIdeation=ACTIVE_IDEATION")
         void activeIntent_mapsIdeation() {
-            var f = ConversationRiskProcessor.extractScoreFactors(List.of("想死"));
+            var f = processor.extractScoreFactors(List.of("想死"));
             assertThat(f.cssrsIdeation()).isEqualTo(RiskScoreCalculator.CssrsIdeation.ACTIVE_IDEATION);
         }
 
         @Test
         @DisplayName("命中方法词 → cssrsIdeation=WITH_METHOD（高于意图档）")
         void methodKeyword_mapsWithMethod() {
-            var f = ConversationRiskProcessor.extractScoreFactors(List.of("想死", "割腕"));
+            var f = processor.extractScoreFactors(List.of("想死", "割腕"));
             assertThat(f.cssrsIdeation()).isEqualTo(RiskScoreCalculator.CssrsIdeation.WITH_METHOD);
         }
 
         @Test
         @DisplayName("遗书 → 准备行为 PREPARATORY + WITH_PLAN_INTENT")
         void willNote_mapsPreparatory() {
-            var f = ConversationRiskProcessor.extractScoreFactors(List.of("遗书"));
+            var f = processor.extractScoreFactors(List.of("遗书"));
             assertThat(f.cssrsBehavior()).isEqualTo(RiskScoreCalculator.CssrsBehavior.PREPARATORY);
             assertThat(f.cssrsIdeation()).isEqualTo(RiskScoreCalculator.CssrsIdeation.WITH_PLAN_INTENT);
         }
@@ -405,7 +405,7 @@ class ConversationRiskProcessorTest {
         @Test
         @DisplayName("空关键词（语义层路径）→ 全零不越权")
         void emptyKeywords_allZero() {
-            var f = ConversationRiskProcessor.extractScoreFactors(List.of());
+            var f = processor.extractScoreFactors(List.of());
             assertThat(f.intentWeight()).isZero();
             assertThat(f.planWeight()).isZero();
             assertThat(f.cssrsIdeation()).isNull();

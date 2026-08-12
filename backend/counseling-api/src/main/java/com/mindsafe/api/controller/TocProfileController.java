@@ -1,7 +1,10 @@
 package com.mindsafe.api.controller;
 
 import com.mindsafe.api.security.JwtAuthenticationFilter.TenantContext;
+import com.mindsafe.api.security.SecuritySupport;
 import com.mindsafe.common.dto.ApiResponse;
+import com.mindsafe.common.dto.ErrorCode;
+import com.mindsafe.common.exception.BizException;
 import com.mindsafe.domain.entity.TocChildProfile;
 import com.mindsafe.service.toc.TocFamilyService;
 import org.springframework.security.core.Authentication;
@@ -39,7 +42,7 @@ public class TocProfileController {
         try {
             return ApiResponse.ok(tocFamilyService.createProfile(accountId(auth), body));
         } catch (IllegalArgumentException e) {
-            return ApiResponse.error(400, e.getMessage());
+            throw new BizException(ErrorCode.PARAM_INVALID, e.getMessage());
         }
     }
 
@@ -50,7 +53,7 @@ public class TocProfileController {
         try {
             return ApiResponse.ok(tocFamilyService.updateProfile(accountId(auth), profileId, body));
         } catch (IllegalArgumentException e) {
-            return ApiResponse.error(400, e.getMessage());
+            throw new BizException(ErrorCode.PARAM_INVALID, e.getMessage());
         }
     }
 
@@ -61,12 +64,12 @@ public class TocProfileController {
             tocFamilyService.deleteProfile(accountId(auth), profileId);
             return ApiResponse.ok(null);
         } catch (IllegalArgumentException e) {
-            return ApiResponse.error(400, e.getMessage());
+            throw new BizException(ErrorCode.PARAM_INVALID, e.getMessage());
         }
     }
 
     private UUID accountId(Authentication auth) {
-        TenantContext ctx = (TenantContext) auth.getDetails();
+        TenantContext ctx = SecuritySupport.requireContext(auth);
         return ctx.userId();
     }
 }

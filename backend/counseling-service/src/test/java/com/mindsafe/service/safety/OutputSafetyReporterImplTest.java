@@ -1,5 +1,6 @@
 package com.mindsafe.service.safety;
 
+import com.mindsafe.ai.memory.ChatMemoryAppender;
 import com.mindsafe.common.enums.RiskLevel;
 import com.mindsafe.domain.entity.CounselingSession;
 import com.mindsafe.domain.entity.RiskEvent;
@@ -15,17 +16,12 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.ai.chat.memory.ChatMemoryRepository;
 import org.springframework.ai.chat.messages.AssistantMessage;
-import org.springframework.ai.chat.messages.Message;
-import org.springframework.ai.chat.messages.UserMessage;
 
-import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
@@ -47,7 +43,7 @@ class OutputSafetyReporterImplTest {
     @Mock private RiskEventMapper riskEventMapper;
     @Mock private NotificationService notificationService;
     @Mock private RiskNotifyOutboxService riskNotifyOutboxService;
-    @Mock private ChatMemoryRepository chatMemoryRepository;
+    @Mock private ChatMemoryAppender chatMemoryAppender;
 
     private OutputSafetyReporterImpl reporter;
 
@@ -58,7 +54,7 @@ class OutputSafetyReporterImplTest {
     @BeforeEach
     void setUp() {
         reporter = new OutputSafetyReporterImpl(sessionMapper, riskEventMapper,
-                notificationService, riskNotifyOutboxService, chatMemoryRepository);
+                notificationService, riskNotifyOutboxService, chatMemoryAppender);
     }
 
     private CounselingSession session() {
@@ -142,6 +138,8 @@ class OutputSafetyReporterImplTest {
             assertThat(captor.getValue().getRiskType()).isEqualTo("output_safety");
             assertThat(captor.getValue().getRiskLevel()).isEqualTo(RiskLevel.YELLOW.severity());
             assertThat(captor.getValue().getDetectedBy()).isEqualTo("output_review");
+            // doing/92 R-015：审查 JSON 随事件落库（TC260 人工抽检依据）
+            assertThat(captor.getValue().getReviewJson()).isEqualTo("{}");
             verifyNoInteractions(notificationService);
             // P0-4：无通知义务的事件标记 sent（完成态），防止补偿任务误重试留痕事件
             verify(riskNotifyOutboxService).markSent(captor.getValue());
@@ -165,93 +163,63 @@ class OutputSafetyReporterImplTest {
         private final String replacement = "抱歉，刚才的话不合适。我们换个方式聊聊。";
 
         @Test
-        @DisplayName("rewrite → 替换记忆最后一条 AI 回复，YELLOW 留痕不通知，outbox 标记完成")
-        void rewrite_replacesMemoryYellowNoNotify() {
+        @DisplayName("rewrite → 追加更正消息，YELLOW 留痕（含 reviewJson）不通知，outbox 标记完成")
+        void rewrite_appendsCorrectionYellowNoNotify() {
             when(sessionMapper.selectById(sessionId)).thenReturn(session());
-            when(chatMemoryRepository.findByConversationId(sessionId.toString()))
-                    .thenReturn(List.of(new UserMessage("你好"), new AssistantMessage("原始不当回复")));
+            when(chatMemoryAppender.hasMessages(anyString())).thenReturn(true);
 
             reporter.applyLayer2Recall(sessionId, "rewrite", replacement, "{}");
 
-            @SuppressWarnings("unchecked")
-            ArgumentCaptor<List<Message>> saveCaptor = ArgumentCaptor.forClass(List.class);
-            verify(chatMemoryRepository).saveAll(eq(sessionId.toString()), saveCaptor.capture());
-            List<Message> saved = saveCaptor.getValue();
-            assertThat(saved).hasSize(2);
-            assertThat(((AssistantMessage) saved.get(1)).getText()).isEqualTo(replacement);
+            // doing/92 R-015：追加语义（原子幂等），不再 find+saveAll 整表替换
+            ArgumentCaptor<AssistantMessage> appendCaptor = ArgumentCaptor.forClass(AssistantMessage.class);
+            verify(chatMemoryAppender).append(eq(sessionId.toString()), appendCaptor.capture());
+            assertThat(appendCaptor.getValue().getText()).isEqualTo(replacement);
+            verify(chatMemoryAppender, never()).append(anyString(), org.mockito.ArgumentMatchers.isNull());
 
             ArgumentCaptor<RiskEvent> eventCaptor = ArgumentCaptor.forClass(RiskEvent.class);
             verify(riskEventMapper).insert(eventCaptor.capture());
             assertThat(eventCaptor.getValue().getRiskType()).isEqualTo("output_safety:recall:rewrite");
             assertThat(eventCaptor.getValue().getRiskLevel()).isEqualTo(RiskLevel.YELLOW.severity());
+            assertThat(eventCaptor.getValue().getReviewJson()).isEqualTo("{}");
             verifyNoInteractions(notificationService);
             // P0-4：无通知义务 → 标记完成态
             verify(riskNotifyOutboxService).markSent(eventCaptor.getValue());
         }
 
         @Test
-        @DisplayName("block → ORANGE 事件 + 教师通知 + outbox 标记 sent")
+        @DisplayName("block → 追加更正消息 + ORANGE 事件 + 教师通知 + outbox 标记 sent")
         void block_orangeAndNotifies() {
             when(sessionMapper.selectById(sessionId)).thenReturn(session());
-            when(chatMemoryRepository.findByConversationId(anyString())).thenReturn(List.of());
+            when(chatMemoryAppender.hasMessages(anyString())).thenReturn(true);
 
             reporter.applyLayer2Recall(sessionId, "block", replacement, "{}");
 
+            verify(chatMemoryAppender).append(eq(sessionId.toString()), org.mockito.ArgumentMatchers.any(AssistantMessage.class));
             ArgumentCaptor<RiskEvent> captor = ArgumentCaptor.forClass(RiskEvent.class);
             verify(riskEventMapper).insert(captor.capture());
             assertThat(captor.getValue().getRiskType()).isEqualTo("output_safety:recall:block");
             assertThat(captor.getValue().getRiskLevel()).isEqualTo(RiskLevel.ORANGE.severity());
+            assertThat(captor.getValue().getReviewJson()).isEqualTo("{}");
             verify(notificationService).notifyRiskEvent(captor.getValue());
             verify(riskNotifyOutboxService).markSent(captor.getValue());
         }
 
         @Test
-        @DisplayName("escalate → RED 事件 + 教师通知 + outbox 标记 sent")
+        @DisplayName("escalate → 追加更正消息 + RED 事件 + 教师通知 + outbox 标记 sent")
         void escalate_redAndNotifies() {
             when(sessionMapper.selectById(sessionId)).thenReturn(session());
-            when(chatMemoryRepository.findByConversationId(anyString())).thenReturn(List.of());
+            when(chatMemoryAppender.hasMessages(anyString())).thenReturn(true);
 
             reporter.applyLayer2Recall(sessionId, "escalate", replacement, "{}");
 
+            verify(chatMemoryAppender).append(eq(sessionId.toString()), org.mockito.ArgumentMatchers.any(AssistantMessage.class));
             ArgumentCaptor<RiskEvent> captor = ArgumentCaptor.forClass(RiskEvent.class);
             verify(riskEventMapper).insert(captor.capture());
             assertThat(captor.getValue().getRiskType()).isEqualTo("output_safety:recall:escalate");
             assertThat(captor.getValue().getRiskLevel()).isEqualTo(RiskLevel.RED.severity());
+            assertThat(captor.getValue().getReviewJson()).isEqualTo("{}");
             verify(notificationService).notifyRiskEvent(captor.getValue());
             verify(riskNotifyOutboxService).markSent(captor.getValue());
-        }
-
-        @Test
-        @DisplayName("记忆中无 AI 回复 → 不 saveAll，但事件仍落库")
-        void noAssistantMessage_skipsReplaceStillRecords() {
-            when(sessionMapper.selectById(sessionId)).thenReturn(session());
-            when(chatMemoryRepository.findByConversationId(anyString()))
-                    .thenReturn(List.of(new UserMessage("你好")));
-
-            reporter.applyLayer2Recall(sessionId, "block", replacement, "{}");
-
-            verify(chatMemoryRepository, never()).saveAll(anyString(), anyList());
-            verify(riskEventMapper).insert(any(RiskEvent.class));
-        }
-
-        @Test
-        @DisplayName("多条消息 → 只替换最后一条 AI 回复（更早的 AI 消息不动）")
-        void replacesOnlyLastAssistantMessage() {
-            when(sessionMapper.selectById(sessionId)).thenReturn(session());
-            when(chatMemoryRepository.findByConversationId(anyString()))
-                    .thenReturn(List.of(
-                            new AssistantMessage("更早的回复"),
-                            new UserMessage("学生消息"),
-                            new AssistantMessage("最后的不当回复")));
-
-            reporter.applyLayer2Recall(sessionId, "rewrite", replacement, "{}");
-
-            @SuppressWarnings("unchecked")
-            ArgumentCaptor<List<Message>> saveCaptor = ArgumentCaptor.forClass(List.class);
-            verify(chatMemoryRepository).saveAll(eq(sessionId.toString()), saveCaptor.capture());
-            List<Message> saved = saveCaptor.getValue();
-            assertThat(((AssistantMessage) saved.get(0)).getText()).isEqualTo("更早的回复");
-            assertThat(((AssistantMessage) saved.get(2)).getText()).isEqualTo(replacement);
         }
 
         @Test
@@ -261,15 +229,31 @@ class OutputSafetyReporterImplTest {
 
             reporter.applyLayer2Recall(sessionId, "block", replacement, "{}");
 
-            verifyNoInteractions(chatMemoryRepository, riskEventMapper, notificationService);
+            verifyNoInteractions(chatMemoryAppender, riskEventMapper, notificationService);
         }
 
         @Test
-        @DisplayName("记忆仓库异常 → 吞掉不抛出（不影响对话主流程）")
+        @DisplayName("会话记忆为空 → 跳过追加更正（避免悬空更正），事件仍落库")
+        void emptyMemory_skipsAppendStillRecords() {
+            when(sessionMapper.selectById(sessionId)).thenReturn(session());
+            when(chatMemoryAppender.hasMessages(anyString())).thenReturn(false);
+
+            reporter.applyLayer2Recall(sessionId, "rewrite", replacement, "{}");
+
+            verify(chatMemoryAppender, never()).append(anyString(), org.mockito.ArgumentMatchers.any(AssistantMessage.class));
+            ArgumentCaptor<RiskEvent> eventCaptor = ArgumentCaptor.forClass(RiskEvent.class);
+            verify(riskEventMapper).insert(eventCaptor.capture());
+            assertThat(eventCaptor.getValue().getRiskType()).isEqualTo("output_safety:recall:rewrite");
+            assertThat(eventCaptor.getValue().getReviewJson()).isEqualTo("{}");
+        }
+
+        @Test
+        @DisplayName("记忆追加异常 → 吞掉不抛出（不影响对话主流程）")
         void memoryFailure_swallowed() {
             when(sessionMapper.selectById(sessionId)).thenReturn(session());
+            when(chatMemoryAppender.hasMessages(anyString())).thenReturn(true);
             doThrow(new RuntimeException("redis down"))
-                    .when(chatMemoryRepository).findByConversationId(anyString());
+                    .when(chatMemoryAppender).append(anyString(), org.mockito.ArgumentMatchers.any(AssistantMessage.class));
 
             reporter.applyLayer2Recall(sessionId, "escalate", replacement, "{}");
 

@@ -1,5 +1,6 @@
 package com.mindsafe.api.controller;
 
+import com.mindsafe.common.exception.BizException;
 import com.mindsafe.domain.entity.AlertEvent;
 import com.mindsafe.domain.entity.AuditLog;
 import com.mindsafe.domain.entity.ServiceHealthSnapshot;
@@ -20,6 +21,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
@@ -158,10 +160,9 @@ class OpsControllerTest {
     @Test
     @DisplayName("POST /risk/{id}/transfer → 缺 X-Confirm 拒绝（二次确认）")
     void transferRejectsWithoutConfirm() {
-        var response = controller.transfer(UUID.randomUUID(), null,
-                new OpsController.RiskTransferRequest(UUID.randomUUID(), "转派给班主任"));
-
-        assertThat(response.code()).isNotEqualTo(0);
+        assertThatThrownBy(() -> controller.transfer(UUID.randomUUID(), null,
+                new OpsController.RiskTransferRequest(UUID.randomUUID(), "转派给班主任")))
+                .isInstanceOf(BizException.class);
         org.mockito.Mockito.verifyNoInteractions(riskOverviewService);
     }
 
@@ -367,8 +368,7 @@ class OpsControllerTest {
         UUID eventId = UUID.randomUUID();
         var request = new OpsController.RiskCloseRequest("处理完成");
 
-        var rejected = controller.ackAlert(eventId, null, request);
-        assertThat(rejected.code()).isNotEqualTo(0);
+        assertThatThrownBy(() -> controller.ackAlert(eventId, null, request)).isInstanceOf(BizException.class);
 
         var accepted = controller.ackAlert(eventId, "CONFIRM", request);
         assertThat(accepted.code()).isEqualTo(0);

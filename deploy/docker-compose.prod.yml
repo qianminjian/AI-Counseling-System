@@ -129,8 +129,8 @@ services:
   voice-service:
     image: ${VOICE_SERVICE_IMAGE:-mindsafe/voice-service:local}
     build:
-      context: ../backend/voice-service
-      dockerfile: Dockerfile
+      context: ../backend
+      dockerfile: voice-service/Dockerfile
     container_name: mindsafe-voice
     restart: unless-stopped
     environment:
@@ -171,8 +171,8 @@ services:
   tts-service:
     image: ${TTS_SERVICE_IMAGE:-mindsafe/tts-service:local}
     build:
-      context: ../backend/tts-service
-      dockerfile: Dockerfile
+      context: ../backend
+      dockerfile: tts-service/Dockerfile
     container_name: mindsafe-tts
     restart: unless-stopped
     environment:

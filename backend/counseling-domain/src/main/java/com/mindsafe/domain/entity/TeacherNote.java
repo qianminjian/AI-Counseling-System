@@ -8,7 +8,7 @@ import java.util.UUID;
 /**
  * 教师备注实体（对应 tenant_template.teacher_notes）
  */
-@TableName(value = "teacher_notes", schema = "tenant_template")
+@TableName(value = "teacher_notes", schema = TenantSchema.TENANT_TEMPLATE)
 public class TeacherNote {
 
     @TableId(value = "note_id", type = IdType.INPUT)

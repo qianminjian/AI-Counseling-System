@@ -1,5 +1,6 @@
 package com.mindsafe.service.teacher;
 
+import com.mindsafe.service.conversation.MessageSummaryService;
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
@@ -40,6 +41,7 @@ class TeacherQualityServiceTest {
     private CounselingSessionMapper sessionMapper;
     private UserMapper userMapper;
     private MessageSummaryMapper messageSummaryMapper;
+    private MessageSummaryService messageSummaryService;
     private FieldEncryptionService fieldEncryptionService;
     private TeacherQualityService service;
 
@@ -60,9 +62,10 @@ class TeacherQualityServiceTest {
         sessionMapper = mock(CounselingSessionMapper.class);
         userMapper = mock(UserMapper.class);
         messageSummaryMapper = mock(MessageSummaryMapper.class);
+        messageSummaryService = mock(MessageSummaryService.class);
         fieldEncryptionService = mock(FieldEncryptionService.class);
         service = new TeacherQualityService(qualityScoreMapper, sessionMapper, userMapper,
-                messageSummaryMapper, fieldEncryptionService);
+                messageSummaryMapper, fieldEncryptionService, messageSummaryService);
     }
 
     private CounselingSession session(UUID id, Integer rating) {
@@ -175,7 +178,15 @@ class TeacherQualityServiceTest {
         msg.setTurnCount(1);
         msg.setSenderType("student");
         msg.setContentSummary("enc-content");
-        when(messageSummaryMapper.selectList(any())).thenReturn(List.of(msg));
+        when(messageSummaryService.readDecryptedMessages(any(), any())).thenAnswer(inv -> {
+            MessageSummary decrypted = new MessageSummary();
+            decrypted.setTurnCount(msg.getTurnCount());
+            decrypted.setSenderType(msg.getSenderType());
+            decrypted.setContentSummary("明文内容");
+            decrypted.setEmotionLabel(msg.getEmotionLabel());
+            decrypted.setRiskLevel(msg.getRiskLevel());
+            return List.of(decrypted);
+        });
         when(qualityScoreMapper.selectOne(any())).thenReturn(score(UUID.randomUUID(), 90));
         User student = new User();
         student.setUserId(studentId);

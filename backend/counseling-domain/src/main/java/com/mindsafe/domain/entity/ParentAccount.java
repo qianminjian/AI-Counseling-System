@@ -8,7 +8,7 @@ import java.util.UUID;
 /**
  * 家长账号（对应 tenant_template.parent_accounts）
  */
-@TableName(value = "parent_accounts", schema = "tenant_template")
+@TableName(value = "parent_accounts", schema = TenantSchema.TENANT_TEMPLATE)
 public class ParentAccount {
 
     /** C2（2026-08-05）：状态魔法值收敛——家长账号正常 */

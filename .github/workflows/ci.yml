@@ -253,15 +253,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # DA-03：metrics_common.py 为 tts/voice 复制共享（独立发布不共享 wheel），
-      # 改一份忘另一份 → 两服务指标渲染行为静默分叉；diff 硬性拦截
-      - name: Check metrics_common copies in sync
-        run: diff backend/tts-service/metrics_common.py backend/voice-service/metrics_common.py
-
-      # DA-08：config_loader.py 同为双份复制共享（深合并语义：空 dict 保守保留/None 显式置空），
-      # 单边修改即静默分叉；与 metrics_common 同款一行门禁
-      - name: Check config_loader copies in sync
-        run: diff backend/tts-service/config_loader.py backend/voice-service/config_loader.py
+      # S-019（doing/93）：metrics_common/config_loader 已单源化至 backend/py-common，
+      # 双份 diff 门禁随副本删除移除（单源修改即全服务生效，无分叉可能）
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -269,7 +262,8 @@ jobs:
       - name: Build ${{ matrix.service }} image
         uses: docker/build-push-action@v6
         with:
-          context: backend/${{ matrix.service }}
+          context: backend
+          dockerfile: ${{ matrix.service }}/Dockerfile
           push: false
           load: true
           tags: mindsafe/${{ matrix.service }}:smoke

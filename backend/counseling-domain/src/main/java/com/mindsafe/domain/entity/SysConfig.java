@@ -13,7 +13,7 @@ import java.util.UUID;
  * M1 系统配置管理：配置面板（SECRET 掩码 + HOT/RESTART 两级，仅标记 HOT 开放修改）。
  * 设计见 doing/83 后台管理端 §6.1。
  */
-@TableName(value = "sys_config", schema = "tenant_template")
+@TableName(value = "sys_config", schema = TenantSchema.TENANT_TEMPLATE)
 public class SysConfig {
 
     /** 敏感度：值可读 */

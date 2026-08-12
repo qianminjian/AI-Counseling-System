@@ -12,7 +12,7 @@ import java.util.UUID;
  * <p>
  * TOC-001：手机号验证码注册/登录，独立于校园账号体系（doing/85 §四）。
  */
-@TableName(value = "toc_family_accounts", schema = "tenant_template")
+@TableName(value = "toc_family_accounts", schema = TenantSchema.TENANT_TEMPLATE)
 public class TocFamilyAccount {
 
     /** 状态：正常 */

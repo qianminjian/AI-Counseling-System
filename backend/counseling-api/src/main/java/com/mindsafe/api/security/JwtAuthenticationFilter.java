@@ -55,15 +55,16 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             }
         } else if (token != null) {
             // doing/92 R-017：单次 parse（原 6 次 parse/请求：validate+isAccess+getTokenId+getUserId+getUserType+getTenantId）
+            // BUG-A-TOKEN-01（2026-08-12）保留：parseOnce 对过期/签名无效仍抛 JwtException
+            // （doing/92 R-016 枚举化不改变该行为）——捕获后不建认证、放行由安全链统一 401，避免落兜底 500
             JwtTokenProvider.ParsedToken parsed;
             try {
                 parsed = jwtTokenProvider.parseOnce(token);
             } catch (Exception e) {
-                // BUG-A-TOKEN-01（2026-08-12，复测发现）：过期/签名无效 token 解析失败
-                // → 不建立认证、继续放行（安全链统一 401），避免过滤器异常冒泡落兜底 500（误报服务故障）
                 parsed = null;
             }
-            if (parsed != null && "access".equals(parsed.tokenType())
+            // doing/92 R-016：tokenType 枚举化（未知类型 tokenType=null → 非 ACCESS 拒绝）
+            if (parsed != null && parsed.tokenType() == TokenType.ACCESS
                     && !blacklistService.isBlacklisted(parsed.tokenId())) {
                 UUID userId = parsed.userId();
                 String userType = parsed.userType();

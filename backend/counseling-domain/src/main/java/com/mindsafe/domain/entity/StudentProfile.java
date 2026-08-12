@@ -10,7 +10,7 @@ import java.util.UUID;
  * 学生心理画像实体（对应 tenant_template.student_profiles）
  * 只存结构化统计指标，不存原始对话
  */
-@TableName(value = "student_profiles", schema = "tenant_template", autoResultMap = true)
+@TableName(value = "student_profiles", schema = TenantSchema.TENANT_TEMPLATE, autoResultMap = true)
 public class StudentProfile {
 
     @TableId(value = "profile_id", type = IdType.ASSIGN_UUID)

@@ -30,7 +30,7 @@ import java.util.UUID;
  * <p>
  * 对齐计划 Phase 1.5：ChatMemory Redis 持久化。
  */
-public class RedisChatMemoryRepository implements ChatMemoryRepository {
+public class RedisChatMemoryRepository implements ChatMemoryRepository, ChatMemoryAppender {
 
     private static final Logger log = LoggerFactory.getLogger(RedisChatMemoryRepository.class);
 
@@ -106,6 +106,32 @@ public class RedisChatMemoryRepository implements ChatMemoryRepository {
         String key = buildKey(conversationId);
         redisTemplate.delete(key);
         log.debug("删除对话记忆: conversationId={}", conversationId);
+    }
+
+    /**
+     * 原子追加一条消息（doing/92 R-015，ChatMemoryAppender）：
+     * rightPush 单条写 + 刷新 TTL，不做 find+saveAll 整表 read-modify-write——
+     * 并发召回/对话写入不互相覆盖；序列化契约与既有消息一致。
+     */
+    @Override
+    public void append(String conversationId, Message message) {
+        String key = buildKey(conversationId);
+        try {
+            redisTemplate.opsForList().rightPush(key, serializeMessage(message));
+            redisTemplate.expire(key, ttl);
+        } catch (JsonProcessingException e) {
+            log.warn("追加记忆消息序列化失败，跳过: conversationId={}, error={}", conversationId, e.getMessage());
+        }
+    }
+
+    /**
+     * 会话记忆是否已存在（doing/92 R-015 召回守卫）：EXISTS key 原子判空，
+     * 避免记忆为空（TTL 过期/从未写入）时追加出悬空更正消息。
+     */
+    @Override
+    public boolean hasMessages(String conversationId) {
+        String key = buildKey(conversationId);
+        return Boolean.TRUE.equals(redisTemplate.hasKey(key));
     }
 
     /**

@@ -13,7 +13,7 @@ import java.util.UUID;
  * CFG-004：toB 学校/班级/咨询室三层归属绑定；toB 多人共用 student_id 为 NULL。
  * 设计见 doing/84 §六.1。
  */
-@TableName(value = "device_bindings", schema = "tenant_template")
+@TableName(value = "device_bindings", schema = TenantSchema.TENANT_TEMPLATE)
 public class DeviceBinding {
 
     /** 绑定类型：学校 */

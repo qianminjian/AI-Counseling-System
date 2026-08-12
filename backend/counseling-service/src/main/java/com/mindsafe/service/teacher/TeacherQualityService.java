@@ -10,6 +10,7 @@ import com.mindsafe.domain.mapper.CounselingSessionMapper;
 import com.mindsafe.domain.mapper.MessageSummaryMapper;
 import com.mindsafe.domain.mapper.QualityScoreMapper;
 import com.mindsafe.domain.mapper.UserMapper;
+import com.mindsafe.service.conversation.MessageSummaryService;
 import com.mindsafe.service.security.FieldEncryptionService;
 import org.springframework.stereotype.Service;
 
@@ -33,18 +34,22 @@ public class TeacherQualityService {
     private final CounselingSessionMapper sessionMapper;
     private final UserMapper userMapper;
     private final MessageSummaryMapper messageSummaryMapper;
+    /** S-006（doing/93）：转写读取单点（BA-10），质量回放读路径收敛 */
+    private final MessageSummaryService messageSummaryService;
     private final FieldEncryptionService fieldEncryptionService;
 
     public TeacherQualityService(QualityScoreMapper qualityScoreMapper,
                                  CounselingSessionMapper sessionMapper,
                                  UserMapper userMapper,
                                  MessageSummaryMapper messageSummaryMapper,
-                                 FieldEncryptionService fieldEncryptionService) {
+                                 FieldEncryptionService fieldEncryptionService,
+                                 MessageSummaryService messageSummaryService) {
         this.qualityScoreMapper = qualityScoreMapper;
         this.sessionMapper = sessionMapper;
         this.userMapper = userMapper;
         this.messageSummaryMapper = messageSummaryMapper;
         this.fieldEncryptionService = fieldEncryptionService;
+        this.messageSummaryService = messageSummaryService;
     }
 
     /** 质量监控：低分会话列表（rating <= 2） */
@@ -199,18 +204,12 @@ public class TeacherQualityService {
             return null;
         }
 
-        List<MessageSummary> messages = messageSummaryMapper.selectList(
-                new LambdaQueryWrapper<MessageSummary>()
-                        .eq(MessageSummary::getTenantId, tenantId)
-                        .eq(MessageSummary::getSessionId, sessionId)
-                        .orderByAsc(MessageSummary::getTurnCount)
-                        .orderByAsc(MessageSummary::getCreatedAt)
-        );
+        List<MessageSummary> messages = messageSummaryService.readDecryptedMessages(tenantId, sessionId);
 
         List<Map<String, Object>> replayMessages = messages.stream().map(m -> Map.<String, Object>of(
                 "turn", m.getTurnCount() != null ? m.getTurnCount() : 0,
                 "senderType", m.getSenderType() != null ? m.getSenderType() : "unknown",
-                "content", m.getContentSummary() != null ? fieldEncryptionService.decrypt(m.getContentSummary()) : "",
+                "content", m.getContentSummary() != null ? m.getContentSummary() : "",
                 "emotionLabel", m.getEmotionLabel() != null ? m.getEmotionLabel() : "",
                 "riskLevel", m.getRiskLevel() != null ? m.getRiskLevel() : 0
         )).toList();

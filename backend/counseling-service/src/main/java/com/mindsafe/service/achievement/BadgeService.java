@@ -77,8 +77,8 @@ public class BadgeService {
                 new Badge("diary_30", "🏆", "月度之星", "累计打卡 30 天", diaryCount >= 30));
     }
 
-    /** 连续打卡天数（纯函数，EmotionDiaryService.getStreak 复用） */
-    public static int computeStreak(List<EmotionDiary> all) {
+    /** 连续打卡天数（doing/92 R-011：去 static——EmotionDiaryService 经注入调用，消除跨域静态耦合） */
+    public int computeStreak(List<EmotionDiary> all) {
         int streak = 0;
         // BUG-S-08-1 同源修复（2026-08-12）：streak 基准与打卡插入日界统一为业务时区，
         // 避免 UTC 日界窗口期 streak 计算错位（打卡数据为上海日界，此处不可用 JVM 默认时区）

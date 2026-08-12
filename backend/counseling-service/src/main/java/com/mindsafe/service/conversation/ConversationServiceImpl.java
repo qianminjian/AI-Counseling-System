@@ -14,7 +14,7 @@ import com.mindsafe.ai.orchestrator.StrategyProfile;
 import com.mindsafe.ai.safety.ConfidentialityNotice;
 import com.mindsafe.ai.safety.CrisisResourceProvider;
 import com.mindsafe.ai.safety.HighSensitivityCategories;
-import com.mindsafe.ai.safety.PiiDesensitizer;
+import com.mindsafe.common.util.PiiDesensitizer;
 import com.mindsafe.common.dto.ErrorCode;
 import com.mindsafe.common.dto.chat.SessionInfo;
 import com.mindsafe.common.dto.chat.StreamMessageEvent;
@@ -55,7 +55,8 @@ public class ConversationServiceImpl implements ConversationService {
 
     private final AiChatService aiChatService;
     private final ConversationRiskProcessor riskProcessor;
-    private final PiiDesensitizer piiDesensitizer;
+    /** 会话级 PII 脱敏（纯正则无状态；S-012 下沉 common 后 common 无 Spring 依赖，消费方内联实例化） */
+    private final PiiDesensitizer piiDesensitizer = new PiiDesensitizer();
     // BA-11：会话表读写收口仓储（编排器不再直连 Mapper；摘要域查询归 MessageSummaryService）
     private final CounselingSessionStore sessionStore;
     private final UserMapper userMapper;
@@ -81,22 +82,23 @@ public class ConversationServiceImpl implements ConversationService {
 
     /** 主题演化引擎（话题关键词表单一源，ARCH-001 C1 收敛） */
     private final ThemeEvolutionEngine themeEvolutionEngine;
+    /** S-013（doing/93）：高敏类别判定注入 */
+    private final HighSensitivityCategories highSensitivityCategories;
 
     /** 暖场护栏配置（B2：阈值单一源，Lua 判定与快照判定同源） */
     private final NudgeProperties nudgeProperties;
 
-    /** 冷场决策模型（无状态纯计算，design/28 §三） */
-    private final NudgeDecisionModel nudgeDecisionModel = new NudgeDecisionModel();
+    /** 冷场决策模型（无状态纯计算，design/28 §三；S-005 改构造注入） */
+    private final NudgeDecisionModel nudgeDecisionModel;
 
-    /** 回复情绪推导器（TTSFX-004，design/37 §三.1）：纯规则零依赖，同 NudgeDecisionModel 内联实例化 */
-    private final ReplyEmotionResolver replyEmotionResolver = new ReplyEmotionResolver();
+    /** 回复情绪推导器（TTSFX-004，design/37 §三.1；S-005 改构造注入） */
+    private final ReplyEmotionResolver replyEmotionResolver;
 
     /** CBT state_path JSON 序列化工具（CBT-201）；ARCH-010 P2-2：注入唯一 ObjectMapper（此前 static new） */
     private final ObjectMapper objectMapper;
 
     public ConversationServiceImpl(AiChatService aiChatService,
                                    ConversationRiskProcessor riskProcessor,
-                                   PiiDesensitizer piiDesensitizer,
                                    CounselingSessionStore sessionStore,
                                    UserMapper userMapper,
                                    StudentProfileService profileService,
@@ -116,10 +118,12 @@ public class ConversationServiceImpl implements ConversationService {
                                    PersonalInfoExtractor personalInfoExtractor,
                                    PromptAssemblyService promptAssemblyService,
                                    ThemeEvolutionEngine themeEvolutionEngine,
-                                   NudgeProperties nudgeProperties) {
+                                   NudgeProperties nudgeProperties,
+                                   NudgeDecisionModel nudgeDecisionModel,
+                                   ReplyEmotionResolver replyEmotionResolver,
+                                   HighSensitivityCategories highSensitivityCategories) {
         this.aiChatService = aiChatService;
         this.riskProcessor = riskProcessor;
-        this.piiDesensitizer = piiDesensitizer;
         this.sessionStore = sessionStore;
         this.userMapper = userMapper;
         this.profileService = profileService;
@@ -139,6 +143,9 @@ public class ConversationServiceImpl implements ConversationService {
         this.personalInfoExtractor = personalInfoExtractor;
         this.promptAssemblyService = promptAssemblyService;
         this.themeEvolutionEngine = themeEvolutionEngine;
+        this.highSensitivityCategories = highSensitivityCategories;
+        this.nudgeDecisionModel = nudgeDecisionModel;
+        this.replyEmotionResolver = replyEmotionResolver;
         this.nudgeProperties = nudgeProperties;
     }
 
@@ -235,7 +242,7 @@ public class ConversationServiceImpl implements ConversationService {
         boolean isRisky = fusedLevel != null;
 
         // SAFE-202：高敏场景前置化——命中虐待/丧失/自伤等类别即永久标记（不论级别）
-        if (riskResult.isRisky() && HighSensitivityCategories.isHighSensitivity(riskResult.category())) {
+        if (riskResult.isRisky() && highSensitivityCategories.isHighSensitivity(riskResult.category())) {
             session.setHighSensitivity(true);
         }
 
@@ -341,17 +348,13 @@ public class ConversationServiceImpl implements ConversationService {
 
         // 5. 调用 AI 服务获取流式回复（CTX-Agent 结构化上下文 + 年级适配，PROF-010/011/012/015 + AI-008 + AI-005）
         boolean riskBlocked = fusedLevel != null && fusedLevel.severity() >= RiskLevel.ORANGE.severity();
-        int effectiveGrade = ConversationUtils.computeEffectiveGrade(session.getGrade(), session.getExpressionDepth(), riskBlocked);
-        String profilePrompt = profileService.buildProfilePrompt(session.getTenantId(), session.getStudentUserId(), session.getGrade(), session.getGender());
-        // AI-008：长期记忆（跨会话关键事件回注）
-        String memoryPrompt = longTermMemoryService.buildMemoryPrompt(session.getTenantId(), session.getStudentUserId());
-
-        // ALLY-201/203：治疗联盟增强——连续性开场 + 中断回归照护（design/52 §五）
-        String alliancePrompt = buildAlliancePrompt(session, memoryPrompt);
-
-        // CTX-Agent：结构化上下文简报（身份+情绪旅程+会话进展+记忆+画像）
-        int totalSessions = profileService.getSessionCount(session.getTenantId(), session.getStudentUserId());
-        String contextBrief = contextAgent.buildContextBrief(session, profilePrompt, memoryPrompt, alliancePrompt, totalSessions);
+        // S-002（doing/93）：每轮上下文组装单点（画像+记忆+联盟+简报），主链路与 nudge 共用防分叉
+        RoundContext roundCtx = buildRoundContext(session, riskBlocked);
+        int effectiveGrade = roundCtx.effectiveGrade();
+        String profilePrompt = roundCtx.profilePrompt();
+        String memoryPrompt = roundCtx.memoryPrompt();
+        String alliancePrompt = roundCtx.alliancePrompt();
+        String contextBrief = roundCtx.contextBrief();
 
         // ORCH-001/002/003/005：编排引擎——先算策略、再拼提示词（design/44 §四/§七）。
         // VCL-001：轮级 currentEmotion 由语音 SER 映射驱动（置信门控 >0.6），
@@ -499,14 +502,10 @@ public class ConversationServiceImpl implements ConversationService {
         }
 
         // 暖场：TSK_004 指令路由与组装收敛 PromptAssemblyService（ARCH-010 D4 + ARCH-001 C1，与主链路同一加载路径）
-        // 暖场上下文简报（CTX-Agent 统一上下文，同主链路组装）
-        String profilePrompt = profileService.buildProfilePrompt(session.getTenantId(), session.getStudentUserId(), session.getGrade(), session.getGender());
-        String nudgeMemoryPrompt = longTermMemoryService.buildMemoryPrompt(session.getTenantId(), session.getStudentUserId());
-        String nudgeAlliancePrompt = buildAlliancePrompt(session, nudgeMemoryPrompt);
-        int nudgeTotalSessions = profileService.getSessionCount(session.getTenantId(), session.getStudentUserId());
-        String nudgeContextBrief = contextAgent.buildContextBrief(session, profilePrompt, nudgeMemoryPrompt, nudgeAlliancePrompt, nudgeTotalSessions);
-        // PROF-015：暖场场景无风险（橙/红已拦截），仅根据表达深度降级
-        int effectiveGrade = ConversationUtils.computeEffectiveGrade(session.getGrade(), session.getExpressionDepth(), false);
+        // 暖场上下文简报（S-002：与主链路共用组装单点；PROF-015 暖场无风险，riskBlocked=false）
+        RoundContext nudgeCtx = buildRoundContext(session, false);
+        String nudgeContextBrief = nudgeCtx.contextBrief();
+        int effectiveGrade = nudgeCtx.effectiveGrade();
         int turn = session.getTurnCount();
         StringBuilder aiResponseCollector = new StringBuilder();
 
@@ -659,6 +658,34 @@ public class ConversationServiceImpl implements ConversationService {
      */
     private List<String> loadStudentMessages(UUID tenantId, UUID sessionId) {
         return messageSummaryService.readStudentPlainTexts(tenantId, sessionId);
+    }
+
+    /** S-002（doing/93）：每轮上下文组装产物（年级 + 画像 + 记忆 + 联盟 + 简报） */
+    private record RoundContext(int effectiveGrade, String profilePrompt, String memoryPrompt,
+                                String alliancePrompt, String contextBrief) {
+    }
+
+    /**
+     * S-002（doing/93）：每轮上下文组装单点——画像 + 长期记忆 + 联盟增强 + 会话数 + CTX 简报。
+     * 主链路与 nudge 双路径共用（原逐字重复五连调用且已分叉）；
+     * contextBrief 注入时机由调用方决定（主链路拼入 system 尾部；nudge 交 chatProactive）。
+     */
+    private RoundContext buildRoundContext(SessionState session, boolean riskBlocked) {
+        int effectiveGrade = ConversationUtils.computeEffectiveGrade(
+                session.getGrade(), session.getExpressionDepth(), riskBlocked);
+        // PROF-010/011/012/015：学生画像提示（年级适配）
+        String profilePrompt = profileService.buildProfilePrompt(
+                session.getTenantId(), session.getStudentUserId(), session.getGrade(), session.getGender());
+        // AI-008：长期记忆（跨会话关键事件回注）
+        String memoryPrompt = longTermMemoryService.buildMemoryPrompt(
+                session.getTenantId(), session.getStudentUserId());
+        // ALLY-201/203：治疗联盟增强——连续性开场 + 中断回归照护（design/52 §五）
+        String alliancePrompt = buildAlliancePrompt(session, memoryPrompt);
+        // CTX-Agent：结构化上下文简报（身份+情绪旅程+会话进展+记忆+画像）
+        int totalSessions = profileService.getSessionCount(session.getTenantId(), session.getStudentUserId());
+        String contextBrief = contextAgent.buildContextBrief(
+                session, profilePrompt, memoryPrompt, alliancePrompt, totalSessions);
+        return new RoundContext(effectiveGrade, profilePrompt, memoryPrompt, alliancePrompt, contextBrief);
     }
 
     /**
