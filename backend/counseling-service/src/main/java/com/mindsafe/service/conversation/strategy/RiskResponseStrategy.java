@@ -1,6 +1,6 @@
 package com.mindsafe.service.conversation.strategy;
 
-import com.mindsafe.ai.safety.CrisisResourceProvider;
+import com.mindsafe.ai.safety.CrisisHotlineProvider;
 import com.mindsafe.ai.safety.CrisisResources;
 import com.mindsafe.common.enums.RiskLevel;
 
@@ -10,7 +10,8 @@ import com.mindsafe.common.enums.RiskLevel;
  * 从 ConversationServiceImpl 编排层下沉的纯静态决策：RED 硬短路文案（年级适配）与
  * AUTH-030 时长超限引导语。零 Spring 依赖，可独立单测。
  * <p>
- * 热线号码不在此类持有：话术模板经 CrisisHotlineProvider 渲染（DOC-073 B1，doing/77 §22），
+ * 热线号码不在此类持有：话术模板经 CrisisHotlineProvider 渲染（DOC-073 B1，doing/77 §22，
+ * P1-2 板块02：CrisisResourceProvider 已删除，年级模板选择内联本类，热线渲染单源），
  * 引导语由调用方传入当前生效号码。
  */
 public final class RiskResponseStrategy {
@@ -21,15 +22,17 @@ public final class RiskResponseStrategy {
     /**
      * 解析安全回复文案（RISK-201）：
      * <ul>
-     *   <li>RED → 预审核危机文案（年级适配，provider 注入——危机资源属于域外能力）</li>
+     *   <li>RED → 预审核危机文案（年级适配，经 hotlineProvider 渲染——危机资源属于域外能力）</li>
      *   <li>安全模式（非本轮 RED）→ 陪伴话术（RED 后后续轮次不自由生成）</li>
      *   <li>其他 → null（走正常 LLM 链路）</li>
      * </ul>
      */
     public static String resolveSafetyReply(RiskLevel fusedLevel, boolean inSafetyMode,
-                                            int grade, CrisisResourceProvider provider) {
+                                            int grade, CrisisHotlineProvider hotlineProvider) {
         if (fusedLevel == RiskLevel.RED) {
-            return provider.getRedSafetyReply(grade);
+            return grade <= 2
+                    ? hotlineProvider.render(CrisisResources.RED_SAFETY_REPLY_LOWER_GRADE)
+                    : hotlineProvider.render(CrisisResources.RED_SAFETY_REPLY);
         }
         if (inSafetyMode) {
             return CrisisResources.SAFETY_MODE_COMPANION_REPLY;

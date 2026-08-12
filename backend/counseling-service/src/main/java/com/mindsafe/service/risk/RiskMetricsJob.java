@@ -15,6 +15,7 @@ import org.springframework.stereotype.Component;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -34,10 +35,6 @@ import java.util.concurrent.atomic.AtomicLong;
 public class RiskMetricsJob {
 
     private static final Logger log = LoggerFactory.getLogger(RiskMetricsJob.class);
-
-    /** SLA 处置阈值（分钟）——与 RiskOverviewService 同口径（权威 RiskLevel：RED=3/ORANGE=2/YELLOW=1/GREEN=0） */
-    private static final Map<Integer, Long> SLA_DISPOSE_MINUTES = Map.of(
-            3, 15L, 2, 60L, 1, 480L, 0, 1440L);
 
     /** 租户级指标保留期：连续 7 天无事件即注销 gauge（防已停用租户序列永久输出，M2） */
     private static final Duration TENANT_IDLE_RETENTION = Duration.ofDays(7);
@@ -132,15 +129,35 @@ public class RiskMetricsJob {
         return value;
     }
 
+    /**
+     * 当前逾期未处置预警数（P2-4：SLA 超时条件 SQL 下推，替代全表拉取内存过滤）。
+     * 口径与 {@link RiskSlaConstants#slaMinutesFor} 完全一致：status∈{open,claimed} 且
+     * detectedAt 早于「now − 该等级 SLA 时限」；null/未知等级按 GREEN（1440min）口径。
+     */
     private long countOverdue() {
         Instant now = Instant.now();
-        return riskEventMapper.selectList(new LambdaQueryWrapper<RiskEvent>()
-                        .in(RiskEvent::getStatus, RiskEvent.STATUS_OPEN, RiskEvent.STATUS_CLAIMED))
-                .stream()
-                .filter(e -> e.getDetectedAt() != null)
-                .filter(e -> Duration.between(e.getDetectedAt(), now).toMinutes()
-                        > SLA_DISPOSE_MINUTES.getOrDefault(e.getRiskLevel() == null ? 0 : e.getRiskLevel(), 1440L))
-                .count();
+        var wrapper = new LambdaQueryWrapper<RiskEvent>()
+                .in(RiskEvent::getStatus, RiskEvent.STATUS_OPEN, RiskEvent.STATUS_CLAIMED)
+                .isNotNull(RiskEvent::getDetectedAt)
+                .and(w -> {
+                    List<Map.Entry<Integer, Long>> tiers =
+                            new ArrayList<>(RiskSlaConstants.SLA_DISPOSE_MINUTES.entrySet());
+                    // 第一条非 OR 连接（MyBatis-Plus 对空子句用 or() 会产出非法 SQL）
+                    w.eq(RiskEvent::getRiskLevel, tiers.get(0).getKey())
+                            .lt(RiskEvent::getDetectedAt,
+                                    now.minus(tiers.get(0).getValue(), ChronoUnit.MINUTES));
+                    for (int i = 1; i < tiers.size(); i++) {
+                        int level = tiers.get(i).getKey();
+                        long minutes = tiers.get(i).getValue();
+                        w.or(q -> q.eq(RiskEvent::getRiskLevel, level)
+                                .lt(RiskEvent::getDetectedAt, now.minus(minutes, ChronoUnit.MINUTES)));
+                    }
+                    // null/未知等级回落 GREEN 口径
+                    w.or(q -> q.isNull(RiskEvent::getRiskLevel)
+                            .lt(RiskEvent::getDetectedAt,
+                                    now.minus(RiskSlaConstants.DEFAULT_SLA_MINUTES, ChronoUnit.MINUTES)));
+                });
+        return riskEventMapper.selectCount(wrapper);
     }
 
     private long countDead() {

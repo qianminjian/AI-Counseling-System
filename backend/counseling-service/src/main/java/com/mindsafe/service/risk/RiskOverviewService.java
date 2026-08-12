@@ -6,11 +6,11 @@ import com.mindsafe.domain.entity.RiskEvent;
 import com.mindsafe.domain.entity.SlaEscalationLog;
 import com.mindsafe.domain.mapper.RiskEventMapper;
 import com.mindsafe.domain.mapper.SlaEscalationLogMapper;
+import com.mindsafe.service.common.CounselingTimeZone;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
 import java.time.Instant;
-import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -31,14 +31,6 @@ import java.util.stream.Collectors;
 @Service
 public class RiskOverviewService {
 
-    /** SLA 处置阈值（分钟，权威映射 RiskLevel：RED=3/ORANGE=2/YELLOW=1/GREEN=0；处置口径 §8.3） */
-    private static final Map<Integer, Long> SLA_DISPOSE_MINUTES = Map.of(
-            3, 15L,   // RED（S0）处置 15min
-            2, 60L,   // ORANGE 处置 1h
-            1, 480L,  // YELLOW 处置 1 工作日（8h）
-            0, 1440L  // GREEN 处置 1 天（超时口径宽松）
-    );
-
     /** 统计窗口：近 30 天 */
     private static final int WINDOW_DAYS = 30;
 
@@ -55,8 +47,8 @@ public class RiskOverviewService {
     public Map<String, Object> overview(UUID tenantId) {
         List<RiskEvent> events = loadWindow(tenantId, WINDOW_DAYS);
         Instant now = Instant.now();
-        Instant todayStart = now.atZone(ZoneId.of("Asia/Shanghai")).toLocalDate()
-                .atStartOfDay(ZoneId.of("Asia/Shanghai")).toInstant();
+        // R-010 冻结决策：业务日界统一 CounselingTimeZone（doing/92）
+        Instant todayStart = CounselingTimeZone.startOfDay(now);
 
         Map<String, Long> levelDistribution = events.stream()
                 .collect(Collectors.groupingBy(e -> levelName(e.getRiskLevel()), Collectors.counting()));
@@ -66,13 +58,12 @@ public class RiskOverviewService {
                 .filter(e -> RiskEvent.STATUS_OPEN.equals(e.getStatus()) || RiskEvent.STATUS_CLAIMED.equals(e.getStatus()))
                 .count();
 
-        // 近 7 天趋势（按 Asia/Shanghai 日分组）
+        // 近 7 天趋势（按 Asia/Shanghai 日分组，R-010 收敛 CounselingTimeZone）
         Map<String, Long> trend = new LinkedHashMap<>();
-        ZoneId zone = ZoneId.of("Asia/Shanghai");
         for (int i = 6; i >= 0; i--) {
-            Instant dayStart = now.atZone(zone).toLocalDate().minusDays(i).atStartOfDay(zone).toInstant();
+            Instant dayStart = CounselingTimeZone.startOfDay(now.minus(i, ChronoUnit.DAYS));
             Instant dayEnd = dayStart.plus(1, ChronoUnit.DAYS);
-            String day = dayStart.atZone(zone).toLocalDate().toString();
+            String day = CounselingTimeZone.dateKey(dayStart);
             long count = events.stream()
                     .filter(e -> !e.getDetectedAt().isBefore(dayStart) && e.getDetectedAt().isBefore(dayEnd))
                     .count();
@@ -101,7 +92,7 @@ public class RiskOverviewService {
         for (Map.Entry<Integer, List<RiskEvent>> entry : byLevel.entrySet()) {
             int level = entry.getKey();
             List<RiskEvent> levelEvents = entry.getValue();
-            long slaMinutes = SLA_DISPOSE_MINUTES.getOrDefault(level, 1440L);
+            long slaMinutes = RiskSlaConstants.slaMinutesFor(level);
             long onTime = levelEvents.stream()
                     .filter(e -> Duration.between(e.getDetectedAt(), e.getResolvedAt()).toMinutes() <= slaMinutes)
                     .count();
@@ -146,7 +137,7 @@ public class RiskOverviewService {
                 .filter(e -> RiskEvent.STATUS_OPEN.equals(e.getStatus()) || RiskEvent.STATUS_CLAIMED.equals(e.getStatus()))
                 .filter(e -> e.getDetectedAt() != null
                         && Duration.between(e.getDetectedAt(), now).toMinutes()
-                        > SLA_DISPOSE_MINUTES.getOrDefault(e.getRiskLevel() == null ? 0 : e.getRiskLevel(), 1440L))
+                        > RiskSlaConstants.slaMinutesFor(e.getRiskLevel()))
                 .sorted(Comparator.comparing(RiskEvent::getDetectedAt))
                 .map(e -> new OverdueEntry(
                         e.getRiskEventId(), e.getTenantId(), e.getRiskLevel(), e.getRiskType(),
