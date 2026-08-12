@@ -348,12 +348,11 @@ public class ConversationServiceImpl implements ConversationService {
 
         // 5. 调用 AI 服务获取流式回复（CTX-Agent 结构化上下文 + 年级适配，PROF-010/011/012/015 + AI-008 + AI-005）
         boolean riskBlocked = fusedLevel != null && fusedLevel.severity() >= RiskLevel.ORANGE.severity();
-        // S-002（doing/93）：每轮上下文组装单点（画像+记忆+联盟+简报），主链路与 nudge 共用防分叉
+        // S-002（doing/93）：每轮上下文组装单点（画像+记忆+联盟+简报），主链路 与 nudge 共用防分叉
         RoundContext roundCtx = buildRoundContext(session, riskBlocked);
         int effectiveGrade = roundCtx.effectiveGrade();
-        String profilePrompt = roundCtx.profilePrompt();
-        String memoryPrompt = roundCtx.memoryPrompt();
-        String alliancePrompt = roundCtx.alliancePrompt();
+        // OPS-P3-01（doing/96）：profilePrompt/memoryPrompt/alliancePrompt 三局部变量
+        // 赋值未消费（已拼入 contextBrief），删除冗余解包
         String contextBrief = roundCtx.contextBrief();
 
         // ORCH-001/002/003/005：编排引擎——先算策略、再拼提示词（design/44 §四/§七）。

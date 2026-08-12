@@ -298,8 +298,4 @@ public class ConversationRiskProcessor {
         }
         return "学生语音情绪「" + label + "」，建议关注";
     }
-
-    private boolean isNegativeEmotion(String emotion) {
-        return EmotionVocabulary.isNegative(emotion);
-    }
 }
