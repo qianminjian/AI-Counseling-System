@@ -28,60 +28,14 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(BizException.class)
     public ResponseEntity<ApiResponse<Void>> handleBizException(BizException e) {
-        HttpStatus status = resolveStatus(e.getCode());
+        // 审计 F7：状态码映射单点收敛到 ErrorCode.httpStatus（编译期强制），魔法 switch 已删除
+        ErrorCode errorCode = e.getErrorCode();
+        HttpStatus status = errorCode != null
+                ? HttpStatus.valueOf(errorCode.httpStatus())
+                // int 构造器兼容（当前无调用方）：未知 code 落 400（业务错误，非服务故障），与原 resolveStatus 兜底语义一致
+                : HttpStatus.BAD_REQUEST;
         log.warn("业务异常: code={}, msg={}, httpStatus={}", e.getCode(), e.getMessage(), status.value());
         return ResponseEntity.status(status).body(ApiResponse.error(e.getCode(), e.getMessage()));
-    }
-
-    /**
-     * AUD-015：错误码 → HTTP 状态码映射（按 ErrorCode 数值分段）。
-     * 原则：客户端可纠正→4xx（参数/权限/冲突），资源终态→410/404，外部依赖故障→5xx。
-     * 未知 code 落 400（业务错误，非服务故障）。
-     */
-    private static HttpStatus resolveStatus(int code) {
-        if (code >= 60000) { // AI/LLM 60xxx
-            return switch (code) {
-                case 60001 -> HttpStatus.GATEWAY_TIMEOUT;        // LLM_TIMEOUT
-                case 60002 -> HttpStatus.SERVICE_UNAVAILABLE;    // LLM_UNAVAILABLE
-                case 60003 -> HttpStatus.BAD_REQUEST;            // LLM_CONTENT_BLOCKED
-                default -> HttpStatus.INTERNAL_SERVER_ERROR;
-            };
-        }
-        if (code >= 40000) { // 风险/预警 40xxx
-            return switch (code) {
-                case 40001 -> HttpStatus.FORBIDDEN;        // RISK_ESCALATED（业务拦截）
-                case 40002 -> HttpStatus.NOT_FOUND;        // ALERT_NOT_FOUND
-                case 40003 -> HttpStatus.CONFLICT;         // ALERT_ALREADY_CLAIMED
-                default -> HttpStatus.BAD_REQUEST;
-            };
-        }
-        if (code >= 30000) { // 对话/会话 30xxx
-            return switch (code) {
-                case 30001 -> HttpStatus.NOT_FOUND;            // SESSION_NOT_FOUND
-                case 30002 -> HttpStatus.GONE;                 // SESSION_ENDED（终态）
-                case 30003 -> HttpStatus.PAYLOAD_TOO_LARGE;    // MESSAGE_TOO_LONG
-                default -> HttpStatus.BAD_REQUEST;
-            };
-        }
-        if (code >= 20000) { // 认证/授权 20xxx
-            return switch (code) {
-                case 20001 -> HttpStatus.UNAUTHORIZED;            // UNAUTHORIZED（前端 401 刷新/重登流程）
-                case 20002, 20003, 20007, 20010 -> HttpStatus.FORBIDDEN; // 无权限/需监护人授权/需改密/密码过期
-                case 20004, 20005, 20008, 20009 -> HttpStatus.BAD_REQUEST;
-                case 20006 -> HttpStatus.CONFLICT;               // CONSENT_VERSION_MISMATCH
-                case 20011 -> HttpStatus.GONE;                   // CONSENT_WITHDRAWN（同意撤回为资源终态，410 语义）
-                default -> HttpStatus.BAD_REQUEST;
-            };
-        }
-        // 通用 10xxx
-        return switch (code) {
-            case 10001 -> HttpStatus.INTERNAL_SERVER_ERROR;
-            case 10002 -> HttpStatus.BAD_REQUEST;
-            case 10003, 10005 -> HttpStatus.NOT_FOUND;           // 资源/租户不存在
-            case 10004 -> HttpStatus.TOO_MANY_REQUESTS;          // RATE_LIMITED
-            case 10006 -> HttpStatus.GONE;                       // API_GONE（410 语义）
-            default -> HttpStatus.BAD_REQUEST;
-        };
     }
 
     /** 参数校验异常（@Valid 触发） */
