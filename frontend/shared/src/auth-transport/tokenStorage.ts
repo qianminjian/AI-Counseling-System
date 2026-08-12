@@ -5,7 +5,8 @@
  * 统一三端双 token + 用户信息键形态：`${prefix}token` / `${prefix}refresh` / `${prefix}user`
  * - student：mindsafe_student_*（token/refresh/user）
  * - teacher：mindsafe_*（token/refresh；user 键不存在，clear 无害）
- * - parent：parent_* 键名为 parent_refresh_token（历史差异），由 parent 适配层包装
+ * - parent：parent_*（历史差异 parent_refresh_token 已收敛为 parent_refresh，适配层在
+ *   parent-h5/src/utils/auth.ts 包装 '' 空串语义；doing/94 R-003 注释修正）
  */
 export interface TokenStorage {
   getToken(): string | null

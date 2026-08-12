@@ -35,7 +35,8 @@ function normalizeCandidate(raw: string): string | null {
 /** 源码中全部 API 路径（去重，规范化形态；仅提取 request/fetch 调用内字面量，排除路由跳转如 location.href） */
 function sourceApiPaths(): string[] {
   const patterns = [
-    /request(?:<[^>]+>)?\(\s*(['"`])([^'"`]+)\1/g, // request('/path')
+    // doing/94 R-003：工厂单例化后调用名 parentRequest/tocRequest（原 request 收敛）
+    /(?:parentRequest|tocRequest|request)(?:<[^>]+>)?\(\s*(['"`])([^'"`]+)\1/g, // parentRequest('/path')
     /fetch\(\s*(['"`])([^'"`]*)\1/g, // fetch('/path') / fetch(`...`)
   ]
   const paths = new Set<string>()

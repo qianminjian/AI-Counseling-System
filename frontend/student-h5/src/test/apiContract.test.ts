@@ -11,6 +11,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import openapiRaw from '../__contract__/openapi.json?raw'
+import { FRONTEND_ENDPOINTS } from '../endpoints' // doing/94 R-001：端点清单由常量表派生（原本地硬编码 23 条已迁出）
 import {
   validateMock,
   type RefResolver,
@@ -42,35 +43,22 @@ function responseSchema(path: string, method: string): Schema | undefined {
   return Object.values(content)[0]?.schema
 }
 
-// ===== 前端 api.ts 端点清单（api() 自动拼 /api/v1 前缀；trialRegister/pinLogin 等直连） =====
-const FRONTEND_ENDPOINTS: Array<[path: string, method: string]> = [
-  ['/api/v1/auth/trial/register', 'post'],
-  ['/api/v1/auth/pin-login', 'post'],
-  ['/api/v1/auth/refresh', 'post'],
-  ['/api/v1/auth/set-pin', 'post'],
-  ['/api/v1/auth/voice-credential', 'post'],
-  ['/api/v1/auth/voice-login', 'post'],
-  ['/api/v1/auth/guardian-consent/request', 'post'],
-  ['/api/v1/auth/guardian-consent/confirm', 'post'],
-  ['/api/v1/voiceprint/config', 'get'],
-  ['/api/v1/voiceprint/verify', 'post'],
-  ['/api/v1/voiceprint/enroll', 'post'],
-  ['/api/v1/toolbox', 'get'],
-  ['/api/v1/toolbox/sos', 'get'],
-  ['/api/v1/toolbox/mood-check', 'post'],
-  ['/api/v1/sos/events', 'post'],
-  // ARCH-005 F-3：SSE 会话流 / 语音 / 系统配置（useSseStream / useSilenceNudge / ChatRoom / remote.ts）
-  ['/api/v1/chat/sessions', 'post'],
-  ['/api/v1/chat/sessions/{sessionId}/messages', 'post'],
-  ['/api/v1/chat/sessions/{sessionId}/nudge', 'post'],
-  // ARCH-010 D5（OVD-4）：旧关闭接口已下线，前端仅调用 /sessions/{id}/close
-  ['/api/v1/sessions/{id}/close', 'post'],
-  ['/api/v1/voice/analyze', 'post'],
-  ['/api/v1/tts/synthesize', 'post'],
-  ['/api/v1/tts/login-prompt', 'post'],
-  ['/api/v1/system/config', 'get'],
-]
+/**
+ * 快照 key 匹配（doing/94 R-001）：派生清单为占位符剥离形态（模板端点留双斜杠），
+ * 快照 key 为 OpenAPI 占位符形态——双斜杠位回填参数占位正则进行匹配。
+ * 已知边界（CodeReview L1，当前 23 端点不受影响）：占位符位于路径末段或多占位符
+ * 形态的模板端点无法回填，新增此类端点时需扩展本函数。
+ */
+function snapshotPath(candidate: string): string | undefined {
+  if (doc.paths[candidate]) return candidate
+  // 函数替换返回字面值（替换串会解析反斜杠转义）；双斜杠位回填"参数占位 + 尾部斜杠"正则段
+  const re = new RegExp(
+    '^' + candidate.replace(/\/\//g, () => '/\\{[^/]+\\}/').replace(/\//g, () => '\\/') + '$'
+  )
+  return Object.keys(doc.paths).find((k) => re.test(k))
+}
 
+// ===== 前端端点清单（doing/94 R-001：由 endpoints.ts 常量表派生，占位符剥离） =====
 // ===== 响应 mock 样例（单一来源：src/test/mockFixtures.ts，ARCH-005 F-3） =====
 
 describe('契约快照结构', () => {
@@ -82,14 +70,15 @@ describe('契约快照结构', () => {
 
   it('学生端 23 个端点全部在快照中', () => {
     for (const [path] of FRONTEND_ENDPOINTS) {
-      expect(doc.paths[path], `快照缺少端点 ${path}`).toBeDefined()
+      expect(snapshotPath(path), `快照缺少端点 ${path}`).toBeDefined()
     }
   })
 })
 
 describe('请求方向：前端端点 ⊆ 契约快照（方法匹配）', () => {
   it.each(FRONTEND_ENDPOINTS)('%s %s', (path, method) => {
-    const op = doc.paths[path]?.[method]
+    const matched = snapshotPath(path)
+    const op = matched ? doc.paths[matched]?.[method] : undefined
     expect(op, `快照缺少 ${path} 的 ${method} 方法`).toBeDefined()
   })
 })

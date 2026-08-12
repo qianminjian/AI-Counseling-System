@@ -5,12 +5,16 @@
  * 设备级标记（如 consent）存 localStorage（跨会话保持）
  */
 // AUD-065：consent 读写接入 localStorage 安全封装（隐私模式/存储禁用下不抛 SecurityError）
-import { readLocalStorageSafe, writeLocalStorageSafe } from './utils/storage'
+// doing/94 R-001：ConsentKeys 迁出 utils/consentKeys 独立模块，此处 re-export 保持调用面兼容
+export { ConsentKeys, isConsentDone, markConsentDone } from './utils/consentKeys'
 // DC-005：认证传输三端收敛为共享模块（SPEC §19）——token 存取/刷新/authFetch/登出/错误模型
 import { createSessionStorageTokens } from '../../shared/src/auth-transport/tokenStorage'
 import { createAuthFetch } from '../../shared/src/auth-transport/authFetch'
 import { handleSessionExpired } from '../../shared/src/auth-transport/sessionExpired'
 import { ApiError, toApiError } from '../../shared/src/auth-transport/apiError'
+// doing/94 R-001：端点单一事实源（对齐 teacher-web FA-15），路径只登记一次
+export { ENDPOINTS, FRONTEND_ENDPOINTS, fillPath } from './endpoints'
+import { ENDPOINTS, fillPath } from './endpoints'
 export { ApiError }
 
 const storage = createSessionStorageTokens('mindsafe_student_')
@@ -46,33 +50,7 @@ export function setUser(user: Record<string, unknown>) {
 }
 
 // ===== 设备级存储（跨会话保持） =====
-/**
- * 同意键单点（F-9，ARCH-005）：告知同意 / 语音授权 / 语音通话授权
- * 各组件（App/ConsentDialog/VoiceConsentDialog/VoiceCallConsentDialog）只引用枚举，不再各自定义字符串。
- */
-export const ConsentKeys = {
-  NOTICE: 'mindsafe_consent_v1',
-  VOICE: 'mindsafe_voice_consent_v1',
-  VOICE_CALL: 'mindsafe_voicecall_consent_v1',
-} as const
-
-/** 旧版告知同意键（mindsafe_consent_done），一次性迁移兼容读取 */
-const LEGACY_NOTICE_KEY = 'mindsafe_consent_done'
-
-/** 设备是否已完成告知同意（跨 tab 保持；旧键存在时自动迁移到新键） */
-export function isConsentDone() {
-  // AUD-065：裸 localStorage 改安全封装（隐私模式/存储禁用下不抛 SecurityError → 白屏）
-  if (readLocalStorageSafe(ConsentKeys.NOTICE, '') === '1') return true
-  if (readLocalStorageSafe(LEGACY_NOTICE_KEY, '') === '1') {
-    writeLocalStorageSafe(ConsentKeys.NOTICE, '1')
-    return true
-  }
-  return false
-}
-
-export function markConsentDone() {
-  writeLocalStorageSafe(ConsentKeys.NOTICE, '1')
-}
+// doing/94 R-001：ConsentKeys/isConsentDone/markConsentDone 已迁出 utils/consentKeys（见文件头 re-export）
 
 /** 是否已登录（有有效 token） */
 export function isAuthenticated() {
@@ -94,7 +72,7 @@ export const authFetch = createAuthFetch(storage)
  * 返回原始 Response（SSE 流由调用方解析，不在此解析 JSON）。
  */
 export function fetchWarmPrompt(sessionId: string, silenceSeconds: number): Promise<Response> {
-  return authFetch(`/api/v1/chat/sessions/${sessionId}/nudge`, {
+  return authFetch(fillPath(ENDPOINTS.warmPrompt.path, { sessionId }), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ silenceSeconds }),
@@ -106,7 +84,7 @@ export function fetchWarmPrompt(sessionId: string, silenceSeconds: number): Prom
  * GET /api/v1/system/config，支持外部 AbortSignal（remote.ts 启动 3s 超时）。
  */
 export function fetchSystemConfig(signal?: AbortSignal): Promise<Response> {
-  return authFetch('/api/v1/system/config', {
+  return authFetch(ENDPOINTS.systemConfig.path, {
     headers: { Accept: 'application/json' },
     signal,
   })
@@ -114,7 +92,7 @@ export function fetchSystemConfig(signal?: AbortSignal): Promise<Response> {
 
 /** 登录页语音问候语合成（F-2，VoiceLoginOverlay） */
 export function fetchLoginPrompt(text: string, persona: string): Promise<Response> {
-  return authFetch('/api/v1/tts/login-prompt', {
+  return authFetch(ENDPOINTS.loginPrompt.path, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ text, persona }),
@@ -123,7 +101,7 @@ export function fetchLoginPrompt(text: string, persona: string): Promise<Respons
 
 /** TTS 语音合成（F-2，useTtsPlayer 音频流） */
 export function fetchTtsSynthesize(payload: Record<string, unknown>): Promise<Response> {
-  return authFetch('/api/v1/tts/synthesize', {
+  return authFetch(ENDPOINTS.ttsSynthesize.path, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
@@ -132,7 +110,7 @@ export function fetchTtsSynthesize(payload: Record<string, unknown>): Promise<Re
 
 /** 语音情感分析（F-2，ChatRoom multipart 上传；不设 Content-Type 由浏览器生成 boundary） */
 export function fetchVoiceAnalyze(formData: FormData): Promise<Response> {
-  return authFetch('/api/v1/voice/analyze', {
+  return authFetch(ENDPOINTS.voiceAnalyze.path, {
     method: 'POST',
     body: formData,
   })
@@ -157,7 +135,9 @@ export function isConsentRequired(err: unknown): boolean {
  * 语义：success!==true → toApiError（shared 错误模型）；成功返回 json.data
  */
 export async function api(path: string, options: RequestInit & { headers?: Record<string, string> } = {}) {
-  const res = await authFetch(`/api/v1${path}`, {
+  // doing/94 R-001：兼容全路径（ENDPOINTS 常量表）与相对路径（组件内联调用）两种形态
+  const url = path.startsWith('/api/v1') ? path : `/api/v1${path}`
+  const res = await authFetch(url, {
     ...options,
     headers: {
       'Content-Type': 'application/json',
@@ -182,7 +162,9 @@ export async function api(path: string, options: RequestInit & { headers?: Recor
  * 与 api() 同构但不注入 token、不触发 401 刷新；错误契约一处定义（success!==true → toApiError）
  */
 async function publicFetch<T = unknown>(path: string, options: RequestInit = {}, fallbackMessage = '请求失败'): Promise<T> {
-  const res = await fetch(`/api/v1${path}`, {
+  // doing/94 R-001：兼容全路径（ENDPOINTS 常量表）与相对路径两种形态
+  const url = path.startsWith('/api/v1') ? path : `/api/v1${path}`
+  const res = await fetch(url, {
     ...options,
     headers: {
       'Content-Type': 'application/json',
@@ -224,7 +206,7 @@ export interface AuthResult {
  * 试用注册
  */
 export async function trialRegister(data: TrialRegisterData): Promise<AuthResult> {
-  return publicFetch<AuthResult>('/auth/trial/register', {
+  return publicFetch<AuthResult>(ENDPOINTS.trialRegister.path, {
     method: 'POST',
     body: JSON.stringify(data),
   }, '注册失败')
@@ -234,7 +216,7 @@ export async function trialRegister(data: TrialRegisterData): Promise<AuthResult
  * PIN 码快捷登录（学生用昵称 + 4-6 位数字 PIN）
  */
 export async function pinLogin(pseudonym: string, pin: string): Promise<AuthResult> {
-  return publicFetch<AuthResult>('/auth/pin-login', {
+  return publicFetch<AuthResult>(ENDPOINTS.pinLogin.path, {
     method: 'POST',
     body: JSON.stringify({ pseudonym, pin }),
   }, '登录失败')
@@ -244,7 +226,7 @@ export async function pinLogin(pseudonym: string, pin: string): Promise<AuthResu
  * 设置 PIN 码（注册后引导设置，需已登录）
  */
 export async function setPin(pin: string): Promise<void> {
-  await api('/auth/set-pin', {
+  await api(ENDPOINTS.setPin.path, {
     method: 'POST',
     body: JSON.stringify({ pin }),
   })
@@ -255,7 +237,7 @@ export async function setPin(pin: string): Promise<void> {
  * 凭证与声纹模板一起存本机 IndexedDB，声纹登录时凭其换取正式 token
  */
 export async function issueVoiceCredential(): Promise<string> {
-  const data = await api('/auth/voice-credential', { method: 'POST' })
+  const data = await api(ENDPOINTS.issueVoiceCredential.path, { method: 'POST' })
   return data.voiceCredential
 }
 
@@ -263,7 +245,7 @@ export async function issueVoiceCredential(): Promise<string> {
  * 声纹登录：本地声纹比对通过后，用设备凭证换取正式双 token
  */
 export async function voiceLogin(voiceCredential: string): Promise<AuthResult> {
-  return publicFetch<AuthResult>('/auth/voice-login', {
+  return publicFetch<AuthResult>(ENDPOINTS.voiceLogin.path, {
     method: 'POST',
     body: JSON.stringify({ voiceCredential }),
   }, '声纹登录失败')
@@ -273,7 +255,7 @@ export async function voiceLogin(voiceCredential: string): Promise<AuthResult> {
  * 发起监护人同意请求：发送短信验证码到监护人手机（AUTH-040，需已登录）
  */
 export async function requestGuardianConsent(guardianPhone: string): Promise<void> {
-  await api('/auth/guardian-consent/request', {
+  await api(ENDPOINTS.requestGuardianConsent.path, {
     method: 'POST',
     body: JSON.stringify({ guardianPhone }),
   })
@@ -283,7 +265,7 @@ export async function requestGuardianConsent(guardianPhone: string): Promise<voi
  * 确认监护人同意：校验短信验证码并写入同意记录（AUTH-040，需已登录）
  */
 export async function confirmGuardianConsent(guardianPhone: string, code: string): Promise<void> {
-  await api('/auth/guardian-consent/confirm', {
+  await api(ENDPOINTS.confirmGuardianConsent.path, {
     method: 'POST',
     body: JSON.stringify({ guardianPhone, code }),
   })
@@ -301,7 +283,7 @@ export interface VoiceprintConfig {
  * 前端启动时调用，决定走 local 还是 remote 流程
  */
 export async function getVoiceprintConfig(): Promise<VoiceprintConfig> {
-  return publicFetch<VoiceprintConfig>('/voiceprint/config', undefined, '获取声纹配置失败')
+  return publicFetch<VoiceprintConfig>(ENDPOINTS.getVoiceprintConfig.path, undefined, '获取声纹配置失败')
 }
 
 /**
@@ -312,7 +294,7 @@ export async function getVoiceprintConfig(): Promise<VoiceprintConfig> {
  * tenantId 来源于录入时后端签发（remoteVoiceprintEnroll 响应），本地暂存后在此回传
  */
 export async function remoteVoiceprintVerify(embeddings: number[][], tenantId: string): Promise<AuthResult & { matched: boolean }> {
-  return publicFetch<AuthResult & { matched: boolean }>('/voiceprint/verify', {
+  return publicFetch<AuthResult & { matched: boolean }>(ENDPOINTS.remoteVoiceprintVerify.path, {
     method: 'POST',
     body: JSON.stringify({ tenantId, embeddings }),
   }, '声纹验证失败')
@@ -324,7 +306,7 @@ export async function remoteVoiceprintVerify(embeddings: number[][], tenantId: s
  * 响应携带服务端签发的 tenantId（AUD-001：verify 时需回传租户维度）
  */
 export async function remoteVoiceprintEnroll(embeddings: number[][]): Promise<{ enrolled: number; tenantId: string }> {
-  return api('/voiceprint/enroll', {
+  return api(ENDPOINTS.remoteVoiceprintEnroll.path, {
     method: 'POST',
     body: JSON.stringify({ embeddings }),
   })
@@ -369,17 +351,17 @@ export interface MoodCheckResult {
 
 /** 获取当前学生可用工具清单（后端按年级过滤） */
 export function fetchToolboxTools(): Promise<ToolboxTool[]> {
-  return api('/toolbox')
+  return api(ENDPOINTS.toolboxTools.path)
 }
 
 /** 获取 SOS 场景目标态工具（断网时界面仍可静态打开，接口失败由调用方兜底） */
 export function fetchSosTools(): Promise<ToolboxTool[]> {
-  return api('/toolbox/sos')
+  return api(ENDPOINTS.sosTools.path)
 }
 
 /** 记录练习前后心情（后端判定效果，恶化时 needsAttention=true） */
 export function recordMoodCheck(toolId: string, preMood: number, postMood: number): Promise<MoodCheckResult> {
-  return api('/toolbox/mood-check', {
+  return api(ENDPOINTS.moodCheck.path, {
     method: 'POST',
     body: JSON.stringify({ toolId, preMood, postMood }),
   })
@@ -392,7 +374,7 @@ export function recordMoodCheck(toolId: string, preMood: number, postMood: numbe
  */
 export async function reportSosEvent(): Promise<void> {
   try {
-    await api('/sos/events', { method: 'POST', body: JSON.stringify({}) })
+    await api(ENDPOINTS.sosEvents.path, { method: 'POST', body: JSON.stringify({}) })
   } catch {
     // 静默：上报失败绝不阻塞 SOS 界面
   }
