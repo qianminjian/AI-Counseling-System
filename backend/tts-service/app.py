@@ -155,7 +155,12 @@ def load_config(config_path: str = None) -> dict:
     """
     加载 TTS 配置（CFG-004 + DOC-073 D1）
     优先级：环境变量 > config.yaml > 代码兜底（深合并：嵌套结构部分配置仅覆盖指定项）
+    config_path 默认取本服务目录 config.yaml（S-019 收编 config_loader 至 py-common 后，
+    共享模块默认路径指向 py-common/config.yaml 不存在——必须显式传服务自身 yaml，
+    否则静默回退兜底矩阵、7 音色/8 方言/10 情感全部丢失，板块10 收编回归）
     """
+    if config_path is None:
+        config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.yaml")
     config = loader_load_config(config_path, defaults=_FALLBACK_CONFIG)
 
     # 环境变量覆盖（12-Factor：敏感/部署相关参数由环境变量注入）
@@ -174,29 +179,14 @@ _validate_runtime_contract(_CONFIG)
 # ===== 引擎装配（DC-011：适配器层 + 降级策略；引擎实现细节见 tts_engines.py / tts_policy.py） =====
 
 DASHSCOPE_TTS_MODEL = _CONFIG["model"]["dashscope"]
-# doing/87 RUNTIME-001：覆盖键读取器（redis-py 直连，fail-open）
-# 键：mindsafe:degradation:override:tts；值：cosyvoice|edge_tts；TTL 由后端写侧保证（7 天）
-_OVERRIDE_KEY = "mindsafe:degradation:override:tts"
-_redis_client = None
+# doing/87 RUNTIME-001：覆盖键读取器（板块10 P2-1 已收编 py-common/degradation_override 单源）
+# 键：mindsafe:degradation:override:tts；值：cosyvoice|edge_tts；TTL 由后端写侧保证（7 天）；fail-open
+from degradation_override import read_override as _read_shared_override
 
 
 def _read_tts_override():
-    """读覆盖键；Redis 不可达/键缺失返回 None（fail-open 按配置默认）"""
-    global _redis_client
-    try:
-        if _redis_client is None:
-            import redis
-            _redis_client = redis.Redis(
-                host=os.environ.get("REDIS_HOST", "redis"),
-                port=int(os.environ.get("REDIS_PORT", "6379")),
-                password=os.environ.get("REDIS_PASSWORD") or None,
-                socket_connect_timeout=1, socket_timeout=1,
-                decode_responses=True,
-            )
-        return _redis_client.get(_OVERRIDE_KEY)
-    except Exception as e:
-        logger.warning("覆盖键读取失败（fail-open，按配置默认）: %s", e)
-        return None
+    """读覆盖键（RUNTIME-001；fail-open 语义由 py-common 共享模块保证，与 voice-service 同构）"""
+    return _read_shared_override("tts")
 
 
 _TTS_POLICY = DegradationPolicy(

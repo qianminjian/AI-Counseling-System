@@ -63,7 +63,9 @@ services:
       SPRING_DATA_REDIS_PORT: 6379
       SPRING_DATA_REDIS_PASSWORD: ${REDIS_PASSWORD}
       # nginx 服务探测（F-30，2026-08-10）：nginx 为宿主机进程，后端容器内经宿主 IP 探测 /health
-      MINDSAFE_MONITORING_SERVICE_PROBES_NGINX: ${MINDSAFE_MONITORING_SERVICE_PROBES_NGINX:-http://116.8.109.229}
+      # 板块11 P1-1（2026-08-12）：默认值不再硬编码公网 IP（换机部署会假健康 + IP 外露），
+      # 真实地址收敛进 .env（未配置 = 空 = 不探测，探测缺失显式告警而非静默指向旧主机地址）
+      MINDSAFE_MONITORING_SERVICE_PROBES_NGINX: ${MINDSAFE_MONITORING_SERVICE_PROBES_NGINX:-}
       # LLM 主模型（doing/63：key 主命名；compose 层做新→旧名迁移，yml 回退链覆盖 DEEPSEEK_API_KEY 三级）
       LLM_PRIMARY_API_KEY: ${LLM_PRIMARY_API_KEY:-${LLM_API_KEY:-}}
       LLM_PRIMARY_BASE_URL: ${LLM_PRIMARY_BASE_URL:-${LLM_BASE_URL:-https://api.deepseek.com}}

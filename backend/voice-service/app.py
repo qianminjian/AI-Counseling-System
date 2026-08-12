@@ -22,7 +22,7 @@ import numpy as np
 import soundfile as sf
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response
+from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel
 
 from config import load_config
@@ -47,29 +47,14 @@ if not _CONFIG.get("emotion_labels"):
 ASR_ENGINE = os.environ.get("ASR_ENGINE", "dashscope").lower()
 SER_ENABLED = os.environ.get("SER_ENABLED", "true").lower() == "true"
 
-# doing/87 RUNTIME-002：覆盖键读取器（redis-py 直连，fail-open）
-# 键：mindsafe:degradation:override:{asr|ser}；TTL 由后端写侧保证（7 天）
-_OVERRIDE_PREFIX = "mindsafe:degradation:override:"
-_redis_client = None
+# doing/87 RUNTIME-002：覆盖键读取器（板块10 P2-1 已收编 py-common/degradation_override 单源）
+# 键：mindsafe:degradation:override:{asr|ser}；TTL 由后端写侧保证（7 天）；fail-open
+from degradation_override import read_override as _read_shared_override
 
 
 def _read_override(point: str):
-    """读覆盖键；Redis 不可达/键缺失返回 None（fail-open 按配置默认）"""
-    global _redis_client
-    try:
-        if _redis_client is None:
-            import redis
-            _redis_client = redis.Redis(
-                host=os.environ.get("REDIS_HOST", "redis"),
-                port=int(os.environ.get("REDIS_PORT", "6379")),
-                password=os.environ.get("REDIS_PASSWORD") or None,
-                socket_connect_timeout=1, socket_timeout=1,
-                decode_responses=True,
-            )
-        return _redis_client.get(_OVERRIDE_PREFIX + point)
-    except Exception as e:
-        logger.warning("覆盖键读取失败（fail-open，按配置默认）: %s", e)
-        return None
+    """读覆盖键（RUNTIME-002；fail-open 语义由 py-common 共享模块保证，与 tts-service 同构）"""
+    return _read_shared_override(point)
 
 
 def _resolve_asr_engine() -> str:
@@ -128,6 +113,15 @@ async def _lifespan(_: FastAPI):
 
 
 app = FastAPI(title="MindSafe Voice Analysis", version="2.1.0", lifespan=_lifespan)
+
+
+@app.exception_handler(Exception)
+async def _unhandled_exception_handler(request, exc: Exception):
+    """R-6（对齐 tts-service app.py:49-54）：全局兜底 handler——未捕获异常返回结构化 500，
+    固定文案不泄漏内部细节（防 PII/上游基础设施信息回显，板块10 P1-1）"""
+    logger.error("未捕获异常: %s %s -> %s: %s", request.method, request.url.path,
+                 type(exc).__name__, exc, exc_info=True)
+    return JSONResponse(status_code=500, content={"detail": "语音分析失败"})
 
 # ===== Prometheus 指标（P1-10：手写文本格式，零新增依赖，供监控栈 internal 网络抓取） =====
 # DA-03：counter+summary 公共结构复用 metrics_common（与 tts-service 复制共享），
@@ -336,10 +330,12 @@ async def analyze_voice(file: UploadFile = File(...)):
             # AUD-016：复用进程级单例线程池 _ANALYZE_EXECUTOR（不再每请求新建/销毁）；
             # 超时后 future.cancel()（Python 线程不可强停，但可阻止排队任务启动并释放引用）
             asr_future = _ANALYZE_EXECUTOR.submit(asr_fn, wav_path)
-            ser_future = _ANALYZE_EXECUTOR.submit(_funasr_ser, wav_path)
+            # S-017（doing/93）：SER 已收敛至 ser_backend.analyze（FunasrSERBackend）——
+            # 修复板块10 范围外既有 bug：_funasr_ser 全仓无定义（S-017 迁移后残留调用，SER 并行路径 NameError）
+            ser_future = _ANALYZE_EXECUTOR.submit(ser_backend.analyze, wav_path)
             try:
                 text = asr_future.result(timeout=VOICE_ANALYZE_TIMEOUT)
-                emotion = ser_future.result(timeout=VOICE_ANALYZE_TIMEOUT)
+                emotion = EmotionResult(**ser_future.result(timeout=VOICE_ANALYZE_TIMEOUT))
             except TimeoutError:
                 asr_future.cancel()
                 ser_future.cancel()
@@ -372,17 +368,18 @@ async def analyze_voice(file: UploadFile = File(...)):
         logger.error(f"ASR/SER 分析超时 ({VOICE_ANALYZE_TIMEOUT}s)")
         raise HTTPException(status_code=504, detail="语音分析超时")
     except ASRBackendError as e:
-        # D2：上游 DashScope ASR 错误（非 200 / SDK 缺失）→ 502（原 _dashscope_asr 语义）
+        # D2：上游 ASR 后端错误（非 200 / SDK 缺失）→ 502；文案固定不携带异常细节
+        # （板块10 P1-1/P1-3：错误码 502 标识"上游服务错误"，引擎归属/异常详情仅落日志）
         _metrics.record("error", time.time() - t_start)
-        logger.error(f"DashScope ASR 服务错误: {e}")
-        raise HTTPException(status_code=502, detail=f"DashScope ASR 服务错误: {e}")
+        logger.error("ASR 后端错误 [engine=%s]: %s", runtime_asr, e)
+        raise HTTPException(status_code=502, detail="上游语音识别服务错误")
     except HTTPException:
         _metrics.record("error", time.time() - t_start)
         raise  # 已包装的异常直接抛出
     except Exception as e:
         _metrics.record("error", time.time() - t_start)
         logger.error(f"语音分析失败: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"语音分析失败: {str(e)}")
+        raise HTTPException(status_code=500, detail="语音分析失败")
 
     finally:
         # 合规（COMP-009 / 22 §6.3 转写即删）：ASR/SER 完成后立即删除原始音频临时文件，

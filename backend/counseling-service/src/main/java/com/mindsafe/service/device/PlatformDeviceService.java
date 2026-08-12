@@ -9,8 +9,10 @@ import com.mindsafe.domain.mapper.DeviceBindingMapper;
 import com.mindsafe.domain.mapper.DeviceMapper;
 import com.mindsafe.domain.mapper.DeviceOperationMapper;
 import com.mindsafe.domain.mapper.DeviceQrIssuanceMapper;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import java.net.URI;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -34,14 +36,34 @@ public class PlatformDeviceService {
     private final DeviceBindingMapper bindingMapper;
     private final DeviceQrIssuanceMapper qrIssuanceMapper;
     private final DeviceOperationMapper operationMapper;
+    /** 绑定页域名（板块03 P0-3 修复）：取自 mindsafe.cors.allowed-origins（部署级配置，
+     *  MINDSAFE_CORS_ORIGINS 覆盖）首个 origin 的 host——绑定页 /p/1/{code} 为家长端部署域名，
+     *  生产与 CORS 白名单同域；不再硬编码 {domain} 占位符（上线即坏） */
+    private final String bindHost;
 
     public PlatformDeviceService(DeviceMapper deviceMapper, DeviceBindingMapper bindingMapper,
                                  DeviceQrIssuanceMapper qrIssuanceMapper,
-                                 DeviceOperationMapper operationMapper) {
+                                 DeviceOperationMapper operationMapper,
+                                 @Value("${mindsafe.cors.allowed-origins}") String corsOrigins) {
         this.deviceMapper = deviceMapper;
         this.bindingMapper = bindingMapper;
         this.qrIssuanceMapper = qrIssuanceMapper;
         this.operationMapper = operationMapper;
+        this.bindHost = resolveBindHost(corsOrigins);
+    }
+
+    /** 从 CORS 白名单解析绑定页域名：取首个 origin 的 host；无 scheme 时原样保留 */
+    private static String resolveBindHost(String origins) {
+        if (origins == null || origins.isBlank()) {
+            return "localhost";
+        }
+        String first = origins.split(",")[0].trim();
+        try {
+            URI uri = URI.create(first);
+            return uri.getHost() != null ? uri.getHost() : first;
+        } catch (Exception e) {
+            return first;
+        }
     }
 
     /**
@@ -146,7 +168,7 @@ public class PlatformDeviceService {
             record.setIssuanceId(UUID.randomUUID());
             record.setDeviceId(d.getDeviceId());
             record.setIssuedBy(issuedBy);
-            record.setQrPayload("https://{domain}/p/1/" + code);
+            record.setQrPayload("https://" + bindHost + "/p/1/" + code);
             record.setIssuedAt(Instant.now());
             qrIssuanceMapper.insert(record);
 

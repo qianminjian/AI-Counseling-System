@@ -39,8 +39,9 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 #   3. 通过 prepare-funasr.sh 脚本管理版本和更新
 # 挂载点：/home/appuser/.cache/modelscope（由 docker-compose volumes 配置）
 
-# 应用代码 + 配置 + 启动脚本（DA-01 核对：补齐 asr_engines.py；S-019：config_loader/metrics_common 移入 py-common 共享单源）
-COPY voice-service/app.py voice-service/config.py voice-service/asr_engines.py voice-service/config.yaml voice-service/entrypoint.sh ./
+# 应用代码 + 配置 + 启动脚本（DA-01 核对：补齐 asr_engines.py；S-019：config_loader/metrics_common 移入 py-common 共享单源；
+# 板块10 修复：补拷 ser_engines.py——S-017 新增文件，此前漏拷导致容器内 import app 即 ModuleNotFoundError（镜像 import 冒烟未覆盖 app 导入））
+COPY voice-service/app.py voice-service/config.py voice-service/asr_engines.py voice-service/ser_engines.py voice-service/config.yaml voice-service/entrypoint.sh ./
 
 # S-019（doing/93）：py-common 共享单源（config_loader/metrics_common，原双服务复制共享）
 COPY py-common/ /app/py-common/

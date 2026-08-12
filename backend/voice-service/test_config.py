@@ -149,3 +149,15 @@ class TestVoiceConfigLoading:
         cfg = load_config(str(config_file))
         assert cfg["asr"]["funasr_model"] == "iic/SenseVoiceSmall"
         assert len(cfg["emotion_labels"]) == 9  # DA-14：空 yaml 回退兑底最小矩阵
+
+    def test_default_path_loads_service_own_config_yaml(self):
+        """config_path=None 时默认加载本服务 config.yaml（板块10 收编回归：
+        config_loader 单源化至 py-common 后默认路径失效，曾静默回退兜底矩阵）"""
+        from config import load_config
+
+        cfg = load_config()
+        assert cfg["asr"]["funasr_model"] == "iic/SenseVoiceSmall"
+        assert len(cfg["emotion_labels"]) == 9
+        assert [en for en, _ in cfg["emotion_labels"]] == [
+            "angry", "disgusted", "fearful", "happy", "neutral",
+            "other", "sad", "surprised", "unknown"]

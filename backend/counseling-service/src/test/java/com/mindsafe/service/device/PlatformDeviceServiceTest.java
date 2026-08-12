@@ -23,6 +23,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import org.mockito.ArgumentCaptor;
 
 /**
  * PlatformDeviceService 测试（CFG-008 admin-web M13，doing/84 §六.2）
@@ -45,7 +46,8 @@ class PlatformDeviceServiceTest {
         deviceMapper = mock(DeviceMapper.class);
         bindingMapper = mock(DeviceBindingMapper.class);
         qrIssuanceMapper = mock(DeviceQrIssuanceMapper.class);
-        service = new PlatformDeviceService(deviceMapper, bindingMapper, qrIssuanceMapper, mock(DeviceOperationMapper.class));
+        service = new PlatformDeviceService(deviceMapper, bindingMapper, qrIssuanceMapper,
+                mock(DeviceOperationMapper.class), "https://bind.example.com");
     }
 
     private Device sampleDevice() {
@@ -124,7 +126,39 @@ class PlatformDeviceServiceTest {
 
         assertThat(result.get("issuedCount")).isEqualTo(1);
         assertThat((List<String>) result.get("notFound")).contains("NOT_EXIST");
-        verify(qrIssuanceMapper).insert(any(DeviceQrIssuance.class));
+        // 板块03 P0-3：qrPayload 域名来自配置注入，不含 {domain} 占位符（上线即坏）
+        ArgumentCaptor<DeviceQrIssuance> captor = ArgumentCaptor.forClass(DeviceQrIssuance.class);
+        verify(qrIssuanceMapper).insert(captor.capture());
+        assertThat(captor.getValue().getQrPayload())
+                .startsWith("https://bind.example.com/p/1/")
+                .endsWith(deviceCode)
+                .doesNotContain("{domain}");
+    }
+
+    @Test
+    @DisplayName("板块03 P0-3：CORS 白名单多 origin 取首个 host；无 scheme 域名原样保留")
+    void resolveBindHostFromCorsOrigins() {
+        Device d = sampleDevice();
+        // 首个为正式域名（生产配置 MINDSAFE_CORS_ORIGINS 首个即绑定页域名）
+        PlatformDeviceService multi = new PlatformDeviceService(deviceMapper, bindingMapper,
+                qrIssuanceMapper, mock(DeviceOperationMapper.class),
+                "https://bind.example.com,http://localhost:5173");
+        when(deviceMapper.selectOne(any())).thenReturn(d);
+        Map<String, Object> result = multi.exportQr(List.of(deviceCode), "admin-1");
+        assertThat(((Map<?, ?>) ((List<?>) result.get("issued")).get(0)).get("qrPayload"))
+                .asString()
+                .startsWith("https://bind.example.com/p/1/")
+                .doesNotContain("{domain}");
+
+        // 无 scheme 域名原样保留为 host
+        PlatformDeviceService bare = new PlatformDeviceService(deviceMapper, bindingMapper,
+                qrIssuanceMapper, mock(DeviceOperationMapper.class), "yun.gxjugu.com");
+        bare.exportQr(List.of(deviceCode), "admin-1");
+        ArgumentCaptor<DeviceQrIssuance> captor = ArgumentCaptor.forClass(DeviceQrIssuance.class);
+        verify(qrIssuanceMapper, org.mockito.Mockito.atLeast(2)).insert(captor.capture());
+        List<DeviceQrIssuance> issued = captor.getAllValues();
+        assertThat(issued.get(issued.size() - 1).getQrPayload())
+                .startsWith("https://yun.gxjugu.com/p/1/");
     }
 
     @Test

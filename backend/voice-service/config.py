@@ -6,6 +6,7 @@ MindSafe Voice Service 配置加载模块（CFG-007 + DOC-073 D1 深合并单源
 注意：ASR_ENGINE / SER_ENABLED / DASHSCOPE_API_KEY 仍由环境变量控制（12-Factor）
 """
 import logging
+import os
 
 from config_loader import load_config as loader_load_config
 
@@ -47,5 +48,10 @@ def load_config(config_path: str = None) -> dict:
     加载 Voice 服务配置（CFG-007 + DOC-073 D1）
     优先级：config.yaml > 内置默认值（深合并：嵌套结构部分配置仅覆盖指定项）
     注意：ASR_ENGINE / SER_ENABLED / DASHSCOPE_API_KEY 仍由环境变量控制（12-Factor）
+    config_path 默认取本服务目录 config.yaml（S-019 收编 config_loader 至 py-common 后，
+    共享模块默认路径指向 py-common/config.yaml 不存在——必须显式传服务自身 yaml，
+    否则静默回退兜底矩阵，config.yaml 定制模型名/标签丢失，板块10 收编回归）
     """
+    if config_path is None:
+        config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.yaml")
     return loader_load_config(config_path, defaults=DEFAULT_CONFIG)

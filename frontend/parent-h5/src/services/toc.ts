@@ -30,7 +30,14 @@ export interface TocSession {
 export interface TocSendCodeResult {
   phone: string
   expiresInSeconds: number
-  /** 演示环境回显验证码（生产接入短信通道后移除） */
+  /**
+   * 演示环境回显验证码（生产接入短信通道后移除）。
+   * @deprecated 试点期演示行为（裁决 8：门禁登记 + 标注，不改短信通道）：接入短信通道
+   *   （.env 设 SMS_PROVIDER=aliyun）即移除回显，届时删除本字段并同步改造
+   *   tocFlow.e2e.test.ts 依赖回显的用例（新增 mock 短信通道断言）。
+   * TODO[GATE-TOC-001] 上线门禁锚点：登记见 design/TASK-TRACKER.md TOC-GATE-001；
+   *   移除条件 = SMS_PROVIDER=aliyun 接入短信通道。
+   */
   code: string
 }
 
