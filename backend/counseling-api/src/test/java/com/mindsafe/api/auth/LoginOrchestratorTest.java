@@ -100,10 +100,11 @@ class LoginOrchestratorTest {
         verify(lockoutService).checkLockout("小星");
         verify(lockoutService).clearFailures("小星");
         verify(authUserService).recordLoginSuccess(tenantId, userId);
-        verify(auditLogService).log(eq(tenantId), eq(userId), eq("LOGIN"), eq("user"), eq(userId), org.mockito.ArgumentMatchers.isNull());
+        // S-001 审查修正：LOGIN 审计由 recordLoginSuccess 承担，issueLoginSession(null) 不重复审计
+        verify(auditLogService, never()).log(any(), any(), eq("LOGIN"), any(), any(), any());
         assertThat(session.accessToken()).isEqualTo(ACCESS);
         assertThat(session.mustChangePassword()).isFalse();
-        // 审计提交后租户上下文必须清除（防线程池复用串租户）
+        // 无审计路径不绑定租户上下文
         assertThat(TenantContextHolder.get()).isNull();
     }
 

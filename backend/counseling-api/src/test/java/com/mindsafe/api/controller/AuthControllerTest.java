@@ -111,11 +111,11 @@ class AuthControllerTest {
         tenantAccessGuard = mock(TenantAccessGuard.class);
         loginOrchestrator = mock(LoginOrchestrator.class);
 
-        controller = new AuthController(passwordEncoder, jwtTokenProvider,
+        controller = new AuthController(jwtTokenProvider,
                 businessAuthProvider,
                 trialAuthStrategy, trialAuthService, auditLogService, lockoutService,
-                passwordPolicyService, guardianConsentService, tokenBlacklistService,
-                tenantAccessGuard, authUserService, loginOrchestrator);
+                guardianConsentService, tokenBlacklistService,
+                authUserService, loginOrchestrator);
     }
 
     @AfterEach

@@ -1,16 +1,24 @@
 #!/bin/bash
-# verify-metrics-sync.sh — 校验 tts/voice 两服务 metrics_common.py 同步一致（doing/90 P-007）
-# 背景：metrics_common 复制共享是显式决策（两服务独立发布不共享 wheel，文件头已声明），
-# 本脚本防漂移——指标契约（计数器/summary 名）改动必须双点同步，CI 门禁拦截漏改。
+# verify-metrics-sync.sh — 校验 py-common 共享单源存在（doing/93 S-019：metrics_common/config_loader
+# 已从双服务复制共享收敛为 backend/py-common 单源，双份 diff 门禁随之移除）
 set -euo pipefail
 
 BASE="$(cd "$(dirname "$0")/.." && pwd)"
-A="$BASE/tts-service/metrics_common.py"
-B="$BASE/voice-service/metrics_common.py"
+SHARED="$BASE/py-common"
 
-if ! diff -q "$A" "$B" >/dev/null; then
-  echo "❌ metrics_common.py 两服务不同步（tts vs voice）——指标契约改动必须双点同步"
-  diff "$A" "$B" | head -20
-  exit 1
-fi
-echo "✅ metrics_common.py 同步一致"
+for f in metrics_common.py config_loader.py; do
+  if [ ! -f "$SHARED/$f" ]; then
+    echo "❌ py-common/$f 缺失——共享单源被删除或移动，tts/voice 两服务 import 将失败"
+    exit 1
+  fi
+done
+# 双服务本地不得再存在副本（防止复制共享回潮）
+for svc in tts-service voice-service; do
+  for f in metrics_common.py config_loader.py; do
+    if [ -f "$BASE/$svc/$f" ]; then
+      echo "❌ $svc/$f 本地副本存在——应统一走 py-common 共享单源（S-019）"
+      exit 1
+    fi
+  done
+done
+echo "✅ py-common 共享单源完整（metrics_common/config_loader），双服务无本地副本"

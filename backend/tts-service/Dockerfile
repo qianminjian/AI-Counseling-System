@@ -11,7 +11,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Python 依赖（在线安装，阿里云镜像加速；与 voice-service 一致）
 # 审计 P2-24：不再依赖 wheels/ 离线目录（避免 15MB 二进制入库与"忘刷新即构建失败"）
 # 可选离线方案：本地跑 ./refresh-wheels.sh 生成 wheels/ 后手动同步，pip 加 --no-index --find-links
-COPY requirements-lite.txt .
+COPY tts-service/requirements-lite.txt .
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/ \
     && pip install -r requirements-lite.txt

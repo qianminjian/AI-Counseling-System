@@ -95,12 +95,13 @@ public class LoginOrchestrator {
         // 5. SEC-004：租户状态门禁
         guardTenantLogin(user);
 
-        // 6. 登录成功，清除失败计数 + 留痕（T4 批次B：下沉 AuthUserService，租户上下文绑定在 Service 内）
+        // 6. 登录成功，清除失败计数 + 留痕（T4 批次B：下沉 AuthUserService，租户上下文绑定在 Service 内；
+        //    LOGIN 审计由 recordLoginSuccess 承担，issueLoginSession 传 null 跳过避免双重审计）
         lockoutService.clearFailures(username);
         authUserService.recordLoginSuccess(user.getTenantId(), user.getUserId());
 
         // 7. 签发
-        return issueLoginSession(user, "LOGIN");
+        return issueLoginSession(user, null);
     }
 
     /**
@@ -115,6 +116,8 @@ public class LoginOrchestrator {
 
     /**
      * 签发双 token + 登录审计（统一单点；此前 6 端点各自重复签发三连）。
+     * auditAction=null 时跳过审计（密码登录路径审计已由 AuthUserService.recordLoginSuccess 承担，
+     * 避免双重 LOGIN 留痕；pin/voice 等路径传入动作名）。
      * 审计需绑定真实租户上下文提交（@Async 经 TaskDecorator 继承，否则 fail-fast 拒绝写入）。
      */
     public LoginSession issueLoginSession(User user, String auditAction) {
@@ -122,14 +125,19 @@ public class LoginOrchestrator {
                 user.getUserId(), user.getUserType(), user.getTenantId());
         String refreshToken = businessAuthProvider.issueRefreshToken(
                 user.getUserId(), user.getUserType(), user.getTenantId());
-        TenantContextHolder.set(user.getTenantId());
-        try {
-            auditLogService.log(user.getTenantId(), user.getUserId(), auditAction, "user", user.getUserId(), null);
-        } finally {
-            TenantContextHolder.clear();
+        if (auditAction != null) {
+            TenantContextHolder.set(user.getTenantId());
+            try {
+                auditLogService.log(user.getTenantId(), user.getUserId(), auditAction, "user", user.getUserId(), null);
+            } finally {
+                TenantContextHolder.clear();
+            }
         }
+        // 无密码用户（如试用账号）不参与密码过期策略判定，仅取 DB 标志（S-001 审查修正：
+        // 否则 passwordChangedAt=null 时 isExpired 恒 true → PIN 登录误报强制改密）
         boolean mustChange = Boolean.TRUE.equals(user.getMustChangePassword())
-                || passwordPolicyService.isExpired(user.getPasswordChangedAt());
+                || (user.getPasswordHash() != null
+                && passwordPolicyService.isExpired(user.getPasswordChangedAt()));
         return new LoginSession(token, refreshToken, user.getUserId(), user.getPseudonym(),
                 user.getUserType(), user.getGradeCode(), user.getClassCode(), mustChange);
     }

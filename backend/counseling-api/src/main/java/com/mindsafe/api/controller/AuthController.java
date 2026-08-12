@@ -44,45 +44,36 @@ public class AuthController {
 
     private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(AuthController.class);
 
-    private final PasswordEncoder passwordEncoder;
     private final JwtTokenProvider jwtTokenProvider;
     private final BusinessAuthProvider businessAuthProvider;
     private final TrialAuthStrategy trialAuthStrategy;
     private final TrialAuthService trialAuthService;
     private final AuditLogService auditLogService;
     private final LoginLockoutService lockoutService;
-    private final PasswordPolicyService passwordPolicyService;
     private final GuardianConsentService guardianConsentService;
     private final TokenBlacklistService tokenBlacklistService;
-    private final TenantAccessGuard tenantAccessGuard;
     private final AuthUserService authUserService;
     /** S-001（doing/93）：登录编排单点（固定顺序 + 签发/门禁统一） */
     private final LoginOrchestrator loginOrchestrator;
 
-    public AuthController(PasswordEncoder passwordEncoder,
-                          JwtTokenProvider jwtTokenProvider,
-                                   BusinessAuthProvider businessAuthProvider,
+    public AuthController(JwtTokenProvider jwtTokenProvider,
+                          BusinessAuthProvider businessAuthProvider,
                           TrialAuthStrategy trialAuthStrategy,
                           TrialAuthService trialAuthService,
                           AuditLogService auditLogService,
                           LoginLockoutService lockoutService,
-                          PasswordPolicyService passwordPolicyService,
                           GuardianConsentService guardianConsentService,
                           TokenBlacklistService tokenBlacklistService,
-                          TenantAccessGuard tenantAccessGuard,
                           AuthUserService authUserService,
                           LoginOrchestrator loginOrchestrator) {
-        this.passwordEncoder = passwordEncoder;
         this.jwtTokenProvider = jwtTokenProvider;
         this.businessAuthProvider = businessAuthProvider;
         this.trialAuthStrategy = trialAuthStrategy;
         this.trialAuthService = trialAuthService;
         this.auditLogService = auditLogService;
         this.lockoutService = lockoutService;
-        this.passwordPolicyService = passwordPolicyService;
         this.guardianConsentService = guardianConsentService;
         this.tokenBlacklistService = tokenBlacklistService;
-        this.tenantAccessGuard = tenantAccessGuard;
         this.authUserService = authUserService;
         this.loginOrchestrator = loginOrchestrator;
     }

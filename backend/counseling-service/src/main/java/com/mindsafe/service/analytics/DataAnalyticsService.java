@@ -370,9 +370,9 @@ public class DataAnalyticsService {
         if (!sessions.isEmpty()) {
             milestones.add(milestone("first_session", sessions.get(0).getStartedAt(), "首次使用心理辅导"));
         }
-        // 首次正面情绪（S-008：判定收敛至词表 POSITIVE_KEYS）
+        // 首次正面情绪（S-008：收敛词表但排除 neutral——中性不属正面里程碑；POSITIVE_KEYS 含 neutral 故用明确子集）
         sessions.stream()
-                .filter(s -> EmotionVocabulary.POSITIVE_KEYS.contains(s.getEmotionTag()))
+                .filter(s -> java.util.Set.of("happy", "calm", "relieved", "hopeful").contains(s.getEmotionTag()))
                 .findFirst()
                 .ifPresent(s -> milestones.add(milestone("first_positive", s.getStartedAt(), "首次正面情绪会话")));
         // 风险事件首次解决

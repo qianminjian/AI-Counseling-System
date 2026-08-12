@@ -24,7 +24,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 
 # Python 依赖 — 始终安装全量（torch + funasr + dashscope）
 # 这样无论运行时 ASR_ENGINE 设什么，emotion2vec SER 都可用
-COPY requirements.txt ./
+COPY voice-service/requirements.txt ./
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/ \
     && echo "📦 安装 torch + funasr + dashscope 全量依赖..." \
