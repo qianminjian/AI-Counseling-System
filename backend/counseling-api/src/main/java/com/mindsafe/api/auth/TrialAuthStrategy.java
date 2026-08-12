@@ -12,7 +12,7 @@ import org.springframework.stereotype.Component;
  * 流程：邀请码校验 → 昵称校验 → 创建 trial_student → 同意留痕 → 返回统一身份
  */
 @Component
-public class TrialAuthStrategy implements AuthStrategy {
+public class TrialAuthStrategy {
 
     private final TrialAuthService trialAuthService;
 
@@ -20,12 +20,7 @@ public class TrialAuthStrategy implements AuthStrategy {
         this.trialAuthService = trialAuthService;
     }
 
-    @Override
-    public String type() {
-        return "trial";
-    }
 
-    @Override
     public AuthenticatedUser authenticate(Object request) {
         if (!(request instanceof TrialRegisterRequest req)) {
             throw new BizException(ErrorCode.PARAM_INVALID, "试用注册请求格式错误");

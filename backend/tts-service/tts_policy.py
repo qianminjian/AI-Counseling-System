@@ -36,6 +36,16 @@ class DegradationPolicy:
         self._log = log if callable(log) else logging.getLogger("tts-policy").warning
         self._override_reader = override_reader
 
+    @property
+    def primary(self) -> TTSBackend:
+        """首选引擎（装配顺序首位；S-018：位置索引收敛为命名属性，加引擎/换序消费点零改动）"""
+        return self.backends[0]
+
+    @property
+    def secondary(self) -> Optional[TTSBackend]:
+        """备用引擎（装配顺序次位；无备用时返回 None）"""
+        return self.backends[1] if len(self.backends) > 1 else None
+
     async def synthesize_with_degradation(self, text: str, voice_id: str, speed: float,
                                           instruction: Optional[str] = None,
                                           pitch: float = 1.0,

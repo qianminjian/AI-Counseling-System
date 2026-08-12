@@ -285,25 +285,28 @@ public class AiChatServiceImpl implements AiChatService {
         if (conversationText == null || conversationText.isBlank()) {
             return null;
         }
-        long start = System.currentTimeMillis();
-        try {
-            String userPrompt = "会话摘要文本：\n" + conversationText
-                    + "\n\n结构化摘要：\n" + (sessionSummary == null ? "无" : sessionSummary)
-                    + "\n\n请输出画像增量与关键事件 JSON：";
-            String result = chatClient.prompt()
-                    .system(INSIGHTS_SYSTEM_PROMPT)
-                    .user(userPrompt)
-                    .call()
-                    .content();
-            log.debug("会话提炼完成, length={}", result != null ? result.length() : 0);
-            logModelCall(null, "conversation_insights", System.currentTimeMillis() - start, "success", null);
-            return result;
-        } catch (Exception e) {
-            log.error("会话提炼失败", e);
-            recordLlmAuxFailure("conversation_insights"); // AUD-014
-            logModelCall(null, "conversation_insights", System.currentTimeMillis() - start, "error", e.getMessage());
-            return null;
-        }
+        // S-010（doing/93）：对齐 Q-005 统一超时（此辅助调用原无 callWithTimeout 收编遗漏）
+        return callWithTimeout(() -> {
+            long start = System.currentTimeMillis();
+            try {
+                String userPrompt = "会话摘要文本：\n" + conversationText
+                        + "\n\n结构化摘要：\n" + (sessionSummary == null ? "无" : sessionSummary)
+                        + "\n\n请输出画像增量与关键事件 JSON：";
+                String result = chatClient.prompt()
+                        .system(INSIGHTS_SYSTEM_PROMPT)
+                        .user(userPrompt)
+                        .call()
+                        .content();
+                log.debug("会话提炼完成, length={}", result != null ? result.length() : 0);
+                logModelCall(null, "conversation_insights", System.currentTimeMillis() - start, "success", null);
+                return result;
+            } catch (Exception e) {
+                log.error("会话提炼失败", e);
+                recordLlmAuxFailure("conversation_insights"); // AUD-014
+                logModelCall(null, "conversation_insights", System.currentTimeMillis() - start, "error", e.getMessage());
+                return null;
+            }
+        }, "conversation_insights");
     }
 
     // ===== AI-001/AI-002: LLM-as-Judge 质量评估 =====

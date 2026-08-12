@@ -14,7 +14,7 @@ import com.mindsafe.ai.orchestrator.StrategyProfile;
 import com.mindsafe.ai.safety.ConfidentialityNotice;
 import com.mindsafe.ai.safety.CrisisResourceProvider;
 import com.mindsafe.ai.safety.HighSensitivityCategories;
-import com.mindsafe.ai.safety.PiiDesensitizer;
+import com.mindsafe.common.util.PiiDesensitizer;
 import com.mindsafe.common.dto.ErrorCode;
 import com.mindsafe.common.dto.chat.SessionInfo;
 import com.mindsafe.common.dto.chat.StreamMessageEvent;
@@ -55,7 +55,8 @@ public class ConversationServiceImpl implements ConversationService {
 
     private final AiChatService aiChatService;
     private final ConversationRiskProcessor riskProcessor;
-    private final PiiDesensitizer piiDesensitizer;
+    /** 会话级 PII 脱敏（纯正则无状态；S-012 下沉 common 后 common 无 Spring 依赖，消费方内联实例化） */
+    private final PiiDesensitizer piiDesensitizer = new PiiDesensitizer();
     // BA-11：会话表读写收口仓储（编排器不再直连 Mapper；摘要域查询归 MessageSummaryService）
     private final CounselingSessionStore sessionStore;
     private final UserMapper userMapper;
@@ -96,7 +97,6 @@ public class ConversationServiceImpl implements ConversationService {
 
     public ConversationServiceImpl(AiChatService aiChatService,
                                    ConversationRiskProcessor riskProcessor,
-                                   PiiDesensitizer piiDesensitizer,
                                    CounselingSessionStore sessionStore,
                                    UserMapper userMapper,
                                    StudentProfileService profileService,
@@ -121,7 +121,6 @@ public class ConversationServiceImpl implements ConversationService {
                                    ReplyEmotionResolver replyEmotionResolver) {
         this.aiChatService = aiChatService;
         this.riskProcessor = riskProcessor;
-        this.piiDesensitizer = piiDesensitizer;
         this.sessionStore = sessionStore;
         this.userMapper = userMapper;
         this.profileService = profileService;

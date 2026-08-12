@@ -1,6 +1,5 @@
-package com.mindsafe.ai.safety;
+package com.mindsafe.common.util;
 
-import org.springframework.stereotype.Component;
 
 import java.util.Set;
 import java.util.regex.Matcher;
@@ -23,7 +22,6 @@ import java.util.regex.Pattern;
  * 路名/小区/楼号等模式。脱敏策略：姓名→"某同学/某老师/某人"，地址→"某地"。
  * 保留情绪表达不掩盖（保护咨询信任，对齐 design/14 不评判伦理）。
  */
-@Component
 public class PiiDesensitizer {
 
     /** 手机号：1[3-9] 开头 11 位（前后避免紧邻数字，减少误伤） */
