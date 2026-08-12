@@ -109,13 +109,13 @@
 | BUG-T-RC-01 | P1 | 角色裁剪 | 班主任（head_teacher）登录后全部功能 403 不可用，裁剪过度 | **VERIFIED** ✅（2026-08-12，登录 200+档案响应体裁剪，UI-TEST-016） |
 | BUG-T-RC-02 | P3 | 错误处理 | 403 被误报为「后端服务暂不可达」 | **VERIFIED** ✅（2026-08-12，403 显式转 ApiError） |
 | BUG-T-09-01 | P1 | 终端设备 | /api/v1/device/list 返回 500，设备域阻断 | **VERIFIED** ✅（2026-08-12，有效 ID 200/非法 ID 400） |
-| BUG-T-03-01 | P2 | 预警推送 | WS 首连偶发 closed before established（hook 重连兑底可接受） | OPEN（遗留，排期优化） |
-| BUG-T-04-01 | P2 | 学生档案 | escalated 红色风险会话摘要 3 天未生成 | OPEN（需后端异步任务排查） |
-| BUG-T-04-02 | P3 | 学生档案 | 档案风险等级/预警历史与通知中心不一致 | OPEN（P3 排期） |
+| BUG-T-03-01 | P2 | 预警推送 | WS 首连偶发 closed before established（hook 重连兑底可接受） | **VERIFIED** ✅（2026-08-12，首连失败 1s 快速重试） |
+| BUG-T-04-01 | P2 | 学生档案 | escalated 红色风险会话摘要 3 天未生成 | **VERIFIED** ✅（2026-08-12，补偿任务覆盖 escalated/taken_over/completed + endedAt null 兑底 + LIMIT 200 一轮消化） |
+| BUG-T-04-02 | P3 | 学生档案 | 档案风险等级/预警历史与通知中心不一致 | **VERIFIED** ✅（2026-08-12，综合预警历史∪会话快照） |
 | BUG-T-06-01 | P2 | 通知中心 | 标记已读后菜单徽标不即时更新（未刷新 unread-count） | **VERIFIED** ✅（2026-08-12，已读后徽标即时 -1） |
-| BUG-T-06-02 | P3 | 通知中心 | 无「全部/未读/已读」筛选与分页 | OPEN（P3 排期） |
-| BUG-T-06-03 | P3 | 通知中心 | 通知无学生姓名，无法定位学生 | OPEN（P3 排期） |
-| BUG-T-04-03 | P3 | 学生管理 | 列表缺筛选/搜索/风险等级列（与设计差异） | OPEN（P3 排期） |
+| BUG-T-06-02 | P3 | 通知中心 | 无「全部/未读/已读」筛选与分页 | **VERIFIED** ✅（2026-08-12，Segmented+分页+total 修复） |
+| BUG-T-06-03 | P3 | 通知中心 | 通知无学生姓名，无法定位学生 | **VERIFIED** ✅（2026-08-12，studentNickname 关联 + title 昵称兜底） |
+| BUG-T-04-03 | P3 | 学生管理 | 列表缺筛选/搜索/风险等级列（与设计差异） | **VERIFIED** ✅（2026-08-12，年级/班级/搜索/风险列全实现） |
 
 > 详情见 reports/browser-test/UI-TEST-013-teacher.md（本轮）| WS 遗留登记：首连偶发失败已有 5s 重连兑底（2026-08-10 VERIFIED 基线延续）
 
