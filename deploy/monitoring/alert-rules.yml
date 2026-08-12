@@ -116,11 +116,14 @@ groups:
         expr: voice_ser_ready == 0 and voice_ser_enabled == 1
         for: 5m
         labels:
-          severity: warning
+          # OPS-P1-02（doing/96）：warning → critical——expr 已排除显式禁用（SER_ENABLED=false），
+          # 触发即"启用但未就绪"的真故障；SER 是情绪轨迹/风险信号的核心输入，
+          # 且曾因模型路径不一致长期静默失效无人知晓，故升级为 critical。
+          severity: critical
           team: platform
         annotations:
-          summary: "语音情感识别降级（SER 未就绪）"
-          description: "emotion2vec+ 模型未加载，情绪识别降级为中性——功能部分失效，请检查 SER 模型加载日志。"
+          summary: "语音情感识别不可用（SER 未就绪）"
+          description: "emotion2vec+ 模型未加载持续 5 分钟，情绪识别降级为中性——请检查 SER 模型缓存路径（${MODEL_CACHE_DIR:-./cache/modelscope} 与 prepare-funasr.sh 默认对齐）与容器挂载点。"
       
       # ----- 服务运行期降级（OPS-MON-003，BUG-TTS-01 复盘：主引擎失效但兜底可用时无告警） -----
       # 语义：服务仍可用（DEGRADED ≠ DOWN），warning 级；critical 留给全引擎不可用（既有规则）

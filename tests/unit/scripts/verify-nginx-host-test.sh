@@ -61,6 +61,26 @@ grep -q 'nginx -t' "$DEPLOY_SH" && ok "上传后 nginx -t 门禁" \
 grep -q 'nginx -s reload' "$DEPLOY_SH" && ok "校验通过后 nginx -s reload" \
     || fail "deploy.sh 缺少 reload"
 
+# ===== 4.1 宿主 nginx 限流（OPS-P1-01，doing/96：生产宿主认证端点必须有限流） =====
+HOST_NGINX="$HOST_DIR/nginx.conf"
+grep -q 'limit_req_zone.*zone=auth_limit' "$HOST_NGINX" \
+    && ok "host/nginx.conf 定义 auth_limit zone" \
+    || fail "host/nginx.conf 缺少 limit_req_zone auth_limit（生产限流门禁未生效）"
+for prefix in 'api/v1/voiceprint/' 'api/v1/parent/auth/' 'api/v1/auth/'; do
+    # 块级断言（防"某前缀块误删限流但全文件 grep 仍绿"）：awk 进入目标 location 块后
+    # 探测 limit_req，块结束（首个非 location 的 } 行）输出 OK/MISS；
+    # index() 子串匹配避免 macOS awk 字符串正则对 { } 的转义差异
+    if awk -v p="/$prefix" '
+        index($0, "location " p " {") > 0 { inblock=1 }
+        inblock && index($0, "limit_req zone=auth_limit") > 0 { found=1 }
+        inblock && $0 ~ /^[[:space:]]*\}/ && index($0, "location") == 0 { print (found ? "OK" : "MISS"); inblock=0; found=0 }
+    ' "$HOST_NGINX" | grep -q OK; then
+        ok "host/nginx.conf 限流前缀 /$prefix"
+    else
+        fail "host/nginx.conf 缺少 /$prefix 限流"
+    fi
+done
+
 # ===== 5. 旧表述防回潮 =====
 for f in "$DEPLOY_SH" "$SERVICE_MANAGER_SH"; do
     grep -q '未启用（容器 Created）' "$f" && fail "$(basename "$f") 仍残留旧表述（compose nginx 未启用）" \

@@ -15,6 +15,10 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./init/pg-init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+      # OPS-P0-01（doing/96）：备份卷挂载到 pg 服务——compose 仅创建被服务引用的卷，
+      # 顶层声明不被引用时 up 不会创建；挂载后 compose up 必然创建 <project>_dbbackups，
+      # 与 backup-common.sh 幂等自愈双保险，杜绝全新部署后每日备份静默失败。
+      - dbbackups:/backups
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U mindsafe"]
       interval: 10s
@@ -201,6 +205,10 @@ services:
 volumes:
   pgdata:
   redisdata:
+  # AUD-032/OPS-P0-01（doing/96）：备份卷必须由 compose 显式声明——此前无任何创建方，
+  # 全新部署后 backup.sh 探测不到卷 fail-fast，每日 02:00 cron 备份静默失败。
+  # compose up 自动创建 <project>_dbbackups 命名卷；backup-common.sh 另有幂等自愈兜底。
+  dbbackups:
 
 networks:
   internal:

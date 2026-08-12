@@ -21,26 +21,19 @@ scrape_configs:
   - job_name: 'mindsafe-backend'
     metrics_path: '/actuator/prometheus'
     static_configs:
-      # 生产环境：通过 compose internal 网络访问 backend 容器
-      # 本地开发覆盖：在 docker-compose.monitoring.yml 中设置 PROM_TARGETS=host.docker.internal:8080
-      # 生产固定（compose env 模板不适用于 Prometheus 配置，${} 不会被展开）
+      # OPS-P2-03（doing/96）：生产固定 targets（此前注释声称可设 PROM_TARGETS 覆盖，
+      # 实为死变量 0 消费者）；本地开发需改抓取目标时直接编辑本文件。
       - targets: ['backend:8080']
-        labels:
-          env: '${PROM_ENV}'
 
   - job_name: 'tts-service'
     metrics_path: '/metrics'
     static_configs:
       - targets: ['tts-service:10096']
-        labels:
-          env: '${PROM_ENV}'
 
   - job_name: 'voice-service'
     metrics_path: '/metrics'
     static_configs:
       - targets: ['voice-service:10095']
-        labels:
-          env: '${PROM_ENV}'
 
   - job_name: 'prometheus'
     static_configs:

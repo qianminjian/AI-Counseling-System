@@ -24,8 +24,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="${SCRIPT_DIR}/../.."
 DEPLOY_DIR="${SCRIPT_DIR}/.."
 
-# 缓存目录（可通过环境变量覆盖，默认在 deploy 目录同级）
-CACHE_BASE="${FUNASR_CACHE_DIR:-/guju/mindsafe/cache}"
+# 缓存目录（可通过环境变量覆盖；默认 ${DEPLOY_DIR}/cache，与 compose 挂载
+# ${MODEL_CACHE_DIR:-./cache/modelscope} 对齐——compose 相对路径基于 compose 文件所在目录（deploy/）
+# OPS-P1-02（doing/96）：此前默认 /guju/mindsafe/cache 与 compose 挂载点不一致，
+# 模型下载后容器挂载为空目录，SER 静默降级；单源化后默认一致，无需手工对齐）
+CACHE_BASE="${FUNASR_CACHE_DIR:-${DEPLOY_DIR}/cache}"
 MODEL_CACHE="${CACHE_BASE}/modelscope"
 PIP_CACHE="${CACHE_BASE}/pip"
 MANIFEST="${CACHE_BASE}/manifest.json"

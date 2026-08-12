@@ -11,16 +11,9 @@ services:
     # 仅 Grafana（同网络）与 docker exec 可访问，UI 已非必要不开放
     expose:
       - "9090"
-    environment:
-      # 本地开发：在 .env 中设 PROM_TARGETS=host.docker.internal:8080
-      # 注意：Prometheus 配置展开不支持 :- 默认值，默认值必须在此注入
-      - PROM_TARGETS=${PROM_TARGETS:-backend:8080}
-      - PROM_ENV=${PROM_ENV:-prod}
-      # P1-10：Python 服务抓取目标（本地开发覆盖为 host.docker.internal:10096/10095）
-      - TTS_PROM_TARGETS=${TTS_PROM_TARGETS:-tts-service:10096}
-      - VOICE_PROM_TARGETS=${VOICE_PROM_TARGETS:-voice-service:10095}
-      # P1-10：Alertmanager 地址
-      - ALERTMANAGER_TARGETS=${ALERTMANAGER_TARGETS:-alertmanager:9093}
+    # OPS-P2-03（doing/96）：PROM_TARGETS 等四变量 + PROM_ENV 全删（prometheus.yml
+    # 不展开环境变量、targets 固定硬编码，均为 0 消费者死变量）；本地开发需改抓取目标
+    # 时直接编辑 prometheus.yml。environment 块已随变量一并移除。
     volumes:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       # P1-10：告警规则挂载（prometheus.yml rule_files 引用）
@@ -93,4 +86,6 @@ networks:
     driver: bridge
   internal:
     name: mindsafe-internal
+    # OPS-P3-13（doing/96）：external 依赖 prod 栈先启动（compose 无法表达跨栈依赖）；
+    # 先 docker compose -f docker-compose.prod.yml up -d 再启动监控栈，否则网络接入失败。
     external: true
