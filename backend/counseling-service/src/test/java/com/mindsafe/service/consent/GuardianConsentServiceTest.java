@@ -109,6 +109,35 @@ class GuardianConsentServiceTest {
                 eq("user"), eq(STUDENT_ID), any());
     }
 
+    @Test
+    void 撤回状态学生确认同意后账号恢复为active() {
+        when(phoneVerificationService.verifyCode(PHONE, "123456")).thenReturn(true);
+        User withdrawn = new User();
+        withdrawn.setUserId(STUDENT_ID);
+        withdrawn.setStatus(User.STATUS_WITHDRAWN);
+        when(userMapper.selectById(STUDENT_ID)).thenReturn(withdrawn);
+
+        service.confirmConsent(TENANT_ID, STUDENT_ID, PHONE, "123456");
+
+        // doing/92 R-007：重新授权后账号 reactivate
+        ArgumentCaptor<User> userCaptor = ArgumentCaptor.forClass(User.class);
+        verify(userMapper).updateById(userCaptor.capture());
+        assertEquals(User.STATUS_ACTIVE, userCaptor.getValue().getStatus());
+    }
+
+    @Test
+    void 正常学生确认同意时不做账号更新() {
+        when(phoneVerificationService.verifyCode(PHONE, "123456")).thenReturn(true);
+        User active = new User();
+        active.setUserId(STUDENT_ID);
+        active.setStatus(User.STATUS_ACTIVE);
+        when(userMapper.selectById(STUDENT_ID)).thenReturn(active);
+
+        service.confirmConsent(TENANT_ID, STUDENT_ID, PHONE, "123456");
+
+        verify(userMapper, never()).updateById(any(User.class));
+    }
+
     // ===== hasGuardianConsent =====
 
     @Test

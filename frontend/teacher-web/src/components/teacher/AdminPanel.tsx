@@ -25,12 +25,18 @@ interface ImportResultVO {
   errors?: string[]
 }
 
-/** 操作审计日志 */
+/** 操作审计日志（后端 GET /admin/audit-logs 返回 AuditLog 实体契约；
+ *  D-联动 板块08 P1-4：与 admin-web AuditLogItem 收敛为同一字段命名，消除双端口径分裂） */
 interface AuditLogVO {
   auditLogId: string
+  tenantId?: string
+  userId?: string
   action: string
   resourceType: string
+  resourceId?: string
   detail?: string
+  ipHash?: string
+  userAgent?: string
   createdAt: string
 }
 
@@ -271,6 +277,7 @@ export default function AdminPanel() {
           pagination={{ pageSize: 10, showSizeChanger: false }}
           columns={[
             { title: '操作', dataIndex: 'action', width: 140, render: (v) => <Tag>{v}</Tag> },
+            { title: '操作人', dataIndex: 'userId', width: 110, render: (v?: string) => (v ? String(v).slice(0, 8) : '—') },
             { title: '资源类型', dataIndex: 'resourceType', width: 100 },
             { title: '详情', dataIndex: 'detail', ellipsis: true },
             { title: '时间', dataIndex: 'createdAt', width: 150, render: (v) => v ? dayjs(v).format('MM-DD HH:mm') : '' },

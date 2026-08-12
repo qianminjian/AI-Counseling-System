@@ -6,6 +6,8 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
 import org.springframework.core.task.TaskDecorator;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
+import org.springframework.web.context.request.RequestAttributes;
+import org.springframework.web.context.request.RequestContextHolder;
 
 import java.util.UUID;
 
@@ -16,6 +18,9 @@ import java.util.UUID;
  * 「无上下文静默跳过注入」带病运行；收紧后无上下文直接 fail-fast，故必须在任务提交时
  * 捕获调用方线程的租户上下文/系统作用域，并在子线程执行期间还原。
  * <p>
+ * 专题 D（P0-3）：同步传播 {@link RequestContextHolder} 请求上下文——@Async 审计线程
+ * 借此捕获调用方线程的 IP 哈希/User-Agent（COMP-006 溯源维度），修复前该维度恒为空。
+ * <p>
  * Spring Boot {@code TaskExecutionAutoConfiguration} 会自动将本 {@link TaskDecorator}
  * 应用到默认 {@code applicationTaskExecutor}（即 {@code @Async} 的缺省执行器）。
  */
@@ -25,19 +30,26 @@ public class TenantContextPropagationConfig {
     @Bean
     public TaskDecorator tenantContextTaskDecorator() {
         return runnable -> {
-            // 提交时刻：捕获调用方线程的租户与系统作用域
+            // 提交时刻：捕获调用方线程的租户/系统作用域/请求上下文
             UUID tenantId = TenantContextHolder.get();
             boolean systemScope = TenantContextHolder.isSystemScope();
+            RequestAttributes requestAttributes = RequestContextHolder.getRequestAttributes();
             return () -> {
                 try {
                     if (tenantId != null) {
                         TenantContextHolder.set(tenantId);
                     }
                     TenantContextHolder.setSystemScope(systemScope);
+                    // D-P0-3：@Async 审计线程还原请求上下文（IP 哈希/UA 溯源维度），
+                    // 无请求上下文的调用方（定时任务等系统级审计）保持 null 原样
+                    if (requestAttributes != null) {
+                        RequestContextHolder.setRequestAttributes(requestAttributes);
+                    }
                     runnable.run();
                 } finally {
-                    // 线程池复用，务必清除防止串租户
+                    // 线程池复用，务必清除防止串租户/串请求
                     TenantContextHolder.clear();
+                    RequestContextHolder.resetRequestAttributes();
                 }
             };
         };
