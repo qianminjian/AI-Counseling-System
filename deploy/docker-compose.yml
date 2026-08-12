@@ -43,8 +43,8 @@ services:
   # ===== TTS 语音合成微服务（CosyVoice + edge-tts 降级） =====
   tts-service:
     build:
-      context: ../backend/tts-service
-      dockerfile: Dockerfile
+      context: ../backend
+      dockerfile: tts-service/Dockerfile
     restart: unless-stopped
     environment:
       DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:-}
@@ -57,8 +57,8 @@ services:
   # ===== 语音识别与情绪分析微服务（ASR + SER 解耦） =====
   voice-service:
     build:
-      context: ../backend/voice-service
-      dockerfile: Dockerfile
+      context: ../backend
+      dockerfile: voice-service/Dockerfile
     environment:
       # ASR 引擎：funasr=本地 / dashscope=云端
       ASR_ENGINE: ${ASR_ENGINE:-dashscope}
