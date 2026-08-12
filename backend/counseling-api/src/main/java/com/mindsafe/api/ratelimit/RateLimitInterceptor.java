@@ -1,5 +1,7 @@
 package com.mindsafe.api.ratelimit;
 
+import com.mindsafe.api.config.ErrorResponseWriter;
+import com.mindsafe.api.config.RouteCatalog;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.slf4j.Logger;
@@ -10,6 +12,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.HandlerInterceptor;
 
 import java.time.Duration;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -43,10 +46,12 @@ public class RateLimitInterceptor implements HandlerInterceptor {
             return true;
         }
 
-        String action = resolveAction(request.getMethod(), request.getRequestURI());
-        if (action == null) {
+        // F3：限流动作收敛 RouteCatalog 注册表（行为与原 resolveAction 逐条等价）
+        Optional<String> actionOpt = RouteCatalog.rateLimitAction(request.getMethod(), request.getRequestURI());
+        if (actionOpt.isEmpty()) {
             return true; // 非限流路径
         }
+        String action = actionOpt.get();
 
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         boolean limited;
@@ -72,42 +77,11 @@ public class RateLimitInterceptor implements HandlerInterceptor {
             limited = !rateLimiter.tryAcquire("ip:" + ip, action, IP_MAX_PER_MINUTE, IP_WINDOW);
         }
         if (limited) {
-            response.setStatus(429);
-            response.setContentType("application/json;charset=UTF-8");
-            response.getWriter().write(
-                    "{\"code\":429,\"message\":\"操作太频繁了，请稍等一下再试哦 🌈\",\"data\":null}"
-            );
+            // F6：统一 ApiResponse 序列化出口（原手拼 {code,message,data} 缺 timestamp，与契约对齐）
+            ErrorResponseWriter.write(response, 429, 429, "操作太频繁了，请稍等一下再试哦 🌈");
             return false;
         }
 
         return true;
-    }
-
-    /** 根据 HTTP 方法与 URI 确定限流动作（null = 不限流） */
-    private String resolveAction(String method, String uri) {
-        if (uri.contains("/chat/sessions/") && uri.contains("/messages")) {
-            return "chat_message";
-        }
-        // AUDIT-P0-2：原实现误将路径 uri 与字面量 "POST" 比较（恒 false），
-        // create_session 限流从未生效，攻击者可无限创建会话烧 LLM 配额。
-        // 修复：改判 request.getMethod()。
-        if (uri.contains("/chat/sessions") && "POST".equalsIgnoreCase(method)) {
-            return "create_session";
-        }
-        // B-02：TTS 合成按用户限流（与 TtsController 文本长度上限双层防护）
-        if (uri.contains("/tts/synthesize")) {
-            return "tts_synthesize";
-        }
-        // AUDIT-DEEP-011（P3-04）：公开端点按 IP 限流（宽松配额）
-        if (uri.contains("/voiceprint/verify")) {
-            return "voiceprint_verify";
-        }
-        if (uri.contains("/device/report/")) {
-            return "device_report";
-        }
-        if (uri.contains("/device/config/pull")) {
-            return "device_config_pull";
-        }
-        return null;
     }
 }
