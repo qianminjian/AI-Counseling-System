@@ -10,9 +10,8 @@ import com.mindsafe.common.enums.RiskLevel;
 import com.mindsafe.domain.entity.LongTermMemory;
 import com.mindsafe.domain.entity.RiskEvent;
 import com.mindsafe.domain.mapper.LongTermMemoryMapper;
-import com.mindsafe.domain.mapper.RiskEventMapper;
-import com.mindsafe.service.notification.RiskNotifyOutboxService;
 import com.mindsafe.service.profile.MemoryProfileBackfillService;
+import com.mindsafe.service.risk.RiskEventWriter;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;
@@ -63,8 +62,8 @@ public class LongTermMemoryService {
     private final RiskKeywordRegistry riskKeywords;
     private final MemoryRelevanceScorer memoryRelevanceScorer;
     private final ThemeEvolutionEngine themeEvolutionEngine;
-    private final RiskEventMapper riskEventMapper;
-    private final RiskNotifyOutboxService riskNotifyOutboxService;
+    /** S-009（doing/93）：风险事件统一写入入口（memory 风险信号无通知义务 → write(event, false)） */
+    private final RiskEventWriter riskEventWriter;
     // ARCH-010 P2-5：记忆写入失败 metrics（失败率告警依据）
     private final Counter memoryFailureCounter;
 
@@ -73,8 +72,7 @@ public class LongTermMemoryService {
                                  MemoryRiskCorrelator memoryRiskCorrelator,
                                  MemoryRelevanceScorer memoryRelevanceScorer,
                                  ThemeEvolutionEngine themeEvolutionEngine,
-                                 RiskEventMapper riskEventMapper,
-                                 RiskNotifyOutboxService riskNotifyOutboxService,
+                                 RiskEventWriter riskEventWriter,
                                  MeterRegistry meterRegistry,
                                    RiskKeywordRegistry riskKeywords) {
         this.memoryMapper = memoryMapper;
@@ -83,8 +81,7 @@ public class LongTermMemoryService {
         this.riskKeywords = riskKeywords;
         this.memoryRelevanceScorer = memoryRelevanceScorer;
         this.themeEvolutionEngine = themeEvolutionEngine;
-        this.riskEventMapper = riskEventMapper;
-        this.riskNotifyOutboxService = riskNotifyOutboxService;
+        this.riskEventWriter = riskEventWriter;
         this.memoryFailureCounter = Counter.builder("mindsafe.pipeline.failure")
                 .tag("stage", "memory")
                 .register(meterRegistry);
@@ -460,9 +457,9 @@ public class LongTermMemoryService {
             event.setStatus(RiskEvent.STATUS_OPEN);
             event.setCreatedAt(Instant.now());
             event.setUpdatedAt(Instant.now());
-            riskEventMapper.insert(event);
-            // P0-4：无通知义务的事件标记完成态，防止补偿任务误重试留痕事件
-            riskNotifyOutboxService.markSent(event);
+            // S-009（doing/93）：统一写入入口——memory 风险信号无通知义务（YELLOW 非实时关注），
+            // write(event, false) 由 writer 标记完成态防补偿任务误重试留痕事件（P0-4）
+            riskEventWriter.write(event, false);
             log.info("RISK-204 记忆风险信号已持久化: riskEventId={}, theme={}", event.getRiskEventId(), signal.theme());
         } catch (Exception e) {
             log.warn("RISK-204 记忆风险持久化降级（不影响业务）: {}", e.getMessage());

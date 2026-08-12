@@ -9,9 +9,6 @@ import com.mindsafe.ai.risk.SemanticRiskClassifier;
 import com.mindsafe.common.dto.risk.RiskDetectionResult;
 import com.mindsafe.common.enums.RiskLevel;
 import com.mindsafe.domain.entity.RiskEvent;
-import com.mindsafe.domain.mapper.RiskEventMapper;
-import com.mindsafe.service.notification.NotificationService;
-import com.mindsafe.service.notification.RiskNotifyOutboxService;
 import com.mindsafe.service.risk.RiskEventWriter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -40,9 +37,6 @@ public class ConversationRiskProcessor {
     private final RiskDetectorService riskDetectorService;
     private final SemanticRiskClassifier semanticRiskClassifier;
     private final RiskScoreCalculator riskScoreCalculator;
-    private final RiskEventMapper riskEventMapper;
-    private final NotificationService notificationService;
-    private final RiskNotifyOutboxService riskNotifyOutboxService;
     private final ObjectMapper objectMapper;
     /** S-009（doing/93）：风险事件统一写入入口 */
     private final RiskEventWriter riskEventWriter;
@@ -52,18 +46,12 @@ public class ConversationRiskProcessor {
     public ConversationRiskProcessor(RiskDetectorService riskDetectorService,
                                      SemanticRiskClassifier semanticRiskClassifier,
                                      RiskScoreCalculator riskScoreCalculator,
-                                     RiskEventMapper riskEventMapper,
-                                     NotificationService notificationService,
-                                     RiskNotifyOutboxService riskNotifyOutboxService,
                                      ObjectMapper objectMapper,
                                      RiskEventWriter riskEventWriter,
                                      RiskKeywordRegistry riskKeywords) {
         this.riskDetectorService = riskDetectorService;
         this.semanticRiskClassifier = semanticRiskClassifier;
         this.riskScoreCalculator = riskScoreCalculator;
-        this.riskEventMapper = riskEventMapper;
-        this.notificationService = notificationService;
-        this.riskNotifyOutboxService = riskNotifyOutboxService;
         this.objectMapper = objectMapper;
         this.riskEventWriter = riskEventWriter;
         this.riskKeywords = riskKeywords;

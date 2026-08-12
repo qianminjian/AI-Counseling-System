@@ -6,9 +6,7 @@ import com.mindsafe.common.enums.RiskLevel;
 import com.mindsafe.domain.entity.CounselingSession;
 import com.mindsafe.domain.entity.RiskEvent;
 import com.mindsafe.domain.mapper.CounselingSessionMapper;
-import com.mindsafe.domain.mapper.RiskEventMapper;
-import com.mindsafe.service.notification.NotificationService;
-import com.mindsafe.service.notification.RiskNotifyOutboxService;
+import com.mindsafe.service.risk.RiskEventWriter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.messages.AssistantMessage;
@@ -40,20 +38,15 @@ public class OutputSafetyReporterImpl implements OutputSafetyReporter {
     private static final String RISK_TYPE_OUTPUT_SAFETY = "output_safety";
 
     private final CounselingSessionMapper sessionMapper;
-    private final RiskEventMapper riskEventMapper;
-    private final NotificationService notificationService;
-    private final RiskNotifyOutboxService riskNotifyOutboxService;
+    /** S-009（doing/93）：风险事件统一写入入口（落库 + 通知义务登记统一收敛于此） */
+    private final RiskEventWriter riskEventWriter;
     private final ChatMemoryAppender chatMemoryAppender;
 
     public OutputSafetyReporterImpl(CounselingSessionMapper sessionMapper,
-                                    RiskEventMapper riskEventMapper,
-                                    NotificationService notificationService,
-                                    RiskNotifyOutboxService riskNotifyOutboxService,
+                                    RiskEventWriter riskEventWriter,
                                     ChatMemoryAppender chatMemoryAppender) {
         this.sessionMapper = sessionMapper;
-        this.riskEventMapper = riskEventMapper;
-        this.notificationService = notificationService;
-        this.riskNotifyOutboxService = riskNotifyOutboxService;
+        this.riskEventWriter = riskEventWriter;
         this.chatMemoryAppender = chatMemoryAppender;
     }
 
@@ -73,16 +66,8 @@ public class OutputSafetyReporterImpl implements OutputSafetyReporter {
                     RiskLevel.RED.severity()
             );
             event.setDetectedBy("output_filter");
-            riskEventMapper.insert(event);
-
-            // 严重违规：与输入风险一致，触发教师通知；失败进 outbox 补偿队列（P0-4）
-            try {
-                notificationService.notifyRiskEvent(event);
-                riskNotifyOutboxService.markSent(event);
-            } catch (Exception e) {
-                log.error("Layer1 教师通知失败(已标记 failed 进补偿队列): riskEventId={}", event.getRiskEventId(), e);
-                riskNotifyOutboxService.markFailed(event);
-            }
+            // S-009（doing/93）：统一写入入口（RED 需教师通知；通知失败由 writer 标记 failed 进补偿队列 P0-4）
+            riskEventWriter.write(event, true);
 
             log.warn("Layer1 输出违规已记录: sessionId={}, category={}, keyword={}, riskEventId={}",
                     sessionId, category, matchedKeyword, event.getRiskEventId());
@@ -109,10 +94,9 @@ public class OutputSafetyReporterImpl implements OutputSafetyReporter {
             event.setDetectedBy("output_review");
             // doing/92 R-015：审查 JSON 落库（TC260 人工抽检依据）
             event.setReviewJson(reviewJson);
-            riskEventMapper.insert(event);
-
-            // P0-4：无通知义务的事件标记完成态，防止补偿任务误重试留痕事件
-            riskNotifyOutboxService.markSent(event);
+            // S-009（doing/93）：统一写入入口（YELLOW 低危仅留痕不通知 → write(event, false)，
+            // 由 writer 标记完成态防补偿任务误重试留痕事件 P0-4）
+            riskEventWriter.write(event, false);
 
             // 低危留痕：不触发教师通知，供人工抽检复核（对齐 TC260 人工抽检机制）
             log.info("Layer2 输出违规已记录: sessionId={}, decision={}, riskEventId={}",
@@ -159,21 +143,8 @@ public class OutputSafetyReporterImpl implements OutputSafetyReporter {
             event.setDetectedBy("output_review");
             // doing/92 R-015：审查 JSON 落库（TC260 人工抽检依据）
             event.setReviewJson(reviewJson);
-            riskEventMapper.insert(event);
-
-            if (level != RiskLevel.YELLOW) {
-                // block/escalate：通知教师，失败进 outbox 补偿队列（P0-4）
-                try {
-                    notificationService.notifyRiskEvent(event);
-                    riskNotifyOutboxService.markSent(event);
-                } catch (Exception e) {
-                    log.error("Layer2 召回教师通知失败(已标记 failed 进补偿队列): riskEventId={}", event.getRiskEventId(), e);
-                    riskNotifyOutboxService.markFailed(event);
-                }
-            } else {
-                // rewrite：无通知义务 → 标记完成态，防止补偿任务误重试
-                riskNotifyOutboxService.markSent(event);
-            }
+            // S-009（doing/93）：统一写入入口（rewrite=YELLOW 不通知；block/escalate 通知教师）
+            riskEventWriter.write(event, level != RiskLevel.YELLOW);
 
             log.warn("Layer2 召回已执行: sessionId={}, decision={}, replaced=true, riskEventId={}",
                     sessionId, decision, event.getRiskEventId());

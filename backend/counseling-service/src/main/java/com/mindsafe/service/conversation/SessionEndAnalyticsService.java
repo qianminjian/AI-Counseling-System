@@ -4,8 +4,6 @@ import com.mindsafe.ai.orchestrator.EmotionOrchestrationEvaluator;
 import com.mindsafe.ai.risk.EmotionVocabulary;
 import com.mindsafe.common.enums.RiskLevel;
 import com.mindsafe.domain.entity.RiskEvent;
-import com.mindsafe.domain.mapper.RiskEventMapper;
-import com.mindsafe.service.notification.RiskNotifyOutboxService;
 import com.mindsafe.service.risk.RiskEventWriter;
 import com.mindsafe.service.profile.ProfileEffectivenessTracker;
 import com.mindsafe.service.voice.TrendAnomalySignaler;
@@ -40,8 +38,6 @@ public class SessionEndAnalyticsService {
     private final TrendAnomalySignaler anomalySignaler;
     private final EmotionOrchestrationEvaluator orchestrationEvaluator;
     private final ProfileEffectivenessTracker effectivenessTracker;
-    private final RiskEventMapper riskEventMapper;
-    private final RiskNotifyOutboxService riskNotifyOutboxService;
     /** S-009（doing/93）：风险事件统一写入入口 */
     private final RiskEventWriter riskEventWriter;
 
@@ -49,15 +45,11 @@ public class SessionEndAnalyticsService {
                                       TrendAnomalySignaler anomalySignaler,
                                       EmotionOrchestrationEvaluator orchestrationEvaluator,
                                       ProfileEffectivenessTracker effectivenessTracker,
-                                      RiskEventMapper riskEventMapper,
-                                      RiskNotifyOutboxService riskNotifyOutboxService,
                                       RiskEventWriter riskEventWriter) {
         this.trendAnalyzer = trendAnalyzer;
         this.anomalySignaler = anomalySignaler;
         this.orchestrationEvaluator = orchestrationEvaluator;
         this.effectivenessTracker = effectivenessTracker;
-        this.riskEventMapper = riskEventMapper;
-        this.riskNotifyOutboxService = riskNotifyOutboxService;
         this.riskEventWriter = riskEventWriter;
     }
 

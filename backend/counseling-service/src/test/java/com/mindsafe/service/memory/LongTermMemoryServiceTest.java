@@ -5,10 +5,11 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mindsafe.domain.entity.LongTermMemory;
+import com.mindsafe.domain.entity.RiskEvent;
 import com.mindsafe.domain.mapper.LongTermMemoryMapper;
 import com.mindsafe.service.profile.MemoryProfileBackfillService;
 import com.mindsafe.service.profile.MemoryProfileBackfillService.MemoryEvent;
-import com.mindsafe.service.notification.RiskNotifyOutboxService;
+import com.mindsafe.service.risk.RiskEventWriter;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -68,10 +69,7 @@ class LongTermMemoryServiceTest {
     private ThemeEvolutionEngine themeEvolutionEngine;
 
     @Mock
-    private com.mindsafe.domain.mapper.RiskEventMapper riskEventMapper;
-
-    @Mock
-    private RiskNotifyOutboxService riskNotifyOutboxService;
+    private RiskEventWriter riskEventWriter;
 
     private LongTermMemoryService service;
 
@@ -85,8 +83,8 @@ class LongTermMemoryServiceTest {
     void setUp() {
         service = new LongTermMemoryService(
                 memoryMapper, backfillService,
-                memoryRiskCorrelator, memoryRelevanceScorer, themeEvolutionEngine, riskEventMapper,
-                riskNotifyOutboxService, registry, new RiskKeywordRegistry());
+                memoryRiskCorrelator, memoryRelevanceScorer, themeEvolutionEngine, riskEventWriter,
+                registry, new RiskKeywordRegistry());
         // selectCount 两处调用（幂等检查 + evict），返回 0 同时满足
         when(memoryMapper.selectCount(any())).thenReturn(0L);
     }
@@ -243,5 +241,39 @@ class LongTermMemoryServiceTest {
 
         verify(memoryMapper, atLeastOnce()).deleteBatchIds(anyList());
         verify(memoryMapper, never()).deleteById(any(UUID.class));
+    }
+
+    @Test
+    @DisplayName("S-009 收口：memory 风险信号经 RiskEventWriter 统一入口落库（write(event, false)，无通知义务）")
+    void memoryRiskSignal_writtenViaWriter() throws Exception {
+        // 触发路径：extractAndStoreKeyEvents → correlateMemoryRisk → persistMemoryRiskSignal
+        List<LongTermMemory> negativeMemories = new ArrayList<>();
+        for (int i = 0; i < MemoryRiskCorrelator.NEGATIVE_THEME_THRESHOLD; i++) {
+            LongTermMemory m = new LongTermMemory();
+            m.setMemoryId(UUID.randomUUID());
+            m.setImportance(0.8f);
+            m.setCreatedAt(Instant.now().minusSeconds(10L + i));
+            m.setEmotionContext("sad");
+            negativeMemories.add(m);
+        }
+        // selectList 第 1 次（evictOldMemories）→ 空；第 2 次（correlateMemoryRisk）→ 负面记忆
+        when(memoryMapper.selectList(any())).thenReturn(List.of(), negativeMemories);
+        when(memoryRiskCorrelator.correlateRisk(any(), anyList(), any())).thenReturn(
+                new MemoryRiskCorrelator.RiskSignal(studentUserId.toString(), "考试焦虑", 3, 30,
+                        "ELEVATED", true, true));
+
+        service.extractAndStoreKeyEvents(tenantId, studentUserId, sessionId,
+                events("{\"key_events\":[{\"content\":\"考试又没考好\",\"emotion_context\":\"sad\",\"importance\":0.8}]}"));
+
+        // S-009：写入统一由 RiskEventWriter 承担（无通知义务 → write(event, false)，完成态标记防误重试）
+        ArgumentCaptor<RiskEvent> captor = ArgumentCaptor.forClass(RiskEvent.class);
+        verify(riskEventWriter).write(captor.capture(), eq(false));
+        RiskEvent event = captor.getValue();
+        assertThat(event.getSourceType()).isEqualTo("attention");
+        assertThat(event.getRiskType()).isEqualTo("memory_risk:考试焦虑");
+        assertThat(event.getRiskLevel()).isEqualTo(1); // YELLOW 非实时关注信号
+        assertThat(event.getDetectedBy()).isEqualTo("memory_correlator");
+        // 收口断言：本服务不再直连 riskEventMapper/outbox（S-009 唯一入口）
+        verify(riskEventWriter, times(1)).write(any(RiskEvent.class), eq(false));
     }
 }
