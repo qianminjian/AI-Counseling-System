@@ -40,7 +40,7 @@ class TocAuthControllerTest {
     @DisplayName("sendCode：非法手机号转 400")
     void sendCodeError() {
         when(tocAuthService.sendCode("12345")).thenThrow(new IllegalArgumentException("手机号格式非法"));
-        assertThatThrownBy(() -> controller.sendCode(Map.of("phone", "12345")))
+        assertThatThrownBy(() -> controller.sendCode(new TocAuthController.PhoneCodeRequest("12345")))
                 .isInstanceOf(BizException.class)
                 .hasMessageContaining("手机号");
     }
@@ -56,7 +56,7 @@ class TocAuthControllerTest {
         session.put("token", "jwt-token");
         when(tocAuthProvider.buildSession(account)).thenReturn(session);
 
-        var response = controller.register(Map.of("phone", "13800138000", "code", "123456"));
+        var response = controller.register(new TocAuthController.RegisterRequest("13800138000", "123456"));
 
         assertThat(response.code()).isEqualTo(0);
         assertThat(response.data().get("token")).isEqualTo("jwt-token");
@@ -68,7 +68,7 @@ class TocAuthControllerTest {
     void loginError() {
         when(tocAuthService.login("13800138000", "123456"))
                 .thenThrow(new IllegalArgumentException("账号不存在，请先注册"));
-        assertThatThrownBy(() -> controller.login(Map.of("phone", "13800138000", "code", "123456")))
+        assertThatThrownBy(() -> controller.login(new TocAuthController.RegisterRequest("13800138000", "123456")))
                 .isInstanceOf(BizException.class)
                 .hasMessageContaining("先注册");
     }

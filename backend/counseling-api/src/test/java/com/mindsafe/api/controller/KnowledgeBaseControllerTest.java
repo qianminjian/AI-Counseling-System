@@ -72,8 +72,7 @@ class KnowledgeBaseControllerTest {
         when(knowledgeBaseService.ingestDocument(tenantId, "考试焦虑", "general", "内容", "手册"))
                 .thenReturn(docId);
 
-        var resp = controller.ingest(Map.of(
-                "title", "考试焦虑", "content", "内容", "source", "手册"), auth());
+        var resp = controller.ingest(new KnowledgeBaseController.IngestDocumentRequest("考试焦虑", null, "内容", "手册"), auth());
 
         assertThat(resp.code()).isEqualTo(0);
         assertThat(resp.data().get("docId")).isEqualTo(docId);
@@ -84,7 +83,7 @@ class KnowledgeBaseControllerTest {
     @Test
     @DisplayName("ingest 缺 title → error")
     void ingest_missingTitle() {
-        var resp = controller.ingest(Map.of("content", "内容"), auth());
+        var resp = controller.ingest(new KnowledgeBaseController.IngestDocumentRequest(null, null, "内容", null), auth());
 
         assertThat(resp.data().get("error")).isEqualTo("title 和 content 为必填项");
         verify(knowledgeBaseService, never()).ingestDocument(any(), any(), any(), any(), any());
@@ -93,7 +92,7 @@ class KnowledgeBaseControllerTest {
     @Test
     @DisplayName("ingest content 空白 → error")
     void ingest_blankContent() {
-        var resp = controller.ingest(Map.of("title", "标题", "content", "  "), auth());
+        var resp = controller.ingest(new KnowledgeBaseController.IngestDocumentRequest("标题", null, "  ", null), auth());
 
         assertThat(resp.data().get("error")).isEqualTo("title 和 content 为必填项");
     }
@@ -104,7 +103,7 @@ class KnowledgeBaseControllerTest {
         when(knowledgeBaseService.ingestDocument(tenantId, "标题", "general", "内容", null))
                 .thenReturn(docId);
 
-        controller.ingest(Map.of("title", "标题", "content", "内容"), auth());
+        controller.ingest(new KnowledgeBaseController.IngestDocumentRequest("标题", null, "内容", null), auth());
 
         verify(knowledgeBaseService).ingestDocument(tenantId, "标题", "general", "内容", null);
     }
@@ -165,7 +164,7 @@ class KnowledgeBaseControllerTest {
     @Test
     @DisplayName("transitionReviewStatus 缺 targetStatus → 400")
     void review_missingTarget() {
-        assertThatThrownBy(() -> controller.transitionReviewStatus(docId, Map.of(), auth()))
+        assertThatThrownBy(() -> controller.transitionReviewStatus(docId, new KnowledgeBaseController.ReviewTransitionRequest(null, null, null, null, null, null), auth()))
                 .isInstanceOf(BizException.class);
     }
 
@@ -175,7 +174,7 @@ class KnowledgeBaseControllerTest {
         when(knowledgeBaseService.findDocumentStatus(tenantId, docId)).thenReturn(null);
 
         assertThatThrownBy(() -> controller.transitionReviewStatus(
-                docId, Map.of("targetStatus", "published"), auth()))
+                docId, new KnowledgeBaseController.ReviewTransitionRequest("published", null, null, null, null, null), auth()))
                 .isInstanceOf(BizException.class);
     }
 
@@ -189,7 +188,7 @@ class KnowledgeBaseControllerTest {
                 .thenReturn(new ReviewGateValidator.GateResult(false, List.of("缺循证等级", "缺审核人")));
 
         assertThatThrownBy(() -> controller.transitionReviewStatus(docId,
-                Map.of("targetStatus", "published", "category", "general"), auth()))
+                new KnowledgeBaseController.ReviewTransitionRequest("published", "general", null, null, null, null), auth()))
                 .isInstanceOf(BizException.class)
                 .hasMessageContaining("缺循证等级");
         verify(knowledgeBaseService, never()).transitionReviewStatus(any(), any(), any(), any(), any(), any(), any());
@@ -206,10 +205,10 @@ class KnowledgeBaseControllerTest {
         when(reviewStateMachine.isSearchable(ReviewWorkflowStateMachine.ReviewStatus.DEPRECATED))
                 .thenReturn(false);
 
-        var resp = controller.transitionReviewStatus(docId, Map.of(
-                "targetStatus", "deprecated",
-                "category", "general", "gradeBand", "grade_5_6",
-                "sourceType", "manual", "evidenceLevel", "A", "reviewer", "张老师"), auth());
+        var resp = controller.transitionReviewStatus(docId, new KnowledgeBaseController.ReviewTransitionRequest(
+                "deprecated",
+                "general", "grade_5_6",
+                "manual", "A", "张老师"), auth());
 
         assertThat(resp.code()).isEqualTo(0);
         assertThat(resp.data().get("from")).isEqualTo("published");
@@ -232,7 +231,7 @@ class KnowledgeBaseControllerTest {
         when(reviewStateMachine.isSearchable(ReviewWorkflowStateMachine.ReviewStatus.PUBLISHED))
                 .thenReturn(true);
 
-        var resp = controller.transitionReviewStatus(docId, Map.of("targetStatus", "published"), auth());
+        var resp = controller.transitionReviewStatus(docId, new KnowledgeBaseController.ReviewTransitionRequest("published", null, null, null, null, null), auth());
 
         assertThat(resp.data().get("searchable")).isEqualTo(true);
     }
@@ -242,14 +241,14 @@ class KnowledgeBaseControllerTest {
     @Test
     @DisplayName("editorialAction 缺 action → 400")
     void editorial_missingAction() {
-        assertThatThrownBy(() -> controller.editorialAction(docId, Map.of(), auth()))
+        assertThatThrownBy(() -> controller.editorialAction(docId, new KnowledgeBaseController.EditorialActionRequest(null, null, null, null, null, null, null), auth()))
                 .isInstanceOf(BizException.class);
     }
 
     @Test
     @DisplayName("editorialAction 未知 action → 400")
     void editorial_unknownAction() {
-        assertThatThrownBy(() -> controller.editorialAction(docId, Map.of("action", "explode"), auth()))
+        assertThatThrownBy(() -> controller.editorialAction(docId, new KnowledgeBaseController.EditorialActionRequest("explode", null, null, null, null, null, null), auth()))
                 .isInstanceOf(BizException.class);
     }
 
@@ -260,8 +259,8 @@ class KnowledgeBaseControllerTest {
                 .thenReturn(new EditorialWorkflowService.TransitionResult(
                         true, "draft", "in_review", false, List.of()));
 
-        var resp = controller.editorialAction(docId, Map.of(
-                "action", "submit", "category", "general", "reviewer", "张老师"), auth());
+        var resp = controller.editorialAction(docId, new KnowledgeBaseController.EditorialActionRequest(
+                "submit", "general", null, null, null, null, "张老师"), auth());
 
         assertThat(resp.code()).isEqualTo(0);
         assertThat(resp.data().get("to")).isEqualTo("in_review");
@@ -275,7 +274,7 @@ class KnowledgeBaseControllerTest {
                         false, "in_review", "in_review", false, List.of("证据不足", "缺审核人")));
 
         assertThatThrownBy(() -> controller.editorialAction(
-                docId, Map.of("action", "reject", "reason", "证据不足"), auth()))
+                docId, new KnowledgeBaseController.EditorialActionRequest("reject", null, null, null, null, "证据不足", null), auth()))
                 .isInstanceOf(BizException.class)
                 .hasMessageContaining("证据不足");
     }
@@ -287,7 +286,7 @@ class KnowledgeBaseControllerTest {
                 .thenReturn(new EditorialWorkflowService.TransitionResult(
                         true, "in_review", "published", true, List.of()));
 
-        var resp = controller.editorialAction(docId, Map.of("action", "publish"), auth());
+        var resp = controller.editorialAction(docId, new KnowledgeBaseController.EditorialActionRequest("publish", null, null, null, null, null, null), auth());
 
         assertThat(resp.data().get("searchable")).isEqualTo(true);
     }
@@ -299,7 +298,7 @@ class KnowledgeBaseControllerTest {
                 .thenReturn(new EditorialWorkflowService.TransitionResult(
                         true, "published", "deprecated", false, List.of()));
 
-        controller.editorialAction(docId, Map.of("action", "deprecate", "reason", "内容过时"), auth());
+        controller.editorialAction(docId, new KnowledgeBaseController.EditorialActionRequest("deprecate", null, null, null, null, "内容过时", null), auth());
 
         verify(editorialWorkflowService).deprecate(tenantId, userId, docId, "内容过时");
     }

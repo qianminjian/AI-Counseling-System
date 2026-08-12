@@ -55,12 +55,12 @@ public class KnowledgeBaseController {
     /** 摄入文档（分块 + 嵌入） */
     @PostMapping("/documents")
     public ApiResponse<Map<String, Object>> ingest(
-            @RequestBody Map<String, String> body, Authentication auth) {
+            @RequestBody IngestDocumentRequest body, Authentication auth) {
         TenantContext ctx = SecuritySupport.requireContext(auth);
-        String title = body.get("title");
-        String category = body.getOrDefault("category", "general");
-        String content = body.get("content");
-        String source = body.get("source");
+        String title = body.title();
+        String category = body.category() == null ? "general" : body.category();
+        String content = body.content();
+        String source = body.source();
 
         if (title == null || content == null || content.isBlank()) {
             return ApiResponse.ok(Map.of("error", "title 和 content 为必填项"));
@@ -136,11 +136,11 @@ public class KnowledgeBaseController {
     @PutMapping("/documents/{docId}/review")
     public ApiResponse<Map<String, Object>> transitionReviewStatus(
             @PathVariable UUID docId,
-            @RequestBody Map<String, String> body,
+            @RequestBody ReviewTransitionRequest body,
             Authentication auth) {
         TenantContext ctx = SecuritySupport.requireContext(auth);
 
-        String targetStatus = body.get("targetStatus");
+        String targetStatus = body.targetStatus();
         if (targetStatus == null || targetStatus.isBlank()) {
             throw new BizException(ErrorCode.PARAM_INVALID, "缺少 targetStatus 参数");
         }
@@ -157,15 +157,15 @@ public class KnowledgeBaseController {
         // 构建元数据（从请求体提取门禁所需字段）
         KnowledgeMetadata metadata = new KnowledgeMetadata(
                 docId.toString(),
-                body.get("category"),
-                body.get("gradeBand"),
-                body.get("sourceType"),
-                body.get("evidenceLevel"),
+                body.category(),
+                body.gradeBand(),
+                body.sourceType(),
+                body.evidenceLevel(),
                 from,
                 0,
-                body.get("reviewer"),
+                body.reviewer(),
                 null,
-                "crisis_intervention".equals(body.get("category")));
+                "crisis_intervention".equals(body.category()));
 
         // 状态机 + 门禁组合校验
         ReviewGateValidator.GateResult gateResult =
@@ -178,12 +178,12 @@ public class KnowledgeBaseController {
         // 门禁通过 → 状态与审核字段落库（KB-102，V30）
         knowledgeBaseService.transitionReviewStatus(ctx.tenantId(), docId,
                 ReviewWorkflowStateMachine.toDbStatus(to),
-                body.get("gradeBand"), body.get("sourceType"),
-                body.get("evidenceLevel"), body.get("reviewer"));
+                body.gradeBand(), body.sourceType(),
+                body.evidenceLevel(), body.reviewer());
 
         auditLogService.log(ctx.tenantId(), ctx.userId(), "KNOWLEDGE_REVIEW_TRANSITION",
                 "knowledge_document", docId,
-                from + " → " + to + ", reviewer=" + body.get("reviewer"));
+                from + " → " + to + ", reviewer=" + body.reviewer());
 
         return ApiResponse.ok(Map.of(
                 "docId", docId,
@@ -203,17 +203,17 @@ public class KnowledgeBaseController {
     @PostMapping("/documents/{docId}/editorial")
     public ApiResponse<Map<String, Object>> editorialAction(
             @PathVariable UUID docId,
-            @RequestBody Map<String, String> body,
+            @RequestBody EditorialActionRequest body,
             Authentication auth) {
         TenantContext ctx = SecuritySupport.requireContext(auth);
-        String action = body.get("action");
+        String action = body.action();
         if (action == null || action.isBlank()) {
             throw new BizException(ErrorCode.PARAM_INVALID, "缺少 action 参数（submit/publish/reject/deprecate）");
         }
 
         EditorialWorkflowService.EditorialRequest request = new EditorialWorkflowService.EditorialRequest(
-                body.get("category"), body.get("gradeBand"), body.get("sourceType"),
-                body.get("evidenceLevel"), body.get("reviewer"));
+                body.category(), body.gradeBand(), body.sourceType(),
+                body.evidenceLevel(), body.reviewer());
 
         EditorialWorkflowService.TransitionResult result = switch (action) {
             case "submit" -> editorialWorkflowService.submitForReview(
@@ -221,9 +221,9 @@ public class KnowledgeBaseController {
             case "publish" -> editorialWorkflowService.publish(
                     ctx.tenantId(), ctx.userId(), docId, request);
             case "reject" -> editorialWorkflowService.reject(
-                    ctx.tenantId(), ctx.userId(), docId, body.get("reason"));
+                    ctx.tenantId(), ctx.userId(), docId, body.reason());
             case "deprecate" -> editorialWorkflowService.deprecate(
-                    ctx.tenantId(), ctx.userId(), docId, body.get("reason"));
+                    ctx.tenantId(), ctx.userId(), docId, body.reason());
             default -> null;
         };
 
@@ -274,5 +274,17 @@ public class KnowledgeBaseController {
                 "knowledge_document");
 
         return ApiResponse.ok(report);
+    }
+
+    /** S-011③（doing/93）：请求类型化 record（替代 Map 手工解析） */
+    public record IngestDocumentRequest(String title, String category, String content, String source) {
+    }
+
+    public record ReviewTransitionRequest(String targetStatus, String category, String gradeBand,
+                                           String sourceType, String evidenceLevel, String reviewer) {
+    }
+
+    public record EditorialActionRequest(String action, String category, String gradeBand,
+                                         String sourceType, String evidenceLevel, String reason, String reviewer) {
     }
 }

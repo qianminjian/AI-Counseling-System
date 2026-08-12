@@ -3,6 +3,8 @@ package com.mindsafe.api.controller;
 import com.mindsafe.api.security.JwtAuthenticationFilter.TenantContext;
 import com.mindsafe.api.security.SecuritySupport;
 import com.mindsafe.common.dto.ApiResponse;
+import com.mindsafe.common.dto.ErrorCode;
+import com.mindsafe.common.exception.BizException;
 import com.mindsafe.domain.entity.User;
 import com.mindsafe.service.audit.AuditLogService;
 import com.mindsafe.service.teacher.TeacherService;
@@ -77,15 +79,15 @@ public class TeacherAlertController {
     /** 转派预警（design/35 §4.1：重置认领不重置 SLA，目标教师获得新预警） */
     @PostMapping("/alerts/{id}/transfer")
     public ApiResponse<Void> transferAlert(@PathVariable UUID id,
-                                           @RequestBody Map<String, String> body,
+                                           @RequestBody TransferAlertRequest body,
                                            Authentication auth) {
         TenantContext ctx = SecuritySupport.requireContext(auth);
         UUID userId = (UUID) auth.getPrincipal();
-        String target = body.get("targetTeacherId");
+        String target = body.targetTeacherId();
         if (target == null || target.isBlank()) {
-            throw new IllegalArgumentException("缺少目标教师 targetTeacherId");
+            throw new BizException(ErrorCode.PARAM_INVALID, "缺少目标教师 targetTeacherId");
         }
-        String note = body.get("note");
+        String note = body.note();
         teacherService.transferAlert(ctx.tenantId(), id, userId, UUID.fromString(target), note);
         auditLogService.log(ctx.tenantId(), userId, "ALERT_TRANSFER", "risk_event", id, target);
         return ApiResponse.ok(null);
@@ -94,11 +96,11 @@ public class TeacherAlertController {
     /** 设置学生“已在个案跟踪中”标志（design/35 §4.2 降噪第 3 条：S2/S3 只进时间线） */
     @PutMapping("/teacher/students/{studentId}/case-tracking")
     public ApiResponse<Void> setCaseTracking(@PathVariable UUID studentId,
-                                             @RequestBody Map<String, Object> body,
+                                             @RequestBody CaseTrackingRequest body,
                                              Authentication auth) {
         TenantContext ctx = SecuritySupport.requireContext(auth);
         UUID userId = (UUID) auth.getPrincipal();
-        boolean enabled = Boolean.TRUE.equals(body.get("enabled"));
+        boolean enabled = Boolean.TRUE.equals(body.enabled());
         teacherService.setCaseTracking(ctx.tenantId(), studentId, userId, enabled);
         auditLogService.log(ctx.tenantId(), userId, "CASE_TRACKING_SET", User.USER_TYPE_STUDENT, studentId, String.valueOf(enabled));
         return ApiResponse.ok(null);
@@ -107,11 +109,11 @@ public class TeacherAlertController {
     /** DATA-004：安排回访（处置后计划回访确认效果） */
     @PostMapping("/alerts/{id}/schedule-followup")
     public ApiResponse<Void> scheduleFollowUp(@PathVariable UUID id,
-                                              @RequestBody Map<String, String> body,
+                                              @RequestBody FollowUpScheduleRequest body,
                                               Authentication auth) {
         TenantContext ctx = SecuritySupport.requireContext(auth);
         UUID userId = (UUID) auth.getPrincipal();
-        String followUpAt = body.get("followUpAt");
+        String followUpAt = body.followUpAt();
         if (followUpAt == null || followUpAt.isBlank()) {
             return ApiResponse.ok(null);
         }
@@ -123,12 +125,12 @@ public class TeacherAlertController {
     /** DATA-004：完成回访（填写回访记录 + 最终评估） */
     @PostMapping("/alerts/{id}/complete-followup")
     public ApiResponse<Void> completeFollowUp(@PathVariable UUID id,
-                                              @RequestBody Map<String, String> body,
+                                              @RequestBody FollowUpCompleteRequest body,
                                               Authentication auth) {
         TenantContext ctx = SecuritySupport.requireContext(auth);
         UUID userId = (UUID) auth.getPrincipal();
-        String note = body.get("followUpNote");
-        String outcome = body.get("outcome");
+        String note = body.followUpNote();
+        String outcome = body.outcome();
         teacherService.completeFollowUp(ctx.tenantId(), id, userId, note, outcome);
         auditLogService.log(ctx.tenantId(), userId, "ALERT_COMPLETE_FOLLOWUP", "risk_event", id, outcome);
         return ApiResponse.ok(null);
@@ -151,5 +153,18 @@ public class TeacherAlertController {
             return row;
         }).toList();
         return ApiResponse.ok(result);
+    }
+
+    /** S-011③（doing/93）：请求类型化 record（替代 Map 手工解析） */
+    public record TransferAlertRequest(String targetTeacherId, String note) {
+    }
+
+    public record CaseTrackingRequest(Boolean enabled) {
+    }
+
+    public record FollowUpScheduleRequest(String followUpAt) {
+    }
+
+    public record FollowUpCompleteRequest(String followUpNote, String outcome) {
     }
 }

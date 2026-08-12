@@ -1,5 +1,6 @@
 package com.mindsafe.api.controller;
 
+import com.mindsafe.common.exception.BizException;
 import com.mindsafe.api.security.JwtAuthenticationFilter.TenantContext;
 import com.mindsafe.common.dto.ApiResponse;
 import com.mindsafe.domain.entity.RiskEvent;
@@ -105,8 +106,8 @@ class TeacherAlertControllerTest {
     @Test
     @DisplayName("transferAlert 缺 targetTeacherId → 参数异常")
     void transferAlert_missingTarget() {
-        assertThatThrownBy(() -> controller.transferAlert(alertId, Map.of(), auth()))
-                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> controller.transferAlert(alertId, new TeacherAlertController.TransferAlertRequest(null, null), auth()))
+                .isInstanceOf(BizException.class);
         verify(teacherService, never()).transferAlert(any(), any(), any(), any(), any());
     }
 
@@ -115,7 +116,7 @@ class TeacherAlertControllerTest {
     void transferAlert_success() {
         UUID targetTeacher = UUID.randomUUID();
         var resp = controller.transferAlert(alertId,
-                Map.of("targetTeacherId", targetTeacher.toString(), "note", "请跟进"), auth());
+                new TeacherAlertController.TransferAlertRequest(targetTeacher.toString(), "请跟进"), auth());
 
         assertThat(resp.code()).isEqualTo(0);
         verify(teacherService).transferAlert(tenantId, alertId, teacherUserId, targetTeacher, "请跟进");
@@ -126,7 +127,7 @@ class TeacherAlertControllerTest {
     @Test
     @DisplayName("setCaseTracking enabled=true + 审计")
     void setCaseTracking_on() {
-        var resp = controller.setCaseTracking(UUID.randomUUID(), Map.of("enabled", true), auth());
+        var resp = controller.setCaseTracking(UUID.randomUUID(), new TeacherAlertController.CaseTrackingRequest(true), auth());
 
         assertThat(resp.code()).isEqualTo(0);
         verify(teacherService).setCaseTracking(any(), any(), any(), org.mockito.ArgumentMatchers.eq(true));
@@ -137,7 +138,7 @@ class TeacherAlertControllerTest {
     @Test
     @DisplayName("setCaseTracking enabled=false + 审计")
     void setCaseTracking_off() {
-        controller.setCaseTracking(UUID.randomUUID(), Map.of("enabled", false), auth());
+        controller.setCaseTracking(UUID.randomUUID(), new TeacherAlertController.CaseTrackingRequest(false), auth());
 
         verify(teacherService).setCaseTracking(any(), any(), any(), org.mockito.ArgumentMatchers.eq(false));
     }
@@ -145,7 +146,7 @@ class TeacherAlertControllerTest {
     @Test
     @DisplayName("scheduleFollowUp 缺 followUpAt → 静默跳过")
     void scheduleFollowUp_missing() {
-        var resp = controller.scheduleFollowUp(alertId, Map.of(), auth());
+        var resp = controller.scheduleFollowUp(alertId, new TeacherAlertController.FollowUpScheduleRequest(null), auth());
 
         assertThat(resp.code()).isEqualTo(0);
         verify(teacherService, never()).scheduleFollowUp(any(), any(), any(), any());
@@ -154,7 +155,7 @@ class TeacherAlertControllerTest {
     @Test
     @DisplayName("scheduleFollowUp 成功 + 审计")
     void scheduleFollowUp_success() {
-        var resp = controller.scheduleFollowUp(alertId, Map.of("followUpAt", "2026-08-05T10:00:00Z"), auth());
+        var resp = controller.scheduleFollowUp(alertId, new TeacherAlertController.FollowUpScheduleRequest("2026-08-05T10:00:00Z"), auth());
 
         assertThat(resp.code()).isEqualTo(0);
         verify(teacherService).scheduleFollowUp(tenantId, alertId, teacherUserId, "2026-08-05T10:00:00Z");
@@ -166,7 +167,7 @@ class TeacherAlertControllerTest {
     @DisplayName("completeFollowUp 回访记录 + 审计 outcome")
     void completeFollowUp() {
         var resp = controller.completeFollowUp(alertId,
-                Map.of("followUpNote", "情绪稳定", "outcome", "improved"), auth());
+                new TeacherAlertController.FollowUpCompleteRequest("情绪稳定", "improved"), auth());
 
         assertThat(resp.code()).isEqualTo(0);
         verify(teacherService).completeFollowUp(tenantId, alertId, teacherUserId, "情绪稳定", "improved");
