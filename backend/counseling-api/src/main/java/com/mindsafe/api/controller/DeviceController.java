@@ -2,6 +2,8 @@ package com.mindsafe.api.controller;
 
 import com.mindsafe.api.dto.device.BindDeviceRequest;
 import com.mindsafe.common.dto.ApiResponse;
+import com.mindsafe.common.dto.ErrorCode;
+import com.mindsafe.common.exception.BizException;
 import com.mindsafe.service.device.DeviceService;
 import com.mindsafe.service.device.DeviceVoiceprintService;
 import org.springframework.web.bind.annotation.*;
@@ -33,7 +35,7 @@ public class DeviceController {
     @GetMapping("/{deviceCode}/info")
     public ApiResponse<Map<String, Object>> getDeviceInfo(@PathVariable String deviceCode) {
         if (!deviceService.exists(deviceCode)) {
-            return ApiResponse.error(404, "未找到该设备，请核对机身二维码");
+            throw new BizException(ErrorCode.RESOURCE_NOT_FOUND, "未找到该设备，请核对机身二维码");
         }
         return ApiResponse.ok(deviceService.getDeviceInfo(deviceCode));
     }
@@ -42,7 +44,7 @@ public class DeviceController {
     @GetMapping("/{deviceCode}/status")
     public ApiResponse<Map<String, Object>> getDeviceStatus(@PathVariable String deviceCode) {
         if (!deviceService.exists(deviceCode)) {
-            return ApiResponse.error(404, "设备不存在");
+            throw new BizException(ErrorCode.RESOURCE_NOT_FOUND, "设备不存在");
         }
         return ApiResponse.ok(deviceService.getDeviceStatus(deviceCode));
     }
@@ -73,19 +75,19 @@ public class DeviceController {
     /** 设备首次上线/回连注册（设备端上报；已存在设备需 X-Device-Token，AUDIT-DEEP-002 code-review P0-1） */
     @PostMapping("/report/online")
     public ApiResponse<Map<String, Object>> reportOnline(
-            @RequestBody Map<String, String> body,
+            @RequestBody ReportOnlineRequest body,
             @RequestHeader(value = "X-Device-Token", required = false) String deviceToken) {
         return ApiResponse.ok(deviceService.reportOnline(
-                body.get("deviceCode"), body.get("sn"), body.get("firmwareVersion"), body.get("serverUrl"),
+                body.deviceCode(), body.sn(), body.firmwareVersion(), body.serverUrl(),
                 deviceToken));
     }
 
     /** 心跳上报（设备端，30s 间隔，90s 判离线） */
     @PostMapping("/report/heartbeat")
-    public ApiResponse<Void> heartbeat(@RequestBody Map<String, String> body) {
-        String deviceCode = body.get("deviceCode");
+    public ApiResponse<Void> heartbeat(@RequestBody DeviceCodeRequest body) {
+        String deviceCode = body.deviceCode();
         if (deviceCode == null || !deviceService.exists(deviceCode)) {
-            return ApiResponse.error(404, "设备不存在");
+            throw new BizException(ErrorCode.RESOURCE_NOT_FOUND, "设备不存在");
         }
         deviceService.heartbeat(deviceCode);
         return ApiResponse.ok(null);
@@ -93,23 +95,23 @@ public class DeviceController {
 
     /** 状态上报（固件版本等） */
     @PostMapping("/report/status")
-    public ApiResponse<Void> reportStatus(@RequestBody Map<String, String> body) {
-        String deviceCode = body.get("deviceCode");
+    public ApiResponse<Void> reportStatus(@RequestBody DeviceCodeRequest body) {
+        String deviceCode = body.deviceCode();
         if (deviceCode == null || !deviceService.exists(deviceCode)) {
-            return ApiResponse.error(404, "设备不存在");
+            throw new BizException(ErrorCode.RESOURCE_NOT_FOUND, "设备不存在");
         }
-        deviceService.reportStatus(deviceCode, body.get("firmwareVersion"));
+        deviceService.reportStatus(deviceCode, body.firmwareVersion());
         return ApiResponse.ok(null);
     }
 
     /** 配置拉取（设备心跳时调用；已绑定设备需 X-Device-Token，AUDIT-DEEP-002） */
     @PostMapping("/config/pull")
     public ApiResponse<Map<String, Object>> pullConfig(
-            @RequestBody Map<String, String> body,
+            @RequestBody DeviceCodeRequest body,
             @RequestHeader(value = "X-Device-Token", required = false) String deviceToken) {
-        String deviceCode = body.get("deviceCode");
+        String deviceCode = body.deviceCode();
         if (deviceCode == null || !deviceService.exists(deviceCode)) {
-            return ApiResponse.error(404, "设备不存在");
+            throw new BizException(ErrorCode.RESOURCE_NOT_FOUND, "设备不存在");
         }
         return ApiResponse.ok(deviceService.pullConfig(deviceCode, deviceToken));
     }
@@ -126,14 +128,14 @@ public class DeviceController {
     @PostMapping("/{deviceCode}/voiceprint/tasks")
     public ApiResponse<Map<String, Object>> createVoiceprintTask(
             @PathVariable String deviceCode,
-            @RequestBody Map<String, String> body,
+            @RequestBody VoiceprintTaskRequest body,
             @RequestParam(required = false) String operator) {
-        String studentId = body.get("studentId");
+        String studentId = body.studentId();
         if (studentId == null || studentId.isBlank()) {
-            return ApiResponse.error(400, "studentId 缺失");
+            throw new BizException(ErrorCode.PARAM_INVALID, "studentId 缺失");
         }
         if (!deviceService.exists(deviceCode)) {
-            return ApiResponse.error(404, "设备不存在");
+            throw new BizException(ErrorCode.RESOURCE_NOT_FOUND, "设备不存在");
         }
         return ApiResponse.ok(voiceprintService.createTask(deviceCode, studentId, operator));
     }
@@ -145,22 +147,22 @@ public class DeviceController {
             @PathVariable String taskId) {
         Map<String, Object> task = voiceprintService.getTask(taskId);
         if (task == null || !deviceCode.equals(task.get("deviceCode"))) {
-            return ApiResponse.error(404, "任务不存在");
+            throw new BizException(ErrorCode.RESOURCE_NOT_FOUND, "任务不存在");
         }
         return ApiResponse.ok(task);
     }
 
     /** 设备端采集进度上报（CFG-006，AC-84-13，匿名白名单） */
     @PostMapping("/report/voiceprint")
-    public ApiResponse<Map<String, Object>> reportVoiceprintPhase(@RequestBody Map<String, String> body) {
-        String taskId = body.get("taskId");
-        String phase = body.get("phase");
+    public ApiResponse<Map<String, Object>> reportVoiceprintPhase(@RequestBody VoiceprintPhaseRequest body) {
+        String taskId = body.taskId();
+        String phase = body.phase();
         if (taskId == null || phase == null) {
-            return ApiResponse.error(400, "taskId/phase 缺失");
+            throw new BizException(ErrorCode.PARAM_INVALID, "taskId/phase 缺失");
         }
-        Map<String, Object> task = voiceprintService.reportPhase(taskId, phase, body.get("deviceCode"));
+        Map<String, Object> task = voiceprintService.reportPhase(taskId, phase, body.deviceCode());
         if (task == null) {
-            return ApiResponse.error(404, "任务不存在");
+            throw new BizException(ErrorCode.RESOURCE_NOT_FOUND, "任务不存在");
         }
         return ApiResponse.ok(task);
     }
@@ -184,6 +186,24 @@ public class DeviceController {
     public ApiResponse<Map<String, Object>> factoryReset(@PathVariable String deviceCode,
                                                          @RequestParam(required = false) String operator) {
         return ApiResponse.ok(deviceService.factoryReset(deviceCode, operator));
+    }
+
+    // ===== 请求类型化 record（S-011，doing/93：替代 Map 手工解析，字段改名/类型编译期暴露） =====
+
+    /** 设备上报在线（deviceCode/sn/firmwareVersion/serverUrl） */
+    public record ReportOnlineRequest(String deviceCode, String sn, String firmwareVersion, String serverUrl) {
+    }
+
+    /** 设备码请求（心跳/状态/配置拉取共用；reportStatus 附固件版本） */
+    public record DeviceCodeRequest(String deviceCode, String firmwareVersion) {
+    }
+
+    /** 声纹录入任务发起 */
+    public record VoiceprintTaskRequest(String studentId) {
+    }
+
+    /** 声纹采集进度上报 */
+    public record VoiceprintPhaseRequest(String taskId, String phase, String deviceCode) {
     }
 
 }

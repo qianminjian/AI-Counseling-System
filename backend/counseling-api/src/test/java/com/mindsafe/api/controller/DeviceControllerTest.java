@@ -1,5 +1,6 @@
 package com.mindsafe.api.controller;
 
+import com.mindsafe.common.exception.BizException;
 import com.mindsafe.api.dto.device.BindDeviceRequest;
 import com.mindsafe.domain.entity.DeviceBinding;
 import com.mindsafe.domain.util.DeviceCodeUtil;
@@ -57,9 +58,9 @@ class DeviceControllerTest {
     @DisplayName("设备不存在时 info 返回 404 与引导文案")
     void infoNotFound() {
         when(deviceService.exists(deviceCode)).thenReturn(false);
-        var response = controller.getDeviceInfo(deviceCode);
-        assertThat(response.code()).isEqualTo(404);
-        assertThat(response.message()).contains("未找到该设备");
+        assertThatThrownBy(() -> controller.getDeviceInfo(deviceCode))
+                .isInstanceOf(BizException.class)
+                .hasMessageContaining("未找到该设备");
         verify(deviceService, never()).getDeviceInfo(deviceCode);
     }
 
@@ -77,7 +78,7 @@ class DeviceControllerTest {
     @DisplayName("status 轮询：设备不存在返回 404")
     void statusNotFound() {
         when(deviceService.exists(deviceCode)).thenReturn(false);
-        assertThat(controller.getDeviceStatus(deviceCode).code()).isEqualTo(404);
+        assertThatThrownBy(() -> controller.getDeviceStatus(deviceCode)).isInstanceOf(BizException.class);
     }
 
     // ===== 绑定类端点：业务异常转 400 =====
@@ -132,15 +133,13 @@ class DeviceControllerTest {
     @Test
     @DisplayName("report/online：首次上线注册成功")
     void reportOnlineOk() {
-        Map<String, String> body = new LinkedHashMap<>();
-        body.put("deviceCode", deviceCode);
-        body.put("sn", "BB-2026-000123");
+        var body = new DeviceController.ReportOnlineRequest(deviceCode, "BB-2026-000123", null, null);
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("status", "ONLINE_UNBOUND");
         when(deviceService.reportOnline(deviceCode, "BB-2026-000123", null, null, null)).thenReturn(result);
 
-        var response = controller.reportOnline(body, null);
+        var response = controller.reportOnline(new DeviceController.ReportOnlineRequest(deviceCode, "BB-2026-000123", null, null), null);
         assertThat(response.code()).isEqualTo(0);
         assertThat(response.data().get("status")).isEqualTo("ONLINE_UNBOUND");
     }
@@ -148,15 +147,15 @@ class DeviceControllerTest {
     @Test
     @DisplayName("report/heartbeat：设备不存在返回 404")
     void heartbeatNotFound() {
-        Map<String, String> body = Map.of("deviceCode", deviceCode);
+        var body = new DeviceController.DeviceCodeRequest(deviceCode, null);
         when(deviceService.exists(deviceCode)).thenReturn(false);
-        assertThat(controller.heartbeat(body).code()).isEqualTo(404);
+        assertThatThrownBy(() -> controller.heartbeat(body)).isInstanceOf(BizException.class);
     }
 
     @Test
     @DisplayName("report/heartbeat：存在则更新心跳")
     void heartbeatOk() {
-        Map<String, String> body = Map.of("deviceCode", deviceCode);
+        var body = new DeviceController.DeviceCodeRequest(deviceCode, null);
         when(deviceService.exists(deviceCode)).thenReturn(true);
         var response = controller.heartbeat(body);
         assertThat(response.code()).isEqualTo(0);
@@ -166,7 +165,7 @@ class DeviceControllerTest {
     @Test
     @DisplayName("config/pull：返回服务器配置")
     void pullConfigOk() {
-        Map<String, String> body = Map.of("deviceCode", deviceCode);
+        var body = new DeviceController.DeviceCodeRequest(deviceCode, null);
         Map<String, Object> config = new LinkedHashMap<>();
         config.put("serverUrl", "https://mindsafe.local");
         when(deviceService.exists(deviceCode)).thenReturn(true);
@@ -194,9 +193,10 @@ class DeviceControllerTest {
     @Test
     @DisplayName("createVoiceprintTask：studentId 缺失返回 400")
     void createVoiceprintTaskMissingStudent() {
-        var response = controller.createVoiceprintTask(deviceCode, Map.of(), "t");
-        assertThat(response.code()).isEqualTo(400);
-        assertThat(response.message()).contains("studentId");
+        assertThatThrownBy(() -> controller.createVoiceprintTask(
+                deviceCode, new DeviceController.VoiceprintTaskRequest(null), "t"))
+                .isInstanceOf(BizException.class)
+                .hasMessageContaining("studentId 缺失");
     }
 
     @Test
@@ -208,7 +208,7 @@ class DeviceControllerTest {
         when(deviceService.exists(deviceCode)).thenReturn(true);
         when(voiceprintService.createTask(deviceCode, "stu-1", "t")).thenReturn(task);
 
-        var response = controller.createVoiceprintTask(deviceCode, Map.of("studentId", "stu-1"), "t");
+        var response = controller.createVoiceprintTask(deviceCode, new DeviceController.VoiceprintTaskRequest("stu-1"), "t");
         assertThat(response.code()).isEqualTo(0);
         assertThat(response.data().get("phase")).isEqualTo("INITIATED");
     }
@@ -217,7 +217,7 @@ class DeviceControllerTest {
     @DisplayName("getVoiceprintTask：任务不存在或设备码不匹配返回 404")
     void getVoiceprintTaskNotFound() {
         when(voiceprintService.getTask("t1")).thenReturn(null);
-        assertThat(controller.getVoiceprintTask(deviceCode, "t1").code()).isEqualTo(404);
+        assertThatThrownBy(() -> controller.getVoiceprintTask(deviceCode, "t1")).isInstanceOf(BizException.class);
     }
 
     @Test
@@ -228,7 +228,7 @@ class DeviceControllerTest {
         task.put("phase", "COLLECTING");
         when(voiceprintService.reportPhase("t1", "COLLECTING", null)).thenReturn(task);
 
-        var response = controller.reportVoiceprintPhase(Map.of("taskId", "t1", "phase", "COLLECTING"));
+        var response = controller.reportVoiceprintPhase(new DeviceController.VoiceprintPhaseRequest("t1", "COLLECTING", null));
         assertThat(response.code()).isEqualTo(0);
         assertThat(response.data().get("phase")).isEqualTo("COLLECTING");
     }
@@ -237,8 +237,9 @@ class DeviceControllerTest {
     @DisplayName("reportVoiceprintPhase：任务不存在返回 404")
     void reportVoiceprintPhaseNotFound() {
         when(voiceprintService.reportPhase("t1", "COLLECTING", null)).thenReturn(null);
-        assertThat(controller.reportVoiceprintPhase(Map.of("taskId", "t1", "phase", "COLLECTING")).code())
-                .isEqualTo(404);
+        assertThatThrownBy(() -> controller.reportVoiceprintPhase(
+                new DeviceController.VoiceprintPhaseRequest("t1", "COLLECTING", null)))
+                .isInstanceOf(BizException.class);
     }
 
     // ===== CFG-008 M13：设备操作端点 =====
