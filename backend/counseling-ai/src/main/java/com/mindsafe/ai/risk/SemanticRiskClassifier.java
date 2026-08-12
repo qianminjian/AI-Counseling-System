@@ -5,16 +5,15 @@ import com.mindsafe.common.enums.RiskLevel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * M2 语义风险分类器（RISK-202，design/04 §18.3）
@@ -41,25 +40,20 @@ public class SemanticRiskClassifier {
     private final long timeoutMs;
 
     /**
-     * 专用有界线程池（守护线程）：避免慢 LLM 调用占满 ForkJoinPool.commonPool
-     * 拖累全应用的并行流/其他 supplyAsync 任务。
+     * 专用有界线程池（受管 Bean，见 AiConfig#semanticRiskExecutor）：
+     * 避免慢 LLM 调用占满 ForkJoinPool.commonPool 拖累全应用的并行流/其他 supplyAsync 任务。
+     * P1-3 板块02：原构造器自建 daemon 池已收敛为 Spring 受管 Bean（生命周期统一关闭）。
      */
-    private final ExecutorService semanticExecutor;
+    private final Executor semanticExecutor;
 
     public SemanticRiskClassifier(ChatClient.Builder chatClientBuilder,
                                   PromptTemplateService promptTemplateService,
-                                  @Value("${mindsafe.risk.semantic-timeout-ms:800}") long timeoutMs) {
+                                  @Value("${mindsafe.risk.semantic-timeout-ms:800}") long timeoutMs,
+                                  @Qualifier("semanticRiskExecutor") Executor semanticExecutor) {
         this.chatClient = chatClientBuilder.build();
         this.promptTemplateService = promptTemplateService;
         this.timeoutMs = timeoutMs;
-        AtomicInteger seq = new AtomicInteger();
-        this.semanticExecutor = Executors.newFixedThreadPool(
-                Math.max(2, Runtime.getRuntime().availableProcessors()),
-                r -> {
-                    Thread t = new Thread(r, "semantic-risk-" + seq.incrementAndGet());
-                    t.setDaemon(true);
-                    return t;
-                });
+        this.semanticExecutor = semanticExecutor;
     }
 
     /**

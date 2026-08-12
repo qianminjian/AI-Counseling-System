@@ -48,8 +48,9 @@ class SemanticRiskClassifierTest {
         when(promptTemplateService.render(eq(PromptTemplateService.SAF_001), anyMap()))
                 .thenReturn("SAF-001 渲染后模板");
 
-        // 测试用短门禁（500ms），超时测试单独构造更小值
-        classifier = new SemanticRiskClassifier(builder, promptTemplateService, 500);
+        // 测试用短门禁（500ms），超时测试单独构造更小值；
+        // P1-3 板块02：executor 参数用 Runnable::run 直连（同步执行，保持确定性）
+        classifier = new SemanticRiskClassifier(builder, promptTemplateService, 500, Runnable::run);
     }
 
     private void llmReturns(String response) {
@@ -137,7 +138,10 @@ class SemanticRiskClassifierTest {
         void timeout_returnsNull() {
             ChatClient.Builder builder = mock(ChatClient.Builder.class);
             when(builder.build()).thenReturn(chatClient);
-            SemanticRiskClassifier tight = new SemanticRiskClassifier(builder, promptTemplateService, 50);
+            // 超时路径必须真实异步（直连会阻塞本线程直到 sleep 结束，测不出门禁）；
+            // 测试局部小池，非生产自建（P1-3 板块02 收敛的是生产代码侧）
+            SemanticRiskClassifier tight = new SemanticRiskClassifier(builder, promptTemplateService, 50,
+                    java.util.concurrent.Executors.newSingleThreadExecutor());
             when(callSpec.content()).thenAnswer(inv -> {
                 Thread.sleep(400);
                 return "{\"risk_level\": \"L4\"}";
