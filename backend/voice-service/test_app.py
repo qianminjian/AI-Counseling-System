@@ -167,3 +167,47 @@ class TestOverrideResolution:
         monkeypatch.setattr(fresh_app, "_read_override", broken)
         monkeypatch.setattr(fresh_app, "ASR_ENGINE", "dashscope")
         assert fresh_app._resolve_asr_engine() == "dashscope"
+
+
+# ===== /api/v1/voice/analyze 端点（OPS-001 回归，doing/95） =====
+
+class TestAnalyzeEndpoint:
+    """OPS-001：S-017 重构后 _funasr_ser 未定义致 analyze 必 500；
+    修复后 SER 启用时应返回 200 且 emotion 来自 SER 后端（假模型 scores 0.9 → happy）。"""
+
+    @pytest.fixture(autouse=True)
+    def _skip_media(self, monkeypatch):
+        """跳过 ffmpeg 转码与 wav 解码（纯单元验证 SER 接线，不依赖系统 ffmpeg）"""
+        import subprocess as sp
+        import numpy as np
+
+        def fake_run(*args, **kwargs):
+            return sp.CompletedProcess(args=args[0], returncode=0)
+        monkeypatch.setattr(sp, "run", fake_run)
+        # soundfile 解码：1 秒 16kHz 静音（mock 后无需真实文件）
+        monkeypatch.setattr("soundfile.read", lambda p: (np.zeros(16000), 16000))
+
+    def test_analyze_ser_enabled_returns_emotion(self, client):
+        """SER 启用且模型就绪 → 200 + emotion 来自 SER（修复前必 NameError→500）"""
+        resp = client.post(
+            "/api/v1/voice/analyze",
+            files={"file": ("test.wav", b"RIFF\x00", "audio/wav")},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["emotion"]["label_en"] == "angry"  # 假模型 scores[0]=0.9 → config.yaml 索引 0
+        assert data["emotion"]["confidence"] == 0.9
+        assert data["duration_seconds"] == 1.0
+
+    def test_analyze_ser_disabled_fallback_neutral(self, client, fresh_app, monkeypatch):
+        """SER 禁用 → 200 + 中性情绪兜底（不触碰 SER 后端）"""
+        monkeypatch.setenv("SER_ENABLED", "false")
+        import importlib
+        importlib.reload(fresh_app)
+        resp = client.post(
+            "/api/v1/voice/analyze",
+            files={"file": ("test.wav", b"RIFF\x00", "audio/wav")},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["emotion"]["label_en"] == "neutral"

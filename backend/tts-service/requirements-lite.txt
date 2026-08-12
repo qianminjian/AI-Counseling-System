@@ -1,5 +1,6 @@
 # 依赖版本锁定（有界区间，审计 P2-24）：避免无上限版本漂移导致构建不可复现
 # 上界与 refresh-wheels.sh 生成的 wheels 版本对齐（edge-tts 当前 wheels 为 7.2.8）
+# H-1（code-review，doing/95）：补 pytest——CI 已改为 requirements-lite 优先，缺 pytest 则门禁必失败
 fastapi>=0.104.0,<1.0
 uvicorn>=0.24.0,<1.0
 pydantic>=2.0.0,<3.0
@@ -8,3 +9,4 @@ edge-tts>=6.1.0,<8.0
 dashscope>=1.20.0,<2.0
 pyyaml>=6.0,<7.0
 redis>=4.6.0,<6.0
+pytest>=7.0.0,<9.0

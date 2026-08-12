@@ -1,0 +1,12 @@
+# 测试/轻量依赖（OPS-003，doing/95）：CI pytest 与 docker-build-smoke 使用本文件，
+# 避免 torch+funasr 大依赖拖慢 CI；test_app.py 模块级 import app 需要 numpy/soundfile/fastapi 等
+# 与 tts-service/requirements-lite.txt 同构（版本锁定有界区间，上界对齐 requirements.txt）
+numpy>=1.24.0,<3.0
+soundfile>=0.12.0,<0.14
+fastapi>=0.104.0,<1.0
+uvicorn>=0.24.0,<1.0
+pydantic>=2.0.0,<3.0
+python-multipart>=0.0.6,<0.1
+pyyaml>=6.0,<7.0
+httpx>=0.25.0,<1.0
+pytest>=7.0.0,<9.0

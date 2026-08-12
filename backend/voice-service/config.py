@@ -6,6 +6,7 @@ MindSafe Voice Service 配置加载模块（CFG-007 + DOC-073 D1 深合并单源
 注意：ASR_ENGINE / SER_ENABLED / DASHSCOPE_API_KEY 仍由环境变量控制（12-Factor）
 """
 import logging
+import os
 
 from config_loader import load_config as loader_load_config
 
@@ -45,7 +46,11 @@ DEFAULT_CONFIG = {
 def load_config(config_path: str = None) -> dict:
     """
     加载 Voice 服务配置（CFG-007 + DOC-073 D1）
-    优先级：config.yaml > 内置默认值（深合并：嵌套结构部分配置仅覆盖指定项）
+    优先级：config.yaml > 内置默认值（深合并 ：嵌套结构部分配置仅覆盖指定项）
     注意：ASR_ENGINE / SER_ENABLED / DASHSCOPE_API_KEY 仍由环境变量控制（12-Factor）
     """
+    # OPS-016（doing/95）：与 tts 同源修复——config_loader 默认取自身同目录（py-common/）无 config.yaml，
+    # 显式指向服务目录 config.yaml（容器内 /app/config.yaml 同样命中），防矩阵类配置静默回退兜底
+    if config_path is None:
+        config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.yaml")
     return loader_load_config(config_path, defaults=DEFAULT_CONFIG)

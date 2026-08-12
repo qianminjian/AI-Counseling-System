@@ -14,7 +14,6 @@ import os
 import time
 from typing import Optional
 
-import httpx
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -29,18 +28,11 @@ from metrics_common import Metrics
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("tts-service")
 
-# 全局复用 httpx 客户端（edge-tts 降级时用）
-http_client: httpx.AsyncClient = None
-
-
 @asynccontextmanager
 async def _lifespan(_: FastAPI):
-    """AUD-042：用 lifespan 替代弃用的 @app.on_event（FastAPI 推荐生命周期管理，退出时确保 http_client 回收）"""
-    global http_client
-    http_client = httpx.AsyncClient(timeout=20.0, limits=httpx.Limits(max_connections=20))
+    """AUD-042：用 lifespan 替代弃用的 @app.on_event（FastAPI 推荐生命周期管理）
+    OPS-011（doing/95）：http_client 僵死代码已删除（全文件无业务使用点，edge-tts/dashscope 均走库内实现）"""
     yield
-    if http_client:
-        await http_client.aclose()
 
 
 app = FastAPI(title="MindSafe TTS Service", version="4.0.0", lifespan=_lifespan)
@@ -156,6 +148,10 @@ def load_config(config_path: str = None) -> dict:
     加载 TTS 配置（CFG-004 + DOC-073 D1）
     优先级：环境变量 > config.yaml > 代码兜底（深合并：嵌套结构部分配置仅覆盖指定项）
     """
+    # OPS-016（doing/95）：config_loader 默认取自身同目录（py-common/）——该目录无 config.yaml，
+    # 导致服务/测试实际使用最小兜底矩阵（仅 xiaoxing）。显式指向服务目录 config.yaml（容器内 /app/config.yaml 同样命中）
+    if config_path is None:
+        config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.yaml")
     config = loader_load_config(config_path, defaults=_FALLBACK_CONFIG)
 
     # 环境变量覆盖（12-Factor：敏感/部署相关参数由环境变量注入）

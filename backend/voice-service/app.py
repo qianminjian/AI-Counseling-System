@@ -336,10 +336,12 @@ async def analyze_voice(file: UploadFile = File(...)):
             # AUD-016：复用进程级单例线程池 _ANALYZE_EXECUTOR（不再每请求新建/销毁）；
             # 超时后 future.cancel()（Python 线程不可强停，但可阻止排队任务启动并释放引用）
             asr_future = _ANALYZE_EXECUTOR.submit(asr_fn, wav_path)
-            ser_future = _ANALYZE_EXECUTOR.submit(_funasr_ser, wav_path)
+            # OPS-001（doing/95）：S-017 重构删除了 _funasr_ser 内联函数，调用点未同步改为 ser_backend.analyze
+            # （返回 dict，需转 EmotionResult 保持下游属性访问契约）
+            ser_future = _ANALYZE_EXECUTOR.submit(ser_backend.analyze, wav_path)
             try:
                 text = asr_future.result(timeout=VOICE_ANALYZE_TIMEOUT)
-                emotion = ser_future.result(timeout=VOICE_ANALYZE_TIMEOUT)
+                emotion = EmotionResult(**ser_future.result(timeout=VOICE_ANALYZE_TIMEOUT))
             except TimeoutError:
                 asr_future.cancel()
                 ser_future.cancel()
