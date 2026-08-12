@@ -106,7 +106,8 @@ public class NotificationServiceImpl implements NotificationService {
         }
         wrapper.orderByDesc(Notification::getCreatedAt);
         Page<Notification> pageResult = notificationMapper.selectPage(
-                new Page<>(Math.max(1, page), Math.min(Math.max(1, size), 100), false),
+                // BUG-T-06-02 二次修复（2026-08-12 复测）：第三参 false 关闭 count 统计 → total 恒 0，分页失效
+                new Page<>(Math.max(1, page), Math.min(Math.max(1, size), 100), true),
                 wrapper
         );
         List<Notification> items = pageResult.getRecords();
