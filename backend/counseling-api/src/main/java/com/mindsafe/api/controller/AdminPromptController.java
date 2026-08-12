@@ -1,5 +1,6 @@
 package com.mindsafe.api.controller;
 
+import com.mindsafe.api.dto.prompt.CreateVersionRequest;
 import com.mindsafe.api.security.JwtAuthenticationFilter.TenantContext;
 import com.mindsafe.api.security.SecuritySupport;
 import com.mindsafe.common.dto.ApiResponse;
@@ -71,24 +72,21 @@ public class AdminPromptController {
         return ApiResponse.ok(toVersionMap(pv));
     }
 
-    /** 创建新版本 */
+    /** 创建新版本（F11：请求体类型化为 CreateVersionRequest） */
     @PostMapping("/versions")
     public ApiResponse<Map<String, Object>> createVersion(
-            @RequestBody Map<String, String> body,
+            @RequestBody CreateVersionRequest request,
             Authentication auth) {
         TenantContext ctx = SecuritySupport.requireContext(auth);
-        String templateKey = body.get("templateKey");
-        String content = body.get("content");
-        String description = body.get("description");
-        String abGroup = body.getOrDefault("abGroup", "control");
-        UUID tenantId = body.containsKey("tenantId") ? UUID.fromString(body.get("tenantId")) : null;
+        String templateKey = request.templateKey();
+        String content = request.content();
 
         if (templateKey == null || content == null) {
             return ApiResponse.ok(Map.of("error", "templateKey 和 content 为必填项"));
         }
 
         PromptVersion pv = promptVersionService.createVersion(
-                tenantId, templateKey, content, description, abGroup, ctx.userId());
+                request.tenantId(), templateKey, content, request.description(), request.abGroup(), ctx.userId());
         return ApiResponse.ok(toVersionMap(pv));
     }
 
