@@ -39,13 +39,19 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         if (token != null && jwtTokenProvider.isPlatformToken(token)) {
             // 平台 token（ADMIN-P0-02/03，R-8）：独立授权域 ROLE_PLATFORM_<角色>，
-            // 不绑定租户上下文（平台操作无租户归属）；已撤销（黑名单）token 不建立认证（M1）
+            // 不绑定租户（平台操作无租户归属）；已撤销（黑名单）token 不建立认证（M1）
             if (!blacklistService.isBlacklisted(jwtTokenProvider.getTokenId(token))) {
                 UUID adminId = jwtTokenProvider.getPlatformAdminId(token);
                 String role = jwtTokenProvider.getPlatformRole(token);
                 var authorities = List.of(new SimpleGrantedAuthority("ROLE_PLATFORM_" + role.toUpperCase()));
                 var auth = new UsernamePasswordAuthenticationToken(adminId, null, authorities);
+                // BUG-A-12-01/02/04、BUG-A-04-01 修复（2026-08-12，UI-TEST-015）：平台 token 也建立
+                // TenantContext（tenantId=null，userId=adminId）——平台 controller 的 ctx.tenantId()/userId()
+                // 不再 NPE；并标记系统作用域，使平台域跨租户 SQL（health/provision/列表）豁免租户行
+                // 隔离 fail-fast（MindSafeTenantLineHandler），避免平台接口 500。
+                auth.setDetails(new TenantContext(null, adminId, JwtTokenProvider.PLATFORM_USER_TYPE));
                 SecurityContextHolder.getContext().setAuthentication(auth);
+                TenantContextHolder.setSystemScope(true);
             }
         } else if (token != null) {
             // doing/92 R-017：单次 parse（原 6 次 parse/请求：validate+isAccess+getTokenId+getUserId+getUserType+getTenantId）

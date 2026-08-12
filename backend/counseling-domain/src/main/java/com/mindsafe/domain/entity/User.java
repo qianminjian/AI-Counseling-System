@@ -36,6 +36,10 @@ public class User {
     /** C2（2026-08-05）：用户类型魔法值收敛——班主任 */
     public static final String USER_TYPE_CLASS_TEACHER = "class_teacher";
 
+    /** BUG-T-RC-01 兼容（2026-08-12，UI-TEST-013）：head_teacher 为既有账号体系角色名（design/05 §3.2），
+     *  与 class_teacher 同义（班主任字段裁剪），裁剪逻辑须双名兼容 */
+    public static final String USER_TYPE_HEAD_TEACHER = "head_teacher";
+
     /** C2（2026-08-05）：用户类型魔法值收敛——管理员 */
     public static final String USER_TYPE_ADMIN = "admin";
 

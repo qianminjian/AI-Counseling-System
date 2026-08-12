@@ -10,10 +10,13 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 
 /**
  * 全局异常处理器：统一转为 ApiResponse 格式
@@ -113,6 +116,31 @@ public class GlobalExceptionHandler {
     public ApiResponse<Void> handleUnreadable(HttpMessageNotReadableException e) {
         log.warn("请求体解析失败: {}", e.getMessage());
         return ApiResponse.error(ErrorCode.PARAM_INVALID.code(), "请求体格式错误");
+    }
+
+    /** 必填请求参数缺失（BUG-T-09-01，UI-TEST-013）→ 400，不再落兜底 500 */
+    @ExceptionHandler(MissingServletRequestParameterException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public ApiResponse<Void> handleMissingParam(MissingServletRequestParameterException e) {
+        log.warn("缺少请求参数: {}", e.getParameterName());
+        return ApiResponse.error(ErrorCode.PARAM_INVALID.code(), "缺少请求参数: " + e.getParameterName());
+    }
+
+    /** 请求参数类型转换失败（如数字传入 UUID 参数）→ 400，不再落兜底 500 */
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public ApiResponse<Void> handleTypeMismatch(MethodArgumentTypeMismatchException e) {
+        log.warn("参数类型不匹配: name={}, value={}", e.getName(), e.getValue());
+        return ApiResponse.error(ErrorCode.PARAM_INVALID.code(),
+                "参数 " + e.getName() + " 格式不正确（期望 " + (e.getRequiredType() != null ? e.getRequiredType().getSimpleName() : "未知") + "）");
+    }
+
+    /** HTTP 方法不允许（如对只读端点发写请求）→ 405，不再落兜底 500 */
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    @ResponseStatus(HttpStatus.METHOD_NOT_ALLOWED)
+    public ApiResponse<Void> handleMethodNotAllowed(HttpRequestMethodNotSupportedException e) {
+        log.warn("方法不允许: method={}, supported={}", e.getMethod(), e.getSupportedHttpMethods());
+        return ApiResponse.error(ErrorCode.PARAM_INVALID.code(), "请求方法不允许: " + e.getMethod());
     }
 
     /** 未知路径（Spring Boot 3.2+ NoResourceFoundException）→ 404，不再落兜底 500 */

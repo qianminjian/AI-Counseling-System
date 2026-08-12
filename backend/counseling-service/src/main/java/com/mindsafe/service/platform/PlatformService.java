@@ -61,7 +61,7 @@ public class PlatformService {
                 new LambdaQueryWrapper<User>().eq(User::getUserType, User.USER_TYPE_STUDENT).eq(User::getStatus, User.STATUS_ACTIVE));
         long totalTeachers = userMapper.selectCount(
                 new LambdaQueryWrapper<User>()
-                        .in(User::getUserType, User.USER_TYPE_TEACHER, User.USER_TYPE_PSYCH_TEACHER, User.USER_TYPE_CLASS_TEACHER, User.USER_TYPE_ADMIN)
+                        .in(User::getUserType, User.USER_TYPE_TEACHER, User.USER_TYPE_PSYCH_TEACHER, User.USER_TYPE_CLASS_TEACHER, User.USER_TYPE_HEAD_TEACHER, User.USER_TYPE_ADMIN)
                         .eq(User::getStatus, User.STATUS_ACTIVE));
         long totalSessions = sessionMapper.selectCount(null);
 
@@ -105,7 +105,7 @@ public class PlatformService {
             long teachers = userMapper.selectCount(
                     new LambdaQueryWrapper<User>()
                             .eq(User::getTenantId, t.getTenantId())
-                            .in(User::getUserType, User.USER_TYPE_TEACHER, User.USER_TYPE_PSYCH_TEACHER, User.USER_TYPE_CLASS_TEACHER, User.USER_TYPE_ADMIN));
+                            .in(User::getUserType, User.USER_TYPE_TEACHER, User.USER_TYPE_PSYCH_TEACHER, User.USER_TYPE_CLASS_TEACHER, User.USER_TYPE_HEAD_TEACHER, User.USER_TYPE_ADMIN));
             long sessions = sessionMapper.selectCount(
                     new LambdaQueryWrapper<CounselingSession>().eq(CounselingSession::getTenantId, t.getTenantId()));
 

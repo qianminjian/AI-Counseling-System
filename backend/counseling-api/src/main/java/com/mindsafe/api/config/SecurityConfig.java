@@ -153,9 +153,11 @@ public class SecurityConfig {
                         // 知识库管理：仅 ADMIN（内容审核/入库为管理职责）
                         .requestMatchers("/api/v1/knowledge/**").hasRole("ADMIN")
                         // 教师端 + 预警 + 数据分析：教师角色 + ADMIN
-                        .requestMatchers("/api/v1/teacher/**").hasAnyRole("TEACHER", "PSYCH_TEACHER", "CLASS_TEACHER", "ADMIN")
-                        .requestMatchers("/api/v1/alerts/**").hasAnyRole("TEACHER", "PSYCH_TEACHER", "CLASS_TEACHER", "ADMIN")
-                        .requestMatchers("/api/v1/analytics/**").hasAnyRole("TEACHER", "PSYCH_TEACHER", "CLASS_TEACHER", "ADMIN")
+                        // BUG-T-RC-01（2026-08-12，UI-TEST-013）：补 ROLE_HEAD_TEACHER——班主任（head_teacher）
+                        // 既有账号体系角色名，此前缺失导致登录后全接口 403；服务层已按班主任语义裁剪数据。
+                        .requestMatchers("/api/v1/teacher/**").hasAnyRole("TEACHER", "PSYCH_TEACHER", "CLASS_TEACHER", "HEAD_TEACHER", "ADMIN")
+                        .requestMatchers("/api/v1/alerts/**").hasAnyRole("TEACHER", "PSYCH_TEACHER", "CLASS_TEACHER", "HEAD_TEACHER", "ADMIN")
+                        .requestMatchers("/api/v1/analytics/**").hasAnyRole("TEACHER", "PSYCH_TEACHER", "CLASS_TEACHER", "HEAD_TEACHER", "ADMIN")
                         // ─── 兜底：其余全部需认证（TTS/Voice/Chat/Session/Diary/Relaxation/Auth 子端点等）───
                         .anyRequest().authenticated()
                 )

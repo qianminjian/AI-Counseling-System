@@ -185,10 +185,25 @@ class DeviceControllerTest {
         UUID targetId = UUID.randomUUID();
         when(deviceService.listDevices("CLASS", targetId)).thenReturn(List.of());
 
-        var response = controller.listDevices("CLASS", targetId);
+        var response = controller.listDevices("CLASS", targetId.toString());
         assertThat(response.code()).isEqualTo(0);
         assertThat(response.data()).isEmpty();
         verify(deviceService).listDevices("CLASS", targetId);
+    }
+
+    @Test
+    @DisplayName("BUG-T-09-01 回归：list 缺参（挂载无参请求）→ 200 空列表，不再 500")
+    void listDevicesMissingParams() {
+        var response = controller.listDevices(null, null);
+        assertThat(response.code()).isEqualTo(0);
+        assertThat(response.data()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("BUG-T-09-01 回归：list 非 UUID 归属 ID → IllegalArgumentException（全局转 400），不再落兜底 500")
+    void listDevicesInvalidUuid() {
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
+                () -> controller.listDevices("SCHOOL", "1"));
     }
 
     @Test

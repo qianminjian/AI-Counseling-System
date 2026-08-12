@@ -99,12 +99,21 @@ public class TeacherService {
     // ===== 数据范围解析（RBAC） =====
 
     /**
+     * BUG-T-RC-01 兼容（2026-08-12，UI-TEST-013）：班主任角色双名识别——
+     * class_teacher（代码体系）与 head_teacher（既有账号体系，design/05 §3.2）同义，
+     * 均按「仅基本信息 + 沟通建议」裁剪。
+     */
+    private static boolean isClassTeacher(String userType) {
+        return User.USER_TYPE_CLASS_TEACHER.equals(userType) || User.USER_TYPE_HEAD_TEACHER.equals(userType);
+    }
+
+    /**
      * 解析当前用户的数据可见范围。
      * 返回 null 表示全校可见，返回 classCode 表示仅该班级可见，
      * 返回空串 "" 表示班主任未绑定班级（无可见范围，查询自然为空结果）。
      */
     public String resolveClassScope(UUID tenantId, UUID userId, String userType) {
-        if (User.USER_TYPE_CLASS_TEACHER.equals(userType)) {
+        if (isClassTeacher(userType)) {
             User teacher = userMapper.selectById(userId);
             if (teacher != null && teacher.getClassCode() != null && !teacher.getClassCode().isBlank()) {
                 return teacher.getClassCode();
@@ -612,8 +621,8 @@ public class TeacherService {
             throw new BizException(ErrorCode.RESOURCE_NOT_FOUND, "学生不存在: " + studentUserId);
         }
 
-        // 班主任（class_teacher）只见沟通建议，不见风险轨迹与对话摘要（design/35 §3.3/§六：服务端裁剪）
-        boolean fullAccess = !User.USER_TYPE_CLASS_TEACHER.equals(userType);
+        // 班主任（class_teacher/head_teacher）只见沟通建议，不见风险轨迹与对话摘要（design/35 §3.3/§六：服务端裁剪）
+        boolean fullAccess = !isClassTeacher(userType);
 
         // 教师备注（所有角色可见，沟通建议来源）
         List<TeacherNote> notes = teacherNoteMapper.selectList(

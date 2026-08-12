@@ -115,11 +115,17 @@ public class DeviceController {
     }
 
     /** 老师租户级设备列表（CFG-008，按绑定归属过滤） */
+    // BUG-T-09-01 修复（2026-08-12，UI-TEST-013）：参数改为可选 + 容错——
+    // 此前 bindType/bindTargetId 必填且 bindTargetId 为 UUID 类型，前端挂载无参请求与
+    // 非 UUID 输入（如数字）均触发参数异常落兜底 500。现缺失参数返回空列表，非法 UUID 400。
     @GetMapping("/list")
     public ApiResponse<List<Map<String, Object>>> listDevices(
-            @RequestParam String bindType,
-            @RequestParam UUID bindTargetId) {
-        return ApiResponse.ok(deviceService.listDevices(bindType, bindTargetId));
+            @RequestParam(required = false) String bindType,
+            @RequestParam(required = false) String bindTargetId) {
+        if (bindType == null || bindTargetId == null || bindType.isBlank() || bindTargetId.isBlank()) {
+            return ApiResponse.ok(List.of());
+        }
+        return ApiResponse.ok(deviceService.listDevices(bindType.trim(), UUID.fromString(bindTargetId.trim())));
     }
 
     /** 发起声纹录入任务（CFG-006，AC-84-13，登录态） */

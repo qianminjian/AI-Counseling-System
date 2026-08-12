@@ -69,6 +69,12 @@ class EntityStatusConstantsTest {
     }
 
     @Test
+    @DisplayName("User 类型常量：head_teacher 为既有账号体系班主任角色（BUG-T-RC-01）")
+    void userTypeHeadTeacher() {
+        assertThat(User.USER_TYPE_HEAD_TEACHER).isEqualTo("head_teacher");
+    }
+
+    @Test
     @DisplayName("User 类型常量：admin 对应管理员")
     void userTypeAdmin() {
         assertThat(User.USER_TYPE_ADMIN).isEqualTo("admin");
