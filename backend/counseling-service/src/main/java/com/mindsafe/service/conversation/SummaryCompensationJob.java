@@ -30,8 +30,9 @@ public class SummaryCompensationJob {
 
     /** 终态判定延迟：会话结束至少 5 分钟才进入补偿候选（给异步任务正常完成窗口） */
     private static final long SETTLE_MINUTES = 5;
-    /** 每轮补偿上限（防 LLM 突发堆积） */
-    private static final int SCAN_LIMIT = 50;
+    /** 每轮补偿上限（防 LLM 突发堆积）——2026-08-12 复测：180 条 backlog 时 LIMIT 50
+     *  需 4 轮（40 分钟）且 escalated（endedAt null 排序垫底）永远最后，放宽至一轮覆盖 */
+    private static final int SCAN_LIMIT = 200;
 
     private final CounselingSessionMapper sessionMapper;
     private final MessageSummaryService messageSummaryService;
