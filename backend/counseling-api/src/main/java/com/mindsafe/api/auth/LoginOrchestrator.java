@@ -72,44 +72,47 @@ public class LoginOrchestrator {
 
         // 2. 前置认证链路（无 JWT，跨租户按昵称查用户）：候选查询下沉 AuthUserService（系统作用域在 Service 内声明）
         //    SEC-003：昵称无全局唯一约束，重名时拒绝登录（防 LIMIT 1 随机命中他人账号）
-        List<User> candidates = authUserService.findLoginCandidates(username);
+        //    F9：候选立即快照为 LoginCandidate（仅含认证所需字段，含 passwordHash 供凭据匹配），实体不再下传
+        List<LoginCandidate> candidates = authUserService.findLoginCandidates(username).stream()
+                .map(LoginCandidate::from)
+                .toList();
         if (candidates.size() > 1) {
             log.warn("登录拒绝：昵称重复无法唯一定位账号, username={}, matches={}", username, candidates.size());
             lockoutService.recordFailure(username);
             throw new BizException(ErrorCode.UNAUTHORIZED, "用户名或密码错误");
         }
-        User user = candidates.isEmpty() ? null : candidates.get(0);
+        LoginCandidate candidate = candidates.isEmpty() ? null : candidates.get(0);
 
         // 3. F-1：撤回同意冻结账号（withdrawn）→ 专属提示（PIPL §47，需重新授权恢复）
-        if (user != null && User.STATUS_WITHDRAWN.equals(user.getStatus())) {
+        if (candidate != null && User.STATUS_WITHDRAWN.equals(candidate.status())) {
             throw new BizException(ErrorCode.FORBIDDEN, "账号已冻结，请联系家长或学校重新授权");
         }
 
         // 4. 凭据匹配（失败记锁定）
-        if (user == null || user.getPasswordHash() == null
-                || !passwordEncoder.matches(rawPassword, user.getPasswordHash())) {
+        if (candidate == null || candidate.passwordHash() == null
+                || !passwordEncoder.matches(rawPassword, candidate.passwordHash())) {
             lockoutService.recordFailure(username);
             throw new BizException(ErrorCode.UNAUTHORIZED, "用户名或密码错误");
         }
 
         // 5. SEC-004：租户状态门禁
-        guardTenantLogin(user);
+        guardTenantLogin(candidate);
 
         // 6. 登录成功，清除失败计数 + 留痕（T4 批次B：下沉 AuthUserService，租户上下文绑定在 Service 内；
         //    LOGIN 审计由 recordLoginSuccess 承担，issueLoginSession 传 null 跳过避免双重审计）
         lockoutService.clearFailures(username);
-        authUserService.recordLoginSuccess(user.getTenantId(), user.getUserId());
+        authUserService.recordLoginSuccess(candidate.tenantId(), candidate.userId());
 
         // 7. 签发
-        return issueLoginSession(user, null);
+        return issueLoginSession(candidate, null);
     }
 
     /**
      * 租户状态门禁（SEC-004）：suspended/archived 租户禁止登录。
      * 统一单点——此前 pin/voice 路径缺失此门禁（S-001 不对称修正）。
      */
-    public void guardTenantLogin(User user) {
-        if (!tenantAccessGuard.isLoginAllowed(user.getTenantId())) {
+    public void guardTenantLogin(LoginCandidate candidate) {
+        if (!tenantAccessGuard.isLoginAllowed(candidate.tenantId())) {
             throw new BizException(ErrorCode.FORBIDDEN, "学校账号暂时不可用，请联系管理员");
         }
     }
@@ -120,25 +123,25 @@ public class LoginOrchestrator {
      * 避免双重 LOGIN 留痕；pin/voice 等路径传入动作名）。
      * 审计需绑定真实租户上下文提交（@Async 经 TaskDecorator 继承，否则 fail-fast 拒绝写入）。
      */
-    public LoginSession issueLoginSession(User user, String auditAction) {
+    public LoginSession issueLoginSession(LoginCandidate candidate, String auditAction) {
         String token = businessAuthProvider.issueAccessToken(
-                user.getUserId(), user.getUserType(), user.getTenantId());
+                candidate.userId(), candidate.userType(), candidate.tenantId());
         String refreshToken = businessAuthProvider.issueRefreshToken(
-                user.getUserId(), user.getUserType(), user.getTenantId());
+                candidate.userId(), candidate.userType(), candidate.tenantId());
         if (auditAction != null) {
-            TenantContextHolder.set(user.getTenantId());
+            TenantContextHolder.set(candidate.tenantId());
             try {
-                auditLogService.log(user.getTenantId(), user.getUserId(), auditAction, "user", user.getUserId(), null);
+                auditLogService.log(candidate.tenantId(), candidate.userId(), auditAction, "user", candidate.userId(), null);
             } finally {
                 TenantContextHolder.clear();
             }
         }
         // 无密码用户（如试用账号）不参与密码过期策略判定，仅取 DB 标志（S-001 审查修正：
         // 否则 passwordChangedAt=null 时 isExpired 恒 true → PIN 登录误报强制改密）
-        boolean mustChange = Boolean.TRUE.equals(user.getMustChangePassword())
-                || (user.getPasswordHash() != null
-                && passwordPolicyService.isExpired(user.getPasswordChangedAt()));
-        return new LoginSession(token, refreshToken, user.getUserId(), user.getPseudonym(),
-                user.getUserType(), user.getGradeCode(), user.getClassCode(), mustChange);
+        boolean mustChange = Boolean.TRUE.equals(candidate.mustChangePassword())
+                || (candidate.passwordHash() != null
+                && passwordPolicyService.isExpired(candidate.passwordChangedAt()));
+        return new LoginSession(token, refreshToken, candidate.userId(), candidate.pseudonym(),
+                candidate.userType(), candidate.gradeCode(), candidate.classCode(), mustChange);
     }
 }
