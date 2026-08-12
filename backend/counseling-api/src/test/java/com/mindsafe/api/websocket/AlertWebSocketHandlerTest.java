@@ -2,6 +2,7 @@ package com.mindsafe.api.websocket;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mindsafe.api.security.JwtTokenProvider;
+import com.mindsafe.api.security.TokenType;
 import com.mindsafe.service.auth.TokenBlacklistService;
 import com.mindsafe.service.notification.RiskAlertPushEvent;
 import org.junit.jupiter.api.BeforeEach;
@@ -59,15 +60,11 @@ class AlertWebSocketHandlerTest {
         return session;
     }
 
+    /** F2：单次 parse 语义——parseOrNull 返回快照，黑名单按 jti 粒度 */
     private void stubValidTeacherToken(String token) {
-        when(jwtTokenProvider.validateToken(token)).thenReturn(true);
-        when(jwtTokenProvider.isAccessToken(token)).thenReturn(true);
-        // AUDIT-P1-13：黑名单按 jti 粒度
-        when(jwtTokenProvider.getTokenId(token)).thenReturn(token + "-jti");
+        when(jwtTokenProvider.parseOrNull(token)).thenReturn(
+                new JwtTokenProvider.ParsedToken(token + "-jti", userId, "teacher", tenantId, TokenType.ACCESS));
         when(blacklistService.isBlacklisted(token + "-jti")).thenReturn(false);
-        when(jwtTokenProvider.getUserType(token)).thenReturn("teacher");
-        when(jwtTokenProvider.getTenantId(token)).thenReturn(tenantId);
-        when(jwtTokenProvider.getUserId(token)).thenReturn(userId);
     }
 
     // ===== 连接认证：拒绝路径 =====
@@ -94,20 +91,20 @@ class AlertWebSocketHandlerTest {
     @DisplayName("token 无效 → 拒绝且不继续校验")
     void rejectInvalidToken() throws IOException {
         WebSocketSession session = mockSession("bad");
-        when(jwtTokenProvider.validateToken("bad")).thenReturn(false);
+        when(jwtTokenProvider.parseOrNull("bad")).thenReturn(null);
 
         handler.afterConnectionEstablished(session);
 
         verify(session).close(CloseStatus.POLICY_VIOLATION);
-        verify(jwtTokenProvider, never()).isAccessToken(any());
+        verify(jwtTokenProvider, never()).parseOnce(any());
     }
 
     @Test
     @DisplayName("refresh token（非 access）→ 拒绝")
     void rejectNonAccessToken() throws IOException {
         WebSocketSession session = mockSession("rf");
-        when(jwtTokenProvider.validateToken("rf")).thenReturn(true);
-        when(jwtTokenProvider.isAccessToken("rf")).thenReturn(false);
+        when(jwtTokenProvider.parseOrNull("rf")).thenReturn(
+                new JwtTokenProvider.ParsedToken("rf-jti", userId, "teacher", tenantId, TokenType.REFRESH));
 
         handler.afterConnectionEstablished(session);
 
@@ -119,26 +116,23 @@ class AlertWebSocketHandlerTest {
     @DisplayName("黑名单 token（已登出）→ 拒绝")
     void rejectBlacklistedToken() throws IOException {
         WebSocketSession session = mockSession("bl");
-        when(jwtTokenProvider.validateToken("bl")).thenReturn(true);
-        when(jwtTokenProvider.isAccessToken("bl")).thenReturn(true);
-        when(jwtTokenProvider.getTokenId("bl")).thenReturn("bl-jti");
+        when(jwtTokenProvider.parseOrNull("bl")).thenReturn(
+                new JwtTokenProvider.ParsedToken("bl-jti", userId, "teacher", tenantId, TokenType.ACCESS));
         when(blacklistService.isBlacklisted("bl-jti")).thenReturn(true);
 
         handler.afterConnectionEstablished(session);
 
         verify(session).close(CloseStatus.POLICY_VIOLATION);
-        verify(jwtTokenProvider, never()).getUserType(any());
+        verify(blacklistService).isBlacklisted("bl-jti");
     }
 
     @Test
     @DisplayName("学生角色接入 → 拒绝（防全租户未成年人预警泄漏）")
     void rejectStudentRole() throws IOException {
         WebSocketSession session = mockSession("stu");
-        when(jwtTokenProvider.validateToken("stu")).thenReturn(true);
-        when(jwtTokenProvider.isAccessToken("stu")).thenReturn(true);
-        when(jwtTokenProvider.getTokenId("stu")).thenReturn("stu-jti");
+        when(jwtTokenProvider.parseOrNull("stu")).thenReturn(
+                new JwtTokenProvider.ParsedToken("stu-jti", userId, "student", tenantId, TokenType.ACCESS));
         when(blacklistService.isBlacklisted("stu-jti")).thenReturn(false);
-        when(jwtTokenProvider.getUserType("stu")).thenReturn("student");
 
         handler.afterConnectionEstablished(session);
 
@@ -150,11 +144,9 @@ class AlertWebSocketHandlerTest {
     @DisplayName("userType 为 null → 拒绝")
     void rejectNullUserType() throws IOException {
         WebSocketSession session = mockSession("nt");
-        when(jwtTokenProvider.validateToken("nt")).thenReturn(true);
-        when(jwtTokenProvider.isAccessToken("nt")).thenReturn(true);
-        when(jwtTokenProvider.getTokenId("nt")).thenReturn("nt-jti");
+        when(jwtTokenProvider.parseOrNull("nt")).thenReturn(
+                new JwtTokenProvider.ParsedToken("nt-jti", userId, null, tenantId, TokenType.ACCESS));
         when(blacklistService.isBlacklisted("nt-jti")).thenReturn(false);
-        when(jwtTokenProvider.getUserType("nt")).thenReturn(null);
 
         handler.afterConnectionEstablished(session);
 
@@ -165,12 +157,9 @@ class AlertWebSocketHandlerTest {
     @DisplayName("tenantId/userId 缺失 → 拒绝")
     void rejectMissingIds() throws IOException {
         WebSocketSession session = mockSession("nid");
-        when(jwtTokenProvider.validateToken("nid")).thenReturn(true);
-        when(jwtTokenProvider.isAccessToken("nid")).thenReturn(true);
-        when(jwtTokenProvider.getTokenId("nid")).thenReturn("nid-jti");
+        when(jwtTokenProvider.parseOrNull("nid")).thenReturn(
+                new JwtTokenProvider.ParsedToken("nid-jti", userId, "admin", null, TokenType.ACCESS));
         when(blacklistService.isBlacklisted("nid-jti")).thenReturn(false);
-        when(jwtTokenProvider.getUserType("nid")).thenReturn("admin");
-        when(jwtTokenProvider.getTenantId("nid")).thenReturn(null);
 
         handler.afterConnectionEstablished(session);
 
@@ -199,13 +188,9 @@ class AlertWebSocketHandlerTest {
         for (String role : new String[]{"psych_teacher", "class_teacher", "admin"}) {
             AlertWebSocketHandler h = new AlertWebSocketHandler(jwtTokenProvider, blacklistService, new ObjectMapper());
             WebSocketSession session = mockSession(role);
-            when(jwtTokenProvider.validateToken(role)).thenReturn(true);
-            when(jwtTokenProvider.isAccessToken(role)).thenReturn(true);
-            when(jwtTokenProvider.getTokenId(role)).thenReturn(role + "-jti");
+            when(jwtTokenProvider.parseOrNull(role)).thenReturn(
+                    new JwtTokenProvider.ParsedToken(role + "-jti", userId, role, tenantId, TokenType.ACCESS));
             when(blacklistService.isBlacklisted(role + "-jti")).thenReturn(false);
-            when(jwtTokenProvider.getUserType(role)).thenReturn(role);
-            when(jwtTokenProvider.getTenantId(role)).thenReturn(tenantId);
-            when(jwtTokenProvider.getUserId(role)).thenReturn(userId);
 
             h.afterConnectionEstablished(session);
             assertEquals(1, h.getOnlineCount(tenantId));

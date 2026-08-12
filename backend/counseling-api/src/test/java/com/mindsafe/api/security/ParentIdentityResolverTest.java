@@ -39,18 +39,20 @@ class ParentIdentityResolverTest {
         parentService = mock(ParentService.class);
         resolver = new ParentIdentityResolver(jwtTokenProvider, parentService);
 
-        when(jwtTokenProvider.validateToken(TOKEN)).thenReturn(true);
-        when(jwtTokenProvider.isRefreshToken(TOKEN)).thenReturn(false);
-        when(jwtTokenProvider.isVoiceCredential(TOKEN)).thenReturn(false);
-        when(jwtTokenProvider.getUserType(TOKEN)).thenReturn("parent");
-        when(jwtTokenProvider.getUserId(TOKEN)).thenReturn(parentId);
-        when(jwtTokenProvider.getTenantId(TOKEN)).thenReturn(tenantId);
+        // F2：单次 parse 语义——默认返回合法 parent access 快照
+        when(jwtTokenProvider.parseOrNull(TOKEN)).thenReturn(
+                new JwtTokenProvider.ParsedToken("jti-1", parentId, "parent", tenantId, TokenType.ACCESS));
+    }
+
+    private void stubParent(String userType, TokenType type, UUID sub) {
+        when(jwtTokenProvider.parseOrNull(TOKEN)).thenReturn(
+                new JwtTokenProvider.ParsedToken("jti-1", sub, userType, tenantId, type));
     }
 
     @Test
     @DisplayName("统一校验：无效签名 → UNAUTHORIZED")
     void invalidTokenRejected() {
-        when(jwtTokenProvider.validateToken(TOKEN)).thenReturn(false);
+        when(jwtTokenProvider.parseOrNull(TOKEN)).thenReturn(null);
         assertThatThrownBy(() -> resolver.resolveLoginIdentity("Bearer " + TOKEN))
                 .isInstanceOf(BizException.class)
                 .extracting("code").isEqualTo(ErrorCode.UNAUTHORIZED.code());
@@ -59,7 +61,7 @@ class ParentIdentityResolverTest {
     @Test
     @DisplayName("统一校验：refresh 凭证 → UNAUTHORIZED")
     void refreshTokenRejected() {
-        when(jwtTokenProvider.isRefreshToken(TOKEN)).thenReturn(true);
+        stubParent("parent", TokenType.REFRESH, parentId);
         assertThatThrownBy(() -> resolver.resolveLoginIdentity("Bearer " + TOKEN))
                 .isInstanceOf(BizException.class)
                 .extracting("code").isEqualTo(ErrorCode.UNAUTHORIZED.code());
@@ -68,7 +70,7 @@ class ParentIdentityResolverTest {
     @Test
     @DisplayName("统一校验：声纹凭证 → UNAUTHORIZED")
     void voiceCredentialRejected() {
-        when(jwtTokenProvider.isVoiceCredential(TOKEN)).thenReturn(true);
+        stubParent("parent", TokenType.VOICE_CREDENTIAL, parentId);
         assertThatThrownBy(() -> resolver.resolveLegacyLink("Bearer " + TOKEN))
                 .isInstanceOf(BizException.class)
                 .extracting("code").isEqualTo(ErrorCode.UNAUTHORIZED.code());
@@ -77,7 +79,7 @@ class ParentIdentityResolverTest {
     @Test
     @DisplayName("统一校验：非 parent userType → UNAUTHORIZED")
     void studentTokenRejected() {
-        when(jwtTokenProvider.getUserType(TOKEN)).thenReturn("student");
+        stubParent("student", TokenType.ACCESS, parentId);
         assertThatThrownBy(() -> resolver.resolveLoginIdentity("Bearer " + TOKEN))
                 .isInstanceOf(BizException.class)
                 .extracting("code").isEqualTo(ErrorCode.UNAUTHORIZED.code());
@@ -94,7 +96,7 @@ class ParentIdentityResolverTest {
     @Test
     @DisplayName("旧链接语义：学生存在 + 未撤回 → ParentLinkIdentity")
     void resolveLegacyLinkOk() {
-        when(jwtTokenProvider.getUserId(TOKEN)).thenReturn(studentUserId);
+        stubParent("parent", TokenType.PARENT_REPORT, studentUserId);
         User student = new User();
         student.setStatus("active");
         when(parentService.getStudent(tenantId, studentUserId)).thenReturn(student);
@@ -106,7 +108,7 @@ class ParentIdentityResolverTest {
     @Test
     @DisplayName("旧链接语义：withdrawn → CONSENT_WITHDRAWN（410，AC-89-03/04）")
     void legacyLinkWithdrawnRejected() {
-        when(jwtTokenProvider.getUserId(TOKEN)).thenReturn(studentUserId);
+        stubParent("parent", TokenType.PARENT_REPORT, studentUserId);
         User student = new User();
         student.setStatus(ConsentWithdrawalService.STATUS_WITHDRAWN);
         when(parentService.getStudent(tenantId, studentUserId)).thenReturn(student);
@@ -119,7 +121,7 @@ class ParentIdentityResolverTest {
     @Test
     @DisplayName("旧链接语义：学生不存在 → UNAUTHORIZED")
     void legacyLinkMissingStudentRejected() {
-        when(jwtTokenProvider.getUserId(TOKEN)).thenReturn(studentUserId);
+        stubParent("parent", TokenType.PARENT_REPORT, studentUserId);
         when(parentService.getStudent(tenantId, studentUserId)).thenReturn(null);
 
         assertThatThrownBy(() -> resolver.resolveLegacyLink("Bearer " + TOKEN))

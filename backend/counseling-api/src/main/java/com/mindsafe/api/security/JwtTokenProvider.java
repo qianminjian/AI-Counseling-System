@@ -174,16 +174,6 @@ public class JwtTokenProvider {
                 .getPayload();
     }
 
-    public boolean validateToken(String token) {
-        try {
-            parseToken(token);
-            return true;
-        } catch (JwtException | IllegalArgumentException e) {
-            return false;
-        }
-    }
-
-    /** 验证是否为 access token（防止用 refresh token 访问 API） */
     /** doing/92 R-017：单次 parse + 签名校验（filter 每请求 6 次 parse → 1 次），返回快照 */
     public ParsedToken parseOnce(String token) {
         if (token == null) {
@@ -205,65 +195,27 @@ public class JwtTokenProvider {
     public record ParsedToken(String tokenId, UUID userId, String userType, UUID tenantId, TokenType tokenType) {
     }
 
-    public boolean isAccessToken(String token) {
+    /**
+     * 宽容解析（等价旧 validateToken 语义：非法/过期 → null 而非抛异常）。
+     * <p>
+     * doing/92 R-017 单点化后，非 filter 消费方（refresh/声纹登录/登出/家长解析/WebSocket 握手）
+     * 统一经本方法取值，不再 validate + isXxx + getXxx 多次 parse（审计 F2）。
+     * 调用方仍须自行判 tokenType（ACCESS/REFRESH/VOICE_CREDENTIAL…），本方法只做签名/过期校验。
+     */
+    public ParsedToken parseOrNull(String token) {
+        if (token == null || token.isBlank()) {
+            return null;
+        }
         try {
-            Claims claims = parseToken(token);
-            return TokenType.ACCESS.claimValue().equals(claims.get("tokenType", String.class));
+            return parseOnce(token);
         } catch (Exception e) {
-            return false;
+            return null;
         }
     }
 
-    /** 验证是否为 refresh token */
-    public boolean isRefreshToken(String token) {
-        try {
-            Claims claims = parseToken(token);
-            return TokenType.REFRESH.claimValue().equals(claims.get("tokenType", String.class));
-        } catch (Exception e) {
-            return false;
-        }
-    }
-
-    /** 验证是否为声纹设备凭证 */
-    public boolean isVoiceCredential(String token) {
-        try {
-            Claims claims = parseToken(token);
-            return TokenType.VOICE_CREDENTIAL.claimValue().equals(claims.get("tokenType", String.class));
-        } catch (Exception e) {
-            return false;
-        }
-    }
-
-    /** 验证是否为家长报告链接 token（SEC-006） */
-    public boolean isParentReportToken(String token) {
-        try {
-            Claims claims = parseToken(token);
-            return TokenType.PARENT_REPORT.claimValue().equals(claims.get("tokenType", String.class));
-        } catch (Exception e) {
-            return false;
-        }
-    }
-
-    public UUID getUserId(String token) {
-        return UUID.fromString(parseToken(token).getSubject());
-    }
-
-    public String getUserType(String token) {
-        return parseToken(token).get("userType", String.class);
-    }
-
-    public UUID getTenantId(String token) {
-        return UUID.fromString(parseToken(token).get("tenantId", String.class));
-    }
-
-    /** 获取 token 过期时间（用于黑名单 TTL 计算） */
-    public Date getExpiration(String token) {
-        return parseToken(token).getExpiration();
-    }
-
-    /** 获取 token 剩余有效毫秒数 */
+    /** 获取 token 剩余有效毫秒数（黑名单 TTL 用；仅业务 token，无平台前缀） */
     public long getRemainingMs(String token) {
-        Date exp = getExpiration(token);
+        Date exp = parseToken(token).getExpiration();
         return Math.max(0, exp.getTime() - System.currentTimeMillis());
     }
 

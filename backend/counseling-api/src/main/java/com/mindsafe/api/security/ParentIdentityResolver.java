@@ -31,17 +31,23 @@ public class ParentIdentityResolver {
         this.parentService = parentService;
     }
 
-    /** 统一 token 校验：Bearer 前缀剥离 + 签名/refresh/声纹/userType=parent 四重校验。 */
-    private String validateParentToken(String authHeader) {
+    /**
+     * 统一 token 校验：Bearer 前缀剥离 + 单次 parse（签名/过期）+ refresh/声纹凭证/家长类型三查。
+     * <p>
+     * 审计 F2：原 validateToken + isRefreshToken + isVoiceCredential + getUserType 4 次 parse
+     * → parseOnce 1 次；语义不变——类型非 refresh/声纹 + userType=parent 即通过（兼容 access 与
+     * parent_report 两类家长 token），非法/过期 → UNAUTHORIZED（宽容 401，等价旧逻辑）。
+     */
+    private JwtTokenProvider.ParsedToken parseParentToken(String authHeader) {
         String token = authHeader.replace("Bearer ", "");
         try {
-            if (!jwtTokenProvider.validateToken(token)
-                    || jwtTokenProvider.isRefreshToken(token)
-                    || jwtTokenProvider.isVoiceCredential(token)
-                    || !"parent".equals(jwtTokenProvider.getUserType(token))) {
+            JwtTokenProvider.ParsedToken parsed = jwtTokenProvider.parseOrNull(token);
+            if (parsed == null || parsed.tokenType() == TokenType.REFRESH
+                    || parsed.tokenType() == TokenType.VOICE_CREDENTIAL
+                    || !"parent".equals(parsed.userType())) {
                 throw new BizException(ErrorCode.UNAUTHORIZED, "链接已过期或无效");
             }
-            return token;
+            return parsed;
         } catch (BizException e) {
             throw e;
         } catch (Exception e) {
@@ -54,10 +60,8 @@ public class ParentIdentityResolver {
      * 原 ParentController.resolveParentIdentity 迁移。
      */
     public ParentIdentity resolveLoginIdentity(String authHeader) {
-        validateParentToken(authHeader);
-        return new ParentIdentity(
-                jwtTokenProvider.getUserId(authHeader.replace("Bearer ", "")),
-                jwtTokenProvider.getTenantId(authHeader.replace("Bearer ", "")));
+        JwtTokenProvider.ParsedToken parsed = parseParentToken(authHeader);
+        return new ParentIdentity(parsed.userId(), parsed.tenantId());
     }
 
     /**
@@ -65,11 +69,8 @@ public class ParentIdentityResolver {
      * 原 ParentController.resolveParentToken 迁移；租户绑定在调用方（send-code 不触 DB 场景不绑定）。
      */
     public ParentLinkIdentity resolveLegacyLink(String authHeader) {
-        validateParentToken(authHeader);
-        String token = authHeader.replace("Bearer ", "");
-        ParentLinkIdentity info = new ParentLinkIdentity(
-                jwtTokenProvider.getUserId(token),
-                jwtTokenProvider.getTenantId(token));
+        JwtTokenProvider.ParsedToken parsed = parseParentToken(authHeader);
+        ParentLinkIdentity info = new ParentLinkIdentity(parsed.userId(), parsed.tenantId());
 
         // P1 审计修复：撤回同意后旧 token 失效。selectOne 受租户行隔离拦截，必须先绑定租户上下文
         TenantContextHolder.set(info.tenantId());

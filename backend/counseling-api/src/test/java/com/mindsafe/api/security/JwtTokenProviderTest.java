@@ -26,7 +26,7 @@ class JwtTokenProviderTest {
     // ===== Token 类型隔离（防 refresh token 调 API / 学生 token 调家长接口） =====
 
     @Test
-    @DisplayName("access token 往返：claims 完整 + 类型判定互斥")
+    @DisplayName("access token 往返：claims 完整 + 类型判定互斥（F2：parseOnce 单次快照语义）")
     void accessTokenRoundTrip() {
         String token = provider.generateToken(USER_ID, "student", TENANT_ID);
 
@@ -42,15 +42,14 @@ class JwtTokenProviderTest {
         assertNotNull(provider.getTokenId(token));
         assertEquals(claims.getId(), provider.getTokenId(token));
 
-        assertTrue(provider.isAccessToken(token));
-        assertFalse(provider.isRefreshToken(token));
-        assertFalse(provider.isVoiceCredential(token));
-        assertFalse(provider.isParentReportToken(token));
+        JwtTokenProvider.ParsedToken parsed = provider.parseOnce(token);
+        assertEquals(TokenType.ACCESS, parsed.tokenType());
+        assertEquals(USER_ID, parsed.userId());
+        assertEquals("student", parsed.userType());
+        assertEquals(TENANT_ID, parsed.tenantId());
+        assertEquals(claims.getId(), parsed.tokenId());
 
-        assertEquals(USER_ID, provider.getUserId(token));
-        assertEquals("student", provider.getUserType(token));
-        assertEquals(TENANT_ID, provider.getTenantId(token));
-        assertTrue(provider.validateToken(token));
+        assertNotNull(provider.parseOrNull(token));
         assertTrue(provider.getRemainingMs(token) > 0);
     }
 
@@ -58,74 +57,71 @@ class JwtTokenProviderTest {
     @DisplayName("refresh token 不能当 access 用")
     void refreshTokenIsNotAccess() {
         String token = provider.generateRefreshToken(USER_ID, "teacher", TENANT_ID);
-        assertTrue(provider.isRefreshToken(token));
-        assertFalse(provider.isAccessToken(token));
-        assertTrue(provider.validateToken(token));
+        assertEquals(TokenType.REFRESH, provider.parseOnce(token).tokenType());
+        assertNotNull(provider.parseOrNull(token));
     }
 
     @Test
     @DisplayName("声纹设备凭证独立类型")
     void voiceCredentialType() {
         String token = provider.generateVoiceCredential(USER_ID, "student", TENANT_ID);
-        assertTrue(provider.isVoiceCredential(token));
-        assertFalse(provider.isAccessToken(token));
+        assertEquals(TokenType.VOICE_CREDENTIAL, provider.parseOnce(token).tokenType());
     }
 
     @Test
     @DisplayName("家长报告 token 独立类型 + userType 固定 parent（SEC-006）")
     void parentReportTokenType() {
         String token = provider.generateParentReportToken(USER_ID, TENANT_ID);
-        assertTrue(provider.isParentReportToken(token));
-        assertFalse(provider.isAccessToken(token));
-        assertEquals("parent", provider.getUserType(token));
+        JwtTokenProvider.ParsedToken parsed = provider.parseOnce(token);
+        assertEquals(TokenType.PARENT_REPORT, parsed.tokenType());
+        assertEquals("parent", parsed.userType());
     }
 
     // ===== 篡改 / 过期 / 垃圾输入拒绝 =====
 
     @Test
-    @DisplayName("篡改的 token 校验失败")
+    @DisplayName("篡改的 token 解析失败（parseOrNull → null，宽容语义）")
     void tamperedTokenRejected() {
         String token = provider.generateToken(USER_ID, "student", TENANT_ID);
         String tampered = token.substring(0, token.length() - 4) + "AAAA";
-        assertFalse(provider.validateToken(tampered));
-        assertFalse(provider.isAccessToken(tampered));
+        assertNull(provider.parseOrNull(tampered));
     }
 
     @Test
-    @DisplayName("过期 token 校验失败")
+    @DisplayName("过期 token 解析失败")
     void expiredTokenRejected() throws InterruptedException {
         JwtTokenProvider shortLivedProvider = new JwtTokenProvider(
                 SECRET, 50L, 604800000L, 604800000L, 604800000L, "dev", DEV_SECRET, "mindsafe-test");
         String token = shortLivedProvider.generateToken(USER_ID, "student", TENANT_ID);
         Thread.sleep(100);
-        assertFalse(shortLivedProvider.validateToken(token));
-        assertFalse(shortLivedProvider.isAccessToken(token));
+        assertNull(shortLivedProvider.parseOrNull(token));
     }
 
     @Test
-    @DisplayName("其他密钥签发的 token 校验失败")
+    @DisplayName("其他密钥签发的 token 解析失败")
     void foreignSignedTokenRejected() {
         JwtTokenProvider other = new JwtTokenProvider(
                 "another-secret-key-at-least-32-characters-long-xyz",
                 7200000L, 604800000L, 604800000L, 604800000L, "dev", DEV_SECRET, "mindsafe-test");
         String token = other.generateToken(USER_ID, "student", TENANT_ID);
-        assertFalse(provider.validateToken(token));
+        assertNull(provider.parseOrNull(token));
     }
 
     @Test
-    @DisplayName("其他 issuer 签发的 token 校验失败（AUDIT-P1-13）")
+    @DisplayName("其他 issuer 签发的 token 解析失败（AUDIT-P1-13）")
     void foreignIssuerRejected() {
         JwtTokenProvider foreignIssuer = new JwtTokenProvider(
                 SECRET, 7200000L, 604800000L, 604800000L, 604800000L, "dev", DEV_SECRET, "evil-issuer");
         String token = foreignIssuer.generateToken(USER_ID, "student", TENANT_ID);
-        assertFalse(provider.validateToken(token));
+        assertNull(provider.parseOrNull(token));
     }
 
     @Test
-    @DisplayName("垃圾字符串不抛异常、返回 false")
+    @DisplayName("垃圾字符串不抛异常（parseOrNull → null）")
     void garbageTokenRejected() {
-        assertFalse(provider.validateToken("not-a-jwt"));
-        assertFalse(provider.isAccessToken("not-a-jwt"));
+        assertNull(provider.parseOrNull("not-a-jwt"));
+        assertNull(provider.parseOrNull(null));
+        assertNull(provider.parseOrNull("  "));
     }
 
     // ===== 密钥强度门禁 =====
@@ -150,7 +146,7 @@ class JwtTokenProviderTest {
         JwtTokenProvider devProvider = new JwtTokenProvider(
                 "", 7200000L, 604800000L, 604800000L, 604800000L, "dev", DEV_SECRET, "mindsafe-test");
         String token = devProvider.generateToken(USER_ID, "student", TENANT_ID);
-        assertTrue(devProvider.validateToken(token));
+        assertNotNull(devProvider.parseOrNull(token));
     }
 
     @Test
@@ -225,6 +221,9 @@ class JwtTokenProviderTest {
                 .compact();
 
         assertNull(provider.parseOnce(rogue).tokenType());
-        assertFalse(provider.isAccessToken(rogue));
+        // 宽容路径同样解析成功但 tokenType=null（调用方按非 ACCESS 拒绝）
+        JwtTokenProvider.ParsedToken parsedOrNull = provider.parseOrNull(rogue);
+        assertNotNull(parsedOrNull);
+        assertNull(parsedOrNull.tokenType());
     }
 }
