@@ -18,6 +18,18 @@ public class CounselingSession {
     /** C2（2026-08-05）：状态魔法值收敛——会话进行中 */
     public static final String STATUS_ACTIVE = "active";
 
+    /** C2 收敛（P1-1，板块06）：会话已转人工接管（frozen/58 转人工升级终态；教师 takeoverSession 写入） */
+    public static final String STATUS_TAKEN_OVER = "taken_over";
+
+    /** C2 收敛（P1-1，板块06）：会话已风险升级（frozen/58 转人工升级终态；RED 硬短路写入） */
+    public static final String STATUS_ESCALATED = "escalated";
+
+    /** P2-1（板块06）：交互模式——文本（create 工厂默认值） */
+    public static final String INTERACTION_MODE_TEXT = "text";
+
+    /** P2-1（板块06）：转写策略——仅摘要（create 工厂默认值） */
+    public static final String TRANSCRIPT_POLICY_SUMMARY_ONLY = "summary_only";
+
     @TableId(value = "session_id", type = IdType.INPUT)
     private UUID sessionId;
 
@@ -68,11 +80,12 @@ public class CounselingSession {
         s.tenantId = tenantId;
         s.studentUserId = studentUserId;
         s.channel = channel != null ? channel : "web";
-        s.interactionMode = "text";
+        // P2-1（板块06）：魔法值 → 常量
+        s.interactionMode = INTERACTION_MODE_TEXT;
         s.startedAt = Instant.now();
         s.sessionStatus = STATUS_ACTIVE;
         s.riskLevelSnapshot = 0;
-        s.transcriptPolicy = "summary_only";
+        s.transcriptPolicy = TRANSCRIPT_POLICY_SUMMARY_ONLY;
         s.emotionTag = emotionTag;
         s.createdAt = Instant.now();
         s.updatedAt = Instant.now();

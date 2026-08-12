@@ -83,7 +83,8 @@ public class RiskEvent {
         e.riskLevel = riskLevel;
         e.detectedBy = "keyword_agent";
         e.detectedAt = Instant.now();
-        e.status = "open";
+        // P2-1（板块06）：状态魔法值 → 常量
+        e.status = STATUS_OPEN;
         e.createdAt = Instant.now();
         e.updatedAt = Instant.now();
         return e;
