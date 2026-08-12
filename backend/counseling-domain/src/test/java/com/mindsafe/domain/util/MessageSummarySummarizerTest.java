@@ -76,4 +76,17 @@ class MessageSummarySummarizerTest {
         String text = "我和同桌吵架了，心情不好。";
         assertEquals(text, MessageSummarySummarizer.summarize(text));
     }
+
+    @Test
+    @DisplayName("P1-6: 超长含 emoji 时按 code point 截断，不劈开代理对（与 service 层共用 TextUtils 口径）")
+    void emojiSurrogatePairPreserved() {
+        // 200 个 BMP 字符 + 1 emoji（2 UTF-16 units）→ 201 code points / 202 UTF-16 units
+        String emoji = "\uD83D\uDE00"; // 😀
+        String content = "a".repeat(200) + emoji;
+        String result = MessageSummarySummarizer.summarize(content);
+        // code point 口径截断到 200：200 个 'a'（emoji 是第 201 个 code point，不进入）
+        assertEquals("a".repeat(200), result);
+        // 无孤立代理项
+        assertTrue(result.codePoints().noneMatch(cp -> Character.isSurrogate((char) cp)));
+    }
 }

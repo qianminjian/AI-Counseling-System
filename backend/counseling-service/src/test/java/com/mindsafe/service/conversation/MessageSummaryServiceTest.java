@@ -171,6 +171,25 @@ class MessageSummaryServiceTest {
     }
 
     @Test
+    @DisplayName("P1-6: risk≥2 截断按 code point——含 emoji 代理对不劈开（旧 UTF-16 substring 会切断）")
+    void persistStudent_highRiskEmojiCodePointTruncate() {
+        SessionState session = new SessionState(sessionId, tenantId, studentUserId, "焦虑", "web", null, null, 0);
+        // 1023 个 BMP 字符 + 1 emoji（2 UTF-16 units）→ 1024 code points / 1025 UTF-16 units，触发截断
+        String emoji = "\uD83D\uDE00"; // 😀
+        String content = "a".repeat(1023) + emoji;
+        assertThat(content.length()).isEqualTo(1025);
+
+        service.persistStudentMessageSummary(session, 1, content, "焦虑", 2);
+
+        ArgumentCaptor<String> captor = ArgumentCaptor.forClass(String.class);
+        verify(fieldEncryptionService).encrypt(captor.capture());
+        // 1024 个 code point 全部保留（含完整 emoji）；旧实现会劈开代理项 → 加密损坏
+        assertThat(captor.getValue()).isEqualTo(content);
+        assertThat(captor.getValue().codePointCount(0, captor.getValue().length())).isEqualTo(1024);
+        assertThat(captor.getValue().codePoints().noneMatch(cp -> Character.isSurrogate((char) cp))).isTrue();
+    }
+
+    @Test
     @DisplayName("BA-04: 学生消息 risk<2 语义提炼至 ≤200 字（去除句尾语气词）")
     void persistStudent_normalRiskSummarized() {
         SessionState session = new SessionState(sessionId, tenantId, studentUserId, "平静", "web", null, null, 0);

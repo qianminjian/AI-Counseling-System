@@ -3,7 +3,6 @@ package com.mindsafe.service.conversation;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.mindsafe.ai.ally.AllianceEnhancer;
 import com.mindsafe.ai.cbt.CbtStageRouter;
 import com.mindsafe.ai.chat.AiChatService;
 import com.mindsafe.ai.orchestrator.OrchestrationContext;
@@ -12,7 +11,7 @@ import com.mindsafe.ai.orchestrator.PromptOrchestrationService;
 import com.mindsafe.ai.orchestrator.ReplyEmotionResolver;
 import com.mindsafe.ai.orchestrator.StrategyProfile;
 import com.mindsafe.ai.safety.ConfidentialityNotice;
-import com.mindsafe.ai.safety.CrisisResourceProvider;
+import com.mindsafe.ai.safety.CrisisHotlineProvider;
 import com.mindsafe.ai.safety.HighSensitivityCategories;
 import com.mindsafe.common.util.PiiDesensitizer;
 import com.mindsafe.common.dto.ErrorCode;
@@ -25,10 +24,8 @@ import com.mindsafe.domain.entity.CounselingSession;
 import com.mindsafe.domain.entity.User;
 import com.mindsafe.domain.mapper.UserMapper;
 import com.mindsafe.service.knowledge.RagAdvisorService;
-import com.mindsafe.service.memory.LongTermMemoryService;
 import com.mindsafe.service.memory.ThemeEvolutionEngine;
 import com.mindsafe.service.profile.StudentProfileService;
-import com.mindsafe.service.security.FieldEncryptionService;
 import com.mindsafe.service.conversation.strategy.NudgeStrategy;
 import com.mindsafe.service.conversation.strategy.RiskResponseStrategy;
 import com.mindsafe.service.usage.UsageTimeLimitService;
@@ -61,14 +58,11 @@ public class ConversationServiceImpl implements ConversationService {
     private final CounselingSessionStore sessionStore;
     private final UserMapper userMapper;
     private final StudentProfileService profileService;
-    private final LongTermMemoryService longTermMemoryService;
     private final UsageTimeLimitService usageTimeLimitService;
     private final RagAdvisorService ragAdvisorService;
     private final PromptOrchestrationService promptOrchestrationService;
     private final MessageSummaryService messageSummaryService;
-    private final FieldEncryptionService fieldEncryptionService;
-    private final CrisisResourceProvider crisisResourceProvider;
-    private final AllianceEnhancer allianceEnhancer;
+    private final CrisisHotlineProvider crisisHotlineProvider;
     private final CbtStageRouter cbtStageRouter;
     private final SessionEndAnalyticsService sessionEndAnalyticsService;
     private final RedisSessionStateStore sessionStateStore;
@@ -97,19 +91,19 @@ public class ConversationServiceImpl implements ConversationService {
     /** CBT state_path JSON 序列化工具（CBT-201）；ARCH-010 P2-2：注入唯一 ObjectMapper（此前 static new） */
     private final ObjectMapper objectMapper;
 
+    /** 每轮上下文组装单点（S-002；P1-2 抽离：年级+画像+记忆+联盟+简报） */
+    private final RoundContextAssembler roundContextAssembler;
+
     public ConversationServiceImpl(AiChatService aiChatService,
                                    ConversationRiskProcessor riskProcessor,
                                    CounselingSessionStore sessionStore,
                                    UserMapper userMapper,
                                    StudentProfileService profileService,
                                    UsageTimeLimitService usageTimeLimitService,
-                                   LongTermMemoryService longTermMemoryService,
                                    RagAdvisorService ragAdvisorService,
                                    PromptOrchestrationService promptOrchestrationService,
                                    MessageSummaryService messageSummaryService,
-                                   FieldEncryptionService fieldEncryptionService,
-                                   CrisisResourceProvider crisisResourceProvider,
-                                   AllianceEnhancer allianceEnhancer,
+                                   CrisisHotlineProvider crisisHotlineProvider,
                                    CbtStageRouter cbtStageRouter,
                                    SessionEndAnalyticsService sessionEndAnalyticsService,
                                    RedisSessionStateStore sessionStateStore,
@@ -121,20 +115,18 @@ public class ConversationServiceImpl implements ConversationService {
                                    NudgeProperties nudgeProperties,
                                    NudgeDecisionModel nudgeDecisionModel,
                                    ReplyEmotionResolver replyEmotionResolver,
-                                   HighSensitivityCategories highSensitivityCategories) {
+                                   HighSensitivityCategories highSensitivityCategories,
+                                   RoundContextAssembler roundContextAssembler) {
         this.aiChatService = aiChatService;
         this.riskProcessor = riskProcessor;
         this.sessionStore = sessionStore;
         this.userMapper = userMapper;
         this.profileService = profileService;
         this.usageTimeLimitService = usageTimeLimitService;
-        this.longTermMemoryService = longTermMemoryService;
         this.ragAdvisorService = ragAdvisorService;
         this.promptOrchestrationService = promptOrchestrationService;
         this.messageSummaryService = messageSummaryService;
-        this.fieldEncryptionService = fieldEncryptionService;
-        this.crisisResourceProvider = crisisResourceProvider;
-        this.allianceEnhancer = allianceEnhancer;
+        this.crisisHotlineProvider = crisisHotlineProvider;
         this.cbtStageRouter = cbtStageRouter;
         this.sessionEndAnalyticsService = sessionEndAnalyticsService;
         this.sessionStateStore = sessionStateStore;
@@ -147,6 +139,7 @@ public class ConversationServiceImpl implements ConversationService {
         this.nudgeDecisionModel = nudgeDecisionModel;
         this.replyEmotionResolver = replyEmotionResolver;
         this.nudgeProperties = nudgeProperties;
+        this.roundContextAssembler = roundContextAssembler;
     }
 
     @Transactional
@@ -198,8 +191,13 @@ public class ConversationServiceImpl implements ConversationService {
     @Override
     public Flux<StreamMessageEvent> sendMessageStream(UUID tenantId, UUID studentUserId, UUID sessionId, String content,
                                                       String voiceEmotion, Double voiceEmotionConfidence) {
-        SessionState session = sessionStateStore.get(tenantId, sessionId);
+        // 裁决 6（P1-7）：Redis 会话状态过期/丢失 → DB 兜底重建（findOwned 归属三重条件，SEC-001 不削弱）；
+        // 单次赋值保证 session 在后续 lambda（Flux.defer/doOnNext）中 effectively final
+        SessionState cached = sessionStateStore.get(tenantId, sessionId);
+        SessionState session = cached != null ? cached
+                : rebuildSessionStateFromDb(tenantId, studentUserId, sessionId);
         if (session == null) {
+            // 重建失败（会话不存在/非持有人）仍按「会话不存在」拒绝，不泄漏会话存在性
             return Flux.just(StreamMessageEvent.error("会话不存在"));
         }
         // SEC-001：会话归属校验——拦截跨租户/跨学生的会话劫持（同校学生拿到他人 sessionId 不可注入消息）
@@ -278,7 +276,7 @@ public class ConversationServiceImpl implements ConversationService {
                 session.enterSafetyMode();
                 CounselingSession escalate = new CounselingSession();
                 escalate.setSessionId(sessionId);
-                escalate.setSessionStatus("escalated");
+                escalate.setSessionStatus(CounselingSession.STATUS_ESCALATED);
                 escalate.setUpdatedAt(Instant.now());
                 sessionStore.updateById(escalate);
 
@@ -322,7 +320,7 @@ public class ConversationServiceImpl implements ConversationService {
         //     （DC-010：策略决策下沉 RiskResponseStrategy）
         if (fusedLevel == RiskLevel.RED || session.inSafetyMode()) {
             String safetyReply = RiskResponseStrategy.resolveSafetyReply(
-                    fusedLevel, session.inSafetyMode(), session.getGrade(), crisisResourceProvider);
+                    fusedLevel, session.inSafetyMode(), session.getGrade(), crisisHotlineProvider);
             messageSummaryService.persistAiMessageSummary(session, turn, safetyReply);
             session.recordAiReply(safetyReply);
             sessionStateStore.save(tenantId, sessionId, session);
@@ -339,7 +337,7 @@ public class ConversationServiceImpl implements ConversationService {
             log.info("每日使用时长已达上限，引导休息: sessionId={}, student={}, usedSec={}",
                     sessionId, session.getStudentUserId(),
                     usageTimeLimitService.getUsedSeconds(session.getTenantId(), session.getStudentUserId()));
-            String guidance = RiskResponseStrategy.buildTimeLimitGuidance(crisisResourceProvider.getHotlineNumber());
+            String guidance = RiskResponseStrategy.buildTimeLimitGuidance(crisisHotlineProvider.hotline());
             return riskEvents.concatWith(Flux.just(
                     StreamMessageEvent.token(guidance),
                     StreamMessageEvent.done("")
@@ -348,8 +346,8 @@ public class ConversationServiceImpl implements ConversationService {
 
         // 5. 调用 AI 服务获取流式回复（CTX-Agent 结构化上下文 + 年级适配，PROF-010/011/012/015 + AI-008 + AI-005）
         boolean riskBlocked = fusedLevel != null && fusedLevel.severity() >= RiskLevel.ORANGE.severity();
-        // S-002（doing/93）：每轮上下文组装单点（画像+记忆+联盟+简报），主链路与 nudge 共用防分叉
-        RoundContext roundCtx = buildRoundContext(session, riskBlocked);
+        // S-002（doing/93）：每轮上下文组装单点（画像+记忆+联盟+简报），主链路与 nudge 共用防分叉（P1-2 收敛 RoundContextAssembler）
+        RoundContextAssembler.RoundContext roundCtx = roundContextAssembler.build(session, riskBlocked);
         int effectiveGrade = roundCtx.effectiveGrade();
         String profilePrompt = roundCtx.profilePrompt();
         String memoryPrompt = roundCtx.memoryPrompt();
@@ -503,7 +501,7 @@ public class ConversationServiceImpl implements ConversationService {
 
         // 暖场：TSK_004 指令路由与组装收敛 PromptAssemblyService（ARCH-010 D4 + ARCH-001 C1，与主链路同一加载路径）
         // 暖场上下文简报（S-002：与主链路共用组装单点；PROF-015 暖场无风险，riskBlocked=false）
-        RoundContext nudgeCtx = buildRoundContext(session, false);
+        RoundContextAssembler.RoundContext nudgeCtx = roundContextAssembler.build(session, false);
         String nudgeContextBrief = nudgeCtx.contextBrief();
         int effectiveGrade = nudgeCtx.effectiveGrade();
         int turn = session.getTurnCount();
@@ -566,6 +564,44 @@ public class ConversationServiceImpl implements ConversationService {
     }
 
     /**
+     * 裁决 6（P1-7）：Redis 会话状态缺失时的 DB 兜底重建。
+     * <p>
+     * 复用 {@link CounselingSessionStore#findOwned}（租户+学生+会话三重条件）——非持有人拿到他人
+     * sessionId 时 findOwned 返回 null，重建失败仍按「会话不存在」/FORBIDDEN 拒绝，SEC-001 归属语义
+     * 不削弱；重建成功后写回 Redis（TTL 续期），保留对话连续性。
+     * <p>
+     * 局限（如实）：counseling_sessions 表不持久化 emotionTag（非 DB 字段，createSession 时未落库），
+     * 重建态情绪上下文缺失——会话过期 2h 后重新进入按默认情绪推进，符合“过期即淡忘”的连续性语义。
+     */
+    private SessionState rebuildSessionStateFromDb(UUID tenantId, UUID studentUserId, UUID sessionId) {
+        CounselingSession entity = sessionStore.findOwned(tenantId, studentUserId, sessionId);
+        if (entity == null) {
+            return null;
+        }
+        User user = userMapper.selectById(studentUserId);
+        String gender = (user != null) ? user.getGender() : null;
+        String pseudonym = (user != null) ? user.getPseudonym() : null;
+        int grade = ConversationUtils.parseGradeCode(user != null ? user.getGradeCode() : null);
+        Double expressionDepth = null;
+        try {
+            expressionDepth = profileService.getExpressionDepth(tenantId, studentUserId);
+        } catch (Exception e) {
+            log.debug("重建会话状态：画像沟通偏好读取失败，降级 null: sessionId={}", sessionId);
+        }
+        SessionState rebuilt = new SessionState(
+                sessionId, tenantId, studentUserId, null, entity.getChannel(), gender, expressionDepth, grade);
+        rebuilt.setPseudonym(pseudonym);
+        // 历史轮次恢复（DB 已落库轮次），避免 turn 归零导致 nudge 护栏/滚动摘要间隔语义漂移
+        if (entity.getTurnCount() != null) {
+            rebuilt.setTurnCount(entity.getTurnCount());
+        }
+        sessionStateStore.save(tenantId, sessionId, rebuilt);
+        log.info("Redis 会话状态缺失，已从 DB 兜底重建: sessionId={}, tenantId={}, student={}",
+                sessionId, tenantId, studentUserId);
+        return rebuilt;
+    }
+
+    /**
      * SEC-001：会话归属校验——调用方租户与学生身份必须与会话状态完全匹配。
      * Redis 面不受租户拦截器保护，此校验是防跨会话劫持的唯一防线。
      */
@@ -577,51 +613,57 @@ public class ConversationServiceImpl implements ConversationService {
     @Transactional
     @Override
     public void endSession(UUID tenantId, UUID studentUserId, UUID sessionId) {
-        SessionState session = sessionStateStore.get(tenantId, sessionId);
-        if (session != null) {
-            // SEC-001：非持有人拒绝结束他人会话
-            if (!isSessionOwner(session, tenantId, studentUserId)) {
-                log.warn("endSession: 会话归属校验失败，拒绝: sessionId={}, tenantId={}, userId={}", sessionId, tenantId, studentUserId);
-                throw new BizException(ErrorCode.FORBIDDEN);
-            }
+        // 裁决 6（P1-7）：Redis 缺失 → DB 读取路径（归属校验语义不变；findOwned 无匹配即非持有人/不存在）
+        SessionState cached = sessionStateStore.get(tenantId, sessionId);
+        SessionState session = cached != null ? cached
+                : rebuildSessionStateFromDb(tenantId, studentUserId, sessionId);
+        if (session == null) {
+            log.warn("endSession: 会话不存在或非持有人，拒绝: sessionId={}, tenantId={}, userId={}",
+                    sessionId, tenantId, studentUserId);
+            throw new BizException(ErrorCode.FORBIDDEN);
+        }
+        // SEC-001：非持有人拒绝结束他人会话
+        if (!isSessionOwner(session, tenantId, studentUserId)) {
+            log.warn("endSession: 会话归属校验失败，拒绝: sessionId={}, tenantId={}, userId={}", sessionId, tenantId, studentUserId);
+            throw new BizException(ErrorCode.FORBIDDEN);
+        }
 
-            // 先落库再删缓存：DB 写失败时 Redis 会话状态不丢失（fix-tx）
-            CounselingSession update = new CounselingSession();
-            update.setSessionId(sessionId);
-            update.setEndedAt(Instant.now());
-            update.setSessionStatus(CounselingSession.STATUS_COMPLETED);
-            update.setTurnCount(session.getTurnCount());
-            update.setUpdatedAt(Instant.now());
-            sessionStore.updateById(update);
+        // 先落库再删缓存：DB 写失败时 Redis 会话状态不丢失（fix-tx）
+        CounselingSession update = new CounselingSession();
+        update.setSessionId(sessionId);
+        update.setEndedAt(Instant.now());
+        update.setSessionStatus(CounselingSession.STATUS_COMPLETED);
+        update.setTurnCount(session.getTurnCount());
+        update.setUpdatedAt(Instant.now());
+        sessionStore.updateById(update);
 
-            sessionStateStore.remove(tenantId, sessionId);
+        sessionStateStore.remove(tenantId, sessionId);
 
-            // 清除 AI 对话记忆
-            aiChatService.clearMemory(sessionId);
-            log.info("会话结束: sessionId={}, turns={}", sessionId, session.getTurnCount());
+        // 清除 AI 对话记忆
+        aiChatService.clearMemory(sessionId);
+        log.info("会话结束: sessionId={}, turns={}", sessionId, session.getTurnCount());
 
-            // 异步生成 AI 会话摘要（摘要完成后触发 PROF-003 画像 LLM 提炼）
-            messageSummaryService.generateSummaryAsync(tenantId, sessionId, session.getStudentUserId());
+        // 异步生成 AI 会话摘要（摘要完成后触发 PROF-003 画像 LLM 提炼）
+        messageSummaryService.generateSummaryAsync(tenantId, sessionId, session.getStudentUserId());
 
-            // 异步更新学生画像（基于历史会话统计；VCL-001：本会话语音情绪聚合回注 emotionBaseline.voice，
-            // 只传可映射到规范集的标签，聚合衍生特征不留逐条流水，design/47 §5.1）
-            List<String> voiceEmotions = session.emotionLabels().stream()
-                    .map(promptOrchestrationService::mapVoiceEmotion)
-                    .filter(Objects::nonNull)
-                    .toList();
-            profileService.updateProfile(session.getTenantId(), session.getStudentUserId(), voiceEmotions);
+        // 异步更新学生画像（基于历史会话统计；VCL-001：本会话语音情绪聚合回注 emotionBaseline.voice，
+        // 只传可映射到规范集的标签，聚合衍生特征不留逐条流水，design/47 §5.1）
+        List<String> voiceEmotions = session.emotionLabels().stream()
+                .map(promptOrchestrationService::mapVoiceEmotion)
+                .filter(Objects::nonNull)
+                .toList();
+        profileService.updateProfile(session.getTenantId(), session.getStudentUserId(), voiceEmotions);
 
-            // RISK-204 / ORCH-008 / PROF-024：会话结束分析（趋势+效果量化，异步不阻塞）
-            try {
-                sessionEndAnalyticsService.analyze(
-                        session.getTenantId(), session.getStudentUserId(),
-                        voiceEmotions, // 近期情绪（当前仅本会话，后续扩展跨会话查询）
-                        session.emotionLabels(),
-                        loadStudentMessages(tenantId, sessionId),
-                        session.getEmotionTag());
-            } catch (Exception e) {
-                log.debug("会话结束分析降级: {}", e.getMessage());
-            }
+        // RISK-204 / ORCH-008 / PROF-024：会话结束分析（趋势+效果量化，异步不阻塞）
+        try {
+            sessionEndAnalyticsService.analyze(
+                    session.getTenantId(), session.getStudentUserId(),
+                    voiceEmotions, // 近期情绪（当前仅本会话，后续扩展跨会话查询）
+                    session.emotionLabels(),
+                    loadStudentMessages(tenantId, sessionId),
+                    session.getEmotionTag());
+        } catch (Exception e) {
+            log.debug("会话结束分析降级: {}", e.getMessage());
         }
     }
 
@@ -658,57 +700,6 @@ public class ConversationServiceImpl implements ConversationService {
      */
     private List<String> loadStudentMessages(UUID tenantId, UUID sessionId) {
         return messageSummaryService.readStudentPlainTexts(tenantId, sessionId);
-    }
-
-    /** S-002（doing/93）：每轮上下文组装产物（年级 + 画像 + 记忆 + 联盟 + 简报） */
-    private record RoundContext(int effectiveGrade, String profilePrompt, String memoryPrompt,
-                                String alliancePrompt, String contextBrief) {
-    }
-
-    /**
-     * S-002（doing/93）：每轮上下文组装单点——画像 + 长期记忆 + 联盟增强 + 会话数 + CTX 简报。
-     * 主链路与 nudge 双路径共用（原逐字重复五连调用且已分叉）；
-     * contextBrief 注入时机由调用方决定（主链路拼入 system 尾部；nudge 交 chatProactive）。
-     */
-    private RoundContext buildRoundContext(SessionState session, boolean riskBlocked) {
-        int effectiveGrade = ConversationUtils.computeEffectiveGrade(
-                session.getGrade(), session.getExpressionDepth(), riskBlocked);
-        // PROF-010/011/012/015：学生画像提示（年级适配）
-        String profilePrompt = profileService.buildProfilePrompt(
-                session.getTenantId(), session.getStudentUserId(), session.getGrade(), session.getGender());
-        // AI-008：长期记忆（跨会话关键事件回注）
-        String memoryPrompt = longTermMemoryService.buildMemoryPrompt(
-                session.getTenantId(), session.getStudentUserId());
-        // ALLY-201/203：治疗联盟增强——连续性开场 + 中断回归照护（design/52 §五）
-        String alliancePrompt = buildAlliancePrompt(session, memoryPrompt);
-        // CTX-Agent：结构化上下文简报（身份+情绪旅程+会话进展+记忆+画像）
-        int totalSessions = profileService.getSessionCount(session.getTenantId(), session.getStudentUserId());
-        String contextBrief = contextAgent.buildContextBrief(
-                session, profilePrompt, memoryPrompt, alliancePrompt, totalSessions);
-        return new RoundContext(effectiveGrade, profilePrompt, memoryPrompt, alliancePrompt, contextBrief);
-    }
-
-    /**
-     * ALLY-201/203：构建治疗联盟增强 Prompt（连续性开场 + 中断回归照护）。
-     * <p>
-     * 利用记忆回注摘要生成续接话术；失败安全：无记忆 → 返回 null（不注入）。
-     */
-    private String buildAlliancePrompt(SessionState session, String memoryPrompt) {
-        try {
-            // ALLY-201：连续性开场（有记忆回注时生成续接提示）
-            if (memoryPrompt != null && !memoryPrompt.isBlank()) {
-                String firstLine = memoryPrompt.lines()
-                        .filter(l -> l.startsWith("- "))
-                        .findFirst()
-                        .map(l -> l.substring(2).trim())
-                        .orElse(null);
-                return allianceEnhancer.buildContinuityPrompt(firstLine, "波波");
-            }
-            return null;
-        } catch (Exception e) {
-            log.debug("ALLY 联盟增强构建失败（不影响对话）: {}", e.getMessage());
-            return null;
-        }
     }
 
     /**

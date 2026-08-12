@@ -1,9 +1,7 @@
 package com.mindsafe.service.conversation;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.mindsafe.common.tenant.TenantContextHolder;
 import com.mindsafe.domain.entity.CounselingSession;
-import com.mindsafe.domain.mapper.CounselingSessionMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -34,12 +32,12 @@ public class SummaryCompensationJob {
      *  需 4 轮（40 分钟）且 escalated（endedAt null 排序垫底）永远最后，放宽至一轮覆盖 */
     private static final int SCAN_LIMIT = 200;
 
-    private final CounselingSessionMapper sessionMapper;
+    private final CounselingSessionStore sessionStore;
     private final MessageSummaryService messageSummaryService;
 
-    public SummaryCompensationJob(CounselingSessionMapper sessionMapper,
+    public SummaryCompensationJob(CounselingSessionStore sessionStore,
                                   MessageSummaryService messageSummaryService) {
-        this.sessionMapper = sessionMapper;
+        this.sessionStore = sessionStore;
         this.messageSummaryService = messageSummaryService;
     }
 
@@ -48,19 +46,11 @@ public class SummaryCompensationJob {
         TenantContextHolder.runAsSystem(() -> {
             try {
                 Instant cutoff = Instant.now().minus(SETTLE_MINUTES, ChronoUnit.MINUTES);
-                // BUG-T-04-01 四次修复（2026-08-12 复测）：会话终态枚举含 escalated（风险升级转人工，
-                // ConversationServiceImpl 置 escalated）+ taken_over（教师接管）+ completed——
-                // 三者均无后续对话，缺摘要即补偿；endedAt 可能为 null（escalated/taken_over 不设），
-                // 终态判定：结束超 5 分钟 或 未记录结束时间。
-                List<CounselingSession> sessions = sessionMapper.selectList(
-                        new LambdaQueryWrapper<CounselingSession>()
-                                .in(CounselingSession::getSessionStatus,
-                                        CounselingSession.STATUS_COMPLETED, "taken_over", "escalated")
-                                .isNull(CounselingSession::getSessionSummary)
-                                .and(w -> w.lt(CounselingSession::getEndedAt, cutoff)
-                                        .or().isNull(CounselingSession::getEndedAt))
-                                .orderByAsc(CounselingSession::getEndedAt)
-                                .last("LIMIT " + SCAN_LIMIT));
+                // P1-8 收敛（BA-11）：三终态/isNull(session_summary)/endedAt 截止/排序/LIMIT 上限
+                // 条件组装收口 CounselingSessionStore（原直连 Mapper，条件单点维护）；
+                // 终态判定语义不变：结束超 5 分钟 或 未记录结束时间（escalated/taken_over 不设 endedAt）。
+                List<CounselingSession> sessions =
+                        sessionStore.findSummaryCompensationCandidates(cutoff, SCAN_LIMIT);
                 if (sessions.isEmpty()) {
                     return;
                 }

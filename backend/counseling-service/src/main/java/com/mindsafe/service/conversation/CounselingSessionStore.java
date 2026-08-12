@@ -8,6 +8,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
@@ -30,6 +31,9 @@ public class CounselingSessionStore {
 
     /** 历史查询 limit 上限（防大分页拖库；原 ConversationServiceImpl 内 Math.min(limit, 50) 内置收口） */
     private static final int MAX_HISTORY_LIMIT = 50;
+
+    /** 摘要补偿每轮扫描上限（P1-8 自 SummaryCompensationJob.SCAN_LIMIT 收编，防 LLM 突发堆积） */
+    private static final int MAX_SCAN_LIMIT = 200;
 
     private final CounselingSessionMapper sessionMapper;
 
@@ -59,7 +63,7 @@ public class CounselingSessionStore {
     public boolean isEscalated(UUID sessionId) {
         try {
             CounselingSession entity = sessionMapper.selectById(sessionId);
-            return entity != null && "escalated".equals(entity.getSessionStatus());
+            return entity != null && CounselingSession.STATUS_ESCALATED.equals(entity.getSessionStatus());
         } catch (Exception e) {
             log.warn("nudge: 查询会话状态失败: sessionId={}", sessionId, e);
             return false;
@@ -88,5 +92,26 @@ public class CounselingSessionStore {
                         .eq(CounselingSession::getTenantId, tenantId)
                         .eq(CounselingSession::getStudentUserId, studentUserId)
                         .eq(CounselingSession::getSessionId, sessionId));
+    }
+
+    /**
+     * 摘要补偿候选扫描（BUG-T04-01，P1-8 收编自 SummaryCompensationJob 直连 Mapper 的条件组装）。
+     * <p>
+     * 三终态（completed/taken_over/escalated）会话中 session_summary 仍为空，且结束超过 cutoff
+     * 或未记录结束时间（escalated/taken_over 不设 endedAt）的记录——缺摘要即补偿；
+     * endedAt 升序（null 排序垫底），limit 上限 {@link #MAX_SCAN_LIMIT} 内置防 LLM 突发堆积。
+     */
+    public List<CounselingSession> findSummaryCompensationCandidates(Instant cutoff, int limit) {
+        return sessionMapper.selectList(
+                new LambdaQueryWrapper<CounselingSession>()
+                        .in(CounselingSession::getSessionStatus,
+                                CounselingSession.STATUS_COMPLETED,
+                                CounselingSession.STATUS_TAKEN_OVER,
+                                CounselingSession.STATUS_ESCALATED)
+                        .isNull(CounselingSession::getSessionSummary)
+                        .and(w -> w.lt(CounselingSession::getEndedAt, cutoff)
+                                .or().isNull(CounselingSession::getEndedAt))
+                        .orderByAsc(CounselingSession::getEndedAt)
+                        .last("LIMIT " + Math.min(limit, MAX_SCAN_LIMIT)));
     }
 }

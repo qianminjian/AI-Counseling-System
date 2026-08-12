@@ -12,8 +12,9 @@ import com.mindsafe.ai.safety.HighSensitivityCategories;
 import com.mindsafe.ai.prompt.PromptTemplateService;
 import com.mindsafe.ai.safety.ConfidentialityNotice;
 import com.mindsafe.ai.safety.CrisisHotlineProvider;
-import com.mindsafe.ai.safety.CrisisResourceProvider;
 import com.mindsafe.ai.safety.CrisisResources;
+import com.mindsafe.common.dto.ErrorCode;
+import com.mindsafe.common.exception.BizException;
 import com.mindsafe.common.util.PiiDesensitizer;
 import com.mindsafe.common.dto.chat.SessionInfo;
 import com.mindsafe.common.dto.chat.StreamMessageEvent;
@@ -49,6 +50,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyMap;
@@ -83,7 +85,7 @@ class ConversationServiceImplTest {
     private PromptVersionService promptVersionService;
     private RagAdvisorService ragAdvisorService;
     private ConversationQualityService conversationQualityService;
-    private CrisisResourceProvider crisisResourceProvider;
+    private CrisisHotlineProvider crisisHotlineProvider;
     private AllianceEnhancer allianceEnhancer;
     private CbtStageRouter cbtStageRouter;
     private SessionEndAnalyticsService sessionEndAnalyticsService;
@@ -124,7 +126,7 @@ class ConversationServiceImplTest {
         promptVersionService = mock(PromptVersionService.class);
         ragAdvisorService = mock(RagAdvisorService.class);
         conversationQualityService = mock(ConversationQualityService.class);
-        crisisResourceProvider = new CrisisResourceProvider();
+        crisisHotlineProvider = new CrisisHotlineProvider();
         allianceEnhancer = mock(AllianceEnhancer.class);
         // CBT-201/202 + WIRE-002：纯规则无依赖，直接用真实实例（验证真实接线路径）
         cbtStageRouter = new CbtStageRouter();
@@ -201,18 +203,19 @@ class ConversationServiceImplTest {
         service = new ConversationServiceImpl(aiChatService,
                 riskProcessor, sessionStore,
                 userMapper, profileService,
-                usageTimeLimitService, longTermMemoryService,
+                usageTimeLimitService,
                 ragAdvisorService,
                 // ORCH-001/003：编排引擎+情绪状态机纯规则无依赖，直接用真实实例
                 new PromptOrchestrationService(new EntryMoodStrategyResolver(), new EmotionStateMachine()),
                 messageSummaryService,
-                plainEnc,
-                crisisResourceProvider,
-                allianceEnhancer, cbtStageRouter,
+                crisisHotlineProvider,
+                cbtStageRouter,
                 sessionEndAnalyticsService, sessionStateStore,
                 contextAgent, new ObjectMapper(),
                 personalInfoExtractor, promptAssemblyService, themeEvolutionEngine, new NudgeProperties(),
-                new NudgeDecisionModel(), new ReplyEmotionResolver(), new HighSensitivityCategories(new RiskKeywordRegistry()));
+                new NudgeDecisionModel(), new ReplyEmotionResolver(), new HighSensitivityCategories(new RiskKeywordRegistry()),
+                // P1-2：上下文组装单点（S-002）——与主类共享同一组 mock
+                new RoundContextAssembler(profileService, longTermMemoryService, allianceEnhancer, contextAgent));
     }
 
     /** createSession 并捕获内部生成的 sessionId */
@@ -387,19 +390,20 @@ class ConversationServiceImplTest {
             ConversationServiceImpl keyedService = new ConversationServiceImpl(aiChatService,
                     riskProcessor, sessionStore,
                     userMapper, profileService,
-                    usageTimeLimitService, longTermMemoryService,
+                    usageTimeLimitService,
                     ragAdvisorService,
                     new PromptOrchestrationService(new EntryMoodStrategyResolver(), new EmotionStateMachine()),
                     new MessageSummaryService(messageSummaryMapper, sessionStore,
                             aiChatService, keyedEnc, conversationQualityService, profileExtractorService, longTermMemoryService,
                             new ObjectMapper(), new SimpleMeterRegistry(), sessionStateStore),
-                    keyedEnc,
-                    crisisResourceProvider,
-                    allianceEnhancer, cbtStageRouter,
+                    crisisHotlineProvider,
+                    cbtStageRouter,
                 sessionEndAnalyticsService, sessionStateStore,
                 contextAgent, new ObjectMapper(),
                 personalInfoExtractor, promptAssemblyService, themeEvolutionEngine, new NudgeProperties(),
-                new NudgeDecisionModel(), new ReplyEmotionResolver(), new HighSensitivityCategories(new RiskKeywordRegistry()));
+                new NudgeDecisionModel(), new ReplyEmotionResolver(), new HighSensitivityCategories(new RiskKeywordRegistry()),
+                // P1-2：上下文组装单点（S-002）——复用类级 mock
+                new RoundContextAssembler(profileService, longTermMemoryService, allianceEnhancer, contextAgent));
 
             User user = new User();
             user.setPseudonym("小明");
@@ -681,7 +685,7 @@ class ConversationServiceImplTest {
                     .sendMessageStream(tenantId, studentId, sessionId, "我想聊天")
                     .collectList().block();
 
-            // 接线锁定：buildTimeLimitGuidance(crisisResourceProvider.getHotlineNumber())
+            // 接线锁定：buildTimeLimitGuidance(crisisHotlineProvider.hotline())
             assertThat(events).anyMatch(e -> "token".equals(e.type())
                     && e.content().contains("心理援助热线")
                     && e.content().contains(CrisisResources.NATIONAL_PSYCHOLOGICAL_AID)
@@ -738,13 +742,13 @@ class ConversationServiceImplTest {
         @Test
         @DisplayName("resolveSafetyReply: RED 分年级选版（1-2 短句版 / 3-6 标准版）")
         void resolveSafetyReply_redGradeVariants() {
-            assertThat(RiskResponseStrategy.resolveSafetyReply(RiskLevel.RED, false, 1, crisisResourceProvider))
+            assertThat(RiskResponseStrategy.resolveSafetyReply(RiskLevel.RED, false, 1, crisisHotlineProvider))
                     .isEqualTo(new CrisisHotlineProvider().render(CrisisResources.RED_SAFETY_REPLY_LOWER_GRADE));
-            assertThat(RiskResponseStrategy.resolveSafetyReply(RiskLevel.RED, false, 2, crisisResourceProvider))
+            assertThat(RiskResponseStrategy.resolveSafetyReply(RiskLevel.RED, false, 2, crisisHotlineProvider))
                     .isEqualTo(new CrisisHotlineProvider().render(CrisisResources.RED_SAFETY_REPLY_LOWER_GRADE));
-            assertThat(RiskResponseStrategy.resolveSafetyReply(RiskLevel.RED, false, 3, crisisResourceProvider))
+            assertThat(RiskResponseStrategy.resolveSafetyReply(RiskLevel.RED, false, 3, crisisHotlineProvider))
                     .isEqualTo(new CrisisHotlineProvider().render(CrisisResources.RED_SAFETY_REPLY));
-            assertThat(RiskResponseStrategy.resolveSafetyReply(RiskLevel.RED, false, 6, crisisResourceProvider))
+            assertThat(RiskResponseStrategy.resolveSafetyReply(RiskLevel.RED, false, 6, crisisHotlineProvider))
                     .isEqualTo(new CrisisHotlineProvider().render(CrisisResources.RED_SAFETY_REPLY));
         }
     }
@@ -1205,6 +1209,199 @@ class ConversationServiceImplTest {
             messageSummaryService.generateSummaryAsync(tenantId, UUID.randomUUID(), studentId);
 
             verify(conversationQualityService, never()).evaluateSessionAsync(any(), any(), anyString());
+        }
+    }
+
+    @Nested
+    @DisplayName("SEC-001 会话归属校验负面用例（跨租户/跨学生拒绝语义，design/09 §8.14）")
+    class SessionOwnershipEnforcement {
+
+        /** 攻击者视角：另一租户、另一学生（Redis 面不受租户拦截器保护，仅 isSessionOwner 是防线） */
+        private final UUID otherTenantId = UUID.randomUUID();
+        private final UUID otherStudentId = UUID.randomUUID();
+
+        @Test
+        @DisplayName("sendMessageStream 跨租户/跨学生 → error「会话不存在」且不调 LLM、不消费轮次")
+        void sendMessageStream_rejectsNonOwner() {
+            UUID sessionId = createSession("happy");
+            int turnBefore = getSessionState(sessionId).getTurnCount();
+
+            List<StreamMessageEvent> crossTenant = service
+                    .sendMessageStream(otherTenantId, studentId, sessionId, "你好")
+                    .collectList().block();
+            List<StreamMessageEvent> crossStudent = service
+                    .sendMessageStream(tenantId, otherStudentId, sessionId, "你好")
+                    .collectList().block();
+
+            // 拒绝语义：error 事件 + 不泄漏会话存在性（统一返回「会话不存在」）
+            assertThat(crossTenant).hasSize(1);
+            assertThat(crossTenant.get(0).type()).isEqualTo("error");
+            assertThat(crossTenant.get(0).content()).isEqualTo("会话不存在");
+            assertThat(crossStudent).hasSize(1);
+            assertThat(crossStudent.get(0).type()).isEqualTo("error");
+            assertThat(crossStudent.get(0).content()).isEqualTo("会话不存在");
+            // 不触发 LLM、消息未被消费（轮次不变）、状态不被污染
+            verify(aiChatService, never()).chatWithPrompt(any(), any(), any(), anyString());
+            assertThat(getSessionState(sessionId).getTurnCount()).isEqualTo(turnBefore);
+        }
+
+        @Test
+        @DisplayName("sendNudgeStream 跨租户/跨学生 → 空流且不触发暖场")
+        void sendNudgeStream_rejectsNonOwner() {
+            UUID sessionId = createSession("happy");
+
+            List<StreamMessageEvent> crossTenant = service
+                    .sendNudgeStream(otherTenantId, studentId, sessionId, 30)
+                    .collectList().block();
+            List<StreamMessageEvent> crossStudent = service
+                    .sendNudgeStream(tenantId, otherStudentId, sessionId, 30)
+                    .collectList().block();
+
+            assertThat(crossTenant).isEmpty();
+            assertThat(crossStudent).isEmpty();
+            verify(aiChatService, never()).chatProactive(any(), any(), any(), any());
+        }
+
+        @Test
+        @DisplayName("updateClientSettings 跨租户/跨学生 → 静默忽略（不写 Redis、状态不变）")
+        void updateClientSettings_rejectsNonOwner() {
+            UUID sessionId = createSession("happy");
+
+            service.updateClientSettings(otherTenantId, studentId, sessionId, true, false);
+            service.updateClientSettings(tenantId, otherStudentId, sessionId, true, false);
+
+            // 攻击者路径不写 Redis：合法租户维度仅创建时 1 次 save，攻击者租户维度 0 次
+            verify(sessionStateStore, times(1)).save(eq(tenantId), eq(sessionId), any(SessionState.class));
+            verify(sessionStateStore, never()).save(eq(otherTenantId), eq(sessionId), any(SessionState.class));
+            // 状态保持创建初值（未被攻击者篡改）
+            SessionState state = getSessionState(sessionId);
+            assertThat(state.getTtsMuted()).isNull();
+            assertThat(state.getWakeEnabled()).isNull();
+        }
+
+        @Test
+        @DisplayName("endSession 跨租户/跨学生 → 抛 FORBIDDEN（403），不落库、不清记忆")
+        void endSession_rejectsNonOwner() {
+            UUID sessionId = createSession("happy");
+
+            assertThatThrownBy(() -> service.endSession(otherTenantId, studentId, sessionId))
+                    .isInstanceOf(BizException.class)
+                    .satisfies(e -> assertThat(((BizException) e).getErrorCode()).isEqualTo(ErrorCode.FORBIDDEN));
+            assertThatThrownBy(() -> service.endSession(tenantId, otherStudentId, sessionId))
+                    .isInstanceOf(BizException.class)
+                    .satisfies(e -> assertThat(((BizException) e).getErrorCode()).isEqualTo(ErrorCode.FORBIDDEN));
+            // 拒绝语义：不触发 DB 落库、不清除 AI 记忆、Redis 会话未被删除
+            verify(sessionStore, never()).updateById(any());
+            verify(aiChatService, never()).clearMemory(any());
+            assertThat(getSessionState(sessionId)).isNotNull();
+        }
+    }
+
+    @Nested
+    @DisplayName("裁决 6：Redis 会话状态 DB 兜底重建（P1-7，design/doing 审计）")
+    class RedisFallbackRebuild {
+
+        /** 模拟 Redis 会话状态过期/丢失（移除内存模拟中的快照） */
+        private void evictRedisState(UUID sessionId) {
+            testSessionStore.remove(sessionId);
+        }
+
+        /** 模拟 DB 中仍存在该会话（findOwned 归属三重条件通过） */
+        private void mockDbSession(UUID sessionId, int turnCount) {
+            CounselingSession entity = new CounselingSession();
+            entity.setSessionId(sessionId);
+            entity.setTenantId(tenantId);
+            entity.setStudentUserId(studentId);
+            entity.setChannel("web");
+            entity.setTurnCount(turnCount);
+            when(sessionStore.findOwned(tenantId, studentId, sessionId)).thenReturn(entity);
+        }
+
+        private void mockChatPipeline() {
+            when(piiDesensitizer.desensitize(anyString())).thenAnswer(inv -> inv.getArgument(0));
+            when(usageTimeLimitService.isExceeded(any(), any())).thenReturn(false);
+            when(profileService.buildProfilePrompt(eq(tenantId), eq(studentId), any(Integer.class), any()))
+                    .thenReturn(null);
+            when(aiChatService.chatWithPrompt(any(), any(), any(), anyString()))
+                    .thenReturn(Flux.just(StreamMessageEvent.token("我在听")));
+        }
+
+        @Test
+        @DisplayName("sendMessageStream Redis 缺失 + DB 有记录 → findOwned 重建并写回 Redis，正常流式回复")
+        void sendMessageStream_rebuildsFromDb() {
+            UUID sessionId = createSession("happy");
+            evictRedisState(sessionId);
+            mockDbSession(sessionId, 3);
+            mockChatPipeline();
+            User user = new User();
+            user.setPseudonym("小明");
+            user.setGender("male");
+            when(userMapper.selectById(studentId)).thenReturn(user);
+
+            List<StreamMessageEvent> events = service
+                    .sendMessageStream(tenantId, studentId, sessionId, "我还想聊")
+                    .collectList().block();
+
+            assertThat(events).anyMatch(e -> "token".equals(e.type()) && "我在听".equals(e.content()));
+            // 重建路径：findOwned（SEC-001 三重条件）+ 写回 Redis（TTL 续期）+ 轮次从 DB 恢复
+            verify(sessionStore).findOwned(tenantId, studentId, sessionId);
+            // save 共 4 次：createSession 初始写回 + rebuildSessionStateFromDb 重建写回
+            // + 主链路回合保存 + 流结束保存——重建写回必然发生（Redis 已被 evict）
+            verify(sessionStateStore, times(4)).save(eq(tenantId), eq(sessionId), any(SessionState.class));
+            assertThat(getSessionState(sessionId)).isNotNull();
+            // DB 已落库 3 轮，消息消费后 +1 → 4（轮次不归零，nudge 护栏/摘要间隔语义不漂移）
+            assertThat(getSessionState(sessionId).getTurnCount()).isEqualTo(4);
+        }
+
+        @Test
+        @DisplayName("sendMessageStream Redis 缺失 + DB 无记录（含非持有人）→ error「会话不存在」，不重建不调 LLM")
+        void sendMessageStream_noDbSession_rejected() {
+            UUID sessionId = createSession("happy");
+            evictRedisState(sessionId);
+            // findOwned 默认 null：会话不存在或非持有人（归属三重条件拦截）
+
+            List<StreamMessageEvent> events = service
+                    .sendMessageStream(tenantId, studentId, sessionId, "你好")
+                    .collectList().block();
+
+            assertThat(events).hasSize(1);
+            assertThat(events.get(0).type()).isEqualTo("error");
+            assertThat(events.get(0).content()).isEqualTo("会话不存在");
+            verify(aiChatService, never()).chatWithPrompt(any(), any(), any(), anyString());
+            // 拒绝路径不写回 Redis：save 仅剩 createSession 的初始写回（1 次），重建路径零新增
+            verify(sessionStateStore, times(1)).save(eq(tenantId), eq(sessionId), any(SessionState.class));
+        }
+
+        @Test
+        @DisplayName("endSession Redis 缺失 + DB 有记录 → DB 读取路径正常结束（落库+删缓存+清记忆）")
+        void endSession_rebuildsFromDb() {
+            UUID sessionId = createSession("happy");
+            evictRedisState(sessionId);
+            mockDbSession(sessionId, 2);
+            User user = new User();
+            user.setPseudonym("小明");
+            when(userMapper.selectById(studentId)).thenReturn(user);
+
+            service.endSession(tenantId, studentId, sessionId);
+
+            verify(sessionStore).findOwned(tenantId, studentId, sessionId);
+            // 正常结束流程：DB 落库 completed + 删除 Redis + 清除 AI 记忆
+            verify(sessionStore).updateById(any(CounselingSession.class));
+            verify(sessionStateStore).remove(eq(tenantId), eq(sessionId));
+            verify(aiChatService).clearMemory(sessionId);
+        }
+
+        @Test
+        @DisplayName("endSession Redis 缺失 + DB 无记录 → 抛 FORBIDDEN（归属语义不因 Redis 缺失削弱）")
+        void endSession_noDbSession_forbidden() {
+            UUID sessionId = createSession("happy");
+            evictRedisState(sessionId);
+
+            assertThatThrownBy(() -> service.endSession(tenantId, studentId, sessionId))
+                    .isInstanceOf(BizException.class)
+                    .satisfies(e -> assertThat(((BizException) e).getErrorCode()).isEqualTo(ErrorCode.FORBIDDEN));
+            verify(sessionStore, never()).updateById(any());
+            verify(aiChatService, never()).clearMemory(any());
         }
     }
 }

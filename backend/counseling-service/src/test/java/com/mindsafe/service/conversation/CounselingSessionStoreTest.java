@@ -15,6 +15,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
@@ -199,6 +200,70 @@ class CounselingSessionStoreTest {
         void noMatchReturnsNull() {
             when(sessionMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(null);
             assertThat(store.findOwned(tenantId, studentId, sessionId)).isNull();
+        }
+    }
+
+    @Nested
+    @DisplayName("摘要补偿候选扫描（BUG-T04-01，P1-8 收敛）")
+    class SummaryCompensation {
+
+        private CounselingSession session(String status) {
+            CounselingSession s = new CounselingSession();
+            s.setSessionId(UUID.randomUUID());
+            s.setSessionStatus(status);
+            return s;
+        }
+
+        @Test
+        @DisplayName("三终态（completed/taken_over/escalated）扫描 + session_summary 为空 + endedAt 截止条件")
+        void assemblesTerminalStatusConditions() {
+            when(sessionMapper.selectList(any(LambdaQueryWrapper.class)))
+                    .thenReturn(List.of(session("completed"), session("taken_over"), session("escalated")));
+
+            List<CounselingSession> result = store.findSummaryCompensationCandidates(Instant.now(), 200);
+
+            assertThat(result).hasSize(3);
+            ArgumentCaptor<LambdaQueryWrapper<CounselingSession>> wrapperCaptor =
+                    ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+            verify(sessionMapper).selectList(wrapperCaptor.capture());
+            LambdaQueryWrapper<CounselingSession> wrapper = wrapperCaptor.getValue();
+            String sql = wrapper.getSqlSegment();
+            // 三终态枚举（IN 条件参数化，字面值在 paramNameValuePairs）+ session_summary 为空（幂等：
+            // 已生成摘要不再命中）+ endedAt 截止/未记录 + 升序
+            assertThat(sql)
+                    .contains("session_status IN")
+                    .contains("session_summary IS NULL")
+                    .contains("ended_at")
+                    .contains("ORDER BY")
+                    .contains("LIMIT");
+            assertThat(wrapper.getParamNameValuePairs().values())
+                    .contains("completed", "taken_over", "escalated");
+        }
+
+        @Test
+        @DisplayName("SCAN_LIMIT 上限 200 内置：超限请求被钳制")
+        void scanLimitCappedAt200() {
+            when(sessionMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of());
+
+            store.findSummaryCompensationCandidates(Instant.now(), 5000);
+
+            ArgumentCaptor<LambdaQueryWrapper<CounselingSession>> wrapperCaptor =
+                    ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+            verify(sessionMapper).selectList(wrapperCaptor.capture());
+            assertThat(wrapperCaptor.getValue().getSqlSegment()).contains("LIMIT 200");
+        }
+
+        @Test
+        @DisplayName("低于上限的请求值透传（扫描上限可配置收紧）")
+        void scanLimitBelowCapPassedThrough() {
+            when(sessionMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of());
+
+            store.findSummaryCompensationCandidates(Instant.now(), 50);
+
+            ArgumentCaptor<LambdaQueryWrapper<CounselingSession>> wrapperCaptor =
+                    ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+            verify(sessionMapper).selectList(wrapperCaptor.capture());
+            assertThat(wrapperCaptor.getValue().getSqlSegment()).contains("LIMIT 50");
         }
     }
 }
