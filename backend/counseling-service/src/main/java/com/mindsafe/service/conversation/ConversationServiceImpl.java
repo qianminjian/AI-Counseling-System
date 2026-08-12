@@ -345,17 +345,13 @@ public class ConversationServiceImpl implements ConversationService {
 
         // 5. 调用 AI 服务获取流式回复（CTX-Agent 结构化上下文 + 年级适配，PROF-010/011/012/015 + AI-008 + AI-005）
         boolean riskBlocked = fusedLevel != null && fusedLevel.severity() >= RiskLevel.ORANGE.severity();
-        int effectiveGrade = ConversationUtils.computeEffectiveGrade(session.getGrade(), session.getExpressionDepth(), riskBlocked);
-        String profilePrompt = profileService.buildProfilePrompt(session.getTenantId(), session.getStudentUserId(), session.getGrade(), session.getGender());
-        // AI-008：长期记忆（跨会话关键事件回注）
-        String memoryPrompt = longTermMemoryService.buildMemoryPrompt(session.getTenantId(), session.getStudentUserId());
-
-        // ALLY-201/203：治疗联盟增强——连续性开场 + 中断回归照护（design/52 §五）
-        String alliancePrompt = buildAlliancePrompt(session, memoryPrompt);
-
-        // CTX-Agent：结构化上下文简报（身份+情绪旅程+会话进展+记忆+画像）
-        int totalSessions = profileService.getSessionCount(session.getTenantId(), session.getStudentUserId());
-        String contextBrief = contextAgent.buildContextBrief(session, profilePrompt, memoryPrompt, alliancePrompt, totalSessions);
+        // S-002（doing/93）：每轮上下文组装单点（画像+记忆+联盟+简报），主链路与 nudge 共用防分叉
+        RoundContext roundCtx = buildRoundContext(session, riskBlocked);
+        int effectiveGrade = roundCtx.effectiveGrade();
+        String profilePrompt = roundCtx.profilePrompt();
+        String memoryPrompt = roundCtx.memoryPrompt();
+        String alliancePrompt = roundCtx.alliancePrompt();
+        String contextBrief = roundCtx.contextBrief();
 
         // ORCH-001/002/003/005：编排引擎——先算策略、再拼提示词（design/44 §四/§七）。
         // VCL-001：轮级 currentEmotion 由语音 SER 映射驱动（置信门控 >0.6），
@@ -503,14 +499,10 @@ public class ConversationServiceImpl implements ConversationService {
         }
 
         // 暖场：TSK_004 指令路由与组装收敛 PromptAssemblyService（ARCH-010 D4 + ARCH-001 C1，与主链路同一加载路径）
-        // 暖场上下文简报（CTX-Agent 统一上下文，同主链路组装）
-        String profilePrompt = profileService.buildProfilePrompt(session.getTenantId(), session.getStudentUserId(), session.getGrade(), session.getGender());
-        String nudgeMemoryPrompt = longTermMemoryService.buildMemoryPrompt(session.getTenantId(), session.getStudentUserId());
-        String nudgeAlliancePrompt = buildAlliancePrompt(session, nudgeMemoryPrompt);
-        int nudgeTotalSessions = profileService.getSessionCount(session.getTenantId(), session.getStudentUserId());
-        String nudgeContextBrief = contextAgent.buildContextBrief(session, profilePrompt, nudgeMemoryPrompt, nudgeAlliancePrompt, nudgeTotalSessions);
-        // PROF-015：暖场场景无风险（橙/红已拦截），仅根据表达深度降级
-        int effectiveGrade = ConversationUtils.computeEffectiveGrade(session.getGrade(), session.getExpressionDepth(), false);
+        // 暖场上下文简报（S-002：与主链路共用组装单点；PROF-015 暖场无风险，riskBlocked=false）
+        RoundContext nudgeCtx = buildRoundContext(session, false);
+        String nudgeContextBrief = nudgeCtx.contextBrief();
+        int effectiveGrade = nudgeCtx.effectiveGrade();
         int turn = session.getTurnCount();
         StringBuilder aiResponseCollector = new StringBuilder();
 
@@ -663,6 +655,34 @@ public class ConversationServiceImpl implements ConversationService {
      */
     private List<String> loadStudentMessages(UUID tenantId, UUID sessionId) {
         return messageSummaryService.readStudentPlainTexts(tenantId, sessionId);
+    }
+
+    /** S-002（doing/93）：每轮上下文组装产物（年级 + 画像 + 记忆 + 联盟 + 简报） */
+    private record RoundContext(int effectiveGrade, String profilePrompt, String memoryPrompt,
+                                String alliancePrompt, String contextBrief) {
+    }
+
+    /**
+     * S-002（doing/93）：每轮上下文组装单点——画像 + 长期记忆 + 联盟增强 + 会话数 + CTX 简报。
+     * 主链路与 nudge 双路径共用（原逐字重复五连调用且已分叉）；
+     * contextBrief 注入时机由调用方决定（主链路拼入 system 尾部；nudge 交 chatProactive）。
+     */
+    private RoundContext buildRoundContext(SessionState session, boolean riskBlocked) {
+        int effectiveGrade = ConversationUtils.computeEffectiveGrade(
+                session.getGrade(), session.getExpressionDepth(), riskBlocked);
+        // PROF-010/011/012/015：学生画像提示（年级适配）
+        String profilePrompt = profileService.buildProfilePrompt(
+                session.getTenantId(), session.getStudentUserId(), session.getGrade(), session.getGender());
+        // AI-008：长期记忆（跨会话关键事件回注）
+        String memoryPrompt = longTermMemoryService.buildMemoryPrompt(
+                session.getTenantId(), session.getStudentUserId());
+        // ALLY-201/203：治疗联盟增强——连续性开场 + 中断回归照护（design/52 §五）
+        String alliancePrompt = buildAlliancePrompt(session, memoryPrompt);
+        // CTX-Agent：结构化上下文简报（身份+情绪旅程+会话进展+记忆+画像）
+        int totalSessions = profileService.getSessionCount(session.getTenantId(), session.getStudentUserId());
+        String contextBrief = contextAgent.buildContextBrief(
+                session, profilePrompt, memoryPrompt, alliancePrompt, totalSessions);
+        return new RoundContext(effectiveGrade, profilePrompt, memoryPrompt, alliancePrompt, contextBrief);
     }
 
     /**
