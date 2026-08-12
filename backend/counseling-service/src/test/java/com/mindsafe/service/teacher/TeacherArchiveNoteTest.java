@@ -240,13 +240,59 @@ class TeacherArchiveNoteTest {
         noRisk.setContentSummary("要跟老师说哦");
         noRisk.setCreatedAt(Instant.now());
         when(messageSummaryService.readDecryptedMessages(any(), any())).thenReturn(List.of(summary, noRisk));
+        // BACK-001（doing/95）：getSessionMessages 新增会话归属 + 班级范围校验前置，需 stub 会话存在
+        CounselingSession session = new CounselingSession();
+        session.setSessionId(UUID.randomUUID());
+        session.setStudentUserId(studentId);
+        when(sessionAccessService.getTenantSession(tenantId, session.getSessionId())).thenReturn(session);
 
         List<TeacherService.MessageSummaryVO> result =
-                teacherService.getSessionMessages(tenantId, UUID.randomUUID());
+                teacherService.getSessionMessages(tenantId, null, session.getSessionId());
 
         assertEquals(2, result.size());
         assertEquals("我今天有点难过", result.get(0).contentSummary());
         assertEquals(2, result.get(0).riskLevel());
         assertEquals(0, result.get(1).riskLevel()); // null → 0
+    }
+
+    @Test
+    @DisplayName("getSessionMessages：班主任访问非本班会话 → 空列表（BACK-001 越权拦截）")
+    void getSessionMessages_classTeacher_forbidden() {
+        CounselingSession session = new CounselingSession();
+        session.setSessionId(UUID.randomUUID());
+        session.setStudentUserId(studentId);
+        when(sessionAccessService.getTenantSession(tenantId, session.getSessionId())).thenReturn(session);
+        // 会话学生属于其他班级（班主任可见范围 CLASS_1）
+        User otherClassStudent = new User();
+        otherClassStudent.setUserId(studentId);
+        otherClassStudent.setClassCode("CLASS_OTHER");
+        when(userMapper.selectOne(any())).thenReturn(otherClassStudent);
+
+        List<TeacherService.MessageSummaryVO> result =
+                teacherService.getSessionMessages(tenantId, "CLASS_1", session.getSessionId());
+
+        assertEquals(0, result.size());
+        // 未触达转写读取（不泄露数据）
+        verify(messageSummaryService, never()).readDecryptedMessages(any(), any());
+    }
+
+    @Test
+    @DisplayName("takeoverSession：班主任接管非本班会话 → forbidden（BACK-001 越权拦截）")
+    void takeoverSession_classTeacher_forbidden() {
+        CounselingSession session = new CounselingSession();
+        session.setSessionId(UUID.randomUUID());
+        session.setStudentUserId(studentId);
+        when(sessionAccessService.getTenantSession(tenantId, session.getSessionId())).thenReturn(session);
+        User otherClassStudent = new User();
+        otherClassStudent.setUserId(studentId);
+        otherClassStudent.setClassCode("CLASS_OTHER");
+        when(userMapper.selectOne(any())).thenReturn(otherClassStudent);
+
+        TeacherService.TakeoverResult result =
+                teacherService.takeoverSession(tenantId, "CLASS_1", UUID.randomUUID(), session.getSessionId());
+
+        assertFalse(result.success());
+        assertEquals("forbidden", result.reason());
+        verify(sessionMapper, never()).updateById(any(CounselingSession.class));
     }
 }

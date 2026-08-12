@@ -32,6 +32,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -97,9 +98,10 @@ class TeacherControllerFullTest {
     // ===== 工作台 =====
 
     @Test
-    @DisplayName("getDashboard 透传租户与用户")
+    @DisplayName("getDashboard 透传租户（BACK-001：psych_teacher classScope=null 全校）")
     void dashboard() {
-        when(teacherService.getDashboard(tenantId, teacherUserId))
+        when(teacherService.resolveClassScope(any(), any(), any())).thenReturn(null);
+        when(teacherService.getDashboard(tenantId, null))
                 // FE-2 后 DashboardVO 扩展为 8 参数（新增 activeStudents/totalSessions）
                 .thenReturn(new TeacherService.DashboardVO(2, 1, 3, 0L, 0L, List.of(), 4.2, 10));
 
@@ -110,9 +112,10 @@ class TeacherControllerFullTest {
     }
 
     @Test
-    @DisplayName("getSatisfaction 透传租户")
+    @DisplayName("getSatisfaction 透传租户（BACK-001：classScope=null 全校）")
     void satisfaction() {
-        when(teacherService.getSatisfactionStats(tenantId))
+        when(teacherService.resolveClassScope(any(), any(), any())).thenReturn(null);
+        when(teacherService.getSatisfactionStats(tenantId, null))
                 .thenReturn(new TeacherService.SatisfactionStatsVO(10, 3.5, List.of(), 2, 4.0));
 
         ApiResponse<TeacherService.SatisfactionStatsVO> resp = controller.getSatisfaction(teacherAuth("psych_teacher"));
@@ -204,11 +207,11 @@ class TeacherControllerFullTest {
     }
 
     @Test
-    @DisplayName("getSessionMessages 透传租户与会话")
+    @DisplayName("getSessionMessages 透传租户与会话（BACK-001：classScope=null 全校）")
     void sessionMessages() {
         controller.getSessionMessages(UUID.randomUUID(), teacherAuth("psych_teacher"));
 
-        verify(teacherService).getSessionMessages(eq(tenantId), any(UUID.class));
+        verify(teacherService).getSessionMessages(eq(tenantId), isNull(), any(UUID.class));
     }
 
     // ===== 会话摘要 / 接管 =====
@@ -250,7 +253,7 @@ class TeacherControllerFullTest {
     @Test
     @DisplayName("takeoverSession 会话不存在 → success=false")
     void takeover_notFound() {
-        when(teacherService.takeoverSession(any(), any(), any()))
+        when(teacherService.takeoverSession(any(), any(), any(), any()))
                 .thenReturn(new TeacherService.TakeoverResult(false, "session_not_found"));
 
         var resp = controller.takeoverSession(UUID.randomUUID(), teacherAuth("psych_teacher"));
@@ -263,13 +266,13 @@ class TeacherControllerFullTest {
     @DisplayName("takeoverSession 成功 → success=true + 下沉 TeacherService 调用")
     void takeover_success() {
         UUID sessionId = UUID.randomUUID();
-        when(teacherService.takeoverSession(any(), any(), any()))
+        when(teacherService.takeoverSession(any(), any(), any(), any()))
                 .thenReturn(new TeacherService.TakeoverResult(true, null));
 
         var resp = controller.takeoverSession(sessionId, teacherAuth("psych_teacher"));
 
         assertThat(resp.data().get("success")).isEqualTo(true);
-        verify(teacherService).takeoverSession(eq(tenantId), eq(teacherUserId), eq(sessionId));
+        verify(teacherService).takeoverSession(eq(tenantId), isNull(), eq(teacherUserId), eq(sessionId));
     }
 
     // ===== 家长链接 =====
@@ -348,14 +351,15 @@ class TeacherControllerFullTest {
     }
 
     @Test
-    @DisplayName("getRiskEvents 按租户查询 + limit 上限 100")
+    @DisplayName("getRiskEvents 按租户查询 + limit 上限 100（BACK-001：classScope=null 全校）")
     void riskEvents() {
-        when(teacherService.pageRiskEvents(tenantId, 500)).thenReturn(List.of(new RiskEvent()));
+        when(teacherService.resolveClassScope(any(), any(), any())).thenReturn(null);
+        when(teacherService.pageRiskEvents(tenantId, null, 500)).thenReturn(List.of(new RiskEvent()));
 
         var resp = controller.getRiskEvents(teacherAuth("psych_teacher"), 500);
 
         assertThat(resp.code()).isEqualTo(0);
-        verify(teacherService).pageRiskEvents(tenantId, 500);
+        verify(teacherService).pageRiskEvents(tenantId, null, 500);
     }
 
     // ===== 导出 =====
@@ -399,7 +403,8 @@ class TeacherControllerFullTest {
     @DisplayName("exportSession HTML 转义 contentSummary（B-04 XSS 防护）")
     void exportSession_escapesHtml() throws IOException {
         UUID sessionId = UUID.randomUUID();
-        when(teacherService.getSessionMessages(tenantId, sessionId))
+        when(teacherService.resolveClassScope(any(), any(), any())).thenReturn(null);
+        when(teacherService.getSessionMessages(tenantId, null, sessionId))
                 .thenReturn(List.of(
                         new TeacherService.MessageSummaryVO(UUID.randomUUID(), "student", 1,
                                 "<img src=x onerror=alert(1)>", null, 0, Instant.now())));
@@ -440,7 +445,8 @@ class TeacherControllerFullTest {
     @DisplayName("exportSession 输出会话存档 HTML（学生/AI 消息 + 情绪中文）+ 审计")
     void exportSession() throws IOException {
         UUID sessionId = UUID.randomUUID();
-        when(teacherService.getSessionMessages(tenantId, sessionId))
+        when(teacherService.resolveClassScope(any(), any(), any())).thenReturn(null);
+        when(teacherService.getSessionMessages(tenantId, null, sessionId))
                 .thenReturn(List.of(
                         new TeacherService.MessageSummaryVO(UUID.randomUUID(), "student", 1,
                                 "今天很难过", "sad", 2, Instant.now()),

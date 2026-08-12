@@ -44,11 +44,12 @@ public class TeacherQualityController {
         return ApiResponse.ok(teacherQualityService.flaggedSessions(ctx.tenantId()));
     }
 
-    /** 质量监控：概览指标 */
+    /** 质量监控：概览指标（BACK-001：班主任仅本班统计） */
     @GetMapping("/teacher/quality/stats")
     public ApiResponse<Map<String, Object>> getQualityStats(Authentication auth) {
         TenantContext ctx = SecuritySupport.requireContext(auth);
-        var stats = teacherService.getSatisfactionStats(ctx.tenantId());
+        String classScope = teacherService.resolveClassScope(ctx.tenantId(), ctx.userId(), ctx.userType());
+        var stats = teacherService.getSatisfactionStats(ctx.tenantId(), classScope);
         long flaggedCount = stats.distribution().stream()
                 .filter(d -> d.stars() <= 2).mapToLong(d -> d.count()).sum();
         double flagRate = stats.totalRated() > 0 ? (double) flaggedCount / stats.totalRated() * 100 : 0;

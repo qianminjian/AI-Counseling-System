@@ -53,7 +53,9 @@ class StudentProfileServiceTest {
     @BeforeEach
     void setUp() {
         service = new StudentProfileService(profileMapper, sessionMapper, riskEventMapper, objectMapper);
-        when(sessionMapper.selectList(any())).thenReturn(List.of(sessionWithEmotion("sad")));
+        // BACK-004（doing/95）：selectList → selectPage（AUD-043 分页插件接缝），mock 同步
+        when(sessionMapper.selectPage(any(), any())).thenReturn(new com.baomidou.mybatisplus.extension.plugins.pagination.Page<CounselingSession>()
+                {{ setRecords(List.of(sessionWithEmotion("sad"))); }});
         when(riskEventMapper.selectList(any())).thenReturn(List.of());
     }
 

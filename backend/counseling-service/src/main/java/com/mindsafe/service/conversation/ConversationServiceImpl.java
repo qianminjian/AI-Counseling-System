@@ -603,15 +603,16 @@ public class ConversationServiceImpl implements ConversationService {
             // 异步生成 AI 会话摘要（摘要完成后触发 PROF-003 画像 LLM 提炼）
             messageSummaryService.generateSummaryAsync(tenantId, sessionId, session.getStudentUserId());
 
-            // 异步更新学生画像（基于历史会话统计；VCL-001：本会话语音情绪聚合回注 emotionBaseline.voice，
-            // 只传可映射到规范集的标签，聚合衍生特征不留逐条流水，design/47 §5.1）
+            // 同步更新学生画像（BACK-005，doing/95：注释如实声明——设计 09 承诺异步，
+            // 但画像写入依赖本会话情绪快照且与 endSession 同一事务，异步化将引入并发覆盖与事务边界风险；
+            // 当前同步执行，内部 catch-all 降级不影响主流程；会话结束时延影响由汇总/分析瘦身控制）
             List<String> voiceEmotions = session.emotionLabels().stream()
                     .map(promptOrchestrationService::mapVoiceEmotion)
                     .filter(Objects::nonNull)
                     .toList();
             profileService.updateProfile(session.getTenantId(), session.getStudentUserId(), voiceEmotions);
 
-            // RISK-204 / ORCH-008 / PROF-024：会话结束分析（趋势+效果量化，异步不阻塞）
+            // RISK-204 / ORCH-008 / PROF-024：会话结束分析（趋势+效果量化，BACK-005：同步执行、内部降级不阻塞主流程）
             try {
                 sessionEndAnalyticsService.analyze(
                         session.getTenantId(), session.getStudentUserId(),

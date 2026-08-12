@@ -148,9 +148,21 @@ public class AiChatServiceImpl implements AiChatService {
 
     private String callWithTimeout(java.util.function.Supplier<String> call, String name) {
         long start = System.currentTimeMillis();
+        // BACK-006（doing/95）：静态裸线程池无 TenantContextTaskDecorator——提交时捕获租户上下文，
+        // 任务内恢复（mapper 写入触发 fail-fast 拦截时不 500），finally 清理防泄漏
+        UUID tenantId = TenantContextHolder.get();
         try {
             String result = java.util.concurrent.CompletableFuture
-                    .supplyAsync(call, LLM_AUX_POOL)
+                    .supplyAsync(() -> {
+                        if (tenantId != null) {
+                            TenantContextHolder.set(tenantId);
+                        }
+                        try {
+                            return call.get();
+                        } finally {
+                            TenantContextHolder.clear();
+                        }
+                    }, LLM_AUX_POOL)
                     .get(AUX_TIMEOUT_SECONDS, java.util.concurrent.TimeUnit.SECONDS);
             log.debug("{} 完成, length={}", name, result != null ? result.length() : 0);
             logModelCall(null, name, System.currentTimeMillis() - start, "success", null);

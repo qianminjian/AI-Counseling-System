@@ -133,7 +133,7 @@ class TeacherStatsPerformanceTest {
                         Map.of("rating", 3, "cnt", 1L)),
                 List.of(Map.of("rating", 5, "cnt", 1L)));
 
-        TeacherService.SatisfactionStatsVO stats = service.getSatisfactionStats(tenantId);
+        TeacherService.SatisfactionStatsVO stats = service.getSatisfactionStats(tenantId, null);
 
         assertThat(stats.totalRated()).isEqualTo(4);
         assertThat(stats.avgRating()).isEqualTo(4.3);
@@ -153,7 +153,7 @@ class TeacherStatsPerformanceTest {
     void satisfactionStats_emptySafe() {
         when(sessionMapper.selectMaps(any())).thenReturn(List.of());
 
-        TeacherService.SatisfactionStatsVO stats = service.getSatisfactionStats(tenantId);
+        TeacherService.SatisfactionStatsVO stats = service.getSatisfactionStats(tenantId, null);
 
         assertThat(stats.totalRated()).isZero();
         assertThat(stats.avgRating()).isZero();

@@ -31,13 +31,16 @@ public class ParentIdentityResolver {
         this.parentService = parentService;
     }
 
-    /** 统一 token 校验：Bearer 前缀剥离 + 签名/refresh/声纹/userType=parent 四重校验。 */
+    /** 统一 token 校验：Bearer 前缀剥离 + 签名/refresh/声纹/tokenType/userType 五重校验。 */
     private String validateParentToken(String authHeader) {
         String token = authHeader.replace("Bearer ", "");
         try {
             if (!jwtTokenProvider.validateToken(token)
                     || jwtTokenProvider.isRefreshToken(token)
                     || jwtTokenProvider.isVoiceCredential(token)
+                    // BACK-008（doing/95）：tokenType 必须是 parent_report——家长域 permitAll 靠本方法自校验，
+                    // 此前仅排除 refresh/voice + userType 判定，业务 ACCESS token（userType=parent）也可冒用家长域入口
+                    || !jwtTokenProvider.isParentReportToken(token)
                     || !"parent".equals(jwtTokenProvider.getUserType(token))) {
                 throw new BizException(ErrorCode.UNAUTHORIZED, "链接已过期或无效");
             }

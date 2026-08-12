@@ -88,7 +88,7 @@ class TeacherDashboardTest {
         // 近 30 天有评价会话 2 条（4★、5★）
         when(sessionMapper.selectList(any())).thenReturn(List.of(ratedSession(4), ratedSession(5)));
 
-        TeacherService.DashboardVO vo = dashboardService.getDashboard(tenantId);
+        TeacherService.DashboardVO vo = dashboardService.getDashboard(tenantId, null);
 
         assertEquals(2L, vo.pendingAlerts());
         assertEquals(5L, vo.todayAlerts());
@@ -108,7 +108,7 @@ class TeacherDashboardTest {
         when(sessionMapper.selectObjs(any())).thenReturn(List.of());
         when(sessionMapper.selectList(any())).thenReturn(List.of());
 
-        TeacherService.DashboardVO vo = dashboardService.getDashboard(tenantId);
+        TeacherService.DashboardVO vo = dashboardService.getDashboard(tenantId, null);
 
         assertEquals(0L, vo.pendingAlerts());
         assertEquals(0L, vo.todayAlerts());
@@ -126,7 +126,7 @@ class TeacherDashboardTest {
         // List.of 不允许 null 元素，用 Arrays.asList
         when(sessionMapper.selectObjs(any())).thenReturn(Arrays.asList(UUID.randomUUID(), null, UUID.randomUUID()));
 
-        TeacherService.DashboardVO vo = dashboardService.getDashboard(tenantId);
+        TeacherService.DashboardVO vo = dashboardService.getDashboard(tenantId, null);
 
         assertEquals(2L, vo.activeStudents());
     }

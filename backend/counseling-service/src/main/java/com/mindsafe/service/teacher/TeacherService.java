@@ -137,18 +137,52 @@ public class TeacherService {
         }
         return null; // admin / psych_teacher / teacher → 全校
     }
+    
+    /**
+     * 班级可见学生 ID 集合（BACK-001，doing/95）：classScope null=全校（返回 null）；
+     * classScope 非 null=该班级学生集合（可能为空 → 空集合，调用方按"无可见数据"处理）。
+     */
+    private Set<UUID> resolveScopeStudentIds(UUID tenantId, String classScope) {
+        if (classScope == null) {
+            return null;
+        }
+        return sessionAccessService.listClassStudents(tenantId, classScope).stream()
+                .map(User::getUserId)
+                .collect(Collectors.toSet());
+    }
+    
+    /**
+     * 会话是否在班级可见范围内（BACK-001）：classScope null=全校可见恒 true；
+     * 否则校验会话学生所属班级与 classScope 一致。
+     */
+    private boolean isSessionInScope(UUID tenantId, String classScope, CounselingSession session) {
+        if (classScope == null) {
+            return true;
+        }
+        // L-1（code-review，doing/95）：无学生会话对班主任 fail-closed（student_user_id 为 null 不可能是本班数据）
+        if (session.getStudentUserId() == null) {
+            return false;
+        }
+        User student = findStudentInTenant(tenantId, session.getStudentUserId());
+        return student != null && classScope.equals(student.getClassCode());
+    }
 
     // ===== 教师接管升级会话（T4 批次A/B：归属校验 + 状态更新 + 审计下沉，Controller 不再直查 Mapper） =====
 
     /**
      * 教师接管升级会话（红色风险转人工）：
      * 租户归属校验（SessionAccessService 强制）→ 状态更新 → 审计留痕（同一事务）。
+     * OPS/BACK-001（doing/95）：新增 classScope 班级范围校验——班主任只能接管本班学生会话。
      */
     @Transactional
-    public TakeoverResult takeoverSession(UUID tenantId, UUID userId, UUID sessionId) {
+    public TakeoverResult takeoverSession(UUID tenantId, String classScope, UUID userId, UUID sessionId) {
         CounselingSession session = sessionAccessService.getTenantSession(tenantId, sessionId);
         if (session == null) {
             return new TakeoverResult(false, "session_not_found");
+        }
+        // BACK-001：班主任（classScope 非 null）接管非本班会话 → 拒绝
+        if (classScope != null && !isSessionInScope(tenantId, classScope, session)) {
+            return new TakeoverResult(false, "forbidden");
         }
         CounselingSession update = new CounselingSession();
         update.setSessionId(sessionId);
@@ -259,22 +293,28 @@ public class TeacherService {
         return risk;
     }
 
-    /** 风险事件列表（同租户，最近 limit 条；AUD-043 分页插件安全化） */
-    public List<RiskEvent> pageRiskEvents(UUID tenantId, int limit) {
+    /** 风险事件列表（同租户，最近 limit 条；AUD-043 分页插件安全化；BACK-001：classScope 班级范围过滤） */
+    public List<RiskEvent> pageRiskEvents(UUID tenantId, String classScope, int limit) {
+        LambdaQueryWrapper<RiskEvent> wrapper = new LambdaQueryWrapper<RiskEvent>()
+                .eq(RiskEvent::getTenantId, tenantId);
+        Set<UUID> scopeStudentIds = resolveScopeStudentIds(tenantId, classScope);
+        if (scopeStudentIds != null && !scopeStudentIds.isEmpty()) {
+            wrapper.in(RiskEvent::getStudentUserId, scopeStudentIds);
+        } else if (scopeStudentIds != null) {
+            return List.of(); // 空班级 → 无可见数据
+        }
         Page<RiskEvent> pageResult = riskEventMapper.selectPage(
                 new Page<>(1, Math.min(limit, 100), false),
-                new LambdaQueryWrapper<RiskEvent>()
-                        .eq(RiskEvent::getTenantId, tenantId)
-                        .orderByDesc(RiskEvent::getDetectedAt)
+                wrapper.orderByDesc(RiskEvent::getDetectedAt)
         );
         return pageResult.getRecords();
     }
 
     // ===== 工作台概览 =====
 
-    /** 工作台概览（S-007②：委托 TeacherDashboardService 统计子域） */
-    public DashboardVO getDashboard(UUID tenantId, UUID teacherUserId) {
-        return dashboardService.getDashboard(tenantId);
+    /** 工作台概览（S-007②：委托 TeacherDashboardService 统计子域；BACK-001：classScope 班级范围） */
+    public DashboardVO getDashboard(UUID tenantId, String classScope) {
+        return dashboardService.getDashboard(tenantId, resolveScopeStudentIds(tenantId, classScope));
     }
 
     // ===== 预警队列 =====
@@ -639,9 +679,17 @@ public class TeacherService {
 
     // ===== 对话摘要查看 =====
 
-    /** 查看某次会话的消息摘要列表 */
-    public List<MessageSummaryVO> getSessionMessages(UUID tenantId, UUID sessionId) {
-        // S-006（doing/93）：收敛至 BA-10 转写单点（查询+解密+保密告知过滤，语义与摘要链路一致）
+    /** 查看某次会话的消息摘要列表（BACK-001：班主任仅可查看本班学生会话） */
+    public List<MessageSummaryVO> getSessionMessages(UUID tenantId, String classScope, UUID sessionId) {
+        // S-006（doing/93）：收敛至 BA-10 转写单点（查询+解密+保密告知过滤，语 义与摘要链路一致）
+        CounselingSession session = sessionAccessService.getTenantSession(tenantId, sessionId);
+        if (session == null) {
+            return List.of(); // 会话不存在/非本租户 → 空列表（不泄露存在性）
+        }
+        // BACK-001：班主任查看非本班会话 → 空列表
+        if (classScope != null && !isSessionInScope(tenantId, classScope, session)) {
+            return List.of();
+        }
         List<MessageSummary> summaries = messageSummaryService.readDecryptedMessages(tenantId, sessionId);
         return summaries.stream().map(m -> new MessageSummaryVO(
                 m.getSummaryId(), m.getSenderType(), m.getTurnCount(),
@@ -814,12 +862,14 @@ public class TeacherService {
 
     // ===== 满意度统计 =====
 
-    public SatisfactionStatsVO getSatisfactionStats(UUID tenantId) {
+    public SatisfactionStatsVO getSatisfactionStats(UUID tenantId, String classScope) {
         // DB 端聚合：全量 + 近 7 天各一次 GROUP BY，
         // 不再将全量历史已评会话加载进内存（审计 fix-perf）
         Instant weekAgo = Instant.now().minus(7, ChronoUnit.DAYS);
-        Map<Integer, Long> dist = ratingDistribution(tenantId, null);
-        Map<Integer, Long> recentDist = ratingDistribution(tenantId, weekAgo);
+        // BACK-001（doing/95）：班主任仅统计本班（classScope 非 null 时按学生集合过滤）
+        Set<UUID> scopeStudentIds = resolveScopeStudentIds(tenantId, classScope);
+        Map<Integer, Long> dist = ratingDistribution(tenantId, scopeStudentIds, null);
+        Map<Integer, Long> recentDist = ratingDistribution(tenantId, scopeStudentIds, weekAgo);
 
         long total = dist.values().stream().mapToLong(Long::longValue).sum();
         long weightedSum = dist.entrySet().stream()
@@ -840,13 +890,19 @@ public class TeacherService {
                 recentCount, Math.round(recentAvg * 10) / 10.0);
     }
 
-    /** 评分分布聚合（rating → count）；since 非空时仅统计该时点之后的会话 */
-    private Map<Integer, Long> ratingDistribution(UUID tenantId, Instant since) {
+    /** 评分分布聚合（rating → count）；since 非空时仅统计该时点之后的会话；scopeStudentIds 非 null 时仅统计该学生集合（BACK-001） */
+    private Map<Integer, Long> ratingDistribution(UUID tenantId, Set<UUID> scopeStudentIds, Instant since) {
         QueryWrapper<CounselingSession> wrapper = new QueryWrapper<CounselingSession>()
                 .select("satisfaction_rating AS rating, COUNT(*) AS cnt")
                 .eq("tenant_id", tenantId)
                 .isNotNull("satisfaction_rating")
                 .groupBy("satisfaction_rating");
+        if (scopeStudentIds != null) {
+            if (scopeStudentIds.isEmpty()) {
+                return new HashMap<>(); // 空班级 → 全零统计
+            }
+            wrapper.in("student_user_id", scopeStudentIds);
+        }
         if (since != null) {
             wrapper.ge("started_at", since);
         }

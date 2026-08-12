@@ -1,6 +1,7 @@
 package com.mindsafe.service.ops;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.mindsafe.service.common.CounselingTimeZone;
 import com.mindsafe.common.tenant.TenantContextHolder;
 import com.mindsafe.domain.entity.Notification;
@@ -76,11 +77,12 @@ public class OpsInsightsService {
      *  仅暴露补发所需最小字段，不含 studentUserId/schoolId 等学生级标识（code-review M2） */
     public List<DeadLedgerEntry> deadLedger(int limit) {
         int safeLimit = Math.min(Math.max(limit, 1), 200);
+        // BACK-012（doing/95）：AUD-043 分页安全化风格统一——.last("LIMIT "+safeLimit) 改 selectPage（防分页插件被绕过）
         List<RiskEvent> events = TenantContextHolder.callAsSystem(() ->
-                riskEventMapper.selectList(new LambdaQueryWrapper<RiskEvent>()
-                        .eq(RiskEvent::getNotifyStatus, "dead")
-                        .orderByDesc(RiskEvent::getDetectedAt)
-                        .last("LIMIT " + safeLimit)));
+                riskEventMapper.selectPage(new Page<>(1, safeLimit, false),
+                        new LambdaQueryWrapper<RiskEvent>()
+                                .eq(RiskEvent::getNotifyStatus, "dead")
+                                .orderByDesc(RiskEvent::getDetectedAt)).getRecords());
         return events.stream().map(e -> new DeadLedgerEntry(
                 e.getRiskEventId(), e.getTenantId(), e.getRiskLevel(), e.getRiskType(),
                 e.getStatus(), e.getDetectedAt(), e.getNotifyStatus())).toList();

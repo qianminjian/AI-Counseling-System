@@ -71,8 +71,8 @@ public class TeacherController {
     @GetMapping("/teacher/dashboard")
     public ApiResponse<TeacherService.DashboardVO> getDashboard(Authentication auth) {
         TenantContext ctx = SecuritySupport.requireContext(auth);
-        UUID userId = (UUID) auth.getPrincipal();
-        return ApiResponse.ok(teacherService.getDashboard(ctx.tenantId(), userId));
+        String classScope = teacherService.resolveClassScope(ctx.tenantId(), ctx.userId(), ctx.userType());
+        return ApiResponse.ok(teacherService.getDashboard(ctx.tenantId(), classScope));
     }
 
     /** 数据看板统计（风隩分布/班级对比/会话趋势/情绪分布） */
@@ -83,11 +83,12 @@ public class TeacherController {
         return ApiResponse.ok(teacherService.getStats(ctx.tenantId(), classScope));
     }
     
-    /** 满意度统计（平均评分/分布/近 7 天趋势） */
+    /** 满意度统计（平均评分/分布/近 7 天趋势；BACK-001：班主任仅本班） */
     @GetMapping("/teacher/satisfaction")
     public ApiResponse<TeacherService.SatisfactionStatsVO> getSatisfaction(Authentication auth) {
         TenantContext ctx = SecuritySupport.requireContext(auth);
-        return ApiResponse.ok(teacherService.getSatisfactionStats(ctx.tenantId()));
+        String classScope = teacherService.resolveClassScope(ctx.tenantId(), ctx.userId(), ctx.userType());
+        return ApiResponse.ok(teacherService.getSatisfactionStats(ctx.tenantId(), classScope));
     }
 
     // ===== 干预话术模板 =====
@@ -138,12 +139,13 @@ public class TeacherController {
         return ApiResponse.ok(note);
     }
 
-    /** 查看某次会话的对话摘要（教师端） */
+    /** 查看某次会话的对话摘要（教师端；BACK-001：班主任仅本班） */
     @GetMapping("/teacher/sessions/{sessionId}/messages")
     public ApiResponse<List<TeacherService.MessageSummaryVO>> getSessionMessages(
             @PathVariable UUID sessionId, Authentication auth) {
         TenantContext ctx = SecuritySupport.requireContext(auth);
-        return ApiResponse.ok(teacherService.getSessionMessages(ctx.tenantId(), sessionId));
+        String classScope = teacherService.resolveClassScope(ctx.tenantId(), ctx.userId(), ctx.userType());
+        return ApiResponse.ok(teacherService.getSessionMessages(ctx.tenantId(), classScope, sessionId));
     }
 
     /** 获取会话 AI 摘要（教师端） */
@@ -162,14 +164,15 @@ public class TeacherController {
         return ApiResponse.ok(Map.of("summary", summary != null ? summary : "", "status", status));
     }
 
-    /** 教师接管升级会话（红色风隩转人工） */
+    /** 教师接管升级会话（红色风隩转人工；BACK-001：班主任仅可接管本班） */
     @PostMapping("/teacher/sessions/{sessionId}/takeover")
     public ApiResponse<Map<String, Object>> takeoverSession(
             @PathVariable UUID sessionId, Authentication auth) {
         TenantContext ctx = SecuritySupport.requireContext(auth);
         UUID userId = (UUID) auth.getPrincipal();
         // T4 批次A/B：归属校验 + 状态更新 + 审计整体下沉 TeacherService（事务内）
-        TeacherService.TakeoverResult result = teacherService.takeoverSession(ctx.tenantId(), userId, sessionId);
+        String classScope = teacherService.resolveClassScope(ctx.tenantId(), ctx.userId(), ctx.userType());
+        TeacherService.TakeoverResult result = teacherService.takeoverSession(ctx.tenantId(), classScope, userId, sessionId);
         if (!result.success()) {
             return ApiResponse.ok(Map.of("success", false, "reason", result.reason()));
         }
@@ -245,13 +248,14 @@ public class TeacherController {
         return ApiResponse.ok(null);
     }
 
-    /** 获取风险事件列表（同租户；T4 批次C：分页查询下沉 TeacherService） */
+    /** 获取风险事件列表（同租户；T4 批次C：分页查询下沉 TeacherService；BACK-001：班主任仅本班） */
     @GetMapping("/teacher/risk-events")
     public ApiResponse<List<RiskEvent>> getRiskEvents(
             Authentication auth,
             @RequestParam(defaultValue = "50") int limit) {
         TenantContext ctx = SecuritySupport.requireContext(auth);
-        return ApiResponse.ok(teacherService.pageRiskEvents(ctx.tenantId(), limit));
+        String classScope = teacherService.resolveClassScope(ctx.tenantId(), ctx.userId(), ctx.userType());
+        return ApiResponse.ok(teacherService.pageRiskEvents(ctx.tenantId(), classScope, limit));
     }
 
     // ===== 数据导出 =====
@@ -434,9 +438,16 @@ public class TeacherController {
     @GetMapping(value = "/teacher/sessions/{sessionId}/export", produces = "text/html; charset=UTF-8")
     public void exportSession(@PathVariable UUID sessionId, Authentication auth, HttpServletResponse response) throws IOException {
         TenantContext ctx = SecuritySupport.requireContext(auth);
-        auditLogService.log(ctx.tenantId(), (UUID) auth.getPrincipal(), "EXPORT_SESSION", "counseling_session", sessionId, null);
 
-        var messages = teacherService.getSessionMessages(ctx.tenantId(), sessionId);
+        // BACK-001：班主任仅可导出本班学生会话（越权面收敛，复用 getSessionMessages 班级校验）
+        String classScope = teacherService.resolveClassScope(ctx.tenantId(), ctx.userId(), ctx.userType());
+        var messages = teacherService.getSessionMessages(ctx.tenantId(), classScope, sessionId);
+
+        // M-1（code-review，doing/95）：审计移后——越权/不存在的会话返回空列表时不写"成功导出"审计，
+        // 避免越权尝试被伪装成正常操作（数据未泄露，但留痕须如实）
+        if (!messages.isEmpty()) {
+            auditLogService.log(ctx.tenantId(), (UUID) auth.getPrincipal(), "EXPORT_SESSION", "counseling_session", sessionId, null);
+        }
 
         StringBuilder html = new StringBuilder();
         html.append("<!DOCTYPE html><html><head><meta charset='UTF-8'>");

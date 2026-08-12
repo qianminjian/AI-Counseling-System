@@ -63,11 +63,11 @@ class TeacherServiceDelegationTest {
     }
 
     @Test
-    @DisplayName("看板概览委托统计子域（对外契约不变）")
+    @DisplayName("看板概览委托统计子域（BACK-001：classScope null=全校）")
     void dashboardDelegates() {
         UUID t = UUID.randomUUID();
-        teacherService.getDashboard(t, UUID.randomUUID());
+        teacherService.getDashboard(t, null);
 
-        verify(dashboardService).getDashboard(t);
+        verify(dashboardService).getDashboard(t, null);
     }
 }

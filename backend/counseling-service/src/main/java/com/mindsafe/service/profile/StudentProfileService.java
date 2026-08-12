@@ -1,6 +1,7 @@
 package com.mindsafe.service.profile;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mindsafe.ai.orchestrator.ProfileSignals;
@@ -64,18 +65,21 @@ public class StudentProfileService {
      *
      * @param voiceEmotions 本次会话语音情绪标签（已归一到规范集），空列表 = 无新语音数据，保留既有 voice 节点
      */
+    /** 画像聚合取最近会话数（BACK-004：原裸 .last("LIMIT 20") 绕过分页拦截器，改 selectPage 对齐 AUD-043） */
+    private static final int PROFILE_RECENT_SESSION_LIMIT = 20;
+    
     @Transactional
     public void updateProfile(UUID tenantId, UUID userId, List<String> voiceEmotions) {
         try {
             // 1. 聚合情绪分布（近 20 次会话）
-            // N-009（2026-08-11）：AUD-043 分页插件接缝（原 .last("LIMIT 20") 原始拼接——与 tenant_id 注入并存可接受但绕过分页拦截器）
-            List<CounselingSession> recentSessions = sessionMapper.selectList(
+            // BACK-004（doing/95）：AUD-043 分页插件接缝——原 .last("LIMIT 20") 原始拼接改为 selectPage
+            List<CounselingSession> recentSessions = sessionMapper.selectPage(
+                    new Page<>(1, PROFILE_RECENT_SESSION_LIMIT, false),
                     new LambdaQueryWrapper<CounselingSession>()
                             .eq(CounselingSession::getTenantId, tenantId)
                             .eq(CounselingSession::getStudentUserId, userId)
                             .orderByDesc(CounselingSession::getCreatedAt)
-                            .last("LIMIT 20")
-            );
+            ).getRecords();
 
             if (recentSessions.isEmpty()) return;
 
@@ -123,7 +127,8 @@ public class StudentProfileService {
 
             log.debug("画像更新完成: userId={}, sessions={}", userId, recentSessions.size());
         } catch (Exception e) {
-            log.warn("画像更新失败（不影响主流程）: userId={}, error={}", userId, e.getMessage());
+            // BACK-007（doing/95）：catch-all 保留降级语义，但补异常堆栈留痕（此前仅 message，排障无上下文）
+            log.warn("画像更新失败（不影响主流程）: userId={}", userId, e);
         }
     }
 

@@ -123,7 +123,9 @@ class OpsInsightsServiceTest {
         e.setDetectedAt(Instant.now());
         e.setNotifyStatus("dead");
         e.setStudentUserId(UUID.randomUUID());
-        when(riskEventMapper.selectList(any(Wrapper.class))).thenReturn(List.of(e));
+        // BACK-012（doing/95）：deadLedger 改 selectPage（AUD-043 风格统一），mock 同步
+        when(riskEventMapper.selectPage(any(), any())).thenReturn(new com.baomidou.mybatisplus.extension.plugins.pagination.Page<RiskEvent>()
+                {{ setRecords(List.of(e)); }});
 
         List<OpsInsightsService.DeadLedgerEntry> ledger = service.deadLedger(0);
 

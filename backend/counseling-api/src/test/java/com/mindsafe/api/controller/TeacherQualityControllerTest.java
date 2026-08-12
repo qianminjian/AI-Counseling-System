@@ -15,6 +15,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -75,7 +76,8 @@ class TeacherQualityControllerTest {
     @Test
     @DisplayName("getQualityStats 计算低分计数与 flagRate（1 星 2 星计入）")
     void qualityStats() {
-        when(teacherService.getSatisfactionStats(tenantId))
+        when(teacherService.resolveClassScope(any(), any(), any())).thenReturn(null);
+        when(teacherService.getSatisfactionStats(tenantId, null))
                 .thenReturn(new TeacherService.SatisfactionStatsVO(10, 3.5,
                         List.of(
                                 new TeacherService.RatingDistItem(1, 1L),
@@ -97,7 +99,8 @@ class TeacherQualityControllerTest {
     @Test
     @DisplayName("getQualityStats totalRated=0 → flagRate=0 不除零")
     void qualityStats_zeroRated() {
-        when(teacherService.getSatisfactionStats(tenantId))
+        when(teacherService.resolveClassScope(any(), any(), any())).thenReturn(null);
+        when(teacherService.getSatisfactionStats(tenantId, null))
                 .thenReturn(new TeacherService.SatisfactionStatsVO(0, 0.0,
                         List.of(new TeacherService.RatingDistItem(1, 0L),
                                 new TeacherService.RatingDistItem(2, 0L),

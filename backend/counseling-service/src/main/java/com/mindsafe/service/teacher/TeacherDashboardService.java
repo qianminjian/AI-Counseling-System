@@ -17,6 +17,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -38,55 +39,68 @@ public class TeacherDashboardService {
         this.sessionMapper = sessionMapper;
     }
 
-    /** 工作台概览（P1-FE-2 大屏卡片：待处理/今日新增/活跃会话/活跃学生/累计/周趋势/满意度） */
-    public DashboardVO getDashboard(UUID tenantId) {
+    /**
+     * 工作台概览（P1-FE-2 大屏卡片：待处理/今日新增/活跃会话/活跃学生/累计/周 趋势/满意度）。
+     * BACK-001（doing/95）：scopeStudentIds 班级可见学生集合——null=全校；空集合=无可见数据（全零）；
+     * 非空=仅统计该学生集合（班主任本班）。
+     */
+    public DashboardVO getDashboard(UUID tenantId, Set<UUID> scopeStudentIds) {
         Instant now = Instant.now();
         Instant todayStart = CounselingTimeZone.startOfDay(now); // B-03：上海日边界（UTC 截断会在 08:00 前漂移前一天）
         Instant weekAgo = now.minus(7, ChronoUnit.DAYS);
 
+        // BACK-001：空班级（无可见学生）→ 直接返回全零，不再发全校查询
+        boolean emptyScope = scopeStudentIds != null && scopeStudentIds.isEmpty();
+
         // 待处理预警数
-        long pendingAlerts = riskEventMapper.selectCount(
+        long pendingAlerts = emptyScope ? 0 : riskEventMapper.selectCount(
                 new LambdaQueryWrapper<RiskEvent>()
                         .eq(RiskEvent::getTenantId, tenantId)
                         .eq(RiskEvent::getStatus, RiskEvent.STATUS_OPEN)
+                        .in(scopeStudentIds != null, RiskEvent::getStudentUserId, scopeStudentIds)
         );
 
         // 今日新增预警
-        long todayAlerts = riskEventMapper.selectCount(
+        long todayAlerts = emptyScope ? 0 : riskEventMapper.selectCount(
                 new LambdaQueryWrapper<RiskEvent>()
                         .eq(RiskEvent::getTenantId, tenantId)
                         .ge(RiskEvent::getDetectedAt, todayStart)
+                        .in(scopeStudentIds != null, RiskEvent::getStudentUserId, scopeStudentIds)
         );
 
         // 今日活跃会话数
-        long todaySessions = sessionMapper.selectCount(
+        long todaySessions = emptyScope ? 0 : sessionMapper.selectCount(
                 new LambdaQueryWrapper<CounselingSession>()
                         .eq(CounselingSession::getTenantId, tenantId)
                         .ge(CounselingSession::getStartedAt, todayStart)
+                        .in(scopeStudentIds != null, CounselingSession::getStudentUserId, scopeStudentIds)
         );
 
-        // 今日活跃学生数（今日有会话的去重学生）：单次 DISTINCT 查询，避免全量会话查列表（P1-FE-2）
-        List<Object> activeStudentIds = sessionMapper.selectObjs(
+        // 今日活跃学生数（今日有会话的去重学生）：单次 DISTINCT 查询，避免全量 会话查列表（P1-FE-2）
+        List<Object> activeStudentIds = emptyScope ? List.of() : sessionMapper.selectObjs(
                 new QueryWrapper<CounselingSession>()
                         .select("DISTINCT student_user_id")
                         .eq("tenant_id", tenantId)
-                        .ge("started_at", todayStart));
+                        .ge("started_at", todayStart)
+                        .in(scopeStudentIds != null, "student_user_id", scopeStudentIds));
         long activeStudents = activeStudentIds.stream().filter(Objects::nonNull).count();
 
         // 累计会话数（该租户全部会话，P1-FE-2 大屏"累计会话"卡片）
-        long totalSessions = sessionMapper.selectCount(
+        long totalSessions = emptyScope ? 0 : sessionMapper.selectCount(
                 new LambdaQueryWrapper<CounselingSession>()
                         .eq(CounselingSession::getTenantId, tenantId)
+                        .in(scopeStudentIds != null, CounselingSession::getStudentUserId, scopeStudentIds)
         );
 
         // 周趋势（最近 7 天每天的风险事件数）：单次查询 + 内存分桶，替代 7 次循环 count
         Instant weekStart = CounselingTimeZone.truncateToDay(now.minus(6, ChronoUnit.DAYS));
         Instant tomorrowStart = CounselingTimeZone.startOfNextDay(now);
-        List<RiskEvent> weekEvents = riskEventMapper.selectList(
+        List<RiskEvent> weekEvents = emptyScope ? List.of() : riskEventMapper.selectList(
                 new LambdaQueryWrapper<RiskEvent>()
                         .eq(RiskEvent::getTenantId, tenantId)
                         .ge(RiskEvent::getDetectedAt, weekStart)
                         .lt(RiskEvent::getDetectedAt, tomorrowStart)
+                        .in(scopeStudentIds != null, RiskEvent::getStudentUserId, scopeStudentIds)
         );
         Map<Instant, Long> eventsByDay = weekEvents.stream()
                 .map(RiskEvent::getDetectedAt)
@@ -101,11 +115,12 @@ public class TeacherDashboardService {
 
         // 满意度统计（近 30 天有评价的会话）
         Instant monthAgo = now.minus(30, ChronoUnit.DAYS);
-        List<CounselingSession> ratedSessions = sessionMapper.selectList(
+        List<CounselingSession> ratedSessions = emptyScope ? List.of() : sessionMapper.selectList(
                 new LambdaQueryWrapper<CounselingSession>()
                         .eq(CounselingSession::getTenantId, tenantId)
                         .ge(CounselingSession::getStartedAt, monthAgo)
                         .isNotNull(CounselingSession::getSatisfactionRating)
+                        .in(scopeStudentIds != null, CounselingSession::getStudentUserId, scopeStudentIds)
         );
         double avgSatisfaction = ratedSessions.stream()
                 .mapToInt(CounselingSession::getSatisfactionRating)

@@ -42,9 +42,20 @@ class ParentIdentityResolverTest {
         when(jwtTokenProvider.validateToken(TOKEN)).thenReturn(true);
         when(jwtTokenProvider.isRefreshToken(TOKEN)).thenReturn(false);
         when(jwtTokenProvider.isVoiceCredential(TOKEN)).thenReturn(false);
+        // BACK-008（doing/95）：tokenType 必须 parent_report，正常路径 stub 为 true
+        when(jwtTokenProvider.isParentReportToken(TOKEN)).thenReturn(true);
         when(jwtTokenProvider.getUserType(TOKEN)).thenReturn("parent");
         when(jwtTokenProvider.getUserId(TOKEN)).thenReturn(parentId);
         when(jwtTokenProvider.getTenantId(TOKEN)).thenReturn(tenantId);
+    }
+
+    @Test
+    @DisplayName("统一校验：非 parent_report tokenType（如业务 ACCESS）→ UNAUTHORIZED（BACK-008）")
+    void accessTokenRejected() {
+        when(jwtTokenProvider.isParentReportToken(TOKEN)).thenReturn(false);
+        assertThatThrownBy(() -> resolver.resolveLoginIdentity("Bearer " + TOKEN))
+                .isInstanceOf(BizException.class)
+                .extracting("code").isEqualTo(ErrorCode.UNAUTHORIZED.code());
     }
 
     @Test

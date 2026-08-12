@@ -58,6 +58,9 @@ mindsafe:
     key: ${MINDSAFE_ENCRYPTION_KEY}
     key-version: ${MINDSAFE_ENCRYPTION_KEY_VERSION:1}
     previous-keys: ${MINDSAFE_ENCRYPTION_PREVIOUS_KEYS:}
+  # BACK-009（doing/95）：prod 显式覆盖 CORS——默认不再含 localhost 开发源
+  cors:
+    allowed-origins: ${MINDSAFE_CORS_ORIGINS:https://yun.gxjugu.com}
   llm:
     first-token-timeout-ms: 12000
     overall-timeout-ms: 45000

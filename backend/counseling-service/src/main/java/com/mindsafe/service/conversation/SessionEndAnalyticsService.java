@@ -35,6 +35,8 @@ import java.util.UUID;
 public class SessionEndAnalyticsService {
 
     private static final Logger log = LoggerFactory.getLogger(SessionEndAnalyticsService.class);
+    /** BACK-010（doing/95）：默认平均置信（后续从 SER 元数据读取，先收编常量） */
+    private static final double DEFAULT_AVG_CONFIDENCE = 0.75;
 
     private final VoiceEmotionTrendAnalyzer trendAnalyzer;
     private final TrendAnomalySignaler anomalySignaler;
@@ -102,7 +104,7 @@ public class SessionEndAnalyticsService {
                         studentUserId.toString(),
                         worseningCount,
                         trendResult.negativeRatio(),
-                        0.75 // 默认平均置信（后续从 SER 元数据读取）
+                        DEFAULT_AVG_CONFIDENCE // BACK-010：默认平均置信（后续从 SER 元数据读取）
                 );
                 if (signal != null) {
                     log.info("趋势关注信号: student={}, type={}, desc={}",
