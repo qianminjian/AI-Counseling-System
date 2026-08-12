@@ -1,5 +1,6 @@
 package com.mindsafe.api.controller;
 
+import com.mindsafe.common.exception.BizException;
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.mindsafe.api.security.JwtTokenProvider;
@@ -18,6 +19,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -79,10 +81,9 @@ class WeComOAuthControllerTest {
     @Test
     @DisplayName("getAuthUrl 未配置企微 → 501")
     void authUrl_notConfigured() {
-        ApiResponse<Map<String, Object>> resp = controller.getAuthUrl();
-
-        assertThat(resp.code()).isEqualTo(501);
-        assertThat(resp.message()).contains("企业微信未配置");
+        assertThatThrownBy(() -> controller.getAuthUrl())
+                .isInstanceOf(BizException.class)
+                .hasMessageContaining("企业微信未配置");
     }
 
     @Test
@@ -103,27 +104,24 @@ class WeComOAuthControllerTest {
     @Test
     @DisplayName("callback 缺 code → 400")
     void callback_missingCode() {
-        ApiResponse<Map<String, Object>> resp = controller.callback(Map.of());
-
-        assertThat(resp.code()).isEqualTo(400);
-        assertThat(resp.message()).contains("缺少授权码");
+        assertThatThrownBy(() -> controller.callback(Map.of()))
+                .isInstanceOf(BizException.class)
+                .hasMessageContaining("缺少授权码");
     }
 
     @Test
     @DisplayName("callback code 为空白 → 400")
     void callback_blankCode() {
-        ApiResponse<Map<String, Object>> resp = controller.callback(Map.of("code", "  "));
-
-        assertThat(resp.code()).isEqualTo(400);
+        assertThatThrownBy(() -> controller.callback(Map.of("code", "  ")))
+                .isInstanceOf(BizException.class);
     }
 
     @Test
     @DisplayName("callback 未配置企微 → 501")
     void callback_notConfigured() {
-        ApiResponse<Map<String, Object>> resp = controller.callback(Map.of("code", "authcode"));
-
-        assertThat(resp.code()).isEqualTo(501);
-        assertThat(resp.message()).contains("企业微信未配置");
+        assertThatThrownBy(() -> controller.callback(Map.of("code", "authcode")))
+                .isInstanceOf(BizException.class)
+                .hasMessageContaining("企业微信未配置");
     }
 
     @Test
@@ -158,10 +156,9 @@ class WeComOAuthControllerTest {
         when(restTemplate.getForObject(anyString(), eq(Map.class)))
                 .thenReturn(Map.of("access_token", "at_123"), Map.of("errcode", 40014));
 
-        ApiResponse<Map<String, Object>> resp = controller.callback(Map.of("code", "authcode"));
-
-        assertThat(resp.code()).isEqualTo(401);
-        assertThat(resp.message()).contains("企微授权失败");
+        assertThatThrownBy(() -> controller.callback(Map.of("code", "authcode")))
+                .isInstanceOf(BizException.class)
+                .hasMessageContaining("企微授权失败");
         verify(weComOAuthService, never()).findTeacherByWeComId(anyString());
     }
 
@@ -189,9 +186,8 @@ class WeComOAuthControllerTest {
         when(restTemplate.getForObject(anyString(), eq(Map.class)))
                 .thenThrow(new RuntimeException("连接超时"));
 
-        ApiResponse<Map<String, Object>> resp = controller.callback(Map.of("code", "authcode"));
-
-        assertThat(resp.code()).isEqualTo(500);
-        assertThat(resp.message()).contains("企微登录处理失败");
+        assertThatThrownBy(() -> controller.callback(Map.of("code", "authcode")))
+                .isInstanceOf(BizException.class)
+                .hasMessageContaining("企微登录处理失败");
     }
 }

@@ -4,6 +4,7 @@ import com.mindsafe.api.security.JwtAuthenticationFilter.TenantContext;
 import com.mindsafe.api.security.SecuritySupport;
 import com.mindsafe.common.dto.ApiResponse;
 import com.mindsafe.common.dto.ErrorCode;
+import com.mindsafe.common.exception.BizException;
 import com.mindsafe.domain.entity.PromptVersion;
 import com.mindsafe.service.audit.AuditLogService;
 import com.mindsafe.service.prompt.PromptEvalGovernance;
@@ -106,16 +107,16 @@ public class AdminPromptController {
         Map<String, Object> b = body != null ? body : Map.of();
         String reviewer = b.get("reviewer") != null ? String.valueOf(b.get("reviewer")).trim() : "";
         if (reviewer.isBlank()) {
-            return ApiResponse.error(ErrorCode.PARAM_INVALID.code(), "reviewer 为必填项（审校人签字）");
+            throw new BizException(ErrorCode.PARAM_INVALID, "reviewer 为必填项（审校人签字）");
         }
 
         try {
             promptVersionService.activateVersion(versionId, reviewer);
         } catch (IllegalArgumentException e) {
-            return ApiResponse.error(ErrorCode.RESOURCE_NOT_FOUND.code(), e.getMessage());
+            throw new BizException(ErrorCode.RESOURCE_NOT_FOUND, e.getMessage());
         } catch (IllegalStateException e) {
             // 门禁拒绝：保留明细返回（HTTP 200 + success=false，前端统一约定）
-            return ApiResponse.error(ErrorCode.PARAM_INVALID.code(), e.getMessage());
+            throw new BizException(ErrorCode.PARAM_INVALID, e.getMessage());
         }
         // 操作者留痕（门禁明细留痕由服务层 PROMPT_VERSION_ACTIVATE 承担）
         auditLogService.log(ctx.tenantId(), ctx.userId(), "PROMPT_ACTIVATE", "prompt_version", versionId,
@@ -138,9 +139,9 @@ public class AdminPromptController {
         try {
             promptVersionService.submitForReview(versionId);
         } catch (IllegalArgumentException e) {
-            return ApiResponse.error(ErrorCode.RESOURCE_NOT_FOUND.code(), e.getMessage());
+            throw new BizException(ErrorCode.RESOURCE_NOT_FOUND, e.getMessage());
         } catch (IllegalStateException e) {
-            return ApiResponse.error(ErrorCode.PARAM_INVALID.code(), e.getMessage());
+            throw new BizException(ErrorCode.PARAM_INVALID, e.getMessage());
         }
         return ApiResponse.ok(null);
     }
@@ -154,9 +155,9 @@ public class AdminPromptController {
         try {
             promptVersionService.reviewVersion(versionId, reviewer);
         } catch (IllegalArgumentException e) {
-            return ApiResponse.error(ErrorCode.PARAM_INVALID.code(), e.getMessage());
+            throw new BizException(ErrorCode.PARAM_INVALID, e.getMessage());
         } catch (IllegalStateException e) {
-            return ApiResponse.error(ErrorCode.PARAM_INVALID.code(), e.getMessage());
+            throw new BizException(ErrorCode.PARAM_INVALID, e.getMessage());
         }
         return ApiResponse.ok(null);
     }

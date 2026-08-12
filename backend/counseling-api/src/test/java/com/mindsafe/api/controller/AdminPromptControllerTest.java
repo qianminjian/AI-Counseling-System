@@ -1,5 +1,6 @@
 package com.mindsafe.api.controller;
 
+import com.mindsafe.common.exception.BizException;
 import com.mindsafe.api.security.JwtAuthenticationFilter.TenantContext;
 import com.mindsafe.common.dto.ApiResponse;
 import com.mindsafe.common.dto.ErrorCode;
@@ -20,6 +21,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
@@ -190,9 +192,8 @@ class AdminPromptControllerTest {
     @Test
     @DisplayName("activateVersion reviewer 为空 → PARAM_INVALID")
     void activate_missingReviewer() {
-        var resp = controller.activateVersion(versionId, Map.of("reviewer", "  "), adminAuth());
-
-        assertThat(resp.code()).isEqualTo(ErrorCode.PARAM_INVALID.code());
+        assertThatThrownBy(() -> controller.activateVersion(versionId, Map.of("reviewer", "  "), adminAuth()))
+                .isInstanceOf(BizException.class);
         verify(promptVersionService, never()).activateVersion(any(), any());
     }
 
@@ -210,9 +211,7 @@ class AdminPromptControllerTest {
     @Test
     @DisplayName("activateVersion 请求体为空 → 等价缺 reviewer")
     void activate_nullBody() {
-        var resp = controller.activateVersion(versionId, null, adminAuth());
-
-        assertThat(resp.code()).isEqualTo(ErrorCode.PARAM_INVALID.code());
+        assertThatThrownBy(() -> controller.activateVersion(versionId, null, adminAuth())).isInstanceOf(BizException.class);
     }
 
     @Test
@@ -220,9 +219,8 @@ class AdminPromptControllerTest {
     void activate_notFound() {
         doThrow(new IllegalArgumentException("版本不存在")).when(promptVersionService).activateVersion(versionId, "张老师");
 
-        var resp = controller.activateVersion(versionId, Map.of("reviewer", "张老师"), adminAuth());
-
-        assertThat(resp.code()).isEqualTo(ErrorCode.RESOURCE_NOT_FOUND.code());
+        assertThatThrownBy(() -> controller.activateVersion(versionId, Map.of("reviewer", "张老师"), adminAuth()))
+                .isInstanceOf(BizException.class);
     }
 
     @Test
@@ -230,10 +228,9 @@ class AdminPromptControllerTest {
     void activate_gateRejected() {
         doThrow(new IllegalStateException("红队回归未通过")).when(promptVersionService).activateVersion(versionId, "张老师");
 
-        var resp = controller.activateVersion(versionId, Map.of("reviewer", "张老师"), adminAuth());
-
-        assertThat(resp.code()).isEqualTo(ErrorCode.PARAM_INVALID.code());
-        assertThat(resp.message()).contains("红队回归未通过");
+        assertThatThrownBy(() -> controller.activateVersion(versionId, Map.of("reviewer", "张老师"), adminAuth()))
+                .isInstanceOf(BizException.class)
+                .hasMessageContaining("红队回归未通过");
         verify(auditLogService, never()).log(any(), any(), eq("PROMPT_ACTIVATE"), any(), any(), any());
     }
 

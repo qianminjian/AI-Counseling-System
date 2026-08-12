@@ -1,6 +1,8 @@
 package com.mindsafe.api.controller;
 
 import com.mindsafe.common.dto.ApiResponse;
+import com.mindsafe.common.dto.ErrorCode;
+import com.mindsafe.common.exception.BizException;
 import com.mindsafe.service.device.PlatformDeviceService;
 import org.springframework.web.bind.annotation.*;
 
@@ -37,7 +39,7 @@ public class PlatformDeviceController {
     public ApiResponse<Map<String, Object>> getDeviceDetail(@PathVariable UUID deviceId) {
         Map<String, Object> detail = platformDeviceService.getDeviceDetail(deviceId);
         if (detail == null) {
-            return ApiResponse.error(404, "设备不存在");
+            throw new BizException(ErrorCode.RESOURCE_NOT_FOUND, "设备不存在");
         }
         return ApiResponse.ok(detail);
     }
@@ -47,7 +49,7 @@ public class PlatformDeviceController {
     public ApiResponse<Map<String, Object>> exportQr(@RequestBody Map<String, Object> body) {
         List<String> deviceCodes = castStringList(body.get("deviceCodes"));
         if (deviceCodes == null || deviceCodes.isEmpty()) {
-            return ApiResponse.error(400, "deviceCodes 缺失");
+            throw new BizException(ErrorCode.PARAM_INVALID, "deviceCodes 缺失");
         }
         String issuedBy = body.get("issuedBy") == null ? null : String.valueOf(body.get("issuedBy"));
         return ApiResponse.ok(platformDeviceService.exportQr(deviceCodes, issuedBy));
@@ -58,14 +60,14 @@ public class PlatformDeviceController {
     public ApiResponse<Map<String, Object>> batchOperation(@RequestBody Map<String, Object> body) {
         List<String> deviceCodes = castStringList(body.get("deviceCodes"));
         if (deviceCodes == null || deviceCodes.isEmpty()) {
-            return ApiResponse.error(400, "deviceCodes 缺失");
+            throw new BizException(ErrorCode.PARAM_INVALID, "deviceCodes 缺失");
         }
         String action = body.get("action") == null ? null : String.valueOf(body.get("action"));
         String operator = body.get("operator") == null ? null : String.valueOf(body.get("operator"));
         try {
             return ApiResponse.ok(platformDeviceService.batchOperation(deviceCodes, action, operator));
         } catch (IllegalArgumentException e) {
-            return ApiResponse.error(400, e.getMessage());
+            throw new BizException(ErrorCode.PARAM_INVALID, e.getMessage());
         }
     }
 

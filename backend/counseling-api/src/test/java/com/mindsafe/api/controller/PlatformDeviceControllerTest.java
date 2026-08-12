@@ -1,5 +1,6 @@
 package com.mindsafe.api.controller;
 
+import com.mindsafe.common.exception.BizException;
 import com.mindsafe.service.device.PlatformDeviceService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -11,6 +12,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -45,14 +47,14 @@ class PlatformDeviceControllerTest {
     void detailNotFound() {
         UUID deviceId = UUID.randomUUID();
         when(service.getDeviceDetail(deviceId)).thenReturn(null);
-        assertThat(controller.getDeviceDetail(deviceId).code()).isEqualTo(404);
+        assertThatThrownBy(() -> controller.getDeviceDetail(deviceId)).isInstanceOf(BizException.class);
     }
 
     @Test
     @DisplayName("export-qr：deviceCodes 缺失返回 400")
     void exportQrMissingCodes() {
-        var response = controller.exportQr(Map.of());
-        assertThat(response.code()).isEqualTo(400);
+        assertThatThrownBy(() -> controller.exportQr(Map.of()))
+                .isInstanceOf(BizException.class);
     }
 
     @Test
@@ -72,9 +74,10 @@ class PlatformDeviceControllerTest {
     void batchInvalidAction() {
         when(service.batchOperation(List.of("K7M2P9XW4AQ"), "hack", null))
                 .thenThrow(new IllegalArgumentException("非法操作类型: hack"));
-        var response = controller.batchOperation(Map.of("deviceCodes", List.of("K7M2P9XW4AQ"), "action", "hack"));
-        assertThat(response.code()).isEqualTo(400);
-        assertThat(response.message()).contains("非法操作类型");
+        assertThatThrownBy(() -> controller.batchOperation(
+                Map.of("deviceCodes", List.of("K7M2P9XW4AQ"), "action", "hack")))
+                .isInstanceOf(BizException.class)
+                .hasMessageContaining("非法操作类型");
     }
 
     @Test

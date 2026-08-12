@@ -3,6 +3,8 @@ package com.mindsafe.api.controller;
 import com.mindsafe.api.security.JwtAuthenticationFilter.TenantContext;
 import com.mindsafe.api.security.SecuritySupport;
 import com.mindsafe.common.dto.ApiResponse;
+import com.mindsafe.common.dto.ErrorCode;
+import com.mindsafe.common.exception.BizException;
 import com.mindsafe.domain.entity.TocFamilyAccount;
 import com.mindsafe.service.toc.TocAuthService;
 import com.mindsafe.api.security.TocAuthProvider;
@@ -38,7 +40,7 @@ public class TocAuthController {
         try {
             return ApiResponse.ok(tocAuthService.sendCode(phone));
         } catch (IllegalArgumentException e) {
-            return ApiResponse.error(400, e.getMessage());
+            throw new BizException(ErrorCode.PARAM_INVALID, e.getMessage());
         }
     }
 
@@ -51,7 +53,7 @@ public class TocAuthController {
             TocFamilyAccount account = tocAuthService.register(phone, code);
             return ApiResponse.ok(tocAuthProvider.buildSession(account));
         } catch (IllegalArgumentException e) {
-            return ApiResponse.error(400, e.getMessage());
+            throw new BizException(ErrorCode.PARAM_INVALID, e.getMessage());
         }
     }
 
@@ -64,7 +66,7 @@ public class TocAuthController {
             TocFamilyAccount account = tocAuthService.login(phone, code);
             return ApiResponse.ok(tocAuthProvider.buildSession(account));
         } catch (IllegalArgumentException e) {
-            return ApiResponse.error(400, e.getMessage());
+            throw new BizException(ErrorCode.PARAM_INVALID, e.getMessage());
         }
     }
 
@@ -74,7 +76,7 @@ public class TocAuthController {
         TenantContext ctx = SecuritySupport.requireContext(auth);
         TocFamilyAccount account = tocAuthService.getById(ctx.userId());
         if (account == null) {
-            return ApiResponse.error(404, "账号不存在");
+            throw new BizException(ErrorCode.RESOURCE_NOT_FOUND, "账号不存在");
         }
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("familyAccountId", account.getFamilyAccountId());

@@ -3,6 +3,8 @@ package com.mindsafe.api.controller;
 import com.mindsafe.api.security.JwtAuthenticationFilter.TenantContext;
 import com.mindsafe.api.security.SecuritySupport;
 import com.mindsafe.common.dto.ApiResponse;
+import com.mindsafe.common.dto.ErrorCode;
+import com.mindsafe.common.exception.BizException;
 import com.mindsafe.service.device.DevicePreferenceService;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
@@ -31,7 +33,7 @@ public class TocPreferenceController {
     public ApiResponse<Map<String, Object>> get(Authentication auth, @PathVariable String deviceCode) {
         Map<String, Object> prefs = preferenceService.getPreferences(accountId(auth), deviceCode);
         if (prefs == null) {
-            return ApiResponse.error(404, "该设备无偏好设置");
+            throw new BizException(ErrorCode.RESOURCE_NOT_FOUND, "该设备无偏好设置");
         }
         return ApiResponse.ok(prefs);
     }
@@ -47,7 +49,7 @@ public class TocPreferenceController {
             return ApiResponse.ok(preferenceService.setPreferences(
                     accountId(auth), deviceCode, volume, voicePersona, dialoguePref));
         } catch (IllegalArgumentException e) {
-            return ApiResponse.error(400, e.getMessage());
+            throw new BizException(ErrorCode.PARAM_INVALID, e.getMessage());
         }
     }
 

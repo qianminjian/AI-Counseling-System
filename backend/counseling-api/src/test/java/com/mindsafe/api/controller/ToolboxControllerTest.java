@@ -151,10 +151,9 @@ class ToolboxControllerTest {
     @Test
     @DisplayName("byCategory 无效分类 → 400")
     void byCategory_invalid() {
-        ApiResponse<List<ToolDefinition>> resp = controller.byCategory("magic");
-
-        assertThat(resp.code()).isEqualTo(400);
-        assertThat(resp.message()).contains("无效的工具分类");
+        assertThatThrownBy(() -> controller.byCategory("magic"))
+                .isInstanceOf(BizException.class)
+                .hasMessageContaining("无效的工具分类");
     }
 
     @Test

@@ -2,6 +2,7 @@ package com.mindsafe.api.controller;
 
 import com.mindsafe.api.security.JwtAuthenticationFilter.TenantContext;
 import com.mindsafe.common.dto.ApiResponse;
+import com.mindsafe.common.exception.BizException;
 import com.mindsafe.service.audit.AuditLogService;
 import com.mindsafe.service.knowledge.EditorialWorkflowService;
 import com.mindsafe.service.knowledge.HybridRetrievalService;
@@ -19,6 +20,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -163,9 +165,8 @@ class KnowledgeBaseControllerTest {
     @Test
     @DisplayName("transitionReviewStatus 缺 targetStatus → 400")
     void review_missingTarget() {
-        var resp = controller.transitionReviewStatus(docId, Map.of(), auth());
-
-        assertThat(resp.code()).isEqualTo(400);
+        assertThatThrownBy(() -> controller.transitionReviewStatus(docId, Map.of(), auth()))
+                .isInstanceOf(BizException.class);
     }
 
     @Test
@@ -173,9 +174,9 @@ class KnowledgeBaseControllerTest {
     void review_docNotFound() {
         when(knowledgeBaseService.findDocumentStatus(tenantId, docId)).thenReturn(null);
 
-        var resp = controller.transitionReviewStatus(docId, Map.of("targetStatus", "published"), auth());
-
-        assertThat(resp.code()).isEqualTo(404);
+        assertThatThrownBy(() -> controller.transitionReviewStatus(
+                docId, Map.of("targetStatus", "published"), auth()))
+                .isInstanceOf(BizException.class);
     }
 
     @Test
@@ -187,11 +188,10 @@ class KnowledgeBaseControllerTest {
                 eq(ReviewWorkflowStateMachine.ReviewStatus.PUBLISHED), any()))
                 .thenReturn(new ReviewGateValidator.GateResult(false, List.of("缺循证等级", "缺审核人")));
 
-        var resp = controller.transitionReviewStatus(docId,
-                Map.of("targetStatus", "published", "category", "general"), auth());
-
-        assertThat(resp.code()).isEqualTo(400);
-        assertThat(resp.message()).contains("缺循证等级");
+        assertThatThrownBy(() -> controller.transitionReviewStatus(docId,
+                Map.of("targetStatus", "published", "category", "general"), auth()))
+                .isInstanceOf(BizException.class)
+                .hasMessageContaining("缺循证等级");
         verify(knowledgeBaseService, never()).transitionReviewStatus(any(), any(), any(), any(), any(), any(), any());
     }
 
@@ -242,17 +242,15 @@ class KnowledgeBaseControllerTest {
     @Test
     @DisplayName("editorialAction 缺 action → 400")
     void editorial_missingAction() {
-        var resp = controller.editorialAction(docId, Map.of(), auth());
-
-        assertThat(resp.code()).isEqualTo(400);
+        assertThatThrownBy(() -> controller.editorialAction(docId, Map.of(), auth()))
+                .isInstanceOf(BizException.class);
     }
 
     @Test
     @DisplayName("editorialAction 未知 action → 400")
     void editorial_unknownAction() {
-        var resp = controller.editorialAction(docId, Map.of("action", "explode"), auth());
-
-        assertThat(resp.code()).isEqualTo(400);
+        assertThatThrownBy(() -> controller.editorialAction(docId, Map.of("action", "explode"), auth()))
+                .isInstanceOf(BizException.class);
     }
 
     @Test
@@ -276,10 +274,10 @@ class KnowledgeBaseControllerTest {
                 .thenReturn(new EditorialWorkflowService.TransitionResult(
                         false, "in_review", "in_review", false, List.of("证据不足", "缺审核人")));
 
-        var resp = controller.editorialAction(docId, Map.of("action", "reject", "reason", "证据不足"), auth());
-
-        assertThat(resp.code()).isEqualTo(400);
-        assertThat(resp.message()).contains("证据不足");
+        assertThatThrownBy(() -> controller.editorialAction(
+                docId, Map.of("action", "reject", "reason", "证据不足"), auth()))
+                .isInstanceOf(BizException.class)
+                .hasMessageContaining("证据不足");
     }
 
     @Test

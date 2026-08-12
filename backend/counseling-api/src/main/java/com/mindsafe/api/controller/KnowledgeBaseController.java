@@ -3,6 +3,8 @@ package com.mindsafe.api.controller;
 import com.mindsafe.api.security.JwtAuthenticationFilter.TenantContext;
 import com.mindsafe.api.security.SecuritySupport;
 import com.mindsafe.common.dto.ApiResponse;
+import com.mindsafe.common.dto.ErrorCode;
+import com.mindsafe.common.exception.BizException;
 import com.mindsafe.service.audit.AuditLogService;
 import com.mindsafe.service.knowledge.EditorialWorkflowService;
 import com.mindsafe.service.knowledge.KnowledgeBaseService;
@@ -140,13 +142,13 @@ public class KnowledgeBaseController {
 
         String targetStatus = body.get("targetStatus");
         if (targetStatus == null || targetStatus.isBlank()) {
-            return ApiResponse.error(400, "缺少 targetStatus 参数");
+            throw new BizException(ErrorCode.PARAM_INVALID, "缺少 targetStatus 参数");
         }
 
         // 当前状态以 DB 真实值为准（不信请求体，防绕过状态机）
         String dbStatus = knowledgeBaseService.findDocumentStatus(ctx.tenantId(), docId);
         if (dbStatus == null) {
-            return ApiResponse.error(404, "知识文档不存在: " + docId);
+            throw new BizException(ErrorCode.RESOURCE_NOT_FOUND, "知识文档不存在: " + docId);
         }
 
         ReviewStatus from = ReviewWorkflowStateMachine.fromDbStatus(dbStatus);
@@ -170,7 +172,7 @@ public class KnowledgeBaseController {
                 reviewGateValidator.validateTransition(reviewStateMachine, from, to, metadata);
 
         if (!gateResult.passed()) {
-            return ApiResponse.error(400, "门禁校验失败: " + String.join("; ", gateResult.violations()));
+            throw new BizException(ErrorCode.PARAM_INVALID, "门禁校验失败: " + String.join("; ", gateResult.violations()));
         }
 
         // 门禁通过 → 状态与审核字段落库（KB-102，V30）
@@ -206,7 +208,7 @@ public class KnowledgeBaseController {
         TenantContext ctx = SecuritySupport.requireContext(auth);
         String action = body.get("action");
         if (action == null || action.isBlank()) {
-            return ApiResponse.error(400, "缺少 action 参数（submit/publish/reject/deprecate）");
+            throw new BizException(ErrorCode.PARAM_INVALID, "缺少 action 参数（submit/publish/reject/deprecate）");
         }
 
         EditorialWorkflowService.EditorialRequest request = new EditorialWorkflowService.EditorialRequest(
@@ -226,10 +228,10 @@ public class KnowledgeBaseController {
         };
 
         if (result == null) {
-            return ApiResponse.error(400, "未知 action: " + action);
+            throw new BizException(ErrorCode.PARAM_INVALID, "未知 action: " + action);
         }
         if (!result.success()) {
-            return ApiResponse.error(400, "采编门禁拒绝: " + String.join("; ", result.violations()));
+            throw new BizException(ErrorCode.PARAM_INVALID, "采编门禁拒绝: " + String.join("; ", result.violations()));
         }
 
         return ApiResponse.ok(Map.of(

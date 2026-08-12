@@ -1,5 +1,6 @@
 package com.mindsafe.api.controller;
 
+import com.mindsafe.common.exception.BizException;
 import com.mindsafe.api.security.JwtAuthenticationFilter.TenantContext;
 import com.mindsafe.service.toc.TocPrivacyService;
 import org.junit.jupiter.api.BeforeEach;
@@ -11,6 +12,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -46,9 +48,9 @@ class TocPrivacyControllerTest {
     @Test
     @DisplayName("delete：缺 X-Confirm 二次确认 → 400")
     void deleteRequiresConfirm() {
-        var response = controller.deleteAll(auth, null);
-        assertThat(response.code()).isEqualTo(400);
-        assertThat(response.message()).contains("X-Confirm");
+        assertThatThrownBy(() -> controller.deleteAll(auth, null))
+                .isInstanceOf(BizException.class)
+                .hasMessageContaining("X-Confirm");
     }
 
     @Test

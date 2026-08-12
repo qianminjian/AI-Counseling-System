@@ -74,7 +74,7 @@ public class ToolboxController {
             ToolboxRegistry.ToolCategory cat = ToolboxRegistry.ToolCategory.valueOf(category.toUpperCase());
             return ApiResponse.ok(toolboxRegistry.listByCategory(cat));
         } catch (IllegalArgumentException e) {
-            return ApiResponse.error(400, "无效的工具分类: " + category);
+            throw new BizException(ErrorCode.PARAM_INVALID, "无效的工具分类: " + category);
         }
     }
 
