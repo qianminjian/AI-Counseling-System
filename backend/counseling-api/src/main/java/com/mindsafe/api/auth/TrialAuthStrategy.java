@@ -21,11 +21,10 @@ public class TrialAuthStrategy {
     }
 
 
-    public AuthenticatedUser authenticate(Object request) {
-        if (!(request instanceof TrialRegisterRequest req)) {
-            throw new BizException(ErrorCode.PARAM_INVALID, "试用注册请求格式错误");
-        }
-
+    /**
+     * 试用注册认证（F19，doing/97：参数类型化——原 Object+instanceof，改直收 TrialRegisterRequest）
+     */
+    public AuthenticatedUser authenticate(TrialRegisterRequest req) {
         // age<14 需监护人手机号（PIPL 第31条；D1=成人体验者，试用阶段不强制但保留校验）
         if (req.age() < 14 && (req.guardianPhone() == null || req.guardianPhone().isBlank())) {
             throw new BizException(ErrorCode.CONSENT_REQUIRED,

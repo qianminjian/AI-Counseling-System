@@ -36,7 +36,7 @@ public class PromptVersionService {
 
     /** 模板 key → classpath 路径映射（复用 PromptTemplateService 常量） */
     private static final Map<String, String> KEY_TO_CLASSPATH = Map.ofEntries(
-            Map.entry("SYS_001", PromptTemplateService.SYS_001),
+            Map.entry(PromptTemplateService.KEY_SYS_001, PromptTemplateService.SYS_001),
             Map.entry("SAF_001", PromptTemplateService.SAF_001),
             Map.entry("SAF_002", PromptTemplateService.SAF_002),
             Map.entry("LANG_001", PromptTemplateService.LANG_001),
@@ -48,8 +48,8 @@ public class PromptVersionService {
             Map.entry("TSK_001", PromptTemplateService.TSK_001),
             Map.entry("TSK_002", PromptTemplateService.TSK_002),
             Map.entry("TSK_003", PromptTemplateService.TSK_003),
-            Map.entry("TSK_004", PromptTemplateService.TSK_004),
-            Map.entry("EMO_001", PromptTemplateService.EMO_001),
+            Map.entry(PromptTemplateService.KEY_TSK_004, PromptTemplateService.TSK_004),
+            Map.entry(PromptTemplateService.KEY_EMO_001, PromptTemplateService.EMO_001),
             // B4：性别×年级沟通风格（PROF-014）——与其余模板同一版本路由机制
             Map.entry("GENDER_STYLE_MALE_LOW", PromptTemplateService.GENDER_STYLE_MALE_LOW),
             Map.entry("GENDER_STYLE_MALE_MID", PromptTemplateService.GENDER_STYLE_MALE_MID),

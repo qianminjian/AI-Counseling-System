@@ -12,7 +12,7 @@ import java.util.Iterator;
 /**
  * 全局日志脱敏 Appender（AUDIT-P1-15）。
  * <p>
- * 在消息写入底层 appender 之前，复用 {@link PiiDesensitizer}（counseling-ai 模块）
+ * 在消息写入底层 appender 之前，复用 {@link PiiDesensitizer}（counseling-common 模块）
  * 对手机号、身份证、邮箱、姓名、地址做掩码，防止敏感信息经日志外泄。
  * 对开发控制台（pattern）与生产 JSON（LogstashEncoder）两种 encoder 均生效，
  * 因为脱敏发生在事件层，encoder 只看到脱敏后的消息。

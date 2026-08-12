@@ -3,6 +3,8 @@ package com.mindsafe.api.controller;
 import com.mindsafe.api.security.JwtTokenProvider;
 import com.mindsafe.api.security.ParentAuthProvider;
 import com.mindsafe.common.dto.ApiResponse;
+import com.mindsafe.common.dto.ErrorCode;
+import com.mindsafe.common.exception.BizException;
 import com.mindsafe.domain.entity.ParentAccount;
 import com.mindsafe.domain.entity.User;
 import com.mindsafe.service.auth.ParentAuthService;
@@ -108,7 +110,12 @@ public class ParentAuthController {
     public ApiResponse<List<Map<String, Object>>> getChildren(
             @RequestHeader("Authorization") String authHeader) {
         // F2：单次 parse（原 getUserId 二次 parse；非法 token → UNAUTHORIZED 401 而非 500）
-        JwtTokenProvider.ParsedToken parsed = jwtTokenProvider.parseOnce(authHeader.replace("Bearer ", ""));
+        // F20（doing/97）：Bearer 前缀校验收敛——无前缀 → null → parseOnce 拒绝
+        String rawToken = JwtTokenProvider.extractBearerToken(authHeader);
+        if (rawToken == null) {
+            throw new BizException(ErrorCode.UNAUTHORIZED, "登录已过期，请重新登录");
+        }
+        JwtTokenProvider.ParsedToken parsed = jwtTokenProvider.parseOnce(rawToken);
         UUID parentId = parsed.userId();
 
         List<User> students = parentAuthService.getLinkedStudents(parentId);

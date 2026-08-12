@@ -54,7 +54,7 @@ class TocFamilyServiceTest {
     @Test
     @DisplayName("create：昵称必填")
     void createRequiresNickname() {
-        assertThatThrownBy(() -> service.createProfile(accountId, Map.of()))
+        assertThatThrownBy(() -> service.createProfile(accountId, new TocChildProfileCreateDTO(null, null, null, null)))
                 .isInstanceOf(BizException.class)
                 .extracting(e -> ((BizException) e).getErrorCode())
                 .isEqualTo(ErrorCode.PARAM_INVALID);
@@ -64,7 +64,7 @@ class TocFamilyServiceTest {
     @DisplayName("create：创建成功并归属当前账号")
     void createOk() {
         TocChildProfile p = service.createProfile(accountId,
-                Map.of("nickname", "小明", "age", 8, "gender", "MALE", "interests", "恐龙,画画"));
+                new TocChildProfileCreateDTO("小明", 8, "MALE", "恐龙,画画"));
         assertThat(p.getFamilyAccountId()).isEqualTo(accountId);
         assertThat(p.getNickname()).isEqualTo("小明");
         assertThat(p.getAge()).isEqualTo(8);

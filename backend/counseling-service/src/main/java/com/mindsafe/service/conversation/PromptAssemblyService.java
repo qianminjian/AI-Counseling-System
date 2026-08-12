@@ -1,6 +1,7 @@
 package com.mindsafe.service.conversation;
 
 import com.mindsafe.ai.cbt.CbtStageRouter;
+import com.mindsafe.ai.prompt.PromptTemplateService;
 import com.mindsafe.service.prompt.PromptVersionService;
 import org.springframework.stereotype.Service;
 
@@ -51,7 +52,7 @@ public class PromptAssemblyService {
         PromptVersionService.ResolvedPrompt styleResolved = promptVersionService.resolve(
                 tenantId, genderStyleKeyOf(gender, effectiveGrade), studentUserId, Map.of());
         PromptVersionService.ResolvedPrompt emoResolved = promptVersionService.resolve(
-                tenantId, "EMO_001", studentUserId, emoTemplateVars);
+                tenantId, PromptTemplateService.KEY_EMO_001, studentUserId, emoTemplateVars);
 
         StringBuilder prompt = new StringBuilder(sysResolved.content())
                 .append("\n\n").append(langResolved.content())
@@ -78,7 +79,7 @@ public class PromptAssemblyService {
         PromptVersionService.ResolvedPrompt styleResolved = promptVersionService.resolve(
                 tenantId, genderStyleKeyOf(gender, effectiveGrade), studentUserId, Map.of());
         PromptVersionService.ResolvedPrompt nudgeResolved = promptVersionService.resolve(
-                tenantId, "TSK_004", studentUserId, nudgeTemplateVars);
+                tenantId, PromptTemplateService.KEY_TSK_004, studentUserId, nudgeTemplateVars);
         return sysResolved.content() + "\n\n" + langResolved.content() + "\n\n" + styleResolved.content()
                 + "\n\n" + nudgeResolved.content();
     }
@@ -86,7 +87,7 @@ public class PromptAssemblyService {
     /** SYS_001 版本路由（DB 优先 + A/B 灰度，AI-005/ARCH-010 D4） */
     private PromptVersionService.ResolvedPrompt resolveSys(UUID tenantId, UUID studentUserId,
                                                            int effectiveGrade, String emotionTag) {
-        return promptVersionService.resolve(tenantId, "SYS_001", studentUserId, Map.of(
+        return promptVersionService.resolve(tenantId, PromptTemplateService.KEY_SYS_001, studentUserId, Map.of(
                 "grade_level", gradeLevelOf(effectiveGrade),
                 "emotion_tag", emotionTag != null ? emotionTag : "",
                 "school_policy", DEFAULT_SCHOOL_POLICY,

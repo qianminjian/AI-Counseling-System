@@ -35,9 +35,9 @@ public class TocFamilyService {
                         .orderByDesc(TocChildProfile::getCreatedAt));
     }
 
-    /** 创建档案。 */
-    public TocChildProfile createProfile(UUID familyAccountId, Map<String, Object> body) {
-        String nickname = stringValue(body.get("nickname"));
+    /** 创建档案（P2-3，doing/97：入参类型化为 TocChildProfileCreateDTO，替代裸 Map）。 */
+    public TocChildProfile createProfile(UUID familyAccountId, TocChildProfileCreateDTO dto) {
+        String nickname = dto.nickname();
         if (nickname == null || nickname.isBlank()) {
             throw new BizException(ErrorCode.PARAM_INVALID, "昵称必填");
         }
@@ -45,9 +45,9 @@ public class TocFamilyService {
         profile.setProfileId(UUID.randomUUID());
         profile.setFamilyAccountId(familyAccountId);
         profile.setNickname(nickname.trim());
-        profile.setAge(intValue(body.get("age")));
-        profile.setGender(stringValue(body.get("gender")));
-        profile.setInterests(stringValue(body.get("interests")));
+        profile.setAge(dto.age());
+        profile.setGender(dto.gender());
+        profile.setInterests(dto.interests());
         Instant now = Instant.now();
         profile.setCreatedAt(now);
         profile.setUpdatedAt(now);

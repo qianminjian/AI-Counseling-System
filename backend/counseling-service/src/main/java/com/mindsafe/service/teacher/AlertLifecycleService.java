@@ -8,6 +8,7 @@ import com.mindsafe.domain.entity.User;
 import com.mindsafe.domain.mapper.RiskEventMapper;
 import com.mindsafe.domain.mapper.UserMapper;
 import com.mindsafe.service.security.FieldEncryptionService;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -157,7 +158,7 @@ public class AlertLifecycleService {
     /** DATA-004：查询待回访事件列表 */
     public List<RiskEvent> getPendingFollowUps(UUID tenantId) {
         return riskEventMapper.selectList(
-                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<RiskEvent>()
+                new LambdaQueryWrapper<RiskEvent>()
                         .eq(RiskEvent::getTenantId, tenantId)
                         .eq(RiskEvent::getFollowUpDone, false)
                         .isNotNull(RiskEvent::getFollowUpAt)

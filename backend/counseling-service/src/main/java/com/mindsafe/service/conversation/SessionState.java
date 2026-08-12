@@ -53,6 +53,8 @@ public class SessionState {
     private int maxRiskSeverity;
 
     // ===== RISK-201：安全响应模式 =====
+    // P2-5（doing/97）：与 design/08 §32/§196 的 safety_mode 三按钮（ESC-001 冻结未实施）术语同名异义——
+    // 本字段是 RED 硬短路后的陪伴模式（RISK-201），非 ESC-001 前端安全模式界面；实施 ESC-001 时勿混淆
     private boolean safetyMode;
 
     // ===== ORCH-003：情绪状态机 =====

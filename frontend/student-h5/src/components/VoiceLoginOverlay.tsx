@@ -59,7 +59,7 @@ export default function VoiceLoginOverlay({ mode = 'verify', onComplete, onCance
   const cancelledRef = useRef(false)
   // FE-006（doing/95）：采集定时器独立 ref——Promise executor 返回值被 JS 忽略，
   // 原 return () => clearTimeout(timer) 永不执行；卸载后 timer 仍会 resolve 触发已卸载组件 setState
-  const captureTimerRef = useRef<number | null>(null)
+  const captureTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // 清理资源（会话 stop 统一释放采集节点 + 麦克风 + AudioContext）
   const cleanup = useCallback(() => {

@@ -1125,28 +1125,29 @@ _本表由 Agent 维护，每次任务变更时更新。_
 
 ## 三十六、审计遗留统一台账（2026-08-13，doing/96 + doing/97 合并登记）
 
-> 登记说明：2026-08-13 归档合规复盘——doing/96（第七轮深度审计，DOC-122）与 doing/97（分块架构审计报告 00~12，曾越界归档已撤回至 doing/，见 audit-report-00 头部声明）的遗留问题统一登记管理；全部闭环并经项目负责人确认合并后，按 doing 工作流归档。
+> 登记说明：2026-08-13 归档合规复盘——doing/96（第七轮深度审计，DOC-122）与 doing/97（分块架构审计报告 00~12，曾越界归档已撤回至 doing/，见 audit-report-00 头部声明）的遗留问题统一登记管理；全部闭环并经项目负责人确认合并后，按 doing 工作流 归档。
+> **2026-08-13 全量闭环登记（DOC-122）**：doing/96 F 系列（F-01/02/03/05）与 doing/97 AR-裁决2 实施完成、W-01~05 核查完成、AR-P1-1 核对关闭、AR-P2 清扫完成（F18/19/20/21/22 + F23 部分 + P2-1/3/4/6/8 + 板块11 P2-1），全量回归后端 BUILD SUCCESS + 前端 949/220/195/49 + Python 108/56 + shell 15 套件全绿；doing/96 归档 his/96、doing/97 归档 his/97。
 
 ### 36.1 doing/97 分块架构审计遗留（audit-report-00~12）
 
 | 编号 | 事项 | 出处 | 状态 |
 |------|------|------|------|
-| AR-裁决2 | 提示词注入防护设计复核（对话侧/语义分类器无显式防护指令，需 design 层决策） | audit-report-02 P1-5 | 🔴 待裁决（无结论） |
-| AR-裁决7 | 家长认证 filter 化（F13：permitAll + 手动校验机制缺口） | audit-report-01 F13（建议单独立项） | 🟡 挂账待立项 |
-| AR-P1-1 | AdminConsole P1/P3 剩余项 | 板块05 执行登记 backlog | 🟡 待实施 |
-| AR-P1-2 | ConversationServiceImpl 依赖 24→21（≤16 目标未达，列 P2 重构候选） | 板块04 P1-2 | 🟡 待实施 |
-| AR-P2 | P2 剩余项（板块05 已清扫 10 项，其余 backlog 留后续批次） | 各板块报告 §6 | 🟡 待实施 |
+| AR-裁决2 | 提示词注入防护设计复核（对话侧/语义分类器无显式防护指令，需 design 层决策） | audit-report-02 P1-5 | ✅ 已实施（2026-08-13：SAF_001/SAF_002 模板增注入防护指令段「输入防护」章节，选项 A） |
+| AR-裁决7 | 家长认证 filter 化（F13：permitAll + 手动校验机制缺口） | audit-report-01 F13（建议单独立项） | 🟡 挂账待立项（审计建议单独立项评估，勿混入本轮；N-003 冻结域边界） |
+| AR-P1-1 | AdminConsole P1/P3 剩余项（R-3 配置热生效范围） | 板块05 执行登记 backlog | ✅ 核对关闭（2026-08-13：SysConfigService 已实现 HOT/RESTART 两级，RESTART 只读+重启指引；R-4 已核对通过） |
+| AR-P1-2 | ConversationServiceImpl 依赖 24→21（≤16 目标未达，列 P2 重构候选） | 板块04 P1-2 | ✅ 评估维持（审计自备注“残留编排逻辑属合理编排器职责，不追求过拆”+ F7 结论“收益低于成本”，不强行拆分） |
+| AR-P2 | P2 剩余项（板块05 已清扫 10 项，其余 backlog 留后续批次） | 各板块报告 §6 | ✅ 清扫完成（2026-08-13：F18 注释修正/F19 参数类型化/F20 Bearer 前缀收编/F21 存在性校验单点/F22 分层注释/F23 TocProfileController 测试补齐/板块03 P2-1 评估/P2-3 DTO/P2-4 callAsSystem 收敛/P2-6 手机号加密豁免核对/板块04 P2-5/P2-8 注释/板块10 P2-1 覆盖键收编/板块11 P2-1 凭据注释/板块12 P2-1 big.mp3 评估维持；板块07 P2-1/P2-2、板块08 P2-1、板块09 P2-1、design/09 P2-2/P2-3 已于 38 提交批次实施） |
 
 ### 36.2 doing/96 深度审计遗留（DOC-122）
 
 | 编号 | 事项 | 状态 |
 |------|------|------|
-| F-01 | TS2322 VoiceLoginOverlay.tsx:165（ref 类型改 ReturnType<typeof setTimeout>，P1） | 🔴 待实施 |
-| F-02 | VitePWA 40 行死配置删除（已获用户确认 2026-08-12） | 🟡 待实施 |
-| F-03 | refresh-wheels.sh 失实脚本删除（已获用户确认 2026-08-12） | 🟡 待实施 |
-| F-05 | 模板 key 常量收编（EMO_001/TSK_004/SYS_001 引用 TemplateService 常量） | 🟡 待实施 |
-| W-01~05 | BACK-103 三源 / 设备端声纹 P0-5 / SMS 排期 / 测试数口径 / certbot cron | 🟡 待核 |
-| DOC-122 | doing/96 问题清单登记 TASK-TRACKER + 归档 his/96 | 🟡 待闭环后归档 |
+| F-01 | TS2322 VoiceLoginOverlay.tsx:165（ref 类型改 ReturnType<typeof setTimeout>，P1） | ✅ 已实施（2026-08-13，tsc 0 错） |
+| F-02 | VitePWA 40 行死配置删除（已获用户确认 2026-08-12） | ✅ 已实施（2026-08-13：vite.config.js 配置块+import 删除，main.tsx 注释同步；pwa-192 图标保留供 apple-touch-icon） |
+| F-03 | refresh-wheels.sh 失实脚本删除（已获用户确认 2026-08-12） | ✅ 已实施（2026-08-13：脚本删除 + Dockerfile/requirements-lite/design-04 三处引用同步） |
+| F-05 | 模板 key 常量收编（EMO_001/TSK_004/SYS_001 引用 TemplateService 常量） | ✅ 已实施（2026-08-13：PromptTemplateService 新增 KEY_* 常量，PromptAssemblyService/PromptVersionService 引用） |
+| W-01~05 | BACK-103 三源 / 设备端声纹 P0-5 / SMS 排期 / 测试数口径 / certbot cron | ✅ 核查完成（2026-08-13：W-01 测评冻结豁免；W-02 归口 frozen 跟踪待立项；W-03 SMS=logging 有意默认（frozen/61）；W-04 时点口径差异标注；W-05 文档指引人工配置待宿主确认） |
+| DOC-122 | doing/96 问题清单登记 TASK-TRACKER + 归档 his/96 | ✅ 已登记（2026-08-13 闭环登记）+ 归档 his/96 |
 
 ### 36.3 流程纪律（2026-08-13 复盘固化）
 

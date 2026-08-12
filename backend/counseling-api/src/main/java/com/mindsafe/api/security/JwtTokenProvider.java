@@ -32,6 +32,20 @@ public class JwtTokenProvider {
     /** 平台 token 的 userType 标记 */
     public static final String PLATFORM_USER_TYPE = "PLATFORM_ADMIN";
 
+    /** Bearer 前缀（Authorization 头标准形式，F20 收编：三处 replace 手剥收敛） */
+    private static final String BEARER_PREFIX = "Bearer ";
+
+    /**
+     * 从 Authorization 头提取裸 token（F20，doing/97）：无 "Bearer " 前缀直接返回 null（拒绝），
+     * 消除 replace("Bearer ", "") 无前缀校验的静默接受；null 由调用方按各自语义处理（401/幂等跳过）。
+     */
+    public static String extractBearerToken(String authHeader) {
+        if (authHeader != null && authHeader.startsWith(BEARER_PREFIX)) {
+            return authHeader.substring(BEARER_PREFIX.length());
+        }
+        return null;
+    }
+
     private final SecretKey key;
     private final String issuer;
     private final long accessExpirationMs;

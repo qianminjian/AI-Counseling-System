@@ -39,10 +39,9 @@ public class AuthUserService {
         ));
     }
 
-    /** 登录成功：更新最后登录时间 + 审计（绑定真实租户上下文执行） */
+    /** 登录成功：更新最后登录时间 + 审计（P2-4，doing/97：收敛至 callAsSystem，异常路径自动 clear） */
     public void recordLoginSuccess(UUID tenantId, UUID userId) {
-        TenantContextHolder.set(tenantId);
-        try {
+        TenantContextHolder.callAsSystem(() -> {
             User update = new User();
             update.setUserId(userId);
             update.setLastLoginAt(Instant.now());
@@ -50,9 +49,8 @@ public class AuthUserService {
 
             // 审计：登录成功（@Async 经 TaskDecorator 继承本线程租户上下文）
             auditLogService.log(tenantId, userId, "LOGIN", "user", userId, null);
-        } finally {
-            TenantContextHolder.clear();
-        }
+            return null;
+        });
     }
 
     /** 按 ID 查询用户（受租户行隔离，供已认证链路使用） */

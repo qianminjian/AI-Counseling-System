@@ -1,6 +1,8 @@
 # MindSafe 全栈部署（一键启动）
 # 用法：docker compose up -d --build
 # 访问：http://localhost（学生端）/ http://localhost/teacher（教师端）/ http://localhost/bigscreen（大屏）
+# ⚠️ P2-1（doing/97）：本文件默认凭据（mindsafe2026 / mindsafe-jwt-secret-change-in-production）
+#    仅供本机开发，禁止用于外部可达环境；生产一律通过 .env 显式注入强凭据（见 docker-compose.prod.yml）
 
 services:
   # ===== PostgreSQL（pgvector 镜像：Flyway V24 需要 vector 扩展；与 prod 对齐） =====

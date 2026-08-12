@@ -14,6 +14,10 @@ import java.util.Set;
  *   <li>合成失败/超时 → 降级链：CosyVoice2 → edge-tts → 纯文字+波波抱抱动画</li>
  *   <li>S2/S3 emotion 强制归入 soothe/calm，语速降至年龄段下限</li>
  * </ul>
+ * <p>
+ * P2-8（doing/97）双轨边界：本类按风险等级 S0/S1 锁定语音（TTSFX-002）；
+ * voice 侧 VoicePersonaResolver 按 scene=safety/crisis 锁定音色（TMATCH-001）——
+ * 两条规则并存且均被 TtsController 注入，分别管控“能否合成”与“用什么音色”，后续合并/重构时勿混为一谈。
  */
 @Component
 public class VoiceDegradationPolicy {

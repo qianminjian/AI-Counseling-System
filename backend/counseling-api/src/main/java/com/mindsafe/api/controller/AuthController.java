@@ -35,11 +35,16 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * 认证 API
+ * 认证 API（F22，doing/97：承载 9 类端点，分区注释如下——监护人与认证职责混杂暂不分拆，
+ * 新增端点时按分区归位，待监护人闭环独立部署需求出现时再拆 Controller）
  * <ul>
- *   <li>POST /login — 学号/昵称 + 密码登录（学生/教师/管理员通用）</li>
- *   <li>POST /trial/register — 试用注册（邀请码 + 昵称 + 年龄 + 同意）</li>
- *   <li>POST /change-password — 修改密码（首次设密 / 常规改密）</li>
+ *   <li>登录区：POST /login（学号/昵称 + 密码）、POST /refresh、POST /logout</li>
+ *   <li>试用注册区：POST /trial/register（邀请码 + 昵称 + 年龄 + 同意）</li>
+ *   <li>密码区：POST /change-password（首次设密 / 常规改密）</li>
+ *   <li>PIN 区：PIN 设置/校验</li>
+ *   <li>声纹区：声纹登录凭证</li>
+ *   <li>用户信息区：GET /me</li>
+ *   <li>监护人同意区（AUTH-023）：请求/确认</li>
  * </ul>
  */
 @RestController
@@ -295,8 +300,9 @@ public class AuthController {
             Authentication authentication) {
         // 拉黑 access token（AUDIT-P1-13：按 jti 粒度；F2：parseOrNull 容错——
         // token 已过期/签名非法时跳过拉黑，登出幂等返回 200，不再 500）
-        String accessToken = authHeader.replace("Bearer ", "");
-        JwtTokenProvider.ParsedToken parsedAccess = jwtTokenProvider.parseOrNull(accessToken);
+        // F20（doing/97）：Bearer 前缀校验收敛——无前缀视为非法，跳过拉黑（幂等语义不变）
+        String accessToken = JwtTokenProvider.extractBearerToken(authHeader);
+        JwtTokenProvider.ParsedToken parsedAccess = accessToken == null ? null : jwtTokenProvider.parseOrNull(accessToken);
         if (parsedAccess != null) {
             tokenBlacklistService.blacklist(parsedAccess.tokenId(), jwtTokenProvider.getRemainingMs(accessToken));
         }

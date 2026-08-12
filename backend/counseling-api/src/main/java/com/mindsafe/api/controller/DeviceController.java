@@ -85,22 +85,16 @@ public class DeviceController {
     /** 心跳上报（设备端，30s 间隔，90s 判离线） */
     @PostMapping("/report/heartbeat")
     public ApiResponse<Void> heartbeat(@RequestBody DeviceCodeRequest body) {
-        String deviceCode = body.deviceCode();
-        if (deviceCode == null || !deviceService.exists(deviceCode)) {
-            throw new BizException(ErrorCode.RESOURCE_NOT_FOUND, "设备不存在");
-        }
-        deviceService.heartbeat(deviceCode);
+        requireDeviceExists(body.deviceCode());
+        deviceService.heartbeat(body.deviceCode());
         return ApiResponse.ok(null);
     }
 
     /** 状态上报（固件版本等） */
     @PostMapping("/report/status")
     public ApiResponse<Void> reportStatus(@RequestBody DeviceCodeRequest body) {
-        String deviceCode = body.deviceCode();
-        if (deviceCode == null || !deviceService.exists(deviceCode)) {
-            throw new BizException(ErrorCode.RESOURCE_NOT_FOUND, "设备不存在");
-        }
-        deviceService.reportStatus(deviceCode, body.firmwareVersion());
+        requireDeviceExists(body.deviceCode());
+        deviceService.reportStatus(body.deviceCode(), body.firmwareVersion());
         return ApiResponse.ok(null);
     }
 
@@ -109,11 +103,8 @@ public class DeviceController {
     public ApiResponse<Map<String, Object>> pullConfig(
             @RequestBody DeviceCodeRequest body,
             @RequestHeader(value = "X-Device-Token", required = false) String deviceToken) {
-        String deviceCode = body.deviceCode();
-        if (deviceCode == null || !deviceService.exists(deviceCode)) {
-            throw new BizException(ErrorCode.RESOURCE_NOT_FOUND, "设备不存在");
-        }
-        return ApiResponse.ok(deviceService.pullConfig(deviceCode, deviceToken));
+        requireDeviceExists(body.deviceCode());
+        return ApiResponse.ok(deviceService.pullConfig(body.deviceCode(), deviceToken));
     }
 
     /** 老师租户级设备列表（CFG-008，按绑定归属过滤） */
@@ -140,10 +131,18 @@ public class DeviceController {
         if (studentId == null || studentId.isBlank()) {
             throw new BizException(ErrorCode.PARAM_INVALID, "studentId 缺失");
         }
-        if (!deviceService.exists(deviceCode)) {
+        requireDeviceExists(deviceCode);
+        return ApiResponse.ok(voiceprintService.createTask(deviceCode, studentId, operator));
+    }
+
+    /**
+     * F21（doing/97）：deviceCode 存在性校验单点（原 4 处重复收敛）——统一先判空再查存在，
+     * null/不存在同抛 RESOURCE_NOT_FOUND（TOCTOU 敞口随 exists 后立即操作收窄）。
+     */
+    private void requireDeviceExists(String deviceCode) {
+        if (deviceCode == null || !deviceService.exists(deviceCode)) {
             throw new BizException(ErrorCode.RESOURCE_NOT_FOUND, "设备不存在");
         }
-        return ApiResponse.ok(voiceprintService.createTask(deviceCode, studentId, operator));
     }
 
     /** 轮询声纹录入任务（CFG-006，AC-84-14） */

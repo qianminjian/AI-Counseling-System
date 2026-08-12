@@ -2,7 +2,6 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import basicSsl from '@vitejs/plugin-basic-ssl'
-import { VitePWA } from 'vite-plugin-pwa'
 import { copyFileSync, mkdirSync, rmSync, existsSync, readdirSync, readFileSync } from 'node:fs'
 import { resolve, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -102,49 +101,6 @@ export default defineConfig({
     copyOnnxWasm(),
     serveOnnxWasmDev(),
     ...(useHttps ? [basicSsl()] : []),
-    // F-6 修复：学生端禁用 PWA/SW（disable:true）——SW 接管会干扰 transformers.js 加载（路由/缓存策略冲突），
-    // 导致"语音引擎加载中"卡住、唤醒不可用。学生端是实时在线应用，PWA 离线价值低。
-    VitePWA({
-      disable: true, // BUG-F6-SW：构建不生成 sw.js，不自动注册；唤醒链路免受 SW 接管干扰
-      includeAssets: ['favicon.svg', 'icons.svg'],
-      manifest: {
-        name: '波波小精灵',
-        short_name: '波波小精灵',
-        description: '想说什么，就跟波波说——AI 小学生心理辅导伙伴',
-        theme_color: '#0EA5E9',
-        background_color: '#ffffff',
-        display: 'standalone',
-        orientation: 'portrait',
-        scope: '/mindsafe/',
-        start_url: '/mindsafe/',
-        icons: [
-          // 使用相对路径：vite-plugin-pwa 会剥离绝对路径的 base 前缀，
-          // 相对路径保留原样，浏览器基于 manifest URL（/mindsafe/manifest.webmanifest）解析 → /mindsafe/pwa-192.png
-          { src: 'pwa-192.png', sizes: '192x192', type: 'image/png' },
-          { src: 'pwa-512.png', sizes: '512x512', type: 'image/png' },
-          { src: 'pwa-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
-        ],
-      },
-      workbox: {
-        // 新 SW 立即接管，不等旧页面关闭（解决旧 SW 缓存无 COOP/COEP 头的 HTML）
-        skipWaiting: true,
-        clientsClaim: true,
-        // 清除旧版预缓存
-        cleanupOutdatedCaches: true,
-        // 缓存静态资源，API 请求走网络优先
-        globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
-        // Transformers.js（Whisper 唤醒引擎）是按需动态 chunk（约 516KB，仅开启语音唤醒时加载），
-        // 排除出 PWA 预缓存，避免未使用该功能的用户白白下载（首次加载后走浏览器 HTTP 缓存）。
-        // ONNX wasm（dist/ort/，约 12-22MB）不在 globPatterns 扩展名内，天然不会被预缓存。
-        globIgnores: ['**/transformers.web-*.js'],
-        runtimeCaching: [
-          {
-            urlPattern: /^\/api\/.*/,
-            handler: 'NetworkOnly',
-          },
-        ],
-      },
-    }),
   ],
   server: {
     port: 3000,

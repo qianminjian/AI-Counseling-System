@@ -39,7 +39,11 @@ public class ParentIdentityResolver {
      * 家长域 permitAll 靠本方法自校验，兼容 ACCESS 会重新放开业务 token 冒用家长域入口。
      */
     private JwtTokenProvider.ParsedToken parseParentToken(String authHeader) {
-        String token = authHeader.replace("Bearer ", "");
+        // F20（doing/97）：Bearer 前缀校验收敛至 JwtTokenProvider.extractBearerToken（无前缀 → null → 401）
+        String token = JwtTokenProvider.extractBearerToken(authHeader);
+        if (token == null) {
+            throw new BizException(ErrorCode.UNAUTHORIZED, "链接已过期或无效");
+        }
         try {
             JwtTokenProvider.ParsedToken parsed = jwtTokenProvider.parseOrNull(token);
             if (parsed == null || parsed.tokenType() == TokenType.REFRESH

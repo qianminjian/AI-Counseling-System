@@ -170,29 +170,14 @@ _validate_runtime_contract(_CONFIG)
 # ===== 引擎装配（DC-011：适配器层 + 降级策略；引擎实现细节见 tts_engines.py / tts_policy.py） =====
 
 DASHSCOPE_TTS_MODEL = _CONFIG["model"]["dashscope"]
-# doing/87 RUNTIME-001：覆盖键读取器（redis-py 直连，fail-open）
+# doing/87 RUNTIME-001 + 板块10 P2-1（doing/97）：覆盖键读取器收编 py-common 共享模块
 # 键：mindsafe:degradation:override:tts；值：cosyvoice|edge_tts；TTL 由后端写侧保证（7 天）
-_OVERRIDE_KEY = "mindsafe:degradation:override:tts"
-_redis_client = None
+from degradation_override import read_override as _read_shared_override
 
 
 def _read_tts_override():
-    """读覆盖键；Redis 不可达/键缺失返回 None（fail-open 按配置默认）"""
-    global _redis_client
-    try:
-        if _redis_client is None:
-            import redis
-            _redis_client = redis.Redis(
-                host=os.environ.get("REDIS_HOST", "redis"),
-                port=int(os.environ.get("REDIS_PORT", "6379")),
-                password=os.environ.get("REDIS_PASSWORD") or None,
-                socket_connect_timeout=1, socket_timeout=1,
-                decode_responses=True,
-            )
-        return _redis_client.get(_OVERRIDE_KEY)
-    except Exception as e:
-        logger.warning("覆盖键读取失败（fail-open，按配置默认）: %s", e)
-        return None
+    """读覆盖键（P2-1：委托 py-common 共享实现，fail-open 语义不变）"""
+    return _read_shared_override("tts", log=logger.warning)
 
 
 _TTS_POLICY = DegradationPolicy(

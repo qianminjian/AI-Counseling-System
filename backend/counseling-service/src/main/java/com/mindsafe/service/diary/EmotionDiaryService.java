@@ -50,13 +50,13 @@ public class EmotionDiaryService {
                 new LambdaQueryWrapper<EmotionDiary>()
                         .eq(EmotionDiary::getTenantId, tenantId)
                         .eq(EmotionDiary::getStudentUserId, studentUserId)
-                        .eq(EmotionDiary::getDiaryDate, com.mindsafe.service.common.CounselingTimeZone.today())
+                        .eq(EmotionDiary::getDiaryDate, CounselingTimeZone.today())
         );
     }
 
     /** 近 N 天历史（默认 14 天，用于趋势图） */
     public List<EmotionDiary> getHistory(UUID tenantId, UUID studentUserId, int days) {
-        LocalDate since = com.mindsafe.service.common.CounselingTimeZone.today().minusDays(days);
+        LocalDate since = CounselingTimeZone.today().minusDays(days);
         return diaryMapper.selectList(
                 new LambdaQueryWrapper<EmotionDiary>()
                         .eq(EmotionDiary::getTenantId, tenantId)

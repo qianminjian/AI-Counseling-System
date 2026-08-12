@@ -64,6 +64,11 @@ public class PromptTemplateService {
 
     // ===== 模板路径常量 =====
 
+    /** 模板 key（PromptVersionService 版本路由键，F-05 收编：key 与路径同源定义） */
+    public static final String KEY_SYS_001 = "SYS_001";
+    public static final String KEY_TSK_004 = "TSK_004";
+    public static final String KEY_EMO_001 = "EMO_001";
+
     public static final String SYS_001 = "prompts/system/system_student_companion_zh-CN_v1.0.0.md";
     public static final String SAF_001 = "prompts/safety/safety_risk_classifier_zh-CN_v1.0.0.md";
     public static final String SAF_002 = "prompts/safety/safety_output_guard_zh-CN_v1.0.0.md";

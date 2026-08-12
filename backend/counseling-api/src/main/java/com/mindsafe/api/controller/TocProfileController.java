@@ -6,6 +6,7 @@ import com.mindsafe.api.security.SecuritySupport;
 import com.mindsafe.common.dto.ApiResponse;
 import com.mindsafe.common.dto.ErrorCode;
 import com.mindsafe.common.exception.BizException;
+import com.mindsafe.service.toc.TocChildProfileCreateDTO;
 import com.mindsafe.service.toc.TocFamilyService;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
@@ -39,9 +40,9 @@ public class TocProfileController {
         return ApiResponse.ok(voList);
     }
 
-    /** 创建档案 */
+    /** 创建档案（P2-3，doing/97：请求体类型化为 DTO） */
     @PostMapping
-    public ApiResponse<TocChildProfileVO> create(Authentication auth, @RequestBody Map<String, Object> body) {
+    public ApiResponse<TocChildProfileVO> create(Authentication auth, @RequestBody TocChildProfileCreateDTO body) {
         try {
             return ApiResponse.ok(TocChildProfileVO.from(tocFamilyService.createProfile(accountId(auth), body)));
         } catch (IllegalArgumentException e) {
