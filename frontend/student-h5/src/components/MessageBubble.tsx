@@ -5,7 +5,8 @@ import { emotionEmoji } from '../../../shared/src/emotionMeta'
 export interface ChatMessage {
   role: 'user' | 'assistant' | 'system'
   content: string
-  emotion?: string
+  // FE-003：允许 null（发送失败占位气泡运行时写入 emotion: null，测试断言该值；null 与 undefined 对消费方均为 falsy）
+  emotion?: string | null
   level?: number
 }
 
@@ -21,7 +22,7 @@ export default function MessageBubble({ msg, isLast, streaming, onReplay, isSpea
     return (
       <div className="flex justify-start lg:justify-center">
         <div className={`w-full lg:w-auto text-center py-2 px-3 rounded-lg text-sm lg:text-base
-          ${msg.level >= 3 ? 'bg-red-50 text-red-600' : 'bg-amber-50 text-amber-600'}`}>
+          ${(msg.level ?? 0) >= 3 ? 'bg-red-50 text-red-600' : 'bg-amber-50 text-amber-600'}`}>
           {msg.content}
         </div>
       </div>

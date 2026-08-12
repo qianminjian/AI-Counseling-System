@@ -12,7 +12,8 @@ export const CONSENT_VERSION = 'v0.1'
 export default function ConsentGate({ onAgree }) {
   const [scrolledToBottom, setScrolledToBottom] = useState(false)
   const [checked, setChecked] = useState(false)
-  const scrollRef = useRef(null)
+  // FE-003：条款滚动区 ref 显式类型（此前推断为 null → scrollHeight/scrollTop 报 TS2339）
+  const scrollRef = useRef<HTMLDivElement | null>(null)
 
   // 如果内容不需要滚动（内容高度 ≤ 容器高度），直接视为已读完
   useEffect(() => {

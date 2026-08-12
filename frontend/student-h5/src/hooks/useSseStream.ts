@@ -105,7 +105,8 @@ export function useSseStream() {
         })
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
 
-        const reader = res.body.getReader()
+        // FE-003：res.ok 已确认响应成功，body 必然存在（类型层面 res.body 可空，运行时不变）
+        const reader = res.body!.getReader()
         let lastDataTime = Date.now()
         
         // SSE 流超时保护：30s 无数据 → 自动 abort（防止永远卡在 streaming 态）

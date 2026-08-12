@@ -353,7 +353,8 @@ function RegisterForm({ themeId, onRegister }) {
   const [pinConfirm, setPinConfirm] = useState('')
   const [pinStep, setPinStep] = useState('input')
   const [pinError, setPinError] = useState('')
-  const [regUserId, setRegUserId] = useState(null) // 注册成功后的 userId（声纹采集用）
+  // FE-003：注册成功后的 userId 显式类型（此前 useState(null) 推断为 null → setRegUserId(data.userId)/regUserId as string 报错）
+  const [regUserId, setRegUserId] = useState<string | null>(null) // 注册成功后的 userId（声纹采集用）
   const [hasVoiceprint, setHasVoiceprint] = useState(false) // 是否已完成声纹采集
   const [familyCode, setFamilyCode] = useState('') // 注册成功后展示
   const [showConfirm, setShowConfirm] = useState(false) // 注册信息二次确认
@@ -673,8 +674,13 @@ function RegisterForm({ themeId, onRegister }) {
         </div>
       )}
 
+      {/* FE-001（doing/95）：测试邀请码不再硬编码——VITE_DEMO_INVITE 配置时才展示（生产构建不注入即不显示），
+          避免公开测试码破坏邀请制准入（PIPL 未成年人准入） */}
       <p className={`login-hint login-hint--${themeId}`}>
-        💡 邀请码由学校心理老师发放，体验测试可用 <strong>DEMO2026</strong>
+        💡 邀请码由学校心理老师发放
+        {import.meta.env.VITE_DEMO_INVITE && (
+          <>，体验测试可用 <strong>{import.meta.env.VITE_DEMO_INVITE}</strong></>
+        )}
       </p>
 
       {/* 声纹采集授权 */}

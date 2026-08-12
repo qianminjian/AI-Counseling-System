@@ -117,8 +117,9 @@ describe('config/remote', () => {
 
       const config = remote.getRemoteConfig()
       expect(config).not.toBeNull()
-      expect(config!.voiceprint.verifyThreshold).toBe(0.70)
-      expect(config!.wakeWord.windowSeconds).toBe(2.0)
+      // FE-003：voiceprint/wakeWord 为可选字段，断言不改变运行时取值（config 非空已由上一行断言）
+      expect(config!.voiceprint!.verifyThreshold).toBe(0.70)
+      expect(config!.wakeWord!.windowSeconds).toBe(2.0)
     })
   })
 
@@ -170,7 +171,7 @@ describe('config/remote', () => {
       })
       await remote.initRemoteConfig()
 
-      const scripts = remote.getConfigValue('guideScripts.verify', [])
+      const scripts = remote.getConfigValue('guideScripts.verify', [] as Array<{ prompt: string; hint: string; duration: number }>)
       expect(scripts).toHaveLength(2)
       expect(scripts[0].prompt).toContain('波波')
     })

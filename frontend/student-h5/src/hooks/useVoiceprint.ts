@@ -23,7 +23,7 @@ import {
   VP_INFERENCE_TIMEOUT,
 } from '../config/voiceprint'
 import { getConfigValue } from '../config/remote'
-import { getAllVoiceprints } from '../utils/voiceprintStore'
+import { getAllVoiceprints, type VoiceprintRecord } from '../utils/voiceprintStore'
 import { createModelStatusStore, type ModelStatus } from '../utils/modelStatusStore'
 // DC-009：Transformers.js 初始化收敛到共享 loader（SPEC §23）
 import { loadTransformersModel, createProgressHandler, formatModelError } from '../utils/transformersLoader'
@@ -48,7 +48,8 @@ export const useVoiceprintModelStatus = voiceprintModelStore.useStatus
 
 // ===== 模型单例（模块级，懒加载） =====
 
-let modelBundlePromise = null
+// FE-003：单例显式类型（此前 let = null 推断为 null → .catch 调用/赋值报 TS2531/TS2322）
+let modelBundlePromise: Promise<unknown> | null = null
 
 /**
  * 预加载声纹模型（不启动麦克风）：登录页挂载即调用（最早时机），
@@ -66,7 +67,7 @@ export function preloadVoiceprintModel(): Promise<unknown> {
  * 注意：WeSpeaker 是音频模型，不能用 pipeline('feature-extraction')（那是文本模型专用）。
  * 正确方式：AutoModel + AutoFeatureExtractor 分别加载，手动编排推理。
  */
-function getModelBundle() {
+function getModelBundle(): Promise<unknown> {
   if (!modelBundlePromise) {
     tslog('getModelBundle 首次调用：开始加载声纹模型')
     setVpModelStatus('loading')
@@ -135,7 +136,8 @@ function getModelBundle() {
         throw err
       })
   }
-  return modelBundlePromise
+  // FE-003：if 块内已赋值（失败 catch 置 null 允许重试），返回时非空
+  return modelBundlePromise!
 }
 
 // ===== 数学工具 =====
@@ -291,7 +293,8 @@ export function useVoiceprint() {
     }
 
     let bestScore = 0
-    let bestMatch = null
+    // FE-003：最佳匹配记录显式类型（此前 let = null 推断为 null → 赋值/属性访问报 TS2322/TS2339）
+    let bestMatch: VoiceprintRecord | null = null
 
     for (const print of allPrints) {
       // 对每个已注册声纹，计算所有输入段与所有模板段的最高相似度

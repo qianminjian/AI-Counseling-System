@@ -10,31 +10,52 @@
  */
 import SpeechBubble from './SpeechBubble'
 import { motionPref } from '../hooks/useMotionPreference'
+import type { PointerEvent as ReactPointerEvent } from 'react'
 
 /** 触感反馈（iOS Safari 不支持 vibrate，自动降级为纯视觉；触觉开关关闭时不触发，design/37 §4.3） */
-function vibrate(pattern) {
+function vibrate(pattern: number | number[]) {
   if (!motionPref.hapticsEnabled()) return
   try { navigator.vibrate?.(pattern) } catch { /* ignore */ }
 }
 
+// FE-003：props 显式类型（此前全部无注解 → 推断为 undefined，调用方传回调/测试传 mock 报 TS2322）
+interface BoBoPetProps {
+  state?: string            // 'idle' | 'listening' | 'thinking' | 'speaking' | 'waitingWake'
+  expression?: string       // 表情层（design/37 §4.1）：idle/happy/gentle/cheer/hug/listen/think/sleep
+  motionOff?: boolean       // 减弱动效降级（design/37 §4.3）：全部动画停用，静态呈现
+  colors?: { body: string; belly: string; fin: string }
+  sentenceText?: string     // speaking 时气泡展示的句子
+  liveTranscript?: string   // listening 时气泡展示的实时转写
+  size?: number             // 容器边长 px
+  interactive?: boolean     // 是否作为语音输入入口（按住说话）
+  cancelArmed?: boolean     // 上滑取消态（圆球变红）
+  disabled?: boolean
+  bubbleAlign?: string      // 气泡对齐：'center'（Pad）| 'right'（手机悬浮，向左展开防溢出）
+  onPointerDown?: (e: ReactPointerEvent<HTMLDivElement>) => void
+  onPointerMove?: (e: ReactPointerEvent<HTMLDivElement>) => void
+  onPointerUp?: (e: ReactPointerEvent<HTMLDivElement>) => void
+  onPointerCancel?: (e: ReactPointerEvent<HTMLDivElement>) => void
+  className?: string
+}
+
 export default function BoBoPet({
-  state = 'idle',            // 'idle' | 'listening' | 'thinking' | 'speaking' | 'waitingWake'
-  expression = 'idle',       // 表情层（design/37 §4.1）：idle/happy/gentle/cheer/hug/listen/think/sleep
-  motionOff = false,         // 减弱动效降级（design/37 §4.3）：全部动画停用，静态呈现
+  state = 'idle',
+  expression = 'idle',
+  motionOff = false,
   colors = { body: '#38BDF8', belly: '#E0F2FE', fin: '#0284C7' },
-  sentenceText = '',         // speaking 时气泡展示的句子
-  liveTranscript = '',       // listening 时气泡展示的实时转写
-  size = 72,                 // 容器边长 px
-  interactive = false,       // 是否作为语音输入入口（按住说话）
-  cancelArmed = false,       // 上滑取消态（圆球变红）
+  sentenceText = '',
+  liveTranscript = '',
+  size = 72,
+  interactive = false,
+  cancelArmed = false,
   disabled = false,
-  bubbleAlign = 'center',    // 气泡对齐：'center'（Pad）| 'right'（手机悬浮，向左展开防溢出）
+  bubbleAlign = 'center',
   onPointerDown = undefined,
   onPointerMove = undefined,
   onPointerUp = undefined,
   onPointerCancel = undefined,
   className = '',
-}) {
+}: BoBoPetProps) {
   const bubbleMode = state === 'listening' ? 'listening'
     : state === 'speaking' ? 'speaking'
     : state === 'thinking' ? 'thinking'

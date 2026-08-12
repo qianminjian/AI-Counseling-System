@@ -81,8 +81,9 @@ describe('validateSchema（正向：required 强制）', () => {
   })
 
   it('enum 匹配通过 / 不匹配报错', () => {
-    expect(validateSchema('GROUNDING', schemas.ToolDefinition.properties.category, resolveRef)).toEqual([])
-    expect(validateSchema('OTHER', schemas.ToolDefinition.properties.category, resolveRef).length).toBe(1)
+    // FE-003：properties 为可选字段，断言不改变运行时取值（ToolDefinition 定义必含 properties）
+    expect(validateSchema('GROUNDING', schemas.ToolDefinition.properties!.category, resolveRef)).toEqual([])
+    expect(validateSchema('OTHER', schemas.ToolDefinition.properties!.category, resolveRef).length).toBe(1)
   })
 
   it('$ref 解析为对应 schema 校验', () => {

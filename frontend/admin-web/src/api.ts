@@ -1,6 +1,13 @@
 /** 平台管理端 API（ADMIN-P0-02/04：登录 + token 存取 + 服务状态）
  * P0 backlog ②（L1）：token 从 localStorage 迁 sessionStorage（会话级，关闭浏览器自动清除，
- * 对齐 teacher-web AUD-007 先例）；httpOnly cookie 长期方案留作远期。 */
+ * 对齐 teacher-web AUD-007 先例）；httpOnly cookie 长期方案留作远期。
+ * FE-004（doing/95）：认证传输收敛 shared auth-transport——createPlatformTokens 统一 token 存取
+ * （单 token 无 refresh：createAuthFetch 401 时 refreshTokens 因无 rt 直接 false → 返回原始 401，
+ * 由调用方登出，语义与「管理端不续期」一致），storage 存取经安全封装防隐私模式 SecurityError。 */
+
+// DC-005：认证传输共享模块（token 存取/authFetch/登出）
+import { createPlatformTokens, type StorageLike } from '../../shared/src/auth-transport/tokenStorage'
+import { createAuthFetch } from '../../shared/src/auth-transport/authFetch'
 
 export interface PlatformLoginResult {
   token: string
@@ -8,9 +15,39 @@ export interface PlatformLoginResult {
   displayName: string
 }
 
-const TOKEN_KEY = 'admin_token'
 const ROLE_KEY = 'admin_role'
 const NAME_KEY = 'admin_name'
+
+/** 会话级存储安全适配（隐私模式/存储禁用下不抛 SecurityError，FE-004 对齐三端 storage 安全封装） */
+const sessionStore: StorageLike = {
+  get: (key) => {
+    try {
+      return sessionStorage.getItem(key)
+    } catch {
+      return null
+    }
+  },
+  set: (key, value) => {
+    try {
+      sessionStorage.setItem(key, value)
+    } catch {
+      /* 隐私模式：静默失败（登出仍可用） */
+    }
+  },
+  remove: (key) => {
+    try {
+      sessionStorage.removeItem(key)
+    } catch {
+      /* 同上 */
+    }
+  },
+}
+
+/** 平台单 token 存取（键 admin_token，与历史会话兼容；admin_role/admin_name 另行管理） */
+const storage = createPlatformTokens('admin_', sessionStore)
+
+/** 401/403 后分发的登出事件（App.tsx 监听后跳登录页） */
+export const UNAUTHORIZED_EVENT = 'admin:unauthorized'
 
 export async function platformLogin(username: string, password: string): Promise<PlatformLoginResult> {
   const resp = await fetch('/api/v1/platform/auth/login', {
@@ -24,39 +61,33 @@ export async function platformLogin(username: string, password: string): Promise
   }
   const body = await resp.json()
   const data = body.data as PlatformLoginResult
-  sessionStorage.setItem(TOKEN_KEY, data.token)
-  sessionStorage.setItem(ROLE_KEY, data.role)
-  sessionStorage.setItem(NAME_KEY, data.displayName ?? '')
+  storage.setToken(data.token)
+  sessionStore.set(ROLE_KEY, data.role)
+  sessionStore.set(NAME_KEY, data.displayName ?? '')
   return data
 }
 
 export function getAdminToken(): string | null {
-  return sessionStorage.getItem(TOKEN_KEY)
+  return storage.getToken()
 }
 
 export function getAdminRole(): string | null {
-  return sessionStorage.getItem(ROLE_KEY)
+  return sessionStore.get(ROLE_KEY)
 }
 
 export function getAdminName(): string {
-  return sessionStorage.getItem(NAME_KEY) ?? ''
+  return sessionStore.get(NAME_KEY) ?? ''
 }
 
 export function adminLogout(): void {
-  sessionStorage.removeItem(TOKEN_KEY)
-  sessionStorage.removeItem(ROLE_KEY)
-  sessionStorage.removeItem(NAME_KEY)
+  storage.clear()
+  sessionStore.remove(ROLE_KEY)
+  sessionStore.remove(NAME_KEY)
 }
 
-/** 登录态失效事件（401/403 时触发，App 监听后回登录页，code-review M2） */
-export const UNAUTHORIZED_EVENT = 'admin:unauthorized'
-
 /** 平台鉴权请求封装（PLATFORM_ token 前缀由后端签发，此处原样携带） */
-export async function adminFetch<T>(path: string): Promise<T> {
-  const token = getAdminToken()
-  const resp = await fetch(path, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-  })
+export async function adminFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  const resp = await authFetch(path, init)
   if (resp.status === 401 || resp.status === 403) {
     adminLogout()
     window.dispatchEvent(new Event(UNAUTHORIZED_EVENT))
@@ -68,6 +99,9 @@ export async function adminFetch<T>(path: string): Promise<T> {
   const body = await resp.json()
   return body.data as T
 }
+
+/** 认证 fetch（FE-004：shared createAuthFetch，自动携带 Bearer；单 token 无刷新） */
+const authFetch = createAuthFetch(storage)
 
 /** 服务健康状态（P0-05） */
 export interface ServiceStatus {
@@ -119,10 +153,9 @@ export function fetchConfigs(domain?: string): Promise<SysConfigItem[]> {
 }
 
 export async function updateConfig(key: string, value: string, reason: string): Promise<void> {
-  const token = getAdminToken()
-  const resp = await fetch(`/api/v1/platform/config/${encodeURIComponent(key)}`, {
+  const resp = await authFetch(`/api/v1/platform/config/${encodeURIComponent(key)}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ value, reason }),
   })
   if (!resp.ok) {
@@ -192,13 +225,11 @@ export function fetchDegradationEvents(point?: string): Promise<DegradationEvent
 
 /** 手动切换（X-Confirm 固定短语 + reason） */
 export async function degradationOverride(point: string, to: string, reason: string): Promise<void> {
-  const token = getAdminToken()
-  const resp = await fetch(`/api/v1/ops/degradation/${encodeURIComponent(point)}/override`, {
+  const resp = await authFetch(`/api/v1/ops/degradation/${encodeURIComponent(point)}/override`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'X-Confirm': 'CONFIRM',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
     body: JSON.stringify({ to, reason }),
   })
@@ -210,13 +241,11 @@ export async function degradationOverride(point: string, to: string, reason: str
 
 /** 取消覆盖（回配置默认，X-Confirm + reason） */
 export async function cancelDegradationOverride(point: string, reason: string): Promise<void> {
-  const token = getAdminToken()
-  const resp = await fetch(`/api/v1/ops/degradation/${encodeURIComponent(point)}/override/cancel`, {
+  const resp = await authFetch(`/api/v1/ops/degradation/${encodeURIComponent(point)}/override/cancel`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'X-Confirm': 'CONFIRM',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
     body: JSON.stringify({ reason }),
   })
@@ -240,10 +269,9 @@ export interface PromptVersionItem {
 }
 
 export async function promptAction(path: string, body?: unknown): Promise<void> {
-  const token = getAdminToken()
-  const resp = await fetch(`/api/v1/admin/prompts${path}`, {
+  const resp = await authFetch(`/api/v1/admin/prompts${path}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    headers: { 'Content-Type': 'application/json' },
     body: body ? JSON.stringify(body) : undefined,
   })
   if (!resp.ok) {
@@ -333,13 +361,11 @@ export function fetchAlertEvents(status?: string): Promise<AlertEventItem[]> {
 
 /** 告警确认（firing → ack，X-Confirm 二次确认 + reason 必填，仅 ops/super） */
 export async function ackAlertEvent(eventId: string, reason: string): Promise<void> {
-  const token = getAdminToken()
-  const resp = await fetch(`/api/v1/ops/alerts/${eventId}/ack`, {
+  const resp = await authFetch(`/api/v1/ops/alerts/${eventId}/ack`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'X-Confirm': 'CONFIRM',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
     body: JSON.stringify({ reason }),
   })
@@ -383,10 +409,9 @@ export function fetchPlatformDeviceDetail(deviceId: string): Promise<Record<stri
 
 /** 二维码批量签发（印刷包留痕） */
 export async function exportDeviceQr(deviceCodes: string[]): Promise<{ issuedCount: number; notFound: string[] }> {
-  const token = getAdminToken()
-  const resp = await fetch('/api/v1/platform/devices/export-qr', {
+  const resp = await authFetch('/api/v1/platform/devices/export-qr', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ deviceCodes, issuedBy: getAdminName() }),
   })
   if (!resp.ok) {
@@ -399,10 +424,9 @@ export async function exportDeviceQr(deviceCodes: string[]): Promise<{ issuedCou
 
 /** 批量操作受理（ota / reboot / factory-reset） */
 export async function batchDeviceOperation(deviceCodes: string[], action: string): Promise<Record<string, unknown>> {
-  const token = getAdminToken()
-  const resp = await fetch('/api/v1/platform/devices/batch', {
+  const resp = await authFetch('/api/v1/platform/devices/batch', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ deviceCodes, action, operator: getAdminName() }),
   })
   if (!resp.ok) {

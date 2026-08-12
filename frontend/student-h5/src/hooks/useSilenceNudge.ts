@@ -75,7 +75,7 @@ export function useSilenceNudge({ sessionId, idle, onNudge }) {
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
 
         // SSE 解析统一走 consumeSseStream（F-1 单点）：只累积 token 文本，emotion/risk 静默丢弃
-        const fullText = await consumeSseStream(res.body.getReader(), {
+        const fullText = await consumeSseStream(res.body!.getReader(), {
           onToken: () => {},
           onEmotion: () => {},
           onRisk: () => {},

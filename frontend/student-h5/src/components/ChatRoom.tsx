@@ -51,7 +51,8 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: Se
     speakingMsgIdx, setSpeakingMsgIdx,
   } = useChatRoomPanels()
   const [cancelArmed, setCancelArmed] = useState(false) // 按住说话：上滑进入取消态（手势状态，留在组件内）
-  const bottomRef = useRef(null)
+  // FE-003：底部滚动锚点 ref 显式类型（此前推断为 null → scrollIntoView 报 TS2339）
+  const bottomRef = useRef<HTMLDivElement | null>(null)
   const greetingSpokenRef = useRef(false)
   const pointerStartYRef = useRef(0) // 按下时 Y 坐标（检测上滑取消）
 

@@ -24,6 +24,15 @@ const CATEGORY_ACCENT = {
 
 const VOICE_PREF_KEY = 'mindsafe_relax_voice_on'
 
+/** 练习数据结构（FE-003：与 api 返回对齐，仅约束组件内消费面） */
+interface RelaxationExercise {
+  id: string
+  name: string
+  description: string
+  category: 'breathing' | 'mindfulness' | 'visualization' | 'somatic'
+  durationSeconds: number
+}
+
 /** 放松练习语音引导朗读（轻柔语速，冥想/呼吸场景；F5：复用共享 browserSpeak 降级链） */
 function speakGuide(text) {
   // bobo 人设（温柔女老师，pitch 1.05 × rateScale 0.95），rate 0.9 → 实际语速 ~0.86
@@ -74,7 +83,7 @@ function ExerciseRunner({ exercise, onComplete, onBack, ts }) {
   const [elapsed, setElapsed] = useState(0)
   const [done, setDone] = useState(false)
   const [voiceOn, setVoiceOn] = useState(() => readLocalStorageSafe(VOICE_PREF_KEY, '') !== '0')
-  const timerRef = useRef(null)
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const voiceOnRef = useRef(voiceOn)
   voiceOnRef.current = voiceOn
 
@@ -103,7 +112,7 @@ function ExerciseRunner({ exercise, onComplete, onBack, ts }) {
       setSeconds(count)
     }, 1000)
 
-    return () => clearInterval(timerRef.current)
+    return () => { if (timerRef.current) clearInterval(timerRef.current) }
   }, [])
 
   // 语音引导：呼吸类按相位提示，其他类开始时朗读引导词
@@ -125,7 +134,7 @@ function ExerciseRunner({ exercise, onComplete, onBack, ts }) {
   useEffect(() => {
     if (elapsed >= exercise.durationSeconds && !done) {
       setDone(true)
-      clearInterval(timerRef.current)
+      if (timerRef.current) clearInterval(timerRef.current)
       if (voiceOnRef.current) speakGuide('做得好！感觉放松一些了吗？')
       // 记录完成
       api('/relaxation/sessions', {
@@ -247,8 +256,8 @@ function TodayCounter({ ts }) {
  * 列表 / 呼吸执行 / 正念执行 / 完成四个页面状态均随主题联动。
  */
 export default function RelaxationExercises({ onBack }) {
-  const [exercises, setExercises] = useState([])
-  const [active, setActive] = useState(null)
+  const [exercises, setExercises] = useState<RelaxationExercise[]>([])
+  const [active, setActive] = useState<RelaxationExercise | null>(null)
   const [loading, setLoading] = useState(true)
   const { theme, themeId } = useTheme()
   const ts = THEME_STYLES[themeId] || THEME_STYLES.ocean

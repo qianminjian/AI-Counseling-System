@@ -91,5 +91,7 @@ export const THEME_STYLES = {
 
 /** 主题是否深色场景（Achievements 等仅需明暗判断的组件用；未知/缺失主题回退 ocean 语义） */
 export function isDarkTheme(themeId: string | undefined | null): boolean {
-  return THEME_STYLES[themeId]?.dark ?? THEME_STYLES.ocean.dark
+  // FE-003：判空后再按主题键索引（null/undefined/未知键均回退 ocean 语义，行为不变）
+  const style = themeId ? THEME_STYLES[themeId as keyof typeof THEME_STYLES] : undefined
+  return style?.dark ?? THEME_STYLES.ocean.dark
 }

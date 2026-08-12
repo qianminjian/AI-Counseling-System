@@ -24,12 +24,20 @@ const FALLBACK = EMOTIONS[0]
 
 const INTENSITY_LABELS = ['', '很轻微', '比较轻', '中等', '比较强', '非常强']
 
+/** 日记历史条目（/diary/history 返回结构） */
+// FE-003：显式类型（此前 useState([]) 推断为 never[] → emotionLabel/intensity/diaryDate 报 TS2339）
+interface DiaryHistoryItem {
+  emotionLabel: string
+  intensity: number
+  diaryDate?: string
+}
+
 /** 情绪日记打卡 + 趋势图（沉浸式场景主题适配；色板单源 theme/immersiveStyles，FA-02） */
 export default function EmotionDiary({ onBack }) {
   const [today, setToday] = useState(null)
-  const [history, setHistory] = useState([])
+  const [history, setHistory] = useState<DiaryHistoryItem[]>([])
   const [streak, setStreak] = useState({ streak: 0, total: 0 })
-  const [selected, setSelected] = useState(null)
+  const [selected, setSelected] = useState<string | null>(null)
   const [intensity, setIntensity] = useState(3)
   const [note, setNote] = useState('')
   const [submitted, setSubmitted] = useState(false)

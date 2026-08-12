@@ -321,7 +321,8 @@ describe('useSseStream（UX-006，design/17 §chat/hooks）', () => {
     })
     const { result } = renderHook(() => useSseStream())
 
-    let promise: Promise<any>
+    // FE-003：promise 在下方 act 内赋值，definite assignment 断言（运行时行为不变）
+    let promise!: Promise<any>
     await act(async () => {
       promise = result.current.streamMessage('/u', {}, { onToken: vi.fn(), onEmotion: vi.fn(), onRisk: vi.fn() })
     })

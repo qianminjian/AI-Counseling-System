@@ -36,7 +36,7 @@ function splitSentences(text) {
   // 按句号、问号、感叹号、换行切分
   const parts = cleaned.split(/(?<=[。！？\n])/).filter(s => s.trim())
   // 超长句二次切分（>15字在逗号/顿号/分号处断开，加速首句出声）
-  const result = []
+  const result: string[] = []
   for (const part of parts) {
     if (part.length > 15) {
       const subParts = part.split(/(?<=[，、；])/).filter(s => s.trim())
@@ -50,7 +50,7 @@ function splitSentences(text) {
 
 /** 合并过短的句子，避免“短句瞬间播完、下一句还没合成好”造成的句间间隔 */
 function mergeShortSentences(sentences, minLen = 8) {
-  const merged = []
+  const merged: string[] = []
   let buffer = ''
   for (const s of sentences) {
     buffer += s
@@ -73,14 +73,14 @@ export function useTtsPlayer({ persona = 'xiaoxing', emotion = 'neutral', speed 
   const [playing, setPlaying] = useState(false)
   const [currentSentenceIdx, setCurrentSentenceIdx] = useState(-1)
   // 当前正在播放的句子数组（供波波话语气泡逐句展示，见 design/27 §4.4）
-  const [sentences, setSentences] = useState([])
+  const [sentences, setSentences] = useState<string[]>([])
   // FA-05：静音偏好持久化（与 EmotionSelect 设置面板共享同一 localStorage 状态，跨页面生效）
   const [muted, setMutedState] = useState(readMutedPreference)
   // 语音引擎状态：'backend' | 'browser' | 'none'
   const [engine, setEngine] = useState('backend')
   // 单一持久 Audio 元素（在用户手势中创建，规避自动播放拦截）
-  const audioRef = useRef(null)
-  const audioCtxRef = useRef(null)
+  const audioRef = useRef<HTMLAudioElement | null>(null)
+  const audioCtxRef = useRef<AudioContext | null>(null)
   const abortRef = useRef(false)
   const backendFailCount = useRef(0)
   const lastFailTimeRef = useRef(0) // 上次失败时间戳（用于时间恢复）
@@ -156,7 +156,8 @@ export function useTtsPlayer({ persona = 'xiaoxing', emotion = 'neutral', speed 
   /** 用持久 Audio 元素播放一个 blob */
   const playBlob = useCallback((blob) => {
     return new Promise((resolve) => {
-      const audio = getAudio()
+      // FE-003：getAudio 内部确保创建后返回，逻辑上非空（断言不改变运行行为）
+      const audio = getAudio()!
       const url = URL.createObjectURL(blob)
 
       const cleanup = () => {

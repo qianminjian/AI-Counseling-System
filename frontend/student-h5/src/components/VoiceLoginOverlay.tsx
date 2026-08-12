@@ -51,16 +51,25 @@ export default function VoiceLoginOverlay({ mode = 'verify', onComplete, onCance
   const [privacyNote, setPrivacyNote] = useState('声音信息只保存在这台设备上，不会上传到任何服务器')
 
   const { extractEmbedding, verify, loading, modelErrorRef } = useVoiceprint()
-  const collectedEmbeddings = useRef([])
+  // FE-003：已采集 embedding 集合显式类型（此前 useRef([]) 推断为 never[] → push number[] 报 TS2345）
+  const collectedEmbeddings = useRef<number[][]>([])
   const sessionRef = useRef<MicSessionHandle | null>(null)
   const chunksRef = useRef<Float32Array[]>([])
   const listeningRef = useRef(false)
   const cancelledRef = useRef(false)
+  // FE-006（doing/95）：采集定时器独立 ref——Promise executor 返回值被 JS 忽略，
+  // 原 return () => clearTimeout(timer) 永不执行；卸载后 timer 仍会 resolve 触发已卸载组件 setState
+  const captureTimerRef = useRef<number | null>(null)
 
   // 清理资源（会话 stop 统一释放采集节点 + 麦克风 + AudioContext）
   const cleanup = useCallback(() => {
     cancelledRef.current = true
     listeningRef.current = false
+    // FE-006：卸载时同步清除采集定时器（防卸载后 resolve 触发已卸载组件 setState）
+    if (captureTimerRef.current !== null) {
+      clearTimeout(captureTimerRef.current)
+      captureTimerRef.current = null
+    }
     sessionRef.current?.stop()
     sessionRef.current = null
   }, [])
@@ -149,11 +158,11 @@ export default function VoiceLoginOverlay({ mode = 'verify', onComplete, onCance
           merged.set(c, offset)
           offset += c.length
         }
+        captureTimerRef.current = null
         resolve(merged)
       }, duration * 1000)
-
-      // 保存 timer 以便取消
-      return () => clearTimeout(timer)
+      // FE-006：timer 由 ref 持有，cleanup() 统一清除（executor 返回值被忽略）
+      captureTimerRef.current = timer
     })
   }, [])
 
@@ -282,7 +291,9 @@ export default function VoiceLoginOverlay({ mode = 'verify', onComplete, onCance
         // local 模式：本地 IndexedDB 比对 → 设备凭证换 token
         const result = await verify(collectedEmbeddings.current)
         if (result.matched) {
-          const vp = await getVoiceprint(result.userId) as any
+          // FE-003：matched=true 时 userId 必然存在（verify 内部由 bestMatch 派生），断言不改变运行时取值
+          // FE-007（doing/95）：getVoiceprint 已返回 VoiceprintRecord | null，删除 as any 逃逸
+          const vp = await getVoiceprint(result.userId!)
           const cred = vp?.voiceCredential
           if (!cred) {
             setFailKind('credential')

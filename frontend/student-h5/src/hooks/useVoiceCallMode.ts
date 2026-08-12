@@ -18,7 +18,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useWakeWord } from './useWakeWord'
 import { matchesWakeWord } from '../config/wakeWord'
-import { createSpeechRecognition } from '../utils/speechRecognition'
+import { createSpeechRecognition, type SpeechRecognitionHandle } from '../utils/speechRecognition'
 
 /** 唤醒确认短句（播完后才开始捕捉说话） */
 const WAKE_CONFIRM_TEXT = '我在呢！'
@@ -50,11 +50,12 @@ export function useVoiceCallMode({ enabled, tts, busy, onFinalTranscript }) {
   const onFinalTranscriptRef = useRef(onFinalTranscript)
   // 注意：useTtsPlayer 每次渲染返回新对象，tts 只能走 ref（否则冷却计时器被反复重置）
   const ttsRef = useRef(tts)
-  const recRef = useRef(null)
-  const restartTimerRef = useRef(null)
-  const startListeningRoundRef = useRef(null)
+  // FE-003：识别句柄 / 计时器 / 回调 ref 显式类型（可选值 + 判空使用）
+  const recRef = useRef<SpeechRecognitionHandle | null>(null)
+  const restartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const startListeningRoundRef = useRef<(() => void) | null>(null)
   /** 防抖计时器：用户停止说话后延迟发送，避免中间停顿截断句子 */
-  const speechEndTimerRef = useRef(null)
+  const speechEndTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   /** 累积的转写文本（continuous 模式下多个 result 事件拼接） */
   const accumulatedTextRef = useRef('')
   // 防 re-entry：Whisper 多窗串行检测可能在 React 状态传播前多次触发 onDetected

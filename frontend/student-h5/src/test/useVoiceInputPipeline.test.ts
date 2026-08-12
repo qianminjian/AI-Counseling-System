@@ -99,7 +99,8 @@ describe('useVoiceInputPipeline（ARCH-006 语音编排抽取）', () => {
     const { result } = renderHook(() => useVoiceInputPipeline({ onTranscription: vi.fn() }))
     act(() => { result.current.start() })
     expect(mockRecorder.startRecording).toHaveBeenCalledTimes(1)
-    const rec = FakeSpeechRecognition.last
+    // FE-003：下一行 expect(rec).toBeTruthy() 已断言非空，非空断言不改变运行时取值
+    const rec = FakeSpeechRecognition.last!
     expect(rec).toBeTruthy()
     expect(rec.lang).toBe('zh-CN')
     expect(rec.continuous).toBe(true)

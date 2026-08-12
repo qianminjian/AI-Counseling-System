@@ -78,7 +78,18 @@ export const THEMES = {
 
 const THEME_KEY = 'mindsafe_theme_v1'
 
-const ThemeContext = createContext(null)
+// FE-003：Context 类型化（运行时 value 仍可为 null，仅类型层面修复，不改行为）
+type ThemeId = keyof typeof THEMES
+
+interface ThemeContextValue {
+  theme: (typeof THEMES)[ThemeId]
+  themeId: string
+  // FE-003：接受任意 string（无效 id 在 changeTheme 内被忽略，与运行时语义一致）
+  changeTheme: (id: string) => void
+  themes: typeof THEMES
+}
+
+const ThemeContext = createContext<ThemeContextValue | null>(null)
 
 export function ThemeProvider({ children }) {
   const [themeId, setThemeId] = useState(() => {

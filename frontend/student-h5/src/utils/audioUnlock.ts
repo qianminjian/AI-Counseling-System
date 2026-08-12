@@ -8,12 +8,13 @@
  * 后续 ChatRoom 挂载后使用同一实例即可正常播放。
  */
 
-let audioCtx = null
-let audioEl = null
+// FE-003：模块级单例显式类型（函数内判空创建后保证非空）
+let audioCtx: AudioContext | null = null
+let audioEl: HTMLAudioElement | null = null
 let unlocked = false
 
 /** 获取全局 AudioContext（复用，避免重复创建） */
-export function getGlobalAudioContext() {
+export function getGlobalAudioContext(): AudioContext {
   if (!audioCtx) {
     audioCtx = new (window.AudioContext || window.webkitAudioContext)()
   }
@@ -21,11 +22,12 @@ export function getGlobalAudioContext() {
 }
 
 /** 获取全局 Audio 元素（复用，避免重复创建） */
-export function getGlobalAudioElement() {
+export function getGlobalAudioElement(): HTMLAudioElement {
   if (!audioEl) {
     audioEl = new Audio()
     audioEl.preload = 'auto'
-    audioEl.playsInline = true
+    // FE-003：playsInline 是 iOS 私有属性（标准 HTMLAudioElement 无此字段），断言保留原赋值行为
+    ;(audioEl as unknown as { playsInline?: boolean }).playsInline = true
     audioEl.setAttribute('playsinline', '')
     audioEl.setAttribute('webkit-playsinline', '')
   }

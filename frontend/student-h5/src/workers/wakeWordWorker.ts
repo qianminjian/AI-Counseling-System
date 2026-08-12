@@ -8,6 +8,8 @@
  * 模型单例：Worker 生命周期内只加载一次，跨多次 transcribe 复用。
  */
 
+import type { AutomaticSpeechRecognitionPipeline } from '@huggingface/transformers'
+
 const TAG = '[WakeWordWorker]'
 
 /** F-25 轨迹时间戳日志：Worker 内 performance.now() 与主线程同时间轴（页面启动后相对秒） */
@@ -23,8 +25,9 @@ self.onunhandledrejection = (e) => {
   console.error(TAG, '未处理 Promise 拒绝:', e.reason)
 }
 
-let transcriberInstance = null
-let initPromise = null
+// FE-003：单例显式类型（initPromise 失败重置为 null 允许重试）
+let transcriberInstance: AutomaticSpeechRecognitionPipeline | null = null
+let initPromise: Promise<AutomaticSpeechRecognitionPipeline> | null = null
 
 async function ensureModel(config) {
   if (transcriberInstance) return transcriberInstance
@@ -57,15 +60,15 @@ async function ensureModel(config) {
     // F-8-Worker（2026-08-09）：与主线程 transformersLoader.ts 同步——单线程 40MB 模型 session_create
     // 耗时长（30-60s）改双线程加速。注意 numThreads=2 需要 SharedArrayBuffer + pthread
     // （COOP/COEP 头已配齐），低端 CPU/WebView 异常时可改回 1。
-    env.backends.onnx.wasm.numThreads = 2
+    env.backends.onnx.wasm!.numThreads = 2
 
     // ONNX WASM 路径
-    env.backends.onnx.wasm.wasmPaths = config.wasmPaths
+    env.backends.onnx.wasm!.wasmPaths = config.wasmPaths
 
     // F-8-Worker 诊断：埋点 ORT session_create 耗时（生产环境 console 可见，便于排查加载慢问题）
     const t0Session = Date.now()
     tslog('Worker ORT session_create 开始')
-    console.info(TAG, `开始 ORT session_create（numThreads=${env.backends.onnx.wasm.numThreads}）`)
+    console.info(TAG, `开始 ORT session_create（numThreads=${env.backends.onnx.wasm!.numThreads}）`)
     const t = await pipeline('automatic-speech-recognition', config.modelId, {
       // 禁用高级图优化：ORT 1.26.0 TransposeDQWeightsForMatMulNBits bug
       session_options: { graphOptimizationLevel: 'basic' },
@@ -117,9 +120,11 @@ self.onmessage = async (event) => {
     try {
       const transcriber = await ensureModel(event.data.config)
       const output = await transcriber(audio, { language: 'chinese', task: 'transcribe' })
-      tslog(`Worker 转写完成 id=${id}:`, output?.text)
-      console.debug(TAG, `转写完成 id=${id}:`, output?.text)
-      self.postMessage({ type: 'result', id, text: output?.text || '' })
+      // FE-003：HF 返回 output[]|output 联合，text 属性仅在单对象上；断言收窄类型，运行时仍是 output?.text，行为不变
+      const text = (output as unknown as { text?: string })?.text || ''
+      tslog(`Worker 转写完成 id=${id}:`, text)
+      console.debug(TAG, `转写完成 id=${id}:`, text)
+      self.postMessage({ type: 'result', id, text })
     } catch (err) {
       console.error(TAG, `转写异常 id=${id}:`, err?.message)
       self.postMessage({ type: 'error', id, message: err?.message || String(err) })

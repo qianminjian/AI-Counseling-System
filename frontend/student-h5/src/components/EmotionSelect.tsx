@@ -30,7 +30,8 @@ const EMOTIONS = STUDENT_EMOTION_TAGS.map(tag => {
 })
 
 export default function EmotionSelect({ onStart, userName, onLogout, onConsentRequired }) {
-  const [selected, setSelected] = useState(null)
+  // FE-003：选中情绪显式类型（此前 useState(null) 推断为 null → setSelected(e.tag) 报 TS2345）
+  const [selected, setSelected] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [showRelaxation, setShowRelaxation] = useState(false)

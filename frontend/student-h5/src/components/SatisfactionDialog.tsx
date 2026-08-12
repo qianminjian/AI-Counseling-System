@@ -13,7 +13,8 @@ const FACES = [
  * 可选评价后关闭，也可跳过；点「再聊一会儿」返回聊天（结束前的反悔出口）
  */
 export default function SatisfactionDialog({ onSubmit, onSkip, onResume }: { onSubmit: (rating: number | null, comment?: string) => void; onSkip: () => void; onResume?: () => void }) {
-  const [selected, setSelected] = useState(null)
+  // FE-003：选中评分显式类型（此前 useState(null) 推断为 null → setSelected(f.rating) 报 TS2345）
+  const [selected, setSelected] = useState<number | null>(null)
   const [comment, setComment] = useState('')
 
   return (

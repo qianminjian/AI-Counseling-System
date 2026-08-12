@@ -3,9 +3,19 @@ import { api } from '../api'
 import { useTheme } from '../theme/ThemeProvider'
 import { isDarkTheme } from '../theme/immersiveStyles'
 
+/** 成就徽章数据结构（/diary/achievements 返回） */
+// FE-003：显式类型（此前 useState([]) 推断为 never[] → 属性访问报 TS2339）
+interface AchievementBadge {
+  id: string
+  unlocked: boolean
+  emoji: string
+  title: string
+  desc: string
+}
+
 /** 成就徽章展示 */
 export default function Achievements() {
-  const [badges, setBadges] = useState([])
+  const [badges, setBadges] = useState<AchievementBadge[]>([])
   const [show, setShow] = useState(false)
   const { themeId } = useTheme()
 

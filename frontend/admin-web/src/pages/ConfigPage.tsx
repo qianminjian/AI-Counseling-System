@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Button, Card, Form, Input, message, Modal, Select, Table, Tag, List, Typography, Space } from 'antd'
 import { fetchConfigs, updateConfig, fetchConfigHistory, type SysConfigItem, type ConfigHistoryItem } from '../api'
 
@@ -14,11 +14,20 @@ export default function ConfigPage() {
   const [history, setHistory] = useState<ConfigHistoryItem[]>([])
   const [historyLoading, setHistoryLoading] = useState(false)
   const [form] = Form.useForm()
+  // FE-008（doing/95）：domain 切换竞态防护——旧 domain 响应不得覆盖新列表
+  const loadSeqRef = useRef(0)
 
   const load = () => {
+    const seq = ++loadSeqRef.current
     fetchConfigs(domain)
-      .then(setConfigs)
-      .catch((e: Error) => message.error(e.message))
+      .then((data) => {
+        if (seq !== loadSeqRef.current) return
+        setConfigs(data)
+      })
+      .catch((e: Error) => {
+        if (seq !== loadSeqRef.current) return
+        message.error(e.message)
+      })
   }
 
   useEffect(load, [domain])

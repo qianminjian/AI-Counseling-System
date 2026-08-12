@@ -118,8 +118,10 @@ type TranscriberFn = (audio: Float32Array, opts: { language: string; task: strin
  * 模块级模型单例（主线程转写器）：加载一次，跨会话复用。
  * 失败时重置为 null，允许下次重试（如网络恢复）。
  */
-let transcriberPromise: Promise<TranscriberFn> | null = null
-function getTranscriber() {
+// FE-003：单例显式类型（此前 let = null 推断为 null → .then 调用报 TS2531；
+// load 回调双断言使泛型收敛为 TranscriberFn，与 .catch 的 null 合成 Promise<TranscriberFn | null>）
+let transcriberPromise: Promise<TranscriberFn | null> | null = null
+function getTranscriber(): Promise<TranscriberFn | null> {
   if (!transcriberPromise) {
     setModelStatus('loading')
     transcriberPromise = loadTransformersModel({
@@ -134,7 +136,8 @@ function getTranscriber() {
         })
         // F-9b 回滚（2026-08-09）：恢复 8.2 行为——不做 pipeline 完整性硬校验
         setModelStatus('ready')
-        return t
+        // FE-003：HF pipeline 返回类型不可直接赋给 TranscriberFn（返回结构为 output[]|output），双断言仅收窄类型，运行时不变
+        return t as unknown as TranscriberFn
       },
       onError: (err) => {
         const fullMsg = formatModelError(err)

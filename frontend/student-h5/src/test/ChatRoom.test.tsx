@@ -47,7 +47,8 @@ const mockPipeline = {
   isAnalyzing: false,
   isSending: false,
   supported: true,
-  error: null,
+  // FE-003：error 字段显式可空（此前 null 收窄为 null 字面量 → 后续用例赋值字符串报 TS2322）
+  error: null as string | null,
   liveTranscript: '',
   warmUp: vi.fn(),
   releaseStream: vi.fn(),

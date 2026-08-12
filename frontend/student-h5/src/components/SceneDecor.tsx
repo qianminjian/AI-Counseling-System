@@ -7,8 +7,17 @@ import { useMemo } from 'react'
  * - rainbow：星星闪烁 + 行星 + 流星
  * 依赖 index.css 中 .bubble/.fish/.sea-floor/.candy-float/.star/.planet/.shooting-star
  */
+// FE-003：装饰项显式类型（useMemo 各分支联合推断 → 非当前分支属性访问报 TS18048）
+interface DecorItems {
+  bubbles?: Array<{ id: number; size: number; left: string; dur: string; delay: string }>
+  fish?: Array<{ emoji: string; top: string; dur: string; delay: string }>
+  candies?: Array<{ id: number; emoji: string; left: string; top: string; delay: string }>
+  stars?: Array<{ id: number; left: string; top: string; delay: string }>
+  planets?: Array<{ size: number; color: string; left: string; top: string }>
+}
+
 export default function SceneDecor({ themeId }) {
-  const items = useMemo(() => {
+  const items = useMemo<DecorItems>(() => {
     if (themeId === 'ocean') {
       return {
         bubbles: Array.from({ length: 8 }, (_, i) => ({
@@ -54,10 +63,10 @@ export default function SceneDecor({ themeId }) {
   if (themeId === 'ocean') {
     return (
       <>
-        {items.bubbles.map((b) => (
+        {items.bubbles!.map((b) => (
           <div key={b.id} className="bubble" style={{ width: b.size, height: b.size, left: b.left, bottom: '-30px', animationDuration: b.dur, animationDelay: b.delay }} />
         ))}
-        {items.fish.map((f, i) => (
+        {items.fish!.map((f, i) => (
           <span key={i} className="fish" style={{ top: f.top, animationDuration: f.dur, animationDelay: f.delay, fontSize: 22 }}>{f.emoji}</span>
         ))}
         <div className="sea-floor" />
@@ -67,7 +76,7 @@ export default function SceneDecor({ themeId }) {
   if (themeId === 'garden') {
     return (
       <>
-        {items.candies.map((c) => (
+        {items.candies!.map((c) => (
           <span key={c.id} className="candy-float" style={{ left: c.left, top: c.top, animationDelay: c.delay, fontSize: 28 }}>{c.emoji}</span>
         ))}
       </>
@@ -75,10 +84,10 @@ export default function SceneDecor({ themeId }) {
   }
   return (
     <>
-      {items.stars.map((s) => (
+      {items.stars!.map((s) => (
         <div key={s.id} className="star" style={{ left: s.left, top: s.top, animationDelay: s.delay }} />
       ))}
-      {items.planets.map((p, i) => (
+      {items.planets!.map((p, i) => (
         <div key={i} className="planet" style={{ width: p.size, height: p.size, background: p.color, left: p.left, top: p.top }} />
       ))}
       <div className="shooting-star" style={{ top: '15%', left: '20%', animationDelay: '1s' }} />

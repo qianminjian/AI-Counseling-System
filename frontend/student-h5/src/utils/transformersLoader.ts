@@ -82,7 +82,7 @@ export async function loadTransformersModel<T>(opts: LoadTransformersOptions<T>)
     // F-8-Worker 埋点同步：主线程 ORT session_create 耗时（与 Worker 一致，便于诊断降级路径）
     const t0Session = (typeof performance !== 'undefined' ? performance.now() : Date.now())
     const _tag = (opts.modelHost === 'SAME_ORIGIN' || /wespeaker|vp/i.test(opts.modelHost)) ? '[Voiceprint]' : '[WakeWord]'
-    console.info(`[TS ${(t0Session / 1000).toFixed(2)}s] ${_tag} 主线程 ORT session_create 开始（numThreads=${hf.env.backends.onnx.wasm.numThreads}）`)
+    console.info(`[TS ${(t0Session / 1000).toFixed(2)}s] ${_tag} 主线程 ORT session_create 开始（numThreads=${hf.env.backends.onnx.wasm!.numThreads}）`)
     const result = await opts.load(hf)
     const elapsed = Math.round(((typeof performance !== 'undefined' ? performance.now() : Date.now()) - t0Session))
     console.info(`[TS ${((typeof performance !== 'undefined' ? performance.now() : Date.now()) / 1000).toFixed(2)}s] ${_tag} 主线程 ORT session_create 完成，耗时 ${elapsed}ms`)
@@ -103,10 +103,10 @@ function configureEnv(hf: typeof HF, remoteHost: string, base: string): void {
   // F-8（2026-08-09）：双线程加速 ORT session 创建。macOS Chrome 支持 SharedArrayBuffer + pthread，
   // 单线程 40MB 模型 session 创建耗时长（约 30-60s）→ 改为 2 线程。
   // 兼容回退：低端 CPU/WebView 仍可改回 1。
-  hf.env.backends.onnx.wasm.numThreads = 2
+  hf.env.backends.onnx.wasm!.numThreads = 2
   // ONNX Runtime WASM 走本地（dist/ort/ → /mindsafe/ort/）；始终非 asyncify 变体（调用约定匹配）
   const variant = 'ort-wasm-simd-threaded'
-  hf.env.backends.onnx.wasm.wasmPaths = {
+  hf.env.backends.onnx.wasm!.wasmPaths = {
     mjs: `${base}ort/${variant}.mjs`,
     wasm: `${base}ort/${variant}.wasm`,
   }

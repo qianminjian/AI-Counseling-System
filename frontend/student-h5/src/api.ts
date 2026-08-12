@@ -31,7 +31,8 @@ const USER_KEY = 'mindsafe_student_user'
 
 export function getUser(): Record<string, unknown> | null {
   try {
-    return JSON.parse(sessionStorage.getItem(USER_KEY))
+    // FE-003：getItem 可能返回 null（JSON.parse(null) 运行时仍安全返回 null，行为不变）
+    return JSON.parse(sessionStorage.getItem(USER_KEY)!)
   } catch {
     return null
   }

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Button, Card, Input, Modal, Select, Table, Tag, message } from 'antd'
 import { ackAlertEvent, fetchAlertEvents, type AlertEventItem } from '../api'
 import { getAdminRole } from '../api'
@@ -11,13 +11,25 @@ export default function AlertPage() {
   const [ackTarget, setAckTarget] = useState<AlertEventItem | null>(null)
   const [reason, setReason] = useState('')
   const canAck = getAdminRole() === 'super_admin' || getAdminRole() === 'ops_admin'
+  // FE-008：请求序号防竞态（旧响应不得覆盖新列表）
+  const loadSeqRef = useRef(0)
 
   const load = (st?: string) => {
+    // FE-008（doing/95）：竞态防护——状态筛选快速切换时旧响应不得覆盖新列表
+    const seq = ++loadSeqRef.current
     setLoading(true)
     fetchAlertEvents(st)
-      .then(setAlerts)
-      .catch((e: Error) => message.error(e.message))
-      .finally(() => setLoading(false))
+      .then((data) => {
+        if (seq !== loadSeqRef.current) return
+        setAlerts(data)
+      })
+      .catch((e: Error) => {
+        if (seq !== loadSeqRef.current) return
+        message.error(e.message)
+      })
+      .finally(() => {
+        if (seq === loadSeqRef.current) setLoading(false)
+      })
   }
 
   useEffect(() => {
