@@ -1,5 +1,6 @@
 package com.mindsafe.service.memory;
 
+import com.mindsafe.ai.risk.RiskKeywordRegistry;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
@@ -49,7 +50,7 @@ public class LongTermMemoryService {
     private static final int MAX_MEMORIES_PER_STUDENT = 50;
 
     /** 高敏感情绪标签集合（用于 evaluateForget 敏感度判定）
-     * doing/91 Q-001：风险类别权威源为 RiskKeywordRegistry.HIGH_SENSITIVITY_CATEGORIES（DC-001 已收敛），
+     * doing/91 Q-001：风险类别权威源为 riskKeywords.HIGH_SENSITIVITY_CATEGORIES（DC-001 已收敛），
      * 本集合为情绪标签专用（英文 emotion label + 中文标签交集）——isSensitiveEmotion 双源并查，
      * 新增高敏语义时同步两处（或迁移至注册表）。 */
     private static final Set<String> SENSITIVE_EMOTIONS = Set.of(
@@ -58,6 +59,8 @@ public class LongTermMemoryService {
     private final LongTermMemoryMapper memoryMapper;
     private final MemoryProfileBackfillService backfillService;
     private final MemoryRiskCorrelator memoryRiskCorrelator;
+    /** S-013（doing/93）：风险词典可注入组件 */
+    private final RiskKeywordRegistry riskKeywords;
     private final MemoryRelevanceScorer memoryRelevanceScorer;
     private final ThemeEvolutionEngine themeEvolutionEngine;
     private final RiskEventMapper riskEventMapper;
@@ -72,10 +75,12 @@ public class LongTermMemoryService {
                                  ThemeEvolutionEngine themeEvolutionEngine,
                                  RiskEventMapper riskEventMapper,
                                  RiskNotifyOutboxService riskNotifyOutboxService,
-                                 MeterRegistry meterRegistry) {
+                                 MeterRegistry meterRegistry,
+                                   RiskKeywordRegistry riskKeywords) {
         this.memoryMapper = memoryMapper;
         this.backfillService = backfillService;
         this.memoryRiskCorrelator = memoryRiskCorrelator;
+        this.riskKeywords = riskKeywords;
         this.memoryRelevanceScorer = memoryRelevanceScorer;
         this.themeEvolutionEngine = themeEvolutionEngine;
         this.riskEventMapper = riskEventMapper;
@@ -409,7 +414,7 @@ public class LongTermMemoryService {
         if (emotion == null) return false;
         // doing/91 Q-001：双源并查——情绪标签集合 + 风险类别权威注册表（中文类别漏判方向消除）
         return SENSITIVE_EMOTIONS.contains(emotion.toLowerCase())
-                || com.mindsafe.ai.risk.RiskKeywordRegistry.isHighSensitivityCategory(emotion);
+                || riskKeywords.isHighSensitivityCategory(emotion);
     }
 
     private void updateRecallCount(List<LongTermMemory> memories) {

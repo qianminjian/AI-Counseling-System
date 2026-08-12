@@ -1,6 +1,8 @@
 package com.mindsafe.ai.safety;
 
 import com.mindsafe.ai.risk.RiskKeywordRegistry;
+import org.springframework.stereotype.Component;
+
 
 /**
  * 高敏场景类别注册表（SAFE-202，design/52 §三：Layer2 高敏前置化/触发关注）
@@ -19,9 +21,13 @@ import com.mindsafe.ai.risk.RiskKeywordRegistry;
  * 中文权威类别收敛于 RiskKeywordRegistry.HIGH_SENSITIVITY_CATEGORIES（原英文常量集已删除，
  * 英文类别在生产判定链中从不出现，SAFE-202 门控恒 false 根因）。
  */
-public final class HighSensitivityCategories {
+@Component
+public class HighSensitivityCategories {
 
-    private HighSensitivityCategories() {
+    private final RiskKeywordRegistry riskKeywords;
+
+    public HighSensitivityCategories(RiskKeywordRegistry riskKeywords) {
+        this.riskKeywords = riskKeywords;
     }
 
     /**
@@ -30,7 +36,7 @@ public final class HighSensitivityCategories {
      * @param category 风险类别标识（来自 RiskDetectionResult.category()，中文类别）
      * @return true=高敏类别
      */
-    public static boolean isHighSensitivity(String category) {
-        return RiskKeywordRegistry.isHighSensitivityCategory(category);
+    public boolean isHighSensitivity(String category) {
+        return riskKeywords.isHighSensitivityCategory(category);
     }
 }

@@ -82,6 +82,8 @@ public class ConversationServiceImpl implements ConversationService {
 
     /** 主题演化引擎（话题关键词表单一源，ARCH-001 C1 收敛） */
     private final ThemeEvolutionEngine themeEvolutionEngine;
+    /** S-013（doing/93）：高敏类别判定注入 */
+    private final HighSensitivityCategories highSensitivityCategories;
 
     /** 暖场护栏配置（B2：阈值单一源，Lua 判定与快照判定同源） */
     private final NudgeProperties nudgeProperties;
@@ -118,7 +120,8 @@ public class ConversationServiceImpl implements ConversationService {
                                    ThemeEvolutionEngine themeEvolutionEngine,
                                    NudgeProperties nudgeProperties,
                                    NudgeDecisionModel nudgeDecisionModel,
-                                   ReplyEmotionResolver replyEmotionResolver) {
+                                   ReplyEmotionResolver replyEmotionResolver,
+                                   HighSensitivityCategories highSensitivityCategories) {
         this.aiChatService = aiChatService;
         this.riskProcessor = riskProcessor;
         this.sessionStore = sessionStore;
@@ -140,6 +143,7 @@ public class ConversationServiceImpl implements ConversationService {
         this.personalInfoExtractor = personalInfoExtractor;
         this.promptAssemblyService = promptAssemblyService;
         this.themeEvolutionEngine = themeEvolutionEngine;
+        this.highSensitivityCategories = highSensitivityCategories;
         this.nudgeDecisionModel = nudgeDecisionModel;
         this.replyEmotionResolver = replyEmotionResolver;
         this.nudgeProperties = nudgeProperties;
@@ -238,7 +242,7 @@ public class ConversationServiceImpl implements ConversationService {
         boolean isRisky = fusedLevel != null;
 
         // SAFE-202：高敏场景前置化——命中虐待/丧失/自伤等类别即永久标记（不论级别）
-        if (riskResult.isRisky() && HighSensitivityCategories.isHighSensitivity(riskResult.category())) {
+        if (riskResult.isRisky() && highSensitivityCategories.isHighSensitivity(riskResult.category())) {
             session.setHighSensitivity(true);
         }
 

@@ -1,5 +1,7 @@
 package com.mindsafe.ai.risk;
 
+import org.springframework.stereotype.Component;
+
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -23,49 +25,50 @@ import java.util.regex.Pattern;
  * <p>
  * 设计铁律：静态只读、无状态无副作用；增删词典唯一入口即本类。
  */
-public final class RiskKeywordRegistry {
+@Component
+public class RiskKeywordRegistry {
 
-    private RiskKeywordRegistry() {
+    public RiskKeywordRegistry() {
     }
 
     // ===== 评分常量（design/04 §九铁律 + §十权重表） =====
 
     /** 红色硬规则命中评分 */
-    public static final int SCORE_HARD = 85;
+    public final int SCORE_HARD = 85;
     /** 橙色命中评分 */
-    public static final int SCORE_ORANGE = 60;
+    public final int SCORE_ORANGE = 60;
     /** 橙色命中但含否定/引用语境降为黄色时的评分 */
-    public static final int SCORE_YELLOW = 35;
+    public final int SCORE_YELLOW = 35;
     /** 黄色命中评分 */
-    public static final int SCORE_ORANGE_MIN = 30;
+    public final int SCORE_ORANGE_MIN = 30;
     /** 语义层升级到黄色档位的评分（ConversationRiskProcessor 语义融合路径） */
-    public static final int SCORE_SEMANTIC_YELLOW = 40;
+    public final int SCORE_SEMANTIC_YELLOW = 40;
 
     // ===== 评分因子权重（RISK-203 结构化评分，design/04 §十权重表） =====
 
     /** 明确自伤意图权重（I=+15） */
-    public static final int INTENT_EXPLICIT_WEIGHT = 15;
+    public final int INTENT_EXPLICIT_WEIGHT = 15;
     /** 含混死亡愿望权重（I=+8） */
-    public static final int INTENT_VAGUE_WEIGHT = 8;
+    public final int INTENT_VAGUE_WEIGHT = 8;
     /** 方法类关键词每个权重（P 每类 +5） */
-    public static final int PLAN_WEIGHT_PER_KEYWORD = 5;
+    public final int PLAN_WEIGHT_PER_KEYWORD = 5;
     /** 计划权重上限 */
-    public static final int PLAN_WEIGHT_CAP = 20;
+    public final int PLAN_WEIGHT_CAP = 20;
     /** ScoreInput recencyWeight（当前会话=今天） */
-    public static final int WEIGHT_RECENCY = 10;
+    public final int WEIGHT_RECENCY = 10;
     /** ScoreInput actionWeight */
-    public static final int WEIGHT_ACTION = 0;
+    public final int WEIGHT_ACTION = 0;
     /** ScoreInput repetitionWeight */
-    public static final int WEIGHT_REPETITION = 0;
+    public final int WEIGHT_REPETITION = 0;
     /** ScoreInput protectiveWeight */
-    public static final int WEIGHT_PROTECTIVE = 0;
+    public final int WEIGHT_PROTECTIVE = 0;
     /** ScoreInput confidenceAdjustment（硬规则默认置信） */
-    public static final double WEIGHT_CONFIDENCE = 0.8;
+    public final double WEIGHT_CONFIDENCE = 0.8;
 
     // ===== 分级词典（来源：RiskDetectorServiceImpl L38-63，design/04 §五） =====
 
     /** 红色硬规则关键词（命中即强制升级为红色） */
-    public static final Set<String> RED_HARD = Set.of(
+    public final Set<String> RED_HARD = Set.of(
             "想死", "跳楼", "割腕", "上吊", "遗书", "活着没意思",
             "不想活", "去死", "自杀", "杀了自己", "结束生命",
             "带刀", "放火", "炸",
@@ -73,7 +76,7 @@ public final class RiskKeywordRegistry {
     );
 
     /** 橙色关键词（命中升级为橙色，需人工核验） */
-    public static final Set<String> ORANGE = Set.of(
+    public final Set<String> ORANGE = Set.of(
             "不想活了", "死了算了", "活着很累", "没希望",
             "杀了他", "打死", "报复", "砸学校",
             "被打", "被围", "被孤立", "勒索",
@@ -87,7 +90,7 @@ public final class RiskKeywordRegistry {
     );
 
     /** 黄色关键词（命中为黄色，需关注） */
-    public static final Set<String> YELLOW = Set.of(
+    public final Set<String> YELLOW = Set.of(
             "很难过", "每天哭", "睡不着", "吃不下",
             "被骂", "被嘲笑", "没朋友", "不想上学",
             "头痛", "肚子痛", "恶心", "胸闷",
@@ -95,42 +98,42 @@ public final class RiskKeywordRegistry {
     );
 
     /** 否定词列表（仅保留明确的多字否定词，避免单字误匹配；否定降噪仅适用橙/黄档） */
-    public static final Set<String> NEGATION_WORDS = Set.of(
+    public final Set<String> NEGATION_WORDS = Set.of(
             "不想", "不会", "没有", "不是", "不能", "以前", "曾经", "别想", "别要"
     );
 
     /** 引用/假设语境（降低误报） */
-    public static final Pattern CONTEXT_PATTERN = Pattern.compile(
+    public final Pattern CONTEXT_PATTERN = Pattern.compile(
             "(故事里|新闻|游戏|电影|电视|书上|假设|如果|假如|老师说的|健康课)"
     );
 
     // ===== 意图/方法/准备词（来源：ConversationRiskProcessor L225-240） =====
 
     /** 明确自伤意图（I=+15）："我不想活了" 等直接表达 */
-    public static final Set<String> EXPLICIT_INTENT_KEYWORDS = Set.of(
+    public final Set<String> EXPLICIT_INTENT_KEYWORDS = Set.of(
             "想死", "自杀", "去死", "杀了自己", "结束生命", "不想活", "不想活了", "死了算了"
     );
 
     /** 含混死亡愿望（I=+8）："活着没意思" 等间接表达 */
-    public static final Set<String> VAGUE_INTENT_KEYWORDS = Set.of(
+    public final Set<String> VAGUE_INTENT_KEYWORDS = Set.of(
             "活着没意思", "活着很累", "没希望", "什么都没意思", "我是累赘", "把东西送人", "告别"
     );
 
     /** 自伤方法/工具关键词（P 每类 +5，上限 20） */
-    public static final Set<String> SELF_HARM_METHOD_KEYWORDS = Set.of(
+    public final Set<String> SELF_HARM_METHOD_KEYWORDS = Set.of(
             "跳楼", "上吊", "割腕", "吃药", "带刀"
     );
 
     /** 准备行为关键词（C-SSRS 行为轴 PREPARATORY） */
-    public static final Set<String> PREPARATORY_KEYWORDS = Set.of("遗书");
+    public final Set<String> PREPARATORY_KEYWORDS = Set.of("遗书");
 
     // ===== 风险类别表（来源：RiskDetectorServiceImpl L76-117，10 类） =====
 
     /** 风险类别 → 关键词列表（保持插入顺序：findCategory 取首个命中类别） */
-    public static final Map<String, List<String>> RISK_KEYWORDS =
+    public final Map<String, List<String>> RISK_KEYWORDS =
             Collections.unmodifiableMap(buildCategoryMap());
 
-    private static Map<String, List<String>> buildCategoryMap() {
+    private Map<String, List<String>> buildCategoryMap() {
         Map<String, List<String>> map = new LinkedHashMap<>();
         map.put("自伤/自杀", List.of(
                 "想死", "跳楼", "割腕", "吃药", "上吊", "遗书", "活着没意思",
@@ -192,7 +195,7 @@ public final class RiskKeywordRegistry {
      * @param text 原始文本（不做大小写/空白归一，与 RiskDetectorServiceImpl 原行为一致）
      * @return 命中档位；无命中返回 NONE
      */
-    public static Level matchLevel(String text) {
+    public Level matchLevel(String text) {
         if (text == null || text.isBlank()) {
             return Level.NONE;
         }
@@ -214,7 +217,7 @@ public final class RiskKeywordRegistry {
      * @param text 文本
      * @return 命中的关键词列表（可能为空列表，永不为 null）
      */
-    public static List<String> matchMethod(String text) {
+    public List<String> matchMethod(String text) {
         if (text == null || text.isBlank()) {
             return List.of();
         }
@@ -235,7 +238,7 @@ public final class RiskKeywordRegistry {
      * @param text 文本
      * @return 档位对应评分；无命中返回 0
      */
-    public static int scoreFor(String text) {
+    public int scoreFor(String text) {
         return switch (matchLevel(text)) {
             case RED_HARD -> SCORE_HARD;
             case ORANGE -> SCORE_ORANGE;
@@ -250,7 +253,7 @@ public final class RiskKeywordRegistry {
      * @param matchedKeywords 命中关键词
      * @return 类别名；无命中返回 "未分类"
      */
-    public static String findCategory(List<String> matchedKeywords) {
+    public String findCategory(List<String> matchedKeywords) {
         if (matchedKeywords == null || matchedKeywords.isEmpty()) {
             return "未分类";
         }
@@ -271,12 +274,12 @@ public final class RiskKeywordRegistry {
      * physical_abuse/sexual_abuse/domestic_violence/neglect/self_harm/suicidal_ideation；
      * bereavement 中文无对应类别不新增（YAGNI）。
      */
-    public static final Set<String> HIGH_SENSITIVITY_CATEGORIES = Set.of(
+    public final Set<String> HIGH_SENSITIVITY_CATEGORIES = Set.of(
             "自伤/自杀", "他伤/暴力", "家庭虐待/忽视", "性侵/性骚扰", "严重抑郁/绝望"
     );
 
     /** 不降级类别（性侵/虐待类不可因否定/语境降级）——RISK-104 字符串 contains 语义收敛 */
-    public static final Set<String> NON_DEGRADABLE_CATEGORIES = Set.of(
+    public final Set<String> NON_DEGRADABLE_CATEGORIES = Set.of(
             "性侵/性骚扰", "家庭虐待/忽视"
     );
 
@@ -286,7 +289,7 @@ public final class RiskKeywordRegistry {
      * @param category 中文风险类别
      * @return true=高敏类别
      */
-    public static boolean isHighSensitivityCategory(String category) {
+    public boolean isHighSensitivityCategory(String category) {
         return category != null && HIGH_SENSITIVITY_CATEGORIES.contains(category);
     }
 
@@ -296,11 +299,11 @@ public final class RiskKeywordRegistry {
      * @param category 中文风险类别
      * @return true=不可降级
      */
-    public static boolean isNonDegradableCategory(String category) {
+    public boolean isNonDegradableCategory(String category) {
         return category != null && NON_DEGRADABLE_CATEGORIES.contains(category);
     }
 
-    private static boolean containsAny(String text, Set<String> keywords) {
+    private boolean containsAny(String text, Set<String> keywords) {
         for (String keyword : keywords) {
             if (text.contains(keyword)) {
                 return true;
@@ -309,7 +312,7 @@ public final class RiskKeywordRegistry {
         return false;
     }
 
-    private static void addHits(String text, java.util.List<String> hits, Set<String> keywords) {
+    private void addHits(String text, java.util.List<String> hits, Set<String> keywords) {
         for (String keyword : keywords) {
             if (text.contains(keyword)) {
                 hits.add(keyword);

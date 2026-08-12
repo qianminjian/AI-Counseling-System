@@ -7,6 +7,8 @@ import com.mindsafe.ai.orchestrator.EmotionStateMachine;
 import com.mindsafe.ai.orchestrator.EntryMoodStrategyResolver;
 import com.mindsafe.ai.orchestrator.PromptOrchestrationService;
 import com.mindsafe.ai.orchestrator.ReplyEmotionResolver;
+import com.mindsafe.ai.risk.RiskKeywordRegistry;
+import com.mindsafe.ai.safety.HighSensitivityCategories;
 import com.mindsafe.ai.prompt.PromptTemplateService;
 import com.mindsafe.ai.safety.ConfidentialityNotice;
 import com.mindsafe.ai.safety.CrisisHotlineProvider;
@@ -210,7 +212,7 @@ class ConversationServiceImplTest {
                 sessionEndAnalyticsService, sessionStateStore,
                 contextAgent, new ObjectMapper(),
                 personalInfoExtractor, promptAssemblyService, themeEvolutionEngine, new NudgeProperties(),
-                new NudgeDecisionModel(), new ReplyEmotionResolver());
+                new NudgeDecisionModel(), new ReplyEmotionResolver(), new HighSensitivityCategories(new RiskKeywordRegistry()));
     }
 
     /** createSession 并捕获内部生成的 sessionId */
@@ -397,7 +399,7 @@ class ConversationServiceImplTest {
                 sessionEndAnalyticsService, sessionStateStore,
                 contextAgent, new ObjectMapper(),
                 personalInfoExtractor, promptAssemblyService, themeEvolutionEngine, new NudgeProperties(),
-                new NudgeDecisionModel(), new ReplyEmotionResolver());
+                new NudgeDecisionModel(), new ReplyEmotionResolver(), new HighSensitivityCategories(new RiskKeywordRegistry()));
 
             User user = new User();
             user.setPseudonym("小明");

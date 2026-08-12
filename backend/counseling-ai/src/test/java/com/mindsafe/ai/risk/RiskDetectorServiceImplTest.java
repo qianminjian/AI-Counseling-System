@@ -22,7 +22,7 @@ class RiskDetectorServiceImplTest {
 
     @BeforeEach
     void setUp() {
-        riskDetector = new RiskDetectorServiceImpl();
+        riskDetector = new RiskDetectorServiceImpl(new RiskKeywordRegistry());
     }
 
     @Nested
