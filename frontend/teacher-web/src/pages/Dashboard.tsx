@@ -138,6 +138,13 @@ export default function Dashboard({ user, onLogout, darkMode, toggleDark }: {
   // AUD-047 页面不可见暂停由 usePolling 默认承担
   usePolling(() => pollUnread(true), POLL_INTERVAL, { immediate: false })
 
+  // BUG-T-06-01（2026-08-12，UI-TEST-013）：通知中心标记已读后即时刷新未读徽标
+  useEffect(() => {
+    const handler = () => pollUnread(true)
+    window.addEventListener('mindsafe:unread-changed', handler)
+    return () => window.removeEventListener('mindsafe:unread-changed', handler)
+  }, [pollUnread])
+
   // WebSocket 实时预警推送（补充轮询，秒级触达）
   useAlertWebSocket({
     onAlert: () => {

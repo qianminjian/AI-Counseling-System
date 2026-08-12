@@ -127,6 +127,10 @@ export default function DegradationPage() {
         onCancel={() => setEditing(null)}
         onOk={() => form.submit()}
         okText="确认切换（二次确认）"
+        // BUG-A-MODAL-01（2026-08-12，UI-TEST-015）：禁用动画——antd 6.5.4 + React 19.2 的
+        // CSSMotion 关闭回调不触发导致弹窗卡死（ant-zoom-leave 循环），无动画路径直接卸载。
+        transitionName=""
+        maskTransitionName=""
       >
         <p style={{ color: 'var(--ms-warning)', fontSize: 13 }}>
           影响面提示：切换后该能力立即按目标档位运行，服务重启后回落配置默认；切换事件全量留痕（manual）。

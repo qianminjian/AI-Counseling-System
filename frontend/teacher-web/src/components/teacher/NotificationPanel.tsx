@@ -37,6 +37,8 @@ export default function NotificationPanel() {
     try {
       await markNotificationRead(id)
       message.success('已标记为已读')
+      // BUG-T-06-01（2026-08-12，UI-TEST-013）：已读后通知 Dashboard 刷新未读徽标（原仅全量刷新同步）
+      window.dispatchEvent(new Event('mindsafe:unread-changed'))
       load()
     } catch (e) {
       message.error(e.message)

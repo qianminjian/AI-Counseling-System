@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { api } from '../api'
+import { api, ApiError } from '../api'
 import { useTheme } from '../theme/ThemeProvider'
 import { THEME_STYLES } from '../theme/immersiveStyles'
 import BoBoAvatar from './BoBoAvatar'
@@ -71,7 +71,14 @@ export default function EmotionDiary({ onBack }) {
       api('/diary/streak').then(setStreak).catch((e) => console.warn('[EmotionDiary] 刷新连续天数失败:', e))
     } catch (e) {
       console.error('[EmotionDiary] 打卡失败:', e)
-      setSubmitError('打卡没成功，请检查网络后再试一次')
+      // BUG-S-08-2（2026-08-12，UI-TEST-012）：按错误类型区分文案——服务端 500 不再是"网络问题"误导
+      setSubmitError(
+        e instanceof ApiError && e.code === 10001
+          ? '打卡失败，请稍后再试'
+          : e instanceof ApiError && e.message && e.message !== '请求失败'
+            ? `打卡失败：${e.message}`
+            : '打卡没成功，请检查网络后再试一次',
+      )
     } finally {
       setSubmitting(false)
     }

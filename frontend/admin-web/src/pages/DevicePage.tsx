@@ -180,6 +180,10 @@ export default function DevicePage() {
         onCancel={() => setQrOpen(false)}
         onOk={() => void handleExportQr()}
         okText='签发'
+        // BUG-A-MODAL-01（2026-08-12，UI-TEST-015）：禁用动画——antd 6.5.4 + React 19.2 的
+        // CSSMotion 关闭回调不触发导致弹窗卡死（ant-zoom-leave 循环），无动画路径直接卸载。
+        transitionName=''
+        maskTransitionName=''
       >
         <p style={{ color: 'var(--ms-text-secondary)', fontSize: 13 }}>
           输入设备码（逗号/换行/空格分隔），将生成二维码印刷包并留痕（device_qr_issuance）。

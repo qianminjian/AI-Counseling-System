@@ -91,6 +91,10 @@ export default function ConfigPage() {
         onCancel={() => setEditing(null)}
         onOk={() => form.submit()}
         okText="确认修改"
+        // BUG-A-MODAL-01（2026-08-12，UI-TEST-015）：禁用动画——antd 6.5.4 + React 19.2 的
+        // CSSMotion 关闭回调不触发导致弹窗卡死（ant-zoom-leave 循环），无动画路径直接卸载。
+        transitionName=""
+        maskTransitionName=""
       >
         <Form form={form} layout="vertical" onFinish={handleUpdate}>
           <Form.Item name="value" label="新值" rules={[{ required: true, message: '请输入新值' }]}>

@@ -5,6 +5,10 @@ import { createSessionStorageTokens } from '../../shared/src/auth-transport/toke
 import { createAuthFetch } from '../../shared/src/auth-transport/authFetch'
 import { handleSessionExpired } from '../../shared/src/auth-transport/sessionExpired'
 import { toApiError } from '../../shared/src/auth-transport/apiError'
+// BUG-T-RC-02（2026-08-12，UI-TEST-013）：导出错误模型供调用方按 code 区分 403/网络故障
+import { ApiError } from '../../shared/src/auth-transport/apiError'
+
+export { ApiError }
 // FA-15：端点常量表单一事实源——路径/方法只登记 ENDPOINTS 一处，此处全部消费
 import { ENDPOINTS, fillPath } from './api/endpoints'
 import type { EndpointKey } from './api/endpoints'
@@ -56,6 +60,15 @@ export async function api<T = any>(path: string, options: RequestInit & { header
     }
     // 会话过期 401（无信封）→ authFetch 已尝试刷新+重放；仍 401 → 刷新失败 → 统一登出决策点（clear + reload + throw）
     handleSessionExpired(storage)
+  }
+  // BUG-T-RC-02（2026-08-12，UI-TEST-013）：403 显式转 ApiError（无权限语义），
+  // 不再与网络故障混同（原 Spring Security 默认 403 空 body → res.json() 抛错 → 误报“服务不可达”）
+  if (res.status === 403) {
+    const body = (await res.json().catch((): null => null)) as { code?: number; message?: string } | null
+    if (body?.code) {
+      throw toApiError({ code: body.code, message: body.message })
+    }
+    throw toApiError({ code: 20002, message: '无权限访问该数据，请联系管理员' })
   }
   const json = await res.json()
   if (!json.success) {

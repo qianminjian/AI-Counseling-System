@@ -119,6 +119,10 @@ export default function AlertPage() {
         okText="确认"
         cancelText="取消"
         okButtonProps={{ disabled: !reason.trim() }}
+        // BUG-A-MODAL-01（2026-08-12，UI-TEST-015）：禁用动画——antd 6.5.4 + React 19.2 的
+        // CSSMotion 关闭回调不触发导致弹窗卡死（ant-zoom-leave 循环），无动画路径直接卸载。
+        transitionName=""
+        maskTransitionName=""
       >
         <p style={{ color: 'var(--ms-text-secondary)' }}>规则：{ackTarget?.ruleName}（{ackTarget?.summary}）</p>
         <Input.TextArea

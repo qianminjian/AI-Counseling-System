@@ -77,7 +77,8 @@ export default function OverviewPage() {
             { title: '编码', dataIndex: 'tenantCode', key: 'tenantCode', width: 120 },
             {
               title: '状态', dataIndex: 'status', key: 'status', width: 100,
-              render: (s: string) => (s === 'ACTIVE' ? <Tag color='success'>启用</Tag> : <Tag>停用</Tag>),
+              // BUG-A-02-01（2026-08-12，UI-TEST-015）：API 返回小写 active/suspended，原大写判断恒 false → 全显停用
+              render: (s: string) => (String(s ?? '').toUpperCase() === 'ACTIVE' ? <Tag color='success'>启用</Tag> : <Tag>停用</Tag>),
             },
             { title: '学校', dataIndex: 'schoolCount', key: 'schoolCount', width: 80 },
             { title: '学生', dataIndex: 'studentCount', key: 'studentCount', width: 80 },

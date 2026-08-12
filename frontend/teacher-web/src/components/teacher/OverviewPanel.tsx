@@ -3,7 +3,7 @@ import { Card, Row, Col, Statistic, Spin, Tag, Button, Alert } from 'antd'
 import {
   AlertOutlined, ClockCircleOutlined, MessageOutlined, RiseOutlined, SmileOutlined, FileTextOutlined,
 } from '@ant-design/icons'
-import { getDashboard, getHighRiskStudents, getStats, openWeeklyReport, getSatisfaction } from '../../api'
+import { getDashboard, getHighRiskStudents, getStats, openWeeklyReport, getSatisfaction, ApiError } from '../../api'
 import { usePolling } from '../../hooks/usePolling'
 import { SessionTrendChart, RiskPieChart, ClassBarChart, EmotionBarChart } from './StatsCharts'
 import { riskColor, riskLabel } from '../../utils/riskLevel'
@@ -47,7 +47,8 @@ function WeeklyChart({ data }: { data: Array<{ date: string; count: number }> })
 
 export default function OverviewPanel({ onNavigate }: { onNavigate: (tab: string) => void }) {
   const [loading, setLoading] = useState(true)
-  const [loadError, setLoadError] = useState(false)
+  // BUG-T-RC-02：'forbidden' 区分 403 无权限态（与网络故障不同文案）
+  const [loadError, setLoadError] = useState<boolean | 'forbidden'>(false)
   const [dashboard, setDashboard] = useState(null)
   const [highRisk, setHighRisk] = useState([])
   const [stats, setStats] = useState(null)
@@ -68,7 +69,10 @@ export default function OverviewPanel({ onNavigate }: { onNavigate: (tab: string
       setStats(st)
     } catch (e) {
       console.error('加载工作台数据失败', e)
-      if (mountedRef.current) setLoadError(true)
+      if (mountedRef.current) {
+        // BUG-T-RC-02（2026-08-12，UI-TEST-013）：403 无权限与网络故障区分展示
+        setLoadError(e instanceof ApiError && e.code === 20002 ? 'forbidden' : true)
+      }
     } finally {
       if (mountedRef.current) setLoading(false)
     }
@@ -87,10 +91,10 @@ export default function OverviewPanel({ onNavigate }: { onNavigate: (tab: string
     return (
       <div style={{ padding: 80 }}>
         <Alert
-          type="error"
+          type={loadError === 'forbidden' ? 'warning' : 'error'}
           showIcon
-          message="工作台数据加载失败"
-          description="网络异常或服务暂不可用，请检查后重试。"
+          message={loadError === 'forbidden' ? '无权限访问' : '工作台数据加载失败'}
+          description={loadError === 'forbidden' ? '当前账号无权限查看该数据，请联系管理员。' : '网络异常或服务暂不可用，请检查后重试。'}
           action={<Button onClick={load}>重新加载</Button>}
         />
       </div>

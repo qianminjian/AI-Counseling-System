@@ -15,13 +15,18 @@ const mockGetHighRisk = vi.fn();
 const mockGetStats = vi.fn();
 const mockGetSatisfaction = vi.fn();
 const mockOpenWeeklyReport = vi.fn();
-vi.mock('../api', () => ({
-  getDashboard: () => mockGetDashboard(),
-  getHighRiskStudents: () => mockGetHighRisk(),
-  getStats: () => mockGetStats(),
-  getSatisfaction: () => mockGetSatisfaction(),
-  openWeeklyReport: () => mockOpenWeeklyReport(),
-}));
+vi.mock('../api', async () => {
+  // BUG-T-RC-02：保留真实 ApiError 类（mock 缺导出会导致组件内 instanceof ApiError 抛 TypeError）
+  const actual = await vi.importActual<typeof import('../api')>('../api');
+  return {
+    getDashboard: () => mockGetDashboard(),
+    getHighRiskStudents: () => mockGetHighRisk(),
+    getStats: () => mockGetStats(),
+    getSatisfaction: () => mockGetSatisfaction(),
+    openWeeklyReport: () => mockOpenWeeklyReport(),
+    ApiError: actual.ApiError,
+  };
+});
 
 // 子组件打桩：TodayTodoPanel（自身已单独测试）+ 图表（echarts 已单独测试）
 vi.mock('../components/teacher/TodayTodoPanel', () => ({
