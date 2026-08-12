@@ -389,6 +389,23 @@ body {
     color: var(--ms-text-muted);
   }
 
+  // OBS-P-03-01（2026-08-12）：周报日期范围 + AI 建议区块
+  .report-date {
+    display: block;
+    font-size: 12px;
+    color: var(--ms-text-muted);
+    margin-bottom: 10px;
+  }
+
+  .advice-card {
+    margin-top: 16px;
+    .advice-text {
+      font-size: 14px;
+      line-height: 1.7;
+      color: var(--ms-text-secondary);
+    }
+  }
+
   .report-actions { margin-top: 8px; }
 }
 

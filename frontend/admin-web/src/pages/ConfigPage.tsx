@@ -1,12 +1,18 @@
 import { useEffect, useState } from 'react'
-import { Button, Card, Form, Input, message, Modal, Select, Table, Tag } from 'antd'
-import { fetchConfigs, updateConfig, type SysConfigItem } from '../api'
+import { Button, Card, Form, Input, message, Modal, Select, Table, Tag, List, Typography, Space } from 'antd'
+import { fetchConfigs, updateConfig, fetchConfigHistory, type SysConfigItem, type ConfigHistoryItem } from '../api'
 
-/** 配置注册表（ADMIN-P1-01，M1：分域浏览 + SECRET 掩码 + HOT 修改 + reason 必填） */
+const { Text } = Typography
+
+/** 配置注册表（ADMIN-P1-01，M1：分域浏览 + SECRET 掩码 + HOT 修改 + reason 必填；BUG-A-03-01：+ 变更历史） */
 export default function ConfigPage() {
   const [configs, setConfigs] = useState<SysConfigItem[]>([])
   const [domain, setDomain] = useState<string | undefined>(undefined)
   const [editing, setEditing] = useState<SysConfigItem | null>(null)
+  // BUG-A-03-01：变更历史弹窗状态
+  const [historyKey, setHistoryKey] = useState<string | null>(null)
+  const [history, setHistory] = useState<ConfigHistoryItem[]>([])
+  const [historyLoading, setHistoryLoading] = useState(false)
   const [form] = Form.useForm()
 
   const load = () => {
@@ -16,6 +22,20 @@ export default function ConfigPage() {
   }
 
   useEffect(load, [domain])
+
+  // BUG-A-03-01：打开变更历史（审计留痕：时间/操作人/变更前后/原因）
+  const openHistory = async (key: string) => {
+    setHistoryKey(key)
+    setHistoryLoading(true)
+    try {
+      setHistory(await fetchConfigHistory(key))
+    } catch (e) {
+      message.error(e instanceof Error ? e.message : '历史加载失败')
+      setHistory([])
+    } finally {
+      setHistoryLoading(false)
+    }
+  }
 
   const handleUpdate = async (values: { value: string; reason: string }) => {
     if (!editing) return
@@ -64,22 +84,27 @@ export default function ConfigPage() {
             { title: '说明', dataIndex: 'description', ellipsis: true },
             {
               title: '操作',
-              width: 90,
-              render: (_, record) =>
-                record.effectMode === 'HOT' ? (
-                  <Button
-                    size="small"
-                    onClick={() => {
-                      setEditing(record)
-                      // SECRET 值不回读（H3）：不预填，placeholder 提示输入新值
-                      form.setFieldsValue({ value: '', reason: '' })
-                    }}
-                  >
-                    修改
-                  </Button>
-                ) : (
-                  <Tag>只读</Tag>
-                ),
+              width: 150,
+              render: (_, record) => (
+                <Space>
+                  {record.effectMode === 'HOT' ? (
+                    <Button
+                      size="small"
+                      onClick={() => {
+                        setEditing(record)
+                        // SECRET 值不回读（H3）：不预填，placeholder 提示输入新值
+                        form.setFieldsValue({ value: '', reason: '' })
+                      }}
+                    >
+                      修改
+                    </Button>
+                  ) : (
+                    <Tag>只读</Tag>
+                  )}
+                  {/* BUG-A-03-01：变更历史入口（留痕审计） */}
+                  <Button size="small" onClick={() => openHistory(record.configKey)}>历史</Button>
+                </Space>
+              ),
             },
           ]}
         />
@@ -104,6 +129,39 @@ export default function ConfigPage() {
             <Input.TextArea placeholder="说明本次变更原因" rows={2} />
           </Form.Item>
         </Form>
+      </Modal>
+
+      {/* BUG-A-03-01：变更历史弹窗（禁用动画同 BUG-A-MODAL-01 处理） */}
+      <Modal
+        title={`变更历史：${historyKey ?? ''}`}
+        open={historyKey !== null}
+        onCancel={() => setHistoryKey(null)}
+        footer={null}
+        transitionName=""
+        maskTransitionName=""
+      >
+        <List
+          loading={historyLoading}
+          dataSource={history}
+          locale={{ emptyText: '暂无变更记录' }}
+          renderItem={(h) => (
+            <List.Item>
+              <div style={{ width: '100%' }}>
+                <Space size={8} wrap>
+                  <Text type="secondary" style={{ fontSize: 12 }}>{String(h.createdAt).slice(0, 19)}</Text>
+                  {h.operator && <Tag>{h.operator}</Tag>}
+                </Space>
+                <br />
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  {String(h.valueBefore ?? '').slice(0, 40) || '（空）'} → <Text strong>{String(h.valueAfter ?? '').slice(0, 40) || '（空）'}</Text>
+                </Text>
+                {h.reason && (
+                  <div style={{ fontSize: 12, color: 'var(--ms-text-secondary)' }}>原因：{h.reason}</div>
+                )}
+              </div>
+            </List.Item>
+          )}
+        />
       </Modal>
     </div>
   )

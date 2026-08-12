@@ -7,6 +7,15 @@ import type { ChildInfo } from '../../utils/auth'
 import { redirectTo, navigateTo } from '../../utils/nav'
 import { emotionLabel as toZhLabel, emotionEmoji as toEmoji } from '../../../../shared/src/emotionMeta'
 
+/** OBS-P-03-01（2026-08-12）：ISO 起始日 → "M月D日 - M月D日" 周报统计范围 */
+function formatWeekRange(weekStartIso: string): string {
+  const start = new Date(weekStartIso)
+  if (Number.isNaN(start.getTime())) return ''
+  const end = new Date()
+  const fmt = (d: Date) => `${d.getMonth() + 1}月${d.getDate()}日`
+  return `${fmt(start)} - ${fmt(end)}`
+}
+
 export default function ReportPage() {
   const [report, setReport] = useState<ReportData | null>(null)
   const [loading, setLoading] = useState(true)
@@ -95,6 +104,13 @@ export default function ReportPage() {
 
       {report && !loading && (
         <View className="report-content">
+          {/* OBS-P-03-01：周报日期范围（近 7 天） */}
+          {report.weekStart && (
+            <Text className="report-date">
+              统计周期：{formatWeekRange(report.weekStart)}
+            </Text>
+          )}
+
           {/* 概览卡片 */}
           <View className="card summary-card">
             <View className="summary-row">
@@ -128,6 +144,14 @@ export default function ReportPage() {
                   </View>
                 ))}
               </View>
+            </View>
+          )}
+
+          {/* OBS-P-03-01：AI 建议（规则化生成，非 LLM） */}
+          {report.aiAdvice && (
+            <View className="card advice-card">
+              <Text className="card-title">💡 本周建议</Text>
+              <Text className="advice-text">{report.aiAdvice}</Text>
             </View>
           )}
 

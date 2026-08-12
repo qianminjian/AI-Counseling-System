@@ -27,6 +27,8 @@ export default function LoginPage({ onLogin, onRegister, onNeedConsent, initialT
   const [showVoiceOverlay, setShowVoiceOverlay] = useState(false)
   const [hasVoiceprint, setHasVoiceprint] = useState(false)
   const [showNoVpTip, setShowNoVpTip] = useState(false)
+  // BUG-S-02-01（2026-08-12）：登录页隐私/协议弹层
+  const [showPrivacy, setShowPrivacy] = useState(false)
   const [showModelConfirm, setShowModelConfirm] = useState(false) // AUD-008：首次声音进入的模型下载流量确认
 
   useEffect(() => {
@@ -157,7 +159,53 @@ export default function LoginPage({ onLogin, onRegister, onNeedConsent, initialT
             </p>
           </div>
         )}
+
+        {/* BUG-S-02-01：登录页隐私/协议链接入口（合规惯例） */}
+        <div style={{ textAlign: 'center', marginTop: 14, fontSize: 12 }}>
+          <button type="button" style={{ color: 'rgba(255,255,255,0.75)', textDecoration: 'underline' }} onClick={() => setShowPrivacy(true)}>
+            《隐私政策》
+          </button>
+          <span style={{ margin: '0 8px', opacity: 0.6, color: 'rgba(255,255,255,0.6)' }}>·</span>
+          <button type="button" style={{ color: 'rgba(255,255,255,0.75)', textDecoration: 'underline' }} onClick={() => setShowPrivacy(true)}>
+            《服务协议》
+          </button>
+        </div>
       </div>
+
+      {/* 隐私政策/服务协议弹层（BUG-S-02-01，要点摘要；完整条款见注册页告知同意） */}
+      {showPrivacy && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-6" onClick={() => setShowPrivacy(false)}>
+          <div className="absolute inset-0 bg-black/40" />
+          <div className="relative max-h-[75vh] w-full max-w-sm overflow-y-auto rounded-3xl bg-white p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-lg font-bold text-gray-800">🛡️ 隐私政策与服务协议</h3>
+            <p className="mt-1 text-xs text-gray-400">MindSafe AI 情绪陪伴助手 · 完整条款见注册页告知同意</p>
+            <div className="mt-3 space-y-3 text-sm leading-relaxed text-gray-600">
+              <section>
+                <h4 className="font-semibold text-gray-800">一、服务性质</h4>
+                <p>本产品为 AI 情绪陪伴助手，非医疗服务、非专业心理咨询，不能替代面对面专业帮助。</p>
+              </section>
+              <section>
+                <h4 className="font-semibold text-gray-800">二、信息收集与使用</h4>
+                <p>仅收集对话中必要的情绪信息用于提供陪伴服务；手机号等敏感信息在传输前自动脱敏，不会向 AI 发送原文。</p>
+              </section>
+              <section>
+                <h4 className="font-semibold text-gray-800">三、未成年人保护</h4>
+                <p>不满 14 周岁使用需监护人同意；家长可随时通过家长端撤回同意并删除数据。</p>
+              </section>
+              <section>
+                <h4 className="font-semibold text-gray-800">四、紧急求助</h4>
+                <p>如遇心理危机请拨打 12355 青少年服务台或 110/120 寻求专业帮助。</p>
+              </section>
+            </div>
+            <button
+              className="mt-5 w-full rounded-full bg-blue-500 py-3 font-medium text-white active:scale-[0.98] transition-all"
+              onClick={() => setShowPrivacy(false)}
+            >
+              我知道了
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* 未录声纹引导提示 */}
       {showNoVpTip && (

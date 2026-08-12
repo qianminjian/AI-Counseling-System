@@ -22,6 +22,9 @@ interface AlertPushMessage {
 export function useAlertWebSocket({ onAlert, enabled = true }: { onAlert?: (data: AlertPushMessage) => void; enabled?: boolean }) {
   const wsRef = useRef(null)
   const reconnectTimer = useRef(null)
+  // BUG-T-03-01（2026-08-12，UI-TEST-013）：首连偶发 closed before established——
+  // 从未 open 过的连接失败用 1s 快速重试，已稳定过的连接维持 5s 常规重连
+  const everOpenedRef = useRef(false)
 
   const connect = useCallback(() => {
     const token = getToken()
@@ -32,6 +35,10 @@ export function useAlertWebSocket({ onAlert, enabled = true }: { onAlert?: (data
     // alerts.v1 与服务端子协议协商；auth.<jwt> 由后端握手拦截器提取认证
     const ws = new WebSocket(url, ['alerts.v1', `auth.${token}`])
     wsRef.current = ws
+
+    ws.onopen = () => {
+      everOpenedRef.current = true
+    }
 
     ws.onmessage = (event) => {
       if (event.data === 'pong') return
@@ -72,8 +79,8 @@ export function useAlertWebSocket({ onAlert, enabled = true }: { onAlert?: (data
     }
 
     ws.onclose = () => {
-      // 自动重连（5s 后）
-      reconnectTimer.current = setTimeout(connect, 5000)
+      // BUG-T-03-01：首连失败 1s 快速重试，稳定连接断线维持 5s 常规重连
+      reconnectTimer.current = setTimeout(connect, everOpenedRef.current ? 5000 : 1000)
     }
 
     ws.onerror = () => ws.close()

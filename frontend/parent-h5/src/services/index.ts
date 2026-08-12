@@ -53,6 +53,10 @@ export interface ReportData {
   maxRiskLevel: number
   riskLabel: string
   emotionDistribution: Record<string, number>
+  /** OBS-P-03-01（2026-08-12）：周报日期范围起始（ISO，近 7 天） */
+  weekStart?: string
+  /** OBS-P-03-01：AI 建议（后端规则化生成） */
+  aiAdvice?: string
 }
 
 /** 获取情绪周报（指定学生） */

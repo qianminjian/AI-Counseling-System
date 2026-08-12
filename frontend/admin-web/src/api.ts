@@ -131,6 +131,21 @@ export async function updateConfig(key: string, value: string, reason: string): 
   }
 }
 
+// BUG-A-03-01（2026-08-12，UI-TEST-015）：配置变更历史（审计留痕展示）
+export interface ConfigHistoryItem {
+  historyId: string
+  configKey: string
+  valueBefore: string
+  valueAfter: string
+  reason?: string
+  operator?: string
+  createdAt: string
+}
+
+export function fetchConfigHistory(key: string): Promise<ConfigHistoryItem[]> {
+  return adminFetch<ConfigHistoryItem[]>(`/api/v1/platform/config/${encodeURIComponent(key)}/history`)
+}
+
 export interface RiskOverview {
   levelDistribution: Record<string, number>
   todayNew: number

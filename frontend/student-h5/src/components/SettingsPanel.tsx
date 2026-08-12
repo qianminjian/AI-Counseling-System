@@ -20,13 +20,15 @@ import VoiceLoginOverlay from './VoiceLoginOverlay'
 import BoBoAvatar from './BoBoAvatar'
 import ConfirmDialog from './ConfirmDialog'
 
-export default function SettingsPanel({ open, onClose, muted, onToggleMute, wakeSupported = false, wakeOn = false, onToggleWake, personaId: externalPersonaId, onPersonaChange, selectedDialect, onDialectChange, supportedDialects, hasNativeVoice }: {
+export default function SettingsPanel({ open, onClose, muted, onToggleMute, wakeSupported = false, wakeOn = false, wakeAuthorized = true, onToggleWake, personaId: externalPersonaId, onPersonaChange, selectedDialect, onDialectChange, supportedDialects, hasNativeVoice }: {
   open: boolean
   onClose: () => void
   muted: boolean
   onToggleMute: () => void
   wakeSupported?: boolean
   wakeOn?: boolean
+  // BUG-S-04-01（2026-08-12）：麦克风授权状态——拒绝授权后开关仍开时文案需区分「未授权」
+  wakeAuthorized?: boolean
   onToggleWake?: () => void
   personaId?: string
   onPersonaChange?: (id: string) => void
@@ -274,10 +276,11 @@ export default function SettingsPanel({ open, onClose, muted, onToggleMute, wake
               <span className="text-2xl">{!wakeSupported ? '🚫' : wakeOn ? '🎙️' : '💤'}</span>
               <div className="text-left">
                 <p className="text-sm font-medium text-gray-700">
-                  {!wakeSupported ? '当前设备不支持' : wakeOn ? '语音唤醒已开启' : '语音唤醒已关闭'}
+                  {/* BUG-S-04-01：开关开但未授权时明确提示（原仅显示已开启，与实际状态矛盾） */}
+                  {!wakeSupported ? '当前设备不支持' : wakeOn ? (wakeAuthorized ? '语音唤醒已开启' : '语音唤醒已开启（未授权麦克风）') : '语音唤醒已关闭'}
                 </p>
                 <p className="text-xs text-gray-400">
-                  {!wakeSupported ? '需要支持麦克风的浏览器（HTTPS）' : wakeOn ? '直接说“哈喽波波”就能叫我' : '开启后说“哈喽波波”就能和我说话'}
+                  {!wakeSupported ? '需要支持麦克风的浏览器（HTTPS）' : wakeOn ? (wakeAuthorized ? '直接说“哈喽波波”就能叫我' : '需在对话页同意麦克风授权后生效') : '开启后说“哈喽波波”就能和我说话'}
                 </p>
               </div>
             </div>

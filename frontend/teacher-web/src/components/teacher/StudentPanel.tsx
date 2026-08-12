@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react'
-import { Table, Tag, Card, Button, message, Input, List, Descriptions, Timeline, Space, Empty, Spin } from 'antd'
+import { useState, useEffect, useCallback, useMemo } from 'react'
+import { Table, Tag, Card, Button, message, Input, List, Descriptions, Timeline, Space, Empty, Spin, Select, Checkbox } from 'antd'
 import type { TableProps } from 'antd'
 import { ArrowLeftOutlined, PlusOutlined, MessageOutlined, DownloadOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
@@ -182,31 +182,44 @@ function StudentProfile({ studentId, onBack }: { studentId: string; onBack: () =
   )
 }
 
-/** 学生管理主面板 */
+/** 学生管理主面板（BUG-T-04-03：年级/班级筛选 + 昵称搜索 + 风险等级列） */
 export default function StudentPanel() {
   const [students, setStudents] = useState<StudentVO[]>([])
   const [highRisk, setHighRisk] = useState<HighRiskStudentVO[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedStudent, setSelectedStudent] = useState(null)
+  const [gradeCode, setGradeCode] = useState<string>()   // 年级筛选
+  const [classCode, setClassCode] = useState<string>()   // 班级筛选
+  const [keyword, setKeyword] = useState('')             // 昵称搜索
+  const [highRiskOnly, setHighRiskOnly] = useState(false) // 只看高危（风险≥2）
 
-  useEffect(() => {
-    let cancelled = false
-    async function load() {
-      try {
-        const [studs, hr] = await Promise.all([getStudents(), getHighRiskStudents()])
-        if (!cancelled) {
-          setStudents(studs)
-          setHighRisk(hr)
-        }
-      } catch (e) {
-        message.error('加载学生列表失败')
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const [studs, hr] = await Promise.all([
+        getStudents({ gradeCode, classCode, keyword: keyword || undefined, minRisk: highRiskOnly ? 2 : undefined }),
+        getHighRiskStudents(),
+      ])
+      setStudents(studs)
+      setHighRisk(hr)
+    } catch (e) {
+      message.error('加载学生列表失败')
+    } finally {
+      setLoading(false)
     }
-    load()
-    return () => { cancelled = true }
-  }, [])
+  }, [gradeCode, classCode, keyword, highRiskOnly])
+
+  useEffect(() => { void load() }, [load])
+
+  // 年级/班级选项（从当前列表去重派生）
+  const gradeOptions = useMemo(() =>
+    Array.from(new Set(students.map((s) => s.gradeCode).filter(Boolean))).map((v) => ({ value: v, label: `${v} 年级` })),
+    [students],
+  )
+  const classOptions = useMemo(() =>
+    Array.from(new Set(students.map((s) => s.classCode).filter(Boolean))).map((v) => ({ value: v, label: v })),
+    [students],
+  )
 
   if (selectedStudent) {
     return <StudentProfile studentId={selectedStudent} onBack={() => setSelectedStudent(null)} />
@@ -226,10 +239,16 @@ export default function StudentPanel() {
         </Space>
       ),
     },
-    { title: '年级', dataIndex: 'gradeCode', width: 100 },
-    { title: '班级', dataIndex: 'classCode', width: 100 },
+    { title: '年级', dataIndex: 'gradeCode', width: 80 },
+    { title: '班级', dataIndex: 'classCode', width: 90 },
     {
-      title: '状态', dataIndex: 'status', width: 90,
+      // BUG-T-04-03：风险等级列（0-3，会话快照 ∪ 未关闭预警）
+      title: '风险', dataIndex: 'riskLevel', width: 80,
+      render: (level: number) =>
+        level > 0 ? <Tag color={riskColor(level)}>{riskLabel(level)}</Tag> : <span className="ms-hint">无</span>,
+    },
+    {
+      title: '状态', dataIndex: 'status', width: 80,
       render: (s: string) => s === 'withdrawn' ? <Tag>冻结</Tag> : <span className="ms-hint">正常</span>,
     },
     {
@@ -264,6 +283,34 @@ export default function StudentPanel() {
       <Card size="small" title="学生列表" extra={
         <Button size="small" icon={<DownloadOutlined />} onClick={exportStudentsCsv}>导出 CSV</Button>
       }>
+        {/* BUG-T-04-03：筛选/搜索区 */}
+        <Space style={{ marginBottom: 12 }} wrap>
+          <Select
+            allowClear
+            placeholder="年级筛选"
+            style={{ width: 130 }}
+            value={gradeCode}
+            onChange={(v) => setGradeCode(v ?? undefined)}
+            options={gradeOptions}
+          />
+          <Select
+            allowClear
+            placeholder="班级筛选"
+            style={{ width: 130 }}
+            value={classCode}
+            onChange={(v) => setClassCode(v ?? undefined)}
+            options={classOptions}
+          />
+          <Input.Search
+            allowClear
+            placeholder="搜索学生昵称"
+            style={{ width: 180 }}
+            onSearch={(v) => setKeyword(v)}
+          />
+          <Checkbox checked={highRiskOnly} onChange={(e) => setHighRiskOnly(e.target.checked)}>
+            只看风险学生
+          </Checkbox>
+        </Space>
         <Table
           dataSource={students}
           columns={columns}

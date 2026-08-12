@@ -475,6 +475,8 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: Se
         onToggleMute={tts.toggleMute}
         wakeSupported={voiceCall.wakeSupported}
         wakeOn={wakeEnabled}
+        // BUG-S-04-01：麦克风授权状态传设置面板（拒绝授权时文案区分「未授权」）
+        wakeAuthorized={wakeConsent.hasConsent()}
         onToggleWake={handleToggleWake}
         personaId={personaId}
         onPersonaChange={changePersona}

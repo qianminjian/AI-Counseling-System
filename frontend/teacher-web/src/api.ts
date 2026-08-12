@@ -166,6 +166,8 @@ export interface StudentVO {
   classCode: string
   /** BUG-UI-03：账号状态（active/withdrawn 冻结等），教师端展示冻结标识 */
   status: string
+  /** BUG-T-04-03（2026-08-12）：风险等级列（0-3） */
+  riskLevel: number
 }
 
 export interface MessageSummaryVO {
@@ -263,7 +265,16 @@ export const resolveAlert = (id: string, resolutionNote?: string) =>
   })
 
 // ===== 学生管理 =====
-export const getStudents = (): Promise<StudentVO[]> => callEndpoint('getStudents')
+// BUG-T-04-03（2026-08-12）：年级/班级筛选 + 昵称搜索 + 高危过滤（minRisk）
+export const getStudents = (params: { gradeCode?: string; classCode?: string; keyword?: string; minRisk?: number } = {}): Promise<StudentVO[]> => {
+  const query = new URLSearchParams()
+  if (params.gradeCode) query.set('gradeCode', params.gradeCode)
+  if (params.classCode) query.set('classCode', params.classCode)
+  if (params.keyword) query.set('keyword', params.keyword)
+  if (params.minRisk != null) query.set('minRisk', String(params.minRisk))
+  const qs = query.toString()
+  return callEndpoint('getStudents', { query: qs ? `?${qs}` : '' })
+}
 export const getHighRiskStudents = (): Promise<HighRiskStudentVO[]> => callEndpoint('getHighRiskStudents')
 export const getStudentProfile = (id: string): Promise<StudentProfileVO> => callEndpoint('getStudentProfile', { pathParams: { id } })
 /** 后端返回 Map（6 维度 + 里程碑），结构见 ProfileRadarService */
@@ -275,7 +286,19 @@ export const addStudentNote = (id: string, content: string, noteType = 'general'
   })
 
 // ===== 通知 =====
-export const getNotifications = (limit = 50) => callEndpoint('getNotifications', { query: `?limit=${limit}` })
+/** 通知项契约（BUG-T-06-03：+ studentNickname 学生姓名） */
+export interface NotificationVO {
+  notificationId: string
+  title: string
+  bodySummary: string
+  createdAt: string
+  deliveryStatus: string
+  severity: number
+  studentNickname?: string
+}
+// BUG-T-06-02/03（2026-08-12）：状态筛选（ALL/UNREAD/READ）+ 分页；响应 {items, total}
+export const getNotifications = (status = 'ALL', page = 1, size = 20): Promise<{ items: NotificationVO[]; total: number }> =>
+  callEndpoint('getNotifications', { query: `?status=${status}&page=${page}&size=${size}` })
 /** 未读数量（后端 Long） */
 export const getUnreadCount = (): Promise<number> => callEndpoint('getUnreadCount')
 export const markNotificationRead = (id: string) => callEndpoint('markNotificationRead', { pathParams: { id } })
