@@ -83,7 +83,8 @@ public class EntitlementChecker {
         if (isExempt(requestPath)) {
             return CheckResult.pass();
         }
-        Set<String> features = PLAN_FEATURES.getOrDefault(plan, Set.of());
+        // 未知/空计划安全默认：无任何功能权益（403），防御 MapN 对 null key 的 NPE
+        Set<String> features = plan == null ? Set.of() : PLAN_FEATURES.getOrDefault(plan, Set.of());
         if (!features.contains(feature)) {
             return CheckResult.noFeature();
         }

@@ -1,6 +1,8 @@
 package com.mindsafe.service.toc;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.mindsafe.common.dto.ErrorCode;
+import com.mindsafe.common.exception.BizException;
 import com.mindsafe.domain.entity.TocChildProfile;
 import com.mindsafe.domain.mapper.TocChildProfileMapper;
 import org.springframework.stereotype.Service;
@@ -37,7 +39,7 @@ public class TocFamilyService {
     public TocChildProfile createProfile(UUID familyAccountId, Map<String, Object> body) {
         String nickname = stringValue(body.get("nickname"));
         if (nickname == null || nickname.isBlank()) {
-            throw new IllegalArgumentException("昵称必填");
+            throw new BizException(ErrorCode.PARAM_INVALID, "昵称必填");
         }
         TocChildProfile profile = new TocChildProfile();
         profile.setProfileId(UUID.randomUUID());
@@ -83,10 +85,10 @@ public class TocFamilyService {
     private TocChildProfile requireOwned(UUID familyAccountId, UUID profileId) {
         TocChildProfile profile = profileMapper.selectById(profileId);
         if (profile == null) {
-            throw new IllegalArgumentException("档案不存在");
+            throw new BizException(ErrorCode.RESOURCE_NOT_FOUND, "档案不存在");
         }
         if (!familyAccountId.equals(profile.getFamilyAccountId())) {
-            throw new IllegalArgumentException("无权访问该档案");
+            throw new BizException(ErrorCode.FORBIDDEN, "无权访问该档案");
         }
         return profile;
     }

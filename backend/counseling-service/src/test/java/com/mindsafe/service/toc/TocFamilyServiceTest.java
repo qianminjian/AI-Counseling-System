@@ -1,5 +1,7 @@
 package com.mindsafe.service.toc;
 
+import com.mindsafe.common.dto.ErrorCode;
+import com.mindsafe.common.exception.BizException;
 import com.mindsafe.domain.entity.TocChildProfile;
 import com.mindsafe.domain.mapper.TocChildProfileMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -53,8 +55,9 @@ class TocFamilyServiceTest {
     @DisplayName("create：昵称必填")
     void createRequiresNickname() {
         assertThatThrownBy(() -> service.createProfile(accountId, Map.of()))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("昵称");
+                .isInstanceOf(BizException.class)
+                .extracting(e -> ((BizException) e).getErrorCode())
+                .isEqualTo(ErrorCode.PARAM_INVALID);
     }
 
     @Test
@@ -75,8 +78,9 @@ class TocFamilyServiceTest {
         other.setFamilyAccountId(UUID.randomUUID());
         when(profileMapper.selectById(other.getProfileId())).thenReturn(other);
         assertThatThrownBy(() -> service.updateProfile(accountId, other.getProfileId(), Map.of("nickname", "X")))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("无权访问");
+                .isInstanceOf(BizException.class)
+                .extracting(e -> ((BizException) e).getErrorCode())
+                .isEqualTo(ErrorCode.FORBIDDEN);
     }
 
     @Test
@@ -95,8 +99,9 @@ class TocFamilyServiceTest {
         other.setFamilyAccountId(UUID.randomUUID());
         when(profileMapper.selectById(other.getProfileId())).thenReturn(other);
         assertThatThrownBy(() -> service.deleteProfile(accountId, other.getProfileId()))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("无权访问");
+                .isInstanceOf(BizException.class)
+                .extracting(e -> ((BizException) e).getErrorCode())
+                .isEqualTo(ErrorCode.FORBIDDEN);
         verify(profileMapper, org.mockito.Mockito.never()).deleteById(any(UUID.class));
     }
 }
