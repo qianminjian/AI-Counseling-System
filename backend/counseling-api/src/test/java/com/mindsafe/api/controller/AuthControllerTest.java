@@ -1,6 +1,7 @@
 package com.mindsafe.api.controller;
 
 import com.mindsafe.api.auth.AuthenticatedUser;
+import com.mindsafe.api.auth.LoginOrchestrator;
 import com.mindsafe.api.auth.TrialAuthStrategy;
 import com.mindsafe.api.auth.TrialRegisterRequest;
 import com.mindsafe.api.controller.AuthController.ChangePasswordRequest;
@@ -81,6 +82,7 @@ class AuthControllerTest {
     private GuardianConsentService guardianConsentService;
     private TokenBlacklistService tokenBlacklistService;
     private TenantAccessGuard tenantAccessGuard;
+    private LoginOrchestrator loginOrchestrator;
     private AuthController controller;
 
     private final UUID tenantId = UUID.randomUUID();
@@ -107,17 +109,23 @@ class AuthControllerTest {
         tokenBlacklistService = mock(TokenBlacklistService.class);
         businessAuthProvider = mock(com.mindsafe.api.security.BusinessAuthProvider.class);
         tenantAccessGuard = mock(TenantAccessGuard.class);
+        loginOrchestrator = mock(LoginOrchestrator.class);
 
         controller = new AuthController(passwordEncoder, jwtTokenProvider,
                 businessAuthProvider,
                 trialAuthStrategy, trialAuthService, auditLogService, lockoutService,
                 passwordPolicyService, guardianConsentService, tokenBlacklistService,
-                tenantAccessGuard, authUserService);
+                tenantAccessGuard, authUserService, loginOrchestrator);
     }
 
     @AfterEach
     void tearDown() {
         TenantContextHolder.clear();
+    }
+
+    private LoginOrchestrator.LoginSession loginSession() {
+        return new LoginOrchestrator.LoginSession(
+                ACCESS_TOKEN, REFRESH_TOKEN, userId, "小星", "student", "GRADE_6", "CLASS_1", false);
     }
 
     private User activeStudent() {
@@ -147,17 +155,14 @@ class AuthControllerTest {
         when(businessAuthProvider.issueRefreshToken(userId, "student", tenantId)).thenReturn(REFRESH_TOKEN);
     }
 
-    // ===== login =====
+    // ===== login（S-001：编排下沉 LoginOrchestrator，链细节见 LoginOrchestratorTest） =====
 
     @Test
-    @DisplayName("login 成功：密码匹配 + 租户门禁通过 → 双 token + mustChangePassword")
-    void login_success() {
-        User user = activeStudent();
-        when(authUserService.findLoginCandidates("小星")).thenReturn(List.of(user));
-        when(passwordEncoder.matches("pwd12345", "hash")).thenReturn(true);
-        when(tenantAccessGuard.isLoginAllowed(tenantId)).thenReturn(true);
-        when(passwordPolicyService.isExpired(user.getPasswordChangedAt())).thenReturn(false);
-        mockTokenIssuance();
+    @DisplayName("login 委托编排：LoginSession → LoginResponse 组装")
+    void login_delegatesToOrchestrator() {
+        LoginOrchestrator.LoginSession session = new LoginOrchestrator.LoginSession(
+                ACCESS_TOKEN, REFRESH_TOKEN, userId, "小星", "student", "GRADE_6", "CLASS_1", false);
+        when(loginOrchestrator.loginWithPassword("小星", "pwd12345")).thenReturn(session);
 
         ApiResponse<LoginResponse> resp = controller.login(new LoginRequest("小星", "pwd12345"));
 
@@ -167,108 +172,22 @@ class AuthControllerTest {
         assertEquals(REFRESH_TOKEN, data.refreshToken());
         assertEquals(userId, data.userId());
         assertEquals("小星", data.displayName());
+        assertEquals("student", data.userType());
+        assertEquals("GRADE_6", data.gradeCode());
+        assertEquals("CLASS_1", data.classCode());
         assertThat(data.mustChangePassword()).isFalse();
-        verify(lockoutService).checkLockout("小星");
-        verify(lockoutService).clearFailures("小星");
-        verify(authUserService).recordLoginSuccess(tenantId, userId);
-        assertNull(TenantContextHolder.get(), "请求结束后租户上下文必须清除");
     }
 
     @Test
-    @DisplayName("login 密码错误 → recordFailure + UNAUTHORIZED")
-    void login_wrongPassword() {
-        User user = activeStudent();
-        when(authUserService.findLoginCandidates("小星")).thenReturn(List.of(user));
-        when(passwordEncoder.matches(anyString(), anyString())).thenReturn(false);
-
-        assertThatThrownBy(() -> controller.login(new LoginRequest("小星", "wrong")))
-                .isExactlyInstanceOf(BizException.class)
-                .extracting("code")
-                .isEqualTo(ErrorCode.UNAUTHORIZED.code());
-        verify(lockoutService).recordFailure("小星");
-        verify(lockoutService, never()).clearFailures(anyString());
-    }
-
-    @Test
-    @DisplayName("login 昵称重名（>1 候选）→ 拒绝登录防随机命中他人账号")
-    void login_duplicatePseudonym() {
-        when(authUserService.findLoginCandidates("小星")).thenReturn(List.of(activeStudent(), activeStudent()));
-
-        assertThatThrownBy(() -> controller.login(new LoginRequest("小星", "pwd12345")))
-                .isExactlyInstanceOf(BizException.class)
-                .extracting("code")
-                .isEqualTo(ErrorCode.UNAUTHORIZED.code());
-        verify(lockoutService).recordFailure("小星");
-        verify(authUserService, never()).recordLoginSuccess(any(), any());
-    }
-
-    @Test
-    @DisplayName("F-1: login 冻结账号（withdrawn）→ FORBIDDEN + 专属提示，不记失败")
-    void login_withdrawnAccountFrozen() {
-        User withdrawn = activeStudent();
-        withdrawn.setStatus(User.STATUS_WITHDRAWN);
-        when(authUserService.findLoginCandidates("小星")).thenReturn(List.of(withdrawn));
-
-        assertThatThrownBy(() -> controller.login(new LoginRequest("小星", "pwd12345")))
-                .isExactlyInstanceOf(BizException.class)
-                .extracting("code")
-                .isEqualTo(ErrorCode.FORBIDDEN.code());
-        verify(lockoutService, never()).recordFailure(anyString());
-        verify(authUserService, never()).recordLoginSuccess(any(), any());
-    }
-
-    @Test
-    @DisplayName("login 用户不存在 → UNAUTHORIZED")
-    void login_userNotFound() {
-        when(authUserService.findLoginCandidates("nobody")).thenReturn(List.of());
-
-        assertThatThrownBy(() -> controller.login(new LoginRequest("nobody", "pwd12345")))
-                .isExactlyInstanceOf(BizException.class)
-                .extracting("code")
-                .isEqualTo(ErrorCode.UNAUTHORIZED.code());
-    }
-
-    @Test
-    @DisplayName("login 租户 suspended/archived → FORBIDDEN（SEC-004 门禁）")
-    void login_tenantSuspended() {
-        User user = activeStudent();
-        when(authUserService.findLoginCandidates("小星")).thenReturn(List.of(user));
-        when(passwordEncoder.matches(anyString(), anyString())).thenReturn(true);
-        when(tenantAccessGuard.isLoginAllowed(tenantId)).thenReturn(false);
-
-        assertThatThrownBy(() -> controller.login(new LoginRequest("小星", "pwd12345")))
-                .isExactlyInstanceOf(BizException.class)
-                .extracting("code")
-                .isEqualTo(ErrorCode.FORBIDDEN.code());
-        verify(lockoutService, never()).clearFailures(anyString());
-    }
-
-    @Test
-    @DisplayName("login mustChangePassword=true 或密码过期 → mustChangePassword=true")
-    void login_mustChangePassword() {
-        User user = activeStudent();
-        user.setMustChangePassword(true);
-        when(authUserService.findLoginCandidates("小星")).thenReturn(List.of(user));
-        when(passwordEncoder.matches(anyString(), anyString())).thenReturn(true);
-        when(tenantAccessGuard.isLoginAllowed(tenantId)).thenReturn(true);
-        mockTokenIssuance();
-
-        ApiResponse<LoginResponse> resp = controller.login(new LoginRequest("小星", "pwd12345"));
-
-        assertThat(resp.data().mustChangePassword()).isTrue();
-    }
-
-    @Test
-    @DisplayName("login 锁定检查抛出 → 异常直接传播（RATE_LIMITED）")
-    void login_lockedOut() {
+    @DisplayName("login 编排异常（锁定/重名/冻结/门禁/密码）→ 透传")
+    void login_orchestratorExceptionPropagates() {
         doThrow(new BizException(ErrorCode.RATE_LIMITED, "登录失败次数过多"))
-                .when(lockoutService).checkLockout("小星");
+                .when(loginOrchestrator).loginWithPassword("小星", "pwd12345");
 
         assertThatThrownBy(() -> controller.login(new LoginRequest("小星", "pwd12345")))
                 .isExactlyInstanceOf(BizException.class)
                 .extracting("code")
                 .isEqualTo(ErrorCode.RATE_LIMITED.code());
-        verify(authUserService, never()).findLoginCandidates(any());
     }
 
     // ===== trialRegister =====
@@ -392,7 +311,7 @@ class AuthControllerTest {
     void pinLogin_success() {
         User user = activeStudent();
         when(trialAuthService.loginWithPin("小星", "1234")).thenReturn(user);
-        mockTokenIssuance();
+        when(loginOrchestrator.issueLoginSession(user, "PIN_LOGIN")).thenReturn(loginSession());
 
         ApiResponse<LoginResponse> resp = controller.pinLogin(new PinLoginRequest("小星", "1234"));
 
@@ -400,8 +319,9 @@ class AuthControllerTest {
         assertEquals(ACCESS_TOKEN, resp.data().token());
         verify(lockoutService).checkLockout("pin:小星");
         verify(lockoutService).clearFailures("pin:小星");
-        verify(auditLogService).log(tenantId, userId, "PIN_LOGIN", "user", userId, null);
-        assertNull(TenantContextHolder.get());
+        // S-001：门禁补齐 + 审计/签发统一在 orchestrator
+        verify(loginOrchestrator).guardTenantLogin(user);
+        verify(loginOrchestrator).issueLoginSession(user, "PIN_LOGIN");
     }
 
     @Test
@@ -483,14 +403,16 @@ class AuthControllerTest {
         when(tokenBlacklistService.isBlacklisted(VOICE_JTI)).thenReturn(false);
         when(jwtTokenProvider.getUserId(VOICE_CRED)).thenReturn(userId);
         when(authUserService.findByIdAsSystem(userId)).thenReturn(user);
-        mockTokenIssuance();
+        when(loginOrchestrator.issueLoginSession(user, "VOICE_LOGIN")).thenReturn(loginSession());
 
         ApiResponse<LoginResponse> resp = controller.voiceLogin(new VoiceLoginRequest(VOICE_CRED));
 
         assertThat(resp.code()).isEqualTo(0);
         assertEquals(ACCESS_TOKEN, resp.data().token());
         verify(authUserService).touchLastLogin(userId);
-        verify(auditLogService).log(tenantId, userId, "VOICE_LOGIN", "user", userId, null);
+        // S-001：门禁补齐 + 审计/签发统一在 orchestrator
+        verify(loginOrchestrator).guardTenantLogin(user);
+        verify(loginOrchestrator).issueLoginSession(user, "VOICE_LOGIN");
     }
 
     // ===== me =====
@@ -669,18 +591,12 @@ class AuthControllerTest {
     // ===== 租户上下文绑定（login 审计路径下沉 Service） =====
 
     @Test
-    @DisplayName("login 成功路径：请求结束后 TenantContextHolder 清除，登录留痕经 Service")
+    @DisplayName("login 委托编排：请求结束后无租户上下文遗留（绑定/清除在 orchestrator 内）")
     void login_bindsTenantContextForAudit() {
-        User user = activeStudent();
-        when(authUserService.findLoginCandidates("小星")).thenReturn(List.of(user));
-        when(passwordEncoder.matches(anyString(), anyString())).thenReturn(true);
-        when(tenantAccessGuard.isLoginAllowed(tenantId)).thenReturn(true);
-        mockTokenIssuance();
-
+        when(loginOrchestrator.loginWithPassword("小星", "pwd12345")).thenReturn(loginSession());
+    
         controller.login(new LoginRequest("小星", "pwd12345"));
-
-        // 上下文绑定已下沉 AuthUserService.recordLoginSuccess（Service 测试覆盖）；Controller 不得遗留上下文
-        verify(authUserService).recordLoginSuccess(tenantId, userId);
+    
         assertNull(TenantContextHolder.get(), "请求结束后租户上下文必须清除");
     }
 }

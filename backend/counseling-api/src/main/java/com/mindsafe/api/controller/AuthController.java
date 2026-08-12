@@ -1,6 +1,7 @@
 package com.mindsafe.api.controller;
 
 import com.mindsafe.api.auth.AuthenticatedUser;
+import com.mindsafe.api.auth.LoginOrchestrator;
 import com.mindsafe.api.auth.TrialAuthStrategy;
 import com.mindsafe.api.auth.TrialRegisterRequest;
 import com.mindsafe.api.security.JwtAuthenticationFilter.TenantContext;
@@ -55,6 +56,8 @@ public class AuthController {
     private final TokenBlacklistService tokenBlacklistService;
     private final TenantAccessGuard tenantAccessGuard;
     private final AuthUserService authUserService;
+    /** S-001（doing/93）：登录编排单点（固定顺序 + 签发/门禁统一） */
+    private final LoginOrchestrator loginOrchestrator;
 
     public AuthController(PasswordEncoder passwordEncoder,
                           JwtTokenProvider jwtTokenProvider,
@@ -67,7 +70,8 @@ public class AuthController {
                           GuardianConsentService guardianConsentService,
                           TokenBlacklistService tokenBlacklistService,
                           TenantAccessGuard tenantAccessGuard,
-                          AuthUserService authUserService) {
+                          AuthUserService authUserService,
+                          LoginOrchestrator loginOrchestrator) {
         this.passwordEncoder = passwordEncoder;
         this.jwtTokenProvider = jwtTokenProvider;
         this.businessAuthProvider = businessAuthProvider;
@@ -80,66 +84,20 @@ public class AuthController {
         this.tokenBlacklistService = tokenBlacklistService;
         this.tenantAccessGuard = tenantAccessGuard;
         this.authUserService = authUserService;
+        this.loginOrchestrator = loginOrchestrator;
     }
 
     /**
-     * 通用登录（pseudonym + 密码）
+     * 通用登录（pseudonym + 密码）——编排下沉 LoginOrchestrator（S-001：固定顺序单点）
      */
     @PostMapping("/login")
     public ApiResponse<LoginResponse> login(@Valid @RequestBody LoginRequest request) {
-        // 登录失败锁定检查
-        lockoutService.checkLockout(request.username());
-
-        // 前置认证链路（无 JWT，跨租户按昵称查用户）：显式声明系统作用域（M1-003 fail-fast 配套）
-        // SEC-003：昵称无全局唯一约束，重名时拒绝登录（防 LIMIT 1 随机命中他人账号）
-        // T4 批次C：候选查询下沉 AuthUserService（系统作用域在 Service 内声明）
-        java.util.List<User> candidates = authUserService.findLoginCandidates(request.username());
-        if (candidates.size() > 1) {
-            log.warn("登录拒绝：昵称重复无法唯一定位账号, username={}, matches={}", request.username(), candidates.size());
-            lockoutService.recordFailure(request.username());
-            throw new BizException(ErrorCode.UNAUTHORIZED, "用户名或密码错误");
-        }
-        User user = candidates.isEmpty() ? null : candidates.get(0);
-
-        // F-1：撤回同意冻结账号（withdrawn）→ 专属提示（PIPL §47，需重新授权恢复）
-        if (user != null && User.STATUS_WITHDRAWN.equals(user.getStatus())) {
-            throw new BizException(ErrorCode.FORBIDDEN, "账号已冻结，请联系家长或学校重新授权");
-        }
-
-        if (user == null || user.getPasswordHash() == null
-                || !passwordEncoder.matches(request.password(), user.getPasswordHash())) {
-            lockoutService.recordFailure(request.username());
-            throw new BizException(ErrorCode.UNAUTHORIZED, "用户名或密码错误");
-        }
-
-        // SEC-004：租户状态门禁——suspended/archived 租户禁止登录
-        if (!tenantAccessGuard.isLoginAllowed(user.getTenantId())) {
-            throw new BizException(ErrorCode.FORBIDDEN, "学校账号暂时不可用，请联系管理员");
-        }
-
-        // 登录成功，清除失败计数
-        lockoutService.clearFailures(request.username());
-
-        // 更新最后登录时间 + LOGIN 审计（T4 批次B：下沉 AuthUserService，租户上下文绑定在 Service 内）
-        authUserService.recordLoginSuccess(user.getTenantId(), user.getUserId());
-
-        String token = businessAuthProvider.issueAccessToken(
-                user.getUserId(), user.getUserType(), user.getTenantId());
-        String refreshToken = businessAuthProvider.issueRefreshToken(
-                user.getUserId(), user.getUserType(), user.getTenantId());
-
-        boolean mustChange = Boolean.TRUE.equals(user.getMustChangePassword())
-                || passwordPolicyService.isExpired(user.getPasswordChangedAt());
-
+        LoginOrchestrator.LoginSession session = loginOrchestrator.loginWithPassword(
+                request.username(), request.password());
         return ApiResponse.ok(new LoginResponse(
-                token,
-                refreshToken,
-                user.getUserId(),
-                user.getPseudonym(),
-                user.getUserType(),
-                user.getGradeCode(),
-                user.getClassCode(),
-                mustChange
+                session.accessToken(), session.refreshToken(), session.userId(),
+                session.pseudonym(), session.userType(),
+                session.gradeCode(), session.classCode(), session.mustChangePassword()
         ));
     }
 
@@ -213,20 +171,13 @@ public class AuthController {
         try {
             User user = trialAuthService.loginWithPin(request.pseudonym(), request.pin());
             lockoutService.clearFailures(lockKey);
-            String token = businessAuthProvider.issueAccessToken(
-                    user.getUserId(), user.getUserType(), user.getTenantId());
-            String refreshToken = businessAuthProvider.issueRefreshToken(
-                    user.getUserId(), user.getUserType(), user.getTenantId());
-            // 审计需绑定真实租户上下文提交（@Async 经 TaskDecorator 继承，否则 fail-fast 拒绝写入）
-            TenantContextHolder.set(user.getTenantId());
-            try {
-                auditLogService.log(user.getTenantId(), user.getUserId(), "PIN_LOGIN", "user", user.getUserId(), null);
-            } finally {
-                TenantContextHolder.clear();
-            }
+            // S-001：补齐租户门禁 + 统一签发/审计（原路径缺失门禁、手工 TenantContextHolder）
+            loginOrchestrator.guardTenantLogin(user);
+            LoginOrchestrator.LoginSession session = loginOrchestrator.issueLoginSession(user, "PIN_LOGIN");
             return ApiResponse.ok(new LoginResponse(
-                    token, refreshToken, user.getUserId(), user.getPseudonym(),
-                    user.getUserType(), user.getGradeCode(), user.getClassCode(), false
+                    session.accessToken(), session.refreshToken(), session.userId(),
+                    session.pseudonym(), session.userType(),
+                    session.gradeCode(), session.classCode(), session.mustChangePassword()
             ));
         } catch (BizException e) {
             lockoutService.recordFailure(lockKey);
@@ -277,16 +228,13 @@ public class AuthController {
         // 更新最后登录时间（T4 批次B：下沉 AuthUserService）
         authUserService.touchLastLogin(user.getUserId());
 
-        String token = businessAuthProvider.issueAccessToken(
-                user.getUserId(), user.getUserType(), user.getTenantId());
-        String refreshToken = businessAuthProvider.issueRefreshToken(
-                user.getUserId(), user.getUserType(), user.getTenantId());
-
-        auditLogService.log(user.getTenantId(), user.getUserId(), "VOICE_LOGIN", "user", user.getUserId(), null);
-
+        // S-001：补齐租户门禁 + 统一签发/审计（原路径缺失门禁）
+        loginOrchestrator.guardTenantLogin(user);
+        LoginOrchestrator.LoginSession session = loginOrchestrator.issueLoginSession(user, "VOICE_LOGIN");
         return ApiResponse.ok(new LoginResponse(
-                token, refreshToken, user.getUserId(), user.getPseudonym(),
-                user.getUserType(), user.getGradeCode(), user.getClassCode(), false
+                session.accessToken(), session.refreshToken(), session.userId(),
+                session.pseudonym(), session.userType(),
+                session.gradeCode(), session.classCode(), session.mustChangePassword()
         ));
     }
 
