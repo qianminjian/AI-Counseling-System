@@ -178,7 +178,18 @@ public class NotificationServiceImpl implements NotificationService {
             case 1 -> "🟡 黄色提醒";
             default -> "⚪ 风险提示";
         };
-        return level + " - " + event.getRiskType();
+        // BUG-T-06-03（2026-08-12 复测）：risk_event 可能因主事务回滚成为孤儿通知
+        // （related_id 无对应记录，studentNickname 关联填充失效）——title 直接携带学生昵称兜底
+        String studentName = null;
+        if (event.getStudentUserId() != null) {
+            try {
+                User stu = userMapper.selectById(event.getStudentUserId());
+                if (stu != null) studentName = stu.getPseudonym();
+            } catch (Exception e) {
+                log.debug("通知标题学生昵称查询失败（不影响通知）: {}", e.getMessage());
+            }
+        }
+        return level + (studentName != null ? "（" + studentName + "）" : "") + " - " + event.getRiskType();
     }
 
     private String buildBody(RiskEvent event) {

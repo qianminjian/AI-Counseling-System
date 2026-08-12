@@ -47,14 +47,16 @@ public class SummaryCompensationJob {
         TenantContextHolder.runAsSystem(() -> {
             try {
                 Instant cutoff = Instant.now().minus(SETTLE_MINUTES, ChronoUnit.MINUTES);
-                // BUG-T-04-01 二次修复（2026-08-12 复测）：终态会话含 taken_over（升级转人工）——
-                // takeoverSession 置会话状态为 taken_over，原条件仅扫 completed 导致 escalated 会话永不补偿
+                // BUG-T-04-01 三次修复（2026-08-12 复测）：takeoverSession 不设 endedAt——
+                // taken_over 会话 endedAt 为 null，时间条件永不匹配。终态判定放宽：
+                // 结束时间超 5 分钟 或 从未记录结束时间（taken_over 转人工即视为终态）。
                 List<CounselingSession> sessions = sessionMapper.selectList(
                         new LambdaQueryWrapper<CounselingSession>()
                                 .in(CounselingSession::getSessionStatus,
                                         CounselingSession.STATUS_COMPLETED, "taken_over")
                                 .isNull(CounselingSession::getSessionSummary)
-                                .lt(CounselingSession::getEndedAt, cutoff)
+                                .and(w -> w.lt(CounselingSession::getEndedAt, cutoff)
+                                        .or().isNull(CounselingSession::getEndedAt))
                                 .orderByAsc(CounselingSession::getEndedAt)
                                 .last("LIMIT " + SCAN_LIMIT));
                 if (sessions.isEmpty()) {
