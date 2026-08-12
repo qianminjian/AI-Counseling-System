@@ -10,8 +10,9 @@ export default function InsightsPage() {
 
   useEffect(() => {
     fetchAlertFunnel().then(setFunnel).catch((e: Error) => message.error(e.message))
-    fetchQualityTrend().then(setTrend).catch(() => setTrend(null))
-    fetchTenantHealth().then(setHealth).catch(() => setHealth([]))
+    // OPS-P3-07（doing/96）：质量趋势/租户健康度失败不再静默置空（错误态与空态需可区分）
+    fetchQualityTrend().then(setTrend).catch((e: Error) => message.error(`质量趋势加载失败：${e.message}`))
+    fetchTenantHealth().then(setHealth).catch((e: Error) => message.error(`租户健康度加载失败：${e.message}`))
   }, [])
 
   const funnelSteps = [

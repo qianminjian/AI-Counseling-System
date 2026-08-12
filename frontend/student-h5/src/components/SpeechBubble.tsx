@@ -8,6 +8,31 @@
  * - 动效：吹泡入场（回弹）+ 说话时水中漂浮律动 + 两侧装饰小泡上浮
  */
 
+// OPS-P3-06（doing/96）：keyframes 提为模块级单例——此前内联 <style> 随每次渲染注入，
+// 高频重渲染累积 DOM 节点；模块加载时创建一次，全部渲染共享同一 style 元素。
+const BubbleKeyframes = (
+  <style>{`
+    @keyframes bubble-blow {
+      0%   { opacity: 0; transform: scale(0.3) translateY(10px); }
+      70%  { opacity: 1; transform: scale(1.06) translateY(-2px); }
+      100% { opacity: 1; transform: scale(1) translateY(0); }
+    }
+    @keyframes bubble-drift {
+      0%, 100% { transform: translateY(0) rotate(-0.6deg); }
+      50%      { transform: translateY(-3px) rotate(0.6deg); }
+    }
+    @keyframes bubble-rise {
+      0%   { opacity: 0; transform: translateY(6px) scale(0.6); }
+      30%  { opacity: 0.9; }
+      100% { opacity: 0; transform: translateY(-18px) scale(1.15); }
+    }
+    @keyframes think-rise {
+      0%, 100% { transform: translateY(0); opacity: 0.5; }
+      50%      { transform: translateY(-4px); opacity: 1; }
+    }
+  `}</style>
+)
+
 export default function SpeechBubble({ mode, text, cancelArmed = false, align = 'center' }) {
   // mode: 'speaking' | 'thinking' | 'listening' | null
   // align: 'center'（Pad 左栏居中）| 'right'（球在右半屏，向左展开）| 'left'（球在左半屏，向右展开）
@@ -111,27 +136,8 @@ export default function SpeechBubble({ mode, text, cancelArmed = false, align = 
         </>
       )}
 
-      {/* 气泡动画 keyframes（内联注入，避免依赖全局 CSS 配置） */}
-      <style>{`
-        @keyframes bubble-blow {
-          0%   { opacity: 0; transform: scale(0.3) translateY(10px); }
-          70%  { opacity: 1; transform: scale(1.06) translateY(-2px); }
-          100% { opacity: 1; transform: scale(1) translateY(0); }
-        }
-        @keyframes bubble-drift {
-          0%, 100% { transform: translateY(0) rotate(-0.6deg); }
-          50%      { transform: translateY(-3px) rotate(0.6deg); }
-        }
-        @keyframes bubble-rise {
-          0%   { opacity: 0; transform: translateY(6px) scale(0.6); }
-          30%  { opacity: 0.9; }
-          100% { opacity: 0; transform: translateY(-18px) scale(1.15); }
-        }
-        @keyframes think-rise {
-          0%, 100% { transform: translateY(0); opacity: 0.5; }
-          50%      { transform: translateY(-4px); opacity: 1; }
-        }
-      `}</style>
+      {/* 气泡动画 keyframes（OPS-P3-06：模块级单例，随组件定义只注入一次） */}
+      {BubbleKeyframes}
     </div>
   )
 }
