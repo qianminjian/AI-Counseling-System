@@ -62,26 +62,19 @@ public class AiChatServiceImpl implements AiChatService {
         meterRegistry.counter("mindsafe_llm_aux_failure_total", "method", method).increment();
     }
 
-    @Override
-    public Flux<StreamMessageEvent> chatWithPrompt(UUID sessionId, String emotionTag, String message,
-                                                   String systemPromptContent) {
+    /**
+     * S-010（doing/93）：流式对话门面——双层安全管线 + 超时 + 重试 + 记忆回写 + 审查 +
+     * 审计统一收敛（chatWithPrompt/chatProactive 双份管线合并；差异参数化）。
+     *
+     * @param recordMetrics 是否记录 chat 审计指标（主链路记录；暖场链路不记录）
+     * @param logTag        日志前缀（区分链路，便于排障）
+     */
+    private Flux<StreamMessageEvent> streamChat(UUID sessionId, String sysPrompt, List<Message> history,
+                                                String emotionTag, boolean recordMetrics, String logTag) {
         String conversationId = sessionId.toString();
-        log.debug("AI 对话请求(AI-005): sessionId={}, emotion={}, msgLength={}", sessionId, emotionTag, message.length());
-
-        // 1. 保存用户消息到记忆
-        chatMemory.add(conversationId, List.of(new UserMessage(message)));
-
-        // 2. 获取历史消息构建上下文
-        List<Message> history = chatMemory.get(conversationId);
-
-        // 3. 使用预解析的 System Prompt（SYS_001 + 语言模板 + 性别风格，B4：文案下沉 prompts/ 由调用方组装）
-        final String sysPrompt = systemPromptContent;
-
-        // 4. 流式调用 LLM
         long streamStart = System.currentTimeMillis();
         StringBuilder responseCollector = new StringBuilder();
 
-        // 5. Layer1 实时过滤 + Layer2 异步审查 + PERF-001 超时保护 + PERF-002 重试
         return llmStreamEnhancer.enhance(
                 () -> outputContentFilter.apply(
                         chatClient.prompt().system(sysPrompt).messages(history).stream().content(),
@@ -95,14 +88,33 @@ public class AiChatServiceImpl implements AiChatService {
                 .doOnComplete(() -> {
                     String fullReply = responseCollector.toString();
                     chatMemory.add(conversationId, List.of(new AssistantMessage(fullReply)));
-                    log.debug("AI 回复完成(AI-005): sessionId={}, responseLength={}", sessionId, fullReply.length());
+                    log.debug("{}完成: sessionId={}, responseLength={}", logTag, sessionId, fullReply.length());
                     outputReviewService.reviewAsync(sessionId, fullReply, emotionTag);
-                    logModelCall(sessionId, "chat", System.currentTimeMillis() - streamStart, "success", null);
+                    if (recordMetrics) {
+                        logModelCall(sessionId, "chat", System.currentTimeMillis() - streamStart, "success", null);
+                    }
                 })
                 .doOnError(e -> {
-                    log.error("AI 流式调用失败(AI-005): sessionId={}", sessionId, e);
-                    logModelCall(sessionId, "chat", System.currentTimeMillis() - streamStart, "error", e.getMessage());
+                    log.error("{}失败: sessionId={}", logTag, sessionId, e);
+                    if (recordMetrics) {
+                        logModelCall(sessionId, "chat", System.currentTimeMillis() - streamStart, "error", e.getMessage());
+                    }
                 });
+    }
+
+    @Override
+    public Flux<StreamMessageEvent> chatWithPrompt(UUID sessionId, String emotionTag, String message,
+                                                   String systemPromptContent) {
+        String conversationId = sessionId.toString();
+        log.debug("AI 对话请求(AI-005): sessionId={}, emotion={}, msgLength={}", sessionId, emotionTag, message.length());
+
+        // 1. 保存用户消息到记忆，获取历史构建上下文
+        chatMemory.add(conversationId, List.of(new UserMessage(message)));
+        List<Message> history = chatMemory.get(conversationId);
+
+        // 2. 预解析 System Prompt（SYS_001 + 语言模板 + 性别风格，B4：文案下沉 prompts/ 由调用方组装）
+        // S-010：统一门面（双层过滤 + 超时重试 + 记忆回写 + 审查 + 审计）
+        return streamChat(sessionId, systemPromptContent, history, emotionTag, true, "AI 回复(AI-005)");
     }
 
     @Override
@@ -116,36 +128,15 @@ public class AiChatServiceImpl implements AiChatService {
         List<Message> history = chatMemory.get(conversationId);
 
         // 2. 预解析 System Prompt（ARCH-010 D4：调用方已走 PromptVersionService 版本路由，
-        //    含 SYS_001 + 语言模板 + GENDER_STYLE + TSK_004 暖场指令）；这里仅追加上下文简报
+        //    含 SYS_001 + 语言模板 + GENDER_STYLE + TSK_004 暖场指令）；仅追加上下文简报
         //    （contextBrief 追加尾部，利用 recency bias，与主链路同一组装方式）
         String fullSystem = systemPromptContent;
         if (contextBrief != null && !contextBrief.isBlank()) {
             fullSystem = fullSystem + "\n\n" + contextBrief;
         }
-        final String sysPrompt = fullSystem;
 
-        // 3. 流式调用 LLM（带历史上下文，无新增 UserMessage）
-        StringBuilder responseCollector = new StringBuilder();
-
-        // 4. 复用双层安全管线 + PERF-001 超时保护 + PERF-002 重试
-        return llmStreamEnhancer.enhance(
-                () -> outputContentFilter.apply(
-                        chatClient.prompt().system(sysPrompt).messages(history).stream().content(),
-                        sessionId),
-                sessionId)
-                .doOnNext(evt -> {
-                    if ("token".equals(evt.type()) && evt.content() != null) {
-                        responseCollector.append(evt.content());
-                    }
-                })
-                .doOnComplete(() -> {
-                    // 5. AI 回复正常写入记忆（孩子看到的连续性保留）
-                    String fullReply = responseCollector.toString();
-                    chatMemory.add(conversationId, List.of(new AssistantMessage(fullReply)));
-                    log.debug("主动暖场回复完成: sessionId={}, responseLength={}", sessionId, fullReply.length());
-                    outputReviewService.reviewAsync(sessionId, fullReply, emotionTag);
-                })
-                .doOnError(e -> log.error("主动暖场流式调用失败: sessionId={}", sessionId, e));
+        // 3. S-010：统一门面（暖场不记录 chat 审计指标；不写伪造学生消息）
+        return streamChat(sessionId, fullSystem, history, emotionTag, false, "主动暖场回复");
     }
 
     /** 清除会话记忆（会话结束时调用） */
