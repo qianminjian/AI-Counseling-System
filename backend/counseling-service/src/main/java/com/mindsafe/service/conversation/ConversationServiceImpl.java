@@ -85,11 +85,11 @@ public class ConversationServiceImpl implements ConversationService {
     /** 暖场护栏配置（B2：阈值单一源，Lua 判定与快照判定同源） */
     private final NudgeProperties nudgeProperties;
 
-    /** 冷场决策模型（无状态纯计算，design/28 §三） */
-    private final NudgeDecisionModel nudgeDecisionModel = new NudgeDecisionModel();
+    /** 冷场决策模型（无状态纯计算，design/28 §三；S-005 改构造注入） */
+    private final NudgeDecisionModel nudgeDecisionModel;
 
-    /** 回复情绪推导器（TTSFX-004，design/37 §三.1）：纯规则零依赖，同 NudgeDecisionModel 内联实例化 */
-    private final ReplyEmotionResolver replyEmotionResolver = new ReplyEmotionResolver();
+    /** 回复情绪推导器（TTSFX-004，design/37 §三.1；S-005 改构造注入） */
+    private final ReplyEmotionResolver replyEmotionResolver;
 
     /** CBT state_path JSON 序列化工具（CBT-201）；ARCH-010 P2-2：注入唯一 ObjectMapper（此前 static new） */
     private final ObjectMapper objectMapper;
@@ -116,7 +116,9 @@ public class ConversationServiceImpl implements ConversationService {
                                    PersonalInfoExtractor personalInfoExtractor,
                                    PromptAssemblyService promptAssemblyService,
                                    ThemeEvolutionEngine themeEvolutionEngine,
-                                   NudgeProperties nudgeProperties) {
+                                   NudgeProperties nudgeProperties,
+                                   NudgeDecisionModel nudgeDecisionModel,
+                                   ReplyEmotionResolver replyEmotionResolver) {
         this.aiChatService = aiChatService;
         this.riskProcessor = riskProcessor;
         this.piiDesensitizer = piiDesensitizer;
@@ -139,6 +141,8 @@ public class ConversationServiceImpl implements ConversationService {
         this.personalInfoExtractor = personalInfoExtractor;
         this.promptAssemblyService = promptAssemblyService;
         this.themeEvolutionEngine = themeEvolutionEngine;
+        this.nudgeDecisionModel = nudgeDecisionModel;
+        this.replyEmotionResolver = replyEmotionResolver;
         this.nudgeProperties = nudgeProperties;
     }
 

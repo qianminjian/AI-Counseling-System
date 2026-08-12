@@ -1,6 +1,7 @@
 package com.mindsafe.service.analytics;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.mindsafe.ai.risk.EmotionVocabulary;
 import com.mindsafe.domain.entity.CounselingSession;
 import com.mindsafe.domain.entity.MessageSummary;
 import com.mindsafe.domain.entity.QualityScore;
@@ -31,10 +32,7 @@ import java.util.stream.Collectors;
 @Service
 public class DataAnalyticsService {
 
-    /** N-004（2026-08-11）：负向情绪词表单源（原同文件 2 处重复；与 emotion 标签契约一致） */
-    private static final Set<String> NEGATIVE_LABELS =
-            Set.of("sad", "angry", "scared", "nervous", "lonely", "tired");
-
+    /** S-008（doing/93）：负向/正向判定收敛至 EmotionVocabulary 单一源（原私有 NEGATIVE_LABELS 与 8 模块权威词表分叉，tired 等码值口径不一致） */
     private static final Logger log = LoggerFactory.getLogger(DataAnalyticsService.class);
     private static final ZoneId ZONE_CN = ZoneId.of("Asia/Shanghai");
 
@@ -271,7 +269,7 @@ public class DataAnalyticsService {
                         .ge(MessageSummary::getCreatedAt, from)
                         .lt(MessageSummary::getCreatedAt, to));
         if (summaries.isEmpty()) return 0;
-        Set<String> negativeLabels = NEGATIVE_LABELS;
+        Set<String> negativeLabels = EmotionVocabulary.NEGATIVE_KEYS;
         long negCount = summaries.stream()
                 .filter(s -> s.getEmotionLabel() != null && negativeLabels.contains(s.getEmotionLabel()))
                 .count();
@@ -348,7 +346,7 @@ public class DataAnalyticsService {
             byWeek.computeIfAbsent(week, k -> new ArrayList<>()).add(s.getEmotionLabel());
         }
 
-        Set<String> negativeLabels = NEGATIVE_LABELS;
+        Set<String> negativeLabels = EmotionVocabulary.NEGATIVE_KEYS;
         List<Map<String, Object>> curve = new ArrayList<>();
         for (Map.Entry<String, List<String>> entry : byWeek.entrySet()) {
             List<String> labels = entry.getValue();
@@ -372,9 +370,9 @@ public class DataAnalyticsService {
         if (!sessions.isEmpty()) {
             milestones.add(milestone("first_session", sessions.get(0).getStartedAt(), "首次使用心理辅导"));
         }
-        // 首次正面情绪
+        // 首次正面情绪（S-008：判定收敛至词表 POSITIVE_KEYS）
         sessions.stream()
-                .filter(s -> "happy".equals(s.getEmotionTag()) || "calm".equals(s.getEmotionTag()))
+                .filter(s -> EmotionVocabulary.POSITIVE_KEYS.contains(s.getEmotionTag()))
                 .findFirst()
                 .ifPresent(s -> milestones.add(milestone("first_positive", s.getStartedAt(), "首次正面情绪会话")));
         // 风险事件首次解决

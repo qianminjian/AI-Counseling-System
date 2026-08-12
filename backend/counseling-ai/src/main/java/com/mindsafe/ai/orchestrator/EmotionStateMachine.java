@@ -47,15 +47,16 @@ public class EmotionStateMachine {
      * @param previousState   上一轮状态（首轮为 STABLE）
      * @param previousRelief  上一轮连续缓解计数
      * @param currentMood     本轮规范情绪标签（经 normalize 后）
-     * @param riskEscalated   本轮是否检出风险升级（橙/红 → 强制 CRISIS）
      * @return 转移结果（新状态 + 更新后的缓解计数）
+     * <p>
+     * S-005（doing/93）：删 riskEscalated 死参数——编排层合规裁决已短路（橙色+直接 CRISIS 返回），
+     * 调用方恒传 false；风险升级语义由编排层持有，状态机只认 crisis mood。
      */
     public Transition transition(StrategyProfile.EmotionState previousState,
                                  int previousRelief,
-                                 String currentMood,
-                                 boolean riskEscalated) {
-        // 风险升级 → 强制 CRISIS（不自动回落）
-        if (riskEscalated || "crisis".equals(currentMood)) {
+                                 String currentMood) {
+        // CRISIS mood → 强制 CRISIS（不自动回落）
+        if ("crisis".equals(currentMood)) {
             return new Transition(StrategyProfile.EmotionState.CRISIS, 0);
         }
 

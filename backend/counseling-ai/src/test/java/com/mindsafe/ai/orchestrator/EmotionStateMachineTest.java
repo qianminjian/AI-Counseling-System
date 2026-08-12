@@ -18,7 +18,7 @@ class EmotionStateMachineTest {
     @Test
     @DisplayName("STABLE + sad → 立即升级 ACTIVATED")
     void stable_to_activated() {
-        var t = sm.transition(EmotionState.STABLE, 0, "sad", false);
+        var t = sm.transition(EmotionState.STABLE, 0, "sad");
         assertThat(t.state()).isEqualTo(EmotionState.ACTIVATED);
         assertThat(t.reliefCount()).isEqualTo(0);
     }
@@ -26,14 +26,14 @@ class EmotionStateMachineTest {
     @Test
     @DisplayName("STABLE + calm → 维持 STABLE")
     void stable_stays() {
-        var t = sm.transition(EmotionState.STABLE, 0, "calm", false);
+        var t = sm.transition(EmotionState.STABLE, 0, "calm");
         assertThat(t.state()).isEqualTo(EmotionState.STABLE);
     }
 
     @Test
     @DisplayName("ACTIVATED + calm 第1轮 → 仍 ACTIVATED（缓解观察期）")
     void activated_relief_round1() {
-        var t = sm.transition(EmotionState.ACTIVATED, 0, "calm", false);
+        var t = sm.transition(EmotionState.ACTIVATED, 0, "calm");
         assertThat(t.state()).isEqualTo(EmotionState.ACTIVATED);
         assertThat(t.reliefCount()).isEqualTo(1);
     }
@@ -41,7 +41,7 @@ class EmotionStateMachineTest {
     @Test
     @DisplayName("ACTIVATED + calm 第2轮 → 降回 STABLE（缓解达标）")
     void activated_relief_round2_stable() {
-        var t = sm.transition(EmotionState.ACTIVATED, 1, "calm", false);
+        var t = sm.transition(EmotionState.ACTIVATED, 1, "calm");
         assertThat(t.state()).isEqualTo(EmotionState.STABLE);
         assertThat(t.reliefCount()).isEqualTo(0);
     }
@@ -49,7 +49,7 @@ class EmotionStateMachineTest {
     @Test
     @DisplayName("ACTIVATED + happy 第2轮 → 也降回 STABLE（happy 也是缓解）")
     void activated_happy_relief() {
-        var t = sm.transition(EmotionState.ACTIVATED, 1, "happy", false);
+        var t = sm.transition(EmotionState.ACTIVATED, 1, "happy");
         assertThat(t.state()).isEqualTo(EmotionState.STABLE);
     }
 
@@ -57,10 +57,10 @@ class EmotionStateMachineTest {
     @DisplayName("ACTIVATED 缓解期中途再激活 → 计数归零重计")
     void activated_relief_reset() {
         // 第1轮缓解
-        var t1 = sm.transition(EmotionState.ACTIVATED, 0, "calm", false);
+        var t1 = sm.transition(EmotionState.ACTIVATED, 0, "calm");
         assertThat(t1.reliefCount()).isEqualTo(1);
         // 第2轮又 sad → 重新 ACTIVATED，计数归零
-        var t2 = sm.transition(t1.state(), t1.reliefCount(), "sad", false);
+        var t2 = sm.transition(t1.state(), t1.reliefCount(), "sad");
         assertThat(t2.state()).isEqualTo(EmotionState.ACTIVATED);
         assertThat(t2.reliefCount()).isEqualTo(0);
     }
@@ -68,42 +68,42 @@ class EmotionStateMachineTest {
     @Test
     @DisplayName("ACTIVATED + crisis → 强制 CRISIS")
     void activated_to_crisis() {
-        var t = sm.transition(EmotionState.ACTIVATED, 0, "crisis", false);
+        var t = sm.transition(EmotionState.ACTIVATED, 0, "crisis");
         assertThat(t.state()).isEqualTo(EmotionState.CRISIS);
     }
 
     @Test
-    @DisplayName("riskEscalated=true → 无论情绪一律 CRISIS")
-    void risk_escalated_forces_crisis() {
-        var t = sm.transition(EmotionState.STABLE, 0, "happy", true);
-        assertThat(t.state()).isEqualTo(EmotionState.CRISIS);
+    @DisplayName("happy（缓解态）→ 不强制 CRISIS（S-005：风险升级由编排层短路，状态机只认 crisis mood）")
+    void happy_not_forced_crisis() {
+        var t = sm.transition(EmotionState.STABLE, 0, "happy");
+        assertThat(t.state()).isEqualTo(EmotionState.STABLE);
     }
 
     @Test
     @DisplayName("CRISIS 不自动回落（即使情绪变 calm）")
     void crisis_no_auto_fallback() {
-        var t = sm.transition(EmotionState.CRISIS, 0, "calm", false);
+        var t = sm.transition(EmotionState.CRISIS, 0, "calm");
         assertThat(t.state()).isEqualTo(EmotionState.CRISIS);
     }
 
     @Test
-    @DisplayName("CRISIS + 再次风险升级 → 仍 CRISIS")
-    void crisis_stays_on_risk() {
-        var t = sm.transition(EmotionState.CRISIS, 0, "sad", true);
+    @DisplayName("CRISIS 态 + 情绪波动 → 仍 CRISIS（不回落）")
+    void crisis_stays() {
+        var t = sm.transition(EmotionState.CRISIS, 0, "sad");
         assertThat(t.state()).isEqualTo(EmotionState.CRISIS);
     }
 
     @Test
     @DisplayName("withdrawn 也触发 ACTIVATED")
     void withdrawn_activates() {
-        var t = sm.transition(EmotionState.STABLE, 0, "withdrawn", false);
+        var t = sm.transition(EmotionState.STABLE, 0, "withdrawn");
         assertThat(t.state()).isEqualTo(EmotionState.ACTIVATED);
     }
 
     @Test
     @DisplayName("null mood 不触发 ACTIVATED（视为无信号）")
     void null_mood_stable() {
-        var t = sm.transition(EmotionState.STABLE, 0, null, false);
+        var t = sm.transition(EmotionState.STABLE, 0, null);
         assertThat(t.state()).isEqualTo(EmotionState.STABLE);
     }
 }

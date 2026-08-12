@@ -1,5 +1,7 @@
 package com.mindsafe.service.conversation;
 
+import org.springframework.stereotype.Component;
+
 /**
  * 冷场决策模型（design/28 §三 3.2）
  * <p>
@@ -14,7 +16,10 @@ package com.mindsafe.service.conversation;
  * AI 刚提思考型问题且沉默未达思考时长→留白（design/14 §4.2 把思考时间还给孩子）。
  * <p>
  * 纯计算、无状态、无外部依赖，权重/阈值以常量集中，便于上线后调优与回归测试。
+ * <p>
+ * S-005（doing/93）：注册为 Bean 统一注入（原消费方内联 new，与同包决策组件实例化方式不一致）。
  */
+@Component
 public class NudgeDecisionModel {
 
     // ===== 可配置阈值（上线后按真实会话调优） =====

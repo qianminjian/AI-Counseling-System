@@ -6,6 +6,7 @@ import com.mindsafe.ai.chat.AiChatService;
 import com.mindsafe.ai.orchestrator.EmotionStateMachine;
 import com.mindsafe.ai.orchestrator.EntryMoodStrategyResolver;
 import com.mindsafe.ai.orchestrator.PromptOrchestrationService;
+import com.mindsafe.ai.orchestrator.ReplyEmotionResolver;
 import com.mindsafe.ai.prompt.PromptTemplateService;
 import com.mindsafe.ai.safety.ConfidentialityNotice;
 import com.mindsafe.ai.safety.CrisisHotlineProvider;
@@ -208,7 +209,8 @@ class ConversationServiceImplTest {
                 allianceEnhancer, cbtStageRouter,
                 sessionEndAnalyticsService, sessionStateStore,
                 contextAgent, new ObjectMapper(),
-                personalInfoExtractor, promptAssemblyService, themeEvolutionEngine, new NudgeProperties());
+                personalInfoExtractor, promptAssemblyService, themeEvolutionEngine, new NudgeProperties(),
+                new NudgeDecisionModel(), new ReplyEmotionResolver());
     }
 
     /** createSession 并捕获内部生成的 sessionId */
@@ -394,7 +396,8 @@ class ConversationServiceImplTest {
                     allianceEnhancer, cbtStageRouter,
                 sessionEndAnalyticsService, sessionStateStore,
                 contextAgent, new ObjectMapper(),
-                personalInfoExtractor, promptAssemblyService, themeEvolutionEngine, new NudgeProperties());
+                personalInfoExtractor, promptAssemblyService, themeEvolutionEngine, new NudgeProperties(),
+                new NudgeDecisionModel(), new ReplyEmotionResolver());
 
             User user = new User();
             user.setPseudonym("小明");
