@@ -99,7 +99,9 @@ export default function App() {
   if (!token) {
     return (
       <ConfigProvider locale={zhCN} theme={themeConfig}>
-        <LoginPage onLogin={(r, n) => { setRole(r); setName(n); setToken('logged-in') }} />
+        {/* 板块08 P2-1（2026-08-12）：登录成功后 platformLogin 已把真实 token 写入 sessionStorage，
+            此处取真实 token 而非哨兵字面量（getAdminToken() ?? 'logged-in' 仅防御性兜底，正常路径取不到） */}
+        <LoginPage onLogin={(r, n) => { setRole(r); setName(n); setToken(getAdminToken() ?? 'logged-in') }} />
       </ConfigProvider>
     )
   }
