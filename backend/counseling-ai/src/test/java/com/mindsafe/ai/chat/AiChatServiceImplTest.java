@@ -76,7 +76,8 @@ class AiChatServiceImplTest {
         service = new AiChatServiceImpl(builder, chatMemory, outputContentFilter,
                 outputReviewService,
                 new LlmStreamEnhancer(3000, 60000, 1, 2000, new SimpleMeterRegistry(), new PromptTemplateService()),
-                mock(com.mindsafe.domain.mapper.ModelCallLogMapper.class), new SimpleMeterRegistry());
+                mock(com.mindsafe.domain.mapper.ModelCallLogMapper.class), new SimpleMeterRegistry(),
+                new PromptTemplateService(), Runnable::run);
     }
 
     @Test
