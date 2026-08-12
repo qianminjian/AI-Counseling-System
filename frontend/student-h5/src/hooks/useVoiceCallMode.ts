@@ -19,17 +19,32 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useWakeWord } from './useWakeWord'
 import { matchesWakeWord } from '../config/wakeWord'
 import { createSpeechRecognition } from '../utils/speechRecognition'
+// P1-3（audit-report-07 P1-3）：唤醒交互参数走远程配置（voiceCall.*），本地常量仅作 fallback
+//（对齐 FA-12 useWakeWord resolveWakeParams 既有模式，useWakeWord.ts:68-76）
+import { getConfigValue } from '../config/remote'
 
 /** 唤醒确认短句（播完后才开始捕捉说话） */
 const WAKE_CONFIRM_TEXT = '我在呢！'
 /** 冷却收尾句（沉默窗满，温柔关窗） */
 const COOLDOWN_CLOSE_TEXT = '我先安静陪着你，想说话随时叫我哦'
-/** 会话窗沉默超时（秒）：AI 说完后孩子 25s 未接话 → 关窗回待唤醒态 */
+/** 会话窗沉默超时（秒）：AI 说完后孩子 25s 未接话 → 关窗回待唤醒态（远程键 voiceCall.cooldownSeconds） */
 const COOLDOWN_SECONDS = 25
-/** 聆听回合重启间隔（毫秒） */
+/** 聆听回合重启间隔（毫秒）（远程键 voiceCall.restartDelayMs） */
 const RESTART_DELAY_MS = 300
-/** 语音结束防抖（毫秒）：用户停止说话后等待此时长才发送最终结果，避免中间停顿截断 */
+/** 语音结束防抖（毫秒）：用户停止说话后等待此时长才发送最终结果，避免中间停顿截断（远程键 voiceCall.speechEndDebounceMs） */
 const SPEECH_END_DEBOUNCE_MS = 1800
+
+/**
+ * P1-3：唤醒交互参数运行时解析（挂载时取一次 + 每次渲染刷新，远程配置加载后自动生效；
+ * 远程无值 / 未加载 → getConfigValue fallback 到本地常量，行为与旧版一致）
+ */
+function resolveVoiceCallParams() {
+  return {
+    cooldownSeconds: getConfigValue('voiceCall.cooldownSeconds', COOLDOWN_SECONDS),
+    restartDelayMs: getConfigValue('voiceCall.restartDelayMs', RESTART_DELAY_MS),
+    speechEndDebounceMs: getConfigValue('voiceCall.speechEndDebounceMs', SPEECH_END_DEBOUNCE_MS),
+  }
+}
 
 /**
  * @param {object} opts
@@ -61,6 +76,9 @@ export function useVoiceCallMode({ enabled, tts, busy, onFinalTranscript }) {
   const detectingRef = useRef(false)
   // 首轮过滤：active 后第一轮 SpeechRecognition 结果需过滤唤醒词残留
   const firstRoundRef = useRef(false)
+  // P1-3：唤醒交互参数经 ref 读取（每次渲染刷新，热路径避免闭包捕获过期常量）
+  const voiceCallParamsRef = useRef(resolveVoiceCallParams())
+  voiceCallParamsRef.current = resolveVoiceCallParams()
 
   useEffect(() => { modeRef.current = mode }, [mode])
   useEffect(() => { enabledRef.current = enabled }, [enabled])
@@ -119,7 +137,7 @@ export function useVoiceCallMode({ enabled, tts, busy, onFinalTranscript }) {
             rec.stop(true) // silent：防 onEnd 触发重启逻辑
           }
           onFinalTranscriptRef.current?.(text)
-        }, SPEECH_END_DEBOUNCE_MS)
+        }, voiceCallParamsRef.current.speechEndDebounceMs)
       },
       onEnd: () => {
         recRef.current = null
@@ -127,7 +145,7 @@ export function useVoiceCallMode({ enabled, tts, busy, onFinalTranscript }) {
         if (speechEndTimerRef.current) return
         // 仍在会话窗内且 AI 不忙 → 开启下一轮聆听
         if (modeRef.current === 'active' && enabledRef.current && !busyRef.current) {
-          restartTimerRef.current = setTimeout(() => startListeningRoundRef.current?.(), RESTART_DELAY_MS)
+          restartTimerRef.current = setTimeout(() => startListeningRoundRef.current?.(), voiceCallParamsRef.current.restartDelayMs)
         }
       },
       onError: (error) => {
@@ -179,7 +197,7 @@ export function useVoiceCallMode({ enabled, tts, busy, onFinalTranscript }) {
       if (modeRef.current === 'active' && enabledRef.current) {
         setMode('standby')
       }
-    }, COOLDOWN_SECONDS * 1000)
+    }, voiceCallParamsRef.current.cooldownSeconds * 1000)
     return () => clearTimeout(timer)
   }, [mode, busy, enabled, stopListening])
 

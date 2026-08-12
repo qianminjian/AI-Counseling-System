@@ -69,6 +69,15 @@ function mergeShortSentences(sentences, minLen = 8) {
 
 // F5（doing/78 §12）：browserSpeak / 人设 profile 已收敛至 utils/browserSpeak（三处实现合一），此处仅消费
 
+/**
+ * P1-2（audit-report-07 P1-2）：预合成并发窗口（路数）。
+ * 播放第 i 句时保证 i+1..i+CONCURRENCY_WINDOW-1 已发起合成，在途峰值 = 当前句 + 3 预取 = 4 路。
+ * 长回复（10-20 句）不再瞬间并发 N 个后端 TTS 请求（成本/峰值削峰，计费/限流可在此单点调整）。
+ */
+const CONCURRENCY_WINDOW = 4
+/** 预取领先量：播放第 i 句时预先发起 i+1..i+PRECOMPUTE_AHEAD 的合成 */
+const PRECOMPUTE_AHEAD = CONCURRENCY_WINDOW - 1
+
 export function useTtsPlayer({ persona = 'xiaoxing', emotion = 'neutral', speed = 1.0, dialect = null }: { persona?: string; emotion?: string; speed?: number; dialect?: string | null } = {}) {
   const [playing, setPlaying] = useState(false)
   const [currentSentenceIdx, setCurrentSentenceIdx] = useState(-1)
@@ -84,6 +93,23 @@ export function useTtsPlayer({ persona = 'xiaoxing', emotion = 'neutral', speed 
   const abortRef = useRef(false)
   const backendFailCount = useRef(0)
   const lastFailTimeRef = useRef(0) // 上次失败时间戳（用于时间恢复）
+  /**
+   * P1-1（audit-report-07 P1-1）：单一播放队列状态机（流式/非流式共用编排，
+   * 合并原 streamQueueRef/streamIdxRef/streamPlayChainRef 与 sentences 队列状态）。
+   * - items：已入队待播句子（流式逐批追加 / 非流式一次入队）
+   * - blobs：blobs[i] = Promise<Blob|null>（已发起合成；未发起为 undefined）
+   * - nextIdx：下一个待播放索引　chain/chainActive：串行播放链及其运行标志
+   */
+  const playQueueRef = useRef({
+    items: [],
+    blobs: [],
+    nextIdx: 0,
+    chain: null,
+    chainActive: false,
+    usedBrowserFallback: false,
+  })
+  // 未切句的 token 缓冲（仅流式入口使用：feedToken 累积）
+  const streamBufferRef = useRef('')
 
   // persona/dialect 变化时重置失败计数（故障可能是特定组合导致的）
   useEffect(() => {
@@ -138,7 +164,13 @@ export function useTtsPlayer({ persona = 'xiaoxing', emotion = 'neutral', speed 
         text, persona, emotion, speed,
         ...(dialect ? { dialect } : {}),
       })
-      if (!res.ok || res.status === 204) {
+      // P2-2（audit-report-07 P2-2）：204 是后端合法空结果（TtsController.synthesize：
+      // S0 风险静默 noContent() / 合成引擎空输出 noContent()），视为"无音频"而非失败——
+      // 不计入 backendFailCount，避免污染 30s 降级恢复窗口统计
+      if (res.status === 204) {
+        return null
+      }
+      if (!res.ok) {
         backendFailCount.current++
         lastFailTimeRef.current = Date.now()
         return null
@@ -207,34 +239,97 @@ export function useTtsPlayer({ persona = 'xiaoxing', emotion = 'neutral', speed 
     return true
   }, [synthesizeSentence, playBlob, speed, persona])
 
-  /** 播放完整 AI 回复（短句合并 + 全句并行合成，消除句间停顿） */
+  /** 重置播放队列状态机（幂等；stop/playSentences/startStreaming 共用） */
+  const resetPlayQueue = useCallback(() => {
+    const q = playQueueRef.current
+    q.items = []
+    q.blobs = []
+    q.nextIdx = 0
+    q.chain = null
+    q.chainActive = false
+    q.usedBrowserFallback = false
+  }, [])
+
+  /** 确保第 idx 句已发起合成（未发起则现场发起；幂等，重复调用复用同一 Promise） */
+  const ensureSynthesized = useCallback((idx: number) => {
+    const q = playQueueRef.current
+    if (q.blobs[idx] !== undefined) return q.blobs[idx]
+    const text = q.items[idx]?.text
+    if (text === undefined) return null
+    q.blobs[idx] = synthesizeSentence(text)
+    return q.blobs[idx]
+  }, [synthesizeSentence])
+
   /**
-   * S-016（doing/93）：共享播放编排——切句 → 并行合成 → 串行播放（speak/speakSentence 两路合并；
-   * trackFallback 仅整段播放需要：追踪浏览器降级以恢复 backend 引擎标记）
+   * P1-2 并发窗口（滑动预取）：播放第 i 句时发起 i+1..i+PRECOMPUTE_AHEAD 的合成，
+   * 保证"播放第 i 句时 i+1..i+3 已就绪"即可消除句间停顿；在途峰值恒为 4 路。
+   * 流式逐批到达时链在活动期间会继续消费新入队句子（while 条件动态读取 items.length）。
+   */
+  const pump = useCallback(() => {
+    const q = playQueueRef.current
+    if (q.chainActive) return q.chain
+    q.chainActive = true
+    q.chain = (async () => {
+      try {
+        while (q.nextIdx < q.items.length && !abortRef.current) {
+          const idx = q.nextIdx
+          for (let a = 1; a <= PRECOMPUTE_AHEAD; a++) {
+            if (q.items[idx + a]) ensureSynthesized(idx + a)
+          }
+          const blob = await ensureSynthesized(idx)
+          if (abortRef.current) break
+          if (await playSentence(q.items[idx].text, idx, blob)) {
+            q.usedBrowserFallback = true
+          }
+          q.nextIdx++
+        }
+      } finally {
+        q.chainActive = false
+      }
+      return q.usedBrowserFallback
+    })()
+    return q.chain
+  }, [ensureSynthesized, playSentence])
+
+  /** 统一入队（S-016 语义保留）：追加句子 → 窗口内发起合成 → 启动/继续播放链 */
+  const enqueueSentences = useCallback((newSentences: string[]) => {
+    if (newSentences.length === 0) return
+    const q = playQueueRef.current
+    const startIdx = q.items.length
+    for (const text of newSentences) {
+      q.items.push({ text })
+    }
+    // UI 逐句展示（波波话语气泡，design/27 §4.4）
+    setSentences(q.items.map((it) => it.text))
+    // P1-2：仅在并发窗口内立即发起合成（流式逐批到达也立即预取，BUG-TTS-02 回归点）
+    for (let i = startIdx; i < q.items.length; i++) {
+      if (i < q.nextIdx + CONCURRENCY_WINDOW) ensureSynthesized(i)
+    }
+    pump()
+  }, [ensureSynthesized, pump])
+
+  /**
+   * P1-1：非流式入口（speak/speakSentence 共用）——切句 → 单轨入队 → 串行播放。
+   * trackFallback 仅整段播放需要：追踪浏览器降级以恢复 backend 引擎标记。
    */
   const playSentences = useCallback(async (sentences: string[], trackFallback: boolean): Promise<boolean> => {
     abortRef.current = false
-    setSentences(sentences)
+    const q = playQueueRef.current
+    resetPlayQueue()
+    streamBufferRef.current = ''
     setPlaying(true)
-
-    // 所有句子同时并行合成：播放第 i 句时，第 i+1..n 句早已在后台合成
-    const audioPromises = sentences.map(s => synthesizeSentence(s))
-
-    let usedBrowserFallback = false
-    for (let i = 0; i < audioPromises.length; i++) {
-      if (abortRef.current) break
-      const audioBlob = await audioPromises[i]
-      if (abortRef.current) break
-      if (await playSentence(sentences[i], i, audioBlob)) {
-        usedBrowserFallback = true
-      }
-    }
-
-    setPlaying(false)
     setCurrentSentenceIdx(-1)
-    setSentences([])
-    return trackFallback ? usedBrowserFallback : false
-  }, [synthesizeSentence, playSentence])
+    enqueueSentences(sentences)
+    const chain = q.chain
+    await chain?.catch(() => {})
+    // 链自然结束（未被 stop 接管）时清理 UI 状态
+    if (!abortRef.current) {
+      setPlaying(false)
+      setCurrentSentenceIdx(-1)
+      setSentences([])
+    }
+    return trackFallback ? q.usedBrowserFallback : false
+  }, [resetPlayQueue, enqueueSentences])
 
   const speak = useCallback(async (text) => {
     if (muted) return
@@ -263,7 +358,7 @@ export function useTtsPlayer({ persona = 'xiaoxing', emotion = 'neutral', speed 
     await playSentences(sentences, false)
   }, [muted, playSentences])
 
-  /** 停止播放 */
+  /** 停止播放（重置单轨队列状态机，含流式缓冲） */
   const stop = useCallback(() => {
     abortRef.current = true
     if (audioRef.current) {
@@ -271,20 +366,15 @@ export function useTtsPlayer({ persona = 'xiaoxing', emotion = 'neutral', speed 
     }
     // 停止浏览器 TTS
     stopBrowserSpeak()
+    resetPlayQueue()
+    streamBufferRef.current = ''
     setPlaying(false)
     setCurrentSentenceIdx(-1)
     setSentences([])
-    // 重置流式 TTS 状态
-    streamBufferRef.current = ''
-    streamQueueRef.current = []
-    streamIdxRef.current = 0
-  }, [])
+  }, [resetPlayQueue])
 
   /* ===== 流式 TTS：AI 回复流式到达时，首句完成即开始合成播放，消除等待全文的滞后 ===== */
-  const streamBufferRef = useRef('')       // 未切句的 token 缓冲
-  const streamQueueRef = useRef<string[]>([])  // 已切分待播放的句子队列
-  const streamIdxRef = useRef(0)           // 当前播放到第几句
-  const streamPlayChainRef = useRef<Promise<void>>(Promise.resolve()) // 串行播放链
+  // P1-1：原 streamQueueRef/streamIdxRef/streamPlayChainRef 已合并入 playQueueRef 单轨状态机
 
   /** 开始流式 TTS 会话（在流式回复开始时调用） */
   const startStreaming = useCallback(() => {
@@ -292,36 +382,21 @@ export function useTtsPlayer({ persona = 'xiaoxing', emotion = 'neutral', speed 
     stop()
     abortRef.current = false
     streamBufferRef.current = ''
-    streamQueueRef.current = []
-    streamIdxRef.current = 0
-    streamPlayChainRef.current = Promise.resolve()
+    resetPlayQueue()
     setPlaying(true)
     setSentences([])
     setCurrentSentenceIdx(-1)
-  }, [muted, stop])
+  }, [muted, stop, resetPlayQueue])
 
-  /** 流式嗂入 token：累积到句末即切分并加入播放队列（后台合成 + 顺序播放） */
   /**
    * S-016（doing/93）：流式句子入队辅助——预合成 + 串入播放链 + 更新 UI
    * （feedToken 句末切句与 endStreaming 尾部冲刷共用，消除重复）
+   * P1-1：实现收敛到 enqueueSentences 单轨（流式/非流式共用 playQueue 状态机）；
+   * P1-2：合成受并发窗口限制（BUG-TTS-02"到达即预取"语义保留——窗口内立即发起）。
    */
   const enqueueStreamedSentences = useCallback((newSentences: string[]) => {
-    if (newSentences.length === 0) return
-    streamQueueRef.current.push(...newSentences)
-    setSentences([...streamQueueRef.current])
-    // BUG-TTS-02：立即并行发起合成（预取），播放链只 await 对应 blob
-    const precomputed = newSentences.map(s => synthesizeSentence(s))
-    for (let i = 0; i < newSentences.length; i++) {
-      const idx = streamIdxRef.current++
-      const blobPromise = precomputed[i]
-      streamPlayChainRef.current = streamPlayChainRef.current.then(async () => {
-        if (abortRef.current) return
-        const blob = await blobPromise
-        if (abortRef.current) return
-        await playSentence(newSentences[i], idx, blob)
-      })
-    }
-  }, [synthesizeSentence, playSentence])
+    enqueueSentences(newSentences)
+  }, [enqueueSentences])
 
   const feedToken = useCallback((token: string) => {
     if (muted || abortRef.current) return
@@ -355,14 +430,15 @@ export function useTtsPlayer({ persona = 'xiaoxing', emotion = 'neutral', speed 
         enqueueStreamedSentences(tailSentences)
       }
     }
-    // 等待播放链完成
-    await streamPlayChainRef.current.catch(() => {})
+    // 等待播放链完成（P1-1：与流式入队共用 playQueueRef.chain 单链）
+    const q = playQueueRef.current
+    await q.chain?.catch(() => {})
     if (!abortRef.current) {
       setPlaying(false)
       setCurrentSentenceIdx(-1)
       setSentences([])
     }
-  }, [muted, synthesizeSentence, playBlob, playSentence, speed, persona])
+  }, [muted, enqueueStreamedSentences])
 
   /** 切换静音（FA-05：同时持久化偏好，供 EmotionSelect 设置面板跨页读取） */
   const toggleMute = useCallback(() => {

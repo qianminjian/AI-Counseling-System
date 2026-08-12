@@ -48,9 +48,14 @@ const TARGET_SAMPLE_RATE = 16000
  * AUD-027：调试日志 DEV 条件包裹（生产零噪音；诊断时 DEV 模式/本地开发可见）。
  * 运行时降级/失败信号仍走 console.warn（运维可观测），不受此开关影响。
  */
-/** F-25 轨迹时间戳日志：所有关键动作带相对/绝对时间（生产可见，诊断用） */
+/**
+ * P2-1（audit-report-07 P2-1）：F-25 轨迹日志降噪——console.info → console.debug。
+ * 生产默认控制台零噪音（浏览器默认隐藏 debug 级别），需要诊断时 DevTools verbose 可见；
+ * 保留 console.error/warn 全量（降级/失败信号运维可观测）；低频生命周期成功事件
+ * （Worker 预启动就绪等）仍保留 console.info 单条，不做逐消息刷屏。
+ */
 const tslog = (...args: unknown[]) => {
-  console.info(`[TS ${(performance.now() / 1000).toFixed(2)}s ${new Date().toLocaleTimeString('zh-CN', { hour12: false })}]`, ...args)
+  console.debug(`[TS ${(performance.now() / 1000).toFixed(2)}s ${new Date().toLocaleTimeString('zh-CN', { hour12: false })}]`, ...args)
 }
 
 const dbg = (...args: unknown[]) => {

@@ -80,12 +80,13 @@ export async function loadTransformersModel<T>(opts: LoadTransformersOptions<T>)
     const hf = await import('@huggingface/transformers')
     configureEnv(hf, buildRemoteHost(base, opts.modelHost), base)
     // F-8-Worker 埋点同步：主线程 ORT session_create 耗时（与 Worker 一致，便于诊断降级路径）
+    // P2-1（audit-report-07 P2-1）：session_create 轨迹日志降噪 console.info → console.debug
     const t0Session = (typeof performance !== 'undefined' ? performance.now() : Date.now())
     const _tag = (opts.modelHost === 'SAME_ORIGIN' || /wespeaker|vp/i.test(opts.modelHost)) ? '[Voiceprint]' : '[WakeWord]'
-    console.info(`[TS ${(t0Session / 1000).toFixed(2)}s] ${_tag} 主线程 ORT session_create 开始（numThreads=${hf.env.backends.onnx.wasm.numThreads}）`)
+    console.debug(`[TS ${(t0Session / 1000).toFixed(2)}s] ${_tag} 主线程 ORT session_create 开始（numThreads=${hf.env.backends.onnx.wasm.numThreads}）`)
     const result = await opts.load(hf)
     const elapsed = Math.round(((typeof performance !== 'undefined' ? performance.now() : Date.now()) - t0Session))
-    console.info(`[TS ${((typeof performance !== 'undefined' ? performance.now() : Date.now()) / 1000).toFixed(2)}s] ${_tag} 主线程 ORT session_create 完成，耗时 ${elapsed}ms`)
+    console.debug(`[TS ${((typeof performance !== 'undefined' ? performance.now() : Date.now()) / 1000).toFixed(2)}s] ${_tag} 主线程 ORT session_create 完成，耗时 ${elapsed}ms`)
     return result
   } catch (err) {
     if (opts.onError) opts.onError(err)

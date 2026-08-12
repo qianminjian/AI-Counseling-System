@@ -474,4 +474,53 @@ describe('hooks/useTtsPlayer', () => {
       })
     })
   })
+
+  describe('P1-2 并发窗口（audit-report-07 P1-2）', () => {
+    it('长回复合成分批推进，峰值并发 ≤ 4 路（旧实现全量并发 N 路）', async () => {
+      const mockBlob = new Blob(['audio'], { type: 'audio/mp3' })
+      // 合成挂起（不 resolve），观察在途并发峰值
+      const resolvers: Array<(v: any) => void> = []
+      mockFetchTtsSynthesize.mockImplementation(() => new Promise((resolve) => {
+        resolvers.push(resolve)
+      }))
+      const { result } = renderHook(() => useTtsPlayer())
+      // 6 句长回复（每句 >8 字，不经 mergeShortSentences 合并）
+      const longText = '第一句的内容是比较长的一句话。第二句的内容是比较长的一句话。第三句的内容是比较长的一句话。第四句的内容是比较长的一句话。第五句的内容是比较长的一句话。第六句的内容是比较长的一句话。'
+      act(() => { result.current.speak(longText) })
+      await act(async () => { await new Promise(r => setTimeout(r, 20)) })
+      // P1-2：并发窗口=4——6 句不瞬间全发（旧实现 sentences.map 全量 6 路在途）
+      expect(mockFetchTtsSynthesize).toHaveBeenCalledTimes(4)
+      // 依次 resolve（模拟播放推进），窗口滑动补发后续句子，直至全部 6 句播完
+      for (let i = 0; i < resolvers.length; i++) {
+        resolvers[i]({ ok: true, status: 200, blob: () => Promise.resolve(mockBlob) })
+        await act(async () => { await new Promise(r => setTimeout(r, 40)) })
+      }
+      // 滑动窗口不丢句：全部 6 句最终均被合成并播放
+      expect(mockFetchTtsSynthesize).toHaveBeenCalledTimes(6)
+    })
+  })
+
+  describe('P2-2 204 语义（audit-report-07 P2-2）', () => {
+    it('204 空结果不计入失败计数（后端 S0 静默/合成空输出合法语义）', async () => {
+      mockFetchTtsSynthesize.mockResolvedValue({ ok: true, status: 204 })
+      const mockSpeak = window.speechSynthesis.speak as any
+      mockSpeak.mockImplementation((utter: any) => { setTimeout(() => utter.onend?.(), 5) })
+      const { result } = renderHook(() => useTtsPlayer())
+      // 连续 3 次 204 空结果：backendFailCount 不应累积到 2（旧实现会累加并触发 30s 降级窗口）
+      for (let i = 0; i < 3; i++) {
+        await act(async () => {
+          await result.current.speak('你好呀。')
+          await new Promise(r => setTimeout(r, 50))
+        })
+      }
+      expect(mockFetchTtsSynthesize).toHaveBeenCalledTimes(3)
+      // 第 4 次仍应请求后端（未进入降级窗口）——对比 500 失败 2 次后不再请求（backendFailCount 测试）
+      mockFetchTtsSynthesize.mockClear()
+      await act(async () => {
+        await result.current.speak('你好呀。')
+        await new Promise(r => setTimeout(r, 50))
+      })
+      expect(mockFetchTtsSynthesize).toHaveBeenCalledTimes(1)
+    })
+  })
 })

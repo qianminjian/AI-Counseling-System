@@ -34,12 +34,14 @@ export default defineConfig({
         'vitest.config.js',
         'vite.config.js',
       ],
-      // 审计 P1-11：覆盖率门禁（CI 构建强制，2026-08 实测 lines ~85 达标）
+      // 审计 P1-11：覆盖率门禁（CI 构建强制）
+      // 板块12 P1-2：2026-08-12 实测 93.33/89.71/88.41/93.33，阈值 50/35/40/50 → 60/50/55/60
+      // （分步提升第一步，余量 >30pct 确保 CI 通过；后续批次对齐 teacher-web 80/75/60/80）
       thresholds: {
-        lines: 50,
-        branches: 35,
-        functions: 40,
-        statements: 50,
+        lines: 60,
+        branches: 50,
+        functions: 55,
+        statements: 60,
       },
     },
   },

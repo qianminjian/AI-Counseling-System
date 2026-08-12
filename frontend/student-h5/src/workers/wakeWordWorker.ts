@@ -10,9 +10,12 @@
 
 const TAG = '[WakeWordWorker]'
 
-/** F-25 轨迹时间戳日志：Worker 内 performance.now() 与主线程同时间轴（页面启动后相对秒） */
+/**
+ * P2-1（audit-report-07 P2-1）：F-25 轨迹日志降噪——console.info → console.debug
+ *（每次 Worker 消息不再逐条刷屏；error 全量保留）。
+ */
 const tslog = (...args: unknown[]) => {
-  console.info(`[TS ${(performance.now() / 1000).toFixed(2)}s ${new Date().toLocaleTimeString('zh-CN', { hour12: false })}]`, ...args)
+  console.debug(`[TS ${(performance.now() / 1000).toFixed(2)}s ${new Date().toLocaleTimeString('zh-CN', { hour12: false })}]`, ...args)
 }
 
 // 捕获所有未处理错误（诊断用）

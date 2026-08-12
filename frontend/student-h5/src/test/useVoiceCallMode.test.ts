@@ -11,7 +11,15 @@ vi.mock('../hooks/useWakeWord', () => ({
   },
 }))
 
+// P1-3：mock 远程配置 API（useVoiceCallMode → config/remote → api）
+const mockFetchSystemConfig = vi.fn()
+vi.mock('../api', () => ({
+  fetchSystemConfig: (...args: any[]) => mockFetchSystemConfig(...args),
+}))
+
 import { useVoiceCallMode } from '../hooks/useVoiceCallMode'
+// P1-3：重置远程配置缓存（避免跨用例污染，fallback 语义测试依赖）
+import { _resetForTest as resetRemoteConfigForTest } from '../config/remote'
 
 // mock SpeechRecognition
 class MockSpeechRecognition {
@@ -31,6 +39,8 @@ describe('useVoiceCallMode', () => {
   beforeEach(() => {
     vi.useFakeTimers()
     mockWakeSupported = true
+    mockFetchSystemConfig.mockReset()
+    resetRemoteConfigForTest()
     ;(window as any).SpeechRecognition = MockSpeechRecognition
     mockTts = {
       speak: vi.fn().mockResolvedValue(undefined),
@@ -204,5 +214,60 @@ describe('useVoiceCallMode', () => {
     )
     expect(result.current.wakeSupported).toBe(true)
     expect(result.current.wakeStatus).toBe('listening')
+  })
+
+  describe('P1-3 唤醒参数远程化（audit-report-07 P1-3）', () => {
+    it('voiceCall.* 远程配置覆盖本地 fallback（冷却窗/防抖/重启延迟）', async () => {
+      // 先加载远程配置（25s→5s、1800ms→400ms、300ms→100ms）
+      mockFetchSystemConfig.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({
+          code: 0,
+          data: {
+            voiceCall: { cooldownSeconds: 5, restartDelayMs: 100, speechEndDebounceMs: 400 },
+          },
+        }),
+      })
+      const remoteMod = await import('../config/remote')
+      await remoteMod.initRemoteConfig()
+
+      const onFinalTranscript = vi.fn()
+      let capturedRec: any = null
+      let startCount = 0
+      ;(window as any).SpeechRecognition = class {
+        lang = ''; continuous = false; interimResults = false
+        onresult: any = null; onend: any = null; onerror: any = null
+        start = vi.fn(() => { capturedRec = this; startCount++ })
+        stop = vi.fn()
+      }
+      const { result } = renderHook(() =>
+        useVoiceCallMode({ enabled: true, tts: mockTts, busy: false, onFinalTranscript })
+      )
+      act(() => { mockOnDetected.current?.() })
+      expect(result.current.mode).toBe('active')
+
+      // 冷却窗覆盖：5s（fallback 25s）→ 温柔收尾 + 回 standby
+      await act(async () => { vi.advanceTimersByTime(5000) })
+      expect(mockTts.speak).toHaveBeenCalledWith('我先安静陪着你，想说话随时叫我哦')
+      expect(result.current.mode).toBe('standby')
+
+      // 重新进入 active：防抖覆盖 400ms（fallback 1800ms）
+      act(() => { mockOnDetected.current?.() })
+      expect(result.current.mode).toBe('active')
+
+      // 重启延迟覆盖：自然 onend（无防抖 pending，speechEndTimerRef=null）→ 100ms（fallback 300ms）后开启下一轮聆听
+      // 注意：必须在防抖触发前验证——防抖发送路径 rec.stop(true) 会将 onend 置 null（silent 不触发重启）
+      const startBefore = startCount
+      act(() => { capturedRec?.onend?.() })
+      await act(async () => { await vi.advanceTimersByTimeAsync(150) })
+      expect(startCount).toBeGreaterThan(startBefore)
+
+      // 防抖覆盖：语音识别结果 → 400ms（fallback 1800ms）后发送最终结果
+      act(() => {
+        capturedRec?.onresult?.({ results: [[{ transcript: '你好呀' }]], length: 1 })
+      })
+      await act(async () => { await vi.advanceTimersByTimeAsync(500) })
+      expect(onFinalTranscript).toHaveBeenCalledWith('你好呀')
+    })
   })
 })
