@@ -55,23 +55,27 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             }
         } else if (token != null) {
             // doing/92 R-017：单次 parse（原 6 次 parse/请求：validate+isAccess+getTokenId+getUserId+getUserType+getTenantId）
-            var parsed = jwtTokenProvider.parseOnce(token);
-            if (!"access".equals(parsed.tokenType())
-                    || blacklistService.isBlacklisted(parsed.tokenId())) {
-                // 非 access 类型 或 已撤销（黑名单）token → 不建立认证
-                return;
+            JwtTokenProvider.ParsedToken parsed;
+            try {
+                parsed = jwtTokenProvider.parseOnce(token);
+            } catch (Exception e) {
+                // BUG-A-TOKEN-01（2026-08-12，复测发现）：过期/签名无效 token 解析失败
+                // → 不建立认证、继续放行（安全链统一 401），避免过滤器异常冒泡落兜底 500（误报服务故障）
+                parsed = null;
             }
+            if (parsed != null && "access".equals(parsed.tokenType())
+                    && !blacklistService.isBlacklisted(parsed.tokenId())) {
+                UUID userId = parsed.userId();
+                String userType = parsed.userType();
+                UUID tenantId = parsed.tenantId();
 
-            UUID userId = parsed.userId();
-            String userType = parsed.userType();
-            UUID tenantId = parsed.tenantId();
-
-            var authorities = List.of(new SimpleGrantedAuthority("ROLE_" + userType.toUpperCase()));
-            var auth = new UsernamePasswordAuthenticationToken(userId, null, authorities);
-            auth.setDetails(new TenantContext(tenantId, userId, userType));
-            SecurityContextHolder.getContext().setAuthentication(auth);
-            // 绑定租户到持久层拦截器（P-02 行隔离纵深防线）
-            TenantContextHolder.set(tenantId);
+                var authorities = List.of(new SimpleGrantedAuthority("ROLE_" + userType.toUpperCase()));
+                var auth = new UsernamePasswordAuthenticationToken(userId, null, authorities);
+                auth.setDetails(new TenantContext(tenantId, userId, userType));
+                SecurityContextHolder.getContext().setAuthentication(auth);
+                // 绑定租户到持久层拦截器（P-02 行隔离纵深防线）
+                TenantContextHolder.set(tenantId);
+            }
         }
 
         try {

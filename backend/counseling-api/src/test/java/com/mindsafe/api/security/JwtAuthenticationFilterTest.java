@@ -113,4 +113,18 @@ class JwtAuthenticationFilterTest {
         assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
         verify(filterChain).doFilter(request, response);
     }
+
+    @Test
+    @DisplayName("BUG-A-TOKEN-01 回归：过期/签名无效 token 解析失败 → 不建认证、不抛异常（安全链统一 401）")
+    void expiredTokenParsingFailureNoAuth() throws Exception {
+        when(request.getHeader("Authorization")).thenReturn("Bearer expired-token");
+        when(jwtTokenProvider.isPlatformToken("expired-token")).thenReturn(false);
+        when(jwtTokenProvider.parseOnce("expired-token"))
+                .thenThrow(new io.jsonwebtoken.ExpiredJwtException(null, null, "expired"));
+
+        filter.doFilter(request, response, filterChain);
+
+        assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
+        verify(filterChain).doFilter(request, response);
+    }
 }
