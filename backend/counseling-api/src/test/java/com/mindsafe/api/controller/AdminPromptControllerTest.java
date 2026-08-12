@@ -1,6 +1,7 @@
 package com.mindsafe.api.controller;
 
 import com.mindsafe.common.exception.BizException;
+import com.mindsafe.api.dto.prompt.CreateVersionRequest;
 import com.mindsafe.api.security.JwtAuthenticationFilter.TenantContext;
 import com.mindsafe.common.dto.ApiResponse;
 import com.mindsafe.common.dto.ErrorCode;
@@ -132,16 +133,13 @@ class AdminPromptControllerTest {
     }
 
     @Test
-    @DisplayName("createVersion 成功 → 缺省 abGroup=control、tenantId 从 body 解析")
+    @DisplayName("createVersion 成功 → 缺省 abGroup=control、tenantId 显式传入（F11：请求体为 CreateVersionRequest）")
     void createVersion_success() {
         when(promptVersionService.createVersion(tenantId, "SYS_001", "内容", "描述", "control", adminUserId))
                 .thenReturn(version("SYS_001:v3:control"));
 
-        var resp = controller.createVersion(Map.of(
-                "templateKey", "SYS_001",
-                "content", "内容",
-                "description", "描述",
-                "tenantId", tenantId.toString()), adminAuth());
+        var resp = controller.createVersion(new CreateVersionRequest(
+                "SYS_001", "内容", "描述", null, tenantId), adminAuth());
 
         assertThat(resp.code()).isEqualTo(0);
         assertThat(resp.data().get("templateKey")).isEqualTo("SYS_001");
@@ -150,7 +148,7 @@ class AdminPromptControllerTest {
     @Test
     @DisplayName("createVersion 缺 templateKey → error")
     void createVersion_missingKey() {
-        var resp = controller.createVersion(Map.of("content", "内容"), adminAuth());
+        var resp = controller.createVersion(new CreateVersionRequest(null, "内容", null, null, null), adminAuth());
 
         assertThat(resp.data().get("error")).isEqualTo("templateKey 和 content 为必填项");
         verify(promptVersionService, never()).createVersion(any(), any(), any(), any(), any(), any());
@@ -159,7 +157,7 @@ class AdminPromptControllerTest {
     @Test
     @DisplayName("createVersion 缺 content → error")
     void createVersion_missingContent() {
-        var resp = controller.createVersion(Map.of("templateKey", "SYS_001"), adminAuth());
+        var resp = controller.createVersion(new CreateVersionRequest("SYS_001", null, null, null, null), adminAuth());
 
         assertThat(resp.data().get("error")).isEqualTo("templateKey 和 content 为必填项");
     }
@@ -170,7 +168,7 @@ class AdminPromptControllerTest {
         when(promptVersionService.createVersion(null, "SYS_001", "内容", null, "control", adminUserId))
                 .thenReturn(version("SYS_001:v3:control"));
 
-        controller.createVersion(Map.of("templateKey", "SYS_001", "content", "内容"), adminAuth());
+        controller.createVersion(new CreateVersionRequest("SYS_001", "内容", null, null, null), adminAuth());
 
         verify(promptVersionService).createVersion(null, "SYS_001", "内容", null, "control", adminUserId);
     }
@@ -181,8 +179,7 @@ class AdminPromptControllerTest {
         when(promptVersionService.createVersion(eq(tenantId), eq("SYS_001"), eq("内容"), eq(null),
                 eq("treatment_a"), eq(adminUserId))).thenReturn(version("SYS_001:v3:treatment_a"));
 
-        controller.createVersion(Map.of("templateKey", "SYS_001", "content", "内容",
-                "abGroup", "treatment_a", "tenantId", tenantId.toString()), adminAuth());
+        controller.createVersion(new CreateVersionRequest("SYS_001", "内容", null, "treatment_a", tenantId), adminAuth());
 
         verify(promptVersionService).createVersion(tenantId, "SYS_001", "内容", null, "treatment_a", adminUserId);
     }
