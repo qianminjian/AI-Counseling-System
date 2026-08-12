@@ -101,13 +101,16 @@ class PlatformServiceTest {
     }
 
     @Test
-    @DisplayName("tenantStats：每租户聚合学校/学生/教师/会话数")
+    @DisplayName("tenantStats：GROUP BY 聚合一次取回，每租户填充学校/学生/教师/会话数")
     void tenantStatsAggregatesPerTenant() {
         Tenant a = tenant(tenantId, "A", "甲校", Tenant.STATUS_ACTIVE);
         when(tenantMapper.selectList(any())).thenReturn(List.of(a));
-        when(schoolMapper.selectCount(any())).thenReturn(1L);
-        when(userMapper.selectCount(any())).thenReturn(20L, 3L);
-        when(sessionMapper.selectCount(any())).thenReturn(30L);
+        // P1-7：selectMaps 聚合行（key 为小写物理列名 tenant_id/cnt）
+        when(schoolMapper.selectMaps(any())).thenReturn(List.of(Map.of("tenant_id", tenantId, "cnt", 1L)));
+        when(userMapper.selectMaps(any())).thenReturn(
+                List.of(Map.of("tenant_id", tenantId, "cnt", 20L)),
+                List.of(Map.of("tenant_id", tenantId, "cnt", 3L)));
+        when(sessionMapper.selectMaps(any())).thenReturn(List.of(Map.of("tenant_id", tenantId, "cnt", 30L)));
 
         List<Map<String, Object>> stats = service.tenantStats();
 
@@ -120,6 +123,25 @@ class PlatformServiceTest {
                 .containsEntry("studentCount", 20L)
                 .containsEntry("teacherCount", 3L)
                 .containsEntry("sessionCount", 30L);
+    }
+
+    @Test
+    @DisplayName("tenantStats：无数据租户各项计数回落 0（聚合行缺失不 NPE）")
+    void tenantStatsDefaultsZeroWhenNoAggregateRows() {
+        Tenant a = tenant(tenantId, "A", "甲校", Tenant.STATUS_ACTIVE);
+        when(tenantMapper.selectList(any())).thenReturn(List.of(a));
+        when(schoolMapper.selectMaps(any())).thenReturn(List.of());
+        when(userMapper.selectMaps(any())).thenReturn(List.of());
+        when(sessionMapper.selectMaps(any())).thenReturn(List.of());
+
+        List<Map<String, Object>> stats = service.tenantStats();
+
+        assertThat(stats).hasSize(1);
+        assertThat(stats.get(0))
+                .containsEntry("schoolCount", 0L)
+                .containsEntry("studentCount", 0L)
+                .containsEntry("teacherCount", 0L)
+                .containsEntry("sessionCount", 0L);
     }
 
     @Test

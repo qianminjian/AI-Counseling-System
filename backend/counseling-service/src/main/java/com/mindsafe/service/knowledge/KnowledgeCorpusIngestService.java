@@ -78,10 +78,10 @@ public class KnowledgeCorpusIngestService {
         return report;
     }
 
-    /** 幂等查重：全局知识域中是否已存在同标题文档 */
+    /** 幂等查重：全局知识域中是否已存在同标题文档（G-P0-2：V30 后审核状态 active→published，查重须同时覆盖，否则已发布文档重复摄入绕过幂等） */
     private boolean documentExists(String title) {
         Long count = jdbcTemplate.queryForObject(
-                "SELECT count(*) FROM tenant_template.knowledge_documents WHERE tenant_id IS NULL AND title = ? AND status = 'active'",
+                "SELECT count(*) FROM tenant_template.knowledge_documents WHERE tenant_id IS NULL AND title = ? AND status IN ('active','published')",
                 Long.class, title);
         return count != null && count > 0;
     }
