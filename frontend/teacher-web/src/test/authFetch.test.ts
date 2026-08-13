@@ -77,9 +77,9 @@ describe('authFetch：401 刷新与重放', () => {
     sessionStorage.setItem(REFRESH_KEY, 'refresh-1')
     const fetchMock = vi
       .fn()
-      .mockResolvedValueOnce(jsonResponse(401, { success: false }))
-      .mockResolvedValueOnce(jsonResponse(200, { success: true, data: { token: 'access-2', refreshToken: 'refresh-2' } }))
-      .mockResolvedValueOnce(jsonResponse(200, { success: true, data: {} }))
+      .mockResolvedValueOnce(jsonResponse(401, { code: 20001 }))
+      .mockResolvedValueOnce(jsonResponse(200, { code: 0, data: { token: 'access-2', refreshToken: 'refresh-2' } }))
+      .mockResolvedValueOnce(jsonResponse(200, { code: 0, data: {} }))
     vi.stubGlobal('fetch', fetchMock)
 
     const res = await authFetch('/api/v1/teacher/dashboard')
@@ -102,8 +102,8 @@ describe('authFetch：401 刷新与重放', () => {
     sessionStorage.setItem(REFRESH_KEY, 'refresh-expired')
     const fetchMock = vi
       .fn()
-      .mockResolvedValueOnce(jsonResponse(401, { success: false }))
-      .mockResolvedValueOnce(jsonResponse(401, { success: false }))
+      .mockResolvedValueOnce(jsonResponse(401, { code: 20001 }))
+      .mockResolvedValueOnce(jsonResponse(401, { code: 20001 }))
     vi.stubGlobal('fetch', fetchMock)
 
     const res = await authFetch('/api/v1/teacher/dashboard')
@@ -117,7 +117,7 @@ describe('authFetch：401 刷新与重放', () => {
 
   it('无 refresh token 时 401 → 直接返回 401（不发起 refresh）', async () => {
     sessionStorage.setItem(TOKEN_KEY, 'access-1')
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(401, { success: false }))
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(401, { code: 20001 }))
     vi.stubGlobal('fetch', fetchMock)
 
     const res = await authFetch('/api/v1/teacher/dashboard')
@@ -131,9 +131,9 @@ describe('authFetch：401 刷新与重放', () => {
     sessionStorage.setItem(REFRESH_KEY, 'refresh-1')
     const fetchMock = vi
       .fn()
-      .mockResolvedValueOnce(jsonResponse(401, { success: false }))
-      .mockResolvedValueOnce(jsonResponse(200, { success: true, data: { token: 'access-2', refreshToken: 'refresh-2' } }))
-      .mockResolvedValueOnce(jsonResponse(401, { success: false }))
+      .mockResolvedValueOnce(jsonResponse(401, { code: 20001 }))
+      .mockResolvedValueOnce(jsonResponse(200, { code: 0, data: { token: 'access-2', refreshToken: 'refresh-2' } }))
+      .mockResolvedValueOnce(jsonResponse(401, { code: 20001 }))
     vi.stubGlobal('fetch', fetchMock)
 
     const res = await authFetch('/api/v1/teacher/dashboard')
@@ -147,8 +147,8 @@ describe('authFetch：401 刷新与重放', () => {
     sessionStorage.setItem(REFRESH_KEY, 'refresh-1')
     const fetchMock = vi
       .fn()
-      .mockResolvedValueOnce(jsonResponse(401, { success: false }))
-      .mockResolvedValueOnce(jsonResponse(200, { success: false, message: 'refresh 已过期' }))
+      .mockResolvedValueOnce(jsonResponse(401, { code: 20001 }))
+      .mockResolvedValueOnce(jsonResponse(200, { code: 20001, message: 'refresh 已过期' }))
     vi.stubGlobal('fetch', fetchMock)
 
     const res = await authFetch('/api/v1/teacher/dashboard')
@@ -159,7 +159,7 @@ describe('authFetch：401 刷新与重放', () => {
 
   it('非 401 响应直接透传（不触发刷新）', async () => {
     sessionStorage.setItem(TOKEN_KEY, 'access-1')
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(500, { success: false }))
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(500, { code: 20001 }))
     vi.stubGlobal('fetch', fetchMock)
 
     const res = await authFetch('/api/v1/teacher/dashboard')

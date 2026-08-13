@@ -44,7 +44,7 @@ export function useVoiceInputPipeline({ onTranscription }: {
       const res = await fetchVoiceAnalyze(formData)
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const json = await res.json()
-      if (json.success && json.data) {
+      if (json.code === 0 && json.data) {
         const { text, emotion } = json.data
         if (text) {
           // 自动发送：emotion 直接传给 onTranscription（修复此前情绪从未存入 state、预览不显示的问题）

@@ -147,28 +147,28 @@ describe('响应方向：mock 样例按快照 schemas 校验（validateMock）',
   it('pin-login/voice-login mock → ApiResponseLoginResponse 校验通过', () => {
     const schema = responseSchema('/api/v1/auth/pin-login', 'post')
     expect(schema).toBeDefined()
-    const mock = { success: true, code: 0, message: 'ok', data: loginMock }
+    const mock = { code: 0, message: 'ok', data: loginMock }
     expect(validateMock(mock, schema!, resolveRef)).toEqual([])
   })
 
   it('trial-register mock → ApiResponseTrialRegisterResponse 校验通过', () => {
     const schema = responseSchema('/api/v1/auth/trial/register', 'post')
     expect(schema).toBeDefined()
-    const mock = { success: true, code: 0, message: 'ok', data: trialMock }
+    const mock = { code: 0, message: 'ok', data: trialMock }
     expect(validateMock(mock, schema!, resolveRef)).toEqual([])
   })
 
   it('toolbox mock 数组 → ApiResponseListToolDefinition 校验通过（items 递归）', () => {
     const schema = responseSchema('/api/v1/toolbox', 'get')
     expect(schema).toBeDefined()
-    const mock = { success: true, code: 0, message: 'ok', data: [toolMock] }
+    const mock = { code: 0, message: 'ok', data: [toolMock] }
     expect(validateMock(mock, schema!, resolveRef)).toEqual([])
   })
 
   it('voiceprint/config mock → ApiResponseMapStringObject 容器通过 + data 字段断言', () => {
     const schema = responseSchema('/api/v1/voiceprint/config', 'get')
     expect(schema).toBeDefined()
-    const mock = { success: true, code: 0, message: 'ok', data: voiceprintConfigMock }
+    const mock = { code: 0, message: 'ok', data: voiceprintConfigMock }
     expect(validateMock(mock, schema!, resolveRef)).toEqual([])
     // Map 容器键由后端业务决定，测试内显式断言前端消费字段（mode/privacyNote）
     const data = mock.data as { mode?: unknown; privacyNote?: unknown }
@@ -179,7 +179,7 @@ describe('响应方向：mock 样例按快照 schemas 校验（validateMock）',
   it('mood-check mock → ApiResponseMapStringObject 容器通过 + data 字段断言（对齐后端结构）', () => {
     const schema = responseSchema('/api/v1/toolbox/mood-check', 'post')
     expect(schema).toBeDefined()
-    const mock = { success: true, code: 0, message: 'ok', data: moodCheckMock }
+    const mock = { code: 0, message: 'ok', data: moodCheckMock }
     expect(validateMock(mock, schema!, resolveRef)).toEqual([])
     const data = mock.data as Record<string, unknown>
     expect(data.needsAttention).toBe(false)
@@ -195,7 +195,7 @@ describe('响应方向：mock 样例按快照 schemas 校验（validateMock）',
   it('负例：mock 字段类型与 schema 不符 → 校验报错', () => {
     const schema = responseSchema('/api/v1/toolbox', 'get')
     const badTool = { ...toolMock, durationSec: '60' }
-    const mock = { success: true, code: 0, message: 'ok', data: [badTool] }
+    const mock = { code: 0, message: 'ok', data: [badTool] }
     const errors = validateMock(mock, schema!, resolveRef)
     expect(errors.some((e) => e.includes('durationSec'))).toBe(true)
   })
@@ -203,7 +203,7 @@ describe('响应方向：mock 样例按快照 schemas 校验（validateMock）',
   it('负例：mock 含 schema 外字段（DTO 漂移）→ 校验报错', () => {
     const schema = responseSchema('/api/v1/toolbox', 'get')
     const drifted = { ...toolMock, effect: 'IMPROVED' }
-    const mock = { success: true, code: 0, message: 'ok', data: [drifted] }
+    const mock = { code: 0, message: 'ok', data: [drifted] }
     const errors = validateMock(mock, schema!, resolveRef)
     expect(errors.some((e) => e.includes('effect'))).toBe(true)
   })
@@ -211,7 +211,7 @@ describe('响应方向：mock 样例按快照 schemas 校验（validateMock）',
   it('负例：ToolDefinition.category 枚举外值 → 校验报错', () => {
     const schema = responseSchema('/api/v1/toolbox', 'get')
     const badCategory = { ...toolMock, category: 'UNKNOWN' }
-    const mock = { success: true, code: 0, message: 'ok', data: [badCategory] }
+    const mock = { code: 0, message: 'ok', data: [badCategory] }
     const errors = validateMock(mock, schema!, resolveRef)
     expect(errors.some((e) => e.includes('UNKNOWN'))).toBe(true)
   })

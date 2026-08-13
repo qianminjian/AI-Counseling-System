@@ -21,7 +21,8 @@ export async function refreshTokens(
       body: JSON.stringify({ refreshToken: rt }),
     })
     const json = await res.json()
-    if (json.success && json.data?.token) {
+    // F6 契约（审计）：成功=code 0；原 success 字段已移除，`undefined.success` 恒假致刷新永不成功
+    if (json.code === 0 && json.data?.token) {
       storage.setToken(json.data.token)
       storage.setRefreshToken(json.data.refreshToken)
       return true

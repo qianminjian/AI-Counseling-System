@@ -53,9 +53,9 @@ export async function api<T = any>(path: string, options: RequestInit & { header
     throw new Error('后端服务不可达，请确认服务已启动')
   }
   if (res.status === 401) {
-    // 业务性 401（后端信封 success:false + code，如登录失败“用户名或密码错误”）→ 直接抛错展示
-    const body = (await res.json().catch((): null => null)) as { success?: boolean; code?: number; message?: string } | null
-    if (body && body.success === false) {
+    // 业务性 401（后端信封 code!=0，如登录失败“用户名或密码错误”）→ 直接抛错展示
+    const body = (await res.json().catch((): null => null)) as { code?: number; message?: string } | null
+    if (body && body.code !== undefined && body.code !== 0) {
       throw toApiError({ code: body.code, message: body.message })
     }
     // 会话过期 401（无信封）→ authFetch 已尝试刷新+重放；仍 401 → 刷新失败 → 统一登出决策点（clear + reload + throw）
@@ -71,7 +71,8 @@ export async function api<T = any>(path: string, options: RequestInit & { header
     throw toApiError({ code: 20002, message: '无权限访问该数据，请联系管理员' })
   }
   const json = await res.json()
-  if (!json.success) {
+  // F6 契约（审计）：成功=code 0（原 success 字段已移除）
+  if (json.code !== 0) {
     throw toApiError(json)
   }
   return json.data
@@ -341,7 +342,7 @@ export async function importStudentsCsv(file: File) {
     handleSessionExpired(storage)
   }
   const json = await res.json()
-  if (!json.success) throw toApiError({ code: json.code, message: json.message || '导入失败' })
+  if (json.code !== 0) throw toApiError({ code: json.code, message: json.message || '导入失败' })
   return json.data
 }
 

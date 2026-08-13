@@ -74,7 +74,7 @@ describe('createAuthFetch', () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(jsonResponse(401, {}))
-      .mockResolvedValueOnce(jsonResponse(200, { success: true, data: { token: 'access-2', refreshToken: 'refresh-2' } }))
+      .mockResolvedValueOnce(jsonResponse(200, { code: 0, data: { token: 'access-2', refreshToken: 'refresh-2' } }))
       .mockResolvedValueOnce(jsonResponse(200, {}))
     vi.stubGlobal('fetch', fetchMock)
     const authFetch = createAuthFetch(storage)
@@ -127,7 +127,7 @@ describe('createAuthFetch', () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(jsonResponse(401, {}))
-      .mockResolvedValueOnce(jsonResponse(200, { success: true, data: { token: 'access-2', refreshToken: 'refresh-2' } }))
+      .mockResolvedValueOnce(jsonResponse(200, { code: 0, data: { token: 'access-2', refreshToken: 'refresh-2' } }))
       .mockResolvedValueOnce(jsonResponse(401, {}))
     vi.stubGlobal('fetch', fetchMock)
     const authFetch = createAuthFetch(storage)

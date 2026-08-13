@@ -144,7 +144,7 @@ describe('api.ts', () => {
       // 第一次 401，刷新成功，第二次 200
       mockFetch
         .mockResolvedValueOnce({ status: 401 })
-        .mockResolvedValueOnce({ json: () => Promise.resolve({ success: true, data: { token: 'new_t', refreshToken: 'new_r' } }) })
+        .mockResolvedValueOnce({ json: () => Promise.resolve({ code: 0, data: { token: 'new_t', refreshToken: 'new_r' } }) })
         .mockResolvedValueOnce({ status: 200, ok: true })
       const res = await authFetch('/api/v1/data')
       expect(res.status).toBe(200)
@@ -156,7 +156,7 @@ describe('api.ts', () => {
       setRefreshToken('bad_refresh')
       mockFetch
         .mockResolvedValueOnce({ status: 401 })
-        .mockResolvedValueOnce({ json: () => Promise.resolve({ success: false }) })
+        .mockResolvedValueOnce({ json: () => Promise.resolve({ code: 20001 }) })
       const res = await authFetch('/api/v1/data')
       expect(res.status).toBe(401)
       expect(mockFetch).toHaveBeenCalledTimes(2)
@@ -195,7 +195,7 @@ describe('api.ts', () => {
       setRefreshToken('valid_rt')
       mockFetch
         .mockResolvedValueOnce({ status: 401 })
-        .mockResolvedValueOnce({ json: () => Promise.resolve({ success: true, data: { token: 'new_t', refreshToken: 'new_r' } }) })
+        .mockResolvedValueOnce({ json: () => Promise.resolve({ code: 0, data: { token: 'new_t', refreshToken: 'new_r' } }) })
         .mockResolvedValueOnce({ status: 200, ok: true })
       const res = await fetchWarmPrompt('s1', 25)
       expect(res.status).toBe(200)
@@ -215,7 +215,7 @@ describe('api.ts', () => {
   describe('端点收敛函数（F-2/F-3 具名 authFetch 接缝，ARCH-005）', () => {
     it('fetchSystemConfig：GET /api/v1/system/config 携带 signal 与 Accept', async () => {
       const controller = new AbortController()
-      const res = { status: 200, ok: true, json: () => Promise.resolve({ success: true, data: {} }) }
+      const res = { status: 200, ok: true, json: () => Promise.resolve({ code: 0, data: {} }) }
       mockFetch.mockResolvedValue(res)
       const result = await fetchSystemConfig(controller.signal)
       expect(result).toBe(res)
@@ -287,7 +287,7 @@ describe('api.ts', () => {
     it('刷新成功更新双 token', async () => {
       setRefreshToken('rt')
       mockFetch.mockResolvedValue({
-        json: () => Promise.resolve({ success: true, data: { token: 'nt', refreshToken: 'nr' } }),
+        json: () => Promise.resolve({ code: 0, data: { token: 'nt', refreshToken: 'nr' } }),
       })
       expect(await refreshTokens(tokenStorage)).toBe(true)
       expect(getToken()).toBe('nt')
@@ -306,7 +306,7 @@ describe('api.ts', () => {
       setToken('tk')
       mockFetch.mockResolvedValue({
         status: 200,
-        json: () => Promise.resolve({ success: true, data: { name: 'test' } }),
+        json: () => Promise.resolve({ code: 0, data: { name: 'test' } }),
       })
       const result = await api('/chat/sessions')
       expect(result).toEqual({ name: 'test' })
@@ -316,7 +316,7 @@ describe('api.ts', () => {
       setToken('tk')
       mockFetch.mockResolvedValue({
         status: 200,
-        json: () => Promise.resolve({ success: false, message: '参数错误' }),
+        json: () => Promise.resolve({ code: 20001, message: '参数错误' }),
       })
       await expect(api('/bad')).rejects.toThrow('参数错误')
     })
@@ -325,7 +325,7 @@ describe('api.ts', () => {
       setToken('tk')
       mockFetch.mockResolvedValue({
         status: 200,
-        json: () => Promise.resolve({ success: true, data: null }),
+        json: () => Promise.resolve({ code: 0, data: null }),
       })
       await api('/auth/set-pin', { method: 'POST', body: '{}' })
       expect(mockFetch.mock.calls[0][0]).toBe('/api/v1/auth/set-pin')
@@ -336,7 +336,7 @@ describe('api.ts', () => {
     it('注册成功返回 AuthResult', async () => {
       const authData = { token: 'tk', userId: '1', pseudonym: '花花' }
       mockFetch.mockResolvedValue({
-        json: () => Promise.resolve({ success: true, data: authData }),
+        json: () => Promise.resolve({ code: 0, data: authData }),
       })
       const result = await trialRegister({ inviteCode: 'ABC', pseudonym: '花花', age: 9, consentVersion: 'v1' })
       expect(result).toEqual(authData)
@@ -344,7 +344,7 @@ describe('api.ts', () => {
 
     it('注册失败抛出错误', async () => {
       mockFetch.mockResolvedValue({
-        json: () => Promise.resolve({ success: false, message: '邀请码无效' }),
+        json: () => Promise.resolve({ code: 20001, message: '邀请码无效' }),
       })
       await expect(trialRegister({ inviteCode: 'X', pseudonym: 'x', age: 9, consentVersion: 'v1' }))
         .rejects.toThrow('邀请码无效')
@@ -354,7 +354,7 @@ describe('api.ts', () => {
   describe('pinLogin', () => {
     it('PIN 登录成功', async () => {
       mockFetch.mockResolvedValue({
-        json: () => Promise.resolve({ success: true, data: { token: 'pin_tk', userId: '2' } }),
+        json: () => Promise.resolve({ code: 0, data: { token: 'pin_tk', userId: '2' } }),
       })
       const result = await pinLogin('小明', '1234')
       expect(result.token).toBe('pin_tk')
@@ -362,7 +362,7 @@ describe('api.ts', () => {
 
     it('PIN 错误抛出异常', async () => {
       mockFetch.mockResolvedValue({
-        json: () => Promise.resolve({ success: false, message: 'PIN 码错误' }),
+        json: () => Promise.resolve({ code: 20001, message: 'PIN 码错误' }),
       })
       await expect(pinLogin('小明', '0000')).rejects.toThrow('PIN 码错误')
     })
@@ -373,7 +373,7 @@ describe('api.ts', () => {
       setToken('tk')
       mockFetch.mockResolvedValue({
         status: 200,
-        json: () => Promise.resolve({ success: true, data: null }),
+        json: () => Promise.resolve({ code: 0, data: null }),
       })
       await expect(setPin('1234')).resolves.toBeUndefined()
       expect(mockFetch.mock.calls[0][0]).toBe('/api/v1/auth/set-pin')
@@ -385,7 +385,7 @@ describe('api.ts', () => {
       setToken('tk')
       mockFetch.mockResolvedValue({
         status: 200,
-        json: () => Promise.resolve({ success: true, data: { voiceCredential: 'cred_jwt' } }),
+        json: () => Promise.resolve({ code: 0, data: { voiceCredential: 'cred_jwt' } }),
       })
       const cred = await issueVoiceCredential()
       expect(cred).toBe('cred_jwt')
@@ -395,7 +395,7 @@ describe('api.ts', () => {
   describe('voiceLogin', () => {
     it('声纹登录成功', async () => {
       mockFetch.mockResolvedValue({
-        json: () => Promise.resolve({ success: true, data: { token: 'v_tk', userId: 'u1' } }),
+        json: () => Promise.resolve({ code: 0, data: { token: 'v_tk', userId: 'u1' } }),
       })
       const result = await voiceLogin('device_cred')
       expect(result.token).toBe('v_tk')
@@ -404,7 +404,7 @@ describe('api.ts', () => {
 
     it('声纹登录失败抛出错误', async () => {
       mockFetch.mockResolvedValue({
-        json: () => Promise.resolve({ success: false, message: '凭证已过期' }),
+        json: () => Promise.resolve({ code: 20001, message: '凭证已过期' }),
       })
       await expect(voiceLogin('bad')).rejects.toThrow('凭证已过期')
     })
@@ -415,7 +415,7 @@ describe('api.ts', () => {
       setToken('tk')
       mockFetch.mockResolvedValue({
         status: 200,
-        json: () => Promise.resolve({ success: true, data: null }),
+        json: () => Promise.resolve({ code: 0, data: null }),
       })
       await expect(requestGuardianConsent('13800138000')).resolves.toBeUndefined()
     })
@@ -426,7 +426,7 @@ describe('api.ts', () => {
       setToken('tk')
       mockFetch.mockResolvedValue({
         status: 200,
-        json: () => Promise.resolve({ success: true, data: null }),
+        json: () => Promise.resolve({ code: 0, data: null }),
       })
       await expect(confirmGuardianConsent('13800138000', '123456')).resolves.toBeUndefined()
     })
@@ -440,9 +440,9 @@ describe('api.ts', () => {
         // 第一次请求 401
         .mockResolvedValueOnce({ status: 401, json: () => Promise.resolve({}) })
         // 刷新 token 成功
-        .mockResolvedValueOnce({ json: () => Promise.resolve({ success: true, data: { token: 'new_t', refreshToken: 'new_r' } }) })
+        .mockResolvedValueOnce({ json: () => Promise.resolve({ code: 0, data: { token: 'new_t', refreshToken: 'new_r' } }) })
         // 重试原请求成功
-        .mockResolvedValueOnce({ status: 200, json: () => Promise.resolve({ success: true, data: { result: 'ok' } }) })
+        .mockResolvedValueOnce({ status: 200, json: () => Promise.resolve({ code: 0, data: { result: 'ok' } }) })
       const result = await api('/chat/sessions')
       expect(result).toEqual({ result: 'ok' })
       expect(getToken()).toBe('new_t')
@@ -456,7 +456,7 @@ describe('api.ts', () => {
       Object.defineProperty(window, 'location', { value: { reload: reloadMock }, writable: true })
       mockFetch
         .mockResolvedValueOnce({ status: 401, json: () => Promise.resolve({}) })
-        .mockResolvedValueOnce({ json: () => Promise.resolve({ success: false }) })
+        .mockResolvedValueOnce({ json: () => Promise.resolve({ code: 20001 }) })
       await expect(api('/data')).rejects.toThrow('登录已过期')
       expect(reloadMock).toHaveBeenCalled()
     })

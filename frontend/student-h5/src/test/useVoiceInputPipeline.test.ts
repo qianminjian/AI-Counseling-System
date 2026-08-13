@@ -68,7 +68,7 @@ function resultEvent(items: { text: string; isFinal: boolean }[]) {
   }
 }
 
-const BLOCK_RESULT = { ok: true, json: async () => ({ success: true, data: { text: '我很开心', emotion: { labelEn: 'happy', label: '开心', confidence: 0.9 } } }) }
+const BLOCK_RESULT = { ok: true, json: async () => ({ code: 0, data: { text: '我很开心', emotion: { labelEn: 'happy', label: '开心', confidence: 0.9 } } }) }
 
 describe('useVoiceInputPipeline（ARCH-006 语音编排抽取）', () => {
   beforeEach(() => {
@@ -235,7 +235,7 @@ describe('useVoiceInputPipeline（ARCH-006 语音编排抽取）', () => {
   })
 
   it('录音完成：上传返回无文字 → 降级浏览器转写（有转写则发送）', async () => {
-    mockFetchVoiceAnalyze.mockResolvedValue({ ok: true, json: async () => ({ success: false }) })
+    mockFetchVoiceAnalyze.mockResolvedValue({ ok: true, json: async () => ({ code: 20001 }) })
     const onTranscription = vi.fn()
     const { result } = renderHook(() => useVoiceInputPipeline({ onTranscription }))
     // 预先注入浏览器转写

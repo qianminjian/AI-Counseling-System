@@ -13,7 +13,7 @@ import { fetchToolboxTools, recordMoodCheck, reportSosEvent } from '../api'
 function mockJson(data: unknown, success = true) {
   return Promise.resolve({
     status: 200,
-    json: () => Promise.resolve({ success, data, message: success ? '' : 'err' }),
+    json: () => Promise.resolve({ code: success ? 0 : 20001, data, message: success ? '' : 'err' }),
   } as Response)
 }
 
