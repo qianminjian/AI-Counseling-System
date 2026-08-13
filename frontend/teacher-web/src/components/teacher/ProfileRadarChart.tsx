@@ -48,15 +48,6 @@ export default function ProfileRadarChart({ studentId }: { studentId: string }) 
     return () => { cancelled = true }
   }, [studentId, restricted])
 
-  // 班主任裁剪：与服务端一致显示权限提示（不渲染图表）
-  if (restricted) {
-    return (
-      <Card title="心理画像" size="small" className="ms-mb-16">
-        <Empty description="无权查看该数据（班主任角色）" />
-      </Card>
-    )
-  }
-
   // 渲染 ECharts 雷达图（生命周期统一走 useECharts，FA-03）
   const option: EChartsOption | null = data?.dimensions ? {
     tooltip: { trigger: 'item' },
@@ -81,6 +72,15 @@ export default function ProfileRadarChart({ studentId }: { studentId: string }) 
     }],
   } : null
   useECharts(chartRef, option)
+
+  // 班主任裁剪：与服务端一致显示权限提示（不渲染图表；Hook 调用须在 return 前保持顺序）
+  if (restricted) {
+    return (
+      <Card title="心理画像" size="small" className="ms-mb-16">
+        <Empty description="无权查看该数据（班主任角色）" />
+      </Card>
+    )
+  }
 
   if (loading) {
     return (
