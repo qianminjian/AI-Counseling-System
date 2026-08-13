@@ -91,6 +91,8 @@ export default function AlertPage() {
           rowKey="eventId"
           dataSource={alerts}
           loading={loading}
+          // A-14-01：loading 时空态文案改“加载中”（antd Table loading 时仍渲染 emptyText）
+          locale={{ emptyText: loading ? '加载中...' : '暂无数据' }}
           size="small"
           columns={[
             { title: '规则', dataIndex: 'ruleName', ellipsis: true, width: 220 },

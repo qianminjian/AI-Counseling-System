@@ -21,6 +21,7 @@ export const ENDPOINTS = {
   // 平台管理
   // 质量监控
   getQualityStats: { path: '/api/v1/teacher/quality/stats', method: 'get' },
+  getQualityTrend: { path: '/api/v1/teacher/quality/trend', method: 'get' },
   getFlaggedSessions: { path: '/api/v1/teacher/quality/flagged', method: 'get' },
   exportSessionPdf: { path: '/api/v1/teacher/sessions/{sessionId}/export', method: 'get' },
   // 预警队列
@@ -29,6 +30,7 @@ export const ENDPOINTS = {
   markFalsePositive: { path: '/api/v1/alerts/{id}/false-positive', method: 'patch' },
   getPendingFollowups: { path: '/api/v1/alerts/pending-followups', method: 'get' },
   resolveAlert: { path: '/api/v1/alerts/{id}/resolve', method: 'post' },
+  alertTemplates: { path: '/api/v1/teacher/templates', method: 'get' },
   // 学生管理
   getStudents: { path: '/api/v1/teacher/students', method: 'get' },
   getHighRiskStudents: { path: '/api/v1/teacher/students/high-risk', method: 'get' },

@@ -63,7 +63,7 @@ public class ParentController {
      */
     @GetMapping("/report")
     public ApiResponse<Map<String, Object>> getWeeklyReport(
-            @RequestHeader("Authorization") String authHeader,
+            @RequestHeader(value = "Authorization", required = false) String authHeader,
             @RequestParam UUID studentUserId) {
         ParentIdentityResolver.ParentIdentity identity = parentIdentityResolver.resolveLoginIdentity(authHeader);
         TenantContextHolder.set(identity.tenantId());
@@ -92,7 +92,7 @@ public class ParentController {
      */
     @PostMapping("/consent/withdraw")
     public ApiResponse<Map<String, Object>> withdrawConsent(
-            @RequestHeader("Authorization") String authHeader,
+            @RequestHeader(value = "Authorization", required = false) String authHeader,
             @RequestParam UUID studentUserId) {
         ParentIdentityResolver.ParentIdentity identity = parentIdentityResolver.resolveLoginIdentity(authHeader);
         TenantContextHolder.set(identity.tenantId());
@@ -129,7 +129,7 @@ public class ParentController {
      */
     @GetMapping("/consent/status")
     public ApiResponse<Map<String, Object>> getConsentStatus(
-            @RequestHeader("Authorization") String authHeader,
+            @RequestHeader(value = "Authorization", required = false) String authHeader,
             @RequestParam UUID studentUserId) {
         ParentIdentityResolver.ParentIdentity identity = parentIdentityResolver.resolveLoginIdentity(authHeader);
         TenantContextHolder.set(identity.tenantId());
@@ -151,7 +151,7 @@ public class ParentController {
      */
     @PostMapping("/send-code")
     public ApiResponse<Map<String, String>> sendVerificationCode(
-            @RequestHeader("Authorization") String authHeader,
+            @RequestHeader(value = "Authorization", required = false) String authHeader,
             @RequestBody Map<String, String> body) {
         // 验证初始 token 有效（B1：sendCode 不触 DB，仅需 token 校验，不需租户上下文）
         parentIdentityResolver.resolveLegacyLink(authHeader);
@@ -170,7 +170,7 @@ public class ParentController {
      */
     @PostMapping("/verify-phone")
     public ApiResponse<Map<String, Object>> verifyPhone(
-            @RequestHeader("Authorization") String authHeader,
+            @RequestHeader(value = "Authorization", required = false) String authHeader,
             @RequestBody Map<String, String> body) {
         ParentIdentityResolver.ParentLinkIdentity info = parentIdentityResolver.resolveLegacyLink(authHeader);
         TenantContextHolder.set(info.tenantId());

@@ -23,6 +23,8 @@ export default function AuditPage() {
           rowKey="auditLogId"
           dataSource={logs}
           loading={loading}
+          // A-14-01：loading 时空态文案改“加载中”
+          locale={{ emptyText: loading ? '加载中...' : '暂无数据' }}
           size="small"
           pagination={{ pageSize: 20 }}
           columns={[

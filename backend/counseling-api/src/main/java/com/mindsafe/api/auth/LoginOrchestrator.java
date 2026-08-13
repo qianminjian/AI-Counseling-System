@@ -124,8 +124,12 @@ public class LoginOrchestrator {
      * 审计需绑定真实租户上下文提交（@Async 经 TaskDecorator 继承，否则 fail-fast 拒绝写入）。
      */
     public LoginSession issueLoginSession(LoginCandidate candidate, String auditAction) {
-        String token = businessAuthProvider.issueAccessToken(
-                candidate.userId(), candidate.userType(), candidate.tenantId());
+        // BACK-008：家长域接口强制 PARENT_REPORT 类型——家长登录必须签 parent 专用 token，
+        // 否则 ParentIdentityResolver 拒 401（2026-08-13 遍历回归：/parent/report 全 401）
+        String token = "parent".equals(candidate.userType())
+                ? businessAuthProvider.issueParentAccessToken(candidate.userId(), candidate.tenantId())
+                : businessAuthProvider.issueAccessToken(
+                        candidate.userId(), candidate.userType(), candidate.tenantId());
         String refreshToken = businessAuthProvider.issueRefreshToken(
                 candidate.userId(), candidate.userType(), candidate.tenantId());
         if (auditAction != null) {

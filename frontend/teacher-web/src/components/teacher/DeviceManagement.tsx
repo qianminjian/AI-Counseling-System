@@ -62,8 +62,12 @@ export default function DeviceManagement() {
     }
   }, [bindType, bindTargetId])
 
+  // BUG-T-10-01：归属 ID 逐字符触发请求（每键一次 GET + 400 + toast 刷屏）——300ms 防抖
   useEffect(() => {
-    void loadDevices()
+    const timer = setTimeout(() => {
+      void loadDevices()
+    }, 300)
+    return () => clearTimeout(timer)
   }, [loadDevices])
 
   /** 绑定：生成验证码 → 设备语音播报 → 人工输入 → 提交（AC-84-10/23） */

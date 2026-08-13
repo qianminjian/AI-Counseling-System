@@ -99,7 +99,7 @@ function installFetchMock(): void {
 }
 
 function json(data: unknown): Response {
-  return new Response(JSON.stringify({ success: true, ...(data as object) }), {
+  return new Response(JSON.stringify({ code: 0, ...(data as object) }), {
     status: 200,
     headers: { 'Content-Type': 'application/json' },
   })

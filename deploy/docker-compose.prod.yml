@@ -53,6 +53,9 @@ services:
       dockerfile: Dockerfile
     container_name: mindsafe-backend
     restart: unless-stopped
+    # A-02-01（2026-08-13 遍历）：nginx 为宿主机进程，容器内经 host-gateway 探测宿主 /health
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       # 宿主端口 18082（切换期：宿主 nginx proxy_pass → 127.0.0.1:18082；healthcheck 仍走容器内 8080）
       # D-01：仅绑定 127.0.0.1（铁律 design/04 §3.1），安全组误开 18082 也无法绕过 nginx 直连
@@ -66,8 +69,12 @@ services:
       SPRING_DATA_REDIS_HOST: redis
       SPRING_DATA_REDIS_PORT: 6379
       SPRING_DATA_REDIS_PASSWORD: ${REDIS_PASSWORD}
-      # nginx 服务探测（F-30，2026-08-10）：nginx 为宿主机进程，后端容器内经宿主 IP 探测 /health
+      # nginx 服务探测（F-30，2026-08-10）：nginx 为宿主机 进程，后端容器内经宿主 IP 探测 /health
       # OPS-008（doing/95）：MINDSAFE_MONITORING_SERVICE_PROBES_NGINX 全仓库无消费者（死 env + 公网 IP 入仓），删除
+      # A-02-01（2026-08-13）：恢复探测配置——默认 http://nginx 在无 compose nginx 服务时解析失败误报 DOWN，
+      # 改经 host.docker.internal（extra_hosts 已配 host-gateway）探测宿主 nginx；
+      # 注意：probeHttp 会拼接 /health，此处 base 不含路径
+      MINDSAFE_MONITORING_SERVICE_PROBES_NGINX: http://host.docker.internal
       # LLM 主模型（doing/63：key 主命名；compose 层做新→旧名迁移，yml 回退链覆盖 DEEPSEEK_API_KEY 三级）
       LLM_PRIMARY_API_KEY: ${LLM_PRIMARY_API_KEY:-${LLM_API_KEY:-}}
       LLM_PRIMARY_BASE_URL: ${LLM_PRIMARY_BASE_URL:-${LLM_BASE_URL:-https://api.deepseek.com}}

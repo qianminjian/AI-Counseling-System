@@ -24,7 +24,10 @@ vi.mock('echarts/components', () => ({ TooltipComponent: class {}, RadarComponen
 vi.mock('echarts/renderers', () => ({ CanvasRenderer: class {} }));
 vi.mock('../api', () => ({
   getStudentRadar: (id: string) => mockGetRadar(id),
+  getToken: vi.fn(() => null),
 }));
+
+import { getToken } from '../api'
 
 import ProfileRadarChart from '../components/teacher/ProfileRadarChart';
 
@@ -77,5 +80,20 @@ describe('ProfileRadarChart 心理画像', () => {
     mockGetRadar.mockRejectedValue(new Error('network'));
     render(<ProfileRadarChart studentId="s-1" />);
     expect(await screen.findByText(/暂无画像数据/)).toBeInTheDocument();
+  });
+
+  it('班主任角色：显示无权查看且不请求画像（BUG-T-05-01 裁剪）', async () => {
+    const payload = btoa(JSON.stringify({ userType: 'head_teacher' }))
+    vi.mocked(getToken).mockReturnValue(`h.${payload}.sig`)
+    render(<ProfileRadarChart studentId="s-1" />)
+    expect(screen.getByText(/无权查看该数据/)).toBeInTheDocument()
+    expect(mockGetRadar).not.toHaveBeenCalled()
+  });
+
+  it('class_teacher 同样裁剪（双角色分支）', async () => {
+    const payload = btoa(JSON.stringify({ userType: 'class_teacher' }))
+    vi.mocked(getToken).mockReturnValue(`h.${payload}.sig`)
+    render(<ProfileRadarChart studentId="s-1" />)
+    expect(screen.getByText(/无权查看该数据/)).toBeInTheDocument()
   });
 });

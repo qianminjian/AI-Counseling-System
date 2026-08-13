@@ -27,7 +27,7 @@ describe('services 业务 API（平台化 request）', () => {
 
   it('parentLogin 携带 Bearer + JSON body，返回 data', async () => {
     setToken('tk')
-    fetchMock.mockResolvedValue(jsonResponse(200, { success: true, data: { parentId: 'p1' } }))
+    fetchMock.mockResolvedValue(jsonResponse(200, { code: 0, data: { parentId: 'p1' } }))
     const res = await parentLogin({ phone: '13800138000', password: 'secret1' })
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/v1/parent/auth/login',
@@ -41,7 +41,7 @@ describe('services 业务 API（平台化 request）', () => {
   })
 
   it('parentRegister 调注册端点', async () => {
-    fetchMock.mockResolvedValue(jsonResponse(200, { success: true, data: {} }))
+    fetchMock.mockResolvedValue(jsonResponse(200, { code: 0, data: {} }))
     await parentRegister({ familyCode: 'ABC123', phone: '138', password: 'p1', relation: 'mother' })
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/v1/parent/auth/register',
@@ -51,7 +51,7 @@ describe('services 业务 API（平台化 request）', () => {
 
   it('getReport 走 GET 且带 query', async () => {
     setToken('tk')
-    fetchMock.mockResolvedValue(jsonResponse(200, { success: true, data: { sessionCount: 3 } }))
+    fetchMock.mockResolvedValue(jsonResponse(200, { code: 0, data: { sessionCount: 3 } }))
     const res = await getReport('c1')
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/v1/parent/report?studentUserId=c1',
@@ -62,7 +62,7 @@ describe('services 业务 API（平台化 request）', () => {
 
   it('withdrawConsent 调撤回端点', async () => {
     setToken('tk')
-    fetchMock.mockResolvedValue(jsonResponse(200, { success: true, data: { message: 'ok' } }))
+    fetchMock.mockResolvedValue(jsonResponse(200, { code: 0, data: { message: 'ok' } }))
     await withdrawConsent('c1')
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/v1/parent/consent/withdraw',
@@ -75,8 +75,8 @@ describe('services 业务 API（平台化 request）', () => {
     setRefreshToken('rt')
     fetchMock
       .mockResolvedValueOnce(jsonResponse(401, {}))
-      .mockResolvedValueOnce(jsonResponse(200, { success: true, data: { token: 'nt', refreshToken: 'nr' } }))
-      .mockResolvedValueOnce(jsonResponse(200, { success: true, data: { sessionCount: 5 } }))
+      .mockResolvedValueOnce(jsonResponse(200, { code: 0, data: { token: 'nt', refreshToken: 'nr' } }))
+      .mockResolvedValueOnce(jsonResponse(200, { code: 0, data: { sessionCount: 5 } }))
     const res = await getReport('c1')
     expect(fetchMock).toHaveBeenCalledTimes(3)
     expect(res).toEqual({ sessionCount: 5 })

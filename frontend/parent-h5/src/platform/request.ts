@@ -71,9 +71,9 @@ export function createPlatformRequest(deps: PlatformRequestDeps): PlatformReques
 
     // 401 自动刷新（区分业务性 401 与会话过期 401）
     if (res.status === 401 && !options._retried) {
-      // 业务性 401（后端信封 success:false + code，如登录失败/监护人同意已撤回）→ 直接抛错给页面展示
+      // 业务性 401（后端信封 code!=0，如登录失败/监护人同意已撤回）→ 直接抛错给页面展示
       const body = (await res.json().catch(() => null)) as PlatformApiResponse | null
-      if (body && body.success === false) {
+      if (body && body.code !== undefined && body.code !== 0) {
         throw toApiError({ code: body.code, message: body.message || `请求失败 (${res.status})` })
       }
       // 会话过期 401（无信封）→ 尝试 refresh；refresh 内部自带 /api/v1 前缀，baseUrl 传空避免双前缀（/api/v1/api/v1/auth/refresh）
@@ -86,9 +86,9 @@ export function createPlatformRequest(deps: PlatformRequestDeps): PlatformReques
     }
 
     const body = (await res.json().catch(() => ({}))) as PlatformApiResponse
-    // DOC-073 F1（doing/77 §24）：成功判定统一为 success 契约（对齐 shared apiError 语义）
-    // 后端业务错误 → 4xx/5xx + 信封（success:false + code）；HTTP 非 2xx 且无信封 → 按状态码兜底 message
-    if (!body.success) {
+    // F6 契约（doing/77 §24 同步）：成功判定统一为 code===0（原 success 字段已移除）
+    // 后端业务错误 → 4xx/5xx + 信封（code!=0）；HTTP 非 2xx 且无信封 → 按状态码兜底 message
+    if (body.code !== 0) {
       throw toApiError({ code: body.code, message: body.message || `请求失败 (${res.status})` })
     }
 

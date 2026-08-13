@@ -23,6 +23,11 @@ public class BusinessAuthProvider implements AuthProvider {
         return jwtTokenProvider.generateToken(userId, userType, tenantId);
     }
 
+    /** 家长登录签发 PARENT_REPORT 类型（BACK-008：家长域接口强制该类型，ACCESS 会被拒） */
+    public String issueParentAccessToken(UUID parentId, UUID tenantId) {
+        return jwtTokenProvider.generateParentLoginToken(parentId, tenantId);
+    }
+
     @Override
     public String issueRefreshToken(UUID userId, String userType, UUID tenantId) {
         return jwtTokenProvider.generateRefreshToken(userId, userType, tenantId);

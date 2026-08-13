@@ -152,9 +152,18 @@ public class JwtTokenProvider {
         return buildToken(userId, userType, tenantId, TokenType.VOICE_CREDENTIAL, voiceCredentialExpirationMs);
     }
 
-    /** 生成家长报告链接 token（默认 7d，SEC-006）：独立 tokenType，与学生 access token 区分，防学生自持 token 调家长接口 */
+    /** 生成家长报告链接 token（默认 7d，SEC-006）：独立 tokenType，与学生 access token 区分，防学生自持 token 调家长 接口 */
     public String generateParentReportToken(UUID studentUserId, UUID tenantId) {
         return buildToken(studentUserId, "parent", tenantId, TokenType.PARENT_REPORT, parentReportExpirationMs);
+    }
+    
+    /**
+     * 家长登录 access token（BACK-008：家长域接口强制 PARENT_REPORT 类型，
+     * 家长新登录若签发 ACCESS 会被 ParentIdentityResolver 拒 401——2026-08-13 遍历回归实测）。
+     * sub=parentId（新登录语义），TTL 同普通 access。
+     */
+    public String generateParentLoginToken(UUID parentId, UUID tenantId) {
+        return buildToken(parentId, "parent", tenantId, TokenType.PARENT_REPORT, accessExpirationMs);
     }
 
     private String buildToken(UUID userId, String userType, UUID tenantId, TokenType tokenType, long ttl) {

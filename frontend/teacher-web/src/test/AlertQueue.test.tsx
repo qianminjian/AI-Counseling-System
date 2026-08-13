@@ -33,6 +33,7 @@ vi.mock('../api', () => ({
   markFalsePositive: (id: string) => mockMarkFalsePositive(id),
   resolveAlert: (id: string, note?: string) => mockResolveAlert(id, note),
   exportAlertsCsv: () => mockExportCsv(),
+  getAlertTemplates: () => Promise.resolve([]),
 }));
 
 import AlertQueue from '../components/teacher/AlertQueue';

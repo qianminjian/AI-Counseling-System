@@ -21,7 +21,9 @@ public class ParentAuthProvider implements AuthProvider {
 
     @Override
     public String issueAccessToken(UUID userId, String userType, UUID tenantId) {
-        return jwtTokenProvider.generateToken(userId, userType, tenantId);
+        // BACK-008：家长域接口强制 PARENT_REPORT 类型（ParentIdentityResolver 校验），
+        // 签 ACCESS 会被拒 401——2026-08-13 遍历回归实测 /parent/report 全 401
+        return jwtTokenProvider.generateParentLoginToken(userId, tenantId);
     }
 
     @Override

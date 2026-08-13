@@ -152,7 +152,8 @@ export async function api(path: string, options: RequestInit & { headers?: Recor
   }
 
   const json = await res.json()
-  if (!json.success) {
+  // F6 契约（审计）：ApiResponse 统一 {code,message,data,timestamp}，成功=code 0
+  if (json.code !== 0) {
     throw toApiError(json)
   }
   return json.data
@@ -173,7 +174,7 @@ async function publicFetch<T = unknown>(path: string, options: RequestInit = {},
     },
   })
   const json = await res.json()
-  if (!json.success) {
+  if (json.code !== 0) {
     throw toApiError({ code: json.code, message: json.message || fallbackMessage })
   }
   return json.data

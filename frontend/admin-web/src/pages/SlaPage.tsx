@@ -22,6 +22,8 @@ export default function SlaPage() {
           dataSource={stats}
           size="small"
           pagination={false}
+          // A-05-01：SLA 达标率仅统计已处置事件——无数据时说明原因（逾期清单 open 事件未计入）
+          locale={{ emptyText: '暂无已处置事件：SLA 达标率待数据积累（未解决预警不计入，见风险全景逾期清单）' }}
           columns={[
             {
               title: '等级',

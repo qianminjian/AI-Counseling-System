@@ -48,7 +48,7 @@ describe('createPlatformRequest（PlatformRequest H5 实现）', () => {
   })
 
   it('GET 携带 Bearer 并返回 data（URL 前缀 /api/v1）', async () => {
-    fetchMock.mockResolvedValue(jsonResponse(200, { success: true, data: { n: 3 } }))
+    fetchMock.mockResolvedValue(jsonResponse(200, { code: 0, data: { n: 3 } }))
     const request = createPlatformRequest(deps)
     const res = await request<{ n: number }>('/parent/report?studentUserId=1')
     expect(fetchMock).toHaveBeenCalledWith(
@@ -59,7 +59,7 @@ describe('createPlatformRequest（PlatformRequest H5 实现）', () => {
   })
 
   it('POST 序列化 JSON body + Content-Type', async () => {
-    fetchMock.mockResolvedValue(jsonResponse(200, { success: true }))
+    fetchMock.mockResolvedValue(jsonResponse(200, { code: 0 }))
     const request = createPlatformRequest(deps)
     await request('/parent/auth/login', { method: 'POST', data: { phone: '138', password: 'p' } })
     expect(fetchMock).toHaveBeenCalledWith(
@@ -73,7 +73,7 @@ describe('createPlatformRequest（PlatformRequest H5 实现）', () => {
   })
 
   it('无 token 时不带 Authorization', async () => {
-    fetchMock.mockResolvedValue(jsonResponse(200, { success: true }))
+    fetchMock.mockResolvedValue(jsonResponse(200, { code: 0 }))
     const request = createPlatformRequest({ ...deps, storage: makeStorage() })
     await request('/parent/report?x=1')
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit]
@@ -84,8 +84,8 @@ describe('createPlatformRequest（PlatformRequest H5 实现）', () => {
     storage.setRefreshToken('rt')
     fetchMock
       .mockResolvedValueOnce(jsonResponse(401, {}))
-      .mockResolvedValueOnce(jsonResponse(200, { success: true, data: { token: 'nt', refreshToken: 'nr' } }))
-      .mockResolvedValueOnce(jsonResponse(200, { success: true, data: { ok: 1 } }))
+      .mockResolvedValueOnce(jsonResponse(200, { code: 0, data: { token: 'nt', refreshToken: 'nr' } }))
+      .mockResolvedValueOnce(jsonResponse(200, { code: 0, data: { ok: 1 } }))
     const request = createPlatformRequest(deps)
     const res = await request<{ ok: number }>('/parent/report?x=1')
     expect(fetchMock).toHaveBeenCalledTimes(3) // 原请求 + refresh + 重放
@@ -100,7 +100,7 @@ describe('createPlatformRequest（PlatformRequest H5 实现）', () => {
     storage.setRefreshToken('rt')
     fetchMock
       .mockResolvedValueOnce(jsonResponse(401, {}))
-      .mockResolvedValueOnce(jsonResponse(200, { success: false, message: 'refresh 已过期' }))
+      .mockResolvedValueOnce(jsonResponse(200, { code: 20001, message: 'refresh 已过期' }))
     const request = createPlatformRequest(deps)
     await expect(request('/parent/report?x=1')).rejects.toThrow()
     expect(fetchMock).toHaveBeenCalledTimes(2)
@@ -108,7 +108,7 @@ describe('createPlatformRequest（PlatformRequest H5 实现）', () => {
   })
 
   it('业务性 401（信封 success:false）→ 直接抛错，不刷新不登出（登录失败/同意已撤回）', async () => {
-    fetchMock.mockResolvedValue(jsonResponse(401, { success: false, code: 20001, message: '监护人同意已撤回，链接已失效' }))
+    fetchMock.mockResolvedValue(jsonResponse(401, { code: 20001, message: '监护人同意已撤回，链接已失效' }))
     const request = createPlatformRequest(deps)
     await expect(request('/parent/report?x=1')).rejects.toMatchObject({
       message: '监护人同意已撤回，链接已失效',
@@ -123,8 +123,8 @@ describe('createPlatformRequest（PlatformRequest H5 实现）', () => {
     storage.setRefreshToken('rt')
     fetchMock
       .mockResolvedValueOnce(jsonResponse(401, {}))
-      .mockResolvedValueOnce(jsonResponse(200, { success: true, data: { token: 'nt', refreshToken: 'nr' } }))
-      .mockResolvedValueOnce(jsonResponse(200, { success: true, data: { ok: 1 } }))
+      .mockResolvedValueOnce(jsonResponse(200, { code: 0, data: { token: 'nt', refreshToken: 'nr' } }))
+      .mockResolvedValueOnce(jsonResponse(200, { code: 0, data: { ok: 1 } }))
     const request = createPlatformRequest(deps)
     await request('/parent/report?x=1')
     const refreshUrl = fetchMock.mock.calls[1][0]
