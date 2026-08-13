@@ -106,10 +106,13 @@ jobs:
         run: mvn verify -B
       
       # doing/92 R-023：01_schema.sql 快照门禁（迁移后未重新生成即失败，防参照物过期）
+      # 注意：本 job 默认 working-directory=backend，脚本路径不带 backend 前缀；
+      # runner 默认 pg_dump 版本可能与 pg16 服务不匹配（version mismatch），显式装 16 客户端
       - name: Schema Snapshot Gate
         run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client-16
           PGURL=jdbc:postgresql://localhost:5432/mindsafe_test PGPASSWORD=test \
-            bash backend/scripts/gen-schema-snapshot.sh backend/scripts/sql/01_schema.sql
+            bash scripts/gen-schema-snapshot.sh scripts/sql/01_schema.sql
       
       # 覆盖率门禁（P2-5：核心链路 ≥60%，整体 ≥45%）
       # 审计 Q-01：报告缺失即失败，不再静默跳过
@@ -265,8 +268,8 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: backend
-          # build-push-action v6 输入名由 dockerfile 改为 file（旧名被忽略 → 误构主应用镜像）
-          file: ${{ matrix.service }}/Dockerfile
+          # build-push-action v6 输入名由 dockerfile 改为 file；--file 相对工作区根解析（非 context）
+          file: backend/${{ matrix.service }}/Dockerfile
           push: false
           load: true
           tags: mindsafe/${{ matrix.service }}:smoke

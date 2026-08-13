@@ -25,7 +25,7 @@ echo "-- 01_schema.sql 快照（doing/92 R-023：由 gen-schema-snapshot.sh 生�
 
 PGPASSWORD="${PGPASSWORD:-mindsafe}" pg_dump -h "$HOST" -p "$PORT" -U mindsafe -d "$DB" \
   --schema-only --no-owner --no-privileges \
-  | grep -vE '^--$|^-- Dumped|^SET |^SELECT pg_catalog|^-- Name: (tenant_template|public)\.(schema_migrations|flyway)' \
+  | grep -vE '^--$|^-- Dumped|^SET |^SELECT pg_catalog|^\\restrict|^\\unrestrict|^-- Name: (tenant_template|public)\\.(schema_migrations|flyway)' \
   >> "$TMP"
 
 if diff -q "$TMP" "$OUT" >/dev/null 2>&1; then

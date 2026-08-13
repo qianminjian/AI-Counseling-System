@@ -35,13 +35,14 @@ function getLoginPersona(): string {
 /**
  * @param {object} props
  * @param {'verify'|'enroll'} props.mode - 验证模式 / 注册采集模式
- * @param {(result: {matched: boolean, userId?: string, pseudonym?: string}) => void} props.onComplete
+ * @param {(result: {matched: boolean, userId?: string, pseudonym?: string, embeddings?: number[][]}) => void} props.onComplete
  * @param {() => void} props.onCancel - 取消/返回
  */
 // F-03（doing/98）：显式 props 类型（原解构隐式 any）
+// 补 embeddings：enroll 模式注册成功后回传采集段（DC-007 双模式注册编排，LoginPage/SettingsPanel 消费）
 export default function VoiceLoginOverlay({ mode = 'verify', onComplete, onCancel }: {
   mode?: 'verify' | 'enroll'
-  onComplete: (result: { matched: boolean; userId?: string; pseudonym?: string }) => void
+  onComplete: (result: { matched: boolean; userId?: string; pseudonym?: string; embeddings?: number[][] }) => void
   onCancel: () => void
 }) {
   const scripts = getConfigValue(`guideScripts.${mode}`, VP_GUIDE_SCRIPTS[mode] || VP_GUIDE_SCRIPTS.verify)
