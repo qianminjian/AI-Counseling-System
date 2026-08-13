@@ -16,6 +16,9 @@
 #   <<<ADVICE    …… 建议行（每行一条，供 bash 追加进 ADVICE 数组）
 #   <<<SUMMARY   …… 终端摘要一行
 #
+# 增量模式：首个参数为 epoch 秒（上次执行时间戳），只统计 mtime 晚于该时间的文件；
+# 不带参数或传 0 = 全量分析。
+#
 # 依赖：python3 标准库，无第三方库。兼容 macOS python3.9（无 match/f-string= 等新语法）
 
 import json
@@ -26,6 +29,19 @@ import datetime
 from collections import Counter, defaultdict
 
 HOME = os.path.expanduser('~')
+
+# 增量起点：0 = 全量
+SINCE = 0
+try:
+    SINCE = int(sys.argv[1]) if len(sys.argv) > 1 else 0
+except ValueError:
+    SINCE = 0
+
+
+def since_label():
+    if SINCE <= 0:
+        return '全部历史'
+    return datetime.datetime.fromtimestamp(SINCE).strftime('%Y-%m-%d %H:%M') + ' 以来'
 
 # ─── 数据源定位 ─────────────────────────────────────────────────────────
 
@@ -69,10 +85,13 @@ def scan_conversations():
     每个会话：轮数、用户输入字节（含系统注入）、助手输出字节、
     累计发送字节（每轮发送=截至该轮全部历史，逐轮累加）、输出 token 估算
     返回：(label, task, turns, in_bytes, out_bytes, out_tok, acc)
+    增量模式：只统计 mtime > SINCE 的会话文件
     """
     sessions = []
     for label, ch in find_conversation_dirs():
         for f in sorted(glob.glob(os.path.join(ch, '*/*.jsonl'))):
+            if SINCE > 0 and os.path.getmtime(f) <= SINCE:
+                continue
             task = os.path.basename(os.path.dirname(f))
             turns = 0
             in_bytes = out_bytes = acc = out_tok = 0
@@ -123,6 +142,8 @@ def scan_transcripts():
     sessions = []  # (label, name, date, tools_n, inject_bytes, out_tok, max_inject, tools, read_paths)
     for label, tdir in find_transcript_dirs():
         for f in sorted(glob.glob(os.path.join(tdir, '*.jsonl'))):
+            if SINCE > 0 and os.path.getmtime(f) <= SINCE:
+                continue
             name = os.path.basename(f)
             tools_n = 0
             inject_bytes = out_tok = max_inject = 0
@@ -172,7 +193,7 @@ def fmt_kb(b):
 
 def build_section(conv, execs):
     lines = []
-    lines.append('### 4.1 最近对话消耗（对话层，字节为真实值）')
+    lines.append(f'### 4.1 最近对话消耗（对话层，字节为真实值，统计区间：{since_label()}）')
     lines.append('')
     lines.append('| 会话 | 来源 | 轮数 | 用户输入KB | 助手输出KB | 累计发送MB | 每轮均值KB |')
     lines.append('|------|------|-----:|-----------:|-----------:|-----------:|-----------:|')
@@ -249,25 +270,25 @@ def build_advice(conv, execs):
     if dup:
         p, c = dup.most_common(1)[0]
         adv.append(f'⚠️ 同一文件被反复读取 ×{c}（如 {os.path.basename(p)}）→ 先想清楚要读哪个区间，用 start_line/end_line 一次读完')
-    big = [(r[0], r[6]) for r in execs if r[6] > 100 * 1024]
+    big = [(r[1], r[6]) for r in execs if r[6] > 100 * 1024]
     if big:
         mx = max(big, key=lambda x: x[1])
         adv.append(f'⚠️ 单次工具返回最大 {mx[1] // 1024}KB（{mx[0][:20]}）→ 大文件全量读会一次性灌入上下文，改分段读')
     return adv
 
 def build_summary(conv, execs):
-    parts = []
+    parts = [f'统计区间：{since_label()}']
     if conv:
         total_acc = sum(r[6] for r in conv)
         total_turns = sum(r[2] for r in conv)
         avg_kb = (total_acc // total_turns // 1024) if total_turns else 0
-        parts.append(f'近期对话 {len(conv)} 个会话，每轮平均上下文 ~{avg_kb}KB')
+        parts.append(f'新增对话 {len(conv)} 个会话，每轮平均上下文 ~{avg_kb}KB')
     if execs:
         tn = sum(r[3] for r in execs)
         inj = sum(r[4] for r in execs)
-        parts.append(f'历史执行轨迹共 {len(execs)} 个会话：工具调用 {tn} 次 / 注入 {fmt_kb(inj)}KB')
-    if not parts:
-        parts.append('暂无会话数据')
+        parts.append(f'新增执行轨迹 {len(execs)} 个会话：工具调用 {tn} 次 / 注入 {fmt_kb(inj)}KB')
+    if not conv and not execs:
+        parts.append('本次无新增会话数据')
     return ' | '.join(parts)
 
 def main():

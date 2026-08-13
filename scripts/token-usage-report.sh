@@ -19,7 +19,21 @@ REPORT_DIR="$PROJECT_ROOT/logs/token-report"
 TS="$(date +%Y%m%d-%H%M%S)"
 REPORT_FILE="$REPORT_DIR/token-${TS}.md"
 PLAIN=0
-[ "${1:-}" = "--plain" ] && PLAIN=1
+FULL=0
+case "${1:-}" in
+    --plain) PLAIN=1;;
+    --full)  FULL=1;;
+esac
+
+# 增量状态：上次执行时间（epoch 秒），0 = 全量；本次执行结束后更新
+STATE_FILE="$REPORT_DIR/.last-run"
+SINCE="$(cat "$STATE_FILE" 2>/dev/null || echo 0)"
+RUN_START="$(date +%s)"
+if [ "$SINCE" -gt 0 ] 2>/dev/null; then
+    SINCE_LABEL="$(date -r "$SINCE" '+%Y-%m-%d %H:%M') 以来"
+else
+    SINCE_LABEL="全部历史"
+fi
 
 mkdir -p "$REPORT_DIR"
 
@@ -130,12 +144,22 @@ if [ "$session_total_bytes" -gt 0 ]; then
     avg=$((session_total_bytes / session_count))
     [ "$avg" -gt 102400 ] && ADVICE+=("⚠️ 会话平均 $((avg/1024))KB 偏大 → 控制单轮 Read 大文件数（≤5 个），优先 Grep/Glob")
 fi
+# ─── 3.5 会话实际消耗分析（analyze-session-usage.py，追加其建议）─────────────
+# 还原每次对话的真实上下文消耗：每轮均值、工具调用分布、重复读文件浪费点
+ANALYSIS_OUT="$(python3 "$PROJECT_ROOT/scripts/analyze-session-usage.py" "$SINCE" 2>/dev/null || true)"
+ANA_SECTION="$(printf '%s' "$ANALYSIS_OUT" | sed -n '/^<<<SECTION$/,/^<<<ADVICE$/p' | sed '1d;$d')"
+ANA_SUMMARY="$(printf '%s' "$ANALYSIS_OUT" | sed -n '/^<<<SUMMARY$/,$p' | sed '1d')"
+while IFS= read -r a; do
+    [ -n "$a" ] && ADVICE+=("$a")
+done < <(printf '%s' "$ANALYSIS_OUT" | sed -n '/^<<<ADVICE$/,/^<<<SUMMARY$/p' | sed '1d;$d')
 [ "${#ADVICE[@]}" -eq 0 ] && ADVICE+=("✅ 未发现明显浪费信号，保持现有习惯")
 
 # ─── 5. 输出报告（bash 3.2：变量用 ${var} 防全角字符粘连）─────────────────
 {
 cat << EOF
 # Token 消耗监控日报 - $(date '+%Y-%m-%d %H:%M')
+
+> 会话增量统计区间：${SINCE_LABEL}
 
 ## 一、规则层（.qoder/rules/ + AGENTS.md）
 
@@ -176,20 +200,34 @@ else
     echo "- （无会话历史数据）"
 fi
 
-cat << EOF
+if [ "$FULL" -eq 1 ]; then
+    ACTION_SEC="六"
+    cat << EOF
+
+## 四、会话实际消耗分析（字节为真实值、token 为估算）
+
+${ANA_SECTION}
+
+## 五、习惯体检与优化建议
+
+EOF
+else
+    ACTION_SEC="五"
+    cat << EOF
 
 ## 四、习惯体检与优化建议
 
 EOF
+fi
 for a in "${ADVICE[@]}"; do echo "- $a"; done
 
 cat << EOF
 
-## 五、今日优化动作（供 AI 执行参考）
+## ${ACTION_SEC}、今日优化动作（供 AI 执行参考）
 
 1. 规则层：优先精简 model-decision 组中触发频率高但内容低频的规则
 2. 文档层：给缺索引头的大文档补📑分段索引；读取时用 start_line/end_line
-3. 会话层：长会话主动拆分；单轮 Read 大文件 ≤5 个
+3. 会话层：长会话主动拆分；单轮 Read 大文件 ≤5 个；同一文件不重复读
 4. 复查：对照 AGENTS.md §token 使用纪律执行
 
 ---
@@ -197,11 +235,15 @@ _生成：scripts/token-usage-report.sh | 数据时间 $(date '+%F %T')_
 EOF
 } > "$REPORT_FILE"
 
+# 更新增量状态（下次执行从此时间点开始统计）
+echo "$RUN_START" > "$STATE_FILE"
+
 # ─── 终端摘要 ───────────────────────────────────────────────────────────
 echo "=== Token 监控日报 $(date '+%F %T') ==="
 echo "规则层: 每轮固定 ~$every_turn_tok tok | 编码轮 ~$coding_turn_tok tok"
 echo "文档层: $((doc_total_bytes/1024)) KB ≈ $doc_total_tok tok | 大文档 ${#BIG_DOCS[@]} 个(缺索引 ${#NO_INDEX_DOCS[@]})"
 echo "会话层: $session_count 文件 / $((session_total_bytes/1024)) KB ≈ $session_total_tok tok | 超长 $long_session_count"
+[ -n "$ANA_SUMMARY" ] && echo "实际消耗: $ANA_SUMMARY"
 echo "建议:"
 for a in "${ADVICE[@]}"; do echo "  - $a"; done
 echo "报告: $REPORT_FILE"
