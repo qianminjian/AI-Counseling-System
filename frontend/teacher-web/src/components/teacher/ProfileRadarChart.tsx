@@ -5,7 +5,8 @@ import { TooltipComponent, RadarComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 import * as echarts from 'echarts/core'
 import type { EChartsOption } from 'echarts'
-import { getStudentRadar } from '../../api'
+import { getStudentRadar, getToken } from '../../api'
+import { decodeJwtPayload } from '../../utils/jwt'
 import { useECharts } from '../../hooks/useECharts'
 
 // FA-03：按需注册（替代全量导入 ~1MB），与 StatsCharts 同模式
@@ -25,8 +26,19 @@ export default function ProfileRadarChart({ studentId }: { studentId: string }) 
   const [loading, setLoading] = useState(true)
   const chartRef = useRef<HTMLDivElement | null>(null)
 
+  // BUG-T-05-01：班主任（class/head_teacher）前端不请求画像（服务端已 403 双保险）
+  const restricted = (() => {
+    const token = getToken()
+    if (!token) return false
+    const ut = String(decodeJwtPayload(token)?.userType ?? '')
+    return ut === 'head_teacher' || ut === 'class_teacher'
+  })()
+
   useEffect(() => {
-    if (!studentId) return
+    if (!studentId || restricted) {
+      setLoading(false)
+      return
+    }
     let cancelled = false
     setLoading(true)
     getStudentRadar(studentId)
@@ -34,7 +46,16 @@ export default function ProfileRadarChart({ studentId }: { studentId: string }) 
       .catch(() => { if (!cancelled) setData(null) })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
-  }, [studentId])
+  }, [studentId, restricted])
+
+  // 班主任裁剪：与服务端一致显示权限提示（不渲染图表）
+  if (restricted) {
+    return (
+      <Card title="心理画像" size="small" className="ms-mb-16">
+        <Empty description="无权查看该数据（班主任角色）" />
+      </Card>
+    )
+  }
 
   // 渲染 ECharts 雷达图（生命周期统一走 useECharts，FA-03）
   const option: EChartsOption | null = data?.dimensions ? {

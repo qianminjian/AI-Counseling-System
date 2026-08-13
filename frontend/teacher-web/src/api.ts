@@ -265,6 +265,15 @@ export const resolveAlert = (id: string, resolutionNote?: string) =>
     body: JSON.stringify({ resolutionNote }),
   })
 
+/** 干预话术模板（BUG-T-03-02：处理弹窗模板选择器数据源） */
+export interface AlertTemplate {
+  id: string
+  category: string
+  content: string
+}
+
+export const getAlertTemplates = (): Promise<AlertTemplate[]> => callEndpoint('alertTemplates')
+
 // ===== 学生管理 =====
 // BUG-T-04-03（2026-08-12）：年级/班级筛选 + 昵称搜索 + 高危过滤（minRisk）
 export const getStudents = (params: { gradeCode?: string; classCode?: string; keyword?: string; minRisk?: number } = {}): Promise<StudentVO[]> => {

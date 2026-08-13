@@ -29,6 +29,7 @@ export const ENDPOINTS = {
   markFalsePositive: { path: '/api/v1/alerts/{id}/false-positive', method: 'patch' },
   getPendingFollowups: { path: '/api/v1/alerts/pending-followups', method: 'get' },
   resolveAlert: { path: '/api/v1/alerts/{id}/resolve', method: 'post' },
+  alertTemplates: { path: '/api/v1/teacher/templates', method: 'get' },
   // 学生管理
   getStudents: { path: '/api/v1/teacher/students', method: 'get' },
   getHighRiskStudents: { path: '/api/v1/teacher/students/high-risk', method: 'get' },

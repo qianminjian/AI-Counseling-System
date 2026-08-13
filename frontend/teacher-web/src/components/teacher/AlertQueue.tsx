@@ -3,7 +3,7 @@ import { Table, Tag, Button, Space, Select, Card, message, Popconfirm, Modal, In
 import type { TableProps } from 'antd'
 import { CheckOutlined, StopOutlined, UserOutlined, CheckCircleOutlined, DownloadOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
-import { getAlerts, claimAlert, markFalsePositive, resolveAlert, exportAlertsCsv } from '../../api'
+import { getAlerts, claimAlert, markFalsePositive, resolveAlert, exportAlertsCsv, getAlertTemplates, type AlertTemplate } from '../../api'
 import type { AlertStatus, AlertVO } from '../../api'
 import { evaluateSla } from '../../utils/sla'
 import { riskColor, riskLabel } from '../../utils/riskLevel'
@@ -22,7 +22,13 @@ export default function AlertQueue() {
   const [levelFilter, setLevelFilter] = useState<number | undefined>(undefined)
   const [resolveModal, setResolveModal] = useState<{ open: boolean; alertId: string | null }>({ open: false, alertId: null })
   const [resolveNote, setResolveNote] = useState('')
+  const [templates, setTemplates] = useState<AlertTemplate[]>([])
   const [resolving, setResolving] = useState(false)
+
+  // BUG-T-03-02：处理弹窗加载干预话术模板（后端 /teacher/templates，7 条预审核话术）
+  useEffect(() => {
+    getAlertTemplates().then(setTemplates).catch(() => setTemplates([]))
+  }, [])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -216,6 +222,18 @@ export default function AlertQueue() {
         <p style={{ marginBottom: 8, color: 'var(--ms-text-secondary)' }}>
           请记录线下干预措施（可选，将存入学生档案）：
         </p>
+        {templates.length > 0 && (
+          <Select
+            style={{ width: '100%', marginBottom: 8 }}
+            placeholder="选择干预话术模板"
+            options={templates.map((t) => ({ value: t.id, label: `[${t.category}] ${t.content.slice(0, 24)}…` }))}
+            onChange={(id: string) => {
+              const t = templates.find((x) => x.id === id)
+              if (t) setResolveNote(t.content)
+            }}
+            allowClear
+          />
+        )}
         <Input.TextArea
           value={resolveNote}
           onChange={(e) => setResolveNote(e.target.value)}

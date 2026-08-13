@@ -123,6 +123,12 @@ public class TeacherController {
     public ApiResponse<Map<String, Object>> getStudentRadar(
             @PathVariable UUID id, Authentication auth) {
         TenantContext ctx = SecuritySupport.requireContext(auth);
+        // BUG-T-05-01（2026-08-13 遍历）：班主任（class/head_teacher）不可见画像雷达——
+        // 与 getStudentProfile 服务端裁剪同语义（design/35 §3.3），此前 radar 端点漏裁致数据泄漏
+        if (User.USER_TYPE_CLASS_TEACHER.equals(ctx.userType())
+                || User.USER_TYPE_HEAD_TEACHER.equals(ctx.userType())) {
+            throw new BizException(ErrorCode.FORBIDDEN, "无权查看该数据");
+        }
         return ApiResponse.ok(profileRadarService.getRadarData(ctx.tenantId(), id));
     }
 
