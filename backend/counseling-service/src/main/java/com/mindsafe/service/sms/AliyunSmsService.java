@@ -45,7 +45,15 @@ public class AliyunSmsService implements SmsService {
     private final ObjectMapper objectMapper;
 
     public AliyunSmsService(ObjectMapper objectMapper) {
+        this(objectMapper, HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(10))
+                .build());
+    }
+
+    /** 测试/定制构造器：HttpClient 可注入（单测避免真实网络请求） */
+    AliyunSmsService(ObjectMapper objectMapper, HttpClient httpClient) {
         this.objectMapper = objectMapper;
+        this.httpClient = httpClient;
     }
 
     @Value("${mindsafe.sms.aliyun.access-key-id}")
@@ -63,9 +71,7 @@ public class AliyunSmsService implements SmsService {
     // P2-2：连接超时 10s（HttpClient 级）+ 请求读超时 10s（HttpRequest 级 timeout）。
     // 注意：JDK 25 起 HttpClient.Builder 已移除 requestTimeout（javap 实证），
     // 等价读超时语义走 HttpRequest.timeout（Java 11 标准 API，每次请求生效）。
-    private final HttpClient httpClient = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(10))
-            .build();
+    private final HttpClient httpClient;
 
     /**
      * 启动校验（R-04）：选定 aliyun 提供商时四项凭证必须非空，否则 fail-fast。
@@ -115,7 +121,7 @@ public class AliyunSmsService implements SmsService {
                     .uri(URI.create(ENDPOINT))
                     .timeout(Duration.ofSeconds(10))
                     .header("Content-Type", "application/json")
-                    .header("Host", "dysmsapi.aliyuncs.com")
+                    // Host 头由 HttpClient 自动设置（restricted header，手动设置抛 IllegalArgumentException）
                     .header("x-acs-action", "SendSms")
                     .header("x-acs-version", "2017-05-25")
                     .header("x-acs-date", date)

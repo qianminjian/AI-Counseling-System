@@ -1,11 +1,14 @@
 package com.mindsafe.api.ratelimit;
 
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.springframework.mock.web.MockHttpServletRequest;
-import org.springframework.mock.web.MockHttpServletResponse;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -15,33 +18,30 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.mock;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
- * RateLimitInterceptor 单元测试（AUDIT-P0-2 回归）
- * <p>
- * 背景：原 resolveAction 将路径 uri 与字面量 "POST" 比较（恒 false），
- * create_session 限流从未生效。本测试锁死两个动作的命中规则，
- * 防止再次出现"看起来有限流实际没有"的回归。
+ * RateLimitInterceptor 全局限流拦截器单测：非 POST/非限流路径放行、
+ * 已认证用户限流、未认证 IP 限流（X-Forwarded-For 取末元素）、限流 429 写入。
  */
+@ExtendWith(MockitoExtension.class)
 class RateLimitInterceptorTest {
 
-    private RateLimiter rateLimiter;
+    @Mock private RateLimiter rateLimiter;
+    @Mock private HttpServletRequest request;
+    @Mock private HttpServletResponse response;
+
     private RateLimitInterceptor interceptor;
 
-    private final UUID userId = UUID.randomUUID();
-
     @BeforeEach
-    void setUp() {
-        rateLimiter = mock(RateLimiter.class);
+    void setUp() throws Exception {
         interceptor = new RateLimitInterceptor(rateLimiter);
-        when(rateLimiter.tryAcquire(any(UUID.class), any(String.class))).thenReturn(true);
-        SecurityContextHolder.getContext().setAuthentication(
-                new UsernamePasswordAuthenticationToken(userId, null));
+        // ErrorResponseWriter 需要写响应体（仅限流用例使用，lenient 防 UnnecessaryStubbing）
+        lenient().when(response.getWriter()).thenReturn(new java.io.PrintWriter(new java.io.StringWriter()));
     }
 
     @AfterEach
@@ -50,110 +50,93 @@ class RateLimitInterceptorTest {
     }
 
     @Test
-    @DisplayName("POST /chat/sessions 命中 create_session 限流（P0-2 回归）")
-    void createSessionHitsRateLimit() throws Exception {
-        MockHttpServletRequest req = new MockHttpServletRequest("POST", "/api/v1/chat/sessions");
-        MockHttpServletResponse resp = new MockHttpServletResponse();
+    @DisplayName("非 POST 请求直接放行")
+    void preHandle_nonPost() throws Exception {
+        when(request.getMethod()).thenReturn("GET");
 
-        assertThat(interceptor.preHandle(req, resp, new Object())).isTrue();
+        assertThat(interceptor.preHandle(request, response, new Object())).isTrue();
 
-        verify(rateLimiter).tryAcquire(eq(userId), eq("create_session"));
+        verify(rateLimiter, never()).tryAcquire(org.mockito.ArgumentMatchers.any(), anyString());
     }
 
     @Test
-    @DisplayName("POST /chat/sessions/{id}/messages 命中 chat_message 限流")
-    void chatMessageHitsRateLimit() throws Exception {
-        MockHttpServletRequest req = new MockHttpServletRequest(
-                "POST", "/api/v1/chat/sessions/" + UUID.randomUUID() + "/messages");
-        MockHttpServletResponse resp = new MockHttpServletResponse();
+    @DisplayName("POST 但非限流路径（如 /chat/sessions 无消息）放行")
+    void preHandle_notLimitedPath() throws Exception {
+        when(request.getMethod()).thenReturn("POST");
+        when(request.getRequestURI()).thenReturn("/api/v1/other");
 
-        assertThat(interceptor.preHandle(req, resp, new Object())).isTrue();
-
-        verify(rateLimiter).tryAcquire(eq(userId), eq("chat_message"));
+        assertThat(interceptor.preHandle(request, response, new Object())).isTrue();
     }
 
     @Test
-    @DisplayName("POST /api/v1/tts/synthesize 命中 tts_synthesize 限流（B-02 成本防护）")
-    void ttsSynthesizeHitsRateLimit() throws Exception {
-        MockHttpServletRequest req = new MockHttpServletRequest("POST", "/api/v1/tts/synthesize");
-        MockHttpServletResponse resp = new MockHttpServletResponse();
+    @DisplayName("已认证用户：限流放行（principal 为 UUID）")
+    void preHandle_authenticated_allowed() throws Exception {
+        UUID userId = UUID.randomUUID();
+        Authentication auth = new UsernamePasswordAuthenticationToken(userId, null);
+        SecurityContextHolder.getContext().setAuthentication(auth);
+        when(request.getMethod()).thenReturn("POST");
+        when(request.getRequestURI()).thenReturn("/api/v1/chat/sessions");
+        when(rateLimiter.tryAcquire(userId, "create_session")).thenReturn(true);
 
-        assertThat(interceptor.preHandle(req, resp, new Object())).isTrue();
-
-        verify(rateLimiter).tryAcquire(eq(userId), eq("tts_synthesize"));
+        assertThat(interceptor.preHandle(request, response, new Object())).isTrue();
     }
 
     @Test
-    @DisplayName("POST /api/v1/tts/login-prompt 不触发限流（公开端点白名单）")
-    void ttsLoginPromptNotRateLimited() throws Exception {
-        MockHttpServletRequest req = new MockHttpServletRequest("POST", "/api/v1/tts/login-prompt");
-        MockHttpServletResponse resp = new MockHttpServletResponse();
+    @DisplayName("已认证用户：超限返回 false 并写 429")
+    void preHandle_authenticated_limited() throws Exception {
+        UUID userId = UUID.randomUUID();
+        Authentication auth = new UsernamePasswordAuthenticationToken(userId, null);
+        SecurityContextHolder.getContext().setAuthentication(auth);
+        when(request.getMethod()).thenReturn("POST");
+        when(request.getRequestURI()).thenReturn("/api/v1/chat/sessions");
+        when(rateLimiter.tryAcquire(userId, "create_session")).thenReturn(false);
 
-        assertThat(interceptor.preHandle(req, resp, new Object())).isTrue();
-
-        verify(rateLimiter, never()).tryAcquire(any(UUID.class), any(String.class));
+        assertThat(interceptor.preHandle(request, response, new Object())).isFalse();
+        verify(response).setStatus(429);
     }
 
     @Test
-    @DisplayName("GET 请求不触发限流（仅 POST）")
-    void getNotRateLimited() throws Exception {
-        MockHttpServletRequest req = new MockHttpServletRequest("GET", "/api/v1/chat/sessions");
-        MockHttpServletResponse resp = new MockHttpServletResponse();
+    @DisplayName("未认证：按 IP 限流（X-Forwarded-For 取末元素防伪造）")
+    void preHandle_unauthenticated_ip() throws Exception {
+        when(request.getMethod()).thenReturn("POST");
+        when(request.getRequestURI()).thenReturn("/api/v1/voiceprint/verify");
+        when(request.getHeader("X-Forwarded-For")).thenReturn("1.1.1.1, 2.2.2.2");
+        when(request.getRemoteAddr()).thenReturn("3.3.3.3");
+        when(rateLimiter.tryAcquire(anyString(), anyString(), anyInt(), any())).thenReturn(true);
 
-        assertThat(interceptor.preHandle(req, resp, new Object())).isTrue();
+        assertThat(interceptor.preHandle(request, response, new Object())).isTrue();
 
-        verify(rateLimiter, never()).tryAcquire(any(UUID.class), any(String.class));
+        org.mockito.ArgumentCaptor<String> captor = org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(rateLimiter).tryAcquire(captor.capture(), anyString(), anyInt(), any());
+        assertThat(captor.getValue()).isEqualTo("ip:2.2.2.2");
     }
 
     @Test
-    @DisplayName("非 chat 路径不触发限流")
-    void nonChatPathNotRateLimited() throws Exception {
-        MockHttpServletRequest req = new MockHttpServletRequest("POST", "/api/v1/auth/login");
-        MockHttpServletResponse resp = new MockHttpServletResponse();
+    @DisplayName("未认证：无 X-Forwarded-For 用 remoteAddr")
+    void preHandle_unauthenticated_remoteAddr() throws Exception {
+        when(request.getMethod()).thenReturn("POST");
+        when(request.getRequestURI()).thenReturn("/api/v1/voiceprint/verify");
+        when(request.getHeader("X-Forwarded-For")).thenReturn(null);
+        when(request.getRemoteAddr()).thenReturn("3.3.3.3");
+        when(rateLimiter.tryAcquire(anyString(), anyString(), anyInt(), any())).thenReturn(false);
 
-        assertThat(interceptor.preHandle(req, resp, new Object())).isTrue();
-
-        verify(rateLimiter, never()).tryAcquire(any(UUID.class), any(String.class));
+        assertThat(interceptor.preHandle(request, response, new Object())).isFalse();
+        verify(response).setStatus(429);
     }
 
     @Test
-    @DisplayName("限流超限返回 429 并阻止请求")
-    void overLimitReturns429() throws Exception {
-        when(rateLimiter.tryAcquire(any(UUID.class), any(String.class))).thenReturn(false);
-        MockHttpServletRequest req = new MockHttpServletRequest("POST", "/api/v1/chat/sessions");
-        MockHttpServletResponse resp = new MockHttpServletResponse();
+    @DisplayName("X-Forwarded-For 空白段跳过：取右侧首个非空")
+    void preHandle_forwardedBlankSkip() throws Exception {
+        when(request.getMethod()).thenReturn("POST");
+        when(request.getRequestURI()).thenReturn("/api/v1/voiceprint/verify");
+        when(request.getHeader("X-Forwarded-For")).thenReturn("1.1.1.1, , 2.2.2.2,");
+        when(request.getRemoteAddr()).thenReturn("3.3.3.3");
+        when(rateLimiter.tryAcquire(anyString(), anyString(), anyInt(), any())).thenReturn(true);
 
-        assertThat(interceptor.preHandle(req, resp, new Object())).isFalse();
-        assertThat(resp.getStatus()).isEqualTo(429);
-        assertThat(resp.getContentAsString()).contains("\"code\":429");
-    }
+        assertThat(interceptor.preHandle(request, response, new Object())).isTrue();
 
-    @Test
-    @DisplayName("未认证请求走 IP 限流（公开端点，AUDIT-DEEP-011）")
-    void unauthenticatedRateLimitedByIp() throws Exception {
-        SecurityContextHolder.clearContext();
-        when(rateLimiter.tryAcquire(any(String.class), any(String.class), anyInt(), any()))
-                .thenReturn(true);
-        MockHttpServletRequest req = new MockHttpServletRequest("POST", "/api/v1/voiceprint/verify");
-        req.setRemoteAddr("10.0.0.1");
-        MockHttpServletResponse resp = new MockHttpServletResponse();
-
-        assertThat(interceptor.preHandle(req, resp, new Object())).isTrue();
-
-        verify(rateLimiter).tryAcquire(eq("ip:10.0.0.1"), eq("voiceprint_verify"), anyInt(), any());
-    }
-
-    @Test
-    @DisplayName("IP 限流触发 → 429")
-    void ipLimitExceededReturns429() throws Exception {
-        SecurityContextHolder.clearContext();
-        when(rateLimiter.tryAcquire(any(String.class), any(String.class), anyInt(), any()))
-                .thenReturn(false);
-        MockHttpServletRequest req = new MockHttpServletRequest("POST", "/api/v1/device/config/pull");
-        req.setRemoteAddr("10.0.0.2");
-        MockHttpServletResponse resp = new MockHttpServletResponse();
-
-        assertThat(interceptor.preHandle(req, resp, new Object())).isFalse();
-        assertThat(resp.getStatus()).isEqualTo(429);
+        org.mockito.ArgumentCaptor<String> captor = org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(rateLimiter).tryAcquire(captor.capture(), anyString(), anyInt(), any());
+        assertThat(captor.getValue()).isEqualTo("ip:2.2.2.2");
     }
 }

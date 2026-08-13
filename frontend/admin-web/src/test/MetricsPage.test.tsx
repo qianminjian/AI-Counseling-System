@@ -41,4 +41,43 @@ describe('MetricsPage 指标看板（ADMIN-P1-07/09）', () => {
     // 占位符 —（无样本）
     expect(screen.getAllByText('—').length).toBeGreaterThan(0)
   })
+
+  it('status 非 success → 该指标显示占位符', async () => {
+    vi.mocked(fetchMetricsQuery).mockResolvedValue({
+      status: 'error',
+      data: null,
+    })
+
+    render(<MetricsPage />)
+
+    await waitFor(() => {
+      expect(screen.getAllByText('—').length).toBeGreaterThan(0)
+    })
+  })
+
+  it('result 空数组 → 占位符（无样本）', async () => {
+    vi.mocked(fetchMetricsQuery).mockResolvedValue({
+      status: 'success',
+      data: { result: [] },
+    })
+
+    render(<MetricsPage />)
+
+    await waitFor(() => {
+      expect(screen.getAllByText('—').length).toBeGreaterThan(0)
+    })
+  })
+
+  it('value 非有限数字 → 占位符（NaN/Infinity 不展示）', async () => {
+    vi.mocked(fetchMetricsQuery).mockResolvedValue({
+      status: 'success',
+      data: { result: [{ metric: { __name__: 'x' }, value: [1700000000, 'NaN'] }] },
+    })
+
+    render(<MetricsPage />)
+
+    await waitFor(() => {
+      expect(screen.getAllByText('—').length).toBeGreaterThan(0)
+    })
+  })
 })

@@ -1,5 +1,6 @@
 package com.mindsafe.service.diary;
 
+import com.baomidou.mybatisplus.core.conditions.Wrapper;
 import com.mindsafe.domain.entity.EmotionDiary;
 import com.mindsafe.domain.mapper.EmotionDiaryMapper;
 import com.mindsafe.service.achievement.BadgeService;
@@ -107,5 +108,31 @@ class EmotionDiaryServiceTest {
         assertThat(info.streak()).isEqualTo(3);
         assertThat(info.total()).isEqualTo(1);
         verify(badgeService).computeStreak(eq(List.of(d1)));
+    }
+
+    @Test
+    @DisplayName("getToday：委托按租户+学生查询今日记录")
+    void getToday() {
+        EmotionDiary diary = new EmotionDiary();
+        when(diaryMapper.selectOne(org.mockito.ArgumentMatchers.any(Wrapper.class))).thenReturn(diary);
+
+        assertThat(service.getToday(tenantId, studentUserId)).isSameAs(diary);
+    }
+
+    @Test
+    @DisplayName("getToday：无记录返回 null")
+    void getToday_missing() {
+        when(diaryMapper.selectOne(org.mockito.ArgumentMatchers.any(Wrapper.class))).thenReturn(null);
+
+        assertThat(service.getToday(tenantId, studentUserId)).isNull();
+    }
+
+    @Test
+    @DisplayName("getHistory：按天数查询倒序历史")
+    void getHistory() {
+        EmotionDiary d1 = new EmotionDiary();
+        when(diaryMapper.selectList(org.mockito.ArgumentMatchers.any(Wrapper.class))).thenReturn(List.of(d1));
+
+        assertThat(service.getHistory(tenantId, studentUserId, 7)).containsExactly(d1);
     }
 }
