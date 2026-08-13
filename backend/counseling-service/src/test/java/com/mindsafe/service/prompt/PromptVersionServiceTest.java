@@ -577,4 +577,133 @@ class TestM7ReviewFlow {
         assertThat(active.getStatus()).isEqualTo(PromptVersion.STATUS_RETIRED);
         assertThat(active.getIsActive()).isFalse();
     }
+
+    @Test
+    @DisplayName("提交审核：版本不存在 → IllegalArgumentException")
+    void submitForReview_missing() {
+        when(promptVersionMapper.selectById(any())).thenReturn(null);
+
+        assertThatThrownBy(() -> service.submitForReview(UUID.randomUUID()))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    @DisplayName("提交审核：非草稿 → IllegalStateException")
+    void submitForReview_nonDraft() {
+        PromptVersion approved = version(PromptVersion.STATUS_APPROVED);
+        when(promptVersionMapper.selectById(approved.getVersionId())).thenReturn(approved);
+
+        assertThatThrownBy(() -> service.submitForReview(approved.getVersionId()))
+                .isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
+    @DisplayName("审核：reviewer 为空 → IllegalArgumentException")
+    void reviewVersion_blankReviewer() {
+        assertThatThrownBy(() -> service.reviewVersion(UUID.randomUUID(), "  "))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    @DisplayName("审核：版本不存在 → IllegalArgumentException")
+    void reviewVersion_missing() {
+        when(promptVersionMapper.selectById(any())).thenReturn(null);
+
+        assertThatThrownBy(() -> service.reviewVersion(UUID.randomUUID(), "reviewer1"))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    @DisplayName("审核：非待审核状态 → IllegalStateException")
+    void reviewVersion_wrongStatus() {
+        PromptVersion draft = version(PromptVersion.STATUS_DRAFT);
+        when(promptVersionMapper.selectById(draft.getVersionId())).thenReturn(draft);
+
+        assertThatThrownBy(() -> service.reviewVersion(draft.getVersionId(), "reviewer1"))
+                .isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
+    @DisplayName("停用：版本不存在静默跳过（不抛）")
+    void deactivateVersion_missing() {
+        when(promptVersionMapper.selectById(any())).thenReturn(null);
+
+        service.deactivateVersion(UUID.randomUUID()); // 不抛即通过
+    }
+
+    @Test
+    @DisplayName("findActiveBaseline：存在返回最近更新基线")
+    void findActiveBaseline_found() {
+        PromptVersion baseline = version(PromptVersion.STATUS_ACTIVE);
+        when(promptVersionMapper.selectList(any())).thenReturn(List.of(baseline));
+
+        PromptVersion result = service.findActiveBaseline("chat.guide", UUID.randomUUID());
+
+        assertThat(result).isSameAs(baseline);
+    }
+
+    @Test
+    @DisplayName("findActiveBaseline：无其他激活版本返回 null")
+    void findActiveBaseline_empty() {
+        when(promptVersionMapper.selectList(any())).thenReturn(List.of());
+
+        assertThat(service.findActiveBaseline("chat.guide", UUID.randomUUID())).isNull();
+    }
+
+    @Test
+    @DisplayName("getVersionById：命中/未命中")
+    void getVersionById() {
+        PromptVersion v = version(PromptVersion.STATUS_DRAFT);
+        when(promptVersionMapper.selectById(v.getVersionId())).thenReturn(v);
+        assertThat(service.getVersionById(v.getVersionId())).isSameAs(v);
+
+        when(promptVersionMapper.selectById(UUID.randomUUID())).thenReturn(null);
+        assertThat(service.getVersionById(UUID.randomUUID())).isNull();
+    }
+
+    @Test
+    @DisplayName("abComparison：无会话返回空分组")
+    void abComparison_empty() {
+        when(sessionMapper.selectList(any())).thenReturn(List.of());
+
+        Map<String, Object> result = service.abComparison(UUID.randomUUID(), "chat.guide");
+
+        assertThat(result.get("totalSessions")).isEqualTo(0);
+        assertThat(result.get("groups")).asList().isEmpty();
+    }
+
+    @Test
+    @DisplayName("abComparison：按 A/B 分组统计评分均值")
+    void abComparison_grouped() {
+        com.mindsafe.domain.entity.CounselingSession s1 = new com.mindsafe.domain.entity.CounselingSession();
+        s1.setSessionId(UUID.randomUUID());
+        s1.setPromptVersion("chat.guide:v3:treatment_a");
+        com.mindsafe.domain.entity.CounselingSession s2 = new com.mindsafe.domain.entity.CounselingSession();
+        s2.setSessionId(UUID.randomUUID());
+        s2.setPromptVersion("chat.guide:v3:control");
+        when(sessionMapper.selectList(any())).thenReturn(List.of(s1, s2));
+
+        com.mindsafe.domain.entity.QualityScore q1 = new com.mindsafe.domain.entity.QualityScore();
+        q1.setSessionId(s1.getSessionId());
+        q1.setEmpathyScore(new java.math.BigDecimal("0.8"));
+        q1.setSafetyCompliance(new java.math.BigDecimal("0.9"));
+        when(qualityScoreMapper.selectList(any())).thenReturn(List.of(q1));
+
+        Map<String, Object> result = service.abComparison(UUID.randomUUID(), "chat.guide");
+
+        assertThat(result.get("totalSessions")).isEqualTo(2);
+        List<?> groups = (List<?>) result.get("groups");
+        assertThat(groups).hasSize(2);
+    }
+
+    @Test
+    @DisplayName("缓存失效：存在 prompt:* keys 时执行 delete")
+    void invalidateCache_withKeys() {
+        java.util.Set<String> keys = java.util.Set.of("prompt:a", "prompt:b");
+        when(PromptVersionServiceTest.redisTemplateMock.keys(anyString())).thenReturn(keys);
+
+        service.invalidateCache();
+
+        verify(PromptVersionServiceTest.redisTemplateMock).delete(keys);
+    }
 }

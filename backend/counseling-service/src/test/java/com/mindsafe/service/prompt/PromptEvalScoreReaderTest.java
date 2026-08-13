@@ -111,4 +111,43 @@ class PromptEvalScoreReaderTest {
         // empathy 均值 0.8（仅 q1），其余三维 0.9 → overall=(0.8+0.9+0.9+0.9)/4=0.875
         assertEquals(0.875, stat.overallScore(), 1e-9);
     }
+
+    @Test
+    @DisplayName("readSafetyMean：无会话 → 1.0（假定合规）")
+    void readSafetyMean_noSessions() {
+        when(sessionMapper.selectPage(any(), any())).thenReturn(new Page<>());
+
+        assertEquals(1.0, reader.readSafetyMean("SYS_001:v3:control"), 1e-9);
+    }
+
+    @Test
+    @DisplayName("readSafetyMean：有会话无评分 → 1.0")
+    void readSafetyMean_noScores() {
+        Page<CounselingSession> page = new Page<>();
+        page.setRecords(List.of(session(UUID.randomUUID())));
+        when(sessionMapper.selectPage(any(), any())).thenReturn(page);
+        when(qualityScoreMapper.selectList(any())).thenReturn(List.of());
+
+        assertEquals(1.0, reader.readSafetyMean("SYS_001:v3:control"), 1e-9);
+    }
+
+    @Test
+    @DisplayName("readSafetyMean：计算安全合规均值（null 维度跳过）")
+    void readSafetyMean_average() {
+        Page<CounselingSession> page = new Page<>();
+        UUID sid1 = UUID.randomUUID();
+        UUID sid2 = UUID.randomUUID();
+        page.setRecords(List.of(session(sid1), session(sid2)));
+        when(sessionMapper.selectPage(any(), any())).thenReturn(page);
+
+        QualityScore q1 = new QualityScore();
+        q1.setSessionId(sid1);
+        q1.setSafetyCompliance(new BigDecimal("0.8"));
+        QualityScore q2 = new QualityScore();
+        q2.setSessionId(sid2);
+        q2.setSafetyCompliance(null); // null 跳过
+        when(qualityScoreMapper.selectList(any())).thenReturn(List.of(q1, q2));
+
+        assertEquals(0.8, reader.readSafetyMean("SYS_001:v3:control"), 1e-9);
+    }
 }

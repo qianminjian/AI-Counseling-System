@@ -1,6 +1,9 @@
 package com.mindsafe.service.admin;
 
+import com.mindsafe.common.exception.BizException;
+import com.mindsafe.domain.entity.TrialInviteCode;
 import com.mindsafe.domain.entity.User;
+import com.mindsafe.domain.entity.AuditLog;
 import com.mindsafe.domain.mapper.AuditLogMapper;
 import com.mindsafe.domain.mapper.TrialInviteCodeMapper;
 import com.mindsafe.domain.mapper.UserMapper;
@@ -21,9 +24,11 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -168,5 +173,109 @@ class AdminServiceTest {
         assertThat(r.skipped()).isZero();
         List<User> users = insertedUsers();
         assertThat(users).singleElement().extracting(User::getPseudonym).isEqualTo("小明");
+    }
+
+    @Test
+    @DisplayName("createInviteCode：生成唯一码 + 默认状态/额度并落库")
+    void createInviteCode() {
+        when(inviteCodeMapper.selectCount(any())).thenReturn(0L);
+
+        TrialInviteCode code = service.createInviteCode(tenantId, adminUserId, 5, 7);
+
+        assertThat(code.getTenantId()).isEqualTo(tenantId);
+        assertThat(code.getMaxUses()).isEqualTo(5);
+        assertThat(code.getUsedCount()).isZero();
+        assertThat(code.getStatus()).isEqualTo(TrialInviteCode.STATUS_ACTIVE);
+        assertThat(code.getExpiresAt()).isAfter(java.time.Instant.now());
+        assertThat(code.getCode()).hasSize(8);
+        verify(inviteCodeMapper).insert(code);
+    }
+
+    @Test
+    @DisplayName("createInviteCode：唯一码冲突 10 次后抛 INTERNAL_ERROR")
+    void createInviteCode_collision() {
+        when(inviteCodeMapper.selectCount(any())).thenReturn(1L);
+
+        assertThatThrownBy(() -> service.createInviteCode(tenantId, adminUserId, 5, 7))
+                .isInstanceOf(BizException.class);
+    }
+
+    @Test
+    @DisplayName("batchCreateCodes：批量一人一码 + 批次审计")
+    void batchCreateCodes() {
+        when(inviteCodeMapper.selectCount(any())).thenReturn(0L);
+
+        AdminService.BatchResult result = service.batchCreateCodes(tenantId, adminUserId, 3, 7);
+
+        assertThat(result.count()).isEqualTo(3);
+        assertThat(result.codes()).hasSize(3);
+        assertThat(result.batchId()).startsWith("BATCH-");
+        verify(inviteCodeMapper, times(3)).insert(org.mockito.ArgumentMatchers.any(TrialInviteCode.class));
+        verify(auditLogService).log(eq(tenantId), eq(adminUserId), eq("BATCH_INVITE_CODES"),
+                eq("invite_code_batch"), eq(null), org.mockito.ArgumentMatchers.contains("3个邀请码"));
+    }
+
+    @Test
+    @DisplayName("listInviteCodes：按租户过滤倒序")
+    void listInviteCodes() {
+        when(inviteCodeMapper.selectList(any())).thenReturn(List.of(new TrialInviteCode()));
+
+        List<TrialInviteCode> result = service.listInviteCodes(tenantId);
+
+        assertThat(result).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("deactivateInviteCode：命中后置 disabled 更新")
+    void deactivateInviteCode() {
+        TrialInviteCode code = new TrialInviteCode();
+        code.setCodeId(java.util.UUID.randomUUID());
+        when(inviteCodeMapper.selectOne(any())).thenReturn(code);
+
+        service.deactivateInviteCode(tenantId, code.getCodeId());
+
+        assertThat(code.getStatus()).isEqualTo("disabled");
+        verify(inviteCodeMapper).updateById(code);
+    }
+
+    @Test
+    @DisplayName("deactivateInviteCode：不存在抛 RESOURCE_NOT_FOUND")
+    void deactivateInviteCode_notFound() {
+        when(inviteCodeMapper.selectOne(any())).thenReturn(null);
+
+        assertThatThrownBy(() -> service.deactivateInviteCode(tenantId, java.util.UUID.randomUUID()))
+                .isInstanceOf(BizException.class);
+    }
+
+    @Test
+    @DisplayName("deleteInviteCode：按租户+ID 删除")
+    void deleteInviteCode() {
+        service.deleteInviteCode(tenantId, java.util.UUID.randomUUID());
+
+        verify(inviteCodeMapper).delete(any());
+    }
+
+    @Test
+    @DisplayName("getAuditLogs：带 action 过滤 + limit 截断")
+    void getAuditLogs_withAction() {
+        com.baomidou.mybatisplus.extension.plugins.pagination.Page<AuditLog> page = new com.baomidou.mybatisplus.extension.plugins.pagination.Page<>(1, 5, false);
+        page.setRecords(List.of(new AuditLog()));
+        when(auditLogMapper.selectPage(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any())).thenReturn(page);
+
+        List<AuditLog> result = service.getAuditLogs(tenantId, "RESET_PASSWORD", 5);
+
+        assertThat(result).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("getAuditLogs：无 action 查全部")
+    void getAuditLogs_all() {
+        com.baomidou.mybatisplus.extension.plugins.pagination.Page<AuditLog> page = new com.baomidou.mybatisplus.extension.plugins.pagination.Page<>(1, 10, false);
+        page.setRecords(List.of(new AuditLog(), new AuditLog()));
+        when(auditLogMapper.selectPage(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any())).thenReturn(page);
+
+        List<AuditLog> result = service.getAuditLogs(tenantId, "  ", 10);
+
+        assertThat(result).hasSize(2);
     }
 }

@@ -11,6 +11,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
+import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -92,5 +93,54 @@ class SysConfigServiceTest {
         assertThatThrownBy(() -> service.update("ghost.key", "x", "why", "ops"))
                 .isInstanceOf(BizException.class)
                 .satisfies(e -> assertThat(((BizException) e).getCode()).isEqualTo(ErrorCode.PARAM_INVALID.code()));
+    }
+
+    @Test
+    @DisplayName("listByDomain：指定域过滤 + 排序")
+    void listByDomain_filtered() {
+        SysConfig c = new SysConfig();
+        when(configMapper.selectList(any(Wrapper.class))).thenReturn(List.of(c));
+
+        List<SysConfig> result = service.listByDomain("chat");
+
+        assertThat(result).containsExactly(c);
+    }
+
+    @Test
+    @DisplayName("listByDomain：空域查全部（eq 条件关闭）")
+    void listByDomain_all() {
+        when(configMapper.selectList(any(Wrapper.class))).thenReturn(List.of());
+
+        assertThat(service.listByDomain(null)).isEmpty();
+        assertThat(service.listByDomain("  ")).isEmpty();
+    }
+
+    @Test
+    @DisplayName("get：命中返回配置")
+    void get_hit() {
+        SysConfig c = new SysConfig();
+        c.setConfigKey("chat.maxTurns");
+        when(configMapper.selectOne(any(Wrapper.class))).thenReturn(c);
+
+        assertThat(service.get("chat.maxTurns")).isSameAs(c);
+    }
+
+    @Test
+    @DisplayName("get：不存在抛 PARAM_INVALID")
+    void get_missing() {
+        when(configMapper.selectOne(any(Wrapper.class))).thenReturn(null);
+
+        assertThatThrownBy(() -> service.get("nope"))
+                .isInstanceOf(BizException.class)
+                .satisfies(e -> assertThat(((BizException) e).getCode()).isEqualTo(ErrorCode.PARAM_INVALID.code()));
+    }
+
+    @Test
+    @DisplayName("history：limit 收敛到 1..200")
+    void history_limitClamp() {
+        when(historyMapper.selectList(any(Wrapper.class))).thenReturn(List.of(new SysConfigHistory()));
+
+        assertThat(service.history("k", 0)).hasSize(1);
+        assertThat(service.history("k", 999)).hasSize(1);
     }
 }
