@@ -18,6 +18,14 @@ export default defineConfig({
     globals: true,
     setupFiles: ['./src/test/setup.ts'],
     include: ['src/**/*.{test,spec}.{ts,tsx}'],
+    // vitest 4：jsdom teardown 与 react-dom scheduler 竞态（测试全过后残留 Immediate
+    // 回调访问已销毁的 window 报 ReferenceError——断言全绿、纯环境噪音），过滤该已知噪音
+    onUnhandledError: (error) => {
+      const msg = error instanceof Error ? error.message : String(error)
+      const stack = error instanceof Error ? (error.stack ?? '') : ''
+      if (msg.includes('window is not defined') && stack.includes('react-dom')) return true
+      return false
+    },
     coverage: {
       exclude: ['src/main.tsx', 'src/vite-env.d.ts', 'dist/**', 'vitest.config.js', 'vite.config.js', 'src/api.ts'],
       thresholds: {

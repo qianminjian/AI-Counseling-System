@@ -166,6 +166,34 @@ if [ "$LOCAL" != "$REMOTE" ]; then
 fi
 echo "✅ Git 状态正常"
 
+# ===== CI 门禁检查（DOC-063：CI 全绿才可部署） =====
+# 2026-08-13 教训：CI 系统性全红 4+ 天无人发现，发布时才集中修复（5 轮 push）——
+# 部署前置必须校验最近一次 CI run 结论与 headSha，而非依赖人工记忆。
+# 文档类提交不触发 CI 导致 headSha 不一致时，可用 SKIP_CI_GATE=1 显式跳过（同 SKIP_SMOKE 先例）。
+if [ "${SKIP_CI_GATE:-0}" != "1" ] && { command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; }; then
+  CI_RUN=$(timeout 10 gh run list --branch main --limit 1 --json databaseId,conclusion,status,headSha --jq '.[0]' 2>/dev/null || true)
+  if [ -n "$CI_RUN" ] && [ -n "$REMOTE" ]; then
+    CI_CONCLUSION=$(echo "$CI_RUN" | sed -n 's/.*"conclusion": *"\([^"]*\)".*/\1/p')
+    CI_HEAD=$(echo "$CI_RUN" | sed -n 's/.*"headSha": *"\([^"]*\)".*/\1/p')
+    if [ "$CI_CONCLUSION" != "success" ]; then
+      echo "❌ CI 门禁未通过（最近 run conclusion=$CI_CONCLUSION）——请先修复 CI 再部署（DOC-063）"
+      CI_RUN_ID=$(echo "$CI_RUN" | sed -n 's/.*"databaseId": *\([0-9]*\).*/\1/p')
+      echo "   查看: gh run view $CI_RUN_ID"
+      exit 1
+    fi
+    if [ "$CI_HEAD" != "$REMOTE" ]; then
+      echo "❌ 最近 CI run 的 headSha(${CI_HEAD:0:8}) 与 origin/main(${REMOTE:0:8}) 不一致"
+      echo "   推送后 CI 未完成或未触发，请等 CI 全绿再部署"
+      exit 1
+    fi
+    echo "✅ CI 门禁通过（run conclusion=success，headSha=${CI_HEAD:0:8}）"
+  else
+    echo "⚠️ gh 查询 CI 失败，跳过门禁检查（请人工确认 CI 全绿）"
+  fi
+else
+  echo "⚠️ 未安装/未认证 gh CLI，跳过 CI 门禁检查（请人工确认 CI 全绿）"
+fi
+
 # ===== Flyway 迁移脚本版本号唯一性校验 =====
 MIGRATION_DIR="$PROJECT_ROOT/backend/counseling-app/src/main/resources/db/migration"
 if [ -d "$MIGRATION_DIR" ]; then
