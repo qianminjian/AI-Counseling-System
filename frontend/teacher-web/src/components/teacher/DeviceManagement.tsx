@@ -19,6 +19,9 @@ import {
 } from '../../api'
 
 const POLL_INTERVAL_MS = 3000
+// M-1（doing/98 code-review）：UPLOADED 停留等待 enroll（B-03 语义），轮询 5 分钟未完成即终止提示，
+// 避免设备固件未对接 enroll 时任务静默卡在“处理中”直至 Redis TTL 过期
+const VOICEPRINT_POLL_TIMEOUT_MS = 5 * 60 * 1000
 
 /** 声纹任务阶段文案（对齐后端 DeviceVoiceprintService 阶段常量） */
 const PHASE_LABEL: Record<string, string> = {
@@ -118,8 +121,15 @@ export default function DeviceManagement() {
 
   useEffect(() => {
     if (!vpPolling || !vpTask) return
+    // M-1：轮询起点锚定（每次 task 变更重置），超时终止
+    const startedAt = Date.now()
     const check = async (): Promise<void> => {
       try {
+        if (Date.now() - startedAt > VOICEPRINT_POLL_TIMEOUT_MS) {
+          setVpPolling(false)
+          message.warning('设备确认超时（5 分钟），请检查设备端或重试')
+          return
+        }
         const task = await getVoiceprintTask(vpTask.deviceCode, vpTask.taskId)
         setVpTask(task)
         if (task.phase === 'COMPLETED' || task.phase === 'FAILED') {

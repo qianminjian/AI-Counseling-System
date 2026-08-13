@@ -38,7 +38,12 @@ function getLoginPersona(): string {
  * @param {(result: {matched: boolean, userId?: string, pseudonym?: string}) => void} props.onComplete
  * @param {() => void} props.onCancel - 取消/返回
  */
-export default function VoiceLoginOverlay({ mode = 'verify', onComplete, onCancel }) {
+// F-03（doing/98）：显式 props 类型（原解构隐式 any）
+export default function VoiceLoginOverlay({ mode = 'verify', onComplete, onCancel }: {
+  mode?: 'verify' | 'enroll'
+  onComplete: (result: { matched: boolean; userId?: string; pseudonym?: string }) => void
+  onCancel: () => void
+}) {
   const scripts = getConfigValue(`guideScripts.${mode}`, VP_GUIDE_SCRIPTS[mode] || VP_GUIDE_SCRIPTS.verify)
   const [phase, setPhase] = useState('intro') // intro | speaking | listening | processing | success | fail
   const [stepIndex, setStepIndex] = useState(0)

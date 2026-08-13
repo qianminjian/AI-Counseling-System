@@ -99,7 +99,7 @@ describe('EmotionSelect', () => {
         emotionTag: 'happy',
       });
     });
-    expect(mockApi).toHaveBeenCalledWith('/chat/sessions', expect.objectContaining({ method: 'POST' }));
+    expect(mockApi).toHaveBeenCalledWith('/api/v1/chat/sessions', expect.objectContaining({ method: 'POST' }));
   });
 
   it('创建会话失败显示错误信息', async () => {

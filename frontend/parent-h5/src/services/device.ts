@@ -4,6 +4,7 @@
  * 扫码入口页（/p/:v/:deviceCode）为匿名可查端点（info/status），绑定类端点需登录态。
  */
 import { parentRequest, tocRequest } from './request'
+import { apiPath } from './endpoints'
 
 // ========== 设备 API ==========
 
@@ -39,17 +40,17 @@ export interface BindResult {
 
 /** 扫码入口自检分流（匿名） */
 export function getDeviceInfo(deviceCode: string) {
-  return parentRequest<DeviceInfo>(`/device/${deviceCode}/info`, { method: 'GET' })
+  return parentRequest<DeviceInfo>(apiPath('deviceInfo', { deviceCode }), { method: 'GET' })
 }
 
 /** 回连检查轮询（匿名，3s 间隔） */
 export function getDeviceStatus(deviceCode: string) {
-  return parentRequest<DeviceStatus>(`/device/${deviceCode}/status`, { method: 'GET' })
+  return parentRequest<DeviceStatus>(apiPath('deviceStatus', { deviceCode }), { method: 'GET' })
 }
 
 /** 生成绑定验证码会话（登录态，触发设备语音播报） */
 export function createBindCode(deviceCode: string) {
-  return parentRequest<BindCodeResult>(`/device/${deviceCode}/bind-code`, { method: 'POST' })
+  return parentRequest<BindCodeResult>(apiPath('deviceBindCode', { deviceCode }), { method: 'POST' })
 }
 
 /** 绑定设备（登录态，归属 + 验证码双因子） */
@@ -57,7 +58,7 @@ export function bindDevice(
   deviceCode: string,
   data: { bindType: string; bindTargetId: string; code: string }
 ) {
-  return parentRequest<BindResult>(`/device/${deviceCode}/bind`, { method: 'POST', data })
+  return parentRequest<BindResult>(apiPath('deviceBind', { deviceCode }), { method: 'POST', data })
 }
 
 // ========== 家庭登录上下文适配器（AD-008，2026-08-11） ==========
@@ -75,24 +76,24 @@ export interface TocDeviceItem {
 
 /** 家庭设备列表（本人账号 FAMILY 绑定） */
 export function listTocDevices() {
-  return tocRequest<TocDeviceItem[]>('/toc/devices', { method: 'GET' })
+  return tocRequest<TocDeviceItem[]>(apiPath('tocDevices'), { method: 'GET' })
 }
 
 /** 发起家庭绑定验证码会话（触发设备语音播报） */
 export function createTocBindCode(deviceCode: string) {
   return tocRequest<{ deviceCode: string; code: string; expiresAt: string }>(
-    `/toc/devices/${deviceCode}/bind-code`, { method: 'POST' })
+    apiPath('tocDeviceBindCode', { deviceCode }), { method: 'POST' })
 }
 
 /** 家庭绑定：验证码 + 可选孩子档案 */
 export function tocBindDevice(deviceCode: string, body: { code: string; profileId?: string }) {
   return tocRequest<{ deviceCode: string; status: string; boundAt: string }>(
-    `/toc/devices/${deviceCode}/bind`, { method: 'POST', data: body })
+    apiPath('tocDeviceBind', { deviceCode }), { method: 'POST', data: body })
 }
 
 /** 解绑 */
 export function tocUnbindDevice(deviceCode: string) {
-  return tocRequest<Record<string, unknown>>(`/toc/devices/${deviceCode}/unbind`, { method: 'POST' })
+  return tocRequest<Record<string, unknown>>(apiPath('tocDeviceUnbind', { deviceCode }), { method: 'POST' })
 }
 
 // ========== 远程管理偏好 API（TOC-006） ==========
@@ -106,10 +107,10 @@ export interface TocDevicePreferences {
 
 /** 查询设备偏好 */
 export function getTocPreferences(deviceCode: string) {
-  return tocRequest<TocDevicePreferences>(`/toc/devices/${deviceCode}/preferences`, { method: 'GET' })
+  return tocRequest<TocDevicePreferences>(apiPath('tocDevicePreferences', { deviceCode }), { method: 'GET' })
 }
 
 /** 设置设备偏好（音量/音色/对话偏好，设备端配置拉取时下发） */
 export function setTocPreferences(deviceCode: string, body: Partial<TocDevicePreferences>) {
-  return tocRequest<TocDevicePreferences>(`/toc/devices/${deviceCode}/preferences`, { method: 'PUT', data: body })
+  return tocRequest<TocDevicePreferences>(apiPath('updateTocDevicePreferences', { deviceCode }), { method: 'PUT', data: body })
 }

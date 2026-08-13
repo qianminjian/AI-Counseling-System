@@ -264,7 +264,7 @@ describe('useChatSession（UX-006，design/17 §chat/hooks）', () => {
     })
 
     expect(mockApi).toHaveBeenCalledWith(
-      '/sessions/sess-1/close',
+      '/api/v1/sessions/sess-1/close',
       expect.objectContaining({ method: 'POST', body: expect.stringContaining('"rating":5') }),
     )
     expect(onClosed).toHaveBeenCalled()
@@ -279,7 +279,7 @@ describe('useChatSession（UX-006，design/17 §chat/hooks）', () => {
     })
 
     expect(mockApi).toHaveBeenCalledTimes(1)
-    expect(mockApi).toHaveBeenCalledWith('/sessions/sess-1/close', expect.objectContaining({ method: 'POST' }))
+    expect(mockApi).toHaveBeenCalledWith('/api/v1/sessions/sess-1/close', expect.objectContaining({ method: 'POST' }))
     expect(onClosed).toHaveBeenCalled()
   })
 })

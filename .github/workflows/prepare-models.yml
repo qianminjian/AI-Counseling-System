@@ -3,7 +3,8 @@
 #       frontend/student-h5/public/models/，生成 MANIFEST.sha256 并做完整性冒烟。
 #       任何步骤失败即红色门禁。
 # 说明：
-# - models/ 已 gitignore 不入仓（deploy.sh rsync 固定 --exclude 'models/' 保护），模型由服务器侧维护；
+# - models/ 已 gitignore 不入仓；模型随 dist 上传（deploy.sh 不再 --exclude 'models/'，DA-06 反转，2026-08-13 doing/98 D-03 注释修正），
+#   发布前置由 deploy.sh 执行 prepare-models.sh --verify fail-closed 校验，缺模型即红阻断；
 #   真实环境投放：ssh 到服务器执行 deploy/scripts/prepare-models.sh（或本地下载后手动 rsync，见 DEPLOY-GUIDE §模型投放）
 # - 本 workflow 供人工先行下载/校验（runner 产物用于验证与缓存，实际投放以服务器侧为准，DOC-063 取消 CD 后无自动投放）
 # - 下载走 actions/cache 缓存（脚本未变更则命中，prepare-models.sh 幂等跳过）

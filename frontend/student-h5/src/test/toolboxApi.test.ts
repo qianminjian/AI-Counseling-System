@@ -3,12 +3,12 @@
  *
  * 契约：
  * - fetchToolboxTools：GET /toolbox（后端按年级过滤）
- * - fetchSosTools：GET /toolbox/sos（断网可开目标态，接口层不阻塞）
  * - recordMoodCheck：POST /toolbox/mood-check（toolId/preMood/postMood）
  * - reportSosEvent：SOS 打开上报为 fire-and-forget——任何失败（含断网）不得抛出（design/36 §3.4 不阻塞界面）
+ * F-05（doing/98）：fetchSosTools 已删除（SOS 目标态工具无生产消费，SosPanel 纯静态三段式）
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { fetchToolboxTools, fetchSosTools, recordMoodCheck, reportSosEvent } from '../api'
+import { fetchToolboxTools, recordMoodCheck, reportSosEvent } from '../api'
 
 function mockJson(data: unknown, success = true) {
   return Promise.resolve({
@@ -29,12 +29,6 @@ describe('api 工具箱段', () => {
     const result = await fetchToolboxTools()
     expect(fetchSpy.mock.calls[0][0]).toBe('/api/v1/toolbox')
     expect(result).toEqual(tools)
-  })
-
-  it('fetchSosTools 命中 GET /toolbox/sos', async () => {
-    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockReturnValue(mockJson([]))
-    await fetchSosTools()
-    expect(fetchSpy.mock.calls[0][0]).toBe('/api/v1/toolbox/sos')
   })
 
   it('recordMoodCheck 以 toolId/preMood/postMood 提交 POST /toolbox/mood-check', async () => {

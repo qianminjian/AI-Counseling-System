@@ -4,8 +4,6 @@ import com.mindsafe.service.knowledge.HybridRetrievalService;
 import com.mindsafe.service.knowledge.HybridRetrievalService.*;
 import com.mindsafe.service.memory.MemoryRiskCorrelator;
 import com.mindsafe.service.memory.MemoryRiskCorrelator.*;
-import com.mindsafe.service.profile.ProfileEffectivenessTracker;
-import com.mindsafe.service.profile.ProfileEffectivenessTracker.*;
 import com.mindsafe.service.prompt.PromptEvalGovernance;
 import com.mindsafe.service.prompt.PromptEvalGovernance.*;
 import com.mindsafe.service.voice.TrendAnomalySignaler;
@@ -117,81 +115,6 @@ class P2RemainingBatchTest {
         void underperforming() {
             assertThat(gov.isSegmentUnderperforming(0.6, 0.8)).isTrue();
             assertThat(gov.isSegmentUnderperforming(0.75, 0.8)).isFalse();
-        }
-    }
-
-    // ==================== PROF-024 画像效果回收 ====================
-
-    @Nested
-    @DisplayName("PROF-024 画像效果回收")
-    class PROF024 {
-
-        private final ProfileEffectivenessTracker tracker = new ProfileEffectivenessTracker();
-
-        @Test
-        @DisplayName("有画像 vs 无画像对比")
-        void comparison() {
-            List<Double> with = List.of(0.8, 0.75, 0.82, 0.79, 0.81, 0.77, 0.83, 0.80, 0.78, 0.84);
-            List<Double> without = List.of(0.6, 0.65, 0.62, 0.58, 0.63, 0.61, 0.64, 0.59, 0.66, 0.60);
-            EffectivenessComparison c = tracker.compare(with, without);
-            assertThat(c.sufficientSample()).isTrue();
-            assertThat(c.lift()).isGreaterThan(0.1);
-            assertThat(c.significant()).isTrue();
-        }
-
-        @Test
-        @DisplayName("样本不足→不显著")
-        void insufficientSample() {
-            EffectivenessComparison c = tracker.compare(List.of(0.8, 0.9), List.of(0.6));
-            assertThat(c.sufficientSample()).isFalse();
-            assertThat(c.significant()).isFalse();
-        }
-
-        @Test
-        @DisplayName("无效维度降权")
-        void decayDimension() {
-            CalibrationResult r = tracker.calibrateDimension("introversion", 0.8, 20, 3);
-            assertThat(r.action()).isEqualTo("DECAY");
-            assertThat(r.newWeight()).isLessThan(0.8);
-        }
-
-        @Test
-        @DisplayName("有效维度增权")
-        void boostDimension() {
-            CalibrationResult r = tracker.calibrateDimension("interests", 0.6, 20, 18);
-            assertThat(r.action()).isEqualTo("BOOST");
-            assertThat(r.newWeight()).isGreaterThan(0.6);
-        }
-
-        @Test
-        @DisplayName("量表冲突校准")
-        void scaleConflict() {
-            CalibrationResult r = tracker.calibrateWithScale(0.3, 0.8, 0.5);
-            assertThat(r.action()).isEqualTo("SCALE_CALIBRATE");
-            assertThat(r.newWeight()).isGreaterThan(0.3); // 向量表方向修正
-        }
-
-        @Test
-        @DisplayName("量表无冲突")
-        void noConflict() {
-            CalibrationResult r = tracker.calibrateWithScale(0.5, 0.6, 0.7);
-            assertThat(r.action()).isEqualTo("NO_CONFLICT");
-        }
-
-        @Test
-        @DisplayName("教师脱敏摘要：HIGH 不可见")
-        void teacherSummaryHigh() {
-            SummaryItem item = tracker.buildTeacherSummary("trauma", "具体创伤描述...",
-                    SensitivityLevel.HIGH);
-            assertThat(item.visibleToTeacher()).isFalse();
-            assertThat(item.displayText()).isEqualTo("[已脱敏]");
-        }
-
-        @Test
-        @DisplayName("教师订正置信度 = 0.9")
-        void teacherConfidence() {
-            assertThat(tracker.teacherCorrectionConfidence("t1", "family", "近期家庭变故"))
-                    .isEqualTo(0.9);
         }
     }
 

@@ -2,7 +2,6 @@ package com.mindsafe.service.conversation;
 
 import com.mindsafe.ai.orchestrator.EmotionOrchestrationEvaluator;
 import com.mindsafe.domain.entity.RiskEvent;
-import com.mindsafe.service.profile.ProfileEffectivenessTracker;
 import com.mindsafe.service.risk.RiskEventWriter;
 import com.mindsafe.service.voice.TrendAnomalySignaler;
 import com.mindsafe.service.voice.VoiceEmotionTrendAnalyzer;
@@ -44,7 +43,6 @@ class SessionEndAnalyticsServiceTest {
     @Mock private VoiceEmotionTrendAnalyzer trendAnalyzer;
     @Mock private TrendAnomalySignaler anomalySignaler;
     @Mock private EmotionOrchestrationEvaluator orchestrationEvaluator;
-    @Mock private ProfileEffectivenessTracker effectivenessTracker;
     @Mock private RiskEventWriter riskEventWriter;
 
     private SessionEndAnalyticsService service;
@@ -55,7 +53,7 @@ class SessionEndAnalyticsServiceTest {
     @BeforeEach
     void setUp() {
         service = new SessionEndAnalyticsService(
-                trendAnalyzer, anomalySignaler, orchestrationEvaluator, effectivenessTracker,
+                trendAnalyzer, anomalySignaler, orchestrationEvaluator,
                 riskEventWriter);
     }
 

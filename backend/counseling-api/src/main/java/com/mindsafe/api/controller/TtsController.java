@@ -4,7 +4,6 @@ import com.mindsafe.ai.voice.TtsService;
 import com.mindsafe.api.security.JwtAuthenticationFilter.TenantContext;
 import com.mindsafe.common.dto.ApiResponse;
 import com.mindsafe.service.tts.VoiceDegradationPolicy;
-import com.mindsafe.service.tts.VoicePersonaMatcher;
 import com.mindsafe.service.voice.VoicePersonaResolver;
 import com.mindsafe.service.voice.VoiceRenderProfile;
 import org.slf4j.Logger;
@@ -27,7 +26,7 @@ import java.util.UUID;
  * TMATCH-001：persona 未指定时由 {@link VoicePersonaResolver} 按画像自动匹配，
  * 情绪同时驱动 prosody 基调（非仅 instruct）。
  * TTSFX-002：风险场景由 {@link VoiceDegradationPolicy} 决定语音输出模式（S1 预合成/S0 静默）。
- * TMATCH-002：安全/危机场景由 {@link VoicePersonaMatcher} 锁定稳定基调。
+ * B-02（doing/98）：TMATCH-002 音色匹配器已删除（死代码，安全/危机基调锁定由 VoiceDegradationPolicy 承担）。
  */
 @RestController
 @RequestMapping("/api/v1/tts")
@@ -41,14 +40,12 @@ public class TtsController {
     private final TtsService ttsService;
     private final VoicePersonaResolver personaResolver;
     private final VoiceDegradationPolicy degradationPolicy;
-    private final VoicePersonaMatcher personaMatcher;
 
     public TtsController(TtsService ttsService, VoicePersonaResolver personaResolver,
-                         VoiceDegradationPolicy degradationPolicy, VoicePersonaMatcher personaMatcher) {
+                         VoiceDegradationPolicy degradationPolicy) {
         this.ttsService = ttsService;
         this.personaResolver = personaResolver;
         this.degradationPolicy = degradationPolicy;
-        this.personaMatcher = personaMatcher;
     }
 
     /**

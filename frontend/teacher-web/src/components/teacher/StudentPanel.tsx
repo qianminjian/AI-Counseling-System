@@ -187,7 +187,8 @@ export default function StudentPanel() {
   const [students, setStudents] = useState<StudentVO[]>([])
   const [highRisk, setHighRisk] = useState<HighRiskStudentVO[]>([])
   const [loading, setLoading] = useState(true)
-  const [selectedStudent, setSelectedStudent] = useState(null)
+  // F-04：显式泛型（学生 ID；原 useState(null) 推断 any）
+  const [selectedStudent, setSelectedStudent] = useState<string | null>(null)
   const [gradeCode, setGradeCode] = useState<string>()   // 年级筛选
   const [classCode, setClassCode] = useState<string>()   // 班级筛选
   const [keyword, setKeyword] = useState('')             // 昵称搜索

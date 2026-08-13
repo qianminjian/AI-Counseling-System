@@ -46,8 +46,8 @@ class TtsControllerTest {
         ttsService = mock(TtsService.class);
         personaResolver = mock(VoicePersonaResolver.class);
         degradationPolicy = mock(VoiceDegradationPolicy.class);
-        // personaMatcher 测试路径未消费，传 null
-        controller = new TtsController(ttsService, personaResolver, degradationPolicy, null);
+        // B-02（doing/98）：personaMatcher 已删除，构造器 3 参
+        controller = new TtsController(ttsService, personaResolver, degradationPolicy);
     }
 
     private Authentication auth() {

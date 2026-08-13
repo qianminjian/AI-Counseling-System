@@ -33,8 +33,9 @@ describe('RelaxationExercises', () => {
     vi.useFakeTimers()
     mockApi.mockReset()
     mockApi.mockImplementation((url: string) => {
-      if (url === '/relaxation/exercises') return Promise.resolve(EXERCISES)
-      if (url === '/relaxation/sessions/today') return Promise.resolve({ count: 2 })
+      // F-01（doing/98）：组件已改 fillPath 消费常量表（全路径），mock 同步
+      if (url === '/api/v1/relaxation/exercises') return Promise.resolve(EXERCISES)
+      if (url === '/api/v1/relaxation/sessions/today') return Promise.resolve({ count: 2 })
       return Promise.resolve({})
     })
   })
@@ -65,8 +66,8 @@ describe('RelaxationExercises', () => {
   it('今日计数为 0 时不显示', async () => {
     vi.useRealTimers()
     mockApi.mockImplementation((url: string) => {
-      if (url === '/relaxation/exercises') return Promise.resolve(EXERCISES)
-      if (url === '/relaxation/sessions/today') return Promise.resolve({ count: 0 })
+      if (url === '/api/v1/relaxation/exercises') return Promise.resolve(EXERCISES)
+      if (url === '/api/v1/relaxation/sessions/today') return Promise.resolve({ count: 0 })
       return Promise.resolve({})
     })
     render(<RelaxationExercises onBack={vi.fn()} />)
@@ -122,7 +123,7 @@ describe('RelaxationExercises', () => {
     fireEvent.click(screen.getByText('完成'))
     expect(screen.getByText('放松一下 🌿')).toBeTruthy()
     // 记录完成
-    expect(mockApi).toHaveBeenCalledWith('/relaxation/sessions', expect.objectContaining({ method: 'POST' }))
+    expect(mockApi).toHaveBeenCalledWith('/api/v1/relaxation/sessions', expect.objectContaining({ method: 'POST' }))
   })
 
   it('提前结束回到列表', async () => {

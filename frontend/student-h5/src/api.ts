@@ -355,11 +355,6 @@ export function fetchToolboxTools(): Promise<ToolboxTool[]> {
   return api(ENDPOINTS.toolboxTools.path)
 }
 
-/** 获取 SOS 场景目标态工具（断网时界面仍可静态打开，接口失败由调用方兜底） */
-export function fetchSosTools(): Promise<ToolboxTool[]> {
-  return api(ENDPOINTS.sosTools.path)
-}
-
 /** 记录练习前后心情（后端判定效果，恶化时 needsAttention=true） */
 export function recordMoodCheck(toolId: string, preMood: number, postMood: number): Promise<MoodCheckResult> {
   return api(ENDPOINTS.moodCheck.path, {

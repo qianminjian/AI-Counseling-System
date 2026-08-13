@@ -76,6 +76,13 @@ export default function DraggableVoiceButton({
     return defaultPosition()
   })
   const [dragging, setDragging] = useState(false)
+  // F-14（doing/98）：viewport 宽度 state 化（resize 同步；渲染期不再直读 window）
+  const [viewportWidth, setViewportWidth] = useState(() => (typeof window !== 'undefined' ? window.innerWidth : 375))
+  useEffect(() => {
+    const onResize = () => setViewportWidth(window.innerWidth)
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
 
   const startPosRef = useRef<Position>({ x: 0, y: 0 })   // pointer 按下时屏幕坐标
   const startBtnPosRef = useRef<Position>({ x: 0, y: 0 }) // 按下时按钮位置
@@ -186,9 +193,10 @@ export default function DraggableVoiceButton({
           : 'bg-white/70 shadow-lg ring-1 ring-white/50'}`}
       />
       {/* 内容（BoBoPet）：任意位置摆放后，把所在半屏告知子组件用于气泡展开方向 */}
+      {/* F-14（doing/98）：半屏判定改读 state 化 viewportWidth（原渲染期直读 window.innerWidth 不纯，resize 同步） */}
       <div className="relative w-full h-full flex items-center justify-center">
         {typeof children === 'function'
-          ? children(pos.x + BTN_SIZE / 2 < window.innerWidth / 2 ? 'left' : 'right')
+          ? children(pos.x + BTN_SIZE / 2 < viewportWidth / 2 ? 'left' : 'right')
           : children}
       </div>
       {/* 拖拽提示小把手（底部三点） */}

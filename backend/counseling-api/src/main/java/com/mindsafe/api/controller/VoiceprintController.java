@@ -99,6 +99,7 @@ public class VoiceprintController {
         auditLogService.log(tenantId, userId, "VOICEPRINT_ENROLL_REMOTE", "user", userId, null);
 
         // CFG-006（doing/84 §四.4）：设备端声纹录入任务完成置位（taskId 可选，无任务时不影响既有流程）
+        // B-03（doing/98）：本处是任务 COMPLETED 的唯一真实驱动——UPLOADED 后停留等待落库成功置位
         if (request.taskId() != null && !request.taskId().isBlank()) {
             deviceVoiceprintService.complete(request.taskId());
         }

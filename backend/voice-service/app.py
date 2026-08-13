@@ -89,6 +89,10 @@ def _resolve_ser_enabled() -> bool:
     return SER_ENABLED
 DASHSCOPE_API_KEY = os.environ.get("DASHSCOPE_API_KEY", "")
 
+# D-10/M-2（doing/98）：dashscope 模式启动期探测结果（funasr 模式恒 True 不参与）；
+# 探测失败时 /health 置 DOWN、voice_asr_ready=0（部署门禁可拦截）但不崩溃容器
+_DASHSCOPE_PROBE_OK = True
+
 # 单请求超时（P1-DEP：ffmpeg 转码 / ASR / SER 挂死时避免请求永久挂起；超时返回 504）
 VOICE_PROCESS_TIMEOUT = float(os.environ.get("VOICE_PROCESS_TIMEOUT", "30"))   # ffmpeg 转码超时（秒）
 VOICE_ANALYZE_TIMEOUT = float(os.environ.get("VOICE_ANALYZE_TIMEOUT", "60"))   # ASR/SER 分析超时（秒）
@@ -98,6 +102,41 @@ if ASR_ENGINE not in ("funasr", "dashscope"):
 
 if ASR_ENGINE == "dashscope" and not DASHSCOPE_API_KEY:
     raise ValueError("ASR_ENGINE=dashscope 时 DASHSCOPE_API_KEY 不能为空")
+
+
+def _probe_dashscope_auth(timeout: float = 5.0) -> bool:
+    """D-10（doing/98）：dashscope 模式启动期轻量探测云端鉴权可用性。
+    判定：2xx / 非 401/403 的 4xx = 网关可达且鉴权链路可用（通过，GET 到 POST 端点返回 405 属正常）；
+    401/403 = key 无效/被拦截；5xx / 网络异常 = 网关不可达——均返回 False。
+    M-2（doing/98 code-review）：不再 fail-fast 崩溃（瞬时网络抖动会导致 CrashLoop），
+    改为返回布尔供 health/metrics 消费——探测失败时 /health 置 DOWN、voice_asr_ready=0，
+    部署健康门禁（service-manager）仍能拦截，消除「假绿灯」盲区且不崩容器。
+    运行期配额耗尽仍由 MindsafeVoiceAnalyzeErrorRate（warning 级）覆盖。"""
+    import urllib.error
+    import urllib.request
+
+    req = urllib.request.Request(
+        "https://dashscope.aliyuncs.com/api/v1/services/audio/asr/recognition",
+        headers={"Authorization": f"Bearer {DASHSCOPE_API_KEY}"},
+        method="GET",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            logger.info("DashScope ASR 鉴权探测通过（status=%s）", resp.status)
+            return True
+    except urllib.error.HTTPError as e:
+        if e.code in (401, 403):
+            logger.error("DashScope ASR 探测失败：鉴权被拒（status=%s）", e.code)
+            return False
+        logger.info("DashScope ASR 鉴权探测通过（status=%s）", e.code)
+        return True
+    except Exception as e:
+        logger.error("DashScope ASR 探测失败：网关不可达（%s）", type(e).__name__)
+        return False
+
+
+if ASR_ENGINE == "dashscope":
+    _DASHSCOPE_PROBE_OK = _probe_dashscope_auth()
 
 # ===== 分析线程池（AUD-016：进程级单例，避免每请求新建/销毁线程；退出时由 lifespan 回收） =====
 # max_workers=4：ASR/SER 均以 CPU 推理为主（funasr/SER 本地模型），过多线程反而抢 CPU；
@@ -142,7 +181,7 @@ def metrics():
             extra_lines=[
                 "# HELP voice_asr_ready ASR engine readiness (1=ready 0=unavailable)",
                 "# TYPE voice_asr_ready gauge",
-                f"voice_asr_ready {1 if asr_model is not None or ASR_ENGINE == 'dashscope' else 0}",
+                f"voice_asr_ready {1 if asr_model is not None or (ASR_ENGINE == 'dashscope' and _DASHSCOPE_PROBE_OK) else 0}",
                 "# HELP voice_ser_ready SER model readiness (1=ready 0=unavailable)",
                 "# TYPE voice_ser_ready gauge",
                 f"voice_ser_ready {1 if ser_backend is not None and ser_backend.is_available() else 0}",
@@ -251,7 +290,7 @@ def health():
     - DEGRADED：SER 启用但模型加载失败（情绪识别降级为中性，服务仍可用）
     - DOWN：ASR 未就绪（核心链路不可用；funasr 加载失败实际在启动期崩溃，此为防御语义）
     """
-    asr_ready = asr_model is not None or ASR_ENGINE == "dashscope"
+    asr_ready = asr_model is not None or (ASR_ENGINE == "dashscope" and _DASHSCOPE_PROBE_OK)
     ser_ready = ser_backend is not None and ser_backend.is_available()
     if not asr_ready:
         status = "DOWN"

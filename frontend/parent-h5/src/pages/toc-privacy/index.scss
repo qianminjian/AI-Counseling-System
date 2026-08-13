@@ -19,6 +19,13 @@
     color: var(--ms-danger);
   }
 
+  &__notice {
+    display: block;
+    margin-bottom: 12px;
+    font-size: 13px;
+    color: var(--ms-success, #52c41a);
+  }
+
   &__card {
     background: var(--ms-card);
     border-radius: var(--ms-radius-card);

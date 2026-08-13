@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { api } from '../api'
+import { fillPath, ENDPOINTS } from '../endpoints'
 import { emotionBus } from '../utils/emotionBus'
 import { useSseStream } from './useSseStream'
 import type { ChatMessage } from '../components/MessageBubble'
@@ -154,7 +155,7 @@ export function useChatSession(opts: ChatSessionOptions) {
 
     try {
       const result = await streamMessage(
-        `/api/v1/chat/sessions/${sessionId}/messages`,
+        fillPath(ENDPOINTS.chatSessionMessages.path, { sessionId }),
         body,
         {
           onToken: (content) => {
@@ -222,7 +223,7 @@ export function useChatSession(opts: ChatSessionOptions) {
   const closeSession = async (rating?: number | null, comment?: string) => {
     try {
       const body = rating ? { rating, comment } : undefined
-      await api(`/sessions/${sessionId}/close`, {
+      await api(fillPath(ENDPOINTS.closeSession.path, { id: sessionId }), {
         method: 'POST',
         body: body ? JSON.stringify(body) : undefined,
       })

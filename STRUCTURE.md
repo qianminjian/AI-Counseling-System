@@ -77,7 +77,7 @@ AI-Counseling-System/
 
 - **存什么**：工程纪律与运维工具（commit 检查、changelog/文档编号校验、配置透传契约校验、备份演练、API 快照、字体子集化）
 - **规则**：脚本必须自包含可独立运行；涉及写操作的脚本默认输出到 `tmp/` 预览，确认后再落正式位置
-- **现状文件**（7 个，2026-08-08 D-16 对齐；docx 生成脚本 create_*.js/py 已删除）：`check-commit.sh` / `db-rollback-drill.sh` / `gen-changelog.sh` / `gen-openapi-snapshot.sh` / `subset-font.sh` / `verify-config-passthrough.sh` / `verify-doc-numbers.sh`；对应单测在 `tests/unit/scripts/`（CI shell-tools-test 自动拾取）
+- **现状文件**（8 个，2026-08-13 doing/98 D-06 台账修正：原「7 个」漏 token-usage-report/verify-model-names；subset-font.sh 已归档 archive/，一次性工具无单测）：`check-commit.sh` / `db-rollback-drill.sh` / `gen-changelog.sh` / `gen-openapi-snapshot.sh` / `token-usage-report.sh`（手工工具，无自动接线）/ `verify-config-passthrough.sh` / `verify-doc-numbers.sh` / `verify-model-names.sh`；对应单测在 `tests/unit/scripts/`（CI shell-tools-test 自动拾取，subset-font 除外）
 
 ### 2.5 `backend/` — 后端源代码（Java / Maven 多模块）
 

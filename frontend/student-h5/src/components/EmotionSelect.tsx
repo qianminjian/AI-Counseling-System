@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect } from 'react'
 import { useTheme } from '../theme/ThemeProvider'
 import BoBoAvatar from './BoBoAvatar'
 import { api, isConsentRequired } from '../api'
+import { fillPath, ENDPOINTS } from '../endpoints'
 import { unlockAudio } from '../utils/audioUnlock'
 import { useWakeEnabled } from '../hooks/useWakeEnabled'
 import { preloadWakeModel, useWakeModelStatus } from '../hooks/useWakeWord'
@@ -62,7 +63,7 @@ export default function EmotionSelect({ onStart, userName, onLogout, onConsentRe
     unlockAudio()
     setLoading(true)
     try {
-      const data = await api('/chat/sessions', {
+      const data = await api(fillPath(ENDPOINTS.createChatSession.path, {}), {
         method: 'POST',
         body: JSON.stringify({ emotionTag: selected, channel: 'h5' }),
       })

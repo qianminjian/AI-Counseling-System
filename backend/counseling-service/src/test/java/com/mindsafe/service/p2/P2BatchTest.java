@@ -7,9 +7,6 @@ import com.mindsafe.service.profile.ProfileMergeGate;
 import com.mindsafe.service.profile.ProfileMergeGate.MergeDecision;
 import com.mindsafe.service.prompt.TemplateMatrixRegistry;
 import com.mindsafe.service.prompt.TemplateMatrixRegistry.GateResult;
-import com.mindsafe.service.tts.VoicePersonaMatcher;
-import com.mindsafe.service.tts.VoicePersonaMatcher.MatchResult;
-import com.mindsafe.service.tts.VoicePersonaMatcher.Prosody;
 import com.mindsafe.service.voice.VoiceEmotionTrendAnalyzer;
 import com.mindsafe.service.voice.VoiceEmotionTrendAnalyzer.FusionResult;
 import com.mindsafe.service.voice.VoiceEmotionTrendAnalyzer.Trend;
@@ -183,61 +180,6 @@ class P2BatchTest {
 
             TrendResult stable = new TrendResult(Trend.STABLE, 0.3, 0.3, 5);
             assertThat(analyzer.shouldNotifyTeacher(stable)).isFalse();
-        }
-    }
-
-    // ==================== TMATCH-002 音色匹配 ====================
-
-    @Nested
-    @DisplayName("TMATCH-002 音色匹配")
-    class TMATCH002 {
-
-        private final VoicePersonaMatcher matcher = new VoicePersonaMatcher();
-
-        @Test
-        @DisplayName("危机锁定：S0 → 稳定基调")
-        void crisisLock() {
-            MatchResult r = matcher.match("female", 3, "CRISIS", "S0");
-            assertThat(r.locked()).isTrue();
-            assertThat(r.voiceId()).isEqualTo(VoicePersonaMatcher.VOICE_STABLE);
-            assertThat(r.prosody()).isEqualTo(Prosody.STABLE);
-        }
-
-        @Test
-        @DisplayName("正常匹配：女性 → 温柔女声")
-        void femaleMatch() {
-            MatchResult r = matcher.match("female", 3, "STABLE", null);
-            assertThat(r.locked()).isFalse();
-            assertThat(r.voiceId()).isEqualTo(VoicePersonaMatcher.VOICE_GENTLE_FEMALE);
-            assertThat(r.prosody()).isEqualTo(Prosody.GENTLE);
-        }
-
-        @Test
-        @DisplayName("正常匹配：男性 → 温暖男声")
-        void maleMatch() {
-            MatchResult r = matcher.match("male", 5, "STABLE", null);
-            assertThat(r.voiceId()).isEqualTo(VoicePersonaMatcher.VOICE_WARM_MALE);
-        }
-
-        @Test
-        @DisplayName("ACTIVATED → CALM prosody")
-        void activatedProsody() {
-            MatchResult r = matcher.match(null, 4, "ACTIVATED", null);
-            assertThat(r.prosody()).isEqualTo(Prosody.CALM);
-        }
-
-        @Test
-        @DisplayName("预合成查询")
-        void preSynth() {
-            assertThat(matcher.lookupPreSynth("crisis", "grounding")).isEqualTo("PS-CRISIS-GROUND-001");
-            assertThat(matcher.lookupPreSynth("anxious", "breathing")).isEqualTo("PS-ANX-BREATH-001");
-            assertThat(matcher.lookupPreSynth("happy", "unknown")).isNull();
-        }
-
-        @Test
-        @DisplayName("预合成列表非空")
-        void preSynthList() {
-            assertThat(matcher.allPreSynthIds()).hasSize(7);
         }
     }
 

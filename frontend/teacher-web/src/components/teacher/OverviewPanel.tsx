@@ -4,6 +4,8 @@ import {
   AlertOutlined, ClockCircleOutlined, MessageOutlined, RiseOutlined, SmileOutlined, FileTextOutlined,
 } from '@ant-design/icons'
 import { getDashboard, getHighRiskStudents, getStats, openWeeklyReport, getSatisfaction, ApiError } from '../../api'
+// F-04（doing/98）：useState 显式泛型（原 null/[] 推断 any，strictNullChecks:false 下失去编译期保护）
+import type { DashboardVO, StatsVO, HighRiskStudentVO } from '../../api'
 import { usePolling } from '../../hooks/usePolling'
 import { SessionTrendChart, RiskPieChart, ClassBarChart, EmotionBarChart } from './StatsCharts'
 import { riskColor, riskLabel } from '../../utils/riskLevel'
@@ -49,9 +51,9 @@ export default function OverviewPanel({ onNavigate }: { onNavigate: (tab: string
   const [loading, setLoading] = useState(true)
   // BUG-T-RC-02：'forbidden' 区分 403 无权限态（与网络故障不同文案）
   const [loadError, setLoadError] = useState<boolean | 'forbidden'>(false)
-  const [dashboard, setDashboard] = useState(null)
-  const [highRisk, setHighRisk] = useState([])
-  const [stats, setStats] = useState(null)
+  const [dashboard, setDashboard] = useState<DashboardVO | null>(null)
+  const [highRisk, setHighRisk] = useState<HighRiskStudentVO[]>([])
+  const [stats, setStats] = useState<StatsVO | null>(null)
 
   // AUD-019：加载失败不再静默留白——置错误态 + 重试（与 BigScreen 错误态一致）
   // FA-08：单一 load（初次挂载与错误重试共用），mountedRef 守卫防卸载后 setState
@@ -236,12 +238,16 @@ function SatisfactionCard() {
   const [retryKey, setRetryKey] = useState(0)
 
   useEffect(() => {
+    // F-17（doing/98）：卸载/重试竞态守卫——cancelled 后不再 setState（对齐主 load 的 mountedRef）
+    let cancelled = false
     getSatisfaction()
-      .then(d => { setData(d); setError(null) })
+      .then(d => { if (!cancelled) { setData(d); setError(null) } })
       .catch((e) => {
+        if (cancelled) return
         console.error('[OverviewPanel] 加载满意度失败:', e)
         setError('满意度数据加载失败，请检查网络后重试')
       })
+    return () => { cancelled = true }
   }, [retryKey])
 
   // F-09：加载失败展示错误条（提供重试入口）

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Card, Tag, Typography, Space, Spin, Empty, Alert } from 'antd'
 import { FileTextOutlined, BulbOutlined } from '@ant-design/icons'
 import { getSessionSummary } from '../../api'
+import type { SessionAiSummary } from '../../api'
 
 const { Text, Paragraph } = Typography
 
@@ -20,7 +21,7 @@ interface AiSummary {
  */
 export default function SessionSummaryCard({ sessionId }: { sessionId: string }) {
   const [loading, setLoading] = useState(false)
-  const [data, setData] = useState(null)
+  const [data, setData] = useState<SessionAiSummary | null>(null) // F-04：显式泛型
 
   useEffect(() => {
     if (!sessionId) return

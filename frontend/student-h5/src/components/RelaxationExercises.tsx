@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { api } from '../api'
+import { fillPath, ENDPOINTS } from '../endpoints'
 import { useTheme } from '../theme/ThemeProvider'
 import { THEME_STYLES } from '../theme/immersiveStyles'
 import BoBoAvatar from './BoBoAvatar'
@@ -34,7 +35,8 @@ interface RelaxationExercise {
 }
 
 /** 放松练习语音引导朗读（轻柔语速，冥想/呼吸场景；F5：复用共享 browserSpeak 降级链） */
-function speakGuide(text) {
+// F-03（doing/98）：显式参数类型（原隐式 any）
+function speakGuide(text: string) {
   // bobo 人设（温柔女老师，pitch 1.05 × rateScale 0.95），rate 0.9 → 实际语速 ~0.86
   browserSpeak(text, { rate: 0.9, persona: 'bobo' })
 }
@@ -43,8 +45,11 @@ function stopGuide() {
   stopBrowserSpeak()
 }
 
+/** 主题样式值类型（THEME_STYLES 单源，F-03 doing/98：子组件 props 显式类型） */
+type ThemeStyle = (typeof THEME_STYLES)[keyof typeof THEME_STYLES]
+
 /** 呼吸引导动画圆圈（主题色驱动 + 光晕脉冲） */
-function BreathingCircle({ phase, seconds, ts }) {
+function BreathingCircle({ phase, seconds, ts }: { phase: string; seconds: number; ts: ThemeStyle }) {
   const phaseConfig = {
     inhale: { label: '吸气', anim: 'breathe-in' },
     hold: { label: '屏住', anim: 'breathe-hold' },
@@ -137,7 +142,7 @@ function ExerciseRunner({ exercise, onComplete, onBack, ts }) {
       if (timerRef.current) clearInterval(timerRef.current)
       if (voiceOnRef.current) speakGuide('做得好！感觉放松一些了吗？')
       // 记录完成
-      api('/relaxation/sessions', {
+      api(fillPath(ENDPOINTS.relaxationSessions.path, {}), {
         method: 'POST',
         body: JSON.stringify({
           exerciseType: exercise.id,
@@ -236,10 +241,13 @@ function ExerciseRunner({ exercise, onComplete, onBack, ts }) {
 }
 
 /** 今日练习计数 */
-function TodayCounter({ ts }) {
+function TodayCounter({ ts }: { ts: ThemeStyle }) {
   const [count, setCount] = useState(0)
   useEffect(() => {
-    api('/relaxation/sessions/today').then(d => setCount(d.count || 0)).catch(() => {})
+    api(fillPath(ENDPOINTS.relaxationToday.path, {}))
+      .then(d => setCount(d.count || 0))
+      // F-07（doing/98）：计数失败 warn 不吞错（不阻塞练习列表主流程）
+      .catch((e) => console.warn('[RelaxationExercises] 加载今日计数失败:', e))
   }, [])
   if (count === 0) return null
   return (
@@ -259,14 +267,25 @@ export default function RelaxationExercises({ onBack }) {
   const [exercises, setExercises] = useState<RelaxationExercise[]>([])
   const [active, setActive] = useState<RelaxationExercise | null>(null)
   const [loading, setLoading] = useState(true)
+  // F-07/F-08（doing/98）：加载失败态 + 重试（原 loading 死状态未消费 + 静默 catch → 失败只剩空壳）
+  const [loadError, setLoadError] = useState(false)
   const { theme, themeId } = useTheme()
   const ts = THEME_STYLES[themeId] || THEME_STYLES.ocean
 
-  useEffect(() => {
-    api('/relaxation/exercises')
+  const loadExercises = () => {
+    setLoading(true)
+    setLoadError(false)
+    api(fillPath(ENDPOINTS.relaxationExercises.path, {}))
       .then(setExercises)
-      .catch(() => {})
+      .catch((e) => {
+        console.warn('[RelaxationExercises] 加载练习列表失败:', e)
+        setLoadError(true)
+      })
       .finally(() => setLoading(false))
+  }
+
+  useEffect(() => {
+    loadExercises()
   }, [])
 
   // ===== 练习执行 / 完成页 =====
@@ -305,6 +324,20 @@ export default function RelaxationExercises({ onBack }) {
         <TodayCounter ts={ts} />
 
         <div className="w-full space-y-3">
+          {/* F-08：loading 态消费（原死状态） */}
+          {loading && (
+            <div className="text-sm text-center py-6" style={{ color: ts.muted }}>正在准备练习…</div>
+          )}
+          {/* F-07：失败温和提示 + 重试（对齐 EmotionDiary/ToolboxPanel 模式） */}
+          {!loading && loadError && (
+            <div className="text-sm text-center py-6" style={{ color: ts.muted }}>
+              练习暂时加载不出来，{' '}
+              <button onClick={loadExercises} className="underline underline-offset-2" style={{ color: ts.title }}>点这里重试</button>
+            </div>
+          )}
+          {!loading && !loadError && exercises.length === 0 && (
+            <div className="text-sm text-center py-6" style={{ color: ts.muted }}>暂时还没有可用的练习</div>
+          )}
           {exercises.map((ex) => (
             <button
               key={ex.id}

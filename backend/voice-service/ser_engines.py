@@ -51,6 +51,14 @@ class FunasrSERBackend(SERBackend):
 
     def _parse(self, raw: dict) -> dict:
         scores = [float(s) for s in raw.get("scores", [0.0] * len(self._emotion_labels))]
+        # D-05（doing/98）：模型输出维度与标签表不一致时按「未知」降级，避免 argmax 越界 IndexError→500
+        if len(scores) != len(self._emotion_labels):
+            return {
+                "label": "未知",
+                "label_en": "unknown",
+                "confidence": 0.0,
+                "scores": [0.0] * len(self._emotion_labels),
+            }
         max_idx = int(np.argmax(scores))
         label_en, label_cn = self._emotion_labels[max_idx]
         return {

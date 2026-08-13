@@ -53,6 +53,15 @@ export function fillPath(template: string, params: Record<string, string>): stri
 }
 
 /**
+ * 服务层路径消费助手（F-16，doing/98）：常量表为单一事实源，服务层统一经本函数取路径。
+ * 返回短路径（剥 /api/v1 前缀）——parent-h5 request 工厂 baseUrl='/api/v1' 会加回，
+ * 避免 fillPath 全路径形态下的 /api/v1/api/v1 双前缀；与 admin-web 的 fillPath 全路径形态互补。
+ */
+export function apiPath(key: EndpointKey, params: Record<string, string> = {}): string {
+  return fillPath(ENDPOINTS[key].path, params).replace(/^\/api\/v1/, '')
+}
+
+/**
  * 契约清单（P2-1：从常量表派生，占位符剥离，供 apiContract 测试直接校验）
  * 保持元组数组形态（apiContract.test.ts 的规范化断言不变），新增端点只需登记 ENDPOINTS 一处
  */

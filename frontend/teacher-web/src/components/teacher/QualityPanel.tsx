@@ -13,13 +13,21 @@ interface FlaggedSessionVO {
   startedAt: string
 }
 
+/** 质量统计（getQualityStats 契约，F-04 doing/98：显式类型） */
+interface QualityStatsVO {
+  avgRating: number
+  recentAvg: number
+  flaggedCount: number
+  flagRate: number
+}
+
 /** AI 对话质量监控面板 */
 export default function QualityPanel() {
-  const [stats, setStats] = useState(null)
-  const [flagged, setFlagged] = useState([])
+  const [stats, setStats] = useState<QualityStatsVO | null>(null)
+  const [flagged, setFlagged] = useState<FlaggedSessionVO[]>([])
   const [loading, setLoading] = useState(true)
   const [replayOpen, setReplayOpen] = useState(false)
-  const [currentSessionId, setCurrentSessionId] = useState(null)
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null)
   // F-09：加载失败不静默——console.error + 局部错误条 + 重试（AUD-019 只覆盖主加载）
   const [error, setError] = useState<string | null>(null)
   const [retryKey, setRetryKey] = useState(0)

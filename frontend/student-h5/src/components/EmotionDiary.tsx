@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { api, ApiError } from '../api'
+import { fillPath, ENDPOINTS } from '../endpoints'
 import { useTheme } from '../theme/ThemeProvider'
 import { THEME_STYLES } from '../theme/immersiveStyles'
 import BoBoAvatar from './BoBoAvatar'
@@ -51,12 +52,12 @@ export default function EmotionDiary({ onBack }) {
   // history/streak 失败仅 warn（趋势图缺省不影响打卡主流程）
   const loadData = () => {
     setLoadError(false)
-    api('/diary/today').then(d => {
+    api(fillPath(ENDPOINTS.diaryToday.path, {})).then(d => {
       setToday(d)
       if (d.checkedIn) setSubmitted(true)
     }).catch((e) => { console.warn('[EmotionDiary] 加载今日状态失败:', e); setLoadError(true) })
-    api('/diary/history?days=14').then(setHistory).catch((e) => console.warn('[EmotionDiary] 加载趋势失败:', e))
-    api('/diary/streak').then(setStreak).catch((e) => console.warn('[EmotionDiary] 加载连续天数失败:', e))
+    api(`${fillPath(ENDPOINTS.diaryHistory.path, {})}?days=14`).then(setHistory).catch((e) => console.warn('[EmotionDiary] 加载趋势失败:', e))
+    api(fillPath(ENDPOINTS.diaryStreak.path, {})).then(setStreak).catch((e) => console.warn('[EmotionDiary] 加载连续天数失败:', e))
   }
 
   useEffect(() => {
@@ -69,14 +70,14 @@ export default function EmotionDiary({ onBack }) {
     setSubmitting(true)
     setSubmitError('')
     try {
-      await api('/diary/checkin', {
+      await api(fillPath(ENDPOINTS.diaryCheckin.path, {}), {
         method: 'POST',
         body: JSON.stringify({ emotionLabel: selected, intensity, note: note || null }),
       })
       setSubmitted(true)
       // 刷新数据
-      api('/diary/history?days=14').then(setHistory).catch((e) => console.warn('[EmotionDiary] 刷新趋势失败:', e))
-      api('/diary/streak').then(setStreak).catch((e) => console.warn('[EmotionDiary] 刷新连续天数失败:', e))
+      api(`${fillPath(ENDPOINTS.diaryHistory.path, {})}?days=14`).then(setHistory).catch((e) => console.warn('[EmotionDiary] 刷新趋势失败:', e))
+      api(fillPath(ENDPOINTS.diaryStreak.path, {})).then(setStreak).catch((e) => console.warn('[EmotionDiary] 刷新连续天数失败:', e))
     } catch (e) {
       console.error('[EmotionDiary] 打卡失败:', e)
       // BUG-S-08-2（2026-08-12，UI-TEST-012）：按错误类型区分文案——服务端 500 不再是"网络问题"误导

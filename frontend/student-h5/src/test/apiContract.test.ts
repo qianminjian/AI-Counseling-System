@@ -83,6 +83,66 @@ describe('请求方向：前端端点 ⊆ 契约快照（方法匹配）', () =>
   })
 })
 
+/**
+ * F-01（doing/98）：消费面双向校验——src 生产代码中全部 API 路径字面量 ⊆ 常量表。
+ * 原单向断言（常量表 ⊆ 快照）无法拦截组件内联硬编码路径（diary/relaxation/achievements 曾长期表外），
+ * 本扫描保证新增端点必须登记常量表（单一事实源闭环），防回潮。
+ */
+describe('消费面：src 生产代码 API 路径字面量 ⊆ 常量表（F-01）', () => {
+  // 相对路径锚定（vite root 的 '/src' 绝对锚点在本仓库解析不稳定，仅命中 2 文件）
+  const sources: Record<string, string> = import.meta.glob('../**/*.{ts,tsx}', {
+    query: '?raw',
+    import: 'default',
+    eager: true,
+  })
+
+  /** 路径字面量 → 规范化契约形态（占位符剥离与 FRONTEND_ENDPOINTS 派生规则一致） */
+  function toContractPath(raw: string): string | null {
+    let s = raw
+      .replace(/\$\{[^}]*\}/g, '') // 模板占位符删除
+      .replace(/\$\{[^}]*$/g, '') // 未闭合占位符残段
+    s = s.split('?')[0] // query 剥离
+    s = s.trim()
+    if (!s.startsWith('/')) return null
+    if (!s.startsWith('/api/v1')) {
+      if (s === '/api/v1') return null
+      s = `/api/v1${s}`
+    }
+    s = s.replace(/\{(\w+)\}/g, '') // {id}/{sessionId} 占位符剥离（留双斜杠，与清单派生一致）
+    s = s.replace(/\/+/g, '/').replace(/\/+$/, '')
+    return s
+  }
+
+  const listPaths = FRONTEND_ENDPOINTS.map(([p]) => p)
+  const unmatched: Array<{ file: string; path: string }> = []
+  let scanned = 0
+  let fillPathCalls = 0
+
+  for (const [file, src] of Object.entries(sources)) {
+    // 相对 glob 的 key 形态：'./useSseStream.test.ts' / '../components/xxx.tsx'——按测试文件特征排除
+    if (file.includes('.test.') || file.includes('/test/') || file.includes('/__contract__/')) continue
+    const pattern = /(?:api|publicFetch|authFetch|streamMessage)\(\s*(['"`])([^'"`]+)\1/g
+    for (const m of src.matchAll(pattern)) {
+      scanned += 1
+      const norm = toContractPath(m[2])
+      if (norm && !listPaths.includes(norm)) {
+        unmatched.push({ file, path: norm })
+      }
+    }
+    // 常量表消费面计数（F-01 后生产代码路径字面量已清零，fillPath 是主要消费形态）
+    fillPathCalls += (src.match(/fillPath\(ENDPOINTS\.\w+\.path/g) ?? []).length
+  }
+
+  it('生产代码存在可扫描的 API 调用（扫描逻辑有效）', () => {
+    // 常量表消费为混合形态（fillPath + 直接 ENDPOINTS.xxx.path 引用），阈值只需证明扫描器在真实工作
+    expect(scanned + fillPathCalls).toBeGreaterThan(10)
+  })
+
+  it('全部路径字面量已登记常量表（新增端点必须登记，禁止表外硬编码）', () => {
+    expect(unmatched).toEqual([])
+  })
+})
+
 describe('响应方向：mock 样例按快照 schemas 校验（validateMock）', () => {
   it('pin-login/voice-login mock → ApiResponseLoginResponse 校验通过', () => {
     const schema = responseSchema('/api/v1/auth/pin-login', 'post')

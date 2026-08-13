@@ -60,6 +60,8 @@ public class SecurityConfig {
                         .policyDirectives("default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src 'self'; font-src 'self' data:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'")
                     );
                 })
+                // B-07（doing/98）：安全头部合并为单次 .headers() 配置（原 doing/90 P3-2 叠加式二次
+                // .headers() 与首次重复，已删除；frameOptions/contentTypeOptions/CSP 均由首次覆盖）
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 // BUG-A-TOKEN-01 语义收口（2026-08-12，UI-TEST-016）：未认证 → 401（前端 authFetch
                 // 刷新/登出链依赖），已认证无权限 → 403（前端区分展示）；此前默认 entry point 对
@@ -73,11 +75,6 @@ public class SecurityConfig {
                         .accessDeniedHandler((request, response, accessDeniedException) ->
                                 ErrorResponseWriter.write(response, HttpServletResponse.SC_FORBIDDEN,
                                         ErrorCode.FORBIDDEN, "无权限访问"))
-                )
-                // doing/90 P3-2（2026-08-11）：安全头部——防点击劫持/XSS/MIME 嗅探
-                .headers(headers -> headers
-                    .frameOptions(f -> f.deny())
-                    .contentTypeOptions()
                 )
                 .authorizeHttpRequests(auth -> auth
                         // ASYNC/ERROR 分发放行：SSE 流式响应经 ASYNC 二次分发时 SecurityContext 不传播，

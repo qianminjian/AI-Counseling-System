@@ -17,7 +17,9 @@ import java.util.concurrent.TimeUnit;
  * 无屏终端声纹录入编排（CFG-006，doing/84 §四.4）
  * <p>
  * 任务状态机（Redis 存储，TTL 30 分钟）：INITIATED → COLLECTING → UPLOADED → COMPLETED；
- * FAILED 可重试（重试 = 新建任务）。真实 voice-service 采集对接由设备端固件完成，
+ * FAILED 可重试（重试 = 新建任务）。设备端固件负责采集与 embedding 上传，
+ * 落库（enroll）由 VoiceprintController.enroll（携带 taskId）驱动并置位 COMPLETED
+ * （B-03 doing/98：UPLOADED 不再自动 complete，任务完成语义与真实落库对齐）。
  * 本服务负责管理侧编排（发起/轮询）与设备端进度上报（report/voiceprint）。
  */
 @Service
@@ -132,8 +134,9 @@ public class DeviceVoiceprintService {
 
     /**
      * 设备端采集进度上报（AC-84-13）：COLLECTING/UPLOADED 阶段推进；任务不存在返回 null。
-     * 当设备上报 UPLOADED 时自动调用 complete() 完成状态机流转（P0-5：真实 enroll
-     * 落库链路待对接 voice-service，当前前置亭——前端轮询不会卡在 UPLOADED）。
+     * B-03（doing/98）：UPLOADED 后停留在该阶段，等待 enroll（VoiceprintController.enroll
+     * 携带 taskId 落库成功后）置位 COMPLETED——移除原「UPLOADED 自动 complete」半接线，
+     * 任务完成语义与真实 embedding 落库对齐。
      */
     public Map<String, Object> reportPhase(String taskId, String phase, String deviceCode) {
         if (!PHASE_COLLECTING.equals(phase) && !PHASE_UPLOADED.equals(phase)) {
@@ -151,19 +154,12 @@ public class DeviceVoiceprintService {
         if ("MISMATCH".equals(result)) {
             throw new IllegalArgumentException("设备码与任务不匹配");
         }
-        Map<String, Object> task = read(result);
-        // P0-5：UPLOADED 自动触发 complete（真实 enroll 链路就绪后替换为唤醒 enroll 异步任务）
-        if (PHASE_UPLOADED.equals(phase)) {
-            complete(taskId, null);
-            return getTask(taskId);
-        }
-        return task;
+        return read(result);
     }
 
     /**
-     * 标记任务完成（AC-84-14）：enroll 落库成功后调用；任务不存在静默忽略。
-     * @TODO P0-5：当前由 reportPhase(UPLOADED) 自动触发 complete()，真实 enroll
-     * 对接 voice-service 后应移除自动逻辑，改由 enroll 回调驱动。
+     * 标记任务完成（AC-84-14）：enroll 落库成功后调用（VoiceprintController.enroll 携带 taskId 时）；
+     * 任务不存在静默忽略。
      */
     public void complete(String taskId) {
         complete(taskId, null);

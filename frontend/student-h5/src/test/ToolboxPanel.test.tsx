@@ -13,7 +13,6 @@ import { fetchToolboxTools, recordMoodCheck } from '../api'
 
 vi.mock('../api', () => ({
   fetchToolboxTools: vi.fn(),
-  fetchSosTools: vi.fn(),
   recordMoodCheck: vi.fn(),
   reportSosEvent: vi.fn().mockResolvedValue(undefined),
 }))

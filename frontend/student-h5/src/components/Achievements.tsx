@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { api } from '../api'
+import { fillPath, ENDPOINTS } from '../endpoints'
 import { useTheme } from '../theme/ThemeProvider'
 import { isDarkTheme } from '../theme/immersiveStyles'
 
@@ -17,10 +18,22 @@ interface AchievementBadge {
 export default function Achievements() {
   const [badges, setBadges] = useState<AchievementBadge[]>([])
   const [show, setShow] = useState(false)
+  // F-07（doing/98）：加载失败不再静默吞错——置错误态供重试（对齐 EmotionDiary loadError 模式）
+  const [loadError, setLoadError] = useState(false)
   const { themeId } = useTheme()
 
+  const loadBadges = () => {
+    setLoadError(false)
+    api(fillPath(ENDPOINTS.diaryAchievements.path, {}))
+      .then(setBadges)
+      .catch((e) => {
+        console.warn('[Achievements] 加载成就失败:', e)
+        setLoadError(true)
+      })
+  }
+
   useEffect(() => {
-    api('/diary/achievements').then(setBadges).catch(() => {})
+    loadBadges()
   }, [])
 
   const unlockedCount = badges.filter(b => b.unlocked).length
@@ -59,6 +72,13 @@ export default function Achievements() {
               {b.unlocked && <div className="text-[10px] text-yellow-400 mt-1 font-medium">✓ 已解锁</div>}
             </div>
           ))}
+        </div>
+      )}
+
+      {/* F-07：加载失败温和提示 + 重试（不再静默空白） */}
+      {show && loadError && (
+        <div className={`mt-3 text-sm text-center ${isDark ? 'text-white/70' : 'text-gray-500'}`}>
+          成就暂时加载不出来，<button onClick={loadBadges} className="underline underline-offset-2">点这里重试</button>
         </div>
       )}
     </div>

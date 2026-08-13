@@ -4,6 +4,7 @@
  * 注册/登录为匿名端点（验证码回显，演示环境）；档案 CRUD 需 toC token。
  */
 import { tocRequest, tocTokens } from './request'
+import { apiPath } from './endpoints'
 import { sessionStorageImpl } from '../platform/storage' // familyAccountId 为 toC 特有键，不经通用 TokenStorage 接口
 
 /** 登录/注册成功后持久化 toC token（经 TokenStorage 接口落盘，与 request 工厂共享 tocTokens 单例） */
@@ -42,16 +43,16 @@ export interface TocSendCodeResult {
 }
 
 export function sendTocCode(phone: string) {
-  return tocRequest<TocSendCodeResult>('/toc/auth/send-code', { method: 'POST', data: { phone } })
+  return tocRequest<TocSendCodeResult>(apiPath('tocSendCode'), { method: 'POST', data: { phone } })
 }
 
 /** 注册成功后 token 需手动落盘（注册/登录响应含 token，request 工厂不自动写） */
 export function tocRegister(phone: string, code: string) {
-  return tocRequest<TocSession>('/toc/auth/register', { method: 'POST', data: { phone, code } })
+  return tocRequest<TocSession>(apiPath('tocRegister'), { method: 'POST', data: { phone, code } })
 }
 
 export function tocLogin(phone: string, code: string) {
-  return tocRequest<TocSession>('/toc/auth/login', { method: 'POST', data: { phone, code } })
+  return tocRequest<TocSession>(apiPath('tocLogin'), { method: 'POST', data: { phone, code } })
 }
 
 // ========== 孩子档案 API（TOC-002） ==========
@@ -67,19 +68,19 @@ export interface TocChildProfile {
 }
 
 export function listTocProfiles() {
-  return tocRequest<TocChildProfile[]>('/toc/profiles', { method: 'GET' })
+  return tocRequest<TocChildProfile[]>(apiPath('tocProfiles'), { method: 'GET' })
 }
 
 export function createTocProfile(body: Partial<TocChildProfile>) {
-  return tocRequest<TocChildProfile>('/toc/profiles', { method: 'POST', data: body })
+  return tocRequest<TocChildProfile>(apiPath('createTocProfile'), { method: 'POST', data: body })
 }
 
 export function updateTocProfile(profileId: string, body: Partial<TocChildProfile>) {
-  return tocRequest<TocChildProfile>(`/toc/profiles/${profileId}`, { method: 'PUT', data: body })
+  return tocRequest<TocChildProfile>(apiPath('updateTocProfile', { profileId }), { method: 'PUT', data: body })
 }
 
 export function deleteTocProfile(profileId: string) {
-  return tocRequest<void>(`/toc/profiles/${profileId}`, { method: 'DELETE' })
+  return tocRequest<void>(apiPath('deleteTocProfile', { profileId }), { method: 'DELETE' })
 }
 
 // ========== 家庭设备 API（TOC-003，联动 doing/84 CFG-010） ==========
@@ -97,12 +98,12 @@ export interface TocPrivacyOverview {
 
 /** 数据清单预览 */
 export function getTocPrivacyOverview() {
-  return tocRequest<TocPrivacyOverview>('/toc/privacy', { method: 'GET' })
+  return tocRequest<TocPrivacyOverview>(apiPath('tocPrivacy'), { method: 'GET' })
 }
 
 /** 删除全部家庭数据（不可逆，X-Confirm 二次确认） */
 export function deleteTocPrivacyData() {
-  return tocRequest<Record<string, unknown>>('/toc/privacy/data', {
+  return tocRequest<Record<string, unknown>>(apiPath('deleteTocPrivacyData'), {
     method: 'DELETE',
     headers: { 'X-Confirm': 'CONFIRM' },
   })

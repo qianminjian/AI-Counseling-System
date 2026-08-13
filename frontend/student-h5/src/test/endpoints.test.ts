@@ -26,7 +26,7 @@ const LEGACY_ENDPOINTS: Array<[path: string, method: string]> = [
   ['/api/v1/voiceprint/verify', 'post'],
   ['/api/v1/voiceprint/enroll', 'post'],
   ['/api/v1/toolbox', 'get'],
-  ['/api/v1/toolbox/sos', 'get'],
+  // F-05（doing/98）：/toolbox/sos 已删除（fetchSosTools 死函数移除，SosPanel 纯静态）
   ['/api/v1/toolbox/mood-check', 'post'],
   ['/api/v1/sos/events', 'post'],
   ['/api/v1/chat/sessions', 'post'],

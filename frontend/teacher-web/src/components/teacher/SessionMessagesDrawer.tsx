@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react'
 import type { ReactNode } from 'react'
 import { Tag, List, Spin, Empty, Drawer, message } from 'antd'
 import { getSessionMessages } from '../../api'
+// F-04（doing/98）：useState 显式泛型
+import type { MessageSummaryVO } from '../../api'
 import SessionSummaryCard from './SessionSummaryCard'
 import { emotionLabel } from '../../../../shared/src/emotionMeta'
 import { riskColor, riskLabel } from '../../utils/riskLevel'
@@ -21,7 +23,7 @@ export default function SessionMessagesDrawer({ sessionId, onClose, extra = null
   extra?: ReactNode
   showTranscript?: boolean
 }) {
-  const [messages, setMessages] = useState([])
+  const [messages, setMessages] = useState<MessageSummaryVO[]>([])
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {

@@ -6,6 +6,7 @@
  * P1 小程序端：仅替换 createPlatformRequest 依赖注入，本文件零改动
  */
 import { parentRequest } from './request'
+import { apiPath } from './endpoints'
 
 // ========== 家长认证 API ==========
 
@@ -31,12 +32,12 @@ export interface AuthResult {
 
 /** 家长注册（家庭码 + 手机号 + 密码 + 关系） */
 export function parentRegister(data: RegisterData) {
-  return parentRequest<AuthResult>('/parent/auth/register', { method: 'POST', data })
+  return parentRequest<AuthResult>(apiPath('parentRegister'), { method: 'POST', data })
 }
 
 /** 家长登录（手机号 + 密码） */
 export function parentLogin(data: LoginData) {
-  return parentRequest<AuthResult>('/parent/auth/login', { method: 'POST', data })
+  return parentRequest<AuthResult>(apiPath('parentLogin'), { method: 'POST', data })
 }
 
 // ========== 家长数据 API ==========
@@ -55,7 +56,7 @@ export interface ReportData {
 
 /** 获取情绪周报（指定学生） */
 export function getReport(studentUserId: string) {
-  return parentRequest<ReportData>(`/parent/report?studentUserId=${studentUserId}`)
+  return parentRequest<ReportData>(`${apiPath('parentReport')}?studentUserId=${studentUserId}`)
 }
 
 /** 监护人授权状态（BUG-P-P04-01：同意管理页展示用） */
@@ -69,12 +70,12 @@ export interface ConsentStatusData {
 
 /** 查询监护人授权状态（同意撤回后仍可查询，用于展示"已撤回"） */
 export function getConsentStatus(studentUserId: string) {
-  return parentRequest<ConsentStatusData>(`/parent/consent/status?studentUserId=${studentUserId}`)
+  return parentRequest<ConsentStatusData>(`${apiPath('consentStatus')}?studentUserId=${studentUserId}`)
 }
 
 /** 撤回同意 */
 export function withdrawConsent(studentUserId: string) {
-  return parentRequest<{ message?: string }>('/parent/consent/withdraw', {
+  return parentRequest<{ message?: string }>(apiPath('consentWithdraw'), {
     method: 'POST',
     data: { studentUserId }
   })

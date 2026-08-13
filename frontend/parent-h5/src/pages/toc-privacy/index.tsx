@@ -15,6 +15,8 @@ import './index.scss'
 export default function TocPrivacyPage() {
   const [overview, setOverview] = useState<TocPrivacyOverview | null>(null)
   const [error, setError] = useState('')
+  // F-12（doing/98）：删除成功提示独立状态（原写入 error 字段以红色错误样式渲染成功结果，语义错位）
+  const [notice, setNotice] = useState('')
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
 
@@ -36,8 +38,8 @@ export default function TocPrivacyPage() {
       const result = await deleteTocPrivacyData()
       setError('')
       setOverview(null)
-      // 删除成功后账号已禁用，提示后返回登录页
-      setError(`数据已删除且不可恢复（${String(result.accountStatus ?? '')}）`)
+      // F-12：成功提示走 notice（正常文案样式），不再写 error
+      setNotice(`数据已删除且不可恢复（${String(result.accountStatus ?? '')}）`)
       setConfirmOpen(false)
     } catch (e) {
       setError(e instanceof Error ? e.message : '删除失败')
@@ -49,6 +51,7 @@ export default function TocPrivacyPage() {
   return (
     <View className='toc-privacy'>
       <Text className='toc-privacy__title'>隐私控制</Text>
+      {notice ? <Text className='toc-privacy__notice'>{notice}</Text> : null}
       {error ? <Text className='toc-privacy__error'>{error}</Text> : null}
 
       {overview && (

@@ -95,7 +95,8 @@ class DeviceVoiceprintServiceTest {
         assertThat(collecting.get("phase")).isEqualTo(DeviceVoiceprintService.PHASE_COLLECTING);
 
         Map<String, Object> uploaded = service.reportPhase(taskId, DeviceVoiceprintService.PHASE_UPLOADED, null);
-        assertThat(uploaded.get("phase")).isEqualTo(DeviceVoiceprintService.PHASE_COMPLETED);
+        // B-03（doing/98）：UPLOADED 停留，等待 enroll 驱动 complete（不再自动完成）
+        assertThat(uploaded.get("phase")).isEqualTo(DeviceVoiceprintService.PHASE_UPLOADED);
     }
 
     @Test
@@ -110,11 +111,11 @@ class DeviceVoiceprintServiceTest {
 
         Map<String, Object> task = service.createTask("K7M2P9XW4AQ", "stu-1", "t");
         String taskId = (String) task.get("taskId");
-        service.reportPhase(taskId, DeviceVoiceprintService.PHASE_UPLOADED, null); // → COMPLETED（自动 complete）
+        service.reportPhase(taskId, DeviceVoiceprintService.PHASE_UPLOADED, null); // → UPLOADED（停留，B-03）
 
         Map<String, Object> stale = service.reportPhase(taskId, DeviceVoiceprintService.PHASE_COLLECTING, null);
-        // CAS 拒绝：脚本返回原任务（仍为 COMPLETED）
-        assertThat(stale.get("phase")).isEqualTo(DeviceVoiceprintService.PHASE_COMPLETED);
+        // CAS 拒绝：脚本返回原任务（仍为 UPLOADED）
+        assertThat(stale.get("phase")).isEqualTo(DeviceVoiceprintService.PHASE_UPLOADED);
     }
 
     @Test

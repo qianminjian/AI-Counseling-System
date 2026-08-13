@@ -8,8 +8,8 @@
  * - method 一并登记
  * - FRONTEND_ENDPOINTS 由本表派生（占位符剥离），apiContract 测试直接校验常量表
  * - 组件内联路径（useChatSession/useSseStream 的会话端点）已登记入表（createChatSession/
- *   chatSessionMessages/closeSession 条目）；未登记的表外路径（diary/relaxation/achievements 等）
- *   依赖人工登记 + 快照校验兜底，无源码正则扫描（与 teacher-web 消费面扫描不同）
+ *   chatSessionMessages/closeSession 条目）；F-01（doing/98）：diary/relaxation/achievements
+ *   表外路径已全部登记入表并改 fillPath 消费，apiContract 测试新增消费面双向扫描防回潮
  */
 export const ENDPOINTS = {
   // 公开认证（publicFetch，无需登录）
@@ -20,6 +20,7 @@ export const ENDPOINTS = {
   remoteVoiceprintVerify: { path: '/api/v1/voiceprint/verify', method: 'post' },
   // 认证（api()，需登录）
   setPin: { path: '/api/v1/auth/set-pin', method: 'post' },
+  authMe: { path: '/api/v1/auth/me', method: 'get' },
   issueVoiceCredential: { path: '/api/v1/auth/voice-credential', method: 'post' },
   requestGuardianConsent: { path: '/api/v1/auth/guardian-consent/request', method: 'post' },
   confirmGuardianConsent: { path: '/api/v1/auth/guardian-consent/confirm', method: 'post' },
@@ -27,9 +28,18 @@ export const ENDPOINTS = {
   // 对话
   warmPrompt: { path: '/api/v1/chat/sessions/{sessionId}/nudge', method: 'post' },
   closeSession: { path: '/api/v1/sessions/{id}/close', method: 'post' },
+  // 情绪日记（F-01 doing/98：表外路径入表）
+  diaryToday: { path: '/api/v1/diary/today', method: 'get' },
+  diaryHistory: { path: '/api/v1/diary/history', method: 'get' },
+  diaryStreak: { path: '/api/v1/diary/streak', method: 'get' },
+  diaryCheckin: { path: '/api/v1/diary/checkin', method: 'post' },
+  diaryAchievements: { path: '/api/v1/diary/achievements', method: 'get' },
+  // 放松练习（F-01 doing/98：表外路径入表）
+  relaxationSessions: { path: '/api/v1/relaxation/sessions', method: 'post' },
+  relaxationToday: { path: '/api/v1/relaxation/sessions/today', method: 'get' },
+  relaxationExercises: { path: '/api/v1/relaxation/exercises', method: 'get' },
   // 工具箱
   toolboxTools: { path: '/api/v1/toolbox', method: 'get' },
-  sosTools: { path: '/api/v1/toolbox/sos', method: 'get' },
   moodCheck: { path: '/api/v1/toolbox/mood-check', method: 'post' },
   sosEvents: { path: '/api/v1/sos/events', method: 'post' },
   // 系统/语音（authFetch 原始 Response，调用方自解析）

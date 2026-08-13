@@ -224,7 +224,7 @@ jobs:
         run: python -m pytest -q
 
   shell-tools-test:
-    # DA-05 + D-10 + DA-09 + DA-11：tests/unit/scripts 十四件套 CI 入口（OPS-012：注释数字过期，实际 glob 全跑无遗漏）
+    # DA-05 + D-10 + DA-09 + DA-11：tests/unit/scripts 十五件套 CI 入口（2026-08-13 doing/98 D-07 注释修正：原「十四件套」数字过期，glob 实际全跑无遗漏）
     # check-commit/db-rollback-drill/gen-changelog/gen-openapi-snapshot/prepare-funasr/verify-doc-numbers/verify-config-passthrough/verify-model-names/deploy-lib + backup-common
     # 自带 temp repo/mock docker，无需额外依赖，<2min
     name: Shell Tools Test (scripts)

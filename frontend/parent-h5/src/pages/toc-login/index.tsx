@@ -4,7 +4,7 @@
  * 手机号验证码注册/登录（独立于校园体系）；演示环境验证码回显；
  * 登录成功后跳转家庭档案页（/toc/profiles）。
  */
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { View, Text, Input, Button } from '@tarojs/components'
 import Taro from '@tarojs/taro'
 import { validateTocPhone, validateTocCode } from '../../utils/tocAuth'
@@ -29,6 +29,11 @@ export default function TocLoginPage() {
   const [cooldown, setCooldown] = useState(0)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  // F-11（doing/98）：倒计时 interval 挂 ref，卸载时清理（原局部变量 timer 泄漏 → 卸载后仍 setState）
+  const cooldownTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  useEffect(() => () => {
+    if (cooldownTimerRef.current) clearInterval(cooldownTimerRef.current)
+  }, [])
 
   const handleSendCode = async () => {
     setError('')
@@ -41,10 +46,10 @@ export default function TocLoginPage() {
       const result = await sendTocCode(phone.trim())
       setEchoCode(result.code)
       setCooldown(60)
-      const timer = setInterval(() => {
+      cooldownTimerRef.current = setInterval(() => {
         setCooldown((c) => {
           if (c <= 1) {
-            clearInterval(timer)
+            if (cooldownTimerRef.current) clearInterval(cooldownTimerRef.current)
             return 0
           }
           return c - 1

@@ -28,9 +28,9 @@ describe('EmotionDiary', () => {
     vi.clearAllMocks()
     ;(api as any)
       .mockImplementation((url: string) => {
-        if (url === '/diary/today') return Promise.resolve({ checkedIn: false })
-        if (url === '/diary/history?days=14') return Promise.resolve([])
-        if (url === '/diary/streak') return Promise.resolve({ streak: 0, total: 0 })
+        if (url === '/api/v1/diary/today') return Promise.resolve({ checkedIn: false })
+        if (url === '/api/v1/diary/history?days=14') return Promise.resolve([])
+        if (url === '/api/v1/diary/streak') return Promise.resolve({ streak: 0, total: 0 })
         return Promise.resolve({})
       })
   })
@@ -73,10 +73,10 @@ describe('EmotionDiary', () => {
 
   it('提交打卡后显示已记录', async () => {
     ;(api as any).mockImplementation((url: string, opts?: any) => {
-      if (url === '/diary/today') return Promise.resolve({ checkedIn: false })
-      if (url === '/diary/checkin') return Promise.resolve({})
-      if (url === '/diary/history?days=14') return Promise.resolve([])
-      if (url === '/diary/streak') return Promise.resolve({ streak: 1, total: 1 })
+      if (url === '/api/v1/diary/today') return Promise.resolve({ checkedIn: false })
+      if (url === '/api/v1/diary/checkin') return Promise.resolve({})
+      if (url === '/api/v1/diary/history?days=14') return Promise.resolve([])
+      if (url === '/api/v1/diary/streak') return Promise.resolve({ streak: 1, total: 1 })
       return Promise.resolve({})
     })
 
@@ -91,9 +91,9 @@ describe('EmotionDiary', () => {
 
   it('已打卡状态直接显示已完成', async () => {
     ;(api as any).mockImplementation((url: string) => {
-      if (url === '/diary/today') return Promise.resolve({ checkedIn: true })
-      if (url === '/diary/history?days=14') return Promise.resolve([])
-      if (url === '/diary/streak') return Promise.resolve({ streak: 3, total: 10 })
+      if (url === '/api/v1/diary/today') return Promise.resolve({ checkedIn: true })
+      if (url === '/api/v1/diary/history?days=14') return Promise.resolve([])
+      if (url === '/api/v1/diary/streak') return Promise.resolve({ streak: 3, total: 10 })
       return Promise.resolve({})
     })
 
@@ -105,9 +105,9 @@ describe('EmotionDiary', () => {
 
   it('连续打卡 > 0 显示打卡天数', async () => {
     ;(api as any).mockImplementation((url: string) => {
-      if (url === '/diary/today') return Promise.resolve({ checkedIn: false })
-      if (url === '/diary/history?days=14') return Promise.resolve([])
-      if (url === '/diary/streak') return Promise.resolve({ streak: 5, total: 20 })
+      if (url === '/api/v1/diary/today') return Promise.resolve({ checkedIn: false })
+      if (url === '/api/v1/diary/history?days=14') return Promise.resolve([])
+      if (url === '/api/v1/diary/streak') return Promise.resolve({ streak: 5, total: 20 })
       return Promise.resolve({})
     })
 
@@ -119,14 +119,14 @@ describe('EmotionDiary', () => {
 
   it('有历史记录时渲染趋势图', async () => {
     ;(api as any).mockImplementation((url: string) => {
-      if (url === '/diary/today') return Promise.resolve({ checkedIn: false })
-      if (url === '/diary/history?days=14') {
+      if (url === '/api/v1/diary/today') return Promise.resolve({ checkedIn: false })
+      if (url === '/api/v1/diary/history?days=14') {
         return Promise.resolve([
           { emotionLabel: 'happy', intensity: 3, diaryDate: '2026-07-20' },
           { emotionLabel: 'sad', intensity: 2, diaryDate: '2026-07-21' },
         ])
       }
-      if (url === '/diary/streak') return Promise.resolve({ streak: 0, total: 0 })
+      if (url === '/api/v1/diary/streak') return Promise.resolve({ streak: 0, total: 0 })
       return Promise.resolve({})
     })
 
@@ -150,10 +150,10 @@ describe('EmotionDiary', () => {
 
   it('输入备注后提交', async () => {
     ;(api as any).mockImplementation((url: string, opts?: any) => {
-      if (url === '/diary/today') return Promise.resolve({ checkedIn: false })
-      if (url === '/diary/checkin') return Promise.resolve({})
-      if (url === '/diary/history?days=14') return Promise.resolve([])
-      if (url === '/diary/streak') return Promise.resolve({ streak: 1, total: 1 })
+      if (url === '/api/v1/diary/today') return Promise.resolve({ checkedIn: false })
+      if (url === '/api/v1/diary/checkin') return Promise.resolve({})
+      if (url === '/api/v1/diary/history?days=14') return Promise.resolve([])
+      if (url === '/api/v1/diary/streak') return Promise.resolve({ streak: 1, total: 1 })
       return Promise.resolve({})
     })
     render(<EmotionDiary onBack={vi.fn()} />)
@@ -164,7 +164,7 @@ describe('EmotionDiary', () => {
     await waitFor(() => {
       expect(screen.getByText('今天已记录，明天再来哦！')).toBeTruthy()
     })
-    expect(api).toHaveBeenCalledWith('/diary/checkin', expect.objectContaining({
+    expect(api).toHaveBeenCalledWith('/api/v1/diary/checkin', expect.objectContaining({
       method: 'POST',
       body: expect.stringContaining('今天有点不开心'),
     }))
@@ -172,14 +172,14 @@ describe('EmotionDiary', () => {
 
   it('历史记录使用正确的 emoji 映射', async () => {
     ;(api as any).mockImplementation((url: string) => {
-      if (url === '/diary/today') return Promise.resolve({ checkedIn: false })
-      if (url === '/diary/history?days=14') {
+      if (url === '/api/v1/diary/today') return Promise.resolve({ checkedIn: false })
+      if (url === '/api/v1/diary/history?days=14') {
         return Promise.resolve([
           { emotionLabel: '开心', intensity: 4, diaryDate: '2026-07-20' },
           { emotionLabel: 'unknown_emotion', intensity: 2, diaryDate: '2026-07-21' },
         ])
       }
-      if (url === '/diary/streak') return Promise.resolve({ streak: 0, total: 0 })
+      if (url === '/api/v1/diary/streak') return Promise.resolve({ streak: 0, total: 0 })
       return Promise.resolve({})
     })
     render(<EmotionDiary onBack={vi.fn()} />)

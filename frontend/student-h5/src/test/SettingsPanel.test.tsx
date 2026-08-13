@@ -232,7 +232,7 @@ describe('SettingsPanel', () => {
     mockUser = { userId: 'u1', pseudonym: '小明', familyCode: '' }
     render(<SettingsPanel {...defaultProps} />)
     await waitFor(() => {
-      expect(api).toHaveBeenCalledWith('/auth/me')
+      expect(api).toHaveBeenCalledWith('/api/v1/auth/me') // F-01：fillPath 全路径
       expect(screen.getByText('API-CODE')).toBeTruthy()
     })
   })

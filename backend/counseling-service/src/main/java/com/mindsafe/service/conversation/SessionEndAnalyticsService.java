@@ -5,7 +5,6 @@ import com.mindsafe.ai.risk.EmotionVocabulary;
 import com.mindsafe.common.enums.RiskLevel;
 import com.mindsafe.domain.entity.RiskEvent;
 import com.mindsafe.service.risk.RiskEventWriter;
-import com.mindsafe.service.profile.ProfileEffectivenessTracker;
 import com.mindsafe.service.voice.TrendAnomalySignaler;
 import com.mindsafe.service.voice.VoiceEmotionTrendAnalyzer;
 import org.slf4j.Logger;
@@ -23,7 +22,6 @@ import java.util.UUID;
  *   <li>VoiceEmotionTrendAnalyzer：跨会话语音情绪趋势</li>
  *   <li>TrendAnomalySignaler：趋势异常→教师关注信号（BL-08 通道）</li>
  *   <li>EmotionOrchestrationEvaluator：情绪编排效果量化（稳定回落/深度/适配）</li>
- *   <li>ProfileEffectivenessTracker：画像效果回收（有/无画像质量对比）</li>
  * </ul>
  * <p>
  * RISK-204 接线（BL-08 通道）：趋势关注信号持久化到 risk_events（source_type=attention，
@@ -39,19 +37,16 @@ public class SessionEndAnalyticsService {
     private final VoiceEmotionTrendAnalyzer trendAnalyzer;
     private final TrendAnomalySignaler anomalySignaler;
     private final EmotionOrchestrationEvaluator orchestrationEvaluator;
-    private final ProfileEffectivenessTracker effectivenessTracker;
     /** S-009（doing/93）：风险事件统一写入入口 */
     private final RiskEventWriter riskEventWriter;
 
     public SessionEndAnalyticsService(VoiceEmotionTrendAnalyzer trendAnalyzer,
                                       TrendAnomalySignaler anomalySignaler,
                                       EmotionOrchestrationEvaluator orchestrationEvaluator,
-                                      ProfileEffectivenessTracker effectivenessTracker,
                                       RiskEventWriter riskEventWriter) {
         this.trendAnalyzer = trendAnalyzer;
         this.anomalySignaler = anomalySignaler;
         this.orchestrationEvaluator = orchestrationEvaluator;
-        this.effectivenessTracker = effectivenessTracker;
         this.riskEventWriter = riskEventWriter;
     }
 
@@ -109,14 +104,8 @@ public class SessionEndAnalyticsService {
             // ORCH-008：情绪编排效果量化
             recoveryResult = orchestrationEvaluator.measureRecovery(emotionStates);
             depth = orchestrationEvaluator.measureDepth(studentMessages);
-
-            // PROF-024：画像效果回收（当前仅记录日志，待质量评分数据积累后做对比）
-            if (depth > 0) {
-                log.debug("画像效果回收: student={}, depth={}, recovery={}",
-                        studentUserId, depth, recoveryResult.recovered());
-            }
         } catch (Exception e) {
-            log.debug("会话结束分析降级（不影响业务）: {}", e.getMessage());
+            log.warn("会话结束分析降级（不影响业务）: {}", e.getMessage());
         }
 
         return new AnalyticsResult(trendResult, signal, recoveryResult, depth);

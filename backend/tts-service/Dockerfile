@@ -3,10 +3,14 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# 系统依赖
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
+# 系统依赖（D-08 doing/98：对齐 voice-service 的 BuildKit cache mount + 阿里云镜像，design/04 §13.3；
+# curl 体量小，但统一构建范式避免两服务漂移）
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    sed -i 's|http://deb.debian.org|https://mirrors.aliyun.com|g' /etc/apt/sources.list.d/debian.sources \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends \
+        curl
 
 # Python 依赖（在线安装，阿里云镜像加速；与 voice-service 一致）
 # 审计 P2-24：不再依赖 wheels/ 离线目录（避免 15MB 二进制入库与"忘刷新即构建失败"）

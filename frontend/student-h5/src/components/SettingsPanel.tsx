@@ -12,6 +12,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useTheme, THEMES } from '../theme/ThemeProvider'
 import { useVoicePersona, VOICE_PERSONAS, NATIVE_DIALECT_IDS } from '../hooks/useVoicePersona'
 import { api, getUser, getVoiceprintConfig } from '../api'
+import { fillPath, ENDPOINTS } from '../endpoints'
 import { hasAnyVoiceprint, deleteVoiceprint, clearRemoteVoiceprintMark } from '../utils/voiceprintStore'
 // DC-007：声纹注册编排收敛（SPEC §21）
 import { useVoiceEnrollment } from '../hooks/useVoiceEnrollment'
@@ -72,11 +73,11 @@ export default function SettingsPanel({ open, onClose, muted, onToggleMute, wake
       getVoiceprintConfig().then((cfg) => {
         setVpMode(cfg.mode)
         setVpPrivacyNote(cfg.privacyNote)
-      }).catch(() => {})
+      }).catch((e) => console.warn('[SettingsPanel] 获取声纹配置失败:', e))
       if (!familyCode) {
-        api('/auth/me').then((data) => {
+        api(fillPath(ENDPOINTS.authMe.path, {})).then((data) => {
           if (data?.familyCode) setFamilyCode(data.familyCode)
-        }).catch(() => {})
+        }).catch((e) => console.warn('[SettingsPanel] 获取家庭码失败:', e))
       }
     }
   }, [open])
