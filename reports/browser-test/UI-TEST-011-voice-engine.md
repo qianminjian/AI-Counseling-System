@@ -3,7 +3,7 @@
 > 专题：design/15 语音引擎专项（C 系列 + S 系列语音相关）| 执行日期：2026-08-10
 > 环境：生产 UAT（https://yun.gxjugu.com/mindsafe/）+ chrome-devtools MCP
 > 验证版本：F-19~F-27 全量修复后（预启动 Worker / 并发下载 / 时间戳日志 / 近音匹配）
-> 配套：reports/browser-test/ISSUES-语音引擎.md（问题登记）
+> 配套：问题登记见本报告 §三（发现与观察项表，2026-08-13 台账修正：原引用 `ISSUES-语音引擎.md` 不存在，本专题问题已内置于报告）
 
 ---
 
