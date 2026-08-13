@@ -30,12 +30,13 @@ PGPASSWORD="${PGPASSWORD:-mindsafe}" pg_dump -h "$HOST" -p "$PORT" -U "$PGUSER" 
   | grep -vE '^--$|^-- Dumped|^SET |^SELECT pg_catalog|^\\restrict|^\\unrestrict|^-- Name: (tenant_template|public)\\.(schema_migrations|flyway)' \
   >> "$TMP"
 
-if diff -q "$TMP" "$OUT" >/dev/null 2>&1; then
+# 表头 3 行含动态时间戳/库名，diff 排除（只比 schema 内容）
+if diff -q <(tail -n +4 "$TMP") <(tail -n +4 "$OUT") >/dev/null 2>&1; then
   echo "✅ 01_schema.sql 快照与数据库一致"
 else
   if [ "${CI:-}" = "true" ]; then
     echo "❌ 01_schema.sql 与数据库不一致（新增迁移后未重新生成快照）——请运行 backend/scripts/gen-schema-snapshot.sh"
-    diff "$TMP" "$OUT" | head -20
+    diff <(tail -n +4 "$TMP") <(tail -n +4 "$OUT") | head -20
     exit 1
   fi
   cp "$TMP" "$OUT"
