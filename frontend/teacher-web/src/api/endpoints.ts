@@ -21,6 +21,7 @@ export const ENDPOINTS = {
   // 平台管理
   // 质量监控
   getQualityStats: { path: '/api/v1/teacher/quality/stats', method: 'get' },
+  getQualityTrend: { path: '/api/v1/teacher/quality/trend', method: 'get' },
   getFlaggedSessions: { path: '/api/v1/teacher/quality/flagged', method: 'get' },
   exportSessionPdf: { path: '/api/v1/teacher/sessions/{sessionId}/export', method: 'get' },
   // 预警队列

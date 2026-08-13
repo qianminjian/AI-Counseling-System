@@ -1,9 +1,18 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Card, Row, Col, Statistic, Table, Tag, Button, Spin, Empty, Alert } from 'antd'
 import type { TableProps } from 'antd'
 import { WarningOutlined, StarOutlined, EyeOutlined } from '@ant-design/icons'
-import { getQualityStats, getFlaggedSessions, exportSessionPdf } from '../../api'
+import * as echarts from 'echarts/core'
+import { LineChart } from 'echarts/charts'
+import { GridComponent, TooltipComponent } from 'echarts/components'
+import { CanvasRenderer } from 'echarts/renderers'
+import type { EChartsOption } from 'echarts'
+import { getQualityStats, getFlaggedSessions, getQualityTrend, exportSessionPdf, type QualityTrendItem } from '../../api'
+import { useECharts } from '../../hooks/useECharts'
 import SessionMessagesDrawer from './SessionMessagesDrawer'
+
+// T-06-01：按需注册折线图（与 StatsCharts 同模式）
+echarts.use([LineChart, GridComponent, TooltipComponent, CanvasRenderer])
 
 /** 低分会话（getFlaggedSessions 契约） */
 interface FlaggedSessionVO {
@@ -31,11 +40,31 @@ export default function QualityPanel() {
   // F-09：加载失败不静默——console.error + 局部错误条 + 重试（AUD-019 只覆盖主加载）
   const [error, setError] = useState<string | null>(null)
   const [retryKey, setRetryKey] = useState(0)
+  // T-06-01：近 30 天质量趋势（LLM-as-Judge 综合分按日均值）
+  const [trend, setTrend] = useState<QualityTrendItem[]>([])
+  const trendRef = useRef<HTMLDivElement | null>(null)
+
+  const trendOption: EChartsOption | null = trend.length > 0 ? {
+    tooltip: { trigger: 'axis' },
+    grid: { left: 40, right: 20, top: 20, bottom: 30 },
+    xAxis: { type: 'category', data: trend.map(t => t.date.slice(5)), boundaryGap: false },
+    yAxis: { type: 'value', min: 0, max: 5 },
+    series: [{
+      name: '综合分均值',
+      type: 'line',
+      smooth: true,
+      data: trend.map(t => t.avgScore),
+      lineStyle: { color: '#1677ff', width: 2 },
+      itemStyle: { color: '#1677ff' },
+      areaStyle: { opacity: 0.08 },
+    }],
+  } : null
+  useECharts(trendRef, trendOption)
 
   useEffect(() => {
     setLoading(true)
-    Promise.all([getQualityStats(), getFlaggedSessions()])
-      .then(([s, f]) => { setStats(s); setFlagged(f); setError(null) })
+    Promise.all([getQualityStats(), getFlaggedSessions(), getQualityTrend()])
+      .then(([s, f, t]) => { setStats(s); setFlagged(f); setTrend(t); setError(null) })
       .catch((e) => {
         console.error('[QualityPanel] 加载质量统计失败:', e)
         setError('质量数据加载失败，请检查网络后重试')
@@ -94,6 +123,11 @@ export default function QualityPanel() {
             suffix="%" valueStyle={{ color: (stats?.flagRate || 0) > 20 ? 'var(--ms-danger)' : 'var(--ms-success)' }} /></Card>
         </Col>
       </Row>
+
+      {/* 近 30 天质量趋势（T-06-01） */}
+      <Card title={<span><StarOutlined /> 近 30 天质量趋势（LLM-as-Judge 综合分均值）</span>} size="small" style={{ marginBottom: 24 }}>
+        <div ref={trendRef} style={{ height: 220 }} />
+      </Card>
 
       {/* 低分会话列表 */}
       <Card title={<span><WarningOutlined className="ms-text-danger" /> 待抽检会话（评分 ≤ 2★）</span>} size="small">

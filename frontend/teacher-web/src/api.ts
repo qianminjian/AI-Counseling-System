@@ -224,6 +224,13 @@ export const getSatisfaction = (): Promise<SatisfactionStatsVO> => callEndpoint(
 
 // ===== 质量监控 =====
 export const getQualityStats = () => callEndpoint('getQualityStats')
+/** 质量趋势（T-06-01：近 30 天综合分按日） */
+export interface QualityTrendItem {
+  date: string
+  avgScore: number
+  count: number
+}
+export const getQualityTrend = (): Promise<QualityTrendItem[]> => callEndpoint('getQualityTrend')
 export const getFlaggedSessions = () => callEndpoint('getFlaggedSessions')
 
 /**

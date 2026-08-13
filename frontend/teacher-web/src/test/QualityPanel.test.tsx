@@ -1,6 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 
+// T-06-01：echarts 按需注册 mock（jsdom 无画布尺寸，同 ProfileRadarChart.test 模式）
+vi.mock('echarts/core', () => ({
+  init: vi.fn(() => ({ setOption: vi.fn(), resize: vi.fn(), dispose: vi.fn() })),
+  use: vi.fn(),
+}));
+vi.mock('echarts/charts', () => ({ LineChart: class {} }));
+vi.mock('echarts/components', () => ({ GridComponent: class {}, TooltipComponent: class {} }));
+vi.mock('echarts/renderers', () => ({ CanvasRenderer: class {} }));
+vi.mock('../../hooks/useECharts', () => ({ useECharts: () => {} }));
+
 /**
  * 质量监控面板测试（P1-FE-3：导出 PDF 张冠李戴修复）
  * 契约：Drawer「导出 PDF」必须导出【当前正在回放】的会话，
@@ -16,6 +26,7 @@ const mockExportSessionPdf = vi.fn((_sid: string) => Promise.resolve());
 
 vi.mock('../api', () => ({
   getQualityStats: vi.fn(() => Promise.resolve({ avgRating: 3.2, recentAvg: 3.0, flaggedCount: 2, flagRate: 8.5 })),
+  getQualityTrend: vi.fn(() => Promise.resolve([{ date: '2026-07-15', avgScore: 3.0, count: 1 }])),
   getFlaggedSessions: vi.fn(() => Promise.resolve([
     { sessionId: 'sess-A', rating: 1, comment: '回答太生硬', startedAt: '2026-07-28T10:00:00Z' },
     { sessionId: 'sess-B', rating: 2, comment: '没有安抚情绪', startedAt: '2026-07-28T11:00:00Z' },

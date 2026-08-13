@@ -11,14 +11,20 @@ import com.mindsafe.domain.mapper.MessageSummaryMapper;
 import com.mindsafe.domain.mapper.QualityScoreMapper;
 import com.mindsafe.domain.mapper.UserMapper;
 import com.mindsafe.service.conversation.MessageSummaryService;
+import com.mindsafe.service.common.CounselingTimeZone;
 import com.mindsafe.service.security.FieldEncryptionService;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.TreeMap;
 import java.util.UUID;
 
 /**
@@ -195,6 +201,44 @@ public class TeacherQualityService {
         // P1 审计修复：与 getQualityStats 百分比口径一致
         statsResult.put("flagRate", Math.round((double) flaggedCount / all.size() * 1000.0) / 10.0);
         return statsResult;
+    }
+
+    /**
+     * 质量趋势（T-06-01，2026-08-13 遍历）：近 30 天 LLM-as-Judge 综合分按日均值。
+     * 空日期补 0（前端折线图连续展示）；数据源 QualityScore.evaluatedAt。
+     */
+    public List<Map<String, Object>> qualityTrend(UUID tenantId) {
+        Instant start = CounselingTimeZone.truncateToDay(Instant.now().minus(29, ChronoUnit.DAYS));
+        List<QualityScore> scores = qualityScoreMapper.selectList(
+                new LambdaQueryWrapper<QualityScore>()
+                        .eq(QualityScore::getTenantId, tenantId)
+                        .isNotNull(QualityScore::getOverallScore)
+                        .ge(QualityScore::getEvaluatedAt, start));
+
+        Map<String, List<BigDecimal>> byDay = new TreeMap<>();
+        for (QualityScore s : scores) {
+            if (s.getEvaluatedAt() == null) continue;
+            byDay.computeIfAbsent(CounselingTimeZone.dateKey(s.getEvaluatedAt()), k -> new ArrayList<>())
+                    .add(s.getOverallScore());
+        }
+
+        List<Map<String, Object>> trend = new ArrayList<>();
+        for (int i = 29; i >= 0; i--) {
+            String day = CounselingTimeZone.dateKey(start.plus(i, ChronoUnit.DAYS));
+            List<BigDecimal> vals = byDay.get(day);
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("date", day);
+            if (vals != null && !vals.isEmpty()) {
+                double avg = vals.stream().mapToDouble(BigDecimal::doubleValue).average().orElse(0);
+                row.put("avgScore", Math.round(avg * 100.0) / 100.0);
+                row.put("count", vals.size());
+            } else {
+                row.put("avgScore", 0);
+                row.put("count", 0);
+            }
+            trend.add(row);
+        }
+        return trend;
     }
 
     /**

@@ -87,7 +87,16 @@ public class TeacherQualityController {
     }
 
     /**
-     * 会话抽检回放（对话摘要 + 质量评分叠加）；会话不存在或跨租户返回 error 提示
+     * 质量趋势（T-06-01，2026-08-13 遍历）：近 30 天 LLM-as-Judge 综合分按日均值
+     */
+    @GetMapping("/teacher/quality/trend")
+    public ApiResponse<List<Map<String, Object>>> getQualityTrend(Authentication auth) {
+        TenantContext ctx = SecuritySupport.requireContext(auth);
+        return ApiResponse.ok(teacherQualityService.qualityTrend(ctx.tenantId()));
+    }
+    
+    /**
+     * 会话抽检回放（对话摘要 + 质量评分叠加）；会话不存在或跨租户返回 error 提 示
      */
     @GetMapping("/teacher/quality/sessions/{sessionId}/replay")
     public ApiResponse<Map<String, Object>> replaySession(@PathVariable UUID sessionId, Authentication auth) {
