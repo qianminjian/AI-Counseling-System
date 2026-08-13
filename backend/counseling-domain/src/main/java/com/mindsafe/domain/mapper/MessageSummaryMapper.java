@@ -33,7 +33,7 @@ public interface MessageSummaryMapper extends BaseMapper<MessageSummary> {
             FROM tenant_template.message_summaries
             WHERE tenant_id = #{tenantId}
               AND sender_type = #{senderType}
-              AND created_at &gt;= #{since}
+              AND created_at >= #{since}
               AND emotion_label IS NOT NULL
             GROUP BY emotion_label
             """)
