@@ -1,13 +1,13 @@
 ---
-trigger: model-decision
-description: 外部框架协作约定——当用户调用 GSD / Superpowers / atdo 等外部工作流框架，或多框架共存时触发
+trigger: manual
+description: 外部框架协作约定——当用户实际引入 GSD / Superpowers / atdo 等外部工作流框架时手动 @framework-integration 引入（2026-08-13 由 model-decision 降级：项目当前未安装这些框架，避免每轮判断白烧 token）
 ---
 
 # framework-integration.md - 外部框架协作约定
 
-> 加载方式：模型决策（Model Decision）
+> 加载方式：手动引入（Apply Manually，@framework-integration）
 > 触发场景：与 GSD / Superpowers / atdo 等外部框架交互时
-> 来源：整合自 Claude Code `rules/collaboration/framework-integration.md`
+> 注意：项目当前**未安装** GSD/Superpowers/atdo（无 .planning/、无配置文件），本规则仅在未来实际引入时手动加载
 
 ---
 

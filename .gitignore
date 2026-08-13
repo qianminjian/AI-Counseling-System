@@ -56,7 +56,12 @@ tests/e2e/blob-report/
 # ===== 日志 =====
 *.log
 logs/deploy/
-logs/deploy/audit-*.md   # DOC-078 部署审计报告（运行时产物，不提交）
+# DOC-078 部署审计报告（运行时产物，不提交）
+logs/deploy/audit-*.md
+# token 监控日报（运行时产物，不提交）
+logs/token-report/
+# Serena/Claude Code 项目级配置（个人工具状态，不提交）
+.serena/
 frontend/parent-h5/.swc/
 .deploy-state
 

@@ -84,38 +84,9 @@ description: 任务启动目标对齐、执行中范围控制、失败升级、�
 
 ## §3 设计持久化：BEACON.md
 
-### 3.1 项目明灯文件
-
-每个项目的设计北方之星：`design/BEACON.md`。单一摘要文件，贯穿项目全生命周期。
-
-```
-design/
-  BEACON.md          ← 唯一强制文件
-  discussion/        ← 可选：多轮设计讨论摘要
-  decisions/         ← 可选：详细 ADR（重大架构决策）
-  reference/         ← 可选：外部参考材料
-```
-
-### 3.2 读取时机
-
-| 触发条件 | 目的 |
-|---------|------|
-| Plan Mode 激活 | 恢复设计上下文 |
-| 启动任何新任务 | 对照 Goals/Scope 确认方向 |
-| 用户说"继续"/"接着做" | 恢复上次设计状态 |
-
-读取后在回复中**显式引用**关键内容（如"根据 BEACON.md，当前阶段 X，核心目标 Y"），确认上下文理解正确。
-
-### 3.3 更新时机
-
-| 触发条件 | 更新章节 |
-|---------|---------|
-| 设计讨论产生新决策 | ## 设计决策 |
-| 需求范围发生变化 | ## 范围边界 |
-| 设计阶段推进 | ## 当前状态 |
-| 新问题被识别但未解决 | ## 待解决问题 |
-
-完整模板与规范见 `@design-persistence`。
+- 启动新任务 / Plan Mode / 用户说“继续”时，先读 `design/BEACON.md` 恢复上下文，并在回复中显式引用关键内容确认理解正确
+- 新决策/范围变化/阶段推进时同步更新 BEACON.md
+- 完整模板与规范见 `@design-persistence`（不在此重复）
 
 ---
 
@@ -143,33 +114,16 @@ design/
 
 ### 4.3 Pipeline 工具约束（即使自动化也生效）
 
-- **写白名单**：Write / Edit 仅当前项目目录
-- **Bash 黑名单**：`rm -rf / mkfs / dd / shutdown`、外网 `curl/wget`（仅允许 localhost）、系统目录（`/etc/ /usr/ /var/lib/`）
-- **文件黑名单**：`~/.ssh/ ~/.aws/ ~/.config/gcloud/`、`/etc/passwd /etc/shadow`
+写白名单仅当前项目目录；Bash 禁 `rm -rf / mkfs / dd`、外网 `curl/wget`、系统目录；文件禁 `~/.ssh/ ~/.aws/` 等敏感路径。
+
+> 注：项目当前未使用 Pipeline/atdo 自动化模式（2026-08-13 核实），本节仅作未来启用时的约束快照。
 
 ---
 
 ## §5 任务列表管理
 
-### 5.1 何时建立任务列表
-
-- 子任务 ≥3 项时建立
-- 单任务执行可跳过
-
-### 5.2 任务状态
-
-| 状态 | 含义 |
-|------|------|
-| `pending` | 未开始 |
-| `in_progress` | 进行中（最多 1 个） |
-| `completed` | 完成 |
-| `cancelled` | 取消（含理由） |
-
-### 5.3 进度更新
-
-- 完成一项 → 立即标记 `completed`
-- 阻塞时 → 标记 `in_progress` + 描述阻塞项
-- 不允许"完成"后才发现下游有问题
+- 子任务 ≥3 项时用 TodoWrite 建列表（状态 pending/in_progress/completed/cancelled，in_progress 最多 1 个）；单任务可跳过
+- 完成一项立即标记 completed；阻塞时标记 in_progress 并描述阻塞项
 
 ---
 
