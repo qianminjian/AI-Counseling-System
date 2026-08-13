@@ -19,7 +19,7 @@ function mockCtx(overrides: Record<string, unknown> = {}) {
     close: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   }
-  ;(window as any).AudioContext = vi.fn(() => ctx)
+  ;(window as any).AudioContext = vi.fn(function () { return ctx })
   return ctx as any
 }
 

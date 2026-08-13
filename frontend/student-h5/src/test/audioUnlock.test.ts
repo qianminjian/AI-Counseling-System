@@ -19,7 +19,7 @@ describe('utils/audioUnlock', () => {
       createBufferSource: vi.fn(() => ({ buffer: null, connect: vi.fn(), start: vi.fn() })),
       destination: {},
     }
-    vi.stubGlobal('AudioContext', vi.fn(() => mockCtx))
+    vi.stubGlobal('AudioContext', vi.fn(function () { return mockCtx }))
     vi.stubGlobal('webkitAudioContext', undefined)
 
     // Mock Audio element
@@ -33,14 +33,14 @@ describe('utils/audioUnlock', () => {
       play: vi.fn(() => Promise.resolve()),
       pause: vi.fn(),
     }
-    vi.stubGlobal('Audio', vi.fn(() => mockAudio))
+    vi.stubGlobal('Audio', vi.fn(function () { return mockAudio }))
 
     // Mock speechSynthesis
     vi.stubGlobal('speechSynthesis', {
       speak: vi.fn(),
       cancel: vi.fn(),
     })
-    vi.stubGlobal('SpeechSynthesisUtterance', vi.fn(() => ({ volume: 1 })))
+    vi.stubGlobal('SpeechSynthesisUtterance', vi.fn(function () { return { volume: 1 } }))
   })
 
   describe('getGlobalAudioContext', () => {

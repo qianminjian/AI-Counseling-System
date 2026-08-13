@@ -90,7 +90,7 @@ class GuardianConsentFlowIT extends AbstractIntegrationTest {
 
         assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.OK);
         JsonNode body = objectMapper.readTree(resp.getBody());
-        assertThat(body.get("success").asBoolean()).isTrue();
+        assertThat(body.get("code").asInt()).isEqualTo(0);
         assertThat(body.get("data").get("guardianConsentPending").asBoolean()).isTrue();
 
         childToken = body.get("data").get("token").asText();
@@ -102,7 +102,6 @@ class GuardianConsentFlowIT extends AbstractIntegrationTest {
         ResponseEntity<String> resp = createSession(childToken);
         assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
         JsonNode body = objectMapper.readTree(resp.getBody());
-        assertThat(body.get("success").asBoolean()).isFalse();
         assertThat(body.get("code").asInt()).isEqualTo(20003);
     }
 
@@ -116,7 +115,7 @@ class GuardianConsentFlowIT extends AbstractIntegrationTest {
 
         assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.OK);
         JsonNode body = objectMapper.readTree(resp.getBody());
-        assertThat(body.get("success").asBoolean()).isTrue();
+        assertThat(body.get("code").asInt()).isEqualTo(0);
 
         // LoggingSmsService 发码后验证码应落 Redis
         String code = stringRedisTemplate.opsForValue().get(SMS_CODE_KEY);
@@ -136,7 +135,6 @@ class GuardianConsentFlowIT extends AbstractIntegrationTest {
 
         assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
         JsonNode body = objectMapper.readTree(resp.getBody());
-        assertThat(body.get("success").asBoolean()).isFalse();
         assertThat(body.get("code").asInt()).isEqualTo(20001);
 
         // 门禁应仍然拦截（403）
@@ -156,13 +154,13 @@ class GuardianConsentFlowIT extends AbstractIntegrationTest {
 
         assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.OK);
         JsonNode body = objectMapper.readTree(resp.getBody());
-        assertThat(body.get("success").asBoolean()).isTrue();
+        assertThat(body.get("code").asInt()).isEqualTo(0);
 
         // 门禁放行，会话创建成功
         ResponseEntity<String> sessionResp = createSession(childToken);
         assertThat(sessionResp.getStatusCode()).isEqualTo(HttpStatus.OK);
         JsonNode session = objectMapper.readTree(sessionResp.getBody());
-        assertThat(session.get("success").asBoolean()).isTrue();
+        assertThat(session.get("code").asInt()).isEqualTo(0);
         assertThat(session.get("data").get("sessionId").asText()).isNotBlank();
     }
 
@@ -176,12 +174,12 @@ class GuardianConsentFlowIT extends AbstractIntegrationTest {
 
         assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.OK);
         JsonNode body = objectMapper.readTree(resp.getBody());
-        assertThat(body.get("success").asBoolean()).isTrue();
+        assertThat(body.get("code").asInt()).isEqualTo(0);
         assertThat(body.get("data").get("guardianConsentPending").asBoolean()).isFalse();
 
         String token = body.get("data").get("token").asText();
         ResponseEntity<String> sessionResp = createSession(token);
         assertThat(sessionResp.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(objectMapper.readTree(sessionResp.getBody()).get("success").asBoolean()).isTrue();
+        assertThat(objectMapper.readTree(sessionResp.getBody()).get("code").asInt()).isEqualTo(0);
     }
 }

@@ -21,6 +21,13 @@
     "react": "18.3.1",
     "react-dom": "18.3.1"
   },
+  "overrides": {
+    "@tarojs/plugin-framework-react": {
+      "@vitejs/plugin-react": "$@vitejs/plugin-react",
+      "vite": "$vite"
+    },
+    "swiper": "12.1.2"
+  },
   "devDependencies": {
     "@babel/preset-react": "^7.29.7",
     "@pmmmwh/react-refresh-webpack-plugin": "^0.6.2",
@@ -35,15 +42,15 @@
     "@types/react": "^18.3.1",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^6.0.3",
-    "@vitest/coverage-v8": "^3.2.7",
+    "@vitest/coverage-v8": "^4.1.10",
     "babel-preset-taro": "^4.2.1",
     "jsdom": "^26.1.0",
     "oxlint": "^1.71.0",
-    "react-refresh": "^0.18.0",
+    "react-refresh": "^0.14.0",
     "sass": "^1.77.0",
     "typescript": "^5.9.3",
     "vite": "^8.1.1",
-    "vitest": "^3.2.1",
+    "vitest": "^4.1.10",
     "webpack": "^5.91.0"
   }
 }

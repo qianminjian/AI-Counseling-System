@@ -40,6 +40,8 @@ export default defineConfig({
     include: ['src/**/*.{test,spec}.{ts,tsx}', '../shared/src/**/*.test.ts'],
     coverage: {
       exclude: [
+        // 样式文件不可单测（v8 对 scss 计 0 覆盖，拉低全局阈值）
+        '**/*.scss',
         'src/app.tsx',
         'src/app.config.ts',
         'src/vite-env.d.ts',

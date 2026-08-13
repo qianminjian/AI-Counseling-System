@@ -53,9 +53,9 @@ describe('hooks/useTtsPlayer', () => {
       createObjectURL: vi.fn(() => 'blob:mock'),
       revokeObjectURL: vi.fn(),
     })
-    vi.stubGlobal('SpeechSynthesisUtterance', vi.fn(() => ({
+    vi.stubGlobal('SpeechSynthesisUtterance', vi.fn(function () { return {
       lang: '', rate: 1, pitch: 1, voice: null, onend: null, onerror: null,
-    })))
+    } }))
     mockFetchTtsSynthesize.mockReset()
     // FA-05：静音偏好持久化后跨用例隔离（避免上一个用例写入的 muted 污染后续 mount）
     localStorage.clear()

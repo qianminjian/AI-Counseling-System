@@ -3,7 +3,7 @@
 #
 # 覆盖：
 #   1. backup-common.sh 导出的 DB 连接事实（容器/库/用户）
-#   2. BACKUP_VOLUME 探测（环境变量覆盖优先 / mock docker 自动探测 / 空值 fail-fast）
+#   2. BACKUP_VOLUME 探测（环境变量覆盖优先 / mock docker 自动探测 / 空值幂等自愈创建，创建失败 fail-fast）
 #   3. setup-server.sh：cron 指向 deploy/backup.sh + 写入前 fail-fast + 复制 backup-common.sh
 #   4. backup.sh / restore.sh：source 共享事实，不再自建 DB 事实副本
 #
@@ -42,12 +42,19 @@ if [ -f "$COMMON" ]; then
     env -u BACKUP_VOLUME bash -c 'docker() { echo "local_deploy_dbbackups"; }; source "$1"; echo "$BACKUP_VOLUME"' _ "$COMMON" > /tmp/bc_probe.out 2>/dev/null || true
     check "无环境变量 → 自动探测 dbbackups 卷" "local_deploy_dbbackups" "$(cat /tmp/bc_probe.out)"
 
-    # 2b. 探测为空 → detect_backup_volume fail-fast（子 shell，不杀测试进程）
+    # 2b. 探测为空 → 幂等自愈创建（OPS-P0-01，doing/96 契约）；创建失败才 fail-fast
+    # 2b-1: 自愈创建成功 → 不退出，BACKUP_VOLUME=<project>_dbbackups（子 shell，不杀测试进程）
+    env -u BACKUP_VOLUME bash -c 'docker() { echo ""; }; source "$1"; echo "$BACKUP_VOLUME"' _ "$COMMON" > /tmp/bc_probe.out 2>/dev/null || true
+    case "$(cat /tmp/bc_probe.out)" in
+        *_dbbackups) ok "探测为空 → 自愈创建成功，BACKUP_VOLUME=*_dbbackups" ;;
+        *) fail "探测为空 → 自愈创建成功，BACKUP_VOLUME=*_dbbackups (实际 [$(cat /tmp/bc_probe.out)])" ;;
+    esac
+    # 2b-2: 自愈创建失败（mock docker volume create 返回 1）→ exit 1
     set +e
-    env -u BACKUP_VOLUME bash -c 'docker() { echo ""; }; source "$1"; detect_backup_volume' _ "$COMMON" > /dev/null 2>&1
+    env -u BACKUP_VOLUME bash -c 'docker() { case "$1 $2" in "volume create") return 1;; esac; }; source "$1"; detect_backup_volume' _ "$COMMON" > /dev/null 2>&1
     RC=$?
     set -e
-    check "探测为空 → exit 1" "1" "$RC"
+    check "探测为空 + 创建失败 → exit 1" "1" "$RC"
     rm -f /tmp/bc_probe.out
 else
     fail "backup-common.sh 不存在（待实现）"

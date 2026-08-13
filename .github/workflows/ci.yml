@@ -265,7 +265,8 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: backend
-          dockerfile: ${{ matrix.service }}/Dockerfile
+          # build-push-action v6 输入名由 dockerfile 改为 file（旧名被忽略 → 误构主应用镜像）
+          file: ${{ matrix.service }}/Dockerfile
           push: false
           load: true
           tags: mindsafe/${{ matrix.service }}:smoke

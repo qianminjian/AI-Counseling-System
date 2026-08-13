@@ -14,6 +14,7 @@ const mockList = vi.fn(() => Promise.resolve([
   { profileId: 'p1', familyAccountId: 'f1', nickname: '小明', age: 8, interests: '恐龙,画画' },
 ]))
 const mockCreate = vi.fn(() => Promise.resolve({ profileId: 'p2', familyAccountId: 'f1', nickname: '小红' }))
+const mockUpdate = vi.fn(() => Promise.resolve({}))
 const mockDelete = vi.fn(() => Promise.resolve())
 const mockListDevices = vi.fn(() => Promise.resolve([
   { deviceCode: 'K7M2P9XW4AQ', deviceType: 'desk_toy', firmwareVersion: 'v0.1.0', status: 'ONLINE_BOUND', online: true },
@@ -45,7 +46,7 @@ vi.mock('../services/toc', () => ({
   tocRegister: (...a: unknown[]) => mockRegister(...a),
   listTocProfiles: (...a: unknown[]) => mockList(...a),
   createTocProfile: (...a: unknown[]) => mockCreate(...a),
-  updateTocProfile: vi.fn(() => Promise.resolve({})),
+  updateTocProfile: (...a: unknown[]) => mockUpdate(...a),
   deleteTocProfile: (...a: unknown[]) => mockDelete(...a),
   getTocPrivacyOverview: (...a: unknown[]) => mockPrivacyOverview(...a),
   deleteTocPrivacyData: (...a: unknown[]) => mockDeletePrivacy(...a),
@@ -127,6 +128,44 @@ describe('toC 家庭档案页（TOC-002）', () => {
     await waitFor(() => expect(mockDelete).toHaveBeenCalledWith('p1'))
   })
 
+  it('创建档案成功：提交表单并刷新列表', async () => {
+    render(<TocProfilesPage />)
+    await screen.findByText('小明')
+    // Taro Input 渲染双节点（taro-input-core + 内部 input），取首个
+    fireEvent.input(screen.getAllByPlaceholderText('孩子昵称（必填）')[0], { target: { value: '小红' } })
+    fireEvent.input(screen.getAllByPlaceholderText('年龄')[0], { target: { value: '7' } })
+    fireEvent.input(screen.getAllByPlaceholderText(/兴趣/)[0], { target: { value: '恐龙' } })
+    fireEvent.click(screen.getByText('添加档案'))
+    await waitFor(() => expect(mockCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ nickname: '小红', age: 7, interests: '恐龙' })))
+  })
+
+  it('编辑档案：回填表单并保存修改', async () => {
+    render(<TocProfilesPage />)
+    await screen.findByText('小明')
+    fireEvent.click(screen.getByText('编辑'))
+    expect(screen.getByText('保存修改')).toBeInTheDocument()
+    expect((screen.getAllByPlaceholderText('孩子昵称（必填）')[0] as HTMLInputElement).value).toBe('小明')
+    fireEvent.input(screen.getAllByPlaceholderText('孩子昵称（必填）')[0], { target: { value: '小明明' } })
+    fireEvent.click(screen.getByText('保存修改'))
+    await waitFor(() => expect(mockUpdate).toHaveBeenCalledWith('p1', expect.objectContaining({ nickname: '小明明' })))
+  })
+
+  it('创建档案失败：显示错误消息', async () => {
+    mockCreate.mockRejectedValueOnce(new Error('创建失败'))
+    render(<TocProfilesPage />)
+    await screen.findByText('小明')
+    fireEvent.input(screen.getAllByPlaceholderText('孩子昵称（必填）')[0], { target: { value: '小红' } })
+    fireEvent.click(screen.getByText('添加档案'))
+    expect(await screen.findByText('创建失败')).toBeInTheDocument()
+  })
+
+  it('档案加载失败：显示错误消息', async () => {
+    mockList.mockRejectedValueOnce(new Error('网络错误'))
+    render(<TocProfilesPage />)
+    expect(await screen.findByText('网络错误')).toBeInTheDocument()
+  })
+
   it('退出：清空会话并回登录页', async () => {
     render(<TocProfilesPage />)
     await screen.findByText('小明')
@@ -164,6 +203,40 @@ describe('toC 家庭设备页（TOC-003）', () => {
     await screen.findByText('K7M2P9XW4AQ')
     fireEvent.click(screen.getByText('绑定新设备'))
     await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith({ url: '/pages/device/index?v=1&deviceCode=SCAN' }))
+  })
+
+  it('解绑失败：显示错误消息', async () => {
+    mockUnbind.mockRejectedValueOnce(new Error('解绑失败'))
+    render(<TocDevicesPage />)
+    await screen.findByText('K7M2P9XW4AQ')
+    fireEvent.click(screen.getByText('解绑'))
+    expect(await screen.findByText('解绑失败')).toBeInTheDocument()
+  })
+
+  it('离线设备：展示离线状态', async () => {
+    mockListDevices.mockResolvedValueOnce([
+      { deviceCode: 'K7M2P9XW4AQ', deviceType: 'desk_toy', firmwareVersion: 'v0.1.0', status: 'ONLINE_BOUND', online: false },
+    ])
+    render(<TocDevicesPage />)
+    expect(await screen.findByText(/离线/)).toBeInTheDocument()
+  })
+
+  it('偏好面板收起：再次点击偏好关闭', async () => {
+    render(<TocDevicesPage />)
+    await screen.findByText('K7M2P9XW4AQ')
+    fireEvent.click(screen.getByText('偏好'))
+    expect(screen.getByText('音量（0-100）：60')).toBeInTheDocument()
+    fireEvent.click(screen.getByText('偏好'))
+    expect(screen.queryByText('音量（0-100）：60')).not.toBeInTheDocument()
+  })
+
+  it('偏好保存失败：显示错误消息', async () => {
+    mockSetPrefs.mockRejectedValueOnce(new Error('保存失败'))
+    render(<TocDevicesPage />)
+    await screen.findByText('K7M2P9XW4AQ')
+    fireEvent.click(screen.getByText('偏好'))
+    fireEvent.click(screen.getByText('保存偏好'))
+    expect(await screen.findByText('保存失败')).toBeInTheDocument()
   })
 })
 
@@ -206,6 +279,29 @@ describe('toC 隐私控制页（TOC-007）', () => {
     fireEvent.click(screen.getAllByText('删除全部数据')[1])
     fireEvent.click(screen.getByText('取消'))
     expect(mockDeletePrivacy).not.toHaveBeenCalled()
+  })
+
+  it('删除成功：显示不可恢复提示并清空清单', async () => {
+    render(<TocPrivacyPage />)
+    await screen.findByText(/孩子档案：2 个/)
+    fireEvent.click(screen.getAllByText('删除全部数据')[1])
+    fireEvent.click(screen.getByText('确认删除'))
+    expect(await screen.findByText(/数据已删除且不可恢复/)).toBeInTheDocument()
+  })
+
+  it('删除失败：显示错误消息', async () => {
+    mockDeletePrivacy.mockRejectedValueOnce(new Error('删除失败'))
+    render(<TocPrivacyPage />)
+    await screen.findByText(/孩子档案：2 个/)
+    fireEvent.click(screen.getAllByText('删除全部数据')[1])
+    fireEvent.click(screen.getByText('确认删除'))
+    expect(await screen.findByText('删除失败')).toBeInTheDocument()
+  })
+
+  it('数据加载失败：显示错误消息', async () => {
+    mockPrivacyOverview.mockRejectedValueOnce(new Error('加载失败'))
+    render(<TocPrivacyPage />)
+    expect(await screen.findByText('加载失败')).toBeInTheDocument()
   })
 })
 })

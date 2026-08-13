@@ -82,7 +82,7 @@ describe('createPcmCapture', () => {
       connect: vi.fn(),
       disconnect: vi.fn(),
     }
-    vi.stubGlobal('AudioWorkletNode', vi.fn(() => mockWorkletNode))
+    vi.stubGlobal('AudioWorkletNode', vi.fn(function () { return mockWorkletNode }))
     mockCtx.audioWorklet = { addModule: vi.fn().mockResolvedValue(undefined) }
 
     const handle = await createPcmCapture(mockCtx, mockStream, vi.fn())
@@ -91,7 +91,7 @@ describe('createPcmCapture', () => {
   })
 
   it('AudioWorklet 失败时降级为 ScriptProcessor', async () => {
-    vi.stubGlobal('AudioWorkletNode', vi.fn(() => { throw new Error('fail') }))
+    vi.stubGlobal('AudioWorkletNode', vi.fn(function () { throw new Error('fail') }))
     mockCtx.audioWorklet = { addModule: vi.fn().mockResolvedValue(undefined) }
 
     const handle = await createPcmCapture(mockCtx, mockStream, vi.fn())
@@ -105,7 +105,7 @@ describe('createPcmCapture', () => {
       connect: vi.fn(),
       disconnect: vi.fn(),
     }
-    vi.stubGlobal('AudioWorkletNode', vi.fn(() => mockWorkletNode))
+    vi.stubGlobal('AudioWorkletNode', vi.fn(function () { return mockWorkletNode }))
     mockCtx.audioWorklet = { addModule: vi.fn().mockResolvedValue(undefined) }
 
     await createPcmCapture(mockCtx, mockStream, onPcm)
@@ -120,7 +120,7 @@ describe('createPcmCapture', () => {
       connect: vi.fn(),
       disconnect: vi.fn(),
     }
-    vi.stubGlobal('AudioWorkletNode', vi.fn(() => mockWorkletNode))
+    vi.stubGlobal('AudioWorkletNode', vi.fn(function () { return mockWorkletNode }))
     mockCtx.audioWorklet = { addModule: vi.fn().mockResolvedValue(undefined) }
 
     const handle = await createPcmCapture(mockCtx, mockStream, vi.fn())

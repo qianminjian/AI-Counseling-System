@@ -87,7 +87,7 @@ class ConversationRiskFlowIT extends AbstractIntegrationTest {
 
         assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.OK);
         JsonNode json = objectMapper.readTree(resp.getBody());
-        assertThat(json.get("success").asBoolean()).isTrue();
+        assertThat(json.get("code").asInt()).isEqualTo(0);
         studentToken = json.get("data").get("token").asText();
         assertThat(studentToken).isNotBlank();
 
@@ -136,7 +136,7 @@ class ConversationRiskFlowIT extends AbstractIntegrationTest {
 
         assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.OK);
         JsonNode json = objectMapper.readTree(resp.getBody());
-        assertThat(json.get("success").asBoolean()).isTrue();
+        assertThat(json.get("code").asInt()).isEqualTo(0);
         assertThat(json.get("data").get("greeting").asText()).contains("哈喽");
         sessionId = UUID.fromString(json.get("data").get("sessionId").asText());
     }
@@ -226,7 +226,7 @@ class ConversationRiskFlowIT extends AbstractIntegrationTest {
 
         assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.OK);
         JsonNode json = objectMapper.readTree(resp.getBody());
-        assertThat(json.get("success").asBoolean()).isTrue();
+        assertThat(json.get("code").asInt()).isEqualTo(0);
         assertThat(json.get("data").isArray()).isTrue();
         assertThat(json.get("data").size()).isGreaterThanOrEqualTo(1);
 
@@ -253,8 +253,10 @@ class ConversationRiskFlowIT extends AbstractIntegrationTest {
 
         assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.OK);
         JsonNode json = objectMapper.readTree(resp.getBody());
-        assertThat(json.get("success").asBoolean()).isTrue();
-        assertThat(json.get("data").isArray()).isTrue();
+        assertThat(json.get("code").asInt()).isEqualTo(0);
+        // 通知接口返回分页结构 {items:[], total:n}；通知可能为空（教师 Order(7) 才插入）
+        assertThat(json.get("data").get("items").isArray()).isTrue();
+        assertThat(json.get("data").has("total")).isTrue();
     }
 
     @Test
@@ -266,7 +268,7 @@ class ConversationRiskFlowIT extends AbstractIntegrationTest {
 
         assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.OK);
         JsonNode json = objectMapper.readTree(resp.getBody());
-        assertThat(json.get("success").asBoolean()).isTrue();
+        assertThat(json.get("code").asInt()).isEqualTo(0);
         assertThat(json.get("data").size()).isGreaterThanOrEqualTo(1);
     }
 
@@ -279,7 +281,7 @@ class ConversationRiskFlowIT extends AbstractIntegrationTest {
 
         assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.OK);
         JsonNode json = objectMapper.readTree(resp.getBody());
-        assertThat(json.get("success").asBoolean()).isTrue();
+        assertThat(json.get("code").asInt()).isEqualTo(0);
     }
 
     // ===== 5. 会话历史验证 =====
@@ -293,7 +295,7 @@ class ConversationRiskFlowIT extends AbstractIntegrationTest {
 
         assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.OK);
         JsonNode json = objectMapper.readTree(resp.getBody());
-        assertThat(json.get("success").asBoolean()).isTrue();
+        assertThat(json.get("code").asInt()).isEqualTo(0);
         assertThat(json.get("data").size()).isGreaterThanOrEqualTo(1);
 
         // 第一条应为刚创建的 escalated 会话

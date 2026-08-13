@@ -69,10 +69,10 @@ describe('VoiceLoginOverlay', () => {
       ctx: { sampleRate: 16000 },
       stream: { getTracks: () => [{ stop: vi.fn() }] },
     })
-    // mock SpeechSynthesisUtterance
-    ;(window as any).SpeechSynthesisUtterance = vi.fn().mockImplementation((text: string) => ({
-      text, lang: '', rate: 1, voice: null, onend: null, onerror: null,
-    }))
+    // mock SpeechSynthesisUtterance（普通 function 实现：vitest 4 中箭头 mock 不可 new）
+    ;(window as any).SpeechSynthesisUtterance = vi.fn().mockImplementation(function (this: any, text: string) {
+      return { text, lang: '', rate: 1, voice: null, onend: null, onerror: null }
+    })
     Object.defineProperty(window, 'speechSynthesis', {
       value: {
         cancel: vi.fn(),

@@ -66,7 +66,7 @@ class AuthFlowIT extends AbstractIntegrationTest {
 
         assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.OK);
         JsonNode body = objectMapper.readTree(resp.getBody());
-        assertThat(body.get("success").asBoolean()).isTrue();
+        assertThat(body.get("code").asInt()).isEqualTo(0);
         assertThat(body.get("data").get("token").asText()).isNotBlank();
         assertThat(body.get("data").get("userType").asText()).isEqualTo("trial_student");
 
@@ -83,7 +83,6 @@ class AuthFlowIT extends AbstractIntegrationTest {
 
         assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         JsonNode body = objectMapper.readTree(resp.getBody());
-        assertThat(body.get("success").asBoolean()).isFalse();
         assertThat(body.get("code").asInt()).isEqualTo(20004);
     }
 
@@ -97,7 +96,6 @@ class AuthFlowIT extends AbstractIntegrationTest {
 
         assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
         JsonNode body = objectMapper.readTree(resp.getBody());
-        assertThat(body.get("success").asBoolean()).isFalse();
         assertThat(body.get("code").asInt()).isEqualTo(20003);
     }
 
@@ -113,7 +111,7 @@ class AuthFlowIT extends AbstractIntegrationTest {
 
         assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.OK);
         JsonNode body = objectMapper.readTree(resp.getBody());
-        assertThat(body.get("success").asBoolean()).isTrue();
+        assertThat(body.get("code").asInt()).isEqualTo(0);
         assertThat(body.get("data").get("userType").asText()).isEqualTo("trial_student");
     }
 

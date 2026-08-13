@@ -25,11 +25,13 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 # Python 依赖 — 始终安装全量（torch + funasr + dashscope）
 # 这样无论运行时 ASR_ENGINE 设什么，emotion2vec SER 都可用
 COPY voice-service/requirements.txt ./
+# torch/torchaudio 的 +cpu 变体以官方源为权威（第三方镜像缺版本/平台轮子，
+# 如阿里云 pytorch-wheels 无 torchaudio 2.6.0+cpu；官方 CPU 源 ~200MB，其余依赖仍走阿里云主源）
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/ \
     && echo "📦 安装 torch + funasr + dashscope 全量依赖..." \
     && pip install torch==2.6.0+cpu torchaudio==2.6.0+cpu \
-        -f https://mirrors.aliyun.com/pytorch-wheels/cpu/ \
+        --index-url https://download.pytorch.org/whl/cpu \
     && pip install -r requirements.txt
 
 # ⚡ 模型不再在构建时下载 — 改为运行时从宿主机挂载
