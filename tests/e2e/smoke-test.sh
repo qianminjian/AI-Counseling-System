@@ -56,6 +56,29 @@ check_not_empty() {
   fi
 }
 
+# code 断言（F6：ApiResponse 统一序列化 {code,message,data,timestamp}，无 success 字段）
+check_code_ok() { # check_code_ok <code> <描述>：期望 code==0
+  local name="$2" code="$1"
+  if [ "$code" = "0" ]; then
+    green "  ✓ $name (code=0)"
+    PASS=$((PASS + 1))
+  else
+    red "  ✗ $name (code=$code)"
+    FAIL=$((FAIL + 1))
+  fi
+}
+
+check_code_err() { # check_code_err <code> <描述>：期望 code!=0（业务拒绝）
+  local name="$2" code="$1"
+  if [ -n "$code" ] && [ "$code" != "0" ]; then
+    green "  ✓ $name (code=$code)"
+    PASS=$((PASS + 1))
+  else
+    red "  ✗ $name (code=$code)"
+    FAIL=$((FAIL + 1))
+  fi
+}
+
 http_code() {
   curl -s -o /dev/null -w "%{http_code}" "$@" || true
 }
@@ -82,15 +105,15 @@ echo "[2/10] 认证与注册"
 LOGIN_BODY=$(curl -s -X POST "$API/auth/login" \
   -H 'Content-Type: application/json' \
   -d '{"username":"__not_exist__","password":"__bad__"}' || true)
-LOGIN_SUCCESS=$(echo "$LOGIN_BODY" | json_field ".get('success','')")
-check "错误凭据登录被拒（success=false）" "False" "$LOGIN_SUCCESS"
+LOGIN_CODE=$(echo "$LOGIN_BODY" | json_field ".get('code','')")
+check_code_err "$LOGIN_CODE" "错误凭据登录被拒"
 
 # 2.2 空密码登录被拒
 EMPTY_BODY=$(curl -s -X POST "$API/auth/login" \
   -H 'Content-Type: application/json' \
   -d '{"username":"test","password":""}' || true)
-EMPTY_SUCCESS=$(echo "$EMPTY_BODY" | json_field ".get('success','')")
-check "空密码登录被拒" "False" "$EMPTY_SUCCESS"
+EMPTY_CODE=$(echo "$EMPTY_BODY" | json_field ".get('code','')")
+check_code_err "$EMPTY_CODE" "空密码登录被拒"
 
 # 2.3 试用注册流程
 # 注意：注册年龄用 >=14（本人同意即生效），生产环境 trial-auto-grant=false 不走
@@ -99,8 +122,8 @@ NICK="smoke_$RANDOM"
 REG_BODY=$(curl -s -X POST "$API/auth/trial/register" \
   -H 'Content-Type: application/json' \
   -d "{\"inviteCode\":\"DEMO2026\",\"pseudonym\":\"$NICK\",\"age\":14,\"consentVersion\":\"v0.1\",\"guardianPhone\":\"13800138000\"}" || true)
-REG_SUCCESS=$(echo "$REG_BODY" | json_field ".get('success','')")
-check "试用注册成功" "True" "$REG_SUCCESS"
+REG_CODE=$(echo "$REG_BODY" | json_field ".get('code','')")
+check_code_ok "$REG_CODE" "试用注册成功"
 
 STUDENT_TOKEN=$(echo "$REG_BODY" | json_field ".get('data',{}).get('token','')")
 check_not_empty "获取学生 token" "$STUDENT_TOKEN"
@@ -110,15 +133,15 @@ NICK2="smoke_$RANDOM"
 REG2_BODY=$(curl -s -X POST "$API/auth/trial/register" \
   -H 'Content-Type: application/json' \
   -d "{\"inviteCode\":\"DEMO2026\",\"pseudonym\":\"$NICK2\",\"age\":15,\"consentVersion\":\"v0.1\",\"guardianPhone\":\"13900139000\"}" || true)
-REG2_SUCCESS=$(echo "$REG2_BODY" | json_field ".get('success','')")
-check "第二个学生注册成功" "True" "$REG2_SUCCESS"
+REG2_CODE=$(echo "$REG2_BODY" | json_field ".get('code','')")
+check_code_ok "$REG2_CODE" "第二个学生注册成功"
 
 # 2.5 无效邀请码注册被拒
 BAD_REG=$(curl -s -X POST "$API/auth/trial/register" \
   -H 'Content-Type: application/json' \
   -d '{"inviteCode":"INVALID","pseudonym":"bad","age":10,"consentVersion":"v0.1","guardianPhone":"13800138000"}' || true)
-BAD_REG_SUCCESS=$(echo "$BAD_REG" | json_field ".get('success','')")
-check "无效邀请码注册被拒" "False" "$BAD_REG_SUCCESS"
+BAD_REG_CODE=$(echo "$BAD_REG" | json_field ".get('code','')")
+check_code_err "$BAD_REG_CODE" "无效邀请码注册被拒"
 
 # ===== 3. 学生对话链路 =====
 echo ""
@@ -365,8 +388,8 @@ if [ -n "${STUDENT_TOKEN:-}" ]; then
       -H "Authorization: Bearer $STUDENT_TOKEN" \
       -H 'Content-Type: application/json' \
       -d '{"emotionTag":"nervous","channel":"h5"}' || true)
-    C_SUCCESS=$(echo "$C_BODY" | json_field ".get('success','')")
-    if [ "$C_SUCCESS" = "True" ]; then
+    C_CODE=$(echo "$C_BODY" | json_field ".get('code','')")
+    if [ "$C_CODE" = "0" ]; then
       CONCURRENT_OK=$((CONCURRENT_OK + 1))
       C_SID=$(echo "$C_BODY" | json_field ".get('data',{}).get('sessionId','')")
       curl -s -X POST "$API/chat/sessions/$C_SID/end" \
