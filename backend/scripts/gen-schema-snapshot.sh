@@ -9,6 +9,8 @@ set -euo pipefail
 
 OUT="${1:-backend/scripts/sql/01_schema.sql}"
 PGURL="${PGURL:-jdbc:postgresql://localhost:5432/mindsafe_test}"
+# 用户参数化：默认 mindsafe（本地/生产），CI 传 PGUSER=test（postgres service 用户）
+PGUSER="${PGUSER:-mindsafe}"
 
 # jdbc:postgresql://host:port/db → psql 参数
 HOST=$(echo "$PGURL" | sed -E 's|jdbc:postgresql://([^:/]+).*|\1|')
@@ -23,7 +25,7 @@ echo "-- 01_schema.sql 快照（doing/92 R-023：由 gen-schema-snapshot.sh 生�
 -- 来源: Flyway 迁移后数据库 ${DB}（V1-V45+）
 -- 用途: 灾备重建参照（权威源仍为 Flyway migration/）" > "$TMP"
 
-PGPASSWORD="${PGPASSWORD:-mindsafe}" pg_dump -h "$HOST" -p "$PORT" -U mindsafe -d "$DB" \
+PGPASSWORD="${PGPASSWORD:-mindsafe}" pg_dump -h "$HOST" -p "$PORT" -U "$PGUSER" -d "$DB" \
   --schema-only --no-owner --no-privileges \
   | grep -vE '^--$|^-- Dumped|^SET |^SELECT pg_catalog|^\\restrict|^\\unrestrict|^-- Name: (tenant_template|public)\\.(schema_migrations|flyway)' \
   >> "$TMP"
