@@ -1,11 +1,17 @@
 import { useEffect, useState } from 'react'
-import { Button, Card, message, Table, Tag } from 'antd'
-import { fetchPromptVersions, getAdminName, promptAction, type PromptVersionItem } from '../api'
+import { Button, Card, Input, message, Modal, Table, Tag } from 'antd'
+import { fetchPromptVersions, getAdminName, postAdmin, promptAction, type PromptVersionItem } from '../api'
+import { ENDPOINTS } from '../api/endpoints'
 
-/** Prompt 管理（ADMIN-P1-02/03，M7：版本列表 + 提交审核/审核/激活，三重门禁提示） */
+/** Prompt 管理（ADMIN-P1-02/03，M7：版本列表 + 创建/提交审核/审核/激活，三重门禁提示） */
 export default function PromptPage() {
   const [versions, setVersions] = useState<PromptVersionItem[]>([])
   const [loading, setLoading] = useState(false)
+  // A-04-01（2026-08-13 遍历）：补创建版本入口（后端 POST /versions 已存在，前端缺失）
+  const [createOpen, setCreateOpen] = useState(false)
+  const [createContent, setCreateContent] = useState('')
+  const [createDesc, setCreateDesc] = useState('')
+  const [creating, setCreating] = useState(false)
 
   const load = () => {
     setLoading(true)
@@ -30,6 +36,30 @@ export default function PromptPage() {
   // reviewer 取当前登录账号（M7 签字留痕不可伪造，code-review M1）
   const reviewer = getAdminName() || 'admin'
 
+  const handleCreate = async () => {
+    if (!createContent.trim()) {
+      message.error('Prompt 内容必填')
+      return
+    }
+    setCreating(true)
+    try {
+      await postAdmin(ENDPOINTS.promptVersions.path, {
+        templateKey: 'chat_default',
+        content: createContent,
+        description: createDesc || undefined,
+      })
+      message.success('版本已创建（draft）')
+      setCreateOpen(false)
+      setCreateContent('')
+      setCreateDesc('')
+      load()
+    } catch (e) {
+      message.error(e instanceof Error ? e.message : '创建失败')
+    } finally {
+      setCreating(false)
+    }
+  }
+
   const statusColor: Record<string, string> = {
     draft: 'default', pending_review: 'orange', approved: 'blue', active: 'green', retired: 'default',
   }
@@ -38,6 +68,9 @@ export default function PromptPage() {
     <div>
       <h2 style={{ marginTop: 0 }}>Prompt 管理（chat_default 模板）</h2>
       <Card title="版本与审核流（draft→pending_review→approved→active；激活走红队+审校+eval 三重门禁）" style={{ borderRadius: 'var(--ms-radius-card)' }}>
+        <div style={{ marginBottom: 12 }}>
+          <Button type="primary" onClick={() => setCreateOpen(true)}>新建版本</Button>
+        </div>
         <Table<PromptVersionItem>
           rowKey="versionId"
           dataSource={versions}
@@ -91,6 +124,30 @@ export default function PromptPage() {
           ]}
         />
       </Card>
+      <Modal
+        title="新建 Prompt 版本（chat_default）"
+        open={createOpen}
+        onOk={handleCreate}
+        confirmLoading={creating}
+        onCancel={() => setCreateOpen(false)}
+        okText="创建"
+        cancelText="取消"
+      >
+        <Input.TextArea
+          value={createContent}
+          onChange={(e) => setCreateContent(e.target.value)}
+          placeholder="Prompt 内容（如：你是波波，AI 情绪陪伴助手…）"
+          autoSize={{ minRows: 5, maxRows: 10 }}
+          maxLength={4000}
+          showCount
+        />
+        <Input
+          style={{ marginTop: 8 }}
+          value={createDesc}
+          onChange={(e) => setCreateDesc(e.target.value)}
+          placeholder="变更说明（可选，将进入版本描述）"
+        />
+      </Modal>
     </div>
   )
 }

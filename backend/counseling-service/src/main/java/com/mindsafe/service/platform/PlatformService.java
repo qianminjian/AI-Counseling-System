@@ -75,8 +75,10 @@ public class PlatformService {
 
         // 风险事件统计
         long totalAlerts = riskEventMapper.selectCount(null);
+        // A-02-02（2026-08-13 遍历）：未处置口径与风险全景统一——OPEN+CLAIMED（认领≠处置完成）
         long openAlerts = riskEventMapper.selectCount(
-                new LambdaQueryWrapper<RiskEvent>().eq(RiskEvent::getStatus, RiskEvent.STATUS_OPEN));
+                new LambdaQueryWrapper<RiskEvent>()
+                        .in(RiskEvent::getStatus, RiskEvent.STATUS_OPEN, RiskEvent.STATUS_CLAIMED));
 
         Map<String, Object> overview = new LinkedHashMap<>();
         overview.put("tenantCount", tenants.size());
