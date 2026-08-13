@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
 import { Card, Col, message, Row, Statistic, Tag } from 'antd'
-import { fetchChannelStats } from '../api'
+import { fetchChannelStats, type ChannelStatsVO } from '../api'
 
 /** 通知渠道（ADMIN-P2-04/06，M10：渠道发送统计 + 失败台账入口） */
 export default function ChannelPage() {
-  const [stats, setStats] = useState<Record<string, unknown> | null>(null)
+  const [stats, setStats] = useState<ChannelStatsVO | null>(null) // F-09：显式 VO
 
   useEffect(() => {
     fetchChannelStats().then(setStats).catch((e: Error) => message.error(e.message))

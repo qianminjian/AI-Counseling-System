@@ -1,11 +1,11 @@
 import { riskLevelName, riskLevelColor } from '../utils/riskLevel'
 import { useEffect, useState } from 'react'
 import { Card, message, Table, Tag } from 'antd'
-import { fetchSlaStats } from '../api'
+import { fetchSlaStats, type SlaStatsItem } from '../api'
 
 /** 时效监控（ADMIN-P1-04，M8：SLA 达标率/逾期/P95 按等级） */
 export default function SlaPage() {
-  const [stats, setStats] = useState<Array<Record<string, unknown>>>([])
+  const [stats, setStats] = useState<SlaStatsItem[]>([]) // F-09：显式 VO
 
   useEffect(() => {
     fetchSlaStats().then(setStats).catch((e: Error) => message.error(e.message))
@@ -17,7 +17,7 @@ export default function SlaPage() {
     <div>
       <h2 style={{ marginTop: 0 }}>时效监控</h2>
       <Card title="SLA 达标率（检出→处置，按等级聚合，近 30 天）" style={{ borderRadius: 'var(--ms-radius-card)' }}>
-        <Table<Record<string, unknown>>
+        <Table<SlaStatsItem>
           rowKey="riskLevel"
           dataSource={stats}
           size="small"

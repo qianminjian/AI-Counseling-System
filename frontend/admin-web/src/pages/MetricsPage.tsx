@@ -1,12 +1,11 @@
 import { useEffect, useState } from 'react'
 import { Card, Col, Row, message, Statistic } from 'antd'
-import { fetchMetricsQuery } from '../api'
+import { fetchMetricsQuery, type MetricsQueryResult } from '../api'
 
 /** 提取 Prometheus 即时查询结果的单值（无样本返回 undefined） */
-function extractValue(body: Record<string, unknown> | undefined): number | undefined {
+function extractValue(body: MetricsQueryResult | undefined): number | undefined {
   if (!body || body.status !== 'success') return undefined
-  const data = body.data as { result?: Array<{ value?: [number, string] }> } | undefined
-  const first = data?.result?.[0]
+  const first = body.data?.result?.[0]
   if (!first?.value) return undefined
   const v = Number(first.value[1])
   return Number.isFinite(v) ? v : undefined

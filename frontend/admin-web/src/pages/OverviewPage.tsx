@@ -6,6 +6,7 @@ import {
   fetchPlatformTenants,
   type ServiceStatus,
   type PlatformTenant,
+  type PlatformOverviewVO,
 } from '../api'
 
 /**
@@ -16,7 +17,7 @@ import {
  */
 export default function OverviewPage() {
   const [statuses, setStatuses] = useState<ServiceStatus | null>(null)
-  const [overview, setOverview] = useState<Record<string, unknown> | null>(null)
+  const [overview, setOverview] = useState<PlatformOverviewVO | null>(null) // F-09：显式 VO
   const [tenants, setTenants] = useState<PlatformTenant[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)

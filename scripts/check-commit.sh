@@ -14,6 +14,11 @@
 #   ./scripts/check-commit.sh --last <N>   校验最近 N 个提交（默认 --last 1）
 #   ./scripts/check-commit.sh --staged     校验暂存区（配合 commit-msg hook）
 #
+# D-09（doing/98）：仓库级 hook 安装（可选强制，每开发者一次性）：
+#   git config core.hooksPath .githooks
+#   已随仓库提供 .githooks/commit-msg（调用本脚本 --staged）；
+#   未安装时 CI shell-tools-test 兜底仍校验脚本行为（依赖自觉 → 可选强制）
+#
 # 退出码：全部通过 = 0；任一违规 = 1
 # ============================================================
 set -euo pipefail

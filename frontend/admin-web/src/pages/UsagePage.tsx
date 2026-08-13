@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
 import { Card, Col, message, Row, Statistic, Tag } from 'antd'
-import { fetchUsageSummary } from '../api'
+import { fetchUsageSummary, type UsageSummaryVO } from '../api'
 
 /** 用量报表（ADMIN-P3-02，M4：计量预览，计费冻结标注） */
 export default function UsagePage() {
-  const [summary, setSummary] = useState<Record<string, unknown> | null>(null)
+  const [summary, setSummary] = useState<UsageSummaryVO | null>(null) // F-09：显式 VO
 
   useEffect(() => {
     fetchUsageSummary(30).then(setSummary).catch((e: Error) => message.error(e.message))

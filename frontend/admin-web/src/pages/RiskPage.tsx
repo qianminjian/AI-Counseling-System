@@ -1,12 +1,12 @@
 import { riskLevelKey } from '../utils/riskLevel'
 import { useEffect, useState } from 'react'
 import { Card, Col, Descriptions, Row, Spin, Statistic, Table, Tag } from 'antd'
-import { fetchRiskOverview, fetchRiskOverdue, type RiskOverview } from '../api'
+import { fetchRiskOverview, fetchRiskOverdue, type RiskOverview, type RiskOverdueItem } from '../api'
 
 /** 风险全景（ADMIN-P1-04，M8：红橙黄绿分布 + 今日新增/未处置 + 逾期清单） */
 export default function RiskPage() {
   const [overview, setOverview] = useState<RiskOverview | null>(null)
-  const [overdue, setOverdue] = useState<Array<Record<string, unknown>>>([])
+  const [overdue, setOverdue] = useState<RiskOverdueItem[]>([]) // F-09：显式 VO
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -62,7 +62,7 @@ export default function RiskPage() {
         </>
       ) : null}
       <Card title={`逾期未处置清单（${overdue.length}）`} style={{ marginTop: 16, borderRadius: 'var(--ms-radius-card)' }}>
-        <Table<Record<string, unknown>>
+        <Table<RiskOverdueItem>
           rowKey={(r) => String(r.riskEventId)}
           dataSource={overdue}
           size="small"

@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
 import { Card, Col, Descriptions, message, Row, Statistic, Tag } from 'antd'
-import { fetchKnowledgeStats } from '../api'
+import { fetchKnowledgeStats, type KnowledgeStatsVO } from '../api'
 
 /** 知识库统计（ADMIN-P2-03，M9：平台级状态/分类分布） */
 export default function KnowledgePage() {
-  const [stats, setStats] = useState<Record<string, unknown> | null>(null)
+  const [stats, setStats] = useState<KnowledgeStatsVO | null>(null) // F-09：显式 VO
 
   useEffect(() => {
     fetchKnowledgeStats().then(setStats).catch((e: Error) => message.error(e.message))

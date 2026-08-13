@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react'
 import { Card, Col, message, Row, Statistic, Table, Tag } from 'antd'
-import { fetchAlertFunnel, fetchQualityTrend, fetchTenantHealth } from '../api'
+import { fetchAlertFunnel, fetchQualityTrend, fetchTenantHealth, type AlertFunnelVO, type QualityTrendVO, type TenantHealthItem } from '../api'
 
 /** 运营洞察（ADMIN-P2-05，M12：预警漏斗 + 质量趋势 + 租户健康度） */
 export default function InsightsPage() {
-  const [funnel, setFunnel] = useState<Record<string, unknown> | null>(null)
-  const [trend, setTrend] = useState<Record<string, unknown> | null>(null)
-  const [health, setHealth] = useState<Array<Record<string, unknown>>>([])
+  const [funnel, setFunnel] = useState<AlertFunnelVO | null>(null) // F-09：显式 VO
+  const [trend, setTrend] = useState<QualityTrendVO | null>(null) // F-09：显式 VO
+  const [health, setHealth] = useState<TenantHealthItem[]>([]) // F-09：显式 VO
 
   useEffect(() => {
     fetchAlertFunnel().then(setFunnel).catch((e: Error) => message.error(e.message))
@@ -53,7 +53,7 @@ export default function InsightsPage() {
         />
       </Card>
       <Card title="租户健康度（未处置/逾期）" style={{ borderRadius: 'var(--ms-radius-card)' }}>
-        <Table<Record<string, unknown>>
+        <Table<TenantHealthItem>
           rowKey="tenantId"
           dataSource={health}
           size="small"
@@ -62,7 +62,7 @@ export default function InsightsPage() {
             {
               title: '租户',
               dataIndex: 'tenantName',
-              render: (v: string, record: Record<string, unknown>) =>
+              render: (v: string, record: TenantHealthItem) =>
                 v ? `${v}${record.tenantCode ? `（${String(record.tenantCode)}）` : ''}` : String(record.tenantId).slice(0, 8),
             },
             { title: '事件数', dataIndex: 'total', width: 90 },

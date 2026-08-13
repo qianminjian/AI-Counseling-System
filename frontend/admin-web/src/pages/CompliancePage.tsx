@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
 import { Card, Col, message, Row, Statistic, Tag } from 'antd'
-import { fetchConsentStats } from '../api'
+import { fetchConsentStats, type ConsentStatsVO } from '../api'
 
 /** 数据合规视图（ADMIN-P3-03，M11：告知同意覆盖统计） */
 export default function CompliancePage() {
-  const [stats, setStats] = useState<Record<string, unknown> | null>(null)
+  const [stats, setStats] = useState<ConsentStatsVO | null>(null) // F-09：显式 VO
 
   useEffect(() => {
     fetchConsentStats().then(setStats).catch((e: Error) => message.error(e.message))

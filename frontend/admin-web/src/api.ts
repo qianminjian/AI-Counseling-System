@@ -9,6 +9,8 @@
 import { ENDPOINTS, fillPath } from './api/endpoints'
 // DC-005：认证传输共享模块（token 存取/authFetch/登出）
 import { createPlatformTokens, type StorageLike } from '../../shared/src/auth-transport/tokenStorage'
+// F-10（doing/98）：错误模型统一 shared ApiError（带业务 code，四端契约一致；原抛裸 Error 无 code 无法业务分支）
+import { ApiError, toApiError } from '../../shared/src/auth-transport/apiError'
 
 export interface PlatformLoginResult {
   token: string
@@ -98,10 +100,11 @@ export async function adminFetch<T>(path: string): Promise<T> {
   if (resp.status === 401 || resp.status === 403) {
     adminLogout()
     window.dispatchEvent(new Event(UNAUTHORIZED_EVENT))
-    throw new Error(resp.status === 403 ? '无权限访问' : '登录已过期')
+    throw new ApiError(resp.status === 403 ? 20002 : 20001, resp.status === 403 ? '无权限访问' : '登录已过期')
   }
   if (!resp.ok) {
-    throw new Error(`请求失败 (${resp.status})`)
+    const body = await resp.json().catch((): null => null)
+    throw toApiError({ code: (body as { code?: number })?.code, message: (body as { message?: string })?.message ?? `请求失败 (${resp.status})` })
   }
   const body = await resp.json()
   return body.data as T
@@ -136,11 +139,11 @@ export async function postAdmin<T = void>(path: string, body?: unknown, options:
   if (resp.status === 401 || resp.status === 403) {
     adminLogout()
     window.dispatchEvent(new Event(UNAUTHORIZED_EVENT))
-    throw new Error(resp.status === 403 ? (options.forbiddenMessage ?? '无权限访问') : '登录已过期')
+    throw new ApiError(resp.status === 403 ? 20002 : 20001, resp.status === 403 ? (options.forbiddenMessage ?? '无权限访问') : '登录已过期')
   }
   if (!resp.ok) {
     const b = await resp.json().catch((): null => null)
-    throw new Error(b?.message ?? options.fallbackMessage ?? '操作失败')
+    throw toApiError({ code: (b as { code?: number })?.code, message: (b as { message?: string })?.message ?? options.fallbackMessage ?? '操作失败' })
   }
   const b = await resp.json().catch((): null => null)
   return (b?.data ?? undefined) as T
@@ -153,9 +156,19 @@ export interface ServiceStatus {
 
 // ===== 平台总览（P0 backlog ⑤ 双轨收敛：从 teacher-web 迁移至 admin-web） =====
 
-/** 平台总览指标 */
-export function fetchPlatformOverview(): Promise<Record<string, unknown>> {
-  return adminFetch<Record<string, unknown>>(ENDPOINTS.platformOverview.path)
+/** 平台总览指标（fetchPlatformOverview，F-09 doing/98：显式 VO 替换 Record<string, unknown>） */
+export interface PlatformOverviewVO {
+  tenantCount: number
+  schoolCount: number
+  studentCount: number
+  teacherCount: number
+  totalSessions: number
+  totalAlerts: number
+  openAlerts: number
+}
+
+export function fetchPlatformOverview(): Promise<PlatformOverviewVO> {
+  return adminFetch<PlatformOverviewVO>(ENDPOINTS.platformOverview.path)
 }
 
 /** 租户列表 */
@@ -229,8 +242,20 @@ export function fetchRiskOverview(): Promise<RiskOverview> {
   return adminFetch<RiskOverview>(ENDPOINTS.riskOverview.path)
 }
 
-export function fetchRiskOverdue(): Promise<Array<Record<string, unknown>>> {
-  return adminFetch<Array<Record<string, unknown>>>(ENDPOINTS.riskOverdue.path)
+/** 逾期风险事件（fetchRiskOverdue，F-09 doing/98） */
+export interface RiskOverdueItem {
+  riskEventId: string
+  tenantId: string
+  tenantCode?: string
+  tenantName?: string
+  riskType: string
+  riskLevel: number
+  status: string
+  detectedAt: string
+}
+
+export function fetchRiskOverdue(): Promise<RiskOverdueItem[]> {
+  return adminFetch<RiskOverdueItem[]>(ENDPOINTS.riskOverdue.path)
 }
 
 // ===== P2（ADMIN-P2-01/02：降级矩阵 + 事件时间线） =====
@@ -298,8 +323,18 @@ export function promptAction(path: string, body?: unknown): Promise<void> {
   return postAdmin(ENDPOINTS.promptAction.path + path, body, { fallbackMessage: '操作失败' })
 }
 
-export function fetchSlaStats(): Promise<Array<Record<string, unknown>>> {
-  return adminFetch<Array<Record<string, unknown>>>(ENDPOINTS.slaStats.path)
+/** SLA 时效统计行（fetchSlaStats，F-09 doing/98） */
+export interface SlaStatsItem {
+  riskLevel: number
+  total: number
+  onTime: number
+  overdue: number
+  onTimeRate: number
+  p95Minutes: number
+}
+
+export function fetchSlaStats(): Promise<SlaStatsItem[]> {
+  return adminFetch<SlaStatsItem[]>(ENDPOINTS.slaStats.path)
 }
 
 export interface DeadLedgerItem {
@@ -316,28 +351,64 @@ export function fetchDeadLedger(): Promise<DeadLedgerItem[]> {
   return adminFetch<DeadLedgerItem[]>(ENDPOINTS.deadLedger.path)
 }
 
-export function fetchKnowledgeStats(): Promise<Record<string, unknown>> {
-  return adminFetch<Record<string, unknown>>(ENDPOINTS.knowledgeStats.path)
+/** 知识库统计（fetchKnowledgeStats，F-09 doing/98） */
+export interface KnowledgeStatsVO {
+  byCategory: Record<string, number>
+  byStatus: Record<string, number>
 }
 
-export function fetchQualityTrend(): Promise<Record<string, unknown>> {
-  return adminFetch<Record<string, unknown>>(ENDPOINTS.qualityTrend.path)
+export function fetchKnowledgeStats(): Promise<KnowledgeStatsVO> {
+  return adminFetch<KnowledgeStatsVO>(ENDPOINTS.knowledgeStats.path)
 }
 
-export function fetchAlertFunnel(): Promise<Record<string, unknown>> {
-  return adminFetch<Record<string, unknown>>(ENDPOINTS.alertFunnel.path)
+/** 质量趋势（fetchQualityTrend：日期 → 日均分/样本数，F-09 doing/98） */
+export type QualityTrendVO = Record<string, { avgScore: number; samples: number }>
+
+export function fetchQualityTrend(): Promise<QualityTrendVO> {
+  return adminFetch<QualityTrendVO>(ENDPOINTS.qualityTrend.path)
 }
 
-export function fetchTenantHealth(): Promise<Array<Record<string, unknown>>> {
-  return adminFetch<Array<Record<string, unknown>>>(ENDPOINTS.tenantHealth.path)
+/** 告警漏斗（fetchAlertFunnel：阶段 → 计数，F-09 doing/98） */
+export type AlertFunnelVO = Record<string, number>
+
+export function fetchAlertFunnel(): Promise<AlertFunnelVO> {
+  return adminFetch<AlertFunnelVO>(ENDPOINTS.alertFunnel.path)
 }
 
-export function fetchUsageSummary(days = 30): Promise<Record<string, unknown>> {
-  return adminFetch<Record<string, unknown>>(`${ENDPOINTS.usageSummary.path}?days=${days}`)
+/** 租户健康行（fetchTenantHealth，F-09 doing/98） */
+export interface TenantHealthItem {
+  tenantId?: string
+  tenantCode?: string
+  tenantName: string
+  total: number
+  unhandled: number
+  overdue: number
+  health: string
 }
 
-export function fetchConsentStats(): Promise<Record<string, unknown>> {
-  return adminFetch<Record<string, unknown>>(ENDPOINTS.consentStats.path)
+export function fetchTenantHealth(): Promise<TenantHealthItem[]> {
+  return adminFetch<TenantHealthItem[]>(ENDPOINTS.tenantHealth.path)
+}
+
+/** 用量汇总（fetchUsageSummary，F-09 doing/98；索引签名兼容指标键） */
+export interface UsageSummaryVO {
+  windowDays?: number
+  [key: string]: number | string | undefined
+}
+
+export function fetchUsageSummary(days = 30): Promise<UsageSummaryVO> {
+  return adminFetch<UsageSummaryVO>(`${ENDPOINTS.usageSummary.path}?days=${days}`)
+}
+
+/** 同意统计（fetchConsentStats，F-09 doing/98） */
+export interface ConsentStatsVO {
+  total: number
+  last7d: number
+  byType: Record<string, number>
+}
+
+export function fetchConsentStats(): Promise<ConsentStatsVO> {
+  return adminFetch<ConsentStatsVO>(ENDPOINTS.consentStats.path)
 }
 
 /** Prompt 版本列表（M7，走 adminFetch 统一鉴权/登出联动） */
@@ -345,16 +416,27 @@ export function fetchPromptVersions(templateKey: string): Promise<PromptVersionI
   return adminFetch<PromptVersionItem[]>(`${ENDPOINTS.promptVersions.path}?templateKey=${encodeURIComponent(templateKey)}`)
 }
 
-/** 通知渠道统计（M10） */
-export function fetchChannelStats(): Promise<Record<string, unknown>> {
-  return adminFetch<Record<string, unknown>>(ENDPOINTS.channelStats.path)
+/** 通知渠道统计（fetchChannelStats，F-09 doing/98） */
+export interface ChannelStatsVO {
+  total: number
+  byChannel: Record<string, number>
+}
+
+export function fetchChannelStats(): Promise<ChannelStatsVO> {
+  return adminFetch<ChannelStatsVO>(ENDPOINTS.channelStats.path)
 }
 
 // ===== M2 指标看板 + 告警中心（ADMIN-P1-07/08/09） =====
 
+/** 指标查询结果（fetchMetricsQuery，PromQL 即时向量原样透传：{status,data:{result}}，F-09 doing/98） */
+export interface MetricsQueryResult {
+  status?: string
+  data?: { result?: Array<{ metric?: Record<string, string>; value?: [number, string] }> }
+}
+
 /** 指标看板：白名单表达式代理查询 Prometheus（P1-07） */
-export function fetchMetricsQuery(expr: string): Promise<Record<string, unknown>> {
-  return adminFetch<Record<string, unknown>>(`${ENDPOINTS.metricsQuery.path}?expr=${encodeURIComponent(expr)}`)
+export function fetchMetricsQuery(expr: string): Promise<MetricsQueryResult> {
+  return adminFetch<MetricsQueryResult>(`${ENDPOINTS.metricsQuery.path}?expr=${encodeURIComponent(expr)}`)
 }
 
 /** 告警事件历史（alert_events 落库台账，P1-08） */

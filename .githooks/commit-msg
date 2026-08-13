@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# ============================================================
+# 仓库级 commit-msg hook（D-09 doing/98：check-commit.sh 从「依赖自觉」升级为「可选强制」）
+#
+# 安装（一次性，每开发者本地执行）：
+#   git config core.hooksPath .githooks
+#
+# 校验内容：Conventional Commits 格式 + subject ≤50 字符 + 原子提交（≤15 文件）
+# CI 兜底：.github/workflows/ci.yml shell-tools-test 持续校验脚本行为；
+#           本 hook 提供开发者本地即时拦截（未安装时 CI 兜底仍生效）
+# ============================================================
+set -euo pipefail
+PROJECT_ROOT="$(git rev-parse --show-toplevel)"
+exec bash "$PROJECT_ROOT/scripts/check-commit.sh" --staged
