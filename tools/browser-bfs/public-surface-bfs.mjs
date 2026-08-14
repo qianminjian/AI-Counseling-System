@@ -10,6 +10,8 @@ import { join } from "node:path";
 const MAX_DEPTH = Number(process.env.BFS_MAX_DEPTH ?? 8);
 const MAX_STEPS = Number(process.env.BFS_MAX_STEPS ?? 500);
 const WAIT_MS = Number(process.env.BFS_WAIT_MS ?? 250);
+const COMMAND_TIMEOUT_MS = Number(process.env.BFS_COMMAND_TIMEOUT_MS ?? 10000);
+const ENDPOINT_TIMEOUT_MS = Number(process.env.BFS_ENDPOINT_TIMEOUT_MS ?? 60000);
 const REPORT_DIR = process.env.BFS_REPORT_DIR ?? "reports/browser-test/UI-TEST-018/public-bfs";
 
 const endpoints = [
@@ -23,8 +25,11 @@ const interactiveRoles = new Set([
   "button", "checkbox", "combobox", "link", "menuitem", "radio", "searchbox", "spinbutton", "tab", "textbox"
 ]);
 
-function cli(session, profile, args, timeout = 30000) {
-  const child = spawnSync("agent-browser", ["--session", session, "--profile", profile, ...args], {
+function cli(session, profile, args, timeout = COMMAND_TIMEOUT_MS) {
+  // --session is an isolated agent-browser session. Do not pass a persistent
+  // profile on every command: the daemon rejects/ignores that flag after the
+  // first command, which can otherwise create a false isolation failure.
+  const child = spawnSync("agent-browser", ["--session", session, ...args], {
     encoding: "utf8",
     timeout,
     maxBuffer: 4 * 1024 * 1024
@@ -32,8 +37,8 @@ function cli(session, profile, args, timeout = 30000) {
   if (child.error) throw child.error;
   const output = `${child.stdout ?? ""}\n${child.stderr ?? ""}`;
   if (child.status !== 0) throw new Error(`agent-browser exited ${child.status}: ${output.slice(-1000)}`);
-  if (output.includes("--profile ignored") || output.includes("daemon already running")) {
-    throw new Error("browser isolation failed: agent-browser ignored the temporary profile because a daemon was already running");
+  if (output.includes("--profile ignored")) {
+    throw new Error("browser isolation failed: agent-browser ignored an explicitly supplied profile");
   }
   return output;
 }
@@ -111,6 +116,7 @@ function runEndpoint(endpoint, url) {
   const queue = [{ depth: 0, path: [] }];
   const visited = new Set();
   let steps = 0;
+  const deadline = Date.now() + ENDPOINT_TIMEOUT_MS;
 
   try {
     resetAndReplay(session, profile, url, []);
@@ -121,10 +127,12 @@ function runEndpoint(endpoint, url) {
     result.screenshots.push(screenshot(session, profile, endpoint, 0, "enter"));
 
     while (queue.length > 0) {
+      if (Date.now() >= deadline) { result.stopReason = "endpoint-timeout"; break; }
       const current = queue.shift();
       if (current.depth >= MAX_DEPTH) continue;
       const parentSnap = snapshot(session, profile);
       for (const control of controls(parentSnap)) {
+        if (Date.now() >= deadline) { result.stopReason = "endpoint-timeout"; break; }
         if (steps >= MAX_STEPS) { result.stopReason = "max-steps"; result.steps = steps; return result; }
         if (current.path.some(item => item.role === control.role && item.name === control.name)) continue;
         steps += 1;
