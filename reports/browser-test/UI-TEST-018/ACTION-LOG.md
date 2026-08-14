@@ -27,6 +27,9 @@
 | R18-03 | S/S-04/07/10 | 聊天页/退出弹窗 | 输入并发送文本，点击结束，遍历退出确认并确认退出 | 页面保持可操作；确认后返回登录页 | `screenshots/R18-student-chat-message.png`、`screenshots/R18-student-chat-response.png`、`screenshots/R18-student-chat-ended.png`、`screenshots/R18-student-after-logout.png` |
 | R19-01 | P/P-03/P-06 | 家长首页 | 使用既有演示账号登录并查看情绪周报 | 登录成功，展示孩子“开心”的周报统计与建议 | `screenshots/R19-parent-login-result.png`、`screenshots/R19-parent-report.png` |
 | R19-02 | P/P-04 | 数据授权管理 | 进入授权管理并打开“开心”详情 | 识别“撤回授权”控件；未点击不可逆撤回操作 | `screenshots/R19-parent-consent.png`、`screenshots/R19-parent-consent-detail.png` |
+| R20-01 | S/S-06 | 放松练习列表 | 打开练习列表，进入 3-2-3 呼吸法，关闭语音引导并提前结束 | 5 个练习入口可识别；练习页控件可操作并可返回 | `screenshots/R20-student-relax-ready.png`、`screenshots/R20-student-breathing.png`、`screenshots/R20-student-breathing-voice-off.png`、`screenshots/R20-student-relax-return.png` |
+| R20-02 | S/S-08 | 情绪日记 | 选择开心、填写备注、提交记录 | 表单控件和提交按钮可操作；页面无崩溃/报错弹窗 | `screenshots/R20-student-diary.png`、`screenshots/R20-student-diary-filled.png`、`screenshots/R20-student-diary-result.png` |
+| R20-03 | S/S-08 | 成就/设置 | 打开成就入口，随后打开设置，遍历主题、声音、语音播报、语音唤醒、动效、触觉等控件 | 设置面板完整渲染；主题和开关可切换，完成按钮可返回 | `screenshots/R20-student-achievements.png`、`screenshots/R20-student-settings.png`、`screenshots/R20-student-settings-toggles.png`、`screenshots/R20-student-settings-complete.png` |
 
 - 每个端使用独立 `agent-browser --session ui018-<端>` 会话。
 - 未打开或操作被测软件以外窗口。
