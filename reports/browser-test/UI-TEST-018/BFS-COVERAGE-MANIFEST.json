@@ -56,8 +56,8 @@
     "parent": {
       "url": "https://yun.gxjugu.com/parent/",
       "status": "partial",
-      "verifiedRounds": ["R64", "R68"],
-      "verified": ["login/register tabs", "family-code fields", "relationship controls", "privacy page", "invalid-device routing", "invalid-login field path"],
+      "verifiedRounds": ["R64", "R68", "R80"],
+      "verified": ["login/register tabs", "family-code fields", "relationship controls", "privacy page", "invalid-device routing", "invalid-login field path", "R80 registration controls and login compatibility observation"],
       "blockedOrPending": ["multi-child data", "real device provisioning", "revoke consent write", "login submit event not exposed in current accessibility path"]
     },
     "admin": {

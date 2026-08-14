@@ -714,3 +714,14 @@ R78 结论：李老师登录态下教师工作台、预警队列、学生管理�
 | R79-04 | 资源安全 | 关闭 session，执行两次 `close --all` 并复核 session list | 无 active session；未操作被测软件以外窗口 | — |
 
 R79 结论：super_admin 登录成功并完成管理端 17 个一级菜单（平台总览 + 16 菜单）只读入口遍历；需要逐页弹窗/分页和四角色 RBAC 的深层复核仍按既有 R62/R69/R72/R73/R74 证据及后续补测推进，所有持久化动作继续待安全夹具。
+
+# R80 家长端有效账号登录兼容性与注册 Tab 只读补充（2026-08-14）
+
+| 步骤 | 端/场景 | 操作 | 结果 | 截图 |
+|---:|---|---|---|---|
+| R80-01 | 家长/P-02 | 隔离 Browser Agent 打开家长端，填充设计资料中的手机号/密码 | 密码控件可填充；手机号 spinbutton 在 ref/键盘输入后被页面重渲染为不同值，未获得可复用登录态 | `screenshots/parent-auth-R80-parent-login-enter.png`、`screenshots/parent-auth-R80-parent-login-filled.png` |
+| R80-02 | 家长/P-02 | 识别登录控件并尝试一次页面内真实事件触发 | 登录按钮为 generic、未暴露 button/submit role；未捕获有效登录请求，未注入 token 或绕过认证 | `screenshots/parent-auth-R80-parent-home.png` |
+| R80-03 | 家长/P-01 | 切换“首次注册” Tab，识别家庭码、手机号、密码和关系控件 | 注册表单正常显示：家庭码、手机号、密码及妈妈/爸爸/祖父母/其他关系选项；未提交注册、未创建账号 | `screenshots/parent-auth-R80-parent-register-tab.png` |
+| R80-04 | 资源安全 | 关闭 session，执行两次 `close --all` 并复核 session list | 无 active session；未操作被测软件以外窗口 | — |
+
+R80 结论：家长端注册 Tab 控件和关系分支可识别；有效账号登录因手机号控件重渲染/登录控件可访问性问题未形成成功登录证据，暂归自动化兼容性与 UAT 账号待复核，不登记后端缺陷。
