@@ -797,3 +797,14 @@ R85 结论：学生风险安全响应通过；教师队列的跨租户不可见�
 | R86-04 | 资源安全 | 关闭 session，执行两次 `close --all` 并复核 session list | 无 active session；未操作被测软件以外窗口 | — |
 
 R86 结论：学生端情绪日记记录和 streak 更新通过；成就详情入口触发兼容性待真实用户事件/独立 DOM 证据复核，不登记源码缺陷。
+
+# R87 学生端会话结束与满意度评价（2026-08-14）
+
+| 步骤 | 端/场景 | 操作 | 结果 | 截图 |
+|---:|---|---|---|---|
+| R87-01 | 学生/S-04 | active 账号登录、跳过引导、选择情绪并创建普通聊天会话 | 会话页面稳定；结束、换人、设置、SOS、工具箱和输入控件可识别 | — |
+| R87-02 | 学生/S-04 | 点击“结束” | 结束评价弹窗显示 5 档评价、选填文本、跳过、提交和“还想说说话？再聊一会儿” | `screenshots/student-r87-end-dialog.png` |
+| R87-03 | 学生/S-04 | 选择“挺好的”并提交评价 | `POST /api/v1/sessions/{id}/close` 返回 200；回到学生首页，页面无崩溃/错误弹窗 | `screenshots/student-r87-rating-selected.png`、`screenshots/student-r87-rating-result.png` |
+| R87-04 | 资源安全 | 关闭 session，执行两次 `close --all` 并复核 session list | 无 active session；未操作被测软件以外窗口 | — |
+
+R87 结论：学生会话结束、满意度评价提交和返回首页通过；未执行外部消息、拨号或声纹录入。
