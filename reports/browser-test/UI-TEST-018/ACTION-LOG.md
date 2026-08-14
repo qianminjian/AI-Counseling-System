@@ -632,3 +632,14 @@ R69 结论：管理端 Prompt 和知识库只读入口/状态信息通过；所�
 | R70-03 | 资源安全 | 关闭会话，执行两次 `close --all` 并核验 session list | 无 active session；未操作用户浏览器 | — |
 
 R70 结论：教师端设备入口、刷新、筛选/查询控件和空态通过；绑定设备及设备写操作因无安全可回收设备数据未执行。
+
+# R71 学生端注册深层分支与提交事件复核（2026-08-14）
+
+| 步骤 | 端/场景 | 操作 | 结果 | 截图 |
+|---:|---|---|---|---|
+| R71-01 | 学生/S-01 | 打开新注册并遍历 8 节告知内容、同意 checkbox 和禁用/启用按钮 | checkbox 初始未勾选；DOM 事件勾选后“同意并继续”启用并进入注册表单 | 已留存于本轮 Browser Agent 操作记录；表单截图见 `screenshots/BFS-S-r71-register-filled.png` |
+| R71-02 | 学生/S-01 | 填写 `DEMO2026`、虚构昵称、年龄 10，检查未成年监护人手机号分支 | 页面出现“家长手机号 *”；填充虚构手机号后无崩溃；未提交成功 | `screenshots/BFS-S-r71-register-filled.png`、`screenshots/BFS-S-r71-registration-result.png` |
+| R71-03 | 学生/S-01 | 改为年龄 16、关闭声纹 checkbox，分别通过 ref/DOM 触发注册 | 页面仍停留注册表单；未捕获注册请求，未生成账号；提交事件路径不足以判定后端故障 | `screenshots/BFS-S-r71-registration-dom-result.png`、`screenshots/BFS-S-r71-registration-age16.png`、`screenshots/BFS-S-r71-registration-submit.png` |
+| R71-04 | 资源安全 | 关闭会话，执行两次 `close --all` 并核验 session list | 无 active session；未操作用户浏览器 | — |
+
+R71 结论：监护人字段和声纹可逆分支已覆盖；本轮未创建新账号，注册提交无网络请求的现象先归类为事件注入/当前表单状态观察，待真实用户事件或有效邀请码条件下复核。
