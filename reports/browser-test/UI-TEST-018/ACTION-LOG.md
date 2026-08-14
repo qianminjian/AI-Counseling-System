@@ -665,3 +665,14 @@ R72 结论：管理端 A-09/A-10/A-11 只读页面和表格状态通过；导出
 | R73-04 | 资源安全 | 关闭会话，执行两次 `close --all` 并核验 session list | 无 active session；未操作用户浏览器 | — |
 
 R73 结论：管理端告警中心只读控件、告警数据和多页分页通过；确认操作按安全边界未执行。
+
+# R74 管理端审计日志只读 BFS 补充（2026-08-14）
+
+| 步骤 | 端/场景 | 操作 | 结果 | 截图 |
+|---:|---|---|---|---|
+| R74-01 | 管理/A-16 | super_admin 登录后进入审计日志 | 页面正常加载；时间、动作、操作人、租户、详情列可读 | `screenshots/BFS-A-r74-audit.png` |
+| R74-02 | 管理/A-16 | 识别 LOGIN、PIN_LOGIN、ALERT_CLAIM、ALERT_RESOLVE 等事件和详情内容 | 审计事件可读且详情未泄露测试密码/PIN；未点击写操作 | `screenshots/BFS-A-r74-audit.png` |
+| R74-03 | 管理/A-16 | 识别 1–5、向后 5 页、10、下一页和页码 combobox | 多页控件全部可识别；未改变审计数据 | `screenshots/BFS-A-r74-audit.png` |
+| R74-04 | 资源安全 | 关闭会话，执行两次 `close --all` 并核验 session list | 无 active session；未操作用户浏览器 | — |
+
+R74 结论：管理端审计日志事件、详情和分页只读路径通过；未执行任何数据清理或状态写入。
