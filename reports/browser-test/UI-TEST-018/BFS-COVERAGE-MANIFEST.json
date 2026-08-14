@@ -49,8 +49,8 @@
     "teacher": {
       "url": "https://yun.gxjugu.com/teacher/",
       "status": "partial",
-      "verifiedRounds": ["R63", "R65", "R67", "R70"],
-      "verified": ["李老师 and 王老师 role menus", "workbench", "quality monitoring", "notifications", "student list/profile", "alert queue read paths", "device empty state"],
+      "verifiedRounds": ["R63", "R65", "R67", "R70", "R78"],
+      "verified": ["李老师 and 王老师 role menus", "李老师 authenticated workbench", "quality monitoring", "notifications", "student list/profile", "alert queue read paths", "device empty state", "R78 real-data controls and screenshots"],
       "blockedOrPending": ["low-score review/PDF export", "misreport/transfer writes", "real device binding", "platform-level privilege boundary"]
     },
     "parent": {

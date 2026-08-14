@@ -686,3 +686,19 @@ R74 结论：管理端审计日志事件、详情和分页只读路径通过；�
 | R75-03 | 资源安全 | 关闭会话，执行两次 `close --all` 并核验 session list | 无 active session；未操作用户浏览器 | — |
 
 R75 结论：教师大屏独立入口和只读聚合数据通过；返回按钮的视觉 ref 事件兼容性沿用 R36 观察，不新增源码故障。
+
+# R78 教师端李老师登录态 BFS 只读补充（2026-08-14）
+
+| 步骤 | 端/场景 | 操作 | 结果 | 截图 |
+|---:|---|---|---|---|
+| R78-01 | 教师/T-01 | 隔离 Browser Agent 打开教师端，填充李老师/密码并登录 | 登录成功；进入工作台；未连接用户浏览器 | `screenshots/teacher-auth-R78-teacher-login-enter.png`、`screenshots/teacher-auth-R78-teacher-login-filled.png`、`screenshots/teacher-auth-R78-teacher-dashboard.png` |
+| R78-02 | 教师/T-02 | 识别工作台新手引导并用页面内真实 DOM click 关闭/跳过 | 引导关闭；工作台保留 1 条红色逾期预警、导出入口、全部预警和查看全部控件；未执行导出 | `screenshots/teacher-auth-R78-teacher-onboarding-skip2.png` |
+| R78-03 | 教师/T-03 | 进入预警队列，识别状态/最低等级筛选、表格、分页和处理/误报控件 | 页面正常；可读到测试丁红色自伤/自杀预警和黄色 SOS 记录；未点击处理/误报 | `screenshots/teacher-auth-R78-0006-alert-list.png` |
+| R78-04 | 教师/T-03 | 以真实 DOM click 复核预警队列菜单触发 | 菜单成功切换；视觉 ref click 未改变页面，归类为自动化事件兼容性观察，不登记产品缺陷 | `screenshots/teacher-auth-R78-teacher-alert-domclick.png` |
+| R78-05 | 教师/T-04 | 进入学生管理，识别筛选、搜索、风险 checkbox、学生行和档案入口 | 小明显示冻结/红色，测试己显示正常，测试丁高风险数据可见；未导出或修改档案 | `screenshots/teacher-auth-R78-0008-students.png` |
+| R78-06 | 教师/T-05 | 进入质量监控 | 平均评分 4.3/5、近 7 天均分、低分会话/低分率和趋势入口正常；无崩溃/错误弹窗 | `screenshots/teacher-auth-R78-0009-quality.png` |
+| R78-07 | 教师/T-06 | 进入通知中心，识别全部/未读/已读 Tab 和逐条“已读”按钮 | 页面正常，5 个已读操作控件可识别；未点击状态写入控件 | `screenshots/teacher-auth-R78-0010-notifications.png` |
+| R78-08 | 教师/T-09 | 进入终端设备，识别绑定、刷新、班级、归属 ID、查询和表格控件 | 页面稳定为空态；未执行绑定或设备写操作 | `screenshots/teacher-auth-R78-0011-devices.png` |
+| R78-09 | 资源安全 | 关闭 session，执行两次 `close --all` 并复核 session list | 无 active session；未操作被测软件以外窗口 | — |
+
+R78 结论：李老师登录态下教师工作台、预警队列、学生管理、质量监控、通知中心和终端设备只读路径通过；真实数据与控件均已记录。处理/误报、导出、绑定、设备编排和低分 PDF 等持久化/外部副作用操作继续待安全夹具。
