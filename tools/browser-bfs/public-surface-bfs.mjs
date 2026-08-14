@@ -14,6 +14,7 @@ const COMMAND_TIMEOUT_MS = Number(process.env.BFS_COMMAND_TIMEOUT_MS ?? 10000);
 const ENDPOINT_TIMEOUT_MS = Number(process.env.BFS_ENDPOINT_TIMEOUT_MS ?? 60000);
 const REPORT_DIR = process.env.BFS_REPORT_DIR ?? "reports/browser-test/UI-TEST-018/public-bfs";
 const SELECTED_ENDPOINTS = new Set((process.env.BFS_ENDPOINTS ?? "student,teacher,parent,admin").split(",").map(value => value.trim()).filter(Boolean));
+const STATE_PATH = process.env.BFS_STATE ?? "";
 
 const endpoints = [
   ["student", "https://yun.gxjugu.com/mindsafe/"],
@@ -120,6 +121,7 @@ function runEndpoint(endpoint, url) {
   const deadline = Date.now() + ENDPOINT_TIMEOUT_MS;
 
   try {
+    if (STATE_PATH) cli(session, profile, ["state", "load", STATE_PATH]);
     resetAndReplay(session, profile, url, []);
     const initial = snapshot(session, profile);
     const initialKey = stateKey(initial);
