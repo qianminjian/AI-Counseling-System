@@ -18,6 +18,16 @@
 
 ## 执行器状态
 
+## R18/R19（2026-08-14，批次继续）
+
+| 编号 | 端/场景 | 页面状态 | 动作 | 结果 | 截图 |
+|---|---|---|---|---|---|
+| R18-01 | S/S-02~04 | 登录页/首页 | 使用“测试丁”输入 PIN 1234 登录，跳过引导 | 登录成功进入 active 首页 | `screenshots/R18-student-testding-login.png`、`screenshots/R18-student-testding-result.png` |
+| R18-02 | S/S-03~04 | 首页/聊天 | 选择“开心”并开始聊天；遍历语音说明弹窗并选择“暂不使用” | 进入聊天页，弹窗控件可操作 | `screenshots/R18-student-emotion-happy.png`、`screenshots/R18-student-chat.png`、`screenshots/R18-student-chat-voice-dismissed.png` |
+| R18-03 | S/S-04/07/10 | 聊天页/退出弹窗 | 输入并发送文本，点击结束，遍历退出确认并确认退出 | 页面保持可操作；确认后返回登录页 | `screenshots/R18-student-chat-message.png`、`screenshots/R18-student-chat-response.png`、`screenshots/R18-student-chat-ended.png`、`screenshots/R18-student-after-logout.png` |
+| R19-01 | P/P-03/P-06 | 家长首页 | 使用既有演示账号登录并查看情绪周报 | 登录成功，展示孩子“开心”的周报统计与建议 | `screenshots/R19-parent-login-result.png`、`screenshots/R19-parent-report.png` |
+| R19-02 | P/P-04 | 数据授权管理 | 进入授权管理并打开“开心”详情 | 识别“撤回授权”控件；未点击不可逆撤回操作 | `screenshots/R19-parent-consent.png`、`screenshots/R19-parent-consent-detail.png` |
+
 - 每个端使用独立 `agent-browser --session ui018-<端>` 会话。
 - 未打开或操作被测软件以外窗口。
 - 本批次未执行代码修改、数据库写入、部署或发布。
