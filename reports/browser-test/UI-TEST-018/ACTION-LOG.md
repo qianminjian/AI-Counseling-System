@@ -37,6 +37,7 @@
 | R22-03 | A/A-09/A-10 | 用量报表/数据合规 | 依次进入用量报表和数据合规中心 | 页面入口正常加载；未执行导出或审批 | `screenshots/R22-admin-usage.png`、`screenshots/R22-admin-compliance.png` |
 | R23-01 | S/S-05 | 学生风险识别 | 测试丁进入聊天，发送模拟危机语句并等待 45 秒；打开 SOS 面板 | SOS 面板可打开并显示 12355；消息请求在响应头阶段无结果，形成 P1 问题 | `screenshots/R23-student-risk-filled.png`、`screenshots/R23-student-risk-result.png`、`screenshots/R23-student-risk-timeout.png`、`screenshots/R23-student-sos.png` |
 | R23-02 | T/T-03/L-05 | 教师预警联动 | 重新登录李老师，进入预警队列 | 出现测试丁 `sos_open` 黄色待处理预警，另有既有红色自伤/自杀记录；未点击认领/处理/误报 | `screenshots/R23-teacher-alert-created.png`、`screenshots/R23-teacher-alert-queue.png` |
+| POST-01 | S/T/P/A | 发布后入口复测 | 统一部署后分别打开四端 UAT 地址并等待 networkidle | 四端入口均返回 200、首屏可识别并保存截图；学生登录后续会话曾无响应，未将其标记为通过 | `screenshots/POST-student-entry.png`、`screenshots/POST-teacher-entry.png`、`screenshots/POST-parent-entry.png`、`screenshots/POST-admin-entry.png`、`screenshots/POST-student-login-result.png` |
 
 - 每个端使用独立 `agent-browser --session ui018-<端>` 会话。
 - 未打开或操作被测软件以外窗口。

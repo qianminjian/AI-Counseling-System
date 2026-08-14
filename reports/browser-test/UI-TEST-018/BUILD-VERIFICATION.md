@@ -35,3 +35,12 @@
 - 四端构建成功，学生/教师/家长/管理端静态资源同步成功。
 - tts/voice rsync 因远端 SSH connection reset 失败，部署脚本最终失败；详见 `logs/deploy/deploy-20260814-113058.log`。
 - 四端入口复测可加载，但后端重启与 smoke gate 未完成，不能将本次部署标记为完整发布成功。
+
+## R24 统一候选批次部署（2026-08-14）
+
+- 候选提交：`19b239e4`（学生端聊天响应头阶段超时修复）。
+- 四端全量门禁：student 78 files/959 tests；teacher 35 files/221 tests；parent 27 files/219 tests；admin 23 files/64 tests；四端构建退出码均为 0。
+- 部署命令：`SKIP_CI_GATE=1 ./deploy.sh --backend --student --teacher --parent --admin`。
+- 结果：backend + 四个 Web 端统一部署成功；服务健康检查通过；发布后 E2E 冒烟 32/32；四端 nginx 路径校验通过。
+- 部署日志：`logs/deploy/deploy-20260814-121904.log`；审计：`logs/deploy/audit-20260814-121904.md`。
+- Browser Agent 发布后四端入口均可加载并已保存首屏截图；学生端登录后续自动化会话无响应，风险修复的完整 UI 复测仍待新会话重试，不能提前标记为 VERIFIED。
