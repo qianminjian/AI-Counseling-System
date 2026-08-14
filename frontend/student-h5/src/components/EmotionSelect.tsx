@@ -1,11 +1,11 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useTheme } from '../theme/ThemeProvider'
 import BoBoAvatar from './BoBoAvatar'
 import { api, isConsentRequired } from '../api'
 import { fillPath, ENDPOINTS } from '../endpoints'
 import { unlockAudio } from '../utils/audioUnlock'
 import { useWakeEnabled } from '../hooks/useWakeEnabled'
-import { useWakeModelStatus } from '../hooks/useWakeWord'
+import { useWakeModelStatus, preloadWakeModel } from '../hooks/useWakeWord'
 import SceneDecor from './SceneDecor'
 import RelaxationExercises from './RelaxationExercises'
 import EmotionDiary from './EmotionDiary'
@@ -50,6 +50,12 @@ export default function EmotionSelect({ onStart, userName, onLogout, onConsentRe
     () => typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getUserMedia,
     []
   )
+
+  // 预加载唤醒模型（BEACON 决策 #25，2026-08-14 恢复 27726422 误删）：
+  // 情绪选择页停留时间足够下载模型，进对话时直接就绪（利用 TTS 播放时间窗口）
+  useEffect(() => {
+    if (micSupported) preloadWakeModel()
+  }, [micSupported])
 
   const handleStart = async () => {
     if (!selected) return
