@@ -331,3 +331,14 @@ R37 结论：既有家长账号的周报、授权管理和孩子详情只读路�
 | R38-02 | 家长/P-07 | 访问无效设备二维码路由 `/parent/p/1/INVALIDDEVICE000` | 显示“未找到该设备，请核对机身二维码，或联系学校管理员”；无绑定控件、无写请求 | `screenshots/BFS-P-invalid-device.png` |
 
 R38 结论：家长公开隐私页和无效扫码错误分支通过；真实设备绑定、偏好修改和解绑仍未执行。
+
+# R39 管理端知识库/通道/告警/审计只读深层遍历（2026-08-14）
+
+| 步骤 | 端/场景 | 操作 | 结果 | 截图 |
+|---:|---|---|---|---|
+| R39-01 | 管理/A-08 | 进入知识库 | 显示 52 篇文档且均为已发布，分类统计为 social_skills 10、development_psychology 12、emotion_regulation 15、cbt_technique 15；未发现可提交控件 | `screenshots/BFS-A-knowledge-deep.png` |
+| R39-02 | 管理/A-08 | 进入通知渠道 | 显示近 30 天发送 13 条，渠道均为 in_app，并展示失败记录入口；未发现可提交控件 | `screenshots/BFS-A-channel-deep.png` |
+| R39-03 | 管理/A-05 | 进入告警中心 | 识别状态筛选、分页、每行“确认”按钮；未点击确认，避免改变告警状态 | `screenshots/BFS-A-alerts-deep-2.png` |
+| R39-04 | 管理/A-11 | 进入审计日志 | 显示跨租户 LOGIN、PIN_LOGIN、ALERT_CLAIM、ALERT_RESOLVE 等事件及分页；保持只读 | `screenshots/BFS-A-audit-deep.png` |
+
+R39 结论：四个管理端深层页面均可加载，无报错弹窗、卡死或渲染错乱；告警确认、知识审核、通道发送等写操作未执行。
