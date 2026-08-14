@@ -514,3 +514,13 @@ R58 结论：告知同意门控本身通过；“同意并继续”后续导航�
 | R59-01 | 学生/S-01 | 每次页面变化后重新 snapshot；DOM 勾选同意 checkbox，再 DOM click“同意并继续” | 成功进入注册表单，显示邀请码、昵称、性别、年龄、声纹同意说明、注册按钮及协议入口 | `screenshots/BFS-S-consent-dom-r3.png` |
 
 R59 结论：告知同意门控及后续注册表单导航通过；本轮未填写或提交邀请码，未创建账号、未写入业务数据。
+
+# R60 学生端注册表单控件遍历（2026-08-14）
+
+| 步骤 | 端/场景 | 操作 | 结果 | 截图 |
+|---:|---|---|---|---|
+| R60-01 | 学生/S-01 | 在同意后注册表单识别交互控件 | 识别邀请码、昵称、男生/女生、年龄、声纹同意 checkbox、注册按钮、隐私/协议入口 | `screenshots/BFS-S-register-form-r4.png` |
+| R60-02 | 学生/S-01 | 切换“女生” | 性别选择状态切换成功，无跳转或异常 | `screenshots/BFS-S-register-girl-r4.png` |
+| R60-03 | 学生/S-01 | 关闭并重新开启声纹同意 checkbox | checkbox 可在 off/on 间切换；提示明确声音仅保存在本机 | `screenshots/BFS-S-register-voice-off-r4.png`、`screenshots/BFS-S-register-voice-on-r4.png` |
+
+R60 结论：注册表单主要控件和可逆状态切换通过；邀请码/昵称/年龄校验及注册提交未执行，避免创建新的 UAT 账号。
