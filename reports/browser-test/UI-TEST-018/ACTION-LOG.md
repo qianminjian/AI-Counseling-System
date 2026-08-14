@@ -415,3 +415,11 @@ R46/R47 结论：提交逻辑已有本地测试覆盖，当前阻塞是 Browser 
 | R48-01 | 家长/P-01/P-02 | 执行 `npm test -- --run src/test/VerifyPage.test.tsx` | 1 个测试文件、13/13 用例通过；覆盖登录/注册成功、手机号/密码/家庭码校验、API 失败和 loading 状态 | `frontend/parent-h5/src/test/VerifyPage.test.tsx`、Vitest 输出 |
 
 R48 结论：本地表单提交逻辑和校验回归通过；UAT Browser Agent 未能稳定触发 Taro custom element，不进入源码修复或部署批次。
+
+# R49 家长端全量前端测试回归（2026-08-14）
+
+| 步骤 | 端/场景 | 操作 | 结果 | 证据 |
+|---:|---|---|---|---|
+| R49-01 | 家长/P-01~P-07 | 在 `frontend/parent-h5` 执行 `npm test -- --run` | 27 个测试文件、219/219 用例通过；ErrorBoundary 测试中的“测试爆炸”是预期异常注入，未导致失败 | Vitest 输出 |
+
+R49 结论：家长端现有组件、路由、服务、设备/隐私和表单回归测试全绿；UAT 仍保留真实家庭/多孩/硬件数据缺口及 Browser Agent custom element 兼容性观察。
