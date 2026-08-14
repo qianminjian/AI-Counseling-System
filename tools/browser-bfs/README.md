@@ -1,15 +1,37 @@
-# Browser Agent BFS 编排器（只读公共表面）
+# browser-bfs —— 四端公开面 BFS 遍历工具（99-1/99-2 重构，2026-08-14）
 
-`public-surface-bfs.mjs` 是 UI-TEST-018 的最小执行器，当前只遍历四端未登录公共页面，并主动跳过登录、注册、提交、确认、导出、绑定、处置和其他持久化控件。
+广度优先遍历四端 Web 公开面（只读：非提交类控件可点击），逐步截图 + 状态去重防循环。
 
-它输出每端的状态键、控件键、BFS 深度、操作步数、截图、异常和停止原因。默认上限为深度 8、500 步、单命令 10 秒、单端 60 秒；试运行可用 `BFS_MAX_DEPTH`、`BFS_MAX_STEPS`、`BFS_WAIT_MS`、`BFS_COMMAND_TIMEOUT_MS` 和 `BFS_ENDPOINT_TIMEOUT_MS` 覆盖。
+## 结构（引擎/适配层解耦）
 
-可用 `BFS_ENDPOINTS=student`（逗号分隔）单独验证某一端；未设置时依次运行四端。每次运行只使用一个命名 `--session`，完成后只关闭该 session，不触碰其他浏览器会话。认证态可通过 `BFS_STATE=/path/to/state.json` 加载；若 CLI 状态加载不稳定，可先在同一隔离会话登录，再使用 `BFS_SESSION=session-name` 复用该会话。
+| 文件 | 职责 |
+|------|------|
+| `public-surface-bfs.mjs` | 入口：环境解析 + 端侧编排 + 报告汇总（~60 行） |
+| `bfs-engine.mjs` | **纯 BFS 引擎**：visited 去重 / 深度·步数限制 / 错误收集（可注入假适配器单测） |
+| `cli-adapter.mjs` | **agent-browser CLI 适配 seam**：进程调用 / JSON 数据通道 / 超时 / 状态恢复策略 |
+| `bfs-engine.test.mjs` | 引擎单测（node:test + 假适配器，7 用例） |
 
-执行前提：`agent-browser` 必须为本次命名 session 提供隔离上下文；执行器不传用户持久 profile。若 CLI 输出 `--profile ignored`，程序会立即失败；这类结果不得计入测试证据。该执行器尚未覆盖登录态业务、弹窗通用回退、真实测试夹具或四端联动，因此不能替代 UI-TEST-018 的最终完成闸门。
-
-示例：
+## 运行
 
 ```bash
-BFS_MAX_DEPTH=1 BFS_MAX_STEPS=8 node tools/browser-bfs/public-surface-bfs.mjs
+# 单测（引擎语义，无需 agent-browser）
+node --test tools/browser-bfs/bfs-engine.test.mjs
+
+# 四端遍历（需 agent-browser + gtimeout/timeout；macOS 无 gtimeout 时自动回退 Node 超时）
+node tools/browser-bfs/public-surface-bfs.mjs
 ```
+
+## 环境变量（契约保持）
+
+`BFS_MAX_DEPTH`（8）/ `BFS_MAX_STEPS`（500）/ `BFS_WAIT_MS` / `BFS_COMMAND_TIMEOUT_MS`（10s）/
+`BFS_ENDPOINT_TIMEOUT_MS`（60s）/ `BFS_REPORT_DIR` / `BFS_ENDPOINTS`（student,teacher,parent,admin）/
+`BFS_STATE` / `BFS_SESSION` / `BFS_DEBUG=1`（透出 agent-browser stderr）
+
+## 99-1/99-2 深化点
+
+- **引擎可测**：BFS 语义（去重/深度/步数/错误）经假适配器单测覆盖——白天 7 连修的超时/挂起/隔离问题收敛在适配层
+- **父快照修正**：原版在分支末态取父快照致控件错位漏探，现先 restore 再快照
+- **stopReason 补齐**：while 条件退出（非 break）时正确标记 max-steps/endpoint-timeout
+- **JSON 通道分离**：stdout 优先整段 JSON 解析，stderr 日志仅调试透出（不再从混拼串找 `{`）
+- **超时去硬依赖**：gtimeout/timeout 双检测，均不可用回退 Node spawnSync timeout
+- **恢复策略单点**：`restore(url, path)` 收敛在适配层——agent-browser 提供会话内导航恢复时仅替换该函数

@@ -1,19 +1,24 @@
 #!/usr/bin/env node
+// public-surface-bfs.mjs —— 四端公开面 BFS 遍历入口（99-1/99-2，2026-08-14 重构）
+//
+// 职责收敛：环境解析 + 端侧编排 + 报告汇总（引擎逻辑在 bfs-engine.mjs，
+// agent-browser 进程细节在 cli-adapter.mjs）。CLI 环境变量契约保持不变。
+//
+// 环境变量（兼容原版）：
+//   BFS_MAX_DEPTH / BFS_MAX_STEPS / BFS_WAIT_MS / BFS_COMMAND_TIMEOUT_MS /
+//   BFS_ENDPOINT_TIMEOUT_MS / BFS_REPORT_DIR / BFS_ENDPOINTS / BFS_STATE / BFS_SESSION
 
-import { spawnSync } from "node:child_process";
-import { createHash } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
-import { mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createCliAdapter } from "./cli-adapter.mjs";
+import { runBfs } from "./bfs-engine.mjs";
 
 const MAX_DEPTH = Number(process.env.BFS_MAX_DEPTH ?? 8);
 const MAX_STEPS = Number(process.env.BFS_MAX_STEPS ?? 500);
-const WAIT_MS = Number(process.env.BFS_WAIT_MS ?? 250);
-const COMMAND_TIMEOUT_MS = Number(process.env.BFS_COMMAND_TIMEOUT_MS ?? 10000);
 const ENDPOINT_TIMEOUT_MS = Number(process.env.BFS_ENDPOINT_TIMEOUT_MS ?? 60000);
 const REPORT_DIR = process.env.BFS_REPORT_DIR ?? "reports/browser-test/UI-TEST-018/public-bfs";
-const SELECTED_ENDPOINTS = new Set((process.env.BFS_ENDPOINTS ?? "student,teacher,parent,admin").split(",").map(value => value.trim()).filter(Boolean));
+const SELECTED_ENDPOINTS = new Set((process.env.BFS_ENDPOINTS ?? "student,teacher,parent,admin")
+  .split(",").map((value) => value.trim()).filter(Boolean));
 const STATE_PATH = process.env.BFS_STATE ?? "";
 const EXISTING_SESSION = process.env.BFS_SESSION ?? "";
 
@@ -21,161 +26,40 @@ const endpoints = [
   ["student", "https://yun.gxjugu.com/mindsafe/"],
   ["teacher", "https://yun.gxjugu.com/teacher/"],
   ["parent", "https://yun.gxjugu.com/parent/"],
-  ["admin", "https://yun.gxjugu.com/admin/"]
+  ["admin", "https://yun.gxjugu.com/admin/"],
 ];
 
-const interactiveRoles = new Set([
-  "button", "checkbox", "combobox", "link", "menuitem", "radio", "searchbox", "spinbutton", "tab", "textbox"
-]);
-
-function cli(session, profile, args, timeout = COMMAND_TIMEOUT_MS) {
-  // --session is an isolated agent-browser session. Do not pass a persistent
-  // profile on every command: the daemon rejects/ignores that flag after the
-  // first command, which can otherwise create a false isolation failure.
-  const timeoutSeconds = Math.max(1, Math.ceil(timeout / 1000));
-  const child = spawnSync("gtimeout", ["-k", "2", String(timeoutSeconds), "agent-browser", "--session", session, ...args], {
-    encoding: "utf8",
-    timeout,
-    maxBuffer: 4 * 1024 * 1024
-  });
-  if (child.error) throw child.error;
-  const output = `${child.stdout ?? ""}\n${child.stderr ?? ""}`;
-  if (child.status !== 0) throw new Error(`agent-browser exited ${child.status}: ${output.slice(-1000)}`);
-  if (output.includes("--profile ignored")) {
-    throw new Error("browser isolation failed: agent-browser ignored an explicitly supplied profile");
-  }
-  return output;
-}
-
-function parseJson(output) {
-  const start = output.indexOf("{");
-  if (start < 0) throw new Error(`agent-browser JSON output missing: ${output.slice(-500)}`);
-  return JSON.parse(output.slice(start));
-}
-
-function snapshot(session, profile) {
-  return parseJson(cli(session, profile, ["snapshot", "-i", "--json"]));
-}
-
-function stateKey(snap) {
-  const origin = snap?.data?.origin ?? "";
-  const text = snap?.data?.snapshot ?? "";
-  return createHash("sha256").update(`${origin}\n${text.replace(/\s+/g, " ").trim()}`).digest("hex").slice(0, 16);
-}
-
-function controls(snap) {
-  return Object.entries(snap?.data?.refs ?? {})
-    .filter(([, value]) => interactiveRoles.has(value.role))
-    .map(([ref, value]) => ({ ref, role: value.role, name: value.name ?? "" }))
-    .filter(control => control.role !== "button" || control.name !== "进入 🚀");
-}
-
-function safeName(value) {
-  return value.replace(/[^\p{L}\p{N}_-]+/gu, "_").slice(0, 60) || "unnamed";
-}
-
-function screenshot(session, profile, endpoint, index, label) {
-  const path = join(REPORT_DIR, `${endpoint}-${String(index).padStart(4, "0")}-${safeName(label)}.png`);
-  cli(session, profile, ["screenshot", path]);
-  return path;
-}
-
-function locatorAction(session, profile, control) {
-  // Public-surface traversal intentionally clicks only non-submit controls.
-  // Text fields, login/register submit buttons, and destructive controls are recorded, not acted on.
-  const normalizedName = control.name.replace(/\s+/g, "");
-  if (control.role === "button" && /登录|注册|提交|确认|绑定|导出|处理|误报|激活|修改|删除|撤回|恢复|升级/.test(normalizedName)) return false;
-  if (!["button", "link", "menuitem", "tab"].includes(control.role)) return false;
-  try {
-    cli(session, profile, ["find", "role", control.role, "click", "--name", control.name]);
-  } catch (error) {
-    // Ant/Taro accessible names containing emoji or spacing can fail semantic
-    // lookup even when the visible control exists. Use one page-local DOM
-    // fallback, then let the caller record any genuine failure.
-    const name = JSON.stringify(control.name.trim());
-    const role = JSON.stringify(control.role);
-    const script = `(()=>{const role=${role}, name=${name}; const norm=v=>String(v||'').replace(/\\s+/g,''); const target=norm(name); const nodes=[...document.querySelectorAll('[role="'+role+'"],button,a')]; const node=nodes.find(x=>[x.textContent,x.getAttribute('aria-label'),x.getAttribute('title')].some(v=>norm(v).includes(target))); if(!node) return 'not-found'; node.click(); return 'clicked'})()`;
-    const output = cli(session, profile, ["eval", script]);
-    if (!output.includes('"clicked"')) throw error;
-  }
-  return true;
-}
-
-function resetAndReplay(session, profile, url, path) {
-  cli(session, profile, ["open", url]);
-  cli(session, profile, ["wait", String(WAIT_MS)]);
-  for (const control of path) {
-    if (!locatorAction(session, profile, control)) throw new Error(`non-replayable control: ${control.role}:${control.name}`);
-    cli(session, profile, ["wait", String(WAIT_MS)]);
-  }
-}
-
 function runEndpoint(endpoint, url) {
-  const profile = mkdtempSync(join(tmpdir(), `codex-public-bfs-${endpoint}-`));
   const session = EXISTING_SESSION || `public-bfs-${endpoint}-${Date.now()}`;
-  const result = {
-    endpoint,
-    url,
-    algorithm: "breadth-first",
-    maxDepth: MAX_DEPTH,
-    maxSteps: MAX_STEPS,
-    visitedStates: [],
-    operatedControls: [],
-    screenshots: [],
-    errors: [],
-    stopReason: "completed"
-  };
-  const queue = [{ depth: 0, path: [] }];
-  const visited = new Set();
-  let steps = 0;
-  const deadline = Date.now() + ENDPOINT_TIMEOUT_MS;
+  const adapter = createCliAdapter({ session, statePath: STATE_PATH });
 
   try {
-    if (STATE_PATH) cli(session, profile, ["state", "load", STATE_PATH]);
-    resetAndReplay(session, profile, url, []);
-    const initial = snapshot(session, profile);
-    const initialKey = stateKey(initial);
-    visited.add(initialKey);
-    result.visitedStates.push({ key: initialKey, depth: 0, controls: controls(initial) });
-    result.screenshots.push(screenshot(session, profile, endpoint, 0, "enter"));
-
-    while (queue.length > 0 && steps < MAX_STEPS && Date.now() < deadline) {
-      if (Date.now() >= deadline) { result.stopReason = "endpoint-timeout"; break; }
-      const current = queue.shift();
-      if (current.depth >= MAX_DEPTH) continue;
-      const parentSnap = snapshot(session, profile);
-      for (const control of controls(parentSnap)) {
-        if (Date.now() >= deadline) { result.stopReason = "endpoint-timeout"; break; }
-        if (steps >= MAX_STEPS) { result.stopReason = "max-steps"; break; }
-        if (current.path.some(item => item.role === control.role && item.name === control.name)) continue;
-        steps += 1;
-        try {
-          resetAndReplay(session, profile, url, current.path);
-          if (!locatorAction(session, profile, control)) continue;
-          cli(session, profile, ["wait", String(WAIT_MS)]);
-          const after = snapshot(session, profile);
-          const key = stateKey(after);
-          result.operatedControls.push({ step: steps, depth: current.depth + 1, control, parentPath: current.path });
-          result.screenshots.push(screenshot(session, profile, endpoint, steps, `${control.role}-${control.name}`));
-          if (!visited.has(key)) {
-            visited.add(key);
-            result.visitedStates.push({ key, depth: current.depth + 1, controls: controls(after) });
-            queue.push({ depth: current.depth + 1, path: [...current.path, control] });
-          }
-        } catch (error) {
-          result.errors.push({ step: steps, control, message: String(error) });
-        }
-      }
-    }
+    adapter.loadState(); // H1：认证态经真实 CLI state 命令加载（仅启动一次）
+    return runBfs(adapter, {
+      url,
+      endpoint,
+      maxDepth: MAX_DEPTH,
+      maxSteps: MAX_STEPS,
+      deadlineMs: ENDPOINT_TIMEOUT_MS,
+      screenshotDir: REPORT_DIR,
+    });
   } catch (error) {
-    result.stopReason = "error";
-    result.errors.push({ step: steps, message: String(error) });
+    // H2：单端失败兜底——返回错误报告，主循环继续，manifest 仍产出
+    return {
+      endpoint,
+      url,
+      algorithm: "breadth-first",
+      maxDepth: MAX_DEPTH,
+      maxSteps: MAX_STEPS,
+      visitedStates: [],
+      operatedControls: [],
+      screenshots: [],
+      errors: [{ step: 0, message: String(error) }],
+      stopReason: "error",
+    };
   } finally {
-    try { cli(session, profile, ["close"]); } catch {}
+    adapter.close();
   }
-  result.steps = steps;
-  result.queueMaxDepth = result.visitedStates.reduce((max, state) => Math.max(max, state.depth), 0);
-  return result;
 }
 
 mkdirSync(REPORT_DIR, { recursive: true });

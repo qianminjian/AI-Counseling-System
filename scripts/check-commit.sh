@@ -70,6 +70,25 @@ check_controller_mapper() {
   esac
 }
 
+# 装配纪律（99-5，2026-08-14）：@Service 类禁止多个 public 构造器（Spring 装配歧义，CI 实证）
+# 测试缝用包私有构造器（先例 AliyunSmsService/DeviceSecurityService）
+check_service_constructor() {
+  local hash="$1" f="$2" content cls count
+  case "$f" in
+    backend/*/src/main/java/com/mindsafe/*.java)
+      content=$(git show "$hash:$f" 2>/dev/null || true)
+      if echo "$content" | grep -qE '@Service|@Component'; then
+        cls=$(basename "$f" .java)
+        # L2：过滤注释行 + 词边界匹配（防 javadoc 文本假阳性）
+        count=$(echo "$content" | grep -vE '^\s*(//|\*|/\*)' | grep -cE "public[[:space:]]+${cls}[[:space:]]*\\(" || true)
+        if [ "$count" -gt 1 ]; then
+          fail "$f 违反装配纪律（99-5）：@Service 类存在 ${count} 个 public 构造器——Spring 多构造器注入歧义（CI 实证 30 errors）；测试缝请用包私有构造器（先例 AliyunSmsService）"
+        fi
+      fi
+      ;;
+  esac
+}
+
 check_one() {
   local hash="$1"
   local subject files count
@@ -117,8 +136,10 @@ check_one() {
   fi
 
   # T4 纪律（DOC-072）：Controller 层禁止注入 MyBatis Mapper
+  # 装配纪律（99-5）：@Service 类禁止多 public 构造器
   while IFS= read -r f; do
     [ -n "$f" ] && check_controller_mapper "$hash" "$f"
+    [ -n "$f" ] && check_service_constructor "$hash" "$f"
   done <<< "$(git show --name-only --format='' "$hash" | sed '/^$/d')"
 }
 
