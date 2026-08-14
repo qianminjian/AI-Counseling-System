@@ -93,3 +93,15 @@ R8 结论：冻结账号分支工作正常；“开心”仍返回通用“昵�
 | R9-04 | T-05 通知中心 | 点击“已读”Tab 的当前页面控件 DOM click | 切换成功，列表显示红色预警通知 | `screenshots/R9-teacher-notifications-read-tab.png` |
 
 R9 结论：教师端通知中心 Tab 工作正常；初次语义 ref 点击无变化属于控件触发器兼容性问题，DOM 兜底后状态正确切换，未登记为产品缺陷。
+
+# R10 管理端筛选与审计遍历（2026-08-14）
+
+| 步骤 | 场景 | 操作 | 结果 | 截图 |
+|---:|---|---|---|---|
+| R10-01 | A-14 指标看板 | 打开页面并识别控件 | 页面加载成功，显示指标看板标题，未见异常弹窗 | `screenshots/R10-admin-metrics.png` |
+| R10-02 | A-15 告警中心 | 打开页面并识别表格、分页、确认按钮 | 告警表格加载，分页 1–5/10、下一页及多个确认按钮可识别；未点击确认 | `screenshots/R10-admin-alerts.png` |
+| R10-03 | A-15 告警中心 | 打开状态筛选 | 展示 firing/resolved/ack/closed 选项 | `screenshots/R10-admin-alert-status-options.png` |
+| R10-04 | A-15 告警中心 | 选择 resolved | 页面仍显示 firing 数据，筛选视觉状态未形成明确结果，待后续用 DOM 控件验证 | `screenshots/R10-admin-alert-resolved-filter.png` |
+| R10-05 | A-16 审计日志 | 打开页面、点击首条审计行 | 审计表格和分页正常；点击行无可见详情状态 | `screenshots/R10-admin-audit.png`、`screenshots/R10-admin-audit-detail.png` |
+
+R10 结论：管理端筛选与审计页面可加载；告警 resolved 筛选和审计行详情的语义触发结果需继续确认，当前不升级为产品缺陷。
