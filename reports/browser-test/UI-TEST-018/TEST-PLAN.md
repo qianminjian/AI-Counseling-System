@@ -7,6 +7,8 @@
 
 当前证据基线：R73；机器可读阶段性清单：`BFS-COVERAGE-MANIFEST.json`。该清单的 `status=partial` 是刻意保留的完成度事实，不代表四端单次全量 BFS 已完成。
 
+执行器核验：仓库当前只有 `tests/e2e/smoke-test.sh` 冒烟脚本；Playwright/BFS 编排配置处于预留或未启用状态，未发现可直接产出四端 `visitedStates/operatedControls/queueMaxDepth/steps/stopReason` 的现成程序。因此“单次四端机器化 BFS”仍是待实现执行器/待测试数据前置项，Browser Agent 分场景证据不能替代该要求。
+
 ### 浏览器资源安全闸门（2026-08-14 增补）
 
 - 禁止使用 `--auto-connect`、用户现有 Chrome profile 或任何已打开的用户浏览器窗口；只允许 agent-browser 自己创建的临时 profile。

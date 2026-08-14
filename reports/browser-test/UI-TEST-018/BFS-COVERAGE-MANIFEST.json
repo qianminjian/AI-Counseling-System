@@ -2,6 +2,12 @@
   "report": "UI-TEST-018",
   "generated": "2026-08-14",
   "status": "partial",
+  "executorAudit": {
+    "repositorySmokeScript": "tests/e2e/smoke-test.sh",
+    "bfsOrchestratorPresent": false,
+    "playwrightE2EStatus": "reserved_or_disabled",
+    "conclusion": "No existing repository executable can produce the required four-endpoint BFS machine export; do not claim full completion from scenario rounds alone."
+  },
   "constraints": {
     "algorithm": "breadth-first",
     "maxDepth": 8,
