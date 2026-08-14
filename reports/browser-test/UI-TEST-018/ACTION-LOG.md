@@ -30,6 +30,8 @@
 | R20-01 | S/S-06 | 放松练习列表 | 打开练习列表，进入 3-2-3 呼吸法，关闭语音引导并提前结束 | 5 个练习入口可识别；练习页控件可操作并可返回 | `screenshots/R20-student-relax-ready.png`、`screenshots/R20-student-breathing.png`、`screenshots/R20-student-breathing-voice-off.png`、`screenshots/R20-student-relax-return.png` |
 | R20-02 | S/S-08 | 情绪日记 | 选择开心、填写备注、提交记录 | 表单控件和提交按钮可操作；页面无崩溃/报错弹窗 | `screenshots/R20-student-diary.png`、`screenshots/R20-student-diary-filled.png`、`screenshots/R20-student-diary-result.png` |
 | R20-03 | S/S-08 | 成就/设置 | 打开成就入口，随后打开设置，遍历主题、声音、语音播报、语音唤醒、动效、触觉等控件 | 设置面板完整渲染；主题和开关可切换，完成按钮可返回 | `screenshots/R20-student-achievements.png`、`screenshots/R20-student-settings.png`、`screenshots/R20-student-settings-toggles.png`、`screenshots/R20-student-settings-complete.png` |
+| R21-01 | T/T-09 | 终端设备 | 进入终端设备，点击刷新、展开班级筛选、识别查询输入框及绑定设备入口 | 页面正常渲染；当前无设备数据，未点击绑定设备 | `screenshots/R21-teacher-devices.png`、`screenshots/R21-teacher-device-class-options.png` |
+| R21-02 | T/T-05 | 质量监控 | 进入质量监控页 | 平均评分、近 7 天评分、低分会话、趋势区域正常渲染；未发现异常弹窗 | `screenshots/R21-teacher-quality.png` |
 
 - 每个端使用独立 `agent-browser --session ui018-<端>` 会话。
 - 未打开或操作被测软件以外窗口。
