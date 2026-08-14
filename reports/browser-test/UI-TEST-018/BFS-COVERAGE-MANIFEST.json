@@ -63,8 +63,8 @@
     "admin": {
       "url": "https://yun.gxjugu.com/admin/",
       "status": "partial",
-      "verifiedRounds": ["R62", "R69", "R72", "R73"],
-      "verified": ["platform overview", "17-menu visibility", "config history", "prompt read state", "knowledge stats", "usage", "compliance", "insights", "alert center pagination"],
+      "verifiedRounds": ["R62", "R69", "R72", "R73", "R74", "R79"],
+      "verified": ["platform overview", "super_admin login", "17-menu visibility", "config history", "prompt read state", "knowledge stats", "usage", "compliance", "insights", "alert center pagination", "audit log", "R79 menu screenshots"],
       "blockedOrPending": ["config writes", "prompt create/review/activate", "alert acknowledge", "invite/bulk import", "degradation switch", "tenant lifecycle", "device write operations"]
     }
   },

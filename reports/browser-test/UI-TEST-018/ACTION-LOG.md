@@ -703,3 +703,14 @@ R75 结论：教师大屏独立入口和只读聚合数据通过；返回按钮�
 | R78-09 | 资源安全 | 关闭 session，执行两次 `close --all` 并复核 session list | 无 active session；未操作被测软件以外窗口 | — |
 
 R78 结论：李老师登录态下教师工作台、预警队列、学生管理、质量监控、通知中心和终端设备只读路径通过；真实数据与控件均已记录。处理/误报、导出、绑定、设备编排和低分 PDF 等持久化/外部副作用操作继续待安全夹具。
+
+# R79 管理端 super_admin 登录态一级菜单 BFS（2026-08-14）
+
+| 步骤 | 端/场景 | 操作 | 结果 | 截图 |
+|---:|---|---|---|---|
+| R79-01 | 管理/A-01 | 隔离 Browser Agent 打开管理端，填充 super_admin/密码并登录 | 登录成功；进入平台总览；未连接用户浏览器 | `screenshots/admin-auth-R79-admin-login-enter.png`、`screenshots/admin-auth-R79-admin-login-filled.png`、`screenshots/admin-auth-R79-admin-overview.png` |
+| R79-02 | 管理/A-02~A-17 | 依次点击 16 个一级菜单：配置注册表、Prompt 管理、风险全景、时效监控、处置台账、降级矩阵、知识库、通知渠道、运营洞察、用量报表、数据合规、服务状态、指标看板、告警中心、审计日志、终端设备 | 每个菜单均可触发并保存截图；页面未出现崩溃或错误弹窗；平台总览当前为暂无数据空态 | `screenshots/admin-auth-R79-admin-01.png` … `screenshots/admin-auth-R79-admin-16.png` |
+| R79-03 | 管理/A-03/A-04/A-05/A-15~A-17 | 识别配置、Prompt、告警和终端页面的可操作入口 | 仅识别配置修改、Prompt 新建/审核/激活、告警确认、设备绑定/批量操作等控件；未执行任何写操作 | 同上 |
+| R79-04 | 资源安全 | 关闭 session，执行两次 `close --all` 并复核 session list | 无 active session；未操作被测软件以外窗口 | — |
+
+R79 结论：super_admin 登录成功并完成管理端 17 个一级菜单（平台总览 + 16 菜单）只读入口遍历；需要逐页弹窗/分页和四角色 RBAC 的深层复核仍按既有 R62/R69/R72/R73/R74 证据及后续补测推进，所有持久化动作继续待安全夹具。
