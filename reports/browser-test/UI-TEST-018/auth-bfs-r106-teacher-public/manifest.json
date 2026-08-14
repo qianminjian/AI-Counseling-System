@@ -1,0 +1,104 @@
+{
+  "generated": "2026-08-14T09:04:02.372Z",
+  "mode": "public-readonly",
+  "endpoints": [
+    {
+      "endpoint": "teacher",
+      "url": "https://yun.gxjugu.com/teacher/",
+      "algorithm": "breadth-first",
+      "maxDepth": 8,
+      "maxSteps": 20,
+      "visitedStates": [
+        {
+          "key": "09c04f09ba157e82",
+          "depth": 0,
+          "controls": [
+            {
+              "ref": "e5",
+              "role": "button",
+              "name": "登 录"
+            },
+            {
+              "ref": "e6",
+              "role": "textbox",
+              "name": "用户名（如：李老师）"
+            },
+            {
+              "ref": "e7",
+              "role": "textbox",
+              "name": "密码"
+            },
+            {
+              "ref": "e8",
+              "role": "button",
+              "name": "显示"
+            }
+          ]
+        },
+        {
+          "key": "2cf38f2336e7ce16",
+          "depth": 1,
+          "controls": [
+            {
+              "ref": "e5",
+              "role": "button",
+              "name": "登 录"
+            },
+            {
+              "ref": "e6",
+              "role": "textbox",
+              "name": "用户名（如：李老师）"
+            },
+            {
+              "ref": "e7",
+              "role": "textbox",
+              "name": "密码"
+            },
+            {
+              "ref": "e8",
+              "role": "button",
+              "name": "隐藏"
+            }
+          ]
+        }
+      ],
+      "operatedControls": [
+        {
+          "step": 4,
+          "depth": 1,
+          "control": {
+            "ref": "e8",
+            "role": "button",
+            "name": "显示"
+          },
+          "parentPath": []
+        },
+        {
+          "step": 8,
+          "depth": 2,
+          "control": {
+            "ref": "e8",
+            "role": "button",
+            "name": "隐藏"
+          },
+          "parentPath": [
+            {
+              "ref": "e8",
+              "role": "button",
+              "name": "显示"
+            }
+          ]
+        }
+      ],
+      "screenshots": [
+        "/tmp/codex-teacher-public-r106-QXOMBG/teacher-0000-enter.png",
+        "/tmp/codex-teacher-public-r106-QXOMBG/teacher-0004-button-显示.png",
+        "/tmp/codex-teacher-public-r106-QXOMBG/teacher-0008-button-隐藏.png"
+      ],
+      "errors": [],
+      "stopReason": "completed",
+      "steps": 8,
+      "queueMaxDepth": 1
+    }
+  ]
+}

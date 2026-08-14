@@ -1,0 +1,401 @@
+{
+  "generated": "2026-08-14T09:01:51.220Z",
+  "mode": "public-readonly",
+  "endpoints": [
+    {
+      "endpoint": "student",
+      "url": "https://yun.gxjugu.com/mindsafe/",
+      "algorithm": "breadth-first",
+      "maxDepth": 8,
+      "maxSteps": 20,
+      "visitedStates": [
+        {
+          "key": "2ce970b2538d2ce3",
+          "depth": 0,
+          "controls": [
+            {
+              "ref": "e10",
+              "role": "button",
+              "name": "2"
+            },
+            {
+              "ref": "e11",
+              "role": "button",
+              "name": "3"
+            },
+            {
+              "ref": "e12",
+              "role": "button",
+              "name": "4"
+            },
+            {
+              "ref": "e13",
+              "role": "button",
+              "name": "5"
+            },
+            {
+              "ref": "e14",
+              "role": "button",
+              "name": "6"
+            },
+            {
+              "ref": "e15",
+              "role": "button",
+              "name": "7"
+            },
+            {
+              "ref": "e16",
+              "role": "button",
+              "name": "8"
+            },
+            {
+              "ref": "e17",
+              "role": "button",
+              "name": "9"
+            },
+            {
+              "ref": "e18",
+              "role": "button",
+              "name": "0"
+            },
+            {
+              "ref": "e19",
+              "role": "button",
+              "name": "⌫"
+            },
+            {
+              "ref": "e21",
+              "role": "button",
+              "name": "🎤 声音进入"
+            },
+            {
+              "ref": "e22",
+              "role": "button",
+              "name": "《隐私政策》"
+            },
+            {
+              "ref": "e23",
+              "role": "button",
+              "name": "《服务协议》"
+            },
+            {
+              "ref": "e3",
+              "role": "button",
+              "name": "🌊"
+            },
+            {
+              "ref": "e4",
+              "role": "button",
+              "name": "🌸"
+            },
+            {
+              "ref": "e5",
+              "role": "button",
+              "name": "🌈"
+            },
+            {
+              "ref": "e6",
+              "role": "button",
+              "name": "登录"
+            },
+            {
+              "ref": "e7",
+              "role": "button",
+              "name": "新注册"
+            },
+            {
+              "ref": "e8",
+              "role": "textbox",
+              "name": "你的昵称"
+            },
+            {
+              "ref": "e9",
+              "role": "button",
+              "name": "1"
+            }
+          ]
+        },
+        {
+          "key": "3a3707fe0958048a",
+          "depth": 1,
+          "controls": [
+            {
+              "ref": "e10",
+              "role": "button",
+              "name": "2"
+            },
+            {
+              "ref": "e11",
+              "role": "button",
+              "name": "3"
+            },
+            {
+              "ref": "e12",
+              "role": "button",
+              "name": "4"
+            },
+            {
+              "ref": "e13",
+              "role": "button",
+              "name": "5"
+            },
+            {
+              "ref": "e14",
+              "role": "button",
+              "name": "6"
+            },
+            {
+              "ref": "e15",
+              "role": "button",
+              "name": "7"
+            },
+            {
+              "ref": "e16",
+              "role": "button",
+              "name": "8"
+            },
+            {
+              "ref": "e17",
+              "role": "button",
+              "name": "9"
+            },
+            {
+              "ref": "e18",
+              "role": "button",
+              "name": "0"
+            },
+            {
+              "ref": "e19",
+              "role": "button",
+              "name": "⌫"
+            },
+            {
+              "ref": "e21",
+              "role": "button",
+              "name": "🎤 声音进入"
+            },
+            {
+              "ref": "e22",
+              "role": "button",
+              "name": "《隐私政策》"
+            },
+            {
+              "ref": "e23",
+              "role": "button",
+              "name": "《服务协议》"
+            },
+            {
+              "ref": "e3",
+              "role": "button",
+              "name": "🌊"
+            },
+            {
+              "ref": "e4",
+              "role": "button",
+              "name": "🌸"
+            },
+            {
+              "ref": "e5",
+              "role": "button",
+              "name": "🌈"
+            },
+            {
+              "ref": "e6",
+              "role": "button",
+              "name": "登录"
+            },
+            {
+              "ref": "e7",
+              "role": "button",
+              "name": "新注册"
+            },
+            {
+              "ref": "e8",
+              "role": "textbox",
+              "name": "你的昵称"
+            },
+            {
+              "ref": "e9",
+              "role": "button",
+              "name": "1"
+            }
+          ]
+        }
+      ],
+      "operatedControls": [
+        {
+          "step": 1,
+          "depth": 1,
+          "control": {
+            "ref": "e10",
+            "role": "button",
+            "name": "2"
+          },
+          "parentPath": []
+        },
+        {
+          "step": 2,
+          "depth": 1,
+          "control": {
+            "ref": "e11",
+            "role": "button",
+            "name": "3"
+          },
+          "parentPath": []
+        },
+        {
+          "step": 3,
+          "depth": 1,
+          "control": {
+            "ref": "e12",
+            "role": "button",
+            "name": "4"
+          },
+          "parentPath": []
+        },
+        {
+          "step": 4,
+          "depth": 1,
+          "control": {
+            "ref": "e13",
+            "role": "button",
+            "name": "5"
+          },
+          "parentPath": []
+        },
+        {
+          "step": 5,
+          "depth": 1,
+          "control": {
+            "ref": "e14",
+            "role": "button",
+            "name": "6"
+          },
+          "parentPath": []
+        },
+        {
+          "step": 6,
+          "depth": 1,
+          "control": {
+            "ref": "e15",
+            "role": "button",
+            "name": "7"
+          },
+          "parentPath": []
+        },
+        {
+          "step": 7,
+          "depth": 1,
+          "control": {
+            "ref": "e16",
+            "role": "button",
+            "name": "8"
+          },
+          "parentPath": []
+        },
+        {
+          "step": 8,
+          "depth": 1,
+          "control": {
+            "ref": "e17",
+            "role": "button",
+            "name": "9"
+          },
+          "parentPath": []
+        },
+        {
+          "step": 9,
+          "depth": 1,
+          "control": {
+            "ref": "e18",
+            "role": "button",
+            "name": "0"
+          },
+          "parentPath": []
+        },
+        {
+          "step": 10,
+          "depth": 1,
+          "control": {
+            "ref": "e19",
+            "role": "button",
+            "name": "⌫"
+          },
+          "parentPath": []
+        },
+        {
+          "step": 11,
+          "depth": 1,
+          "control": {
+            "ref": "e21",
+            "role": "button",
+            "name": "🎤 声音进入"
+          },
+          "parentPath": []
+        },
+        {
+          "step": 12,
+          "depth": 1,
+          "control": {
+            "ref": "e22",
+            "role": "button",
+            "name": "《隐私政策》"
+          },
+          "parentPath": []
+        },
+        {
+          "step": 13,
+          "depth": 1,
+          "control": {
+            "ref": "e23",
+            "role": "button",
+            "name": "《服务协议》"
+          },
+          "parentPath": []
+        },
+        {
+          "step": 14,
+          "depth": 1,
+          "control": {
+            "ref": "e3",
+            "role": "button",
+            "name": "🌊"
+          },
+          "parentPath": []
+        },
+        {
+          "step": 15,
+          "depth": 1,
+          "control": {
+            "ref": "e4",
+            "role": "button",
+            "name": "🌸"
+          },
+          "parentPath": []
+        }
+      ],
+      "screenshots": [
+        "/tmp/codex-student-public-r104-OY1ESA/student-0000-enter.png",
+        "/tmp/codex-student-public-r104-OY1ESA/student-0001-button-2.png",
+        "/tmp/codex-student-public-r104-OY1ESA/student-0002-button-3.png",
+        "/tmp/codex-student-public-r104-OY1ESA/student-0003-button-4.png",
+        "/tmp/codex-student-public-r104-OY1ESA/student-0004-button-5.png",
+        "/tmp/codex-student-public-r104-OY1ESA/student-0005-button-6.png",
+        "/tmp/codex-student-public-r104-OY1ESA/student-0006-button-7.png",
+        "/tmp/codex-student-public-r104-OY1ESA/student-0007-button-8.png",
+        "/tmp/codex-student-public-r104-OY1ESA/student-0008-button-9.png",
+        "/tmp/codex-student-public-r104-OY1ESA/student-0009-button-0.png",
+        "/tmp/codex-student-public-r104-OY1ESA/student-0010-button-_.png",
+        "/tmp/codex-student-public-r104-OY1ESA/student-0011-button-_声音进入.png",
+        "/tmp/codex-student-public-r104-OY1ESA/student-0012-button-_隐私政策_.png",
+        "/tmp/codex-student-public-r104-OY1ESA/student-0013-button-_服务协议_.png",
+        "/tmp/codex-student-public-r104-OY1ESA/student-0014-button-_.png",
+        "/tmp/codex-student-public-r104-OY1ESA/student-0015-button-_.png"
+      ],
+      "errors": [],
+      "stopReason": "endpoint-timeout",
+      "steps": 15,
+      "queueMaxDepth": 1
+    }
+  ]
+}
