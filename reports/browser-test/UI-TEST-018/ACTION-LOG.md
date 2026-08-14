@@ -32,6 +32,9 @@
 | R20-03 | S/S-08 | 成就/设置 | 打开成就入口，随后打开设置，遍历主题、声音、语音播报、语音唤醒、动效、触觉等控件 | 设置面板完整渲染；主题和开关可切换，完成按钮可返回 | `screenshots/R20-student-achievements.png`、`screenshots/R20-student-settings.png`、`screenshots/R20-student-settings-toggles.png`、`screenshots/R20-student-settings-complete.png` |
 | R21-01 | T/T-09 | 终端设备 | 进入终端设备，点击刷新、展开班级筛选、识别查询输入框及绑定设备入口 | 页面正常渲染；当前无设备数据，未点击绑定设备 | `screenshots/R21-teacher-devices.png`、`screenshots/R21-teacher-device-class-options.png` |
 | R21-02 | T/T-05 | 质量监控 | 进入质量监控页 | 平均评分、近 7 天评分、低分会话、趋势区域正常渲染；未发现异常弹窗 | `screenshots/R21-teacher-quality.png` |
+| R22-01 | A/A-01/A-04 | 平台总览/Prompt 管理 | 登录 super_admin，进入总览和 Prompt 管理，识别版本表及新建版本入口 | 租户总览、Prompt 版本列表正常；未点击新建版本或审核/激活操作 | `screenshots/R22-admin-overview.png`、`screenshots/R22-admin-prompts.png`、`screenshots/R22-admin-prompt-detail.png` |
+| R22-02 | A/A-08 | 知识库/通知渠道 | 依次进入知识库和通知渠道 | 两个页面均正常加载并显示标题；未执行审核、发送等写操作 | `screenshots/R22-admin-knowledge.png`、`screenshots/R22-admin-notifications.png` |
+| R22-03 | A/A-09/A-10 | 用量报表/数据合规 | 依次进入用量报表和数据合规中心 | 页面入口正常加载；未执行导出或审批 | `screenshots/R22-admin-usage.png`、`screenshots/R22-admin-compliance.png` |
 
 - 每个端使用独立 `agent-browser --session ui018-<端>` 会话。
 - 未打开或操作被测软件以外窗口。
