@@ -74,3 +74,11 @@
 | R7-01 | 管理/A-02 配置注册表 | 点击首行“历史” | 打开“变更历史”弹窗，显示“暂无变更记录”；未执行修改 | `screenshots/R7-admin-config-history.png` |
 | R7-02 | 管理/A-03 Prompt 管理 | 打开页面并检查版本行、内容列、新建版本入口 | 页面显示 control 版本和新建版本按钮；未执行写入 | `screenshots/R7-admin-prompt.png` |
 | R7-03 | 教师/T-03 学生管理 | 点击“测试己”链接及“查看档案”按钮 | 页面保持学生列表，未打开详情；记录为控件无可见状态变化，未重复提交 | `screenshots/R7-teacher-student-profile.png`、`screenshots/R7-teacher-student-profile-modal.png` |
+
+# R8 学生账号状态分支（2026-08-14）
+
+| 步骤 | 端/场景 | 操作 | 结果 | 截图 |
+|---:|---|---|---|---|
+| R8-01 | 学生/S-02 冻结账号 | 输入“小明”和台账 PIN，提交登录 | 稳定显示“账号已冻结，请联系家长或学校重新授权” | `screenshots/R8-student-frozen-filled.png`、`screenshots/R8-student-frozen-result.png`、`screenshots/R8-student-frozen-final.png` |
+
+R8 结论：冻结账号分支工作正常；“开心”仍返回通用“昵称或 PIN 码错误”，结合教师端学生列表不存在该昵称，继续归类为线上账号台账/租户数据问题，不修改登录代码。
