@@ -544,3 +544,15 @@ R61 结论：注册边界路径触发监护人手机号步骤且无异常；本�
 | R62-04 | 资源安全 | 关闭 Browser Agent 会话并执行 `close --all`、session list、进程核验 | 无 active agent-browser session；系统原有 Chrome 进程未操作 | — |
 
 R62 结论：管理端登录、菜单、只读配置页及弹窗开闭路径通过；本轮仍遵守写操作安全边界。隔离临时会话已关闭且未连接用户浏览器。
+
+# R63 教师端工作台、质量监控与通知中心 BFS 补充（2026-08-14）
+
+| 步骤 | 端/场景 | 操作 | 结果 | 截图 |
+|---:|---|---|---|---|
+| R63-01 | 教师/T-01 | 独立临时 profile 登录李老师并识别工作台、预警队列、学生管理、质量监控、通知中心、终端设备菜单 | 登录成功；工作台指标和既有预警摘要可读；未见崩溃/报错弹窗 | `screenshots/BFS-T-r63-login.png`、`screenshots/BFS-T-r63-login-filled.png` |
+| R63-02 | 教师/T-01 弹窗 | 遍历首次工作台引导，点击“跳过/关闭”；ref 无状态变化时使用当前页面 DOM click 复核 | 引导弹窗关闭并回到工作台；未改变业务数据 | `screenshots/BFS-T-r63-dashboard.png`、`screenshots/BFS-T-r63-onboarding-dom.png` |
+| R63-03 | 教师/T-05 | 进入质量监控并读取平均评分、近 7 天指标、低分会话空态和趋势区域 | 页面正常渲染，低分会话为 0；未执行导出/审核写操作 | `screenshots/BFS-T-r63-quality.png`、`screenshots/BFS-T-r63-quality-dom.png` |
+| R63-04 | 教师/T-06 | 进入通知中心，识别全部/未读/已读 Tab、逐条“已读”、分页控件 | 三个 Tab、5 个已读按钮和分页均可识别；未点击状态变更按钮 | `screenshots/BFS-T-r63-notifications.png` |
+| R63-05 | 资源安全 | 关闭会话，执行 `close --all` 并再次核验 session list | 无 active session；未连接或操作用户浏览器 | — |
+
+R63 结论：教师端工作台、引导弹窗、质量监控和通知中心只读路径通过；菜单导航/ref 事件兼容性按测试计划记录，未形成产品故障。
