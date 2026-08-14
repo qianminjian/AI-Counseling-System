@@ -725,3 +725,14 @@ R79 结论：super_admin 登录成功并完成管理端 17 个一级菜单（平
 | R80-04 | 资源安全 | 关闭 session，执行两次 `close --all` 并复核 session list | 无 active session；未操作被测软件以外窗口 | — |
 
 R80 结论：家长端注册 Tab 控件和关系分支可识别；有效账号登录因手机号控件重渲染/登录控件可访问性问题未形成成功登录证据，暂归自动化兼容性与 UAT 账号待复核，不登记后端缺陷。
+
+# R81 学生端 active 凭证复核（2026-08-14）
+
+| 步骤 | 端/场景 | 操作 | 结果 | 截图 |
+|---:|---|---|---|---|
+| R81-01 | 学生/S-02 | 隔离 Browser Agent 打开学生登录页，识别主题、昵称、数字键盘、PIN、声音进入、隐私/协议控件 | 首屏全部可交互控件可识别；页面稳定无崩溃 | `screenshots/student-auth-R81-student-auth-enter.png` |
+| R81-02 | 学生/S-02 | 输入测试丁并点击 PIN 1234，提交登录 | 页面显示“昵称或 PIN 码错误”；未进入首页，历史 401 现象复现 | `screenshots/student-auth-R81-student-auth-testding-filled.png`、`screenshots/student-auth-R81-student-auth-testding-result.png` |
+| R81-03 | 学生/S-02 | 输入开心并点击 PIN 1234，提交登录 | 同样显示“昵称或 PIN 码错误”；未进入首页 | `screenshots/student-auth-R81-student-auth-kx-filled.png`、`screenshots/student-auth-R81-student-auth-kx-result.png` |
+| R81-04 | 资源安全 | 关闭 session，执行两次 `close --all` 并复核 session list | 无 active session；未操作被测软件以外窗口 | — |
+
+R81 结论：测试丁/开心两个设计资料凭证均无法在当前 UAT 建立 active 学生登录态；与 R29/R41/R66 一致，继续归类为账号/PIN/租户数据前置问题，未修改认证源码或线上数据。
