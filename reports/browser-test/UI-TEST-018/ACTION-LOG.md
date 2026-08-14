@@ -736,3 +736,19 @@ R80 结论：家长端注册 Tab 控件和关系分支可识别；有效账号�
 | R81-04 | 资源安全 | 关闭 session，执行两次 `close --all` 并复核 session list | 无 active session；未操作被测软件以外窗口 | — |
 
 R81 结论：测试丁/开心两个设计资料凭证均无法在当前 UAT 建立 active 学生登录态；与 R29/R41/R66 一致，继续归类为账号/PIN/租户数据前置问题，未修改认证源码或线上数据。
+
+# R82 学生端新建 active 账号与核心只读 BFS（2026-08-14）
+
+| 步骤 | 端/场景 | 操作 | 结果 | 截图 |
+|---:|---|---|---|---|
+| R82-01 | 学生/S-01 | DEMO2026 注册唯一昵称“自动R82”，完成告知同意、性别和年龄表单 | 告知 checkbox、注册确认弹窗均正常；`POST /api/v1/auth/trial/register` 返回 200 | `screenshots/student-r82-login.png`、`screenshots/student-r82-register-entry.png`、`screenshots/student-r82-consent.png`、`screenshots/student-r82-form-filled.png`、`screenshots/student-r82-register-attempt.png`、`screenshots/student-r82-register-result.png` |
+| R82-02 | 学生/S-02 | 设置并确认受控测试 PIN（值不写入报告），跳过声纹录入 | `POST /api/v1/auth/set-pin` 返回 200；注册成功页和“以后再说”声纹分支正常 | `screenshots/student-r82-pin-filled.png`、`screenshots/student-r82-pin-result.png`、`screenshots/student-r82-pin-confirmed.png`、`screenshots/student-r82-registration-success.png` |
+| R82-03 | 学生/S-02 | 关闭首次引导后重新用“自动R82”登录 | `POST /api/v1/auth/pin-login` 返回 200；进入 active 首页，昵称显示自动R82 | `screenshots/student-r82-active-login-filled.png`、`screenshots/student-r82-active-login-success.png`、`screenshots/student-r82-home.png`、`screenshots/student-r82-onboarding-skip.png` |
+| R82-04 | 学生/S-03/S-04 | 选择开心情绪并创建聊天会话，识别聊天控件和语音说明弹窗 | 会话创建返回 200；识别 SOS、工具箱、设置、换人、结束、语音、文本输入和发送控件；语音说明可关闭 | `screenshots/student-r82-emotion-selected.png`、`screenshots/student-r82-chat.png`、`screenshots/student-r82-chat-voice-dismissed.png` |
+| R82-05 | 学生/S-06/S-07 | 打开百宝箱，进入深呼吸，选择心情并启动练习，再返回 | 练习前心情选项、开始、下一步、完成和关闭控件可识别；无崩溃或异常弹窗 | `screenshots/student-r82-toolbox.png`、`screenshots/student-r82-breathing.png`、`screenshots/student-r82-breathing-started.png`、`screenshots/student-r82-toolbox-return.png` |
+| R82-06 | 学生/S-06 | 打开 SOS | 显示“波波在这里陪你”、12355 青少年服务台链接和安全小岛入口；未拨号、未打开外部窗口 | `screenshots/student-r82-sos.png` |
+| R82-07 | 学生/S-10 | 打开设置并识别主题、7 音色、语音播报/唤醒、动效/触感、声纹和家庭码控件 | 设置页完整渲染；未录入声纹、未复制家庭码、未改变持久化开关 | `screenshots/student-r82-settings-real.png` |
+| R82-08 | 学生/S-10 | 打开“换人”二次确认并取消 | 确认弹窗显示“我点错了/确认退出”；取消后保留当前会话；未登出 | `screenshots/student-r82-switch-user-dom.png`、`screenshots/student-r82-switch-user-cancel.png` |
+| R82-09 | 资源安全 | 关闭 session，执行两次 `close --all` 并复核 session list | 无 active session；未操作被测软件以外窗口 | — |
+
+R82 结论：学生端已获得可复用 active 测试账号并完成 S-01/S-02/S-03/S-04/S-06/S-07/S-10 的核心只读/可逆路径；S-05 风险消息闭环、S-08 日记、S-09 成就和会话结束评价仍需下一轮继续，持久化/外部副作用控件保持未执行。

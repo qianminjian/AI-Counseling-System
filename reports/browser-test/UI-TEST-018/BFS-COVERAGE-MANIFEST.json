@@ -41,10 +41,10 @@
     "student": {
       "url": "https://yun.gxjugu.com/mindsafe/",
       "status": "partial",
-      "verifiedRounds": ["R55", "R56", "R57", "R58", "R59", "R60", "R61", "R66", "R71", "R81"],
-      "verified": ["login controls", "themes", "privacy/service dialogs", "consent gate", "registration fields", "guardian-phone branch", "voice consent toggle", "invalid credentials"],
-      "blockedOrPending": ["active account deep settings/session switch/timeout", "current experience account returns HTTP 401", "real voice enrollment"],
-      "stopReasons": ["no reusable active student credential; 测试丁/开心 PIN 1234 在 R81 均复现错误", "registration deep submit produced no captured request in current event path"]
+      "verifiedRounds": ["R55", "R56", "R57", "R58", "R59", "R60", "R61", "R66", "R71", "R81", "R82"],
+      "verified": ["login controls", "themes", "privacy/service dialogs", "consent gate", "registration fields", "guardian-phone branch", "voice consent toggle", "new active account registration", "pin login 200", "chat/toolbox/SOS/settings read paths"],
+      "blockedOrPending": ["risk message end-to-end", "diary/achievements/end-rating deep paths", "session timeout", "real voice enrollment"],
+      "stopReasons": ["legacy 测试丁/开心 credentials still return 401; R82 created a separate active fixture", "registration deep submit produced no captured request in current event path for prior attempts"]
     },
     "teacher": {
       "url": "https://yun.gxjugu.com/teacher/",
