@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { execFileSync, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { mkdtempSync } from "node:fs";
@@ -15,6 +15,7 @@ const ENDPOINT_TIMEOUT_MS = Number(process.env.BFS_ENDPOINT_TIMEOUT_MS ?? 60000)
 const REPORT_DIR = process.env.BFS_REPORT_DIR ?? "reports/browser-test/UI-TEST-018/public-bfs";
 const SELECTED_ENDPOINTS = new Set((process.env.BFS_ENDPOINTS ?? "student,teacher,parent,admin").split(",").map(value => value.trim()).filter(Boolean));
 const STATE_PATH = process.env.BFS_STATE ?? "";
+const EXISTING_SESSION = process.env.BFS_SESSION ?? "";
 
 const endpoints = [
   ["student", "https://yun.gxjugu.com/mindsafe/"],
@@ -101,9 +102,11 @@ function locatorAction(session, profile, control) {
 
 function resetAndReplay(session, profile, url, path) {
   cli(session, profile, ["open", url]);
+  cli(session, profile, ["wait", "--load", "domcontentloaded"]);
   cli(session, profile, ["wait", String(WAIT_MS)]);
   // The first open can leave a new session on about:blank; a second open is harmless and stabilizes it.
   cli(session, profile, ["open", url]);
+  cli(session, profile, ["wait", "--load", "domcontentloaded"]);
   cli(session, profile, ["wait", String(WAIT_MS)]);
   for (const control of path) {
     if (!locatorAction(session, profile, control)) throw new Error(`non-replayable control: ${control.role}:${control.name}`);
@@ -113,7 +116,7 @@ function resetAndReplay(session, profile, url, path) {
 
 function runEndpoint(endpoint, url) {
   const profile = mkdtempSync(join(tmpdir(), `codex-public-bfs-${endpoint}-`));
-  const session = `public-bfs-${endpoint}-${Date.now()}`;
+  const session = EXISTING_SESSION || `public-bfs-${endpoint}-${Date.now()}`;
   const result = {
     endpoint,
     url,
@@ -173,7 +176,6 @@ function runEndpoint(endpoint, url) {
     result.errors.push({ step: steps, message: String(error) });
   } finally {
     try { cli(session, profile, ["close"]); } catch {}
-    try { execFileSync("agent-browser", ["close", "--all"], { encoding: "utf8", timeout: 10000 }); } catch {}
   }
   result.steps = steps;
   result.queueMaxDepth = result.visitedStates.reduce((max, state) => Math.max(max, state.depth), 0);
