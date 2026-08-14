@@ -533,3 +533,14 @@ R60 结论：注册表单主要控件和可逆状态切换通过；邀请码/昵
 | R61-02 | 学生/S-01 | 点击“注册 🚀” | 未发生账号创建；页面显示“家长手机号 *”字段，进入未成年监护人信息分支 | `screenshots/BFS-S-register-invalid-r5-result.png` |
 
 R61 结论：注册边界路径触发监护人手机号步骤且无异常；本轮未填写家长手机号、未提交邀请码，错误邀请码/年龄的最终拒绝提示仍待安全数据条件下复核。
+
+# R62 管理端只读菜单与配置历史弹窗 BFS 补充（2026-08-14）
+
+| 步骤 | 端/场景 | 操作 | 结果 | 截图 |
+|---:|---|---|---|---|
+| R62-01 | 管理/A-01 | 独立临时 profile 登录管理端并识别平台总览及 17 个侧边菜单项 | 登录成功；总览租户表、分页状态和所有菜单项可读；未见崩溃/报错弹窗 | `screenshots/BFS-A-r62-login.png`、`screenshots/BFS-A-r62-login-filled.png` |
+| R62-02 | 管理/A-03 | 进入配置注册表，识别域筛选、配置表格、SECRET 掩码和修改/历史控件 | 页面正常；SECRET 只显示掩码；未点击修改 | `screenshots/BFS-A-r62-config.png` |
+| R62-03 | 管理/A-03 弹窗 | 打开首条配置的“历史”并关闭弹窗 | 弹窗显示配置键和“暂无变更记录”；关闭后回到原配置页，未改变数据 | `screenshots/BFS-A-r62-config-history.png`、`screenshots/BFS-A-r62-config-history-closed.png` |
+| R62-04 | 资源安全 | 关闭 Browser Agent 会话并执行 `close --all`、session list、进程核验 | 无 active agent-browser session；系统原有 Chrome 进程未操作 | — |
+
+R62 结论：管理端登录、菜单、只读配置页及弹窗开闭路径通过；本轮仍遵守写操作安全边界。隔离临时会话已关闭且未连接用户浏览器。
