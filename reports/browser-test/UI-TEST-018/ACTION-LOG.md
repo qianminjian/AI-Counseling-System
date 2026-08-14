@@ -752,3 +752,15 @@ R81 结论：测试丁/开心两个设计资料凭证均无法在当前 UAT 建�
 | R82-09 | 资源安全 | 关闭 session，执行两次 `close --all` 并复核 session list | 无 active session；未操作被测软件以外窗口 | — |
 
 R82 结论：学生端已获得可复用 active 测试账号并完成 S-01/S-02/S-03/S-04/S-06/S-07/S-10 的核心只读/可逆路径；S-05 风险消息闭环、S-08 日记、S-09 成就和会话结束评价仍需下一轮继续，持久化/外部副作用控件保持未执行。
+
+# R83 家长端真实家庭码注册与授权只读 BFS（2026-08-14）
+
+| 步骤 | 端/场景 | 操作 | 结果 | 截图 |
+|---:|---|---|---|---|
+| R83-01 | 家长/P-01 | 从 R82 学生设置页读取家庭码，仅在当前隔离 session 内转入家长端；打开首次注册 | 家长注册表单显示家庭码、手机号、密码和妈妈/爸爸/祖父母/其他关系控件 | `screenshots/parent-r83-register-entry.png` |
+| R83-02 | 家长/P-01 | 填充家庭码、受控测试手机号/密码，选择“妈妈”，触发“注册并绑定” | `POST /api/v1/parent/auth/register` 返回 200；自动进入 `/parent/report`；未把凭证或家庭码写入报告 | `screenshots/parent-r83-register-filled.png`、`screenshots/parent-r83-register-result.png` |
+| R83-03 | 家长/P-03 | 识别情绪周报统计周期、对话次数、整体状态、建议和数据授权入口 | 周报页面正常；数据接口返回 200；未展示对话原文 | `screenshots/parent-r83-current.png` |
+| R83-04 | 家长/P-04 | 进入数据授权管理，识别孩子列表并打开自动R82授权详情 | 授权页和孩子项可达；显示“撤回授权”控件；未点击撤回、未改变 consent 状态 | `screenshots/parent-r83-consent.png`、`screenshots/parent-r83-child-consent.png` |
+| R83-05 | 资源安全 | 关闭 session，执行两次 `close --all` 并复核 session list | 无 active session；未操作被测软件以外窗口 | — |
+
+R83 结论：家长端家庭码注册、自动登录、周报和授权只读链路通过；撤回授权、多孩切换、设备配置和删除等持久化/不可逆操作仍按安全边界未执行。
