@@ -223,3 +223,12 @@ R26 结论：管理端一级菜单可达性和窗口状态遍历完成；写入/
 | R27-02 | 家长/P-02 | 使用真实键盘事件替换手机号/密码并提交 | Browser Agent 在输入事件阶段无响应，Chrome 渲染进程 CPU 持续高占用；按超时规则停止并清理会话，未确认登录结果 | `screenshots/BFS-P-login.png` |
 
 R27 结论：记录为 `OBS-P-POST-001` 待复核；尚不能区分 Taro H5 输入事件、浏览器自动化兼容性或页面运行时卡死。未修改源码、未再次部署。
+
+# R28 家长端输入事件复核（2026-08-14）
+
+| 步骤 | 端/场景 | 操作 | 结果 | 截图 |
+|---:|---|---|---|---|
+| R28-01 | 家长/P-02 | 新会话打开登录页，使用 DOM value setter + input/change 事件设置测试账号 | 页面保持渲染；Taro 自定义控件 accessibility value 与 DOM value 显示不完全一致 | `screenshots/BFS-P-valid-r2.png` |
+| R28-02 | 家长/P-02 | 通过 Taro 自定义按钮、表单元素和坐标点击分别提交 | 未捕获 `/api/v1/parent/auth/login` 请求，未取得登录结果；未再次触发卡死 | `screenshots/BFS-P-valid-r2.png` |
+
+R28 结论：与历史报告 `UI-TEST-014-parent.md` 的真实登录成功证据交叉后，当前优先归类为 Browser Agent/Taro H5 事件注入兼容性待复核，不进入源码修复或部署批次。
