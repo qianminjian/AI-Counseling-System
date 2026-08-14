@@ -38,6 +38,7 @@
 | R23-01 | S/S-05 | 学生风险识别 | 测试丁进入聊天，发送模拟危机语句并等待 45 秒；打开 SOS 面板 | SOS 面板可打开并显示 12355；消息请求在响应头阶段无结果，形成 P1 问题 | `screenshots/R23-student-risk-filled.png`、`screenshots/R23-student-risk-result.png`、`screenshots/R23-student-risk-timeout.png`、`screenshots/R23-student-sos.png` |
 | R23-02 | T/T-03/L-05 | 教师预警联动 | 重新登录李老师，进入预警队列 | 出现测试丁 `sos_open` 黄色待处理预警，另有既有红色自伤/自杀记录；未点击认领/处理/误报 | `screenshots/R23-teacher-alert-created.png`、`screenshots/R23-teacher-alert-queue.png` |
 | POST-01 | S/T/P/A | 发布后入口复测 | 统一部署后分别打开四端 UAT 地址并等待 networkidle | 四端入口均返回 200、首屏可识别并保存截图；学生登录后续会话曾无响应，未将其标记为通过 | `screenshots/POST-student-entry.png`、`screenshots/POST-teacher-entry.png`、`screenshots/POST-parent-entry.png`、`screenshots/POST-admin-entry.png`、`screenshots/POST-student-login-result.png` |
+| POST-02 | S/S-02~05 | 新独立会话复测 | 两个新会话提交测试丁 PIN，等待登录状态并尝试 snapshot/screenshot | 两次均在登录后的 Browser Agent 状态读取阶段无响应，未取得足够证据，不判定产品通过/失败 | `screenshots/POST-student-login-result.png` |
 
 - 每个端使用独立 `agent-browser --session ui018-<端>` 会话。
 - 未打开或操作被测软件以外窗口。
