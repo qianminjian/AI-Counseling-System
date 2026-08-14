@@ -241,3 +241,14 @@ R28 结论：与历史报告 `UI-TEST-014-parent.md` 的真实登录成功证据
 | R29-02 | 学生/S-02 | 使用开心 + PIN 1234 登录 | 同样返回 401；未进入首页，无法执行会话结束评价 | 同上；Browser Agent network 记录两次 401 |
 
 R29 结论：与 R25 部署后测试丁登录成功的证据矛盾，当前优先归类为 UAT 账号/PIN 或租户状态发生变化；不修改认证代码、不重复部署，后续需恢复有效 active 测试账号后继续 S-04/S-07。
+
+# R30 新学生账号与会话评价闭环（2026-08-14）
+
+| 步骤 | 端/场景 | 操作 | 结果 | 截图 |
+|---:|---|---|---|---|
+| R30-01 | 学生/S-01 | 使用 DEMO2026 走告知同意、邀请码、昵称、性别、年龄、确认注册 | 注册确认弹窗和注册成功页正常；家庭码由页面生成，未在报告明文记录 | `screenshots/BFS-S-new-registration.png`、`screenshots/BFS-S-registration-success.png` |
+| R30-02 | 学生/S-02 | 设置 4 位 PIN，跳过声纹录入 | PIN 设置确认和声纹“以后再说”分支正常 | `screenshots/BFS-S-pin-success.png`、`screenshots/BFS-S-pin-confirmed.png` |
+| R30-03 | 学生/S-04 | 登录新账号、跳过引导、选择开心、进入聊天、发送普通文本 | 首页和聊天窗口正常；AI 回复成功返回 | `screenshots/BFS-S-new-login.png`、`screenshots/BFS-S-chat-message.png`、`screenshots/BFS-S-chat-response.png` |
+| R30-04 | 学生/S-07 | 点击结束，选择“挺好的”并提交评价 | 结束评价弹窗控件完整；提交后返回情绪选择首页 | `screenshots/BFS-S-end-dialog.png`、`screenshots/BFS-S-evaluation-submitted.png` |
+
+R30 结论：学生端注册、登录、基础对话和会话结束评价闭环通过；旧测试丁/开心账号的 401 仍保留为环境数据观察项，不影响新测试账号闭环证据。
