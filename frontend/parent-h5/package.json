@@ -26,7 +26,8 @@
       "@vitejs/plugin-react": "$@vitejs/plugin-react",
       "vite": "$vite"
     },
-    "swiper": "12.1.2"
+    "swiper": "12.1.2",
+    "nanoid": "3.3.18"
   },
   "devDependencies": {
     "@babel/preset-react": "^7.29.7",

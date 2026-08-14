@@ -47,7 +47,10 @@ public class DeviceSecurityService {
         this(deviceMapper, "OFF");
     }
 
-    public DeviceSecurityService(DeviceMapper deviceMapper, String signatureMode) {
+    /** Spring 装配入口（显式 @Autowired 指明双参构造器；单参构造器仅供测试） */
+    @org.springframework.beans.factory.annotation.Autowired
+    public DeviceSecurityService(DeviceMapper deviceMapper,
+                                 @org.springframework.beans.factory.annotation.Value("${mindsafe.device.signature-mode:OFF}") String signatureMode) {
         this.deviceMapper = deviceMapper;
         this.signatureMode = signatureMode == null ? "OFF" : signatureMode;
     }
