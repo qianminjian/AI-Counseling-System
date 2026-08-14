@@ -47,3 +47,17 @@
 - 新会话复试仍在登录后的状态读取阶段阻塞，已登记 `OBS-S-POST-001`；当前不重复部署、不将该项虚报为通过。
 - 后续根因确认：LoginPage 挂载预加载声纹/唤醒模型阻塞主线程；已移除挂载预加载，待四端门禁后再次统一部署复测。
 - 第二次发布后复测：学生端登录后首页可正常 snapshot，证明懒加载修复生效；开始聊天时 `POST /api/v1/chat/sessions` pending，另登记 `OBS-S-POST-002`，待后端日志复核。
+
+## R25 统一部署与四端复测（2026-08-14）
+
+- 部署前恢复四个前端锁定依赖；此前失败原因是本地 `node_modules` 缺失导致 `tsc: command not found`，不是源码构建失败。
+- 部署命令：`SKIP_CI_GATE=1 ./deploy.sh --backend --student --teacher --parent --admin`。
+- 结果：backend + student + teacher + parent + admin 统一发布成功；总耗时 1m50s；服务健康检查、nginx 路径校验通过。
+- 四端构建：student/teacher/admin 通过；parent 编译成功并保留既有 337 KiB 入口体积警告。
+- 发布后 E2E 冒烟：32/32 通过；教师/管理员 API 冒烟因未提供专用环境变量跳过，不影响脚本其余断言。
+- 部署日志：`logs/deploy/deploy-20260814-125959.log`；审计：`logs/deploy/audit-20260814-125959.md`。审计历史样本仍为 CRITICAL（3 项历史异常），不代表本次部署失败。
+- Browser Agent 单会话串行复测：
+  - 学生：测试丁登录、首页、情绪选择、进入聊天；`POST /api/v1/chat/sessions` 返回 200，白屏/pending 未复现，见 `POST5-student-*.png`。
+  - 教师：李老师登录，工作台及主菜单加载，见 `POST5-teacher-home.png`。
+  - 家长：登录入口和表单加载，见 `POST5-parent-entry.png`；有效家庭码闭环仍待数据。
+  - 管理：super_admin 登录，平台总览及主菜单加载，见 `POST5-admin-home.png`。
