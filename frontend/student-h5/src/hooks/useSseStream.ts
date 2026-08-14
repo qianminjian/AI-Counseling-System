@@ -75,7 +75,9 @@ export async function consumeSseStream(
   return fullResponse
 }
 
-const STREAM_IDLE_TIMEOUT_MS = 30000
+// 99-4（2026-08-14）：语义拆分——连接建立超时 vs 流空闲超时（原共用一个 IDLE 命名误导）
+const CONNECT_TIMEOUT_MS = 30000 // 请求发出 → 响应头到达的窗口（LLM 首包最坏场景）
+const STREAM_IDLE_TIMEOUT_MS = 30000 // 最后一条数据 → 无数据自动 abort 的窗口
 
 export function useSseStream() {
   const [streaming, setStreaming] = useState(false)
@@ -96,7 +98,7 @@ export function useSseStream() {
       abortRef.current = controller
       let fullResponse = ''
       let timeoutChecker: ReturnType<typeof setInterval> | null = null
-      let requestTimeout: ReturnType<typeof setTimeout> | null = setTimeout(() => controller.abort(), STREAM_IDLE_TIMEOUT_MS)
+      let requestTimeout: ReturnType<typeof setTimeout> | null = setTimeout(() => controller.abort(), CONNECT_TIMEOUT_MS)
       try {
         const res = await authFetch(url, {
           method: 'POST',
