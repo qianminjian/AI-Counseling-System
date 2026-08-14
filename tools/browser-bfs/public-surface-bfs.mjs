@@ -84,7 +84,18 @@ function locatorAction(session, profile, control) {
   const normalizedName = control.name.replace(/\s+/g, "");
   if (control.role === "button" && /登录|注册|提交|确认|绑定|导出|处理|误报|激活|修改|删除|撤回|恢复|升级/.test(normalizedName)) return false;
   if (!["button", "link", "menuitem", "tab"].includes(control.role)) return false;
-  cli(session, profile, ["find", "role", control.role, "click", "--name", control.name]);
+  try {
+    cli(session, profile, ["find", "role", control.role, "click", "--name", control.name]);
+  } catch (error) {
+    // Ant/Taro accessible names containing emoji or spacing can fail semantic
+    // lookup even when the visible control exists. Use one page-local DOM
+    // fallback, then let the caller record any genuine failure.
+    const name = JSON.stringify(control.name.trim());
+    const role = JSON.stringify(control.role);
+    const script = `(()=>{const role=${role}, name=${name}; const nodes=[...document.querySelectorAll('[role="'+role+'"],button,a')]; const node=nodes.find(x=>x.textContent.trim().includes(name)); if(!node) return 'not-found'; node.click(); return 'clicked'})()`;
+    const output = cli(session, profile, ["eval", script]);
+    if (!output.includes('"clicked"')) throw error;
+  }
   return true;
 }
 
