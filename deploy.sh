@@ -78,6 +78,33 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+# ===== SSH 免密预检（2026-08-14 教训：agent 身份丢失曾致 rsync 卡死等待 passphrase 18 分钟） =====
+# 部署全程免密（DEPLOY-GUIDE.md 配置：ssh-copy-id mindsafe@<IP>；root key 本机已配置）。
+# BatchMode=yes 强制非交互：身份缺失/口令未解锁时立即失败并给恢复指引，而非挂起等待输入；
+# 网络抖动（banner 阶段断连）重试 3 次兜底（doing/81 经验：连接失败 ≠ 认证失败，需区分）。
+check_ssh_passwordless() {
+  local target="$1" hint="$2" attempt=0
+  while [ "$attempt" -lt 3 ]; do
+    if ssh "${SSH_OPTS[@]}" -o BatchMode=yes -o ConnectTimeout=10 "$target" 'true' 2>/dev/null; then
+      echo "✅ SSH 免密正常: $target"
+      return 0
+    fi
+    attempt=$((attempt + 1))
+    if [ "$attempt" -lt 3 ]; then
+      echo "⚠️  SSH 免密探测失败（第 ${attempt} 次），5s 后重试（网络抖动兜底）..."
+      sleep 5
+    fi
+  done
+  echo "❌ SSH 免密预检失败: $target（$hint）"
+  echo "   部署全程免密，出现口令提示即 ssh-agent 身份丢失（常见于系统重启后），恢复方法："
+  echo "   ssh-add ~/.ssh/mindsafe_deploy                     # mindsafe 部署专用免密密钥"
+  echo "   ssh-add --apple-load-keychain ~/.ssh/id_ed25519    # 从 macOS 钥匙串恢复（root/nginx 同步所需）"
+  echo "   恢复后重新执行 ./deploy.sh"
+  return 1
+}
+# mindsafe 预检：主部署与回滚路径均走 SERVER，先于一切 ssh 调用
+check_ssh_passwordless "$SERVER" "源码同步/构建/重启（mindsafe 用户）" || exit 1
+
 # ===== 回滚模式 =====
 # 说明：回滚 = 用服务器上已同步的源码重新构建镜像；
 # 真正的版本回退请先 git revert + push 后再执行 ./deploy.sh
@@ -165,6 +192,11 @@ if [ "$LOCAL" != "$REMOTE" ]; then
   exit 1
 fi
 echo "✅ Git 状态正常"
+
+# root 免密预检：sync_host_nginx 走 root SSH（deploy/nginx/host/ 有配置时必需）
+if [ -d "$PROJECT_ROOT/deploy/nginx/host" ] && [ -n "$(ls -A "$PROJECT_ROOT/deploy/nginx/host" 2>/dev/null | grep -v '^README' || true)" ]; then
+  check_ssh_passwordless "root@${SERVER##*@}" "宿主 nginx 配置同步（sync_host_nginx）" || exit 1
+fi
 
 # ===== CI 门禁检查（DOC-063：CI 全绿才可部署） =====
 # 2026-08-13 教训：CI 系统性全红 4+ 天无人发现，发布时才集中修复（5 轮 push）——
