@@ -1,0 +1,268 @@
+{
+  "generated": "2026-08-14T07:57:59.012Z",
+  "mode": "public-readonly",
+  "endpoints": [
+    {
+      "endpoint": "student",
+      "url": "https://yun.gxjugu.com/mindsafe/",
+      "algorithm": "breadth-first",
+      "maxDepth": 1,
+      "maxSteps": 2,
+      "visitedStates": [
+        {
+          "key": "2ce970b2538d2ce3",
+          "depth": 0,
+          "controls": [
+            {
+              "ref": "e10",
+              "role": "button",
+              "name": "2"
+            },
+            {
+              "ref": "e11",
+              "role": "button",
+              "name": "3"
+            },
+            {
+              "ref": "e12",
+              "role": "button",
+              "name": "4"
+            },
+            {
+              "ref": "e13",
+              "role": "button",
+              "name": "5"
+            },
+            {
+              "ref": "e14",
+              "role": "button",
+              "name": "6"
+            },
+            {
+              "ref": "e15",
+              "role": "button",
+              "name": "7"
+            },
+            {
+              "ref": "e16",
+              "role": "button",
+              "name": "8"
+            },
+            {
+              "ref": "e17",
+              "role": "button",
+              "name": "9"
+            },
+            {
+              "ref": "e18",
+              "role": "button",
+              "name": "0"
+            },
+            {
+              "ref": "e19",
+              "role": "button",
+              "name": "⌫"
+            },
+            {
+              "ref": "e21",
+              "role": "button",
+              "name": "🎤 声音进入"
+            },
+            {
+              "ref": "e22",
+              "role": "button",
+              "name": "《隐私政策》"
+            },
+            {
+              "ref": "e23",
+              "role": "button",
+              "name": "《服务协议》"
+            },
+            {
+              "ref": "e3",
+              "role": "button",
+              "name": "🌊"
+            },
+            {
+              "ref": "e4",
+              "role": "button",
+              "name": "🌸"
+            },
+            {
+              "ref": "e5",
+              "role": "button",
+              "name": "🌈"
+            },
+            {
+              "ref": "e6",
+              "role": "button",
+              "name": "登录"
+            },
+            {
+              "ref": "e7",
+              "role": "button",
+              "name": "新注册"
+            },
+            {
+              "ref": "e8",
+              "role": "textbox",
+              "name": "你的昵称"
+            },
+            {
+              "ref": "e9",
+              "role": "button",
+              "name": "1"
+            }
+          ]
+        }
+      ],
+      "operatedControls": [
+        {
+          "step": 1,
+          "depth": 1,
+          "control": {
+            "ref": "e10",
+            "role": "button",
+            "name": "2"
+          },
+          "parentPath": []
+        },
+        {
+          "step": 2,
+          "depth": 1,
+          "control": {
+            "ref": "e11",
+            "role": "button",
+            "name": "3"
+          },
+          "parentPath": []
+        }
+      ],
+      "screenshots": [
+        "reports/browser-test/UI-TEST-018/public-bfs/student-0000-enter.png",
+        "reports/browser-test/UI-TEST-018/public-bfs/student-0001-button-2.png",
+        "reports/browser-test/UI-TEST-018/public-bfs/student-0002-button-3.png"
+      ],
+      "errors": [],
+      "stopReason": "max-steps",
+      "steps": 2
+    },
+    {
+      "endpoint": "teacher",
+      "url": "https://yun.gxjugu.com/teacher/",
+      "algorithm": "breadth-first",
+      "maxDepth": 1,
+      "maxSteps": 2,
+      "visitedStates": [
+        {
+          "key": "09c04f09ba157e82",
+          "depth": 0,
+          "controls": [
+            {
+              "ref": "e5",
+              "role": "button",
+              "name": "登 录"
+            },
+            {
+              "ref": "e6",
+              "role": "textbox",
+              "name": "用户名（如：李老师）"
+            },
+            {
+              "ref": "e7",
+              "role": "textbox",
+              "name": "密码"
+            },
+            {
+              "ref": "e8",
+              "role": "button",
+              "name": "显示"
+            }
+          ]
+        }
+      ],
+      "operatedControls": [],
+      "screenshots": [
+        "reports/browser-test/UI-TEST-018/public-bfs/teacher-0000-enter.png"
+      ],
+      "errors": [],
+      "stopReason": "max-steps",
+      "steps": 2
+    },
+    {
+      "endpoint": "parent",
+      "url": "https://yun.gxjugu.com/parent/",
+      "algorithm": "breadth-first",
+      "maxDepth": 1,
+      "maxSteps": 2,
+      "visitedStates": [
+        {
+          "key": "8903ba3a69b40342",
+          "depth": 0,
+          "controls": [
+            {
+              "ref": "e4",
+              "role": "spinbutton",
+              "name": "请输入手机号"
+            },
+            {
+              "ref": "e5",
+              "role": "textbox",
+              "name": "请输入密码"
+            }
+          ]
+        }
+      ],
+      "operatedControls": [],
+      "screenshots": [
+        "reports/browser-test/UI-TEST-018/public-bfs/parent-0000-enter.png"
+      ],
+      "errors": [],
+      "stopReason": "completed",
+      "steps": 2,
+      "queueMaxDepth": 0
+    },
+    {
+      "endpoint": "admin",
+      "url": "https://yun.gxjugu.com/admin/",
+      "algorithm": "breadth-first",
+      "maxDepth": 1,
+      "maxSteps": 2,
+      "visitedStates": [
+        {
+          "key": "7a7205a159066326",
+          "depth": 0,
+          "controls": [
+            {
+              "ref": "e3",
+              "role": "button",
+              "name": "登 录"
+            },
+            {
+              "ref": "e4",
+              "role": "textbox",
+              "name": "* 用户名"
+            },
+            {
+              "ref": "e6",
+              "role": "textbox",
+              "name": "* 密码"
+            },
+            {
+              "ref": "e7",
+              "role": "button",
+              "name": "显示"
+            }
+          ]
+        }
+      ],
+      "operatedControls": [],
+      "screenshots": [
+        "reports/browser-test/UI-TEST-018/public-bfs/admin-0000-enter.png"
+      ],
+      "errors": [],
+      "stopReason": "max-steps",
+      "steps": 2
+    }
+  ]
+}

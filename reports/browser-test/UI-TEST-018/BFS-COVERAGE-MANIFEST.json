@@ -13,6 +13,20 @@
       "refFields": ["name", "role"],
       "endpoint": "https://yun.gxjugu.com/mindsafe/",
       "replayOrchestrator": "not implemented"
+    },
+    "publicReadonlyRun": {
+      "round": "R77",
+      "manifest": "public-bfs/manifest.json",
+      "maxDepth": 1,
+      "maxStepsPerEndpoint": 2,
+      "isolationWarnings": 0,
+      "endpointResults": {
+        "student": {"steps": 2, "stopReason": "max-steps", "errors": 0},
+        "teacher": {"steps": 2, "stopReason": "max-steps", "errors": 0},
+        "parent": {"steps": 2, "stopReason": "completed", "errors": 0},
+        "admin": {"steps": 2, "stopReason": "max-steps", "errors": 0}
+      },
+      "scope": "public unauthenticated controls only; submit and persistent controls excluded"
     }
   },
   "constraints": {
