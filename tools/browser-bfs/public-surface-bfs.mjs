@@ -13,6 +13,7 @@ const WAIT_MS = Number(process.env.BFS_WAIT_MS ?? 250);
 const COMMAND_TIMEOUT_MS = Number(process.env.BFS_COMMAND_TIMEOUT_MS ?? 10000);
 const ENDPOINT_TIMEOUT_MS = Number(process.env.BFS_ENDPOINT_TIMEOUT_MS ?? 60000);
 const REPORT_DIR = process.env.BFS_REPORT_DIR ?? "reports/browser-test/UI-TEST-018/public-bfs";
+const SELECTED_ENDPOINTS = new Set((process.env.BFS_ENDPOINTS ?? "student,teacher,parent,admin").split(",").map(value => value.trim()).filter(Boolean));
 
 const endpoints = [
   ["student", "https://yun.gxjugu.com/mindsafe/"],
@@ -126,14 +127,14 @@ function runEndpoint(endpoint, url) {
     result.visitedStates.push({ key: initialKey, depth: 0, controls: controls(initial) });
     result.screenshots.push(screenshot(session, profile, endpoint, 0, "enter"));
 
-    while (queue.length > 0) {
+    while (queue.length > 0 && steps < MAX_STEPS && Date.now() < deadline) {
       if (Date.now() >= deadline) { result.stopReason = "endpoint-timeout"; break; }
       const current = queue.shift();
       if (current.depth >= MAX_DEPTH) continue;
       const parentSnap = snapshot(session, profile);
       for (const control of controls(parentSnap)) {
         if (Date.now() >= deadline) { result.stopReason = "endpoint-timeout"; break; }
-        if (steps >= MAX_STEPS) { result.stopReason = "max-steps"; result.steps = steps; return result; }
+        if (steps >= MAX_STEPS) { result.stopReason = "max-steps"; break; }
         if (current.path.some(item => item.role === control.role && item.name === control.name)) continue;
         steps += 1;
         try {
@@ -168,6 +169,8 @@ function runEndpoint(endpoint, url) {
 
 mkdirSync(REPORT_DIR, { recursive: true });
 const report = { generated: new Date().toISOString(), mode: "public-readonly", endpoints: [] };
-for (const [endpoint, url] of endpoints) report.endpoints.push(runEndpoint(endpoint, url));
+for (const [endpoint, url] of endpoints) {
+  if (SELECTED_ENDPOINTS.has(endpoint)) report.endpoints.push(runEndpoint(endpoint, url));
+}
 writeFileSync(join(REPORT_DIR, "manifest.json"), `${JSON.stringify(report, null, 2)}\n`);
 console.log(JSON.stringify(report, null, 2));

@@ -4,15 +4,15 @@
   "status": "partial",
   "executorAudit": {
     "repositorySmokeScript": "tests/e2e/smoke-test.sh",
-    "bfsOrchestratorPresent": false,
+    "bfsOrchestratorPresent": true,
     "playwrightE2EStatus": "reserved_or_disabled",
-    "conclusion": "No existing repository executable can produce the required four-endpoint BFS machine export; do not claim full completion from scenario rounds alone.",
+    "conclusion": "A repository BFS runner now produces machine-readable public-surface exports; authenticated business BFS and safe fixtures remain incomplete, so do not claim full completion from public runs alone.",
     "browserAgentJsonSnapshotVerified": {
       "round": "R76",
       "fields": ["data.origin", "data.refs", "data.snapshot"],
       "refFields": ["name", "role"],
       "endpoint": "https://yun.gxjugu.com/mindsafe/",
-      "replayOrchestrator": "not implemented"
+      "replayOrchestrator": "tools/browser-bfs/public-surface-bfs.mjs; public read-only scope"
     },
     "publicReadonlyRun": {
       "round": "R77",
