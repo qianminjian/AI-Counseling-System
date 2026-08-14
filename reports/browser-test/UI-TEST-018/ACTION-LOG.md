@@ -694,6 +694,7 @@ R75 结论：教师大屏独立入口和只读聚合数据通过；返回按钮�
 | R78-01 | 教师/T-01 | 隔离 Browser Agent 打开教师端，填充李老师/密码并登录 | 登录成功；进入工作台；未连接用户浏览器 | `screenshots/teacher-auth-R78-teacher-login-enter.png`、`screenshots/teacher-auth-R78-teacher-login-filled.png`、`screenshots/teacher-auth-R78-teacher-dashboard.png` |
 | R78-02 | 教师/T-02 | 识别工作台新手引导并用页面内真实 DOM click 关闭/跳过 | 引导关闭；工作台保留 1 条红色逾期预警、导出入口、全部预警和查看全部控件；未执行导出 | `screenshots/teacher-auth-R78-teacher-onboarding-skip2.png` |
 | R78-03 | 教师/T-03 | 进入预警队列，识别状态/最低等级筛选、表格、分页和处理/误报控件 | 页面正常；可读到测试丁红色自伤/自杀预警和黄色 SOS 记录；未点击处理/误报 | `screenshots/teacher-auth-R78-0006-alert-list.png` |
+| R78-03a | 教师/T-03 | 尝试对测试丁高风险行打开只读详情 | 当前行语义定位未命中；页面保持预警列表，无崩溃/报错；未改写状态 | `screenshots/teacher-auth-R78-0007-alert-detail.png` |
 | R78-04 | 教师/T-03 | 以真实 DOM click 复核预警队列菜单触发 | 菜单成功切换；视觉 ref click 未改变页面，归类为自动化事件兼容性观察，不登记产品缺陷 | `screenshots/teacher-auth-R78-teacher-alert-domclick.png` |
 | R78-05 | 教师/T-04 | 进入学生管理，识别筛选、搜索、风险 checkbox、学生行和档案入口 | 小明显示冻结/红色，测试己显示正常，测试丁高风险数据可见；未导出或修改档案 | `screenshots/teacher-auth-R78-0008-students.png` |
 | R78-06 | 教师/T-05 | 进入质量监控 | 平均评分 4.3/5、近 7 天均分、低分会话/低分率和趋势入口正常；无崩溃/错误弹窗 | `screenshots/teacher-auth-R78-0009-quality.png` |
