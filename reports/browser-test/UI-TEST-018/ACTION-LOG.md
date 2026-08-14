@@ -39,6 +39,7 @@
 | R23-02 | T/T-03/L-05 | 教师预警联动 | 重新登录李老师，进入预警队列 | 出现测试丁 `sos_open` 黄色待处理预警，另有既有红色自伤/自杀记录；未点击认领/处理/误报 | `screenshots/R23-teacher-alert-created.png`、`screenshots/R23-teacher-alert-queue.png` |
 | POST-01 | S/T/P/A | 发布后入口复测 | 统一部署后分别打开四端 UAT 地址并等待 networkidle | 四端入口均返回 200、首屏可识别并保存截图；学生登录后续会话曾无响应，未将其标记为通过 | `screenshots/POST-student-entry.png`、`screenshots/POST-teacher-entry.png`、`screenshots/POST-parent-entry.png`、`screenshots/POST-admin-entry.png`、`screenshots/POST-student-login-result.png` |
 | POST-02 | S/S-02~05 | 新独立会话复测 | 两个新会话提交测试丁 PIN，等待登录状态并尝试 snapshot/screenshot | 两次均在登录后的 Browser Agent 状态读取阶段无响应，未取得足够证据，不判定产品通过/失败 | `screenshots/POST-student-login-result.png` |
+| POST-03 | S/S-03~04 | 懒加载修复后复测 | 新会话登录测试丁，跳过引导，选择开心并开始聊天 | 登录后首页可正常 snapshot；创建聊天请求长时间 pending，页面状态读取无交互元素 | `screenshots/POST4-student-home.png`、`screenshots/POST4-student-chat-state.png` |
 
 - 每个端使用独立 `agent-browser --session ui018-<端>` 会话。
 - 未打开或操作被测软件以外窗口。

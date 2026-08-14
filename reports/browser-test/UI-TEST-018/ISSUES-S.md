@@ -10,6 +10,15 @@
 - 修复：移除登录页挂载预加载，改为点击“声音进入”后按需加载；对话页仍在进入相应功能后加载唤醒模型。
 - 验证：`LoginPage.test.tsx` 43/43 通过；四端重新门禁和部署后 Browser Agent 复测待执行。
 
+## OBS-S-POST-002 [待后端复核] 发布后创建聊天会话请求长时间 pending
+
+- 状态：OPEN（未进入代码修复批次）
+- 环境：学生端懒加载修复发布后；测试丁；Browser Agent 0.26.0；Chrome 151
+- 复现：登录成功进入首页，跳过引导，选择“开心”，点击“开始聊天”。
+- 实际：学生首页已正常可读，但 `POST /api/v1/chat/sessions` 长时间 pending，页面 snapshot 无可交互元素；截图 `screenshots/POST4-student-chat-state.png`。
+- 对照：登录接口 `200`，首页 `/api/v1/diary/achievements` `200`；本次没有后端改动，需结合服务端日志/请求 trace 判断 AI 会话创建依赖是否超时。
+- 处理：不重复部署，不将该项归因于前端懒加载修复。
+
 ## BUG-S-S05-001 [P1] AI 消息请求在响应头阶段无超时兜底，危机消息后界面长期禁用
 
 - 状态：FIXED（待统一部署后 Browser Agent 复测）
