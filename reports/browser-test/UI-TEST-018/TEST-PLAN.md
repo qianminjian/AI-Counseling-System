@@ -15,6 +15,14 @@
 - 弹窗优先闭环：发现 dialog/drawer/popover 后入队弹窗内部全部控件；完成后截图并关闭，恢复父页面状态再继续。
 - 每个页面动作前后检查：页面是否闪退/白屏、加载是否卡死、错误弹窗、明显布局溢出/遮挡/乱码、console error、失败请求。
 
+### Browser Agent 控件触发兜底（R4 新增）
+
+- 首选视觉快照 ref 操作，并重新 snapshot 验证状态变化。
+- 若 Ant Design `button/menuitem` 或 Taro `taro-button-core` 的 ref click 返回成功但页面状态不变，不立即登记产品缺陷。
+- 在当前被测页面定位同一可见控件，执行一次真实 DOM `element.click()` 兜底，再 snapshot 验证。
+- 只有两种触发方式均未改变预期状态，才登记产品故障；报告记录两种触发方式及截图。
+- DOM click 仅作用于当前被测页面，不打开其他窗口、不绕过业务校验、不修改后端数据。
+
 ## 2. 统一执行模板
 
 1. 打开目标地址，等待 `domcontentloaded`/`networkidle`，保存首屏截图和交互快照。
