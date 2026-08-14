@@ -20,6 +20,8 @@
 9. `OBS-S-S01-001` 已澄清：告知页需先滚动到底再勾选同意，复测通过。
 10. `OBS-S-S08-001` 已澄清：日记提交按钮需滚动到可见区域，复测成功。
 
+11. R6 统一部署后四端入口均可访问；部署脚本因 tts/voice 远端 SSH connection reset 最终失败，后端重启与 smoke gate 未完成，完整复测保持未完成。
+
 ## 截图索引
 
 - 首屏：`screenshots/S-00-initial.png`、`screenshots/ui018-teacher-initial.png`、`screenshots/ui018-parent-initial.png`、`screenshots/ui018-admin-initial.png`

@@ -29,3 +29,9 @@
 - 管理端：`npm test -- --run`，23 个测试文件、64 项通过；`npm run build` 通过。
 - 学生端 PIN/API 定向回归：87 项通过；后端 `TrialAuthServiceTest` 通过。
 - 说明：本批次仅完成本地验证，按要求暂不部署；待发布前统一提交、推送和一次性部署。
+
+## R6 统一部署记录（2026-08-14）
+
+- 四端构建成功，学生/教师/家长/管理端静态资源同步成功。
+- tts/voice rsync 因远端 SSH connection reset 失败，部署脚本最终失败；详见 `logs/deploy/deploy-20260814-113058.log`。
+- 四端入口复测可加载，但后端重启与 smoke gate 未完成，不能将本次部署标记为完整发布成功。
