@@ -32,6 +32,10 @@
 20. R14 完成管理端终端设备状态筛选和审计日志第 2 页遍历；筛选/分页可用，空数据时危险操作禁用。
 21. R15/R16 完成教师端预警队列状态/最低等级筛选，选项和筛选结果正常；未执行处理/误报。
 22. R17 完成家长端关系选择和短密码边界校验；未创建账号。
+23. R18/R20 完成学生端 active 账号登录、情绪选择、基础聊天、语音说明、放松练习、情绪日记、成就入口和设置开关遍历。
+24. R19 完成家长端有效账号情绪周报、数据授权管理及孩子授权详情只读遍历；撤回授权未点击。
+25. R21 完成教师端终端设备空态/筛选入口和质量监控指标遍历。
+26. R22 完成管理端 Prompt 版本、知识库、通知渠道、用量报表和数据合规入口遍历。
 
 ## 截图索引
 
@@ -40,6 +44,7 @@
 - 教师端：`T-01-login-result.png`、`T-onboarding-closed.png`、`T-onboarding-skip.png`、`T-*.png`
 - 家长端：`P-01-register-entry.png`、`P-01-invalid-filled.png`、`P-01-invalid-result.png`
 - 管理端：`A-*.png`、`A-indicators-verify.png`
+- 增量证据：`R18-student-*.png`、`R19-parent-*.png`、`R20-student-*.png`、`R21-teacher-*.png`、`R22-admin-*.png`
 
 ## 停止/继续条件
 
