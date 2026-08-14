@@ -27,6 +27,20 @@
         "admin": {"steps": 2, "stopReason": "max-steps", "errors": 0}
       },
       "scope": "public unauthenticated controls only; submit and persistent controls excluded"
+    },
+    "authenticatedReadonlyRun": {
+      "round": "R88",
+      "manifest": "auth-bfs-r88-minimal/manifest.json",
+      "endpoint": "student",
+      "maxDepth": 1,
+      "maxSteps": 3,
+      "visitedStates": 2,
+      "operatedControls": 1,
+      "queueMaxDepth": 1,
+      "steps": 3,
+      "stopReason": "max-steps",
+      "errors": 2,
+      "scope": "temporary active student state; stage sample only, not final four-endpoint BFS"
     }
   },
   "constraints": {

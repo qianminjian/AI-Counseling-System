@@ -808,3 +808,13 @@ R86 结论：学生端情绪日记记录和 streak 更新通过；成就详情�
 | R87-04 | 资源安全 | 关闭 session，执行两次 `close --all` 并复核 session list | 无 active session；未操作被测软件以外窗口 | — |
 
 R87 结论：学生会话结束、满意度评价提交和返回首页通过；未执行外部消息、拨号或声纹录入。
+
+# R88 学生端 authenticated BFS 最小机器验证（2026-08-14）
+
+| 步骤 | 端/场景 | 操作 | 结果 | 证据 |
+|---:|---|---|---|---|
+| R88-01 | 学生/S-02/S-10 | 使用临时 auth state 恢复“自动R82” active 页面，执行 BFS（深度 1、最多 3 步） | 机器输出 `visitedStates` 2、`operatedControls` 1、`queueMaxDepth` 1、`steps` 3、`stopReason=max-steps`；无页面崩溃 | `auth-bfs-r88-minimal/manifest.json` |
+| R88-02 | 执行器兼容性 | 处理带 emoji 的“换人/开心”控件 | 2 个控件语义/ref 与 DOM 兜底均未成功，记录 errors=2；设置控件成功并保存截图；不登记产品故障 | `auth-bfs-r88-minimal/*.png` |
+| R88-03 | 资源安全 | 运行后关闭 session、执行两次 `close --all` 并复核 | 无 active session；auth state 仅存于 `/tmp`，未入库、未输出 token | — |
+
+R88 结论：authenticated BFS 的 state 恢复和机器字段导出已验证，但仍是深度 1/3 步的阶段性样本，且控件兼容性错误未收敛，不能替代四端最终全量 BFS。
