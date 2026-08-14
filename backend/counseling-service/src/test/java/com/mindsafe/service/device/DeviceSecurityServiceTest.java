@@ -23,7 +23,7 @@ class DeviceSecurityServiceTest {
     @BeforeEach
     void setUp() {
         deviceMapper = mock(DeviceMapper.class);
-        service = new DeviceSecurityService(deviceMapper);
+        service = new DeviceSecurityService(deviceMapper, "OFF");
     }
 
     @Test

@@ -345,9 +345,11 @@ jobs:
 
       - name: Install & Build
         # 审计 P2-22：构建前清理 dist，保证可复现（残留旧产物不混入新构建）
+        # 2026-08-14（doing/99 实施后 CI 实证）：npm ci 必须与本地安装语义一致加 --legacy-peer-deps——
+        # Taro 生态 peer 冲突（记忆：parent-h5 需 legacy），lock 为 legacy 模式生成，无标志 npm ci 报 Missing 不同步
         run: |
           rm -rf dist
-          npm ci
+          npm ci --legacy-peer-deps
           npm run build
 
       # lint/test 按需执行（ARCH-009 E-5：parent-h5 已补 .oxlintrc.json，四端均接 lint；

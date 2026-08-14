@@ -44,12 +44,11 @@ public class DeviceSecurityService {
     /** 请求签名校验模式（B-04，2026-08-14）：OFF=跳过（固件未就绪默认）/ LOG=有签名必验、无签名放行+WARN / ENFORCE=强制 */
     private final String signatureMode;
 
-    /** 包私有测试缝（默认 OFF；测试无需装配 Spring @Value，对齐 AliyunSmsService 模式） */
-    DeviceSecurityService(DeviceMapper deviceMapper) {
-        this(deviceMapper, "OFF");
-    }
-
-    /** Spring 装配入口（唯一 public 构造器，99-5：多 public 构造器致装配歧义，CI 实证） */
+    /**
+     * 唯一 public 构造器（99-5：单一装配缝，Spring 自动注入无歧义）。
+     * 测试直接传模式参数（如 new DeviceSecurityService(mapper, "OFF")）——
+     * 多构造器（含包私有）在无 @Autowired 时会要求无参构造器（CI 实证），故不留测试缝。
+     */
     public DeviceSecurityService(DeviceMapper deviceMapper,
                                  @Value("${mindsafe.device.signature-mode:OFF}") String signatureMode) {
         this.deviceMapper = deviceMapper;
