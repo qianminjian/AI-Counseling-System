@@ -569,3 +569,15 @@ R63 结论：教师端工作台、引导弹窗、质量监控和通知中心只�
 | R64-06 | 资源安全 | 关闭会话，执行两次 `close --all` 并核验 session list | 无 active session；未连接或操作用户浏览器 | — |
 
 R64 结论：家长端登录/注册入口、注册字段、隐私页和无效设备分流通过；注册提交控件未暴露的观察待真实设备/有效家庭码条件下复核，未执行任何副作用操作。
+
+# R65 教师端 head_teacher 角色与学生档案 BFS 补充（2026-08-14）
+
+| 步骤 | 端/场景 | 操作 | 结果 | 截图 |
+|---:|---|---|---|---|
+| R65-01 | 教师/T-01 RBAC | 使用王老师（head_teacher）登录并识别工作台菜单 | 登录成功；工作台、预警队列、学生管理、质量监控、通知中心、终端设备菜单可见；通知数量与李老师角色不同 | `screenshots/BFS-T-r65-login.png`、`screenshots/BFS-T-r65-dashboard.png` |
+| R65-02 | 教师/T-04 | 进入学生管理，识别年级/班级筛选、昵称搜索、风险 checkbox、CSV 导出、分页和学生行操作 | 三名学生列表正常渲染；控件可识别；未执行 CSV 导出 | `screenshots/BFS-T-r65-students.png` |
+| R65-03 | 教师/T-04 | 切换“只看风险学生”并用 DOM click 复核 | ref 触发未改变快照，DOM 事件路径已执行；页面无崩溃或报错 | `screenshots/BFS-T-r65-risk-filter.png`、`screenshots/BFS-T-r65-risk-filter-dom.png` |
+| R65-04 | 教师/T-04 弹窗/详情 | 打开学生“查看档案”，遍历档案内容、备注输入和添加按钮，返回列表 | 档案显示姓名、年级、班级、冻结状态、最高风险、会话统计；备注按钮因空输入禁用；返回列表成功 | `screenshots/BFS-T-r65-profile.png`、`screenshots/BFS-T-r65-profile-closed.png` |
+| R65-05 | 资源安全 | 关闭会话，执行两次 `close --all` 并核验 session list | 无 active session；未操作用户浏览器 | — |
+
+R65 结论：head_teacher 角色登录、菜单、学生筛选及档案详情只读路径通过；未执行导出、备注提交、预警处置或设备写操作。
