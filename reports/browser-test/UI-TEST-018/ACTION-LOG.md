@@ -191,3 +191,17 @@ R15/R16 结论：预警队列表格和两个筛选控件正常；首次语义 cl
 | R17-03 | P-01 注册边界 | 输入 3 位家庭码、合法格式手机号、3 位短密码并提交 | 正确提示“密码至少 6 位”，未发起有效注册 | `screenshots/R17-parent-short-validation.png` |
 
 R17 结论：家长端关系选择和密码长度边界正常；未使用真实家庭码、不创建账号。
+
+# R24 单会话串行补充遍历（2026-08-14）
+
+| 步骤 | 端/场景 | 操作 | 结果 | 截图 |
+|---:|---|---|---|---|
+| R24-01 | 教师/T-01 | 李老师登录并识别首次引导弹窗 | 登录成功；引导包含 Close/跳过/下一步；截图留存 | `screenshots/R24-teacher-home.png`、`screenshots/R24-teacher-tour-2.png` |
+| R24-02 | 教师/T-02/T-03 | 关闭引导后进入预警队列，识别筛选、表格、认领/处理/误报控件 | 队列显示测试丁黄色 `sos_open`；认领成功；处理弹窗可输入干预记录并确认，状态更新为已处理 | `screenshots/R24-teacher-alert-queue.png`、`screenshots/R24-teacher-alert-process-dialog.png`、`screenshots/R24-teacher-alert-processed.png` |
+| R24-03 | 教师/T-04 | 进入学生管理、打开测试丁档案、添加观察备注 | 档案显示风险、近期会话和备注；测试备注添加成功 | `screenshots/R24-teacher-students.png`、`screenshots/R24-teacher-student-profile.png`、`screenshots/R24-teacher-note-added.png` |
+| R24-04 | 教师/T-05/T-09 | 进入质量监控、通知中心、终端设备；识别 Tab、筛选、刷新、绑定设备控件 | 页面均可加载；通知 Tab 和绑定设备弹窗可遍历；未提交真实设备绑定 | `screenshots/R24-teacher-quality.png`、`screenshots/R24-teacher-notifications.png`、`screenshots/R24-teacher-bind-dialog.png` |
+| R24-05 | 家长/P-01 | 打开首次注册，遍历家庭码、手机号、密码和关系选择；输入无效边界 | 表单控件可用；关系选择可切换；未使用真实家庭码、未创建账号 | `screenshots/R24-parent-entry.png`、`screenshots/R24-parent-register.png`、`screenshots/R24-parent-register-error.png` |
+| R24-06 | 管理/A-01/A-02 | super_admin 登录并识别平台总览、租户列表、主菜单 | 登录成功；平台总览和租户表格正常加载 | `screenshots/R24-admin-entry.png`、`screenshots/R24-admin-home.png` |
+| R24-07 | 管理/A-03/A-04 | 进入配置注册表和 Prompt 管理；打开新建 Prompt 版本弹窗 | SECRET 值保持掩码；配置修改/历史和 Prompt 新建控件可识别；未创建新版本 | `screenshots/R24-admin-config.png`、`screenshots/R24-admin-prompt.png`、`screenshots/R24-admin-prompt-new.png` |
+
+R24 结论：本轮采用单 Browser Agent 会话串行遍历；教师端补齐预警处置、学生档案备注、质量监控、通知中心和设备绑定弹窗；家长端补齐注册边界；管理端补齐配置和 Prompt 弹窗入口。真实家庭码、设备绑定、Prompt 创建等依赖数据或产生持久副作用的动作仍未执行。
