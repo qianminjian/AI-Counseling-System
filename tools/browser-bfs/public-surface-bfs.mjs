@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { mkdtempSync } from "node:fs";
@@ -24,11 +24,14 @@ const interactiveRoles = new Set([
 ]);
 
 function cli(session, profile, args, timeout = 30000) {
-  const output = execFileSync("agent-browser", ["--session", session, "--profile", profile, ...args], {
+  const child = spawnSync("agent-browser", ["--session", session, "--profile", profile, ...args], {
     encoding: "utf8",
     timeout,
     maxBuffer: 4 * 1024 * 1024
   });
+  if (child.error) throw child.error;
+  const output = `${child.stdout ?? ""}\n${child.stderr ?? ""}`;
+  if (child.status !== 0) throw new Error(`agent-browser exited ${child.status}: ${output.slice(-1000)}`);
   if (output.includes("--profile ignored") || output.includes("daemon already running")) {
     throw new Error("browser isolation failed: agent-browser ignored the temporary profile because a daemon was already running");
   }
@@ -71,7 +74,8 @@ function screenshot(session, profile, endpoint, index, label) {
 function locatorAction(session, profile, control) {
   // Public-surface traversal intentionally clicks only non-submit controls.
   // Text fields, login/register submit buttons, and destructive controls are recorded, not acted on.
-  if (control.role === "button" && /登录|注册|提交|确认|绑定|导出|处理|误报|激活|修改|删除|撤回|恢复|升级/.test(control.name)) return false;
+  const normalizedName = control.name.replace(/\s+/g, "");
+  if (control.role === "button" && /登录|注册|提交|确认|绑定|导出|处理|误报|激活|修改|删除|撤回|恢复|升级/.test(normalizedName)) return false;
   if (!["button", "link", "menuitem", "tab"].includes(control.role)) return false;
   cli(session, profile, ["find", "role", control.role, "click", "--name", control.name]);
   return true;
