@@ -407,3 +407,11 @@ R45 结论：当前版本家长登录/注册入口在隔离 Browser Agent 中可
 | R47-01 | 本地回归证据 | 检查 VerifyPage 实现与测试 | 源码存在 `Button formType="submit"`/onClick；VerifyPage.test.tsx 覆盖提交和非法校验 | `frontend/parent-h5/src/pages/verify/index.tsx`、`frontend/parent-h5/src/test/VerifyPage.test.tsx` |
 
 R46/R47 结论：提交逻辑已有本地测试覆盖，当前阻塞是 Browser Agent 对 Taro custom element 的可访问性/事件注入兼容性；不将其登记为新产品缺陷。
+
+# R48 家长注册提交逻辑本地回归验证（2026-08-14）
+
+| 步骤 | 端/场景 | 操作 | 结果 | 证据 |
+|---:|---|---|---|---|
+| R48-01 | 家长/P-01/P-02 | 执行 `npm test -- --run src/test/VerifyPage.test.tsx` | 1 个测试文件、13/13 用例通过；覆盖登录/注册成功、手机号/密码/家庭码校验、API 失败和 loading 状态 | `frontend/parent-h5/src/test/VerifyPage.test.tsx`、Vitest 输出 |
+
+R48 结论：本地表单提交逻辑和校验回归通过；UAT Browser Agent 未能稳定触发 Taro custom element，不进入源码修复或部署批次。

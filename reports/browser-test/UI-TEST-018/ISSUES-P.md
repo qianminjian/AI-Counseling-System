@@ -36,3 +36,4 @@
 - 当前隔离 Browser Agent 仍能读取注册页视觉文本“注册并绑定”，但交互快照未稳定暴露提交控件；精确 DOM 文本点击也未命中，未取得非法家庭码提交结果。
 - 本地 `frontend/parent-h5/src/pages/verify/index.tsx` 明确存在 `Button formType="submit"` 与 `onClick={() => handleSubmit()}`；`frontend/parent-h5/src/test/VerifyPage.test.tsx` 已覆盖注册提交、手机号/密码/家庭码校验及 API 参数断言。
 - 当前结论保持为 Browser Agent/Taro custom element 事件与可访问性树兼容性观察，不重新打开产品缺陷，不修改代码，不部署；需要真实人工事件或修复执行器定位后再验证 UAT 错误提示。
+- 本轮本地验证：`frontend/parent-h5` 执行 `npm test -- --run src/test/VerifyPage.test.tsx`，1 个测试文件、13/13 用例通过；注册提交、手机号/密码/家庭码校验、成功/失败路径均有自动化覆盖。
