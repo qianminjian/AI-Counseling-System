@@ -37,7 +37,12 @@ function cli(session, profile, args, timeout = COMMAND_TIMEOUT_MS) {
     timeout,
     maxBuffer: 4 * 1024 * 1024
   });
-  if (child.error) throw child.error;
+  if (child.error) {
+    if (child.pid && child.error.code === "ETIMEDOUT") {
+      try { process.kill(child.pid, "SIGTERM"); } catch {}
+    }
+    throw child.error;
+  }
   const output = `${child.stdout ?? ""}\n${child.stderr ?? ""}`;
   if (child.status !== 0) throw new Error(`agent-browser exited ${child.status}: ${output.slice(-1000)}`);
   if (output.includes("--profile ignored")) {
