@@ -397,3 +397,13 @@ R44 结论：设备列表加载、状态筛选、空态和危险批量控件禁�
 | R45-02 | 家长/P-01 | 点击“首次注册”Tab | 页面保持 `/parent/`，显示家庭码、手机号、密码和妈妈/爸爸/祖父母/其他四个关系选项及注册入口 | `screenshots/BFS-P-register-r4-click.png` |
 
 R45 结论：当前版本家长登录/注册入口在隔离 Browser Agent 中可正常切换，未复现此前异常外部跳转；未输入有效家庭码、未创建账号、未产生持久化写操作。
+
+# R46/R47 家长注册提交控件兼容性复核（2026-08-14）
+
+| 步骤 | 端/场景 | 操作 | 结果 | 截图/代码证据 |
+|---:|---|---|---|---|
+| R46-01 | 家长/P-01 | 注册页滚动到底并填写虚构非法数据 | 视觉文本显示“注册并绑定”，但 Browser Agent 快照未暴露提交控件；未实际提交 | `screenshots/BFS-P-register-bottom-r6.png`、`screenshots/BFS-P-invalid-r6.png` |
+| R46-02 | 家长/P-01 | 尝试 DOM 精确文本定位提交控件 | 未命中；页面 URL 保持 `/parent/`，无数据写入 | `ISSUES-P.md` R6/R7 |
+| R47-01 | 本地回归证据 | 检查 VerifyPage 实现与测试 | 源码存在 `Button formType="submit"`/onClick；VerifyPage.test.tsx 覆盖提交和非法校验 | `frontend/parent-h5/src/pages/verify/index.tsx`、`frontend/parent-h5/src/test/VerifyPage.test.tsx` |
+
+R46/R47 结论：提交逻辑已有本地测试覆盖，当前阻塞是 Browser Agent 对 Taro custom element 的可访问性/事件注入兼容性；不将其登记为新产品缺陷。
