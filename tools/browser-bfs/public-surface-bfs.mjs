@@ -92,7 +92,7 @@ function locatorAction(session, profile, control) {
     // fallback, then let the caller record any genuine failure.
     const name = JSON.stringify(control.name.trim());
     const role = JSON.stringify(control.role);
-    const script = `(()=>{const role=${role}, name=${name}; const nodes=[...document.querySelectorAll('[role="'+role+'"],button,a')]; const node=nodes.find(x=>x.textContent.trim().includes(name)); if(!node) return 'not-found'; node.click(); return 'clicked'})()`;
+    const script = `(()=>{const role=${role}, name=${name}; const norm=v=>String(v||'').replace(/\\s+/g,''); const target=norm(name); const nodes=[...document.querySelectorAll('[role="'+role+'"],button,a')]; const node=nodes.find(x=>[x.textContent,x.getAttribute('aria-label'),x.getAttribute('title')].some(v=>norm(v).includes(target))); if(!node) return 'not-found'; node.click(); return 'clicked'})()`;
     const output = cli(session, profile, ["eval", script]);
     if (!output.includes('"clicked"')) throw error;
   }
