@@ -7,6 +7,7 @@ import com.mindsafe.domain.entity.Device;
 import com.mindsafe.domain.mapper.DeviceMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import javax.crypto.Mac;
@@ -43,14 +44,14 @@ public class DeviceSecurityService {
     /** 请求签名校验模式（B-04，2026-08-14）：OFF=跳过（固件未就绪默认）/ LOG=有签名必验、无签名放行+WARN / ENFORCE=强制 */
     private final String signatureMode;
 
-    public DeviceSecurityService(DeviceMapper deviceMapper) {
+    /** 包私有测试缝（默认 OFF；测试无需装配 Spring @Value，对齐 AliyunSmsService 模式） */
+    DeviceSecurityService(DeviceMapper deviceMapper) {
         this(deviceMapper, "OFF");
     }
 
-    /** Spring 装配入口（显式 @Autowired 指明双参构造器；单参构造器仅供测试） */
-    @org.springframework.beans.factory.annotation.Autowired
+    /** Spring 装配入口（唯一 public 构造器，99-5：多 public 构造器致装配歧义，CI 实证） */
     public DeviceSecurityService(DeviceMapper deviceMapper,
-                                 @org.springframework.beans.factory.annotation.Value("${mindsafe.device.signature-mode:OFF}") String signatureMode) {
+                                 @Value("${mindsafe.device.signature-mode:OFF}") String signatureMode) {
         this.deviceMapper = deviceMapper;
         this.signatureMode = signatureMode == null ? "OFF" : signatureMode;
     }
@@ -77,7 +78,8 @@ public class DeviceSecurityService {
     /**
      * 请求体 HMAC 签名校验（B-04，2026-08-14；固件签名规范见 frozen/73 §九）：
      * signature = HMAC-SHA256(secret, body + "|" + timestamp + "|" + nonce)（hex 小写）；
-     * canonical body = 请求体 JSON 序列化（record 字段声明序，固件侧按同一结构签名）。
+     * canonical body = 请求体原始字节（99-6 定稿：固件签名其实际发送的字节，
+     * 与 record 重序列化无关——2026-08-14 从"JSON 字段序"修订）。
      * 校验：时间戳 ±5 分钟窗口（防重放）+ 常量时间重算比对（防篡改）。
      */
     public boolean verifyRequestSignature(String deviceCode, String body,

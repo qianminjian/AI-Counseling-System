@@ -410,7 +410,7 @@
 | 硬件测试/阶段 1 硬件准备 | §11 阶段 1 | doc/NST-HW-02 | ❄️ 冻结 |
 | 实体机器人互补 | 74 与 frozen/73 交叉部分 | 本文件（frozen/73） | 🧊 冻结待议决（下一步③项） |
 | **CFG-012 L1 动态码 + 加密配网**（84 号，Security 1 / WeXin-BLE-Provision） | doing/84 §六.2 | doc/NST-HW-02 二期（固件安全能力） | ❄️ 冻结移交（2026-08-11 DOC-105 追加归口，解冻条件=NST-HW-02 二期启动） |
-| **设备签名鉴权**（AD-002，设备上报通道 HMAC-SHA256 签名） | doing/84 §六.2（security） | doc/NST-HW-02 二期（后端 V44 device_secret + DeviceSecurityService 就绪，固件侧对接后启用 HMAC 签名 + 开启 validated()） | ❄️ 冻结跟踪（**2026-08-14 B-04 后端侧完成**：DeviceSecurityService.verifyRequestSignature（HMAC-SHA256(body|ts|nonce) + ±5min 时间戳窗口 + 常量时间比对）+ reportOnline 下发 deviceSecret（固件签名密钥）+ 渐进式开关 MINDSAFE_DEVICE_SIGNATURE_MODE（OFF 默认/LOG 暴露未签名设备/ENFORCE 强制）+ heartbeat/status/voiceprint 三端点接线；40 用例全绿。**固件侧 NST-HW-02 二期对接后**：按签名规范实现请求签名（canonical body=JSON 字段序），后端置 ENFORCE + SecurityConfig validated() 即完成闭环） |
+| **设备签名鉴权**（AD-002，设备上报通道 HMAC-SHA256 签名） | doing/84 §六.2（security） | doc/NST-HW-02 二期（后端 V44 device_secret + DeviceSecurityService 就绪，固件侧对接后启用 HMAC 签名 + 开启 validated()） | ❄️ 冻结跟踪（**2026-08-14 B-04 后端侧完成**：DeviceSecurityService.verifyRequestSignature（HMAC-SHA256(body|ts|nonce) + ±5min 时间戳窗口 + 常量时间比对）+ reportOnline 下发 deviceSecret（固件签名密钥）+ 渐进式开关 MINDSAFE_DEVICE_SIGNATURE_MODE（OFF 默认/LOG 暴露未签名设备/ENFORCE 强制）+ heartbeat/status/voiceprint 三端点接线；40 用例全绿。**固件侧 NST-HW-02 二期对接后**：按签名规范实现请求签名（canonical body=请求体原始字节（99-6 定稿 2026-08-14：固件签名其实际发送的字节，非 JSON 字段序重序列化）），后端置 ENFORCE + SecurityConfig validated() 即完成闭环） |
 | **TOC-006 灯光/固件执行**（85 号，远程管理偏好固件侧） | doing/85 §四 | doc/NST-HW-02 二期 | ❄️ 冻结移交（2026-08-11 DOC-105 追加归口：软件侧偏好已实施 c6bb2cc，灯光/固件执行待二期） |
 
 **解冻流程**：NST-HW-02 波波蛋硬件落地实施方案排期启动（含固件二期）时，由项目负责人发起解冻；CFG-009 实施时回 doing/84 §六.2 验收（AC-84-09）。

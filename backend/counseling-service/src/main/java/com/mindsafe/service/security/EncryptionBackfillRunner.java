@@ -29,8 +29,6 @@ public class EncryptionBackfillRunner implements ApplicationRunner {
     @Override
     public void run(ApplicationArguments args) {
         EncryptionBackfillService.BackfillReport report = backfillService.backfillAll();
-        log.info("存量明文加密回填完成: messageSummaries={}, sessionSummaries={}, teacherNotes={}, familyPhones={}, total={}",
-                report.messageSummaries(), report.sessionSummaries(), report.teacherNotes(), report.familyPhones(),
-                report.total());
+        log.info("存量明文加密回填完成: counts={}, total={}", report.counts(), report.total());
     }
 }

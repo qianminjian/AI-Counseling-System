@@ -56,8 +56,9 @@ class EncryptionBackfillServiceTest {
         teacherNoteMapper = mock(TeacherNoteMapper.class);
         tocFamilyAccountMapper = mock(TocFamilyAccountMapper.class);
         encryptionService = new FieldEncryptionService(true, TEST_KEY, 1, "", new StandardEnvironment());
-        backfillService = new EncryptionBackfillService(encryptionService, messageSummaryMapper,
+        EncryptedFieldRegistry registry = new EncryptedFieldRegistry(messageSummaryMapper,
                 counselingSessionMapper, teacherNoteMapper, tocFamilyAccountMapper);
+        backfillService = new EncryptionBackfillService(encryptionService, registry);
     }
 
     private MessageSummary summary(UUID id, String content) {
@@ -79,7 +80,7 @@ class EncryptionBackfillServiceTest {
 
         var report = backfillService.backfillAll();
 
-        assertThat(report.messageSummaries()).isEqualTo(1); // 仅 id1 回填；id2 已加密跳过；id3 null 跳过
+        assertThat(report.counts().get("message_summaries")).isEqualTo(1L); // 仅 id1 回填；id2 已加密跳过；id3 null 跳过
         assertThat(report.total()).isEqualTo(1);
         verify(messageSummaryMapper).updateById(org.mockito.ArgumentMatchers.argThat((MessageSummary m) ->
                 m.getSummaryId().equals(id1)
@@ -103,9 +104,9 @@ class EncryptionBackfillServiceTest {
 
         var report = backfillService.backfillAll();
 
-        assertThat(report.sessionSummaries()).isEqualTo(1);
-        assertThat(report.teacherNotes()).isEqualTo(1);
-        assertThat(report.familyPhones()).isEqualTo(1);
+        assertThat(report.counts().get("counseling_sessions")).isEqualTo(1L);
+        assertThat(report.counts().get("teacher_notes")).isEqualTo(1L);
+        assertThat(report.counts().get("toc_family_accounts")).isEqualTo(1L);
         assertThat(report.total()).isEqualTo(3);
         verify(counselingSessionMapper).updateById(org.mockito.ArgumentMatchers.argThat((CounselingSession c) ->
                 c.getSessionId().equals(s1)));
@@ -131,7 +132,7 @@ class EncryptionBackfillServiceTest {
 
         var report = backfillService.backfillAll();
 
-        assertThat(report.messageSummaries()).isEqualTo(501);
+        assertThat(report.counts().get("message_summaries")).isEqualTo(501L);
         verify(messageSummaryMapper, org.mockito.Mockito.times(2)).selectList(any());
         verify(messageSummaryMapper, org.mockito.Mockito.times(501)).updateById(any(MessageSummary.class));
     }
@@ -148,7 +149,7 @@ class EncryptionBackfillServiceTest {
 
         var report = backfillService.backfillAll();
 
-        assertThat(report.messageSummaries()).isEqualTo(1); // id2 成功，id1 失败跳过
+        assertThat(report.counts().get("message_summaries")).isEqualTo(1L); // id2 成功，id1 失败跳过
     }
 
     @Test
@@ -161,7 +162,7 @@ class EncryptionBackfillServiceTest {
 
         var report = backfillService.backfillAll();
 
-        assertThat(report.messageSummaries()).isZero();
+        assertThat(report.counts().get("message_summaries")).isZero();
         verify(messageSummaryMapper, never()).updateById(any(MessageSummary.class));
     }
 

@@ -4,10 +4,8 @@ import com.mindsafe.common.exception.BizException;
 import com.mindsafe.api.dto.device.BindDeviceRequest;
 import com.mindsafe.domain.entity.DeviceBinding;
 import com.mindsafe.domain.util.DeviceCodeUtil;
-import com.mindsafe.service.device.DeviceSecurityService;
 import com.mindsafe.service.device.DeviceService;
 import com.mindsafe.service.device.DeviceVoiceprintService;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -19,7 +17,6 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -35,7 +32,6 @@ class DeviceControllerTest {
 
     private DeviceService deviceService;
     private DeviceVoiceprintService voiceprintService;
-    private DeviceSecurityService securityService;
     private DeviceController controller;
 
     private final String deviceCode = DeviceCodeUtil.generate("BB-2026-000123");
@@ -44,9 +40,7 @@ class DeviceControllerTest {
     void setUp() {
         deviceService = mock(DeviceService.class);
         voiceprintService = mock(DeviceVoiceprintService.class);
-        securityService = mock(DeviceSecurityService.class);
-        when(securityService.enforceSignature(any(), any(), any(), any(), any())).thenReturn(true);
-        controller = new DeviceController(deviceService, voiceprintService, securityService, new ObjectMapper());
+        controller = new DeviceController(deviceService, voiceprintService);
     }
 
     private Map<String, Object> sampleInfo() {
@@ -155,7 +149,7 @@ class DeviceControllerTest {
     void heartbeatNotFound() {
         var body = new DeviceController.DeviceCodeRequest(deviceCode, null);
         when(deviceService.exists(deviceCode)).thenReturn(false);
-        assertThatThrownBy(() -> controller.heartbeat(body, null, null, null)).isInstanceOf(BizException.class);
+        assertThatThrownBy(() -> controller.heartbeat(body)).isInstanceOf(BizException.class);
     }
 
     @Test
@@ -163,7 +157,7 @@ class DeviceControllerTest {
     void heartbeatOk() {
         var body = new DeviceController.DeviceCodeRequest(deviceCode, null);
         when(deviceService.exists(deviceCode)).thenReturn(true);
-        var response = controller.heartbeat(body, null, null, null);
+        var response = controller.heartbeat(body);
         assertThat(response.code()).isEqualTo(0);
         verify(deviceService).heartbeat(deviceCode);
     }
@@ -249,7 +243,7 @@ class DeviceControllerTest {
         task.put("phase", "COLLECTING");
         when(voiceprintService.reportPhase("t1", "COLLECTING", null)).thenReturn(task);
 
-        var response = controller.reportVoiceprintPhase(new DeviceController.VoiceprintPhaseRequest("t1", "COLLECTING", null), null, null, null);
+        var response = controller.reportVoiceprintPhase(new DeviceController.VoiceprintPhaseRequest("t1", "COLLECTING", null));
         assertThat(response.code()).isEqualTo(0);
         assertThat(response.data().get("phase")).isEqualTo("COLLECTING");
     }
@@ -259,7 +253,7 @@ class DeviceControllerTest {
     void reportVoiceprintPhaseNotFound() {
         when(voiceprintService.reportPhase("t1", "COLLECTING", null)).thenReturn(null);
         assertThatThrownBy(() -> controller.reportVoiceprintPhase(
-                new DeviceController.VoiceprintPhaseRequest("t1", "COLLECTING", null), null, null, null))
+                new DeviceController.VoiceprintPhaseRequest("t1", "COLLECTING", null)))
                 .isInstanceOf(BizException.class);
     }
 

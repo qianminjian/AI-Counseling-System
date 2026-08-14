@@ -1,5 +1,6 @@
 package com.mindsafe.api.controller;
 
+import com.mindsafe.api.config.DeviceSignature;
 import com.mindsafe.api.dto.device.BindDeviceRequest;
 import com.mindsafe.common.dto.ApiResponse;
 import com.mindsafe.common.dto.ErrorCode;
@@ -7,8 +8,6 @@ import com.mindsafe.common.exception.BizException;
 import com.mindsafe.service.device.DeviceSecurityService;
 import com.mindsafe.service.device.DeviceService;
 import com.mindsafe.service.device.DeviceVoiceprintService;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -28,29 +27,10 @@ public class DeviceController {
 
     private final DeviceService deviceService;
     private final DeviceVoiceprintService voiceprintService;
-    private final DeviceSecurityService securityService;
-    private final ObjectMapper objectMapper;
 
-    public DeviceController(DeviceService deviceService, DeviceVoiceprintService voiceprintService,
-                            DeviceSecurityService securityService, ObjectMapper objectMapper) {
+    public DeviceController(DeviceService deviceService, DeviceVoiceprintService voiceprintService) {
         this.deviceService = deviceService;
         this.voiceprintService = voiceprintService;
-        this.securityService = securityService;
-        this.objectMapper = objectMapper;
-    }
-
-    /**
-     * 设备请求体签名校验（B-04，2026-08-14）：canonical body = 请求体 JSON 序列化
-     * （record 字段声明序，固件侧按同一结构 HMAC-SHA256 签名，规范见 frozen/73 §九）。
-     */
-    private void enforceRequestSignature(String deviceCode, Object body,
-                                         String timestamp, String nonce, String signature) {
-        try {
-            securityService.enforceSignature(deviceCode, objectMapper.writeValueAsString(body),
-                    timestamp, nonce, signature);
-        } catch (JsonProcessingException e) {
-            throw new BizException(ErrorCode.PARAM_INVALID, "请求体序列化失败");
-        }
     }
 
     /** 扫码入口页脱敏信息（匿名，AC-84-01）：型号/尾号/绑定态 */
@@ -104,26 +84,18 @@ public class DeviceController {
                 deviceToken));
     }
 
-    /** 心跳上报（设备端，30s 间隔，90s 判离线；B-04 签名通道） */
+    /** 心跳上报（设备端，30s 间隔，90s 判离线；99-6 声明式签名通道） */
     @PostMapping("/report/heartbeat")
-    public ApiResponse<Void> heartbeat(@RequestBody DeviceCodeRequest body,
-                                       @RequestHeader(value = "X-Device-Signature", required = false) String signature,
-                                       @RequestHeader(value = "X-Device-Timestamp", required = false) String timestamp,
-                                       @RequestHeader(value = "X-Device-Nonce", required = false) String nonce) {
+    public ApiResponse<Void> heartbeat(@DeviceSignature DeviceCodeRequest body) {
         requireDeviceExists(body.deviceCode());
-        enforceRequestSignature(body.deviceCode(), body, timestamp, nonce, signature);
         deviceService.heartbeat(body.deviceCode());
         return ApiResponse.ok(null);
     }
 
-    /** 状态上报（固件版本等；B-04 签名通道） */
+    /** 状态上报（固件版本等；99-6 声明式签名通道） */
     @PostMapping("/report/status")
-    public ApiResponse<Void> reportStatus(@RequestBody DeviceCodeRequest body,
-                                          @RequestHeader(value = "X-Device-Signature", required = false) String signature,
-                                          @RequestHeader(value = "X-Device-Timestamp", required = false) String timestamp,
-                                          @RequestHeader(value = "X-Device-Nonce", required = false) String nonce) {
+    public ApiResponse<Void> reportStatus(@DeviceSignature DeviceCodeRequest body) {
         requireDeviceExists(body.deviceCode());
-        enforceRequestSignature(body.deviceCode(), body, timestamp, nonce, signature);
         deviceService.reportStatus(body.deviceCode(), body.firmwareVersion());
         return ApiResponse.ok(null);
     }
@@ -187,19 +159,15 @@ public class DeviceController {
         return ApiResponse.ok(task);
     }
 
-    /** 设备端采集进度上报（CFG-006，AC-84-13，匿名白名单；B-04 签名通道） */
+    /** 设备端采集进度上报（CFG-006，AC-84-13，匿名白名单；99-6 声明式签名通道） */
     @PostMapping("/report/voiceprint")
     public ApiResponse<Map<String, Object>> reportVoiceprintPhase(
-            @RequestBody VoiceprintPhaseRequest body,
-            @RequestHeader(value = "X-Device-Signature", required = false) String signature,
-            @RequestHeader(value = "X-Device-Timestamp", required = false) String timestamp,
-            @RequestHeader(value = "X-Device-Nonce", required = false) String nonce) {
+            @DeviceSignature VoiceprintPhaseRequest body) {
         String taskId = body.taskId();
         String phase = body.phase();
         if (taskId == null || phase == null) {
             throw new BizException(ErrorCode.PARAM_INVALID, "taskId/phase 缺失");
         }
-        enforceRequestSignature(body.deviceCode(), body, timestamp, nonce, signature);
         Map<String, Object> task = voiceprintService.reportPhase(taskId, phase, body.deviceCode());
         if (task == null) {
             throw new BizException(ErrorCode.RESOURCE_NOT_FOUND, "任务不存在");
