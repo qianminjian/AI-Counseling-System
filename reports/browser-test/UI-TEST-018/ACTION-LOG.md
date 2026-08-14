@@ -153,6 +153,8 @@ R14 结论：终端设备状态筛选和审计日志分页正常；无设备数�
 | 步骤 | 场景 | 操作 | 结果 | 截图 |
 |---:|---|---|---|---|
 | R15-01 | T-02 预警队列 | 打开预警队列 | 表格加载 1 条红色预警，显示时间、等级、SLA、学生、类型、状态、处理/误报按钮及分页 | `screenshots/R15-teacher-alert-status-options.png` |
-| R15-02 | T-02 预警队列 | 识别“状态筛选”“最低等级”下拉入口 | 两个筛选控件可识别；未执行处理/误报写操作 | `screenshots/R15-teacher-alert-level-options.png` |
+| R15-02 | T-02 预警队列 | 通过 DOM 事件展开“状态筛选” | 展示待处理、已认领、已解决、误报选项 | `screenshots/R16-teacher-alert-resolved-filter-dom.png` |
+| R15-03 | T-02 预警队列 | 通过 DOM 事件展开“最低等级” | 展示黄色及以上、橙色及以上、仅红色选项 | `screenshots/R16-teacher-alert-level-dom.png` |
+| R15-04 | T-02 预警队列 | 选择“已解决”+“仅红色” | 两个筛选值更新，结果为空；未执行处理/误报写操作 | `screenshots/R16-teacher-alert-red-filter-dom.png` |
 
-R15 结论：预警队列表格和筛选入口可加载；筛选弹层在语义/DOM click 下未稳定展开，需后续继续确认，不登记为产品缺陷。
+R15/R16 结论：预警队列表格和两个筛选控件正常；首次语义 click 未展开属于控件触发兼容性问题，DOM 事件后功能正常，不登记为产品缺陷。
