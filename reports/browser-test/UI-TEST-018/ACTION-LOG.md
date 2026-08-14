@@ -82,3 +82,14 @@
 | R8-01 | 学生/S-02 冻结账号 | 输入“小明”和台账 PIN，提交登录 | 稳定显示“账号已冻结，请联系家长或学校重新授权” | `screenshots/R8-student-frozen-filled.png`、`screenshots/R8-student-frozen-result.png`、`screenshots/R8-student-frozen-final.png` |
 
 R8 结论：冻结账号分支工作正常；“开心”仍返回通用“昵称或 PIN 码错误”，结合教师端学生列表不存在该昵称，继续归类为线上账号台账/租户数据问题，不修改登录代码。
+
+# R9 教师端筛选控件遍历（2026-08-14）
+
+| 步骤 | 场景 | 操作 | 结果 | 截图 |
+|---:|---|---|---|---|
+| R9-01 | T-04 质量监控 | 打开质量监控页并识别页面控件 | 展示近 7 天/30 天质量指标，无错误弹窗或崩溃 | `screenshots/R9-teacher-quality.png` |
+| R9-02 | T-05 通知中心 | 查看“全部”列表 | 显示通知列表及多个“已读”按钮 | `screenshots/R9-teacher-notifications.png` |
+| R9-03 | T-05 通知中心 | 点击“未读”Tab；语义点击无状态变化后对当前 Segmented 控件执行 DOM click | 切换成功，列表变为橙色预警通知 | `screenshots/R9-teacher-notifications-unread-dom.png` |
+| R9-04 | T-05 通知中心 | 点击“已读”Tab 的当前页面控件 DOM click | 切换成功，列表显示红色预警通知 | `screenshots/R9-teacher-notifications-read-tab.png` |
+
+R9 结论：教师端通知中心 Tab 工作正常；初次语义 ref 点击无变化属于控件触发器兼容性问题，DOM 兜底后状态正确切换，未登记为产品缺陷。
