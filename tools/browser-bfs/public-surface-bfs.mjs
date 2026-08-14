@@ -32,17 +32,13 @@ function cli(session, profile, args, timeout = COMMAND_TIMEOUT_MS) {
   // --session is an isolated agent-browser session. Do not pass a persistent
   // profile on every command: the daemon rejects/ignores that flag after the
   // first command, which can otherwise create a false isolation failure.
-  const child = spawnSync("agent-browser", ["--session", session, ...args], {
+  const timeoutSeconds = Math.max(1, Math.ceil(timeout / 1000));
+  const child = spawnSync("gtimeout", ["-k", "2", String(timeoutSeconds), "agent-browser", "--session", session, ...args], {
     encoding: "utf8",
     timeout,
     maxBuffer: 4 * 1024 * 1024
   });
-  if (child.error) {
-    if (child.pid && child.error.code === "ETIMEDOUT") {
-      try { process.kill(child.pid, "SIGTERM"); } catch {}
-    }
-    throw child.error;
-  }
+  if (child.error) throw child.error;
   const output = `${child.stdout ?? ""}\n${child.stderr ?? ""}`;
   if (child.status !== 0) throw new Error(`agent-browser exited ${child.status}: ${output.slice(-1000)}`);
   if (output.includes("--profile ignored")) {
