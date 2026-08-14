@@ -5,7 +5,7 @@
 执行器：agent-browser 0.26.0 / Chrome 151  
 遍历约束：每端独立会话；BFS；最大深度 8；最大操作 500 步；超时自动停止；不操作被测软件以外窗口。
 
-当前证据基线：R73；机器可读阶段性清单：`BFS-COVERAGE-MANIFEST.json`。该清单的 `status=partial` 是刻意保留的完成度事实，不代表四端单次全量 BFS 已完成。
+当前证据基线：R76；机器可读阶段性清单：`BFS-COVERAGE-MANIFEST.json`。该清单的 `status=partial` 是刻意保留的完成度事实，不代表四端单次全量 BFS 已完成。
 
 执行器核验：仓库当前只有 `tests/e2e/smoke-test.sh` 冒烟脚本；Playwright/BFS 编排配置处于预留或未启用状态，未发现可直接产出四端 `visitedStates/operatedControls/queueMaxDepth/steps/stopReason` 的现成程序。因此“单次四端机器化 BFS”仍是待实现执行器/待测试数据前置项，Browser Agent 分场景证据不能替代该要求。
 

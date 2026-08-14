@@ -6,7 +6,14 @@
     "repositorySmokeScript": "tests/e2e/smoke-test.sh",
     "bfsOrchestratorPresent": false,
     "playwrightE2EStatus": "reserved_or_disabled",
-    "conclusion": "No existing repository executable can produce the required four-endpoint BFS machine export; do not claim full completion from scenario rounds alone."
+    "conclusion": "No existing repository executable can produce the required four-endpoint BFS machine export; do not claim full completion from scenario rounds alone.",
+    "browserAgentJsonSnapshotVerified": {
+      "round": "R76",
+      "fields": ["data.origin", "data.refs", "data.snapshot"],
+      "refFields": ["name", "role"],
+      "endpoint": "https://yun.gxjugu.com/mindsafe/",
+      "replayOrchestrator": "not implemented"
+    }
   },
   "constraints": {
     "algorithm": "breadth-first",
