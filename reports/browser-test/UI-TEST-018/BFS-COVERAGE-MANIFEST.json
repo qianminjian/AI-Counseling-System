@@ -1,0 +1,101 @@
+{
+  "report": "UI-TEST-018",
+  "generated": "2026-08-14",
+  "status": "partial",
+  "executorAudit": {
+    "repositorySmokeScript": "tests/e2e/smoke-test.sh",
+    "bfsOrchestratorPresent": true,
+    "playwrightE2EStatus": "reserved_or_disabled",
+    "conclusion": "A repository BFS runner now produces machine-readable public-surface exports; authenticated business BFS and safe fixtures remain incomplete, so do not claim full completion from public runs alone.",
+    "browserAgentJsonSnapshotVerified": {
+      "round": "R76",
+      "fields": ["data.origin", "data.refs", "data.snapshot"],
+      "refFields": ["name", "role"],
+      "endpoint": "https://yun.gxjugu.com/mindsafe/",
+      "replayOrchestrator": "tools/browser-bfs/public-surface-bfs.mjs; public read-only scope"
+    },
+    "publicReadonlyRun": {
+      "round": "R77",
+      "manifest": "public-bfs/manifest.json",
+      "maxDepth": 1,
+      "maxStepsPerEndpoint": 2,
+      "isolationWarnings": 0,
+      "endpointResults": {
+        "student": {"steps": 2, "stopReason": "max-steps", "errors": 0},
+        "teacher": {"steps": 2, "stopReason": "max-steps", "errors": 0},
+        "parent": {"steps": 2, "stopReason": "completed", "errors": 0},
+        "admin": {"steps": 2, "stopReason": "max-steps", "errors": 0}
+      },
+      "scope": "public unauthenticated controls only; submit and persistent controls excluded"
+    },
+    "authenticatedReadonlyRun": {
+      "round": "R88",
+      "manifest": "auth-bfs-r88-minimal/manifest.json",
+      "endpoint": "student",
+      "maxDepth": 1,
+      "maxSteps": 3,
+      "visitedStates": 2,
+      "operatedControls": 1,
+      "queueMaxDepth": 1,
+      "steps": 3,
+      "stopReason": "max-steps",
+      "errors": 2,
+      "scope": "temporary active student state; stage sample only, not final four-endpoint BFS"
+    }
+  },
+  "constraints": {
+    "algorithm": "breadth-first",
+    "maxDepth": 8,
+    "maxSteps": 500,
+    "timeout": "stop on page timeout or unresponsive state",
+    "oneIsolatedBrowserSession": true,
+    "userBrowserIsolation": "no-auto-connect-no-user-profile"
+  },
+  "endpoints": {
+    "student": {
+      "url": "https://yun.gxjugu.com/mindsafe/",
+      "status": "partial",
+      "verifiedRounds": ["R55", "R56", "R57", "R58", "R59", "R60", "R61", "R66", "R71", "R81", "R82", "R84", "R86", "R87"],
+      "verified": ["login controls", "themes", "privacy/service dialogs", "consent gate", "registration fields", "guardian-phone branch", "voice consent toggle", "new active account registration", "pin login 200", "chat/toolbox/SOS/settings read paths", "risk safety response and hotline", "diary checkin and streak", "session close and rating"],
+      "blockedOrPending": ["achievements detail trigger compatibility", "session timeout", "real voice enrollment"],
+      "stopReasons": ["legacy 测试丁/开心 credentials still return 401; R82 created a separate active fixture", "registration deep submit produced no captured request in current event path for prior attempts"]
+    },
+    "teacher": {
+      "url": "https://yun.gxjugu.com/teacher/",
+      "status": "partial",
+      "verifiedRounds": ["R63", "R65", "R67", "R70", "R78", "R85"],
+      "verified": ["李老师 and 王老师 role menus", "李老师 authenticated workbench", "quality monitoring", "notifications", "student list/profile", "alert queue read paths", "device empty state", "R78 real-data controls and screenshots", "R85 cross-tenant risk visibility boundary"],
+      "blockedOrPending": ["low-score review/PDF export", "misreport/transfer writes", "real device binding", "platform-level privilege boundary"]
+    },
+    "parent": {
+      "url": "https://yun.gxjugu.com/parent/",
+      "status": "partial",
+      "verifiedRounds": ["R64", "R68", "R80", "R83"],
+      "verified": ["login/register tabs", "real family-code registration 200", "family-code fields", "relationship controls", "weekly report", "consent read/detail", "privacy page", "invalid-device routing", "invalid-login field path", "R80 registration controls and login compatibility observation"],
+      "blockedOrPending": ["multi-child data", "real device provisioning", "revoke consent write", "login submit event not exposed in current accessibility path"]
+    },
+    "admin": {
+      "url": "https://yun.gxjugu.com/admin/",
+      "status": "partial",
+      "verifiedRounds": ["R62", "R69", "R72", "R73", "R74", "R79"],
+      "verified": ["platform overview", "super_admin login", "17-menu visibility", "config history", "prompt read state", "knowledge stats", "usage", "compliance", "insights", "alert center pagination", "audit log", "R79 menu screenshots"],
+      "blockedOrPending": ["config writes", "prompt create/review/activate", "alert acknowledge", "invite/bulk import", "degradation switch", "tenant lifecycle", "device write operations"]
+    }
+  },
+  "completionGaps": [
+    "No single four-endpoint run has reached 500 steps or emitted a complete BFS queue/state export.",
+    "Historical rounds save key-step screenshots; not every DOM action has an individual screenshot file.",
+    "Destructive or persistent writes remain intentionally unexecuted without a reversible fixture and explicit data boundary.",
+    "Unified deployment/retest gate is pending a source-change batch; current rounds are evidence-only and did not require deployment."
+  ],
+  "authoritativeEvidence": [
+    "TEST-PLAN.md",
+    "ACTION-LOG.md",
+    "COVERAGE-STATUS.md",
+    "COMPLETION-AUDIT.md",
+    "ISSUES-S.md",
+    "ISSUES-T.md",
+    "ISSUES-P.md",
+    "ISSUES-A.md"
+  ]
+}

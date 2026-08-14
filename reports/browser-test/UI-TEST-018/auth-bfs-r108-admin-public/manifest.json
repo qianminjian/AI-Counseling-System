@@ -1,0 +1,104 @@
+{
+  "generated": "2026-08-14T09:04:52.507Z",
+  "mode": "public-readonly",
+  "endpoints": [
+    {
+      "endpoint": "admin",
+      "url": "https://yun.gxjugu.com/admin/",
+      "algorithm": "breadth-first",
+      "maxDepth": 8,
+      "maxSteps": 20,
+      "visitedStates": [
+        {
+          "key": "7a7205a159066326",
+          "depth": 0,
+          "controls": [
+            {
+              "ref": "e3",
+              "role": "button",
+              "name": "登 录"
+            },
+            {
+              "ref": "e4",
+              "role": "textbox",
+              "name": "* 用户名"
+            },
+            {
+              "ref": "e6",
+              "role": "textbox",
+              "name": "* 密码"
+            },
+            {
+              "ref": "e7",
+              "role": "button",
+              "name": "显示"
+            }
+          ]
+        },
+        {
+          "key": "7328e2efed0867f8",
+          "depth": 1,
+          "controls": [
+            {
+              "ref": "e3",
+              "role": "button",
+              "name": "登 录"
+            },
+            {
+              "ref": "e4",
+              "role": "textbox",
+              "name": "* 用户名"
+            },
+            {
+              "ref": "e6",
+              "role": "textbox",
+              "name": "* 密码"
+            },
+            {
+              "ref": "e7",
+              "role": "button",
+              "name": "隐藏"
+            }
+          ]
+        }
+      ],
+      "operatedControls": [
+        {
+          "step": 4,
+          "depth": 1,
+          "control": {
+            "ref": "e7",
+            "role": "button",
+            "name": "显示"
+          },
+          "parentPath": []
+        },
+        {
+          "step": 8,
+          "depth": 2,
+          "control": {
+            "ref": "e7",
+            "role": "button",
+            "name": "隐藏"
+          },
+          "parentPath": [
+            {
+              "ref": "e7",
+              "role": "button",
+              "name": "显示"
+            }
+          ]
+        }
+      ],
+      "screenshots": [
+        "/tmp/codex-admin-public-r108-ZFmGw3/admin-0000-enter.png",
+        "/tmp/codex-admin-public-r108-ZFmGw3/admin-0004-button-显示.png",
+        "/tmp/codex-admin-public-r108-ZFmGw3/admin-0008-button-隐藏.png"
+      ],
+      "errors": [],
+      "stopReason": "completed",
+      "steps": 8,
+      "queueMaxDepth": 1
+    }
+  ]
+}

@@ -1,0 +1,1131 @@
+{
+  "generated": "2026-08-14T09:07:56.053Z",
+  "mode": "public-readonly",
+  "endpoints": [
+    {
+      "endpoint": "admin",
+      "url": "https://yun.gxjugu.com/admin/",
+      "algorithm": "breadth-first",
+      "maxDepth": 8,
+      "maxSteps": 20,
+      "visitedStates": [
+        {
+          "key": "24ab419796592a76",
+          "depth": 0,
+          "controls": [
+            {
+              "ref": "e10",
+              "role": "menuitem",
+              "name": "处置台账"
+            },
+            {
+              "ref": "e11",
+              "role": "menuitem",
+              "name": "降级矩阵"
+            },
+            {
+              "ref": "e12",
+              "role": "menuitem",
+              "name": "知识库"
+            },
+            {
+              "ref": "e13",
+              "role": "menuitem",
+              "name": "通知渠道"
+            },
+            {
+              "ref": "e14",
+              "role": "menuitem",
+              "name": "运营洞察"
+            },
+            {
+              "ref": "e15",
+              "role": "menuitem",
+              "name": "用量报表"
+            },
+            {
+              "ref": "e16",
+              "role": "menuitem",
+              "name": "数据合规"
+            },
+            {
+              "ref": "e17",
+              "role": "menuitem",
+              "name": "服务状态"
+            },
+            {
+              "ref": "e18",
+              "role": "menuitem",
+              "name": "指标看板"
+            },
+            {
+              "ref": "e19",
+              "role": "menuitem",
+              "name": "告警中心"
+            },
+            {
+              "ref": "e20",
+              "role": "menuitem",
+              "name": "审计日志"
+            },
+            {
+              "ref": "e21",
+              "role": "menuitem",
+              "name": "终端设备"
+            },
+            {
+              "ref": "e28",
+              "role": "button",
+              "name": "left"
+            },
+            {
+              "ref": "e29",
+              "role": "button",
+              "name": "right"
+            },
+            {
+              "ref": "e3",
+              "role": "link",
+              "name": "退出登录"
+            },
+            {
+              "ref": "e5",
+              "role": "menuitem",
+              "name": "平台总览"
+            },
+            {
+              "ref": "e6",
+              "role": "menuitem",
+              "name": "配置注册表"
+            },
+            {
+              "ref": "e7",
+              "role": "menuitem",
+              "name": "Prompt 管理"
+            },
+            {
+              "ref": "e8",
+              "role": "menuitem",
+              "name": "风险全景"
+            },
+            {
+              "ref": "e9",
+              "role": "menuitem",
+              "name": "时效监控"
+            }
+          ]
+        },
+        {
+          "key": "ca048992ba3cbccf",
+          "depth": 1,
+          "controls": [
+            {
+              "ref": "e10",
+              "role": "menuitem",
+              "name": "处置台账"
+            },
+            {
+              "ref": "e11",
+              "role": "menuitem",
+              "name": "降级矩阵"
+            },
+            {
+              "ref": "e12",
+              "role": "menuitem",
+              "name": "知识库"
+            },
+            {
+              "ref": "e13",
+              "role": "menuitem",
+              "name": "通知渠道"
+            },
+            {
+              "ref": "e14",
+              "role": "menuitem",
+              "name": "运营洞察"
+            },
+            {
+              "ref": "e15",
+              "role": "menuitem",
+              "name": "用量报表"
+            },
+            {
+              "ref": "e16",
+              "role": "menuitem",
+              "name": "数据合规"
+            },
+            {
+              "ref": "e17",
+              "role": "menuitem",
+              "name": "服务状态"
+            },
+            {
+              "ref": "e18",
+              "role": "menuitem",
+              "name": "指标看板"
+            },
+            {
+              "ref": "e19",
+              "role": "menuitem",
+              "name": "告警中心"
+            },
+            {
+              "ref": "e20",
+              "role": "menuitem",
+              "name": "审计日志"
+            },
+            {
+              "ref": "e21",
+              "role": "menuitem",
+              "name": "终端设备"
+            },
+            {
+              "ref": "e3",
+              "role": "link",
+              "name": "退出登录"
+            },
+            {
+              "ref": "e5",
+              "role": "menuitem",
+              "name": "平台总览"
+            },
+            {
+              "ref": "e6",
+              "role": "menuitem",
+              "name": "配置注册表"
+            },
+            {
+              "ref": "e7",
+              "role": "menuitem",
+              "name": "Prompt 管理"
+            },
+            {
+              "ref": "e8",
+              "role": "menuitem",
+              "name": "风险全景"
+            },
+            {
+              "ref": "e9",
+              "role": "menuitem",
+              "name": "时效监控"
+            }
+          ]
+        },
+        {
+          "key": "cb01317d7af2d594",
+          "depth": 1,
+          "controls": [
+            {
+              "ref": "e10",
+              "role": "menuitem",
+              "name": "处置台账"
+            },
+            {
+              "ref": "e11",
+              "role": "menuitem",
+              "name": "降级矩阵"
+            },
+            {
+              "ref": "e12",
+              "role": "menuitem",
+              "name": "知识库"
+            },
+            {
+              "ref": "e13",
+              "role": "menuitem",
+              "name": "通知渠道"
+            },
+            {
+              "ref": "e14",
+              "role": "menuitem",
+              "name": "运营洞察"
+            },
+            {
+              "ref": "e15",
+              "role": "menuitem",
+              "name": "用量报表"
+            },
+            {
+              "ref": "e16",
+              "role": "menuitem",
+              "name": "数据合规"
+            },
+            {
+              "ref": "e17",
+              "role": "menuitem",
+              "name": "服务状态"
+            },
+            {
+              "ref": "e18",
+              "role": "menuitem",
+              "name": "指标看板"
+            },
+            {
+              "ref": "e19",
+              "role": "menuitem",
+              "name": "告警中心"
+            },
+            {
+              "ref": "e20",
+              "role": "menuitem",
+              "name": "审计日志"
+            },
+            {
+              "ref": "e21",
+              "role": "menuitem",
+              "name": "终端设备"
+            },
+            {
+              "ref": "e3",
+              "role": "link",
+              "name": "退出登录"
+            },
+            {
+              "ref": "e5",
+              "role": "menuitem",
+              "name": "平台总览"
+            },
+            {
+              "ref": "e6",
+              "role": "menuitem",
+              "name": "配置注册表"
+            },
+            {
+              "ref": "e7",
+              "role": "menuitem",
+              "name": "Prompt 管理"
+            },
+            {
+              "ref": "e8",
+              "role": "menuitem",
+              "name": "风险全景"
+            },
+            {
+              "ref": "e9",
+              "role": "menuitem",
+              "name": "时效监控"
+            }
+          ]
+        },
+        {
+          "key": "a6e232bdfd8734f9",
+          "depth": 1,
+          "controls": [
+            {
+              "ref": "e10",
+              "role": "menuitem",
+              "name": "处置台账"
+            },
+            {
+              "ref": "e11",
+              "role": "menuitem",
+              "name": "降级矩阵"
+            },
+            {
+              "ref": "e12",
+              "role": "menuitem",
+              "name": "知识库"
+            },
+            {
+              "ref": "e13",
+              "role": "menuitem",
+              "name": "通知渠道"
+            },
+            {
+              "ref": "e14",
+              "role": "menuitem",
+              "name": "运营洞察"
+            },
+            {
+              "ref": "e15",
+              "role": "menuitem",
+              "name": "用量报表"
+            },
+            {
+              "ref": "e16",
+              "role": "menuitem",
+              "name": "数据合规"
+            },
+            {
+              "ref": "e17",
+              "role": "menuitem",
+              "name": "服务状态"
+            },
+            {
+              "ref": "e18",
+              "role": "menuitem",
+              "name": "指标看板"
+            },
+            {
+              "ref": "e19",
+              "role": "menuitem",
+              "name": "告警中心"
+            },
+            {
+              "ref": "e20",
+              "role": "menuitem",
+              "name": "审计日志"
+            },
+            {
+              "ref": "e21",
+              "role": "menuitem",
+              "name": "终端设备"
+            },
+            {
+              "ref": "e3",
+              "role": "link",
+              "name": "退出登录"
+            },
+            {
+              "ref": "e5",
+              "role": "menuitem",
+              "name": "平台总览"
+            },
+            {
+              "ref": "e6",
+              "role": "menuitem",
+              "name": "配置注册表"
+            },
+            {
+              "ref": "e7",
+              "role": "menuitem",
+              "name": "Prompt 管理"
+            },
+            {
+              "ref": "e8",
+              "role": "menuitem",
+              "name": "风险全景"
+            },
+            {
+              "ref": "e9",
+              "role": "menuitem",
+              "name": "时效监控"
+            }
+          ]
+        },
+        {
+          "key": "89a97d43ea06bc0a",
+          "depth": 1,
+          "controls": [
+            {
+              "ref": "e10",
+              "role": "menuitem",
+              "name": "处置台账"
+            },
+            {
+              "ref": "e11",
+              "role": "menuitem",
+              "name": "降级矩阵"
+            },
+            {
+              "ref": "e12",
+              "role": "menuitem",
+              "name": "知识库"
+            },
+            {
+              "ref": "e13",
+              "role": "menuitem",
+              "name": "通知渠道"
+            },
+            {
+              "ref": "e14",
+              "role": "menuitem",
+              "name": "运营洞察"
+            },
+            {
+              "ref": "e15",
+              "role": "menuitem",
+              "name": "用量报表"
+            },
+            {
+              "ref": "e16",
+              "role": "menuitem",
+              "name": "数据合规"
+            },
+            {
+              "ref": "e17",
+              "role": "menuitem",
+              "name": "服务状态"
+            },
+            {
+              "ref": "e18",
+              "role": "menuitem",
+              "name": "指标看板"
+            },
+            {
+              "ref": "e19",
+              "role": "menuitem",
+              "name": "告警中心"
+            },
+            {
+              "ref": "e20",
+              "role": "menuitem",
+              "name": "审计日志"
+            },
+            {
+              "ref": "e21",
+              "role": "menuitem",
+              "name": "终端设备"
+            },
+            {
+              "ref": "e3",
+              "role": "link",
+              "name": "退出登录"
+            },
+            {
+              "ref": "e5",
+              "role": "menuitem",
+              "name": "平台总览"
+            },
+            {
+              "ref": "e6",
+              "role": "menuitem",
+              "name": "配置注册表"
+            },
+            {
+              "ref": "e7",
+              "role": "menuitem",
+              "name": "Prompt 管理"
+            },
+            {
+              "ref": "e8",
+              "role": "menuitem",
+              "name": "风险全景"
+            },
+            {
+              "ref": "e9",
+              "role": "menuitem",
+              "name": "时效监控"
+            }
+          ]
+        },
+        {
+          "key": "787b195f1e0fb58a",
+          "depth": 1,
+          "controls": [
+            {
+              "ref": "e10",
+              "role": "menuitem",
+              "name": "处置台账"
+            },
+            {
+              "ref": "e11",
+              "role": "menuitem",
+              "name": "降级矩阵"
+            },
+            {
+              "ref": "e12",
+              "role": "menuitem",
+              "name": "知识库"
+            },
+            {
+              "ref": "e13",
+              "role": "menuitem",
+              "name": "通知渠道"
+            },
+            {
+              "ref": "e14",
+              "role": "menuitem",
+              "name": "运营洞察"
+            },
+            {
+              "ref": "e15",
+              "role": "menuitem",
+              "name": "用量报表"
+            },
+            {
+              "ref": "e16",
+              "role": "menuitem",
+              "name": "数据合规"
+            },
+            {
+              "ref": "e17",
+              "role": "menuitem",
+              "name": "服务状态"
+            },
+            {
+              "ref": "e18",
+              "role": "menuitem",
+              "name": "指标看板"
+            },
+            {
+              "ref": "e19",
+              "role": "menuitem",
+              "name": "告警中心"
+            },
+            {
+              "ref": "e20",
+              "role": "menuitem",
+              "name": "审计日志"
+            },
+            {
+              "ref": "e21",
+              "role": "menuitem",
+              "name": "终端设备"
+            },
+            {
+              "ref": "e3",
+              "role": "link",
+              "name": "退出登录"
+            },
+            {
+              "ref": "e5",
+              "role": "menuitem",
+              "name": "平台总览"
+            },
+            {
+              "ref": "e6",
+              "role": "menuitem",
+              "name": "配置注册表"
+            },
+            {
+              "ref": "e7",
+              "role": "menuitem",
+              "name": "Prompt 管理"
+            },
+            {
+              "ref": "e8",
+              "role": "menuitem",
+              "name": "风险全景"
+            },
+            {
+              "ref": "e9",
+              "role": "menuitem",
+              "name": "时效监控"
+            }
+          ]
+        },
+        {
+          "key": "6f7c414cd5cae88d",
+          "depth": 1,
+          "controls": [
+            {
+              "ref": "e10",
+              "role": "menuitem",
+              "name": "处置台账"
+            },
+            {
+              "ref": "e11",
+              "role": "menuitem",
+              "name": "降级矩阵"
+            },
+            {
+              "ref": "e12",
+              "role": "menuitem",
+              "name": "知识库"
+            },
+            {
+              "ref": "e13",
+              "role": "menuitem",
+              "name": "通知渠道"
+            },
+            {
+              "ref": "e14",
+              "role": "menuitem",
+              "name": "运营洞察"
+            },
+            {
+              "ref": "e15",
+              "role": "menuitem",
+              "name": "用量报表"
+            },
+            {
+              "ref": "e16",
+              "role": "menuitem",
+              "name": "数据合规"
+            },
+            {
+              "ref": "e17",
+              "role": "menuitem",
+              "name": "服务状态"
+            },
+            {
+              "ref": "e18",
+              "role": "menuitem",
+              "name": "指标看板"
+            },
+            {
+              "ref": "e19",
+              "role": "menuitem",
+              "name": "告警中心"
+            },
+            {
+              "ref": "e20",
+              "role": "menuitem",
+              "name": "审计日志"
+            },
+            {
+              "ref": "e21",
+              "role": "menuitem",
+              "name": "终端设备"
+            },
+            {
+              "ref": "e3",
+              "role": "link",
+              "name": "退出登录"
+            },
+            {
+              "ref": "e5",
+              "role": "menuitem",
+              "name": "平台总览"
+            },
+            {
+              "ref": "e6",
+              "role": "menuitem",
+              "name": "配置注册表"
+            },
+            {
+              "ref": "e7",
+              "role": "menuitem",
+              "name": "Prompt 管理"
+            },
+            {
+              "ref": "e8",
+              "role": "menuitem",
+              "name": "风险全景"
+            },
+            {
+              "ref": "e9",
+              "role": "menuitem",
+              "name": "时效监控"
+            }
+          ]
+        },
+        {
+          "key": "d43f69db34e8023b",
+          "depth": 1,
+          "controls": [
+            {
+              "ref": "e10",
+              "role": "menuitem",
+              "name": "处置台账"
+            },
+            {
+              "ref": "e11",
+              "role": "menuitem",
+              "name": "降级矩阵"
+            },
+            {
+              "ref": "e12",
+              "role": "menuitem",
+              "name": "知识库"
+            },
+            {
+              "ref": "e13",
+              "role": "menuitem",
+              "name": "通知渠道"
+            },
+            {
+              "ref": "e14",
+              "role": "menuitem",
+              "name": "运营洞察"
+            },
+            {
+              "ref": "e15",
+              "role": "menuitem",
+              "name": "用量报表"
+            },
+            {
+              "ref": "e16",
+              "role": "menuitem",
+              "name": "数据合规"
+            },
+            {
+              "ref": "e17",
+              "role": "menuitem",
+              "name": "服务状态"
+            },
+            {
+              "ref": "e18",
+              "role": "menuitem",
+              "name": "指标看板"
+            },
+            {
+              "ref": "e19",
+              "role": "menuitem",
+              "name": "告警中心"
+            },
+            {
+              "ref": "e20",
+              "role": "menuitem",
+              "name": "审计日志"
+            },
+            {
+              "ref": "e21",
+              "role": "menuitem",
+              "name": "终端设备"
+            },
+            {
+              "ref": "e3",
+              "role": "link",
+              "name": "退出登录"
+            },
+            {
+              "ref": "e5",
+              "role": "menuitem",
+              "name": "平台总览"
+            },
+            {
+              "ref": "e6",
+              "role": "menuitem",
+              "name": "配置注册表"
+            },
+            {
+              "ref": "e7",
+              "role": "menuitem",
+              "name": "Prompt 管理"
+            },
+            {
+              "ref": "e8",
+              "role": "menuitem",
+              "name": "风险全景"
+            },
+            {
+              "ref": "e9",
+              "role": "menuitem",
+              "name": "时效监控"
+            }
+          ]
+        },
+        {
+          "key": "173738228feee05d",
+          "depth": 1,
+          "controls": [
+            {
+              "ref": "e10",
+              "role": "menuitem",
+              "name": "处置台账"
+            },
+            {
+              "ref": "e11",
+              "role": "menuitem",
+              "name": "降级矩阵"
+            },
+            {
+              "ref": "e12",
+              "role": "menuitem",
+              "name": "知识库"
+            },
+            {
+              "ref": "e13",
+              "role": "menuitem",
+              "name": "通知渠道"
+            },
+            {
+              "ref": "e14",
+              "role": "menuitem",
+              "name": "运营洞察"
+            },
+            {
+              "ref": "e15",
+              "role": "menuitem",
+              "name": "用量报表"
+            },
+            {
+              "ref": "e16",
+              "role": "menuitem",
+              "name": "数据合规"
+            },
+            {
+              "ref": "e17",
+              "role": "menuitem",
+              "name": "服务状态"
+            },
+            {
+              "ref": "e18",
+              "role": "menuitem",
+              "name": "指标看板"
+            },
+            {
+              "ref": "e19",
+              "role": "menuitem",
+              "name": "告警中心"
+            },
+            {
+              "ref": "e20",
+              "role": "menuitem",
+              "name": "审计日志"
+            },
+            {
+              "ref": "e21",
+              "role": "menuitem",
+              "name": "终端设备"
+            },
+            {
+              "ref": "e3",
+              "role": "link",
+              "name": "退出登录"
+            },
+            {
+              "ref": "e5",
+              "role": "menuitem",
+              "name": "平台总览"
+            },
+            {
+              "ref": "e6",
+              "role": "menuitem",
+              "name": "配置注册表"
+            },
+            {
+              "ref": "e7",
+              "role": "menuitem",
+              "name": "Prompt 管理"
+            },
+            {
+              "ref": "e8",
+              "role": "menuitem",
+              "name": "风险全景"
+            },
+            {
+              "ref": "e9",
+              "role": "menuitem",
+              "name": "时效监控"
+            }
+          ]
+        },
+        {
+          "key": "7a7205a159066326",
+          "depth": 1,
+          "controls": [
+            {
+              "ref": "e3",
+              "role": "button",
+              "name": "登 录"
+            },
+            {
+              "ref": "e4",
+              "role": "textbox",
+              "name": "* 用户名"
+            },
+            {
+              "ref": "e6",
+              "role": "textbox",
+              "name": "* 密码"
+            },
+            {
+              "ref": "e7",
+              "role": "button",
+              "name": "显示"
+            }
+          ]
+        }
+      ],
+      "operatedControls": [
+        {
+          "step": 1,
+          "depth": 1,
+          "control": {
+            "ref": "e10",
+            "role": "menuitem",
+            "name": "处置台账"
+          },
+          "parentPath": []
+        },
+        {
+          "step": 2,
+          "depth": 1,
+          "control": {
+            "ref": "e11",
+            "role": "menuitem",
+            "name": "降级矩阵"
+          },
+          "parentPath": []
+        },
+        {
+          "step": 3,
+          "depth": 1,
+          "control": {
+            "ref": "e12",
+            "role": "menuitem",
+            "name": "知识库"
+          },
+          "parentPath": []
+        },
+        {
+          "step": 4,
+          "depth": 1,
+          "control": {
+            "ref": "e13",
+            "role": "menuitem",
+            "name": "通知渠道"
+          },
+          "parentPath": []
+        },
+        {
+          "step": 5,
+          "depth": 1,
+          "control": {
+            "ref": "e14",
+            "role": "menuitem",
+            "name": "运营洞察"
+          },
+          "parentPath": []
+        },
+        {
+          "step": 6,
+          "depth": 1,
+          "control": {
+            "ref": "e15",
+            "role": "menuitem",
+            "name": "用量报表"
+          },
+          "parentPath": []
+        },
+        {
+          "step": 7,
+          "depth": 1,
+          "control": {
+            "ref": "e16",
+            "role": "menuitem",
+            "name": "数据合规"
+          },
+          "parentPath": []
+        },
+        {
+          "step": 8,
+          "depth": 1,
+          "control": {
+            "ref": "e17",
+            "role": "menuitem",
+            "name": "服务状态"
+          },
+          "parentPath": []
+        },
+        {
+          "step": 9,
+          "depth": 1,
+          "control": {
+            "ref": "e18",
+            "role": "menuitem",
+            "name": "指标看板"
+          },
+          "parentPath": []
+        },
+        {
+          "step": 10,
+          "depth": 1,
+          "control": {
+            "ref": "e19",
+            "role": "menuitem",
+            "name": "告警中心"
+          },
+          "parentPath": []
+        },
+        {
+          "step": 11,
+          "depth": 1,
+          "control": {
+            "ref": "e20",
+            "role": "menuitem",
+            "name": "审计日志"
+          },
+          "parentPath": []
+        },
+        {
+          "step": 12,
+          "depth": 1,
+          "control": {
+            "ref": "e21",
+            "role": "menuitem",
+            "name": "终端设备"
+          },
+          "parentPath": []
+        },
+        {
+          "step": 15,
+          "depth": 1,
+          "control": {
+            "ref": "e3",
+            "role": "link",
+            "name": "退出登录"
+          },
+          "parentPath": []
+        }
+      ],
+      "screenshots": [
+        "/tmp/codex-admin-auth-r110-1H1zCz/admin-0000-enter.png",
+        "/tmp/codex-admin-auth-r110-1H1zCz/admin-0001-menuitem-处置台账.png",
+        "/tmp/codex-admin-auth-r110-1H1zCz/admin-0002-menuitem-降级矩阵.png",
+        "/tmp/codex-admin-auth-r110-1H1zCz/admin-0003-menuitem-知识库.png",
+        "/tmp/codex-admin-auth-r110-1H1zCz/admin-0004-menuitem-通知渠道.png",
+        "/tmp/codex-admin-auth-r110-1H1zCz/admin-0005-menuitem-运营洞察.png",
+        "/tmp/codex-admin-auth-r110-1H1zCz/admin-0006-menuitem-用量报表.png",
+        "/tmp/codex-admin-auth-r110-1H1zCz/admin-0007-menuitem-数据合规.png",
+        "/tmp/codex-admin-auth-r110-1H1zCz/admin-0008-menuitem-服务状态.png",
+        "/tmp/codex-admin-auth-r110-1H1zCz/admin-0009-menuitem-指标看板.png",
+        "/tmp/codex-admin-auth-r110-1H1zCz/admin-0010-menuitem-告警中心.png",
+        "/tmp/codex-admin-auth-r110-1H1zCz/admin-0011-menuitem-审计日志.png",
+        "/tmp/codex-admin-auth-r110-1H1zCz/admin-0012-menuitem-终端设备.png",
+        "/tmp/codex-admin-auth-r110-1H1zCz/admin-0015-link-退出登录.png"
+      ],
+      "errors": [
+        {
+          "step": 13,
+          "control": {
+            "ref": "e28",
+            "role": "button",
+            "name": "left"
+          },
+          "message": "Error: agent-browser exited 1: \n✗ Element not found. Verify the selector is correct and the element exists in the DOM.\n"
+        },
+        {
+          "step": 14,
+          "control": {
+            "ref": "e29",
+            "role": "button",
+            "name": "right"
+          },
+          "message": "Error: agent-browser exited 1: \n✗ Element not found. Verify the selector is correct and the element exists in the DOM.\n"
+        },
+        {
+          "step": 16,
+          "control": {
+            "ref": "e5",
+            "role": "menuitem",
+            "name": "平台总览"
+          },
+          "message": "Error: agent-browser exited 1: \n✗ Element not found. Verify the selector is correct and the element exists in the DOM.\n"
+        },
+        {
+          "step": 17,
+          "control": {
+            "ref": "e6",
+            "role": "menuitem",
+            "name": "配置注册表"
+          },
+          "message": "Error: agent-browser exited 1: \n✗ Element not found. Verify the selector is correct and the element exists in the DOM.\n"
+        },
+        {
+          "step": 18,
+          "control": {
+            "ref": "e7",
+            "role": "menuitem",
+            "name": "Prompt 管理"
+          },
+          "message": "Error: agent-browser exited 1: \n✗ Element not found. Verify the selector is correct and the element exists in the DOM.\n"
+        },
+        {
+          "step": 19,
+          "control": {
+            "ref": "e8",
+            "role": "menuitem",
+            "name": "风险全景"
+          },
+          "message": "Error: agent-browser exited 1: \n✗ Element not found. Verify the selector is correct and the element exists in the DOM.\n"
+        },
+        {
+          "step": 20,
+          "control": {
+            "ref": "e9",
+            "role": "menuitem",
+            "name": "时效监控"
+          },
+          "message": "Error: agent-browser exited 1: \n✗ Element not found. Verify the selector is correct and the element exists in the DOM.\n"
+        }
+      ],
+      "stopReason": "completed",
+      "steps": 20,
+      "queueMaxDepth": 1
+    }
+  ]
+}

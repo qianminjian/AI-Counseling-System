@@ -1,0 +1,516 @@
+{
+  "generated": "2026-08-14T08:39:49.426Z",
+  "mode": "public-readonly",
+  "endpoints": [
+    {
+      "endpoint": "student",
+      "url": "https://yun.gxjugu.com/mindsafe/",
+      "algorithm": "breadth-first",
+      "maxDepth": 1,
+      "maxSteps": 3,
+      "visitedStates": [
+        {
+          "key": "46c815c7f951b023",
+          "depth": 0,
+          "controls": [
+            {
+              "ref": "e10",
+              "role": "button",
+              "name": "🔄 换人"
+            },
+            {
+              "ref": "e11",
+              "role": "button",
+              "name": "⚙️"
+            },
+            {
+              "ref": "e12",
+              "role": "button",
+              "name": "😊 开心 有好事发生"
+            },
+            {
+              "ref": "e13",
+              "role": "button",
+              "name": "😢 难过 心里不舒服"
+            },
+            {
+              "ref": "e14",
+              "role": "button",
+              "name": "😠 生气 有点烦躁"
+            },
+            {
+              "ref": "e15",
+              "role": "button",
+              "name": "😨 害怕 有点担心"
+            },
+            {
+              "ref": "e16",
+              "role": "button",
+              "name": "😰 紧张 心跳加速"
+            },
+            {
+              "ref": "e17",
+              "role": "button",
+              "name": "开始聊天 💬"
+            },
+            {
+              "ref": "e18",
+              "role": "button",
+              "name": "🌿 放松练习"
+            },
+            {
+              "ref": "e19",
+              "role": "button",
+              "name": "📔 心情日记"
+            },
+            {
+              "ref": "e20",
+              "role": "button",
+              "name": "🏅 我的成就 (1/8)"
+            },
+            {
+              "ref": "e3",
+              "role": "button",
+              "name": "第 1 页"
+            },
+            {
+              "ref": "e4",
+              "role": "button",
+              "name": "第 2 页"
+            },
+            {
+              "ref": "e5",
+              "role": "button",
+              "name": "第 3 页"
+            },
+            {
+              "ref": "e6",
+              "role": "button",
+              "name": "第 4 页"
+            },
+            {
+              "ref": "e7",
+              "role": "button",
+              "name": "跳过"
+            },
+            {
+              "ref": "e8",
+              "role": "button",
+              "name": "下一步"
+            }
+          ]
+        },
+        {
+          "key": "3cc7b3264fe58e13",
+          "depth": 1,
+          "controls": [
+            {
+              "ref": "e10",
+              "role": "button",
+              "name": "🔄 换人"
+            },
+            {
+              "ref": "e11",
+              "role": "button",
+              "name": "⚙️"
+            },
+            {
+              "ref": "e14",
+              "role": "button",
+              "name": "😊 开心 有好事发生"
+            },
+            {
+              "ref": "e15",
+              "role": "button",
+              "name": "😢 难过 心里不舒服"
+            },
+            {
+              "ref": "e16",
+              "role": "button",
+              "name": "😠 生气 有点烦躁"
+            },
+            {
+              "ref": "e17",
+              "role": "button",
+              "name": "😨 害怕 有点担心"
+            },
+            {
+              "ref": "e18",
+              "role": "button",
+              "name": "😰 紧张 心跳加速"
+            },
+            {
+              "ref": "e19",
+              "role": "button",
+              "name": "开始聊天 💬"
+            },
+            {
+              "ref": "e20",
+              "role": "button",
+              "name": "🌿 放松练习"
+            },
+            {
+              "ref": "e21",
+              "role": "button",
+              "name": "📔 心情日记"
+            },
+            {
+              "ref": "e22",
+              "role": "button",
+              "name": "🏅 我的成就 (1/8)"
+            },
+            {
+              "ref": "e24",
+              "role": "button",
+              "name": "我点错了"
+            },
+            {
+              "ref": "e25",
+              "role": "button",
+              "name": "确认退出"
+            },
+            {
+              "ref": "e3",
+              "role": "button",
+              "name": "第 1 页"
+            },
+            {
+              "ref": "e4",
+              "role": "button",
+              "name": "第 2 页"
+            },
+            {
+              "ref": "e5",
+              "role": "button",
+              "name": "第 3 页"
+            },
+            {
+              "ref": "e6",
+              "role": "button",
+              "name": "第 4 页"
+            },
+            {
+              "ref": "e7",
+              "role": "button",
+              "name": "跳过"
+            },
+            {
+              "ref": "e8",
+              "role": "button",
+              "name": "下一步"
+            }
+          ]
+        },
+        {
+          "key": "a289edcc1aa83306",
+          "depth": 1,
+          "controls": [
+            {
+              "ref": "e10",
+              "role": "button",
+              "name": "🔄 换人"
+            },
+            {
+              "ref": "e11",
+              "role": "button",
+              "name": "⚙️"
+            },
+            {
+              "ref": "e13",
+              "role": "button",
+              "name": "😊 开心 有好事发生"
+            },
+            {
+              "ref": "e14",
+              "role": "button",
+              "name": "😢 难过 心里不舒服"
+            },
+            {
+              "ref": "e15",
+              "role": "button",
+              "name": "😠 生气 有点烦躁"
+            },
+            {
+              "ref": "e16",
+              "role": "button",
+              "name": "😨 害怕 有点担心"
+            },
+            {
+              "ref": "e17",
+              "role": "button",
+              "name": "😰 紧张 心跳加速"
+            },
+            {
+              "ref": "e18",
+              "role": "button",
+              "name": "开始聊天 💬"
+            },
+            {
+              "ref": "e19",
+              "role": "button",
+              "name": "🌿 放松练习"
+            },
+            {
+              "ref": "e20",
+              "role": "button",
+              "name": "📔 心情日记"
+            },
+            {
+              "ref": "e21",
+              "role": "button",
+              "name": "🏅 我的成就 (1/8)"
+            },
+            {
+              "ref": "e23",
+              "role": "button",
+              "name": "完成 ✓"
+            },
+            {
+              "ref": "e25",
+              "role": "button",
+              "name": "🌊 海洋探险 波波"
+            },
+            {
+              "ref": "e26",
+              "role": "button",
+              "name": "🌸 花园精灵 波波"
+            },
+            {
+              "ref": "e27",
+              "role": "button",
+              "name": "🌈 彩虹自由 波波"
+            },
+            {
+              "ref": "e29",
+              "role": "button",
+              "name": "🌟 小星 温暖的邻家姐姐"
+            },
+            {
+              "ref": "e3",
+              "role": "button",
+              "name": "第 1 页"
+            },
+            {
+              "ref": "e30",
+              "role": "button",
+              "name": "🍎 波波老师 温柔的女老师"
+            },
+            {
+              "ref": "e31",
+              "role": "button",
+              "name": "🌙 月亮 轻声讲故事"
+            },
+            {
+              "ref": "e32",
+              "role": "button",
+              "name": "☀️ 小太阳 阳光大哥哥"
+            },
+            {
+              "ref": "e33",
+              "role": "button",
+              "name": "🌳 大树 暖心大叔"
+            },
+            {
+              "ref": "e34",
+              "role": "button",
+              "name": "⚽ 豆豆 顽皮同龄男孩"
+            },
+            {
+              "ref": "e35",
+              "role": "button",
+              "name": "🗣️ 方言 用家乡话聊天"
+            },
+            {
+              "ref": "e37",
+              "role": "button",
+              "name": "🔊 语音已开启 AI 回复会自动读给你听"
+            },
+            {
+              "ref": "e39",
+              "role": "button",
+              "name": "🎙️ 语音唤醒已开启 直接说“哈喽波波”就能叫我"
+            },
+            {
+              "ref": "e4",
+              "role": "button",
+              "name": "第 2 页"
+            },
+            {
+              "ref": "e41",
+              "role": "button",
+              "name": "🎞️ 动画效果已开启 波波和界面会有可爱动效"
+            },
+            {
+              "ref": "e42",
+              "role": "button",
+              "name": "📳 触觉反馈已开启 按住说话时会轻轻震动"
+            },
+            {
+              "ref": "e44",
+              "role": "button",
+              "name": "现在录入 🎤"
+            },
+            {
+              "ref": "e46",
+              "role": "button",
+              "name": "复制"
+            },
+            {
+              "ref": "e5",
+              "role": "button",
+              "name": "第 3 页"
+            },
+            {
+              "ref": "e6",
+              "role": "button",
+              "name": "第 4 页"
+            },
+            {
+              "ref": "e7",
+              "role": "button",
+              "name": "跳过"
+            },
+            {
+              "ref": "e8",
+              "role": "button",
+              "name": "下一步"
+            }
+          ]
+        },
+        {
+          "key": "a9511ec1418b39cc",
+          "depth": 1,
+          "controls": [
+            {
+              "ref": "e10",
+              "role": "button",
+              "name": "🔄 换人"
+            },
+            {
+              "ref": "e11",
+              "role": "button",
+              "name": "⚙️"
+            },
+            {
+              "ref": "e12",
+              "role": "button",
+              "name": "😊 开心 有好事发生"
+            },
+            {
+              "ref": "e13",
+              "role": "button",
+              "name": "😢 难过 心里不舒服"
+            },
+            {
+              "ref": "e14",
+              "role": "button",
+              "name": "😠 生气 有点烦躁"
+            },
+            {
+              "ref": "e15",
+              "role": "button",
+              "name": "😨 害怕 有点担心"
+            },
+            {
+              "ref": "e16",
+              "role": "button",
+              "name": "😰 紧张 心跳加速"
+            },
+            {
+              "ref": "e17",
+              "role": "button",
+              "name": "开始聊天 💬"
+            },
+            {
+              "ref": "e18",
+              "role": "button",
+              "name": "🌿 放松练习"
+            },
+            {
+              "ref": "e19",
+              "role": "button",
+              "name": "📔 心情日记"
+            },
+            {
+              "ref": "e20",
+              "role": "button",
+              "name": "🏅 我的成就 (1/8)"
+            },
+            {
+              "ref": "e3",
+              "role": "button",
+              "name": "第 1 页"
+            },
+            {
+              "ref": "e4",
+              "role": "button",
+              "name": "第 2 页"
+            },
+            {
+              "ref": "e5",
+              "role": "button",
+              "name": "第 3 页"
+            },
+            {
+              "ref": "e6",
+              "role": "button",
+              "name": "第 4 页"
+            },
+            {
+              "ref": "e7",
+              "role": "button",
+              "name": "跳过"
+            },
+            {
+              "ref": "e8",
+              "role": "button",
+              "name": "下一步"
+            }
+          ]
+        }
+      ],
+      "operatedControls": [
+        {
+          "step": 1,
+          "depth": 1,
+          "control": {
+            "ref": "e10",
+            "role": "button",
+            "name": "🔄 换人"
+          },
+          "parentPath": []
+        },
+        {
+          "step": 2,
+          "depth": 1,
+          "control": {
+            "ref": "e11",
+            "role": "button",
+            "name": "⚙️"
+          },
+          "parentPath": []
+        },
+        {
+          "step": 3,
+          "depth": 1,
+          "control": {
+            "ref": "e12",
+            "role": "button",
+            "name": "😊 开心 有好事发生"
+          },
+          "parentPath": []
+        }
+      ],
+      "screenshots": [
+        "/tmp/codex-auth-bfs-r89-W6DAJQ/student-0000-enter.png",
+        "/tmp/codex-auth-bfs-r89-W6DAJQ/student-0001-button-_换人.png",
+        "/tmp/codex-auth-bfs-r89-W6DAJQ/student-0002-button-_.png",
+        "/tmp/codex-auth-bfs-r89-W6DAJQ/student-0003-button-_开心_有好事发生.png"
+      ],
+      "errors": [],
+      "stopReason": "max-steps",
+      "steps": 3,
+      "queueMaxDepth": 1
+    }
+  ]
+}

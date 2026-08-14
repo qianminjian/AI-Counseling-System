@@ -299,6 +299,26 @@ describe('useSseStream（UX-006，design/17 §chat/hooks）', () => {
     expect(result.current.streaming).toBe(false)
   })
 
+  it('响应头阶段超过 30s 无响应 → abort 请求（防永久卡在 streaming 态）', async () => {
+    vi.useFakeTimers()
+    let signal: AbortSignal | undefined
+    mockAuthFetch.mockImplementation((_url: string, init?: any) => {
+      signal = init?.signal
+      return new Promise((_resolve, reject) => {
+        signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')))
+      })
+    })
+    const { result } = renderHook(() => useSseStream())
+
+    const promise = result.current.streamMessage('/u', {}, { onToken: vi.fn(), onEmotion: vi.fn(), onRisk: vi.fn() })
+    const assertion = expect(promise).rejects.toThrow()
+    await act(async () => { await vi.advanceTimersByTimeAsync(35000) })
+
+    expect(signal?.aborted).toBe(true)
+    await assertion
+    expect(result.current.streaming).toBe(false)
+  })
+
   it('stopStream 主动中断：挂起的流被 abort', async () => {
     let signal: AbortSignal | undefined
     mockAuthFetch.mockImplementation((_url: string, init?: any) => {

@@ -1,0 +1,492 @@
+{
+  "generated": "2026-08-14T08:45:49.380Z",
+  "mode": "public-readonly",
+  "endpoints": [
+    {
+      "endpoint": "teacher",
+      "url": "https://yun.gxjugu.com/teacher/",
+      "algorithm": "breadth-first",
+      "maxDepth": 8,
+      "maxSteps": 500,
+      "visitedStates": [
+        {
+          "key": "72269a4aa6a28d43",
+          "depth": 0,
+          "controls": [
+            {
+              "ref": "e10",
+              "role": "menuitem",
+              "name": "bell 4 通知中心"
+            },
+            {
+              "ref": "e11",
+              "role": "menuitem",
+              "name": "desktop 终端设备"
+            },
+            {
+              "ref": "e12",
+              "role": "button",
+              "name": "file-text 导出周报（可打印 PDF）"
+            },
+            {
+              "ref": "e14",
+              "role": "link",
+              "name": "全部预警"
+            },
+            {
+              "ref": "e15",
+              "role": "link",
+              "name": "查看全部"
+            },
+            {
+              "ref": "e16",
+              "role": "button",
+              "name": "Close"
+            },
+            {
+              "ref": "e18",
+              "role": "button",
+              "name": "跳过"
+            },
+            {
+              "ref": "e19",
+              "role": "button",
+              "name": "下一步"
+            },
+            {
+              "ref": "e4",
+              "role": "link",
+              "name": "logout 退出"
+            },
+            {
+              "ref": "e6",
+              "role": "menuitem",
+              "name": "dashboard 工作台"
+            },
+            {
+              "ref": "e7",
+              "role": "menuitem",
+              "name": "alert 预警队列"
+            },
+            {
+              "ref": "e8",
+              "role": "menuitem",
+              "name": "team 学生管理"
+            },
+            {
+              "ref": "e9",
+              "role": "menuitem",
+              "name": "warning 质量监控"
+            }
+          ]
+        },
+        {
+          "key": "50622a82be00ac8a",
+          "depth": 1,
+          "controls": [
+            {
+              "ref": "e10",
+              "role": "menuitem",
+              "name": "bell 4 通知中心"
+            },
+            {
+              "ref": "e11",
+              "role": "menuitem",
+              "name": "desktop 终端设备"
+            },
+            {
+              "ref": "e14",
+              "role": "button",
+              "name": "download 导出"
+            },
+            {
+              "ref": "e15",
+              "role": "combobox",
+              "name": ""
+            },
+            {
+              "ref": "e16",
+              "role": "combobox",
+              "name": ""
+            },
+            {
+              "ref": "e17",
+              "role": "button",
+              "name": "Close"
+            },
+            {
+              "ref": "e19",
+              "role": "button",
+              "name": "跳过"
+            },
+            {
+              "ref": "e20",
+              "role": "button",
+              "name": "下一步"
+            },
+            {
+              "ref": "e26",
+              "role": "button",
+              "name": "left"
+            },
+            {
+              "ref": "e27",
+              "role": "button",
+              "name": "right"
+            },
+            {
+              "ref": "e4",
+              "role": "link",
+              "name": "logout 退出"
+            },
+            {
+              "ref": "e48",
+              "role": "button",
+              "name": "check-circle 处理"
+            },
+            {
+              "ref": "e49",
+              "role": "button",
+              "name": "stop 误报"
+            },
+            {
+              "ref": "e6",
+              "role": "menuitem",
+              "name": "dashboard 工作台"
+            },
+            {
+              "ref": "e7",
+              "role": "menuitem",
+              "name": "alert 预警队列"
+            },
+            {
+              "ref": "e8",
+              "role": "menuitem",
+              "name": "team 学生管理"
+            },
+            {
+              "ref": "e9",
+              "role": "menuitem",
+              "name": "warning 质量监控"
+            }
+          ]
+        },
+        {
+          "key": "0b2e6120b1b3e253",
+          "depth": 1,
+          "controls": [
+            {
+              "ref": "e10",
+              "role": "menuitem",
+              "name": "bell 4 通知中心"
+            },
+            {
+              "ref": "e11",
+              "role": "menuitem",
+              "name": "desktop 终端设备"
+            },
+            {
+              "ref": "e13",
+              "role": "button",
+              "name": "download 导出 CSV"
+            },
+            {
+              "ref": "e17",
+              "role": "button",
+              "name": "search"
+            },
+            {
+              "ref": "e19",
+              "role": "button",
+              "name": "Close"
+            },
+            {
+              "ref": "e21",
+              "role": "button",
+              "name": "跳过"
+            },
+            {
+              "ref": "e22",
+              "role": "button",
+              "name": "下一步"
+            },
+            {
+              "ref": "e23",
+              "role": "searchbox",
+              "name": "搜索学生昵称"
+            },
+            {
+              "ref": "e24",
+              "role": "checkbox",
+              "name": "只看风险学生  "
+            },
+            {
+              "ref": "e28",
+              "role": "combobox",
+              "name": ""
+            },
+            {
+              "ref": "e29",
+              "role": "combobox",
+              "name": ""
+            },
+            {
+              "ref": "e33",
+              "role": "button",
+              "name": "left"
+            },
+            {
+              "ref": "e34",
+              "role": "button",
+              "name": "right"
+            },
+            {
+              "ref": "e4",
+              "role": "link",
+              "name": "logout 退出"
+            },
+            {
+              "ref": "e59",
+              "role": "button",
+              "name": "查看档案"
+            },
+            {
+              "ref": "e6",
+              "role": "menuitem",
+              "name": "dashboard 工作台"
+            },
+            {
+              "ref": "e60",
+              "role": "button",
+              "name": "查看档案"
+            },
+            {
+              "ref": "e61",
+              "role": "button",
+              "name": "查看档案"
+            },
+            {
+              "ref": "e62",
+              "role": "link",
+              "name": "小明"
+            },
+            {
+              "ref": "e63",
+              "role": "link",
+              "name": "测试己"
+            },
+            {
+              "ref": "e64",
+              "role": "link",
+              "name": "测试丁"
+            },
+            {
+              "ref": "e7",
+              "role": "menuitem",
+              "name": "alert 预警队列"
+            },
+            {
+              "ref": "e8",
+              "role": "menuitem",
+              "name": "team 学生管理"
+            },
+            {
+              "ref": "e9",
+              "role": "menuitem",
+              "name": "warning 质量监控"
+            }
+          ]
+        },
+        {
+          "key": "e8e03d7009260f03",
+          "depth": 1,
+          "controls": [
+            {
+              "ref": "e10",
+              "role": "menuitem",
+              "name": "desktop 终端设备"
+            },
+            {
+              "ref": "e11",
+              "role": "button",
+              "name": "file-text 导出周报（可打印 PDF）"
+            },
+            {
+              "ref": "e13",
+              "role": "link",
+              "name": "全部预警"
+            },
+            {
+              "ref": "e14",
+              "role": "link",
+              "name": "查看全部"
+            },
+            {
+              "ref": "e4",
+              "role": "link",
+              "name": "logout 退出"
+            },
+            {
+              "ref": "e5",
+              "role": "menuitem",
+              "name": "dashboard 工作台"
+            },
+            {
+              "ref": "e6",
+              "role": "menuitem",
+              "name": "alert 预警队列"
+            },
+            {
+              "ref": "e7",
+              "role": "menuitem",
+              "name": "team 学生管理"
+            },
+            {
+              "ref": "e8",
+              "role": "menuitem",
+              "name": "warning 质量监控"
+            },
+            {
+              "ref": "e9",
+              "role": "menuitem",
+              "name": "bell 4 通知中心"
+            }
+          ]
+        }
+      ],
+      "operatedControls": [
+        {
+          "step": 4,
+          "depth": 1,
+          "control": {
+            "ref": "e14",
+            "role": "link",
+            "name": "全部预警"
+          },
+          "parentPath": []
+        },
+        {
+          "step": 5,
+          "depth": 1,
+          "control": {
+            "ref": "e15",
+            "role": "link",
+            "name": "查看全部"
+          },
+          "parentPath": []
+        },
+        {
+          "step": 6,
+          "depth": 1,
+          "control": {
+            "ref": "e16",
+            "role": "button",
+            "name": "Close"
+          },
+          "parentPath": []
+        }
+      ],
+      "screenshots": [
+        "/tmp/codex-teacher-bfs-r91-mqgbzg/teacher-0000-enter.png",
+        "/tmp/codex-teacher-bfs-r91-mqgbzg/teacher-0004-link-全部预警.png",
+        "/tmp/codex-teacher-bfs-r91-mqgbzg/teacher-0005-link-查看全部.png",
+        "/tmp/codex-teacher-bfs-r91-mqgbzg/teacher-0006-button-Close.png"
+      ],
+      "errors": [
+        {
+          "step": 1,
+          "control": {
+            "ref": "e10",
+            "role": "menuitem",
+            "name": "bell 4 通知中心"
+          },
+          "message": "Error: agent-browser exited 1: \n✗ Element not found. Verify the selector is correct and the element exists in the DOM.\n"
+        },
+        {
+          "step": 2,
+          "control": {
+            "ref": "e11",
+            "role": "menuitem",
+            "name": "desktop 终端设备"
+          },
+          "message": "Error: agent-browser exited 1: \n✗ Element not found. Verify the selector is correct and the element exists in the DOM.\n"
+        },
+        {
+          "step": 7,
+          "control": {
+            "ref": "e18",
+            "role": "button",
+            "name": "跳过"
+          },
+          "message": "Error: agent-browser exited 1: \n✗ Element not found. Verify the selector is correct and the element exists in the DOM.\n"
+        },
+        {
+          "step": 8,
+          "control": {
+            "ref": "e19",
+            "role": "button",
+            "name": "下一步"
+          },
+          "message": "Error: agent-browser exited 1: \n✗ Element not found. Verify the selector is correct and the element exists in the DOM.\n"
+        },
+        {
+          "step": 9,
+          "control": {
+            "ref": "e4",
+            "role": "link",
+            "name": "logout 退出"
+          },
+          "message": "Error: agent-browser exited 1: \n✗ Element not found. Verify the selector is correct and the element exists in the DOM.\n"
+        },
+        {
+          "step": 10,
+          "control": {
+            "ref": "e6",
+            "role": "menuitem",
+            "name": "dashboard 工作台"
+          },
+          "message": "Error: agent-browser exited 1: \n✗ Element not found. Verify the selector is correct and the element exists in the DOM.\n"
+        },
+        {
+          "step": 11,
+          "control": {
+            "ref": "e7",
+            "role": "menuitem",
+            "name": "alert 预警队列"
+          },
+          "message": "Error: agent-browser exited 1: \n✗ Element not found. Verify the selector is correct and the element exists in the DOM.\n"
+        },
+        {
+          "step": 12,
+          "control": {
+            "ref": "e8",
+            "role": "menuitem",
+            "name": "team 学生管理"
+          },
+          "message": "Error: agent-browser exited 1: \n✗ Element not found. Verify the selector is correct and the element exists in the DOM.\n"
+        },
+        {
+          "step": 13,
+          "control": {
+            "ref": "e9",
+            "role": "menuitem",
+            "name": "warning 质量监控"
+          },
+          "message": "Error: agent-browser exited 1: \n✗ Element not found. Verify the selector is correct and the element exists in the DOM.\n"
+        },
+        {
+          "step": 14,
+          "control": {
+            "ref": "e10",
+            "role": "menuitem",
+            "name": "desktop 终端设备"
+          },
+          "message": "Error: agent-browser exited 1: \n✗ Element not found. Verify the selector is correct and the element exists in the DOM.\n"
+        }
+      ],
+      "stopReason": "endpoint-timeout",
+      "steps": 14,
+      "queueMaxDepth": 1
+    }
+  ]
+}

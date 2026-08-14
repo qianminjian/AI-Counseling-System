@@ -40,7 +40,8 @@ class RiskDetectorServiceImplTest {
                 "我想去死",
                 "我要自杀",
                 "我要杀了自己",
-                "我想结束生命"
+                "我想结束生命",
+                "我想伤害自己"
         })
         @DisplayName("自伤/自杀关键词 → 红色")
         void should_return_red_when_self_harm_keywords(String message) {

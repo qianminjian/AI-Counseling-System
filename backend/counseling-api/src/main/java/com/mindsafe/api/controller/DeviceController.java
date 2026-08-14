@@ -1,9 +1,11 @@
 package com.mindsafe.api.controller;
 
+import com.mindsafe.api.config.DeviceSignature;
 import com.mindsafe.api.dto.device.BindDeviceRequest;
 import com.mindsafe.common.dto.ApiResponse;
 import com.mindsafe.common.dto.ErrorCode;
 import com.mindsafe.common.exception.BizException;
+import com.mindsafe.service.device.DeviceSecurityService;
 import com.mindsafe.service.device.DeviceService;
 import com.mindsafe.service.device.DeviceVoiceprintService;
 import org.springframework.web.bind.annotation.*;
@@ -82,17 +84,17 @@ public class DeviceController {
                 deviceToken));
     }
 
-    /** 心跳上报（设备端，30s 间隔，90s 判离线） */
+    /** 心跳上报（设备端，30s 间隔，90s 判离线；99-6 声明式签名通道） */
     @PostMapping("/report/heartbeat")
-    public ApiResponse<Void> heartbeat(@RequestBody DeviceCodeRequest body) {
+    public ApiResponse<Void> heartbeat(@DeviceSignature DeviceCodeRequest body) {
         requireDeviceExists(body.deviceCode());
         deviceService.heartbeat(body.deviceCode());
         return ApiResponse.ok(null);
     }
 
-    /** 状态上报（固件版本等） */
+    /** 状态上报（固件版本等；99-6 声明式签名通道） */
     @PostMapping("/report/status")
-    public ApiResponse<Void> reportStatus(@RequestBody DeviceCodeRequest body) {
+    public ApiResponse<Void> reportStatus(@DeviceSignature DeviceCodeRequest body) {
         requireDeviceExists(body.deviceCode());
         deviceService.reportStatus(body.deviceCode(), body.firmwareVersion());
         return ApiResponse.ok(null);
@@ -157,9 +159,10 @@ public class DeviceController {
         return ApiResponse.ok(task);
     }
 
-    /** 设备端采集进度上报（CFG-006，AC-84-13，匿名白名单） */
+    /** 设备端采集进度上报（CFG-006，AC-84-13，匿名白名单；99-6 声明式签名通道） */
     @PostMapping("/report/voiceprint")
-    public ApiResponse<Map<String, Object>> reportVoiceprintPhase(@RequestBody VoiceprintPhaseRequest body) {
+    public ApiResponse<Map<String, Object>> reportVoiceprintPhase(
+            @DeviceSignature VoiceprintPhaseRequest body) {
         String taskId = body.taskId();
         String phase = body.phase();
         if (taskId == null || phase == null) {

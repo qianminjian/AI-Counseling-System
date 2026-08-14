@@ -1,8 +1,13 @@
 package com.mindsafe.service.device;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.mindsafe.common.dto.ErrorCode;
+import com.mindsafe.common.exception.BizException;
 import com.mindsafe.domain.entity.Device;
 import com.mindsafe.domain.mapper.DeviceMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import javax.crypto.Mac;
@@ -25,15 +30,29 @@ import java.util.HexFormat;
 @Service
 public class DeviceSecurityService {
 
+    private static final Logger log = LoggerFactory.getLogger(DeviceSecurityService.class);
     private static final SecureRandom RANDOM = new SecureRandom();
     private static final Duration TOKEN_TTL = Duration.ofHours(24);
     private static final String HMAC_ALGORITHM = "HmacSHA256";
     private static final String TOKEN_PREFIX = "DVC_";
 
+    /** 请求签名时间戳窗口（±5 分钟，防重放，B-04） */
+    private static final long SIGNATURE_WINDOW_MS = 5 * 60 * 1000L;
+
     private final DeviceMapper deviceMapper;
 
-    public DeviceSecurityService(DeviceMapper deviceMapper) {
+    /** 请求签名校验模式（B-04，2026-08-14）：OFF=跳过（固件未就绪默认）/ LOG=有签名必验、无签名放行+WARN / ENFORCE=强制 */
+    private final String signatureMode;
+
+    /**
+     * 唯一 public 构造器（99-5：单一装配缝，Spring 自动注入无歧义）。
+     * 测试直接传模式参数（如 new DeviceSecurityService(mapper, "OFF")）——
+     * 多构造器（含包私有）在无 @Autowired 时会要求无参构造器（CI 实证），故不留测试缝。
+     */
+    public DeviceSecurityService(DeviceMapper deviceMapper,
+                                 @Value("${mindsafe.device.signature-mode:OFF}") String signatureMode) {
         this.deviceMapper = deviceMapper;
+        this.signatureMode = signatureMode == null ? "OFF" : signatureMode;
     }
 
     /**
@@ -52,7 +71,65 @@ public class DeviceSecurityService {
         update.setDeviceToken(token);
         deviceMapper.updateById(update);
 
-        return new DeviceSecurityCredentials(token, expiresAt);
+        return new DeviceSecurityCredentials(token, expiresAt, secret);
+    }
+
+    /**
+     * 请求体 HMAC 签名校验（B-04，2026-08-14；固件签名规范见 frozen/73 §九）：
+     * signature = HMAC-SHA256(secret, body + "|" + timestamp + "|" + nonce)（hex 小写）；
+     * canonical body = 请求体原始字节（99-6 定稿：固件签名其实际发送的字节，
+     * 与 record 重序列化无关——2026-08-14 从"JSON 字段序"修订）。
+     * 校验：时间戳 ±5 分钟窗口（防重放）+ 常量时间重算比对（防篡改）。
+     */
+    public boolean verifyRequestSignature(String deviceCode, String body,
+                                          String timestamp, String nonce, String signature) {
+        if (deviceCode == null || body == null || timestamp == null || nonce == null || signature == null) {
+            return false;
+        }
+        long ts;
+        try {
+            ts = Long.parseLong(timestamp);
+        } catch (NumberFormatException e) {
+            return false;
+        }
+        long now = Instant.now().toEpochMilli();
+        if (Math.abs(now - ts) > SIGNATURE_WINDOW_MS) {
+            return false; // 时间戳窗口外（防重放）
+        }
+        Device device = deviceMapper.selectOne(
+                new LambdaQueryWrapper<Device>()
+                        .eq(Device::getDeviceCode, deviceCode)
+                        .last("LIMIT 1"));
+        if (device == null || device.getDeviceSecret() == null) {
+            return false;
+        }
+        String expected = sign(body + "|" + timestamp + "|" + nonce, device.getDeviceSecret());
+        return constantTimeEquals(expected, signature);
+    }
+
+    /**
+     * 按签名模式执行校验（渐进式启用，B-04）：OFF=跳过；LOG=有签名必验（失败拒绝）、
+     * 无签名放行并 WARN（暴露未签名设备）；ENFORCE=强制（无签名或签名失败一律拒绝）。
+     * 固件侧（NST-HW-02 二期）对接后切 ENFORCE。
+     */
+    public boolean enforceSignature(String deviceCode, String body,
+                                    String timestamp, String nonce, String signature) {
+        if ("OFF".equalsIgnoreCase(signatureMode)) {
+            return true;
+        }
+        boolean hasSignature = signature != null && !signature.isBlank();
+        if (hasSignature && !verifyRequestSignature(deviceCode, body, timestamp, nonce, signature)) {
+            log.warn("设备请求签名校验失败（拒绝）: deviceCode={}, mode={}", deviceCode, signatureMode);
+            throw new BizException(ErrorCode.UNAUTHORIZED, "设备请求签名校验失败");
+        }
+        if (!hasSignature && "ENFORCE".equalsIgnoreCase(signatureMode)) {
+            log.warn("设备请求缺少签名（拒绝，ENFORCE）: deviceCode={}", deviceCode);
+            throw new BizException(ErrorCode.UNAUTHORIZED, "设备请求缺少签名");
+        }
+        if (!hasSignature && "LOG".equalsIgnoreCase(signatureMode)) {
+            log.warn("设备请求缺少签名（放行，LOG 模式）: deviceCode={}", deviceCode);
+        }
+        return true;
     }
 
     /**
@@ -125,5 +202,6 @@ public class DeviceSecurityService {
         }
     }
 
-    public record DeviceSecurityCredentials(String token, long expiresAt) {}
+    /** 设备安全凭证：token（DVC_ JWT 语义）+ 过期时间 + HMAC 密钥（固件签名用，B-04 起下发） */
+    public record DeviceSecurityCredentials(String token, long expiresAt, String secret) {}
 }

@@ -116,7 +116,8 @@ public class DeviceService {
             deviceMapper.updateById(update);
             device.setStatus(update.getStatus());
         }
-        // P0-1：签发设备安全凭证（device_secret 落库 + device_token 返回）
+        // P0-1：签发设备安全凭证（device_secret 落库 + device_token 返回；
+        // B-04（2026-08-14）：secret 一并下发——固件侧用于后续请求体 HMAC 签名（frozen/73 §九）
         DeviceSecurityService.DeviceSecurityCredentials creds = securityService.issueCredentials(device);
 
         Map<String, Object> result = new LinkedHashMap<>();
@@ -124,6 +125,7 @@ public class DeviceService {
         result.put("status", device.getStatus());
         result.put("registered", true);
         result.put("deviceToken", creds.token());
+        result.put("deviceSecret", creds.secret());
         result.put("tokenExpiresAt", creds.expiresAt());
         return result;
     }
