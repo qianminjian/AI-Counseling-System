@@ -105,3 +105,14 @@ R9 结论：教师端通知中心 Tab 工作正常；初次语义 ref 点击无�
 | R10-05 | A-16 审计日志 | 打开页面、点击首条审计行 | 审计表格和分页正常；点击行无可见详情状态 | `screenshots/R10-admin-audit.png`、`screenshots/R10-admin-audit-detail.png` |
 
 R10 结论：管理端筛选与审计页面可加载；告警 resolved 筛选和审计行详情的语义触发结果需继续确认，当前不升级为产品缺陷。
+
+# R11 家长端登录与 Tab 遍历（2026-08-14）
+
+| 步骤 | 场景 | 操作 | 结果 | 截图 |
+|---:|---|---|---|---|
+| R11-01 | P-01 登录 | 不填手机号/密码，提交 | 提示“请输入正确的 11 位手机号” | `screenshots/R11-parent-login-empty.png` |
+| R11-02 | P-01 登录 | 填写合法格式手机号和错误密码，提交 | 提示“手机号或密码错误” | `screenshots/R11-parent-login-wrong.png` |
+| R11-03 | P-01 Tab | 切换“首次注册” | 进入家庭码、手机号、密码、关系选择和注册按钮页面 | `screenshots/R11-parent-register-tab.png` |
+| R11-04 | P-01 Tab | 切回“登录” | 返回登录表单，Tab 切换正常 | `screenshots/R11-parent-login-tab.png` |
+
+R11 结论：家长端登录校验和双向 Tab 切换正常；未使用真实家庭码、未创建账号。
