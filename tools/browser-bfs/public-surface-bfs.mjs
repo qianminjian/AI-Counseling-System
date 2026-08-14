@@ -102,11 +102,9 @@ function locatorAction(session, profile, control) {
 
 function resetAndReplay(session, profile, url, path) {
   cli(session, profile, ["open", url]);
-  cli(session, profile, ["wait", "--load", "domcontentloaded"]);
   cli(session, profile, ["wait", String(WAIT_MS)]);
   // The first open can leave a new session on about:blank; a second open is harmless and stabilizes it.
   cli(session, profile, ["open", url]);
-  cli(session, profile, ["wait", "--load", "domcontentloaded"]);
   cli(session, profile, ["wait", String(WAIT_MS)]);
   for (const control of path) {
     if (!locatorAction(session, profile, control)) throw new Error(`non-replayable control: ${control.role}:${control.name}`);
