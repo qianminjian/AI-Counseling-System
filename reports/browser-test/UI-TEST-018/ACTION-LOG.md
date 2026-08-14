@@ -361,3 +361,13 @@ R40 结论：教师质量监控核心只读指标、趋势和低分空态通过�
 | R41-02 | 学生/S-02 | 输入昵称“开心”，按 PIN 1234 并提交登录 | 页面返回“昵称或 PIN 码错误”，未进入首页；无崩溃、卡死或异常弹窗 | `screenshots/BFS-S-recheck-pin.png`、`screenshots/BFS-S-recheck-result.png` |
 
 R41 结论：历史定义为 active 的体验账号“开心”在当前 UAT 实际不可登录；记录为环境账号可用性观察项 `OBS-S-POST-003`，不修改账号状态或生产数据。真实学生深层设置/换人仍需可复用 active 账号。
+
+# R42 管理端配置注册表与 Prompt 版本只读遍历（2026-08-14）
+
+| 步骤 | 端/场景 | 操作 | 结果 | 截图 |
+|---:|---|---|---|---|
+| R42-01 | 管理/A-03 | 进入配置注册表并识别域筛选、配置行和操作控件 | 显示 alert/security/voice 配置；SECRET 值以“***已配置***”掩码展示，生效方式为 HOT；修改/历史入口可识别 | `screenshots/BFS-A-config-deep.png` |
+| R42-02 | 管理/A-03 | 打开首条配置的历史记录 | 弹窗显示对应配置键及“暂无变更记录”；关闭会话前未修改配置 | `screenshots/BFS-A-config-history-deep.png` |
+| R42-03 | 管理/A-04 | 进入 Prompt 管理 | 显示 chat_default 模板、版本/A-B/状态/生效/说明/内容/操作列，当前版本 1 为 control、active、生效；“新建版本”入口可识别 | `screenshots/BFS-A-prompt-deep.png` |
+
+R42 结论：配置掩码、历史只读弹窗和 Prompt 版本状态展示通过；未执行配置修改、新建版本、审核或激活等持久化操作。
