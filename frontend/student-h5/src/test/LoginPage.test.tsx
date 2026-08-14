@@ -206,14 +206,12 @@ describe('LoginPage', () => {
       expect(screen.queryByText('还没录过你的声音哦')).toBeNull()
     })
 
-    // ==== AUD-008 修订（2026-08-09）：登录页挂载即预加载声纹模型（最早时机），
-    // 模型 error 时点击声音进入弹重试确认；loading/ready 直接进入识别 ====
-    it('有声纹：登录页挂载即并行预加载声纹+唤醒模型（回归 8/2 设计）', async () => {
+    // ==== AUD-008：登录首屏不预加载大模型，点击声音入口后按需加载 ====
+    it('登录页挂载不预加载声纹和唤醒模型，避免阻塞 PIN 登录', async () => {
       ;(hasAnyVoiceprint as any).mockResolvedValue(true)
       render(<LoginPage onLogin={vi.fn()} onRegister={vi.fn()} onNeedConsent={vi.fn()} />)
-      // 挂载即预加载（声纹与唤醒同时启动，互不等待）
-      expect(preloadVoiceprintModel).toHaveBeenCalledTimes(1)
-      expect(preloadWakeModel).toHaveBeenCalledTimes(1)
+      expect(preloadVoiceprintModel).not.toHaveBeenCalled()
+      expect(preloadWakeModel).not.toHaveBeenCalled()
     })
 
     it('有声纹且模型 loading：点击声音进入直接打开识别（不弹流量确认）', async () => {
@@ -234,7 +232,7 @@ describe('LoginPage', () => {
       fireEvent.click(screen.getByText('🎤 声音进入'))
       expect(screen.getByText('需要下载语音模型')).toBeTruthy()
       fireEvent.click(screen.getByText('继续下载'))
-      await waitFor(() => expect(preloadVoiceprintModel).toHaveBeenCalledTimes(2))
+      await waitFor(() => expect(preloadVoiceprintModel).toHaveBeenCalledTimes(1))
       expect(screen.getByTestId('voice-overlay')).toBeTruthy()
     })
 
@@ -246,8 +244,7 @@ describe('LoginPage', () => {
       fireEvent.click(screen.getByText('🎤 声音进入'))
       expect(screen.queryByText('需要下载语音模型')).toBeNull()
       expect(screen.getByTestId('voice-overlay')).toBeTruthy()
-      // 挂载即已预加载（AUD-008 修订）
-      expect(preloadVoiceprintModel).toHaveBeenCalledTimes(1)
+      expect(preloadVoiceprintModel).not.toHaveBeenCalled()
     })
   })
 

@@ -1,12 +1,14 @@
 # UI-TEST-018 学生端问题清单
 
-## OBS-S-POST-001 [待复核] 发布后学生端登录阶段 Browser Agent 会话阻塞
+## OBS-S-POST-001 [已修复待复测] 发布后学生端登录阶段 Browser Agent 会话阻塞
 
 - 状态：OPEN（暂不定性为产品缺陷）
 - 环境：统一部署 R24 后；`/mindsafe/`；测试丁；Browser Agent 0.26.0；Chrome 151
 - 现象：两个独立新会话均可加载登录首屏并提交测试丁 PIN；提交后页面进入“正在进入...”阶段，随后 Browser Agent 的 snapshot/screenshot 调用无响应。
 - 对照：四端入口加载、后端健康检查、E2E 32/32 通过；因此目前无法区分学生端登录后的前端模型初始化阻塞、网络等待，还是 Browser Agent CDP 会话问题。
-- 处理：未修改代码、未重复部署；待获得可用页面状态/网络 HAR 后再定性。
+- 根因：`LoginPage` 挂载时无条件调用 `preloadVoiceprintModel()` 与 `preloadWakeModel()`，登录后立即初始化 ONNX/WASM 模型，占用主线程。
+- 修复：移除登录页挂载预加载，改为点击“声音进入”后按需加载；对话页仍在进入相应功能后加载唤醒模型。
+- 验证：`LoginPage.test.tsx` 43/43 通过；四端重新门禁和部署后 Browser Agent 复测待执行。
 
 ## BUG-S-S05-001 [P1] AI 消息请求在响应头阶段无超时兜底，危机消息后界面长期禁用
 

@@ -4,7 +4,6 @@ import { CONSENT_VERSION } from './ConsentGate'
 import { hasAnyVoiceprint } from '../utils/voiceprintStore'
 import { useTheme, THEMES } from '../theme/ThemeProvider'
 import { preloadVoiceprintModel, useVoiceprintModelStatus } from '../hooks/useVoiceprint'
-import { preloadWakeModel } from '../hooks/useWakeWord'
 import ModelDownloadProgress from './ModelDownloadProgress' // F-8：登录页与对话页共用加载进度
 import VoiceLoginOverlay from './VoiceLoginOverlay'
 // DC-007：声纹注册编排收敛（SPEC §21）
@@ -33,13 +32,6 @@ export default function LoginPage({ onLogin, onRegister, onNeedConsent, initialT
 
   useEffect(() => {
     hasAnyVoiceprint().then((has) => setHasVoiceprint(has))
-  }, [])
-
-  // 登录页挂载即并行预加载语音模型（回归 8/2 设计：声纹+唤醒同时启动，进度见 ModelDownloadProgress）：
-  // 声纹 6.7MB 秒级，唤醒 40MB 缓存命中秒级；并行启动互不阻塞（避免顺序等待拖慢进对话就绪）
-  useEffect(() => {
-    preloadVoiceprintModel()
-    preloadWakeModel()
   }, [])
 
   // 浏览器是否支持麦克风 + WASM SIMD（决定是否显示声音进入按钮）
