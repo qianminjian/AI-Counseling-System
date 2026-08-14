@@ -162,4 +162,107 @@ class DeviceSecurityServiceTest {
 
         assertThat(service.validateToken(token, "OTHER_CODE00")).isFalse();
     }
+
+    // ===== B-04（2026-08-14）：请求体 HMAC 签名校验 =====
+
+    private String signBody(String body, String ts, String nonce, String secret) {
+        return DeviceSecurityService.sign(body + "|" + ts + "|" + nonce, secret);
+    }
+
+    @Test
+    @DisplayName("B-04 verifyRequestSignature：合法签名通过（HMAC-SHA256(body|ts|nonce, secret)）")
+    void verifySignatureOk() {
+        Device device = new Device();
+        device.setDeviceCode(deviceCode);
+        device.setDeviceSecret("0123456789abcdef0123456789abcdef");
+        when(deviceMapper.selectOne(any())).thenReturn(device);
+
+        String body = "{\"deviceCode\":\"" + deviceCode + "\"}";
+        String ts = String.valueOf(System.currentTimeMillis());
+        String nonce = "n1";
+        String sig = signBody(body, ts, nonce, device.getDeviceSecret());
+
+        assertThat(service.verifyRequestSignature(deviceCode, body, ts, nonce, sig)).isTrue();
+    }
+
+    @Test
+    @DisplayName("B-04 verifyRequestSignature：body 篡改 → false（防篡改）")
+    void verifySignatureBodyTampered() {
+        Device device = new Device();
+        device.setDeviceCode(deviceCode);
+        device.setDeviceSecret("0123456789abcdef0123456789abcdef");
+        when(deviceMapper.selectOne(any())).thenReturn(device);
+
+        String ts = String.valueOf(System.currentTimeMillis());
+        String nonce = "n1";
+        String sig = signBody("{\"deviceCode\":\"X\"}", ts, nonce, device.getDeviceSecret());
+
+        assertThat(service.verifyRequestSignature(deviceCode, "{\"deviceCode\":\"" + deviceCode + "\"}", ts, nonce, sig)).isFalse();
+    }
+
+    @Test
+    @DisplayName("B-04 verifyRequestSignature：时间戳超出 ±5min 窗口 → false（防重放）")
+    void verifySignatureTimestampExpired() {
+        Device device = new Device();
+        device.setDeviceCode(deviceCode);
+        device.setDeviceSecret("0123456789abcdef0123456789abcdef");
+        when(deviceMapper.selectOne(any())).thenReturn(device);
+
+        String body = "{\"deviceCode\":\"" + deviceCode + "\"}";
+        String oldTs = String.valueOf(System.currentTimeMillis() - 10 * 60 * 1000L);
+        String nonce = "n1";
+        String sig = signBody(body, oldTs, nonce, device.getDeviceSecret());
+
+        assertThat(service.verifyRequestSignature(deviceCode, body, oldTs, nonce, sig)).isFalse();
+    }
+
+    @Test
+    @DisplayName("B-04 enforceSignature：OFF 模式跳过（固件未就绪默认，兼容现状）")
+    void enforceOffSkips() {
+        DeviceSecurityService offService = new DeviceSecurityService(deviceMapper, "OFF");
+        assertThat(offService.enforceSignature(deviceCode, "{}", null, null, null)).isTrue();
+    }
+
+    @Test
+    @DisplayName("B-04 enforceSignature：LOG 模式无签名放行（暴露未签名设备）")
+    void enforceLogAllowsUnsigned() {
+        DeviceSecurityService logService = new DeviceSecurityService(deviceMapper, "LOG");
+        assertThat(logService.enforceSignature(deviceCode, "{}", null, null, null)).isTrue();
+    }
+
+    @Test
+    @DisplayName("B-04 enforceSignature：LOG 模式有签名必验，失败拒绝")
+    void enforceLogRejectsBadSignature() {
+        Device device = new Device();
+        device.setDeviceCode(deviceCode);
+        device.setDeviceSecret("0123456789abcdef0123456789abcdef");
+        when(deviceMapper.selectOne(any())).thenReturn(device);
+
+        DeviceSecurityService logService = new DeviceSecurityService(deviceMapper, "LOG");
+        String ts = String.valueOf(System.currentTimeMillis());
+        org.assertj.core.api.Assertions.assertThatThrownBy(() ->
+                logService.enforceSignature(deviceCode, "{\"deviceCode\":\"" + deviceCode + "\"}", ts, "n1", "bad-sig"))
+                .isInstanceOf(com.mindsafe.common.exception.BizException.class);
+    }
+
+    @Test
+    @DisplayName("B-04 enforceSignature：ENFORCE 模式无签名拒绝（固件就绪后启用）")
+    void enforceRejectsUnsigned() {
+        DeviceSecurityService enforceService = new DeviceSecurityService(deviceMapper, "ENFORCE");
+        org.assertj.core.api.Assertions.assertThatThrownBy(() ->
+                enforceService.enforceSignature(deviceCode, "{}", null, null, null))
+                .isInstanceOf(com.mindsafe.common.exception.BizException.class);
+    }
+
+    @Test
+    @DisplayName("B-04 issueCredentials：返回 secret（固件 HMAC 签名密钥下发）")
+    void issueCredentialsIncludesSecret() {
+        Device device = new Device();
+        device.setDeviceId(java.util.UUID.randomUUID());
+        device.setDeviceCode(deviceCode);
+        when(deviceMapper.updateById(any(Device.class))).thenReturn(1);
+
+        var creds = service.issueCredentials(device);
+        assertThat(creds.secret()).hasSize(64); // SHA-256 hex = 64 字符
+    }
 }

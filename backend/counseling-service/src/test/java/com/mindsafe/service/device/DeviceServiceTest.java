@@ -53,7 +53,7 @@ class DeviceServiceTest {
         bindCodeMapper = mock(DeviceBindCodeMapper.class);
         securityService = mock(DeviceSecurityService.class);
         when(securityService.issueCredentials(any())).thenReturn(
-                new DeviceSecurityService.DeviceSecurityCredentials("DVC_test_token_abc", 9999999999999L));
+                new DeviceSecurityService.DeviceSecurityCredentials("DVC_test_token_abc", 9999999999999L, "test-secret"));
         operationMapper = mock(DeviceOperationMapper.class);
         service = new DeviceService(deviceMapper, bindingMapper, bindCodeMapper,
                 mock(DevicePreferenceService.class), securityService, operationMapper);

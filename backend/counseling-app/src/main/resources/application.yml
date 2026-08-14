@@ -231,3 +231,6 @@ mindsafe:
     key: ${MINDSAFE_ENCRYPTION_KEY:}  # 启用时必填：Base64 编码的 32 字节密钥
     key-version: ${MINDSAFE_ENCRYPTION_KEY_VERSION:1}  # 仅 enabled=true 时生效（V1：关闭态忽略）
     previous-keys: ${MINDSAFE_ENCRYPTION_PREVIOUS_KEYS:}  # 历史密钥，格式: version:base64key,version:base64key；仅 enabled=true 时生效
+  # 设备上报签名通道（B-04，2026-08-14）：OFF=跳过（固件未就绪默认）/ LOG=有签名必验、无签名放行+WARN / ENFORCE=强制
+  device:
+    signature-mode: ${MINDSAFE_DEVICE_SIGNATURE_MODE:OFF}
