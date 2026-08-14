@@ -96,6 +96,7 @@ export function useSseStream() {
       abortRef.current = controller
       let fullResponse = ''
       let timeoutChecker: ReturnType<typeof setInterval> | null = null
+      let requestTimeout: ReturnType<typeof setTimeout> | null = setTimeout(() => controller.abort(), STREAM_IDLE_TIMEOUT_MS)
       try {
         const res = await authFetch(url, {
           method: 'POST',
@@ -104,6 +105,10 @@ export function useSseStream() {
           signal: controller.signal,
         })
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        if (requestTimeout) {
+          clearTimeout(requestTimeout)
+          requestTimeout = null
+        }
 
         // FE-003：res.ok 已确认响应成功，body 必然存在（类型层面 res.body 可空，运行时不变）
         const reader = res.body!.getReader()
@@ -125,6 +130,7 @@ export function useSseStream() {
         )
       } finally {
         if (timeoutChecker) clearInterval(timeoutChecker)
+        if (requestTimeout) clearTimeout(requestTimeout)
         abortRef.current = null
         setStreaming(false)
       }

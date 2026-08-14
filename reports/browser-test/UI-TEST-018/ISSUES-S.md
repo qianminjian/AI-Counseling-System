@@ -1,5 +1,16 @@
 # UI-TEST-018 学生端问题清单
 
+## BUG-S-S05-001 [P1] AI 消息请求在响应头阶段无超时兜底，危机消息后界面长期禁用
+
+- 状态：FIXED（待统一部署后 Browser Agent 复测）
+- 环境：UAT `/mindsafe/`；测试丁 active；Browser Agent 0.26.0；Chrome 151
+- 复现：登录测试丁，进入聊天，关闭语音说明，发送模拟危机语句“我想伤害自己，我现在需要帮助”；等待 45 秒。
+- 实际：学生端发送框持续禁用，未出现回复或明确超时提示；截图 `screenshots/R23-student-risk-filled.png`、`screenshots/R23-student-risk-result.png`、`screenshots/R23-student-risk-timeout.png`。
+- 联动结果：SOS 面板可打开并显示 12355 求助入口；教师端随后出现 `sos_open` 待处理预警，说明风险事件已进入后台队列，截图 `screenshots/R23-student-sos.png`、`screenshots/R23-teacher-alert-queue.png`。
+- 根因：`useSseStream` 原有 30 秒空闲定时器只在 `authFetch` 返回响应后启动；响应头阶段挂起时不会触发。
+- 修复：在请求发起前增加同一 30 秒 Abort 定时器，并在收到响应或 finally 时清理；新增响应头阶段超时回归测试。
+- 验证：定向 SSE 测试 16/16、学生端全量测试 78 files/959 tests、构建通过；线上复测待统一部署后执行。
+
 ## OBS-S-S00-001 [已澄清] 登录页隐私政策按钮需滚动到可见区域
 
 - 状态：CLOSED（测试操作未将底部控件滚动到可见区域，非产品缺陷）
