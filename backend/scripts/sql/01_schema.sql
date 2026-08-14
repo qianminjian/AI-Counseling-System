@@ -1077,7 +1077,7 @@ CREATE TABLE tenant_template.teacher_notes (
     tenant_id uuid NOT NULL,
     student_user_id uuid NOT NULL,
     teacher_user_id uuid NOT NULL,
-    content character varying(2048) NOT NULL,
+    content text NOT NULL,
     note_type character varying(32) DEFAULT 'general'::character varying NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL
 );
@@ -1086,6 +1086,11 @@ CREATE TABLE tenant_template.teacher_notes (
 -- Name: TABLE teacher_notes; Type: COMMENT; Schema: tenant_template; Owner: -
 
 COMMENT ON TABLE tenant_template.teacher_notes IS '教师备注表：个案管理备注';
+
+
+-- Name: COLUMN teacher_notes.content; Type: COMMENT; Schema: tenant_template; Owner: -
+
+COMMENT ON COLUMN tenant_template.teacher_notes.content IS '备注内容（B-05 起可能为 AES-GCM 密文；TEXT 容纳密文膨胀）';
 
 
 -- Name: toc_child_profiles; Type: TABLE; Schema: tenant_template; Owner: -
@@ -1116,7 +1121,7 @@ COMMENT ON COLUMN tenant_template.toc_child_profiles.interests IS '兴趣标签�
 
 CREATE TABLE tenant_template.toc_family_accounts (
     family_account_id uuid DEFAULT gen_random_uuid() NOT NULL,
-    phone character varying(20) NOT NULL,
+    phone character varying(96) NOT NULL,
     status character varying(16) DEFAULT 'ACTIVE'::character varying NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL
@@ -1126,6 +1131,11 @@ CREATE TABLE tenant_template.toc_family_accounts (
 -- Name: TABLE toc_family_accounts; Type: COMMENT; Schema: tenant_template; Owner: -
 
 COMMENT ON TABLE tenant_template.toc_family_accounts IS 'toC 家庭账号（TOC-001；平台级表，无 tenant_id 列，独立于校园体系）';
+
+
+-- Name: COLUMN toc_family_accounts.phone; Type: COMMENT; Schema: tenant_template; Owner: -
+
+COMMENT ON COLUMN tenant_template.toc_family_accounts.phone IS '手机号（登录标识，唯一；B-05 起可能为 AES-GCM 密文，96 容量容纳 v1:+base64）';
 
 
 -- Name: COLUMN toc_family_accounts.status; Type: COMMENT; Schema: tenant_template; Owner: -
