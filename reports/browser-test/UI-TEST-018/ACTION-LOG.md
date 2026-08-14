@@ -496,3 +496,13 @@ R56 结论：服务协议入口、弹窗内容和关闭回父页通过；首屏�
 | R57-01 | 学生/S-02 | 输入虚构昵称“不存在的测试用户”，按 PIN 1234 并提交 | 登录按钮由禁用变为可用；页面提示“昵称或 PIN 码错误”，URL 仍为学生端登录页 | `screenshots/BFS-S-invalid-r3-filled.png`、`screenshots/BFS-S-invalid-r3-result.png` |
 
 R57 结论：学生端错误凭据提示和不跳转行为通过；未触碰现有测试账号、未写入业务数据。
+
+# R58 学生端注册告知同意门控复测（2026-08-14）
+
+| 步骤 | 端/场景 | 操作 | 结果 | 截图 |
+|---:|---|---|---|---|
+| R58-01 | 学生/S-01 | 点击“新注册” | 打开使用前重要信息弹窗，显示 8 个告知章节、同意 checkbox 和“同意并继续”按钮；初始按钮禁用 | `screenshots/BFS-S-register-r2-entry.png` |
+| R58-02 | 学生/S-01 | 勾选“我已阅读并理解以上全部内容” | checkbox 变为 checked，按钮从 disabled 变为可用 | `screenshots/BFS-S-register-r2-consent.png` |
+| R58-03 | 学生/S-01 | 点击已启用“同意并继续” | ref click 未取得后续注册页状态，未提交注册；不把导航记为通过 | `screenshots/BFS-S-register-r2-form.png` |
+
+R58 结论：告知同意门控本身通过；“同意并继续”后续导航仍需 DOM 事件复核，未创建账号、未写入数据。
