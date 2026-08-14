@@ -786,3 +786,14 @@ R84 结论：学生端高风险文本识别、安全响应和热线固化通过�
 | R85-04 | 资源安全 | 关闭 session，执行两次 `close --all` 并复核 session list | 无 active session；未操作被测软件以外窗口 | — |
 
 R85 结论：学生风险安全响应通过；教师队列的跨租户不可见性符合当前数据隔离边界，需同租户学生/教师夹具才能完成 L-05 正向可见性验收。
+
+# R86 学生端情绪日记与成就入口（2026-08-14）
+
+| 步骤 | 端/场景 | 操作 | 结果 | 截图 |
+|---:|---|---|---|---|
+| R86-01 | 学生/S-08 | active 账号登录、跳过引导、进入情绪日记 | 日记页显示返回、5 种情绪、强度 slider、可选备注和记录按钮；页面稳定 | `screenshots/student-r86-diary.png` |
+| R86-02 | 学生/S-08 | 选择开心、填写“R86 可回收测试”，通过页面 DOM click 记录 | `POST /api/v1/diary/checkin` 返回 200；页面显示连续打卡 1 天/累计 1 天；未执行删除 | `screenshots/student-r86-diary-filled.png`、`screenshots/student-r86-diary-dom-result.png` |
+| R86-03 | 学生/S-09 | 返回首页，识别成就计数并尝试打开成就入口 | 成就计数更新为 1/8；视觉 ref 与真实 DOM click 均未打开详情，页面保持稳定，登记为自动化事件兼容性观察 | `screenshots/student-r86-achievements.png`、`screenshots/student-r86-achievements-dom.png` |
+| R86-04 | 资源安全 | 关闭 session，执行两次 `close --all` 并复核 session list | 无 active session；未操作被测软件以外窗口 | — |
+
+R86 结论：学生端情绪日记记录和 streak 更新通过；成就详情入口触发兼容性待真实用户事件/独立 DOM 证据复核，不登记源码缺陷。
