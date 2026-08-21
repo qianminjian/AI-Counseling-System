@@ -34,7 +34,8 @@ public final class RouteCatalog {
             "/api/v1/voiceprint/config",       // 声纹配置（只读）
             "/api/v1/voiceprint/verify",       // 声纹验证（IP+embedding 双限流+IP 300/min）
             "/api/v1/tts/login-prompt",        // TTS 登录引导（白名单文本，无需认证）
-            "/api/v1/tts/personas",            // TTS 人设列表（登录前选音色/配置需要）
+            "/api/v1/tts/personas",            // TTS 人设列表（登录前选音色/配 置需要）
+            "/api/v1/tts/status",               // TTS 服务状态探活（只读 available/engine，2026-08-21 诊断修复 P2）
             "/api/v1/system/config",           // 系统配置（CFG-001 公开只读）
             "/api/v1/auth/refresh",            // token 刷新（需旧 token 签名校验）
             // 无屏终端设备（CFG-001 V39：设备端无 JWT，扫码入口匿名可查；绑定类端点需登录态）
