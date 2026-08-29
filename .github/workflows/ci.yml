@@ -25,6 +25,10 @@ on:
       - 'tmp/**'
       - 'data/**'
       - '*.md'
+  # 手动触发（2026-08-29）：纯文档提交命中 paths-ignore 不产生 CI run，
+  # deploy.sh 门禁要求最近 CI run headSha==origin/main 形成死锁；
+  # 此时用 `gh workflow run ci.yml` 手动触发（head_sha=当前 main HEAD，门禁兼容）
+  workflow_dispatch:
 
 # AUD-052：显式收敛最小权限（contents 只读；CD 发布写权限由 cd.yml 按 job 单独授予）
 permissions:
