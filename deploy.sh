@@ -33,7 +33,11 @@ SERVER="${MINDSAFE_SERVER:-}"
 # SSH 长命令防断连挂起（2026-08-07 部署教训：远程 build/restart 无保活时，
 # 本机网络抖动断开会话 → 本地 ssh 挂起等待、远程构建进程被 SIGHUP 中断；
 # 30s 心跳 × 60 次 = 30 分钟窗口，足够覆盖后端 Maven 打包）
-SSH_OPTS=(-o ConnectTimeout=15 -o ServerAliveInterval=30 -o ServerAliveCountMax=60)
+SSH_OPTS=(-o ConnectTimeout=15 -o ServerAliveInterval=30 -o ServerAliveCountMax=3)
+# ServerAliveCountMax=3（2026-08-29 排查）：旧值 60 时判死窗口 30 分钟——服务器侧会话
+# 先死（TCP 被中间设备静默丢弃，本机网络有 banner 阶段随机断连前科）时，本地 ssh 长时间
+# 不感知，表现为"远端进程已消失、本地仍悬挂"。30s×3=90s 内 fail-fast，重跑成本低于人工杀进程。
+# keepalive 为协议层 ping，与数据流独立，不影响长命令（build/restart）静默期连接保持。
 if [ -z "${SERVER}" ]; then
   echo "ERROR: 必须设置 MINDSAFE_SERVER（如 export MINDSAFE_SERVER=mindsafe@<服务器IP>）"
   exit 1

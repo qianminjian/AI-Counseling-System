@@ -131,7 +131,9 @@ except Exception:
       ;;
     backend)
       # backend 无宿主机端口映射，进容器内检查
-      docker exec "${CONTAINER_NAME[backend]}" wget -qO- http://localhost:8080/actuator/health >/dev/null 2>&1
+      # -T 5（2026-08-29）：旧命令无超时——容器内端口假死时 wget 永久阻塞健康检查线程；
+      # tts/voice 分支的 python urllib 均有 timeout=5，此处对齐
+      docker exec "${CONTAINER_NAME[backend]}" wget -qO- -T 5 http://localhost:8080/actuator/health >/dev/null 2>&1
       ;;
     nginx)
       # 宿主 nginx：443 主入口探测（2026-08-06 修复：curl 必须带 Host 头，否则落默认 server 返回假 502）
