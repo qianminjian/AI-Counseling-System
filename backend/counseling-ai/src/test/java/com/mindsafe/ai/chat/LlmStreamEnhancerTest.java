@@ -114,6 +114,24 @@ class LlmStreamEnhancerTest {
     }
 
     @Test
+    @DisplayName("降级话术不泄露模板元标题（BUG-S-002）：不得出现 # 标题行与「降级话术」元描述")
+    void fallbackMessageStripsMarkdownHeading() {
+        LlmStreamEnhancer e = enhancer(3000, 60000, 1, 10);
+
+        List<StreamMessageEvent> events = e.enhance(
+                () -> Flux.error(new RuntimeException("fallback path")),
+                sessionId).collectList().block(Duration.ofSeconds(5));
+
+        String fallbackText = events.get(0).content();
+        // 元描述（维护者视角）不得下发给儿童
+        assertThat(fallbackText).doesNotContain("#");
+        assertThat(fallbackText).doesNotContain("降级话术");
+        // 正文必须保留且从话术本体开头
+        assertThat(fallbackText).startsWith("波波现在有点忙不过来");
+        assertThat(fallbackText).contains("深呼吸");
+    }
+
+    @Test
     @DisplayName("旧签名 enhance(Flux) 兼容：仅超时保护，行为一致")
     void legacyFluxSignature() {
         LlmStreamEnhancer e = enhancer(3000, 60000, 1, 10);

@@ -13,6 +13,7 @@ import reactor.core.publisher.Flux;
 import reactor.util.retry.Retry;
 
 import java.time.Duration;
+import java.util.Arrays;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -66,7 +67,7 @@ public class LlmStreamEnhancer {
         this.overallTimeout = Duration.ofMillis(overallMs);
         this.maxRetries = retryMax;
         this.retryBackoff = Duration.ofMillis(retryBackoffMs);
-        this.fallbackMessage = promptTemplateService.getTemplate(FALLBACK_TEMPLATE_PATH);
+        this.fallbackMessage = stripMarkdownHeading(promptTemplateService.getTemplate(FALLBACK_TEMPLATE_PATH));
 
         this.retryCounter = Counter.builder("mindsafe.llm.retry")
                 .description("LLM 流式调用重试次数")
@@ -84,6 +85,28 @@ public class LlmStreamEnhancer {
 
         log.info("LLM 性能增强初始化: firstTokenTimeout={}ms, overallTimeout={}ms, retryMax={}, retryBackoff={}ms",
                 firstTokenMs, overallMs, retryMax, retryBackoffMs);
+    }
+
+    /**
+     * 剥离模板首个 markdown 标题行及其后空行（BUG-S-002，2026-08-29 UI-TEST）。
+     * <p>
+     * 模板首行的元描述（如「# LLM 不可用降级话术（面向小学生，温和不突兀）」）是给维护者的，
+     * 曾被整文下发给儿童用户（AI 气泡原文输出标题）。仅在降级话术加载处剥离，
+     * 不改 PromptTemplateService 全局语义（其他 prompt 模板可能合法携带标题）。
+     */
+    private static String stripMarkdownHeading(String template) {
+        if (template == null || template.isBlank()) {
+            return template;
+        }
+        String[] lines = template.split("\n", -1);
+        int start = 0;
+        if (lines.length > 0 && lines[0].stripLeading().startsWith("#")) {
+            start = 1;
+            while (start < lines.length && lines[start].isBlank()) {
+                start++;
+            }
+        }
+        return String.join("\n", Arrays.asList(lines).subList(start, lines.length)).strip();
     }
 
     /**

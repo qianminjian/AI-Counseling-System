@@ -125,8 +125,10 @@ export default function SettingsPanel({ open, onClose, muted, onToggleMute, wake
       {/* 遮罩 */}
       <div className="absolute inset-0 bg-black/30" onClick={onClose} />
 
-      {/* 面板 */}
-      <div className="relative w-full max-w-lg max-h-[85vh] overflow-y-auto rounded-t-3xl bg-white p-6 pb-10 shadow-2xl animate-slide-up">
+      {/* 面板（BUG-S-006，2026-08-29：完成按钮固定底栏——原流内末尾按钮在内容超长时需滚到抽屉底部才能关闭，儿童易困惑） */}
+      <div className="relative flex w-full max-w-lg max-h-[85vh] flex-col rounded-t-3xl bg-white shadow-2xl animate-slide-up">
+        {/* 可滚动内容区 */}
+        <div className="min-h-0 flex-1 overflow-y-auto p-6 pb-2">
         {/* 拖拽条 */}
         <div className="mx-auto mb-4 h-1.5 w-12 rounded-full bg-gray-200" />
 
@@ -426,13 +428,17 @@ export default function SettingsPanel({ open, onClose, muted, onToggleMute, wake
           </section>
         )}
 
-        {/* 关闭按钮 */}
-        <button
-          onClick={onClose}
-          className="w-full rounded-2xl bg-[var(--primary)] py-3.5 text-center text-base font-bold text-white shadow-lg transition-all active:scale-[0.97]"
-        >
-          完成 ✓
-        </button>
+        </div>
+
+        {/* 固定底栏：完成按钮始终可见（BUG-S-006） */}
+        <div className="shrink-0 border-t border-gray-100 bg-white p-4 pb-6">
+          <button
+            onClick={onClose}
+            className="w-full rounded-2xl bg-[var(--primary)] py-3.5 text-center text-base font-bold text-white shadow-lg transition-all active:scale-[0.97]"
+          >
+            完成 ✓
+          </button>
+        </div>
       </div>
 
       {/* 删除声纹二次确认 */}

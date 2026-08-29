@@ -12,8 +12,9 @@ import { createHash } from "node:crypto";
 const COMMAND_TIMEOUT_MS = Number(process.env.BFS_COMMAND_TIMEOUT_MS ?? 10000);
 const WAIT_MS = Number(process.env.BFS_WAIT_MS ?? 250);
 
-// 超时包装器：gtimeout(macOS coreutils) / timeout(Linux) 优先（杀进程树），
-// 均不可用时回退 spawnSync 原生 timeout（99-2：去除硬依赖）。
+// 超时包装器（2026-08-29 BUG-S-001 修复）：gtimeout(macOS coreutils) / timeout(Linux) 优先时必须
+// 外层包装 agent-browser 命令（argv 前插），原实现误将 timeout 二进制插入 agent-browser 参数数组
+// 中间，被 daemon 当作子命令拒绝（Unknown command: gtimeout）。均不可用时回退 spawnSync 原生 timeout。
 // L4：探测结果缓存为模块级常量（避免每次 CLI 调用重复 spawn 探测进程）
 const TIMEOUT_BIN = (() => {
   for (const bin of ["gtimeout", "timeout"]) {
@@ -23,19 +24,15 @@ const TIMEOUT_BIN = (() => {
   return null;
 })();
 
-function timeoutCommand(args) {
-  if (TIMEOUT_BIN) {
-    const seconds = Math.max(1, Math.ceil(COMMAND_TIMEOUT_MS / 1000));
-    return [TIMEOUT_BIN, "-k", "2", String(seconds), ...args];
-  }
-  return args;
-}
-
 function cli(session, args) {
   // --session 为隔离会话；显式 profile 仅在首个命令传入，daemon 会拒绝后续 profile
-  const child = spawnSync("agent-browser", ["--session", session, ...timeoutCommand(args)], {
+  const agentArgs = ["agent-browser", "--session", session, ...args];
+  const argv = TIMEOUT_BIN
+    ? [TIMEOUT_BIN, "-k", "2", String(Math.max(1, Math.ceil(COMMAND_TIMEOUT_MS / 1000))), ...agentArgs]
+    : agentArgs;
+  const child = spawnSync(argv[0], argv.slice(1), {
     encoding: "utf8",
-    timeout: COMMAND_TIMEOUT_MS,
+    timeout: COMMAND_TIMEOUT_MS + 2000,
     maxBuffer: 4 * 1024 * 1024,
   });
   if (child.error) throw child.error;
