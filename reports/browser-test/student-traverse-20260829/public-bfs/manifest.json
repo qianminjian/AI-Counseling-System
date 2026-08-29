@@ -1,0 +1,1232 @@
+{
+  "generated": "2026-08-29T12:48:56.696Z",
+  "mode": "public-readonly",
+  "endpoints": [
+    {
+      "endpoint": "student",
+      "url": "https://yun.gxjugu.com/mindsafe/",
+      "algorithm": "breadth-first",
+      "maxDepth": 8,
+      "maxSteps": 200,
+      "visitedStates": [
+        {
+          "key": "2ce970b2538d2ce3",
+          "depth": 0,
+          "controls": [
+            {
+              "ref": "e10",
+              "role": "button",
+              "name": "2"
+            },
+            {
+              "ref": "e11",
+              "role": "button",
+              "name": "3"
+            },
+            {
+              "ref": "e12",
+              "role": "button",
+              "name": "4"
+            },
+            {
+              "ref": "e13",
+              "role": "button",
+              "name": "5"
+            },
+            {
+              "ref": "e14",
+              "role": "button",
+              "name": "6"
+            },
+            {
+              "ref": "e15",
+              "role": "button",
+              "name": "7"
+            },
+            {
+              "ref": "e16",
+              "role": "button",
+              "name": "8"
+            },
+            {
+              "ref": "e17",
+              "role": "button",
+              "name": "9"
+            },
+            {
+              "ref": "e18",
+              "role": "button",
+              "name": "0"
+            },
+            {
+              "ref": "e19",
+              "role": "button",
+              "name": "⌫"
+            },
+            {
+              "ref": "e21",
+              "role": "button",
+              "name": "🎤 声音进入"
+            },
+            {
+              "ref": "e22",
+              "role": "button",
+              "name": "《隐私政策》"
+            },
+            {
+              "ref": "e23",
+              "role": "button",
+              "name": "《服务协议》"
+            },
+            {
+              "ref": "e3",
+              "role": "button",
+              "name": "🌊"
+            },
+            {
+              "ref": "e4",
+              "role": "button",
+              "name": "🌸"
+            },
+            {
+              "ref": "e5",
+              "role": "button",
+              "name": "🌈"
+            },
+            {
+              "ref": "e6",
+              "role": "button",
+              "name": "登录"
+            },
+            {
+              "ref": "e7",
+              "role": "button",
+              "name": "新注册"
+            },
+            {
+              "ref": "e8",
+              "role": "textbox",
+              "name": "你的昵称"
+            },
+            {
+              "ref": "e9",
+              "role": "button",
+              "name": "1"
+            }
+          ]
+        },
+        {
+          "key": "3a3707fe0958048a",
+          "depth": 1,
+          "controls": [
+            {
+              "ref": "e10",
+              "role": "button",
+              "name": "2"
+            },
+            {
+              "ref": "e11",
+              "role": "button",
+              "name": "3"
+            },
+            {
+              "ref": "e12",
+              "role": "button",
+              "name": "4"
+            },
+            {
+              "ref": "e13",
+              "role": "button",
+              "name": "5"
+            },
+            {
+              "ref": "e14",
+              "role": "button",
+              "name": "6"
+            },
+            {
+              "ref": "e15",
+              "role": "button",
+              "name": "7"
+            },
+            {
+              "ref": "e16",
+              "role": "button",
+              "name": "8"
+            },
+            {
+              "ref": "e17",
+              "role": "button",
+              "name": "9"
+            },
+            {
+              "ref": "e18",
+              "role": "button",
+              "name": "0"
+            },
+            {
+              "ref": "e19",
+              "role": "button",
+              "name": "⌫"
+            },
+            {
+              "ref": "e21",
+              "role": "button",
+              "name": "🎤 声音进入"
+            },
+            {
+              "ref": "e22",
+              "role": "button",
+              "name": "《隐私政策》"
+            },
+            {
+              "ref": "e23",
+              "role": "button",
+              "name": "《服务协议》"
+            },
+            {
+              "ref": "e3",
+              "role": "button",
+              "name": "🌊"
+            },
+            {
+              "ref": "e4",
+              "role": "button",
+              "name": "🌸"
+            },
+            {
+              "ref": "e5",
+              "role": "button",
+              "name": "🌈"
+            },
+            {
+              "ref": "e6",
+              "role": "button",
+              "name": "登录"
+            },
+            {
+              "ref": "e7",
+              "role": "button",
+              "name": "新注册"
+            },
+            {
+              "ref": "e8",
+              "role": "textbox",
+              "name": "你的昵称"
+            },
+            {
+              "ref": "e9",
+              "role": "button",
+              "name": "1"
+            }
+          ]
+        },
+        {
+          "key": "06f5a4b4fbfa79ec",
+          "depth": 1,
+          "controls": [
+            {
+              "ref": "e10",
+              "role": "button",
+              "name": "2"
+            },
+            {
+              "ref": "e11",
+              "role": "button",
+              "name": "3"
+            },
+            {
+              "ref": "e12",
+              "role": "button",
+              "name": "4"
+            },
+            {
+              "ref": "e13",
+              "role": "button",
+              "name": "5"
+            },
+            {
+              "ref": "e14",
+              "role": "button",
+              "name": "6"
+            },
+            {
+              "ref": "e15",
+              "role": "button",
+              "name": "7"
+            },
+            {
+              "ref": "e16",
+              "role": "button",
+              "name": "8"
+            },
+            {
+              "ref": "e17",
+              "role": "button",
+              "name": "9"
+            },
+            {
+              "ref": "e18",
+              "role": "button",
+              "name": "0"
+            },
+            {
+              "ref": "e19",
+              "role": "button",
+              "name": "⌫"
+            },
+            {
+              "ref": "e21",
+              "role": "button",
+              "name": "🎤 声音进入"
+            },
+            {
+              "ref": "e22",
+              "role": "button",
+              "name": "《隐私政策》"
+            },
+            {
+              "ref": "e23",
+              "role": "button",
+              "name": "《服务协议》"
+            },
+            {
+              "ref": "e3",
+              "role": "button",
+              "name": "🌊"
+            },
+            {
+              "ref": "e4",
+              "role": "button",
+              "name": "🌸"
+            },
+            {
+              "ref": "e5",
+              "role": "button",
+              "name": "🌈"
+            },
+            {
+              "ref": "e6",
+              "role": "button",
+              "name": "登录"
+            },
+            {
+              "ref": "e7",
+              "role": "button",
+              "name": "新注册"
+            },
+            {
+              "ref": "e8",
+              "role": "textbox",
+              "name": "你的昵称"
+            },
+            {
+              "ref": "e9",
+              "role": "button",
+              "name": "1"
+            }
+          ]
+        },
+        {
+          "key": "bc0277108b3a6752",
+          "depth": 1,
+          "controls": [
+            {
+              "ref": "e12",
+              "role": "button",
+              "name": "同意并继续"
+            },
+            {
+              "ref": "e13",
+              "role": "checkbox",
+              "name": "我已阅读并理解以上全部内容，同意按照上述条款使用本服务。"
+            }
+          ]
+        }
+      ],
+      "operatedControls": [
+        {
+          "step": 1,
+          "depth": 1,
+          "control": {
+            "ref": "e10",
+            "role": "button",
+            "name": "2"
+          },
+          "parentPath": []
+        },
+        {
+          "step": 2,
+          "depth": 1,
+          "control": {
+            "ref": "e11",
+            "role": "button",
+            "name": "3"
+          },
+          "parentPath": []
+        },
+        {
+          "step": 3,
+          "depth": 1,
+          "control": {
+            "ref": "e12",
+            "role": "button",
+            "name": "4"
+          },
+          "parentPath": []
+        },
+        {
+          "step": 4,
+          "depth": 1,
+          "control": {
+            "ref": "e13",
+            "role": "button",
+            "name": "5"
+          },
+          "parentPath": []
+        },
+        {
+          "step": 5,
+          "depth": 1,
+          "control": {
+            "ref": "e14",
+            "role": "button",
+            "name": "6"
+          },
+          "parentPath": []
+        },
+        {
+          "step": 6,
+          "depth": 1,
+          "control": {
+            "ref": "e15",
+            "role": "button",
+            "name": "7"
+          },
+          "parentPath": []
+        },
+        {
+          "step": 7,
+          "depth": 1,
+          "control": {
+            "ref": "e16",
+            "role": "button",
+            "name": "8"
+          },
+          "parentPath": []
+        },
+        {
+          "step": 8,
+          "depth": 1,
+          "control": {
+            "ref": "e17",
+            "role": "button",
+            "name": "9"
+          },
+          "parentPath": []
+        },
+        {
+          "step": 9,
+          "depth": 1,
+          "control": {
+            "ref": "e18",
+            "role": "button",
+            "name": "0"
+          },
+          "parentPath": []
+        },
+        {
+          "step": 10,
+          "depth": 1,
+          "control": {
+            "ref": "e19",
+            "role": "button",
+            "name": "⌫"
+          },
+          "parentPath": []
+        },
+        {
+          "step": 11,
+          "depth": 1,
+          "control": {
+            "ref": "e21",
+            "role": "button",
+            "name": "🎤 声音进入"
+          },
+          "parentPath": []
+        },
+        {
+          "step": 12,
+          "depth": 1,
+          "control": {
+            "ref": "e22",
+            "role": "button",
+            "name": "《隐私政策》"
+          },
+          "parentPath": []
+        },
+        {
+          "step": 13,
+          "depth": 1,
+          "control": {
+            "ref": "e23",
+            "role": "button",
+            "name": "《服务协议》"
+          },
+          "parentPath": []
+        },
+        {
+          "step": 14,
+          "depth": 1,
+          "control": {
+            "ref": "e3",
+            "role": "button",
+            "name": "🌊"
+          },
+          "parentPath": []
+        },
+        {
+          "step": 15,
+          "depth": 1,
+          "control": {
+            "ref": "e4",
+            "role": "button",
+            "name": "🌸"
+          },
+          "parentPath": []
+        },
+        {
+          "step": 16,
+          "depth": 1,
+          "control": {
+            "ref": "e5",
+            "role": "button",
+            "name": "🌈"
+          },
+          "parentPath": []
+        },
+        {
+          "step": 17,
+          "depth": 1,
+          "control": {
+            "ref": "e6",
+            "role": "button",
+            "name": "登录"
+          },
+          "parentPath": []
+        },
+        {
+          "step": 18,
+          "depth": 1,
+          "control": {
+            "ref": "e7",
+            "role": "button",
+            "name": "新注册"
+          },
+          "parentPath": []
+        },
+        {
+          "step": 20,
+          "depth": 1,
+          "control": {
+            "ref": "e9",
+            "role": "button",
+            "name": "1"
+          },
+          "parentPath": []
+        },
+        {
+          "step": 21,
+          "depth": 2,
+          "control": {
+            "ref": "e10",
+            "role": "button",
+            "name": "2"
+          },
+          "parentPath": [
+            {
+              "ref": "e4",
+              "role": "button",
+              "name": "🌸"
+            }
+          ]
+        },
+        {
+          "step": 22,
+          "depth": 2,
+          "control": {
+            "ref": "e11",
+            "role": "button",
+            "name": "3"
+          },
+          "parentPath": [
+            {
+              "ref": "e4",
+              "role": "button",
+              "name": "🌸"
+            }
+          ]
+        },
+        {
+          "step": 23,
+          "depth": 2,
+          "control": {
+            "ref": "e12",
+            "role": "button",
+            "name": "4"
+          },
+          "parentPath": [
+            {
+              "ref": "e4",
+              "role": "button",
+              "name": "🌸"
+            }
+          ]
+        },
+        {
+          "step": 24,
+          "depth": 2,
+          "control": {
+            "ref": "e13",
+            "role": "button",
+            "name": "5"
+          },
+          "parentPath": [
+            {
+              "ref": "e4",
+              "role": "button",
+              "name": "🌸"
+            }
+          ]
+        },
+        {
+          "step": 25,
+          "depth": 2,
+          "control": {
+            "ref": "e14",
+            "role": "button",
+            "name": "6"
+          },
+          "parentPath": [
+            {
+              "ref": "e4",
+              "role": "button",
+              "name": "🌸"
+            }
+          ]
+        },
+        {
+          "step": 26,
+          "depth": 2,
+          "control": {
+            "ref": "e15",
+            "role": "button",
+            "name": "7"
+          },
+          "parentPath": [
+            {
+              "ref": "e4",
+              "role": "button",
+              "name": "🌸"
+            }
+          ]
+        },
+        {
+          "step": 27,
+          "depth": 2,
+          "control": {
+            "ref": "e16",
+            "role": "button",
+            "name": "8"
+          },
+          "parentPath": [
+            {
+              "ref": "e4",
+              "role": "button",
+              "name": "🌸"
+            }
+          ]
+        },
+        {
+          "step": 28,
+          "depth": 2,
+          "control": {
+            "ref": "e17",
+            "role": "button",
+            "name": "9"
+          },
+          "parentPath": [
+            {
+              "ref": "e4",
+              "role": "button",
+              "name": "🌸"
+            }
+          ]
+        },
+        {
+          "step": 29,
+          "depth": 2,
+          "control": {
+            "ref": "e18",
+            "role": "button",
+            "name": "0"
+          },
+          "parentPath": [
+            {
+              "ref": "e4",
+              "role": "button",
+              "name": "🌸"
+            }
+          ]
+        },
+        {
+          "step": 30,
+          "depth": 2,
+          "control": {
+            "ref": "e19",
+            "role": "button",
+            "name": "⌫"
+          },
+          "parentPath": [
+            {
+              "ref": "e4",
+              "role": "button",
+              "name": "🌸"
+            }
+          ]
+        },
+        {
+          "step": 31,
+          "depth": 2,
+          "control": {
+            "ref": "e21",
+            "role": "button",
+            "name": "🎤 声音进入"
+          },
+          "parentPath": [
+            {
+              "ref": "e4",
+              "role": "button",
+              "name": "🌸"
+            }
+          ]
+        },
+        {
+          "step": 32,
+          "depth": 2,
+          "control": {
+            "ref": "e22",
+            "role": "button",
+            "name": "《隐私政策》"
+          },
+          "parentPath": [
+            {
+              "ref": "e4",
+              "role": "button",
+              "name": "🌸"
+            }
+          ]
+        },
+        {
+          "step": 33,
+          "depth": 2,
+          "control": {
+            "ref": "e23",
+            "role": "button",
+            "name": "《服务协议》"
+          },
+          "parentPath": [
+            {
+              "ref": "e4",
+              "role": "button",
+              "name": "🌸"
+            }
+          ]
+        },
+        {
+          "step": 34,
+          "depth": 2,
+          "control": {
+            "ref": "e3",
+            "role": "button",
+            "name": "🌊"
+          },
+          "parentPath": [
+            {
+              "ref": "e4",
+              "role": "button",
+              "name": "🌸"
+            }
+          ]
+        },
+        {
+          "step": 35,
+          "depth": 2,
+          "control": {
+            "ref": "e5",
+            "role": "button",
+            "name": "🌈"
+          },
+          "parentPath": [
+            {
+              "ref": "e4",
+              "role": "button",
+              "name": "🌸"
+            }
+          ]
+        },
+        {
+          "step": 36,
+          "depth": 2,
+          "control": {
+            "ref": "e6",
+            "role": "button",
+            "name": "登录"
+          },
+          "parentPath": [
+            {
+              "ref": "e4",
+              "role": "button",
+              "name": "🌸"
+            }
+          ]
+        },
+        {
+          "step": 37,
+          "depth": 2,
+          "control": {
+            "ref": "e7",
+            "role": "button",
+            "name": "新注册"
+          },
+          "parentPath": [
+            {
+              "ref": "e4",
+              "role": "button",
+              "name": "🌸"
+            }
+          ]
+        },
+        {
+          "step": 39,
+          "depth": 2,
+          "control": {
+            "ref": "e9",
+            "role": "button",
+            "name": "1"
+          },
+          "parentPath": [
+            {
+              "ref": "e4",
+              "role": "button",
+              "name": "🌸"
+            }
+          ]
+        },
+        {
+          "step": 40,
+          "depth": 2,
+          "control": {
+            "ref": "e10",
+            "role": "button",
+            "name": "2"
+          },
+          "parentPath": [
+            {
+              "ref": "e5",
+              "role": "button",
+              "name": "🌈"
+            }
+          ]
+        },
+        {
+          "step": 41,
+          "depth": 2,
+          "control": {
+            "ref": "e11",
+            "role": "button",
+            "name": "3"
+          },
+          "parentPath": [
+            {
+              "ref": "e5",
+              "role": "button",
+              "name": "🌈"
+            }
+          ]
+        },
+        {
+          "step": 42,
+          "depth": 2,
+          "control": {
+            "ref": "e12",
+            "role": "button",
+            "name": "4"
+          },
+          "parentPath": [
+            {
+              "ref": "e5",
+              "role": "button",
+              "name": "🌈"
+            }
+          ]
+        },
+        {
+          "step": 43,
+          "depth": 2,
+          "control": {
+            "ref": "e13",
+            "role": "button",
+            "name": "5"
+          },
+          "parentPath": [
+            {
+              "ref": "e5",
+              "role": "button",
+              "name": "🌈"
+            }
+          ]
+        },
+        {
+          "step": 44,
+          "depth": 2,
+          "control": {
+            "ref": "e14",
+            "role": "button",
+            "name": "6"
+          },
+          "parentPath": [
+            {
+              "ref": "e5",
+              "role": "button",
+              "name": "🌈"
+            }
+          ]
+        },
+        {
+          "step": 45,
+          "depth": 2,
+          "control": {
+            "ref": "e15",
+            "role": "button",
+            "name": "7"
+          },
+          "parentPath": [
+            {
+              "ref": "e5",
+              "role": "button",
+              "name": "🌈"
+            }
+          ]
+        },
+        {
+          "step": 46,
+          "depth": 2,
+          "control": {
+            "ref": "e16",
+            "role": "button",
+            "name": "8"
+          },
+          "parentPath": [
+            {
+              "ref": "e5",
+              "role": "button",
+              "name": "🌈"
+            }
+          ]
+        },
+        {
+          "step": 47,
+          "depth": 2,
+          "control": {
+            "ref": "e17",
+            "role": "button",
+            "name": "9"
+          },
+          "parentPath": [
+            {
+              "ref": "e5",
+              "role": "button",
+              "name": "🌈"
+            }
+          ]
+        },
+        {
+          "step": 48,
+          "depth": 2,
+          "control": {
+            "ref": "e18",
+            "role": "button",
+            "name": "0"
+          },
+          "parentPath": [
+            {
+              "ref": "e5",
+              "role": "button",
+              "name": "🌈"
+            }
+          ]
+        },
+        {
+          "step": 49,
+          "depth": 2,
+          "control": {
+            "ref": "e19",
+            "role": "button",
+            "name": "⌫"
+          },
+          "parentPath": [
+            {
+              "ref": "e5",
+              "role": "button",
+              "name": "🌈"
+            }
+          ]
+        },
+        {
+          "step": 50,
+          "depth": 2,
+          "control": {
+            "ref": "e21",
+            "role": "button",
+            "name": "🎤 声音进入"
+          },
+          "parentPath": [
+            {
+              "ref": "e5",
+              "role": "button",
+              "name": "🌈"
+            }
+          ]
+        },
+        {
+          "step": 51,
+          "depth": 2,
+          "control": {
+            "ref": "e22",
+            "role": "button",
+            "name": "《隐私政策》"
+          },
+          "parentPath": [
+            {
+              "ref": "e5",
+              "role": "button",
+              "name": "🌈"
+            }
+          ]
+        },
+        {
+          "step": 52,
+          "depth": 2,
+          "control": {
+            "ref": "e23",
+            "role": "button",
+            "name": "《服务协议》"
+          },
+          "parentPath": [
+            {
+              "ref": "e5",
+              "role": "button",
+              "name": "🌈"
+            }
+          ]
+        },
+        {
+          "step": 53,
+          "depth": 2,
+          "control": {
+            "ref": "e3",
+            "role": "button",
+            "name": "🌊"
+          },
+          "parentPath": [
+            {
+              "ref": "e5",
+              "role": "button",
+              "name": "🌈"
+            }
+          ]
+        },
+        {
+          "step": 54,
+          "depth": 2,
+          "control": {
+            "ref": "e4",
+            "role": "button",
+            "name": "🌸"
+          },
+          "parentPath": [
+            {
+              "ref": "e5",
+              "role": "button",
+              "name": "🌈"
+            }
+          ]
+        },
+        {
+          "step": 55,
+          "depth": 2,
+          "control": {
+            "ref": "e6",
+            "role": "button",
+            "name": "登录"
+          },
+          "parentPath": [
+            {
+              "ref": "e5",
+              "role": "button",
+              "name": "🌈"
+            }
+          ]
+        },
+        {
+          "step": 56,
+          "depth": 2,
+          "control": {
+            "ref": "e7",
+            "role": "button",
+            "name": "新注册"
+          },
+          "parentPath": [
+            {
+              "ref": "e5",
+              "role": "button",
+              "name": "🌈"
+            }
+          ]
+        },
+        {
+          "step": 58,
+          "depth": 2,
+          "control": {
+            "ref": "e9",
+            "role": "button",
+            "name": "1"
+          },
+          "parentPath": [
+            {
+              "ref": "e5",
+              "role": "button",
+              "name": "🌈"
+            }
+          ]
+        },
+        {
+          "step": 59,
+          "depth": 2,
+          "control": {
+            "ref": "e12",
+            "role": "button",
+            "name": "同意并继续"
+          },
+          "parentPath": [
+            {
+              "ref": "e7",
+              "role": "button",
+              "name": "新注册"
+            }
+          ]
+        }
+      ],
+      "screenshots": [
+        "reports/browser-test/student-traverse-20260829/public-bfs/student-0001-button-2.png",
+        "reports/browser-test/student-traverse-20260829/public-bfs/student-0002-button-3.png",
+        "reports/browser-test/student-traverse-20260829/public-bfs/student-0003-button-4.png",
+        "reports/browser-test/student-traverse-20260829/public-bfs/student-0004-button-5.png",
+        "reports/browser-test/student-traverse-20260829/public-bfs/student-0005-button-6.png",
+        "reports/browser-test/student-traverse-20260829/public-bfs/student-0006-button-7.png",
+        "reports/browser-test/student-traverse-20260829/public-bfs/student-0007-button-8.png",
+        "reports/browser-test/student-traverse-20260829/public-bfs/student-0008-button-9.png",
+        "reports/browser-test/student-traverse-20260829/public-bfs/student-0009-button-0.png",
+        "reports/browser-test/student-traverse-20260829/public-bfs/student-0010-button-_.png",
+        "reports/browser-test/student-traverse-20260829/public-bfs/student-0011-button-_声音进入.png",
+        "reports/browser-test/student-traverse-20260829/public-bfs/student-0012-button-_隐私政策_.png",
+        "reports/browser-test/student-traverse-20260829/public-bfs/student-0013-button-_服务协议_.png",
+        "reports/browser-test/student-traverse-20260829/public-bfs/student-0014-button-_.png",
+        "reports/browser-test/student-traverse-20260829/public-bfs/student-0015-button-_.png",
+        "reports/browser-test/student-traverse-20260829/public-bfs/student-0016-button-_.png",
+        "reports/browser-test/student-traverse-20260829/public-bfs/student-0017-button-登录.png",
+        "reports/browser-test/student-traverse-20260829/public-bfs/student-0018-button-新注册.png",
+        "reports/browser-test/student-traverse-20260829/public-bfs/student-0020-button-1.png",
+        "reports/browser-test/student-traverse-20260829/public-bfs/student-0021-button-2.png",
+        "reports/browser-test/student-traverse-20260829/public-bfs/student-0022-button-3.png",
+        "reports/browser-test/student-traverse-20260829/public-bfs/student-0023-button-4.png",
+        "reports/browser-test/student-traverse-20260829/public-bfs/student-0024-button-5.png",
+        "reports/browser-test/student-traverse-20260829/public-bfs/student-0025-button-6.png",
+        "reports/browser-test/student-traverse-20260829/public-bfs/student-0026-button-7.png",
+        "reports/browser-test/student-traverse-20260829/public-bfs/student-0027-button-8.png",
+        "reports/browser-test/student-traverse-20260829/public-bfs/student-0028-button-9.png",
+        "reports/browser-test/student-traverse-20260829/public-bfs/student-0029-button-0.png",
+        "reports/browser-test/student-traverse-20260829/public-bfs/student-0030-button-_.png",
+        "reports/browser-test/student-traverse-20260829/public-bfs/student-0031-button-_声音进入.png",
+        "reports/browser-test/student-traverse-20260829/public-bfs/student-0032-button-_隐私政策_.png",
+        "reports/browser-test/student-traverse-20260829/public-bfs/student-0033-button-_服务协议_.png",
+        "reports/browser-test/student-traverse-20260829/public-bfs/student-0034-button-_.png",
+        "reports/browser-test/student-traverse-20260829/public-bfs/student-0035-button-_.png",
+        "reports/browser-test/student-traverse-20260829/public-bfs/student-0036-button-登录.png",
+        "reports/browser-test/student-traverse-20260829/public-bfs/student-0037-button-新注册.png",
+        "reports/browser-test/student-traverse-20260829/public-bfs/student-0039-button-1.png",
+        "reports/browser-test/student-traverse-20260829/public-bfs/student-0040-button-2.png",
+        "reports/browser-test/student-traverse-20260829/public-bfs/student-0041-button-3.png",
+        "reports/browser-test/student-traverse-20260829/public-bfs/student-0042-button-4.png",
+        "reports/browser-test/student-traverse-20260829/public-bfs/student-0043-button-5.png",
+        "reports/browser-test/student-traverse-20260829/public-bfs/student-0044-button-6.png",
+        "reports/browser-test/student-traverse-20260829/public-bfs/student-0045-button-7.png",
+        "reports/browser-test/student-traverse-20260829/public-bfs/student-0046-button-8.png",
+        "reports/browser-test/student-traverse-20260829/public-bfs/student-0047-button-9.png",
+        "reports/browser-test/student-traverse-20260829/public-bfs/student-0048-button-0.png",
+        "reports/browser-test/student-traverse-20260829/public-bfs/student-0049-button-_.png",
+        "reports/browser-test/student-traverse-20260829/public-bfs/student-0050-button-_声音进入.png",
+        "reports/browser-test/student-traverse-20260829/public-bfs/student-0051-button-_隐私政策_.png",
+        "reports/browser-test/student-traverse-20260829/public-bfs/student-0052-button-_服务协议_.png",
+        "reports/browser-test/student-traverse-20260829/public-bfs/student-0053-button-_.png",
+        "reports/browser-test/student-traverse-20260829/public-bfs/student-0054-button-_.png",
+        "reports/browser-test/student-traverse-20260829/public-bfs/student-0055-button-登录.png",
+        "reports/browser-test/student-traverse-20260829/public-bfs/student-0056-button-新注册.png",
+        "reports/browser-test/student-traverse-20260829/public-bfs/student-0058-button-1.png",
+        "reports/browser-test/student-traverse-20260829/public-bfs/student-0059-button-同意并继续.png"
+      ],
+      "errors": [
+        {
+          "step": 19,
+          "control": {
+            "ref": "e8",
+            "role": "textbox",
+            "name": "你的昵称"
+          },
+          "message": "Error: agent-browser exited 1: ✗ Element not found. Verify the selector is correct and the element exists in the DOM.\n"
+        },
+        {
+          "step": 38,
+          "control": {
+            "ref": "e8",
+            "role": "textbox",
+            "name": "你的昵称"
+          },
+          "message": "Error: agent-browser exited 1: ✗ Element not found. Verify the selector is correct and the element exists in the DOM.\n"
+        },
+        {
+          "step": 57,
+          "control": {
+            "ref": "e8",
+            "role": "textbox",
+            "name": "你的昵称"
+          },
+          "message": "Error: agent-browser exited 1: ✗ Element not found. Verify the selector is correct and the element exists in the DOM.\n"
+        },
+        {
+          "step": 60,
+          "control": {
+            "ref": "e13",
+            "role": "checkbox",
+            "name": "我已阅读并理解以上全部内容，同意按照上述条款使用本服务。"
+          },
+          "message": "Error: agent-browser exited 1: ✗ Element not found. Verify the selector is correct and the element exists in the DOM.\n"
+        }
+      ],
+      "stopReason": "completed",
+      "steps": 60,
+      "queueMaxDepth": 1
+    }
+  ]
+}
