@@ -51,4 +51,17 @@ public record StreamMessageEvent(
     public static StreamMessageEvent fallback(String text) {
         return new StreamMessageEvent("token", text, new MessageMetadata(null, null, null, true));
     }
+
+    /**
+     * AUTH-030：每日使用时长已达上限（前端展示专门休息引导页并禁用输入，
+     * content 为预审核引导文案；与 token 事件区分，避免被当作普通 AI 回复播报）
+     */
+    public static StreamMessageEvent usageLimit(String guidance) {
+        return new StreamMessageEvent("usage_limit", guidance, null);
+    }
+
+    /** AUTH-030：距上限不足预警（content 为含剩余分钟数的提示文案，前端顶部横幅提示一次） */
+    public static StreamMessageEvent usageWarning(String text) {
+        return new StreamMessageEvent("usage_warning", text, null);
+    }
 }

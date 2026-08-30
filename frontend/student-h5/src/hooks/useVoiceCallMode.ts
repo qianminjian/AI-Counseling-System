@@ -17,7 +17,7 @@
  */
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useWakeWord } from './useWakeWord'
-import { matchesWakeWord } from '../config/wakeWord'
+import { stripWakePrefix } from '../config/wakeWord'
 import { createSpeechRecognition, type SpeechRecognitionHandle } from '../utils/speechRecognition'
 // P1-3（audit-report-07 P1-3）：唤醒交互参数走远程配置（voiceCall.*），本地常量仅作 fallback
 //（对齐 FA-12 useWakeWord resolveWakeParams 既有模式，useWakeWord.ts:68-76）
@@ -75,8 +75,6 @@ export function useVoiceCallMode({ enabled, tts, busy, onFinalTranscript }) {
   const accumulatedTextRef = useRef('')
   // 防 re-entry：Whisper 多窗串行检测可能在 React 状态传播前多次触发 onDetected
   const detectingRef = useRef(false)
-  // 首轮过滤：active 后第一轮 SpeechRecognition 结果需过滤唤醒词残留
-  const firstRoundRef = useRef(false)
   // P1-3：唤醒交互参数经 ref 读取（每次渲染刷新，热路径避免闭包捕获过期常量）
   const voiceCallParamsRef = useRef(resolveVoiceCallParams())
   voiceCallParamsRef.current = resolveVoiceCallParams()
@@ -119,18 +117,21 @@ export function useVoiceCallMode({ enabled, tts, busy, onFinalTranscript }) {
         if (speechEndTimerRef.current) clearTimeout(speechEndTimerRef.current)
         speechEndTimerRef.current = setTimeout(() => {
           speechEndTimerRef.current = null
-          const text = accumulatedTextRef.current
+          let text = accumulatedTextRef.current
           accumulatedTextRef.current = ''
           if (!text) return
-          // 首轮过滤：用户因延迟重复说唤醒词，SpeechRecognition 可能捕获整段重复
-          if (firstRoundRef.current) {
-            firstRoundRef.current = false
-            const segments = text.split(/[。.！!？?，,、\s]+/).filter(Boolean)
-            const wakeRatio = segments.filter(s => matchesWakeWord(s)).length / Math.max(segments.length, 1)
-            if (wakeRatio > 0.5) {
-              return
+          // 唤醒词残留处理（唤醒 UX 迭代）：孩子习惯在波波说完后喊"哈喽波波"再说话，
+          // 识别文本会含唤醒词——此前首轮含唤醒词 >50% 即静默丢弃，是"经常没反应"的主因；
+          // 改为剥掉唤醒词前缀、剩余内容照常发送；纯唤醒词（剩余为空）→ 重放确认语给明确反馈
+          const segments = text.split(/[。.！!？?，,、\s]+/).filter(Boolean)
+          const kept = segments.map((s) => stripWakePrefix(s)).filter(Boolean)
+          if (kept.length === 0) {
+            if (!busyRef.current && enabledRef.current) {
+              ttsRef.current.speak(WAKE_CONFIRM_TEXT)
             }
+            return
           }
+          text = kept.join('，')
           // 发送后停止当前识别实例，等 busy 状态变化后自动重启新一轮
           const rec = recRef.current
           if (rec) {
@@ -168,7 +169,6 @@ export function useVoiceCallMode({ enabled, tts, busy, onFinalTranscript }) {
       // 双重防护：modeRef 检查 + detectingRef 锁（防 Whisper 多窗在 React 渲染前重复触发）
       if (modeRef.current !== 'standby' || detectingRef.current) return
       detectingRef.current = true
-      firstRoundRef.current = true // 标记首轮，用于过滤唤醒词残留
       setMode('active')
       // 唤醒确认：TTS"我在呢！"播完（busy 转 false）后，下方捕捉 effect 自动开始聆听
       ttsRef.current.unlock?.()

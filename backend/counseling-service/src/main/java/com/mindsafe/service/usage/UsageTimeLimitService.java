@@ -24,19 +24,24 @@ public class UsageTimeLimitService {
 
     private static final Logger log = LoggerFactory.getLogger(UsageTimeLimitService.class);
     private static final String KEY_PREFIX = "usage:time:";
+    private static final String WARN_KEY_PREFIX = "usage:warned:";
     private static final DateTimeFormatter DAY_FMT = DateTimeFormatter.BASIC_ISO_DATE;
     private static final Duration KEY_TTL = Duration.ofDays(2);
 
     private final StringRedisTemplate redisTemplate;
     private final int maxDailyMinutes;
+    /** 距上限不足该秒数时预警（默认 5 分钟），每学生每日最多提醒一次 */
+    private final int warnRemainingSeconds;
     private final io.micrometer.core.instrument.MeterRegistry meterRegistry;
 
     public UsageTimeLimitService(
             StringRedisTemplate redisTemplate,
             @Value("${mindsafe.security.usage-limit.max-daily-minutes:30}") int maxDailyMinutes,
+            @Value("${mindsafe.security.usage-limit.warn-remaining-seconds:300}") int warnRemainingSeconds,
             io.micrometer.core.instrument.MeterRegistry meterRegistry) {
         this.redisTemplate = redisTemplate;
         this.maxDailyMinutes = maxDailyMinutes;
+        this.warnRemainingSeconds = warnRemainingSeconds;
         this.meterRegistry = meterRegistry;
     }
 
@@ -88,6 +93,33 @@ public class UsageTimeLimitService {
 
     public int getMaxDailyMinutes() {
         return maxDailyMinutes;
+    }
+
+    /**
+     * AUTH-030：距上限不足预警检查（每学生每日最多一次）。
+     * <p>
+     * 剩余秒数 ≤ {@code warnRemainingSeconds} 且今日未提醒过 → 占位提醒标记并返回剩余秒数；
+     * 否则返回 -1（不提醒）。占位失败（并发轮次已提醒）同样返回 -1。
+     */
+    public long tryMarkWarned(UUID tenantId, UUID userId) {
+        if (maxDailyMinutes <= 0 || warnRemainingSeconds <= 0) {
+            return -1;
+        }
+        long remaining = getRemainingSeconds(tenantId, userId);
+        if (remaining > warnRemainingSeconds) {
+            return -1;
+        }
+        try {
+            Boolean first = redisTemplate.opsForValue().setIfAbsent(warnKey(tenantId, userId), "1", KEY_TTL);
+            return Boolean.TRUE.equals(first) ? remaining : -1;
+        } catch (Exception e) {
+            meterRegistry.counter("mindsafe_usage_limit_failopen_total").increment();
+            return -1;
+        }
+    }
+
+    private String warnKey(UUID tenantId, UUID userId) {
+        return WARN_KEY_PREFIX + tenantId + ":" + userId + ":" + com.mindsafe.service.common.CounselingTimeZone.today().format(DAY_FMT);
     }
 
     private String key(UUID tenantId, UUID userId) {

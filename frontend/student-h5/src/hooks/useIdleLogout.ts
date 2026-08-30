@@ -35,6 +35,14 @@ export function useIdleLogout({
     setSecondsLeft(countdownSec)
   }, [countdownSec])
 
+  /**
+   * 外部活动信号（语音交互专用）：语音对话全程不产生 pointer/keydown 事件，
+   * 纯语音聊天会被误判为无操作。警告期间不解除警告（与原生事件同规则，只认「我还在」按钮）
+   */
+  const markActivity = useCallback(() => {
+    if (!warningRef.current) lastActivityRef.current = Date.now()
+  }, [])
+
   useEffect(() => {
     if (!enabled) {
       warningRef.current = false
@@ -77,5 +85,5 @@ export function useIdleLogout({
     }
   }, [enabled, idleMs, countdownSec])
 
-  return { warning, secondsLeft, stay }
+  return { warning, secondsLeft, stay, markActivity }
 }

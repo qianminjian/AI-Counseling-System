@@ -39,7 +39,7 @@ export interface SessionInfo {
   emotionTag: string
 }
 
-export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: SessionInfo; onEnd: () => void; onSwitchUser?: () => void }) {
+export default function ChatRoom({ session, onEnd, onSwitchUser, markActivity }: { session: SessionInfo; onEnd: () => void; onSwitchUser?: () => void; markActivity?: () => void }) {
   // 面板/弹窗/提示条状态收敛（FA-06：useChatRoomPanels 统一管理，见 hooks/useChatRoomPanels.ts）
   const {
     settingsOpen, setSettingsOpen,
@@ -82,7 +82,7 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: Se
   })
 
   // 会话状态（UX-006：消息/发送/SSE 编排收敛 useChatSession，design/17 §chat/hooks）
-  const { messages, setMessages, input, setInput, streaming, sendMessage, sendMessageRef, closeSession } = useChatSession({
+  const { messages, setMessages, input, setInput, streaming, sendMessage, sendMessageRef, closeSession, usageLimited } = useChatSession({
     sessionId: session.sessionId,
     greeting: session.greeting,
     emotionTag: session.emotionTag,
@@ -99,6 +99,8 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: Se
       releaseStream()
     },
     onClosed: onEnd,
+    // AUTH-030：距上限不足预警 → 顶部提示条（FA-06 定时清空）
+    onUsageWarning: (text) => showNotice(text, 8000),
   })
 
   // 进入聊天室自动朗读打招呼语
@@ -163,7 +165,7 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: Se
   /* ===== 语音唤醒状态机（design/28 §1.1）：off / standby（待唤醒）/ active（会话窗）
      监听严格限定在本次对话内：仅 ChatRoom 挂载期间由 enabled 控制，卸载即释放麦克风 ===== */
   const voiceCall = useVoiceCallMode({
-    enabled: wakeEnabled && wakeConsent.hasConsent(),
+    enabled: wakeEnabled && wakeConsent.hasConsent() && !usageLimited,
     tts,
     busy: activity.busy,
     onFinalTranscript: (text) => {
@@ -199,6 +201,15 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: Se
   useEffect(() => {
     resetSilenceBase()
   }, [streaming, tts.playing, wakeEnabled, resetSilenceBase])
+
+  // 无操作登出防误伤：语音交互全程不产生 pointer/keyboard 事件——AI 播报/录音/识别/唤醒命中
+  // 都要计入 idle 活动计时，否则纯语音对话会被 useIdleLogout 误踢（共享 Pad 隐私保护的边界修正）
+  useEffect(() => {
+    if (activity.busy) markActivity?.()
+  }, [activity.busy, markActivity])
+  useEffect(() => {
+    if (voiceCall.mode === 'active') markActivity?.()
+  }, [voiceCall.mode, markActivity])
 
   // DC-012：安卓音频路由保护抽离（SPEC §26）——播放中释放麦克风；结束 600ms 预热（userInteracted 联动在 hook 内部）
   useAndroidAudioRouting({
@@ -429,15 +440,16 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: Se
                   if (e.target.value) boboExpression.dispatch({ type: 'typing' })
                 }}
                 onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && sendMessage()}
-                placeholder={recording ? '正在录音...' : analyzing ? '分析中...' : '也可以打字告诉我'}
-                disabled={streaming || analyzing}
+                placeholder={usageLimited ? '今天先休息啦，明天见 🌙'
+                  : recording ? '正在录音...' : analyzing ? '分析中...' : '也可以打字告诉我'}
+                disabled={streaming || analyzing || usageLimited}
                 className="flex-1 px-5 py-3.5 lg:py-4 rounded-full border border-gray-200 focus:outline-none
                   focus:ring-2 text-sm lg:text-lg disabled:bg-gray-50"
                 style={{ '--tw-ring-color': 'var(--primary-light)' } as React.CSSProperties}
               />
               <button
                 onClick={() => sendMessage()}
-                disabled={!input.trim() || streaming || analyzing}
+                disabled={!input.trim() || streaming || analyzing || usageLimited}
                 className="flex-shrink-0 px-6 lg:px-10 py-3.5 lg:py-4 rounded-full text-white
                   text-sm lg:text-lg font-medium active:scale-95
                   disabled:bg-gray-300 disabled:cursor-not-allowed transition-all"
@@ -516,6 +528,28 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: Se
         onConfirm={() => { setConfirmSwitch(false); onSwitchUser?.() }}
         onCancel={() => setConfirmSwitch(false)}
       />
+
+      {/* AUTH-030：每日使用时长已达上限 → 全屏休息引导页（覆盖对话区，禁输入/禁语音；
+          usage_limit 事件驱动，后端不再受理新消息） */}
+      {usageLimited && (
+        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center p-8 text-center"
+          style={{ background: 'linear-gradient(to bottom, var(--primary-light), var(--bg-end))' }}>
+          <div className="text-6xl mb-6" aria-hidden>🌙</div>
+          <h2 className="text-2xl lg:text-3xl font-bold mb-4" style={{ color: 'var(--primary)' }}>
+            今天就到这里啦
+          </h2>
+          <p className="max-w-md text-base lg:text-lg text-gray-600 whitespace-pre-line leading-relaxed">
+            {messages[messages.length - 1]?.role === 'assistant' ? messages[messages.length - 1].content : ''}
+          </p>
+          <button
+            onClick={() => onSwitchUser?.()}
+            className="mt-10 px-10 py-4 rounded-full text-white text-lg font-medium active:scale-95 transition-all"
+            style={{ background: 'var(--primary)' }}
+          >
+            好的，明天见 👋
+          </button>
+        </div>
+      )}
     </div>
   )
 }

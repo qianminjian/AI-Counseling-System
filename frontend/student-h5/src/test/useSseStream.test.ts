@@ -67,6 +67,21 @@ describe('consumeSseStream（纯函数 SSE 解析单点，ARCH-005 F-1）', () =
     expect(handlers.onRisk).toHaveBeenCalledWith(2, '观察')
   })
 
+  it('AUTH-030：usage_limit / usage_warning 事件分发独立回调（不计入 fullResponse）', async () => {
+    const handlers = { ...noopHandlers(), onUsageLimit: vi.fn(), onUsageWarning: vi.fn() }
+    const fullText = await consumeSseStream(readerOf([
+      encoder.encode('data:{"type":"token","content":"你好"}\n\n'),
+      encoder.encode('data:{"type":"usage_warning","content":"再聊5分钟就要休息啦"}\n\n'),
+      encoder.encode('data:{"type":"usage_limit","content":"今天就到这里啦"}\n\n'),
+    ]).getReader(), handlers)
+
+    expect(handlers.onUsageWarning).toHaveBeenCalledWith('再聊5分钟就要休息啦')
+    expect(handlers.onUsageLimit).toHaveBeenCalledWith('今天就到这里啦')
+    // 引导/预警文案不混入正文（前端休息页文案走独立回调链路）
+    expect(fullText).toBe('你好')
+    expect(handlers.onToken).toHaveBeenCalledTimes(1)
+  })
+
   it('非 data: 行与坏 JSON 静默忽略，不中断后续 token', async () => {
     const handlers = noopHandlers()
     const fullText = await consumeSseStream(readerOf([
@@ -167,6 +182,25 @@ describe('useSseStream（UX-006，design/17 §chat/hooks）', () => {
     })
 
     expect(onRisk).toHaveBeenCalledWith(2, '观察')
+  })
+
+  it('AUTH-030：usage_limit/warning 不传回调时静默忽略（useSilenceNudge 等旧调用方兼容）', async () => {
+    mockAuthFetch.mockResolvedValue({
+      ok: true,
+      body: sseReader([
+        encoder.encode('data:{"type":"usage_limit","content":"休息"}\n\n'),
+        encoder.encode('data:{"type":"usage_warning","content":"预警"}\n\n'),
+        encoder.encode('data:{"type":"token","content":"好"}\n\n'),
+      ]),
+    })
+    const { result } = renderHook(() => useSseStream())
+
+    let outcome: any
+    await act(async () => {
+      outcome = await result.current.streamMessage('/u', {}, { onToken: vi.fn(), onEmotion: vi.fn(), onRisk: vi.fn() })
+    })
+
+    expect(outcome.fullResponse).toBe('好')
   })
 
   it('非 data: 行与坏 JSON 静默忽略', async () => {

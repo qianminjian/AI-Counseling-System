@@ -120,6 +120,8 @@ services:
       WECOM_REDIRECT_URI: ${WECOM_REDIRECT_URI:-}
       # 监护人同意：默认 false（fail-closed，PIPL §31），显式置 true 仅用于内部试用环境
       MINDSAFE_CONSENT_TRIAL_AUTO_GRANT: ${MINDSAFE_CONSENT_TRIAL_AUTO_GRANT:-false}
+      # AUTH-030：距上限不足预警阈值（秒），经 application.yml 占位符桥接生效；服务器 .env 配置实际值
+      MINDSAFE_SECURITY_USAGE_LIMIT_WARN_REMAINING_SECONDS: ${MINDSAFE_SECURITY_USAGE_LIMIT_WARN_REMAINING_SECONDS:-300}
       JAVA_OPTS: "-XX:MaxRAMPercentage=75.0"
     depends_on:
       postgres:

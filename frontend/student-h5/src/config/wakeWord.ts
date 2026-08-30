@@ -73,20 +73,20 @@ export const WAKE_PATTERNS = [
   '哈罗 bobo',
 ]
 
-/** 滑窗长度（秒）：累积满后送一次 Whisper 转写（2.0s 兼顾响应速度与识别准确率） */
-export const WAKE_WINDOW_SECONDS = 2.0
+/** 滑窗长度（秒）：累积满后送一次 Whisper 转写（1.5s：唤醒词说完约 1.2s，缩短满窗等待提升响应；远程键 wakeWord.windowSeconds 可调） */
+export const WAKE_WINDOW_SECONDS = 1.5
 
 /** 滑窗重叠保留（秒）：每次转写后保留尾部作为下一窗前缀，避免唤醒词被窗口边界切断 */
-export const WAKE_KEEP_SECONDS = 1.5
+export const WAKE_KEEP_SECONDS = 1.2
 
 /**
  * 静音 RMS 阈值（Float32 采样）：低于此值的窗口直接跳过转写
  * 作用：① 省 CPU  ② 抑制 Whisper 对静音的幻觉输出（如“谢谢观看”类文本）
- * 注意：不能太高，否则用户轻声说唤醒词会被跳过
  * 实测：底噪约 0.005-0.012，正常说话约 0.05-0.3，环境噪声/远场人声 0.02-0.04
- * 取 0.03 可有效过滤底噪+环境噪声，同时不拦截正常说话
+ * 取 0.02：唤醒 UX 迭代——远场/小声呼喊（0.02-0.04）是“经常没反应”主因之一，
+ * 阈值下探到远场区间下沿，多出的转写量由串行识别 + 积压裁剪（保最新 2.5s）兜底
  */
-export const SILENCE_RMS_THRESHOLD = 0.03
+export const SILENCE_RMS_THRESHOLD = 0.02
 
 /** 归一化转写文本：小写 + 去标点/空白，便于容错匹配 */
 export function normalizeWakeText(text) {
@@ -103,7 +103,7 @@ export function matchesWakeWord(text) {
   if (isHallucination(t)) return false
   // 精确匹配（已归一化）
   if (WAKE_PATTERNS.some((p) => t.includes(p))) return true
-  // 拼音模糊匹配：Whisper 可能输出其他同音字，用“哈/蛤/嘿/嗨” + “喽/罗/楼/喍/嚅/啰” + “波/啵/播/伯/铂/伴/宝/胞/半/瓣” + 同组 容错
+  // 拼音模糊匹配：Whisper 可能输出其他同音字，用“哈/蛤/嘿/嗨” + “喽/罗/楼/喍/嚼/啰” + “波/啵/播/伯/铂/伴/宝/胞/半/瓣” + 同组 容错
   // F-7：第二组补 \u54c6（啰，用户实测发音 luó）
   // F-20（2026-08-10 用户实测）：Whisper 把“哈啰波波”转写为“哈喽伴伴”——第三/四组补
   // \u4f34（伴）\u5b9d（宝）\u80de（胞）\u534a（半）\u74e3（瓣）等 b-an/ao 近音字
@@ -112,6 +112,44 @@ export function matchesWakeWord(text) {
   // 英文部分匹配："hello"/"halo" + "bobo"/"波波"
   if (/hello|halo/.test(t) && /bobo|波波|啵啵/.test(t)) return true
   return false
+}
+
+/** 拼音模糊唤醒词前缀（段首 4 字符，与 matchesWakeWord 同字符集） */
+const WAKE_FUZZY_PREFIX = /^[\u54c8\u86e4\u563f\u54ce][\u55bd\u7f57\u697c\u558d\u565c\u54c6][\u6ce2\u5575\u64ad\u4f2f\u94c2\u4f34\u5b9d\u80de\u534a\u74e3][\u6ce2\u5575\u64ad\u4f2f\u94c2\u4f34\u5b9d\u80de\u534a\u74e3]/
+
+/**
+ * 剥掉文本开头命中的唤醒词前缀，返回剩余内容（无剩余返回空串）。
+ *
+ * 背景（唤醒 UX 迭代）：孩子习惯在波波说完后喊“哈喽波波”再说话（"哈喽波波我今天不开心"），
+ * 语音通话模式（active 会话窗）的识别文本会含唤醒词残留——此前整句含唤醒词 >50% 即静默丢弃，
+ * 是“经常没反应”的主因；改为剥掉唤醒词前缀、保留剩余内容照常发送。
+ *
+ * 适用约束：入参为已按标点/空白分段的短语（段内无标点），归一化与原文等长。
+ * 循环剥离上限 3 次（防重复喊两遍的死循环）；判定为幻觉/过短的段落原样返回（交由发送方再过滤）。
+ */
+export function stripWakePrefix(text) {
+  let raw = (text || '').trim()
+  for (let i = 0; i < 3 && raw; i++) {
+    const t = normalizeWakeText(raw)
+    if (!t || !matchesWakeWord(raw)) break
+    // 长度不等（段内含归一化会丢弃的字符）→ 位置映射失效，保守不剥（宁保留残留勿丢内容）
+    if (t.length !== raw.length) break
+    // 定位归一化文本中唤醒词的结束位置（精确变体 → 拼音模糊 → 英文组合）
+    let end = -1
+    for (const p of WAKE_PATTERNS) {
+      const idx = t.indexOf(p)
+      if (idx >= 0) end = Math.max(end, idx + p.length)
+    }
+    if (end < 0 && WAKE_FUZZY_PREFIX.test(t)) end = 4
+    if (end < 0) {
+      const m = t.match(/(?:hello|halo)[\u4e00-\u9fa5a-z]*?(?:bobo|波波|啵啵)/)
+      if (m) end = m[0].length
+    }
+    // 段内无标点空白，归一化仅改大小写 → 长度与原文一致，可直接按位置剥离
+    if (end <= 0) return ''
+    raw = raw.slice(end).trim()
+  }
+  return raw
 }
 
 /**

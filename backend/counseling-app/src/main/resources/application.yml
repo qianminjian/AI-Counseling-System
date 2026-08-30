@@ -151,6 +151,10 @@ mindsafe:
       max-age-days: 90       # 密码过期天数（0 或负数 = 永不过期）
     usage-limit:
       max-daily-minutes: 30  # 学生每日对话时长上限（未保法，0 或负数 = 不限制）
+      # AUTH-030：距上限不足预警阈值（秒），每学生每日最多提醒一次。
+      # kebab 属性名无法被大写下划线环境变量直接命中（relaxed binding 不处理连字符，注入会静默回落 300），
+      # 按项目惯例显式桥接（对齐 MINDSAFE_NUDGE_MAX_COUNT 模式）
+      warn-remaining-seconds: ${MINDSAFE_SECURITY_USAGE_LIMIT_WARN_REMAINING_SECONDS:300}
     data-retention:
       normal-session-days: 180   # 普通对话保留天数（PIPL 数据最小化，对齐 design/06 §6.5 设计值 180 天）
       high-risk-session-days: 365 # 高风险对话保留天数（合规追溯）

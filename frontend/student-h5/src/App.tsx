@@ -71,7 +71,7 @@ export default function App() {
             onConsentRequired={() => setShowGuardianGate(true)} />
         </>
       ) : (
-        <ChatRoom session={session} onEnd={() => setSession(null)} onSwitchUser={handleLogout} />
+        <ChatRoom session={session} onEnd={() => setSession(null)} onSwitchUser={handleLogout} markActivity={idle.markActivity} />
       )}
       {/* 无操作超时警告卡 */}
       {authed && idle.warning && <IdleWarning secondsLeft={idle.secondsLeft} onStay={idle.stay} />}

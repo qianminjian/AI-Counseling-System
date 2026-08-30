@@ -186,6 +186,59 @@ describe('useVoiceCallMode', () => {
     vi.useRealTimers()
   })
 
+  describe('唤醒词前缀剥除（唤醒 UX 迭代：消除“整句含唤醒词被吞”）', () => {
+    /** 进入 active 会话窗并捕获识别实例 */
+    async function enterActiveWithRec(onFinalTranscript: any) {
+      let capturedRec: any = null
+      ;(window as any).SpeechRecognition = class {
+        lang = ''; continuous = false; interimResults = false
+        onresult: any = null; onend: any = null; onerror: any = null
+        start = vi.fn(() => { capturedRec = this })
+        stop = vi.fn()
+      }
+      const { result } = renderHook(() =>
+        useVoiceCallMode({ enabled: true, tts: mockTts, busy: false, onFinalTranscript })
+      )
+      act(() => { mockOnDetected.current?.() })
+      expect(result.current.mode).toBe('active')
+      return { capturedRec, result }
+    }
+
+    it('纯唤醒词 → 剩余为空不发送，重放确认语“我在呢！”给明确反馈', async () => {
+      const onFinalTranscript = vi.fn()
+      const { capturedRec } = await enterActiveWithRec(onFinalTranscript)
+      act(() => {
+        capturedRec.onresult({ results: [[{ transcript: '哈喽波波' }]], length: 1 })
+      })
+      await act(async () => { await vi.advanceTimersByTimeAsync(1900) })
+      expect(onFinalTranscript).not.toHaveBeenCalled()
+      expect(mockTts.speak).toHaveBeenCalledWith('我在呢！')
+      vi.useRealTimers()
+    })
+
+    it('唤醒词+内容（无分隔）→ 剥除前缀后发送剩余内容', async () => {
+      const onFinalTranscript = vi.fn()
+      const { capturedRec } = await enterActiveWithRec(onFinalTranscript)
+      act(() => {
+        capturedRec.onresult({ results: [[{ transcript: '哈喽波波我今天不开心' }]], length: 1 })
+      })
+      await act(async () => { await vi.advanceTimersByTimeAsync(1900) })
+      expect(onFinalTranscript).toHaveBeenCalledWith('我今天不开心')
+      vi.useRealTimers()
+    })
+
+    it('唤醒词与内容标点分隔 → 分段剥除后仅发剩余', async () => {
+      const onFinalTranscript = vi.fn()
+      const { capturedRec } = await enterActiveWithRec(onFinalTranscript)
+      act(() => {
+        capturedRec.onresult({ results: [[{ transcript: '哈喽波波，我今天不开心' }]], length: 1 })
+      })
+      await act(async () => { await vi.advanceTimersByTimeAsync(1900) })
+      expect(onFinalTranscript).toHaveBeenCalledWith('我今天不开心')
+      vi.useRealTimers()
+    })
+  })
+
   it('active 模式下 onend 自动重启聊听', async () => {
     let capturedRec: any = null
     ;(window as any).SpeechRecognition = class {

@@ -674,22 +674,46 @@ class ConversationServiceImplTest {
         }
 
         @Test
-        @DisplayName("AUTH-030 每日时长超限 → 引导休息话术含热线 Provider 号码（接线锁定）")
+        @DisplayName("AUTH-030 每日时长超限 → usage_limit 事件含热线 Provider 号码（接线锁定）")
         void timeLimitExceeded_guidanceRenderedWithHotline() {
             UUID sessionId = createSession("happy");
-            mockPipeline();
-            // 覆盖通用 mock：时长超限 → 引导休息分支（4.5）
+            // 超限分支（4.5）位于 RED 短路（4.2）之后：不能复用本类 RED mock，
+            // 须走 safe 管线才能到达（历史上此用例曾被 RED 安抚语「含热线」的假阳性掩盖）
+            when(riskProcessor.detectKeywordRisk(anyString())).thenReturn(RiskDetectionResult.safe());
+            when(riskProcessor.fuseRiskSignals(any(RiskDetectionResult.class), any(), any(), anyInt()))
+                    .thenReturn(null);
+            when(piiDesensitizer.desensitize(anyString())).thenAnswer(inv -> inv.getArgument(0));
+            // 时长超限 → 引导休息分支（4.5）
             when(usageTimeLimitService.isExceeded(any(), any())).thenReturn(true);
 
             List<StreamMessageEvent> events = service
                     .sendMessageStream(tenantId, studentId, sessionId, "我想聊天")
                     .collectList().block();
 
-            // 接线锁定：buildTimeLimitGuidance(crisisHotlineProvider.hotline())
-            assertThat(events).anyMatch(e -> "token".equals(e.type())
+            // 接线锁定：超限走结构化 usage_limit 事件（前端展示休息引导页），文案仍含热线号码
+            assertThat(events).anyMatch(e -> "usage_limit".equals(e.type())
                     && e.content().contains("心理援助热线")
                     && e.content().contains(CrisisResources.NATIONAL_PSYCHOLOGICAL_AID)
                     && !e.content().contains("12355"));
+            verify(aiChatService, never()).chatWithPrompt(any(), any(), any(), anyString());
+        }
+
+        @Test
+        @DisplayName("AUTH-030：RED 优先于时长超限——安全优先，不返回超限引导")
+        void red_takesPrecedenceOverTimeLimit() {
+            UUID sessionId = createSession("sad");
+            mockPipeline();
+            // 即便已达每日上限，RED 短路优先（红色风险消息不受限制，AUTH-030 安全优先）
+            when(usageTimeLimitService.isExceeded(any(), any())).thenReturn(true);
+
+            List<StreamMessageEvent> events = service
+                    .sendMessageStream(tenantId, studentId, sessionId, "我不想活了")
+                    .collectList().block();
+
+            // 走 RED 安全文案而非超限引导：usage_limit 事件不出现
+            assertThat(events).anyMatch(e -> "token".equals(e.type())
+                    && e.content().contains("心理援助热线"));
+            assertThat(events).noneMatch(e -> "usage_limit".equals(e.type()));
             verify(aiChatService, never()).chatWithPrompt(any(), any(), any(), anyString());
         }
 

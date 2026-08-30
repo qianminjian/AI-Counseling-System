@@ -7,6 +7,7 @@ import {
   WAKE_WINDOW_SECONDS,
   WAKE_KEEP_SECONDS,
   SILENCE_RMS_THRESHOLD,
+  stripWakePrefix,
 } from '../config/wakeWord'
 
 describe('config/wakeWord', () => {
@@ -153,6 +154,46 @@ describe('config/wakeWord', () => {
       it('纯 hello 不带 bobo', () => {
         expect(matchesWakeWord('hello world')).toBe(false)
       })
+    })
+  })
+
+  describe('stripWakePrefix（唤醒 UX 迭代：active 会话窗唤醒词前缀剥离）', () => {
+    it('唤醒词+内容 → 剥除前缀保留剩余', () => {
+      expect(stripWakePrefix('哈喽波波我今天不开心')).toBe('我今天不开心')
+    })
+
+    it('纯唤醒词 → 空串（由调用方重放确认语反馈）', () => {
+      expect(stripWakePrefix('哈喽波波')).toBe('')
+    })
+
+    it('无唤醒词 → 原样返回', () => {
+      expect(stripWakePrefix('我今天很开心')).toBe('我今天很开心')
+    })
+
+    it('连续两遍唤醒词 → 循环剥离（上限 3 次）', () => {
+      expect(stripWakePrefix('哈喽波波哈喽波波你好')).toBe('你好')
+    })
+
+    it('拼音模糊唤醒词前缀（WAKE_PATTERNS 无精确命中）', () => {
+      expect(stripWakePrefix('哈喽伴伴你好呀')).toBe('你好呀')
+    })
+
+    it('英文唤醒词（无标点等长）', () => {
+      expect(stripWakePrefix('hellobobohi')).toBe('hi')
+    })
+
+    it('含空格归一化不等长 → 等长防御原样返回（宁保留残留勿丢内容）', () => {
+      expect(stripWakePrefix('HELLO BOBO hi')).toBe('HELLO BOBO hi')
+    })
+
+    it('含标点（段内应已按标点分段，此处防御）原样返回', () => {
+      expect(stripWakePrefix('哈喽，波波！我今天不开心')).toBe('哈喽，波波！我今天不开心')
+    })
+
+    it('空输入', () => {
+      expect(stripWakePrefix('')).toBe('')
+      expect(stripWakePrefix(null)).toBe('')
+      expect(stripWakePrefix(undefined)).toBe('')
     })
   })
 })

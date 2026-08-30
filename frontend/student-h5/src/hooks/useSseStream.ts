@@ -16,6 +16,10 @@ export interface SseStreamHandlers {
   onToken: (content: string) => void
   onEmotion: (label: string) => void
   onRisk: (riskLevel: number, content: string) => void
+  /** AUTH-030：每日使用时长已达上限（前端展示休息引导页并禁用输入；useSilenceNudge 等旧调用方不传，可选） */
+  onUsageLimit?: (guidance: string) => void
+  /** AUTH-030：距上限不足预警（每日最多一次的顶部提示） */
+  onUsageWarning?: (text: string) => void
 }
 
 export interface SseStreamResult {
@@ -66,6 +70,10 @@ export async function consumeSseStream(
           handlers.onEmotion(event.content)
         } else if (event.type === 'risk') {
           handlers.onRisk(event.metadata?.riskLevel ?? 1, event.content)
+        } else if (event.type === 'usage_limit') {
+          handlers.onUsageLimit?.(event.content)
+        } else if (event.type === 'usage_warning') {
+          handlers.onUsageWarning?.(event.content)
         }
       } catch {
         /* 坏 JSON 行静默忽略 */

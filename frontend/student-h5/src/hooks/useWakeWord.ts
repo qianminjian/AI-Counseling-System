@@ -327,7 +327,8 @@ export function useWakeWord({ active, paused, onDetected }) {
         dbg('转写结果:', JSON.stringify(text), '幻觉:', hallucinated, '匹配:', matched)
         if (matched) {
           setWakeStatus('detected')
-          setTimeout(() => onDetectedRef.current?.({ label: 'halou-bobo', text }), 300)
+          // 150ms：原 300ms 退避已验证无需（onDetected 由 detectingRef 锁防重），减半提升唤醒响应
+          setTimeout(() => onDetectedRef.current?.({ label: 'halou-bobo', text }), 150)
         }
       }
       analyzing = false

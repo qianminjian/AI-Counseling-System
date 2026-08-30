@@ -216,6 +216,14 @@ public class ConversationServiceImpl implements ConversationService {
             usageTimeLimitService.addUsage(session.getTenantId(), session.getStudentUserId(), elapsedSec);
         }
 
+        // AUTH-030：距上限不足预警（每学生每日最多一次，前端顶部横幅提示；
+        // 正常回复流才携带——RED 短路/超限短路优先于体验性预警）
+        long warnRemainingSec = usageTimeLimitService.tryMarkWarned(session.getTenantId(), session.getStudentUserId());
+        // 严格大于 0：剩余 0 秒必然已走下方超限短路分支，无需再预警（也防御 0 值注入「再聊0分钟」的无效文案）
+        Flux<StreamMessageEvent> usageWarnEvents = warnRemainingSec > 0
+                ? Flux.just(StreamMessageEvent.usageWarning(buildUsageWarningText(warnRemainingSec)))
+                : Flux.empty();
+
         // 记录语音情绪到会话历史（用于趋势追踪）
         if (voiceEmotion != null && voiceEmotionConfidence != null && voiceEmotionConfidence > 0.6) {
             session.addEmotionRecord(voiceEmotion, voiceEmotionConfidence);
@@ -332,14 +340,15 @@ public class ConversationServiceImpl implements ConversationService {
             ));
         }
 
-        // 4.5 AUTH-030：每日使用时长超限 → 引导休息（RED 已在 4.2 短路，此处不会拦截红色风险）
+        // 4.5 AUTH-030：每日使用时长超限 → 引导休息（RED 已在 4.2 短路，此处不会拦截红色风险）。
+        //     usage_limit 事件供前端展示专门休息引导页并禁用输入（区别于普通 token 回复）
         if (usageTimeLimitService.isExceeded(session.getTenantId(), session.getStudentUserId())) {
             log.info("每日使用时长已达上限，引导休息: sessionId={}, student={}, usedSec={}",
                     sessionId, session.getStudentUserId(),
                     usageTimeLimitService.getUsedSeconds(session.getTenantId(), session.getStudentUserId()));
             String guidance = RiskResponseStrategy.buildTimeLimitGuidance(crisisHotlineProvider.hotline());
             return riskEvents.concatWith(Flux.just(
-                    StreamMessageEvent.token(guidance),
+                    StreamMessageEvent.usageLimit(guidance),
                     StreamMessageEvent.done("")
             ));
         }
@@ -437,11 +446,17 @@ public class ConversationServiceImpl implements ConversationService {
                     return Flux.just(StreamMessageEvent.error("小助手暂时走神了，请再说一次好吗？"));
                 });
 
-        // 6. 组合：风险事件 + 回复情绪事件（TTSFX-004：波波表情状态机需在语音开播前收到信号，design/37 M1） + AI 回复
+        // 6. 组合：使用时长预警 + 风险事件 + 回复情绪事件（TTSFX-004：波波表情状态机需在语音开播前收到信号，design/37 M1） + AI 回复
         ReplyEmotionResolver.Result replyEmotion = replyEmotionResolver.resolve(strategy);
         Flux<StreamMessageEvent> emotionEvent = Flux.just(
                 StreamMessageEvent.emotion(replyEmotion.emotion(), replyEmotion.intensity()));
-        return riskEvents.concatWith(emotionEvent).concatWith(aiStream);
+        return usageWarnEvents.concatWith(riskEvents).concatWith(emotionEvent).concatWith(aiStream);
+    }
+
+    /** AUTH-030：预警文案（含剩余分钟数，向上取整避免「还有 0 分钟」的怪异表述） */
+    private String buildUsageWarningText(long remainingSec) {
+        long minutes = (remainingSec + 59) / 60;
+        return "波波想和你说：我们再聊" + minutes + "分钟左右，就要让眼睛和心情休息一下啦，好吗？";
     }
 
     @Override
@@ -460,6 +475,12 @@ public class ConversationServiceImpl implements ConversationService {
         // 护栏 1：会话已 escalated（红色风险）→ 不做日常暖场（安全流程接管）
         if (sessionStore.isEscalated(sessionId)) {
             log.debug("nudge: 会话已 escalated，返回空流: sessionId={}", sessionId);
+            return Flux.empty();
+        }
+
+        // 护栏 1.5 AUTH-030：已超限引导休息 → 不再暖场（与休息引导语义一致，避免边劝休息边主动找话）
+        if (usageTimeLimitService.isExceeded(tenantId, studentUserId)) {
+            log.debug("nudge: 使用时长已超限，返回空流: sessionId={}", sessionId);
             return Flux.empty();
         }
 

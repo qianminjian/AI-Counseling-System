@@ -21,6 +21,8 @@ export interface ChatTtsLike {
   startStreaming(): void
   feedToken(content: string): void
   endStreaming(): void
+  /** 整句播报（AUTH-030 超限引导语等非流式场景；测试 mock 可不实现） */
+  speak?(text: string): void
 }
 
 /** 波波表情状态机最小接口（ChatRoom 传入 useBoboExpression） */
@@ -42,6 +44,8 @@ export interface ChatSessionOptions {
   onBeforeSend?: () => void
   /** 会话关闭完成回调（由 ChatRoom 驱动 onEnd 导航） */
   onClosed?: () => void
+  /** AUTH-030：距上限不足预警（每日最多一次；由 ChatRoom 接入顶部提示条） */
+  onUsageWarning?: (text: string) => void
 }
 
 /**
@@ -94,11 +98,13 @@ export function settleStreamEnd(
  * SSE 传输细节委托 useSseStream。
  */
 export function useChatSession(opts: ChatSessionOptions) {
-  const { sessionId, greeting, emotionTag, tts, wakeEnabled, bobo, onInteraction, onBeforeSend, onClosed } = opts
+  const { sessionId, greeting, emotionTag, tts, wakeEnabled, bobo, onInteraction, onBeforeSend, onClosed, onUsageWarning } = opts
   const [messages, setMessages] = useState<ChatMessage[]>([
     { role: 'assistant', content: greeting, emotion: emotionTag },
   ])
   const [input, setInput] = useState('')
+  // AUTH-030：每日使用时长已达上限 → 前端展示休息引导页并禁用输入（后端 usage_limit 事件驱动）
+  const [usageLimited, setUsageLimited] = useState(false)
   const { streaming, streamMessage } = useSseStream()
 
   // 指向最新的 sendMessage（供录音完成回调等定义在前的调用方使用，避免 TDZ 与闭包过期）
@@ -121,6 +127,8 @@ export function useChatSession(opts: ChatSessionOptions) {
   const sendMessage = async (autoText?: string, autoEmotion?: VoiceEmotion | null) => {
     const text = deduplicateText((autoText ?? input).trim())
     if (!text || streaming) return false
+    // AUTH-030：已达每日上限 → 后端不再受理消息，前端直接拒发（防语音管线绕过休息页）
+    if (usageLimited) return false
 
     // 先停止当前播放，再在用户手势中解锁音频（避免 unlock 被 stop 打断）
     tts.stop()
@@ -192,6 +200,28 @@ export function useChatSession(opts: ChatSessionOptions) {
             // S0/S1 风险锁定波波 hug 安抚姿态（design/37 §4.1 安全红线，riskLevel≥2 锁定）
             bobo.dispatch({ type: 'risk', riskLevel })
           },
+          onUsageLimit: (guidance) => {
+            // AUTH-030：超限 → 置休息态（ChatRoom 渲染休息引导页并禁输入），
+            // 引导文案作为波波的最后一句回复展示 + 播报（不走 token 流，避免再触发流式 TTS 管线）
+            setUsageLimited(true)
+            setMessages((prev) => {
+              const updated = [...prev]
+              const last = updated[updated.length - 1]
+              // 后端超限短路不发 token：最后一个空 assistant 气泡直接填入引导文案
+              if (last?.role === 'assistant' && !last.content) {
+                updated[updated.length - 1] = { ...last, content: guidance }
+              } else {
+                updated.push({ role: 'assistant', content: guidance, emotion: null })
+              }
+              return updated
+            })
+            if (!tts.muted) {
+              tts.stop()
+              tts.speak?.(guidance)
+            }
+            bobo.dispatch({ type: 'idle' })
+          },
+          onUsageWarning,
         },
       )
       fullResponse = result.fullResponse
@@ -233,5 +263,5 @@ export function useChatSession(opts: ChatSessionOptions) {
     onClosed?.()
   }
 
-  return { messages, setMessages, input, setInput, streaming, sendMessage, sendMessageRef, closeSession, deduplicateText }
+  return { messages, setMessages, input, setInput, streaming, sendMessage, sendMessageRef, closeSession, deduplicateText, usageLimited }
 }
