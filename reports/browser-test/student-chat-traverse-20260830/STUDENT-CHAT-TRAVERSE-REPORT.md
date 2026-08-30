@@ -238,6 +238,27 @@ C0 落地页 → 登录（开心/1234）→ 跳过引导
 
 **结论**：①「前面没问题」属实（08-10 实证）；②破坏源 = 08-12 OPS-005 复制了不完整的 CSP 策略且无功能回归；③声纹登录 500 与 08-12 无关，是 07-31 创建时的原生缺陷，因「从未 E2E 测过」而潜伏 30 天；④降级容灾设计存在但「播放失败」分支未按设计接通，把「静音」放大成「无声且无降级」。
 
+### 6.6 生产部署与线上复测（2026-08-30 晚，commit ea7f2484..5721e4d1）
+
+> 流程：4 commit（nginx CSP / voice-login / 降级链 / 报告）→ push → CI 12 jobs 全绿 → deploy.sh 增量部署 2m34s（backend student tts voice）→ 冒烟 32/32。
+
+**线上复测三件套全部闭环（CDP 客观证据）**：
+
+| 验证项 | 修复前 | 修复后线上实测 |
+|---|---|---|
+| CSP 响应头 | `media-src` 缺失（回落 default-src） | `media-src 'self' blob: data:; worker-src 'self' blob:` 生效（curl 实锤） |
+| TTS 播放 | blob 加载被拦，静音 | **3 句 blob play() 全部成功，currentTime 推进 2.85s=duration（真实播完），CSP 违规 0 条** |
+| voice-login | HTTP 500 code:10001 | **HTTP 200 code:0**，token/refreshToken 正常签发；空 body → 400 业务校验（非 500） |
+| 声纹登录闭环 | 用户永远登录失败 | IndexedDB 凭证 → voice-login 200 → 登录态注入 → 主界面「嗨，开心！」 |
+| AudioWorklet | blob 模块被拦 → ScriptProcessor 降级保命 | **addModule(“blob:...”) OK，createScriptProcessor 0 次调用（无降级）** |
+| TTS 主引擎 | — | cosyvoice-cloud available:true |
+
+截图：DEPLOY-01-tts-blob-playing.png（对话室 TTS 播放状态）。
+
+**附带发现（新，P3）**：voice-login 签发的 token 注入 sessionStorage 后 reload 页面会话丢失（sessionStorage 被清空回登录页）。不影响正常使用路径（声纹登录→使用→关闭），但与 PIN 登录的刷新恢复行为是否一致待核实——疑似启动时某 API 对 voice-login token 返回 401 触发 handleSessionExpired。待后续会话恢复专项排查。
+
+**待真人验收**：唤醒词端到端命中（Mac 扬声器→麦克风物理回采无法自动验证，与 CSP 无关）；edge-tts 备用引擎生产演练（可选）。
+
 ## 7. 结论
 
 学生端对话窗口及主界面菜单 9 个场景组 **32 步有效操作全部收敛**；25 项功能验证点全部通过，5 项低优先级问题登记待修复。五情绪开场白适配、CBT 多轮引导、SOS 内容合规（12355 固化）、无操作超时完整链路、主题/音色持久化为本次重点确认项。
