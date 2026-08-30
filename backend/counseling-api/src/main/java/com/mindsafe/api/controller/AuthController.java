@@ -224,7 +224,13 @@ public class AuthController {
         }
 
         // 更新最后登录时间（T4 批次B：下沉 AuthUserService）
-        authUserService.touchLastLogin(candidate.userId());
+        // P0 修复：本端点 permitAll 无租户上下文，裸 UPDATE 撞 M1-003 fail-fast
+        // （IllegalStateException → HTTP 500，声纹登录 100% 失败），
+        // 对齐 VoiceprintController.verify 模式显式声明系统作用域
+        TenantContextHolder.callAsSystem(() -> {
+            authUserService.touchLastLogin(candidate.userId());
+            return null;
+        });
 
         // S-001：补齐租户门禁 + 统一签发/审计（原路径缺失门禁）
         loginOrchestrator.guardTenantLogin(candidate);
