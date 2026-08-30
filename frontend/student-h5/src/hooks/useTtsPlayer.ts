@@ -198,7 +198,7 @@ export function useTtsPlayer({ persona = 'xiaoxing', emotion = 'neutral', speed 
     }
   }, [persona, emotion, speed, dialect])
 
-  /** 用持久 Audio 元素播放一个 blob */
+  /** 用持久 Audio 元素播放一个 blob；resolve(true)=播放加载失败（供调用方接通浏览器降级） */
   const playBlob = useCallback((blob) => {
     return new Promise((resolve) => {
       // FE-003：getAudio 内部确保创建后返回，逻辑上非空（断言不改变运行行为）
@@ -211,18 +211,17 @@ export function useTtsPlayer({ persona = 'xiaoxing', emotion = 'neutral', speed 
         audio.onerror = null
       }
 
-      audio.onended = () => { cleanup(); resolve(undefined) }
+      audio.onended = () => { cleanup(); resolve(false) }
       audio.onerror = () => {
-        console.warn('[TTS] 音频解码失败（MIME 不匹配？）', blob.type, blob.size)
-        // OBS-TTS-01：无声失败必须用户可感知——音频加载/解码失败视为播放引擎不可用，
-        // 置 none 触发 ChatRoom 顶部提示（下一次合成成功自然恢复 'backend'）
-        setEngine('none')
-        cleanup(); resolve(undefined)
+        console.warn('[TTS] 音频加载失败（CSP/MIME？）→ 交由 playSentence 降级浏览器语音', blob.type, blob.size)
+        // 降级缺口修复：原实现直接 setEngine('none') 跳过 browser 降级；
+        // 改为返回失败信号，由 playSentence 接通 backend→browser→none 完整降级链
+        cleanup(); resolve(true)
       }
       audio.src = url
       audio.play().catch((err) => {
         console.warn('[TTS] play() 被拒绝:', err.name, err.message)
-        cleanup(); resolve(undefined)
+        cleanup(); resolve(true)
       })
     })
   }, [getAudio])
@@ -240,8 +239,19 @@ export function useTtsPlayer({ persona = 'xiaoxing', emotion = 'neutral', speed 
     const blob = precomputedBlob !== undefined ? precomputedBlob : await synthesizeSentence(text)
     if (abortRef.current) return false
     if (blob) {
-      await playBlob(blob)
-      return false
+      const playFailed = await playBlob(blob)
+      if (!playFailed) return false
+      // 播放失败（如 CSP 拦截 blob 加载）→ 降级浏览器 speechSynthesis（FA-11 链补全）
+      setEngine('browser')
+      await new Promise<void>((resolve) => {
+        const ok = browserSpeak(text, { rate: speed, persona, onEnd: resolve })
+        if (!ok) {
+          // 浏览器 TTS 也不可用（安卓无 Google 语音引擎）→ none 触发顶部提示
+          setEngine('none')
+          resolve()
+        }
+      })
+      return true
     }
     // 后端 TTS 不可用 → 浏览器 speechSynthesis 降级
     setEngine('browser')

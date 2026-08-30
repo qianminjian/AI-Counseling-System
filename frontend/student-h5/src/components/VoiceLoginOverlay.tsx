@@ -102,7 +102,13 @@ export default function VoiceLoginOverlay({ mode = 'verify', onComplete, onCance
             const url = URL.createObjectURL(blob)
             audio.src = url
             audio.onended = () => { URL.revokeObjectURL(url); clearTimeout(timer); done() }
-            audio.onerror = () => { URL.revokeObjectURL(url); clearTimeout(timer); done() }
+            audio.onerror = () => {
+              URL.revokeObjectURL(url)
+              // 降级缺口修复：播放加载失败（如 CSP 拦截）原实现只 done() 继续流程，
+              // 导致 AI 音色无声且不降级；补接 speechSynthesis 逐级降级
+              const ok = browserSpeak(text, { rate: 0.9, persona: getLoginPersona(), onEnd: done })
+              if (!ok) { clearTimeout(timer); done() }
+            }
             await audio.play()
             return
           }
@@ -318,7 +324,9 @@ export default function VoiceLoginOverlay({ mode = 'verify', onComplete, onCance
           } catch {
             setFailKind('credential')
             setPhase('fail')
-            setStatusText('登录钥匙过期啦，先用秘密数字进入，再到「设置」里重录一次声音吧')
+            // P0 修复配套：voiceLogin 失败可能是凭证过期也可能是服务异常（实测 500），
+            // 原文案「过期」误导排查方向，改为不预设原因的行动引导
+            setStatusText('声音登录暂时打不开，先用秘密数字进入吧')
           }
         } else {
           const newCount = failCount + 1

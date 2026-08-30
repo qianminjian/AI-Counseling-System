@@ -158,11 +158,11 @@ describe('VoiceLoginOverlay', () => {
     expect(screen.getByText('用秘密数字登录')).toBeTruthy()
   })
 
-  it('verify 凭证过期（voiceLogin 抛异常）', async () => {
+  it('verify voiceLogin 失败（凭证过期/服务异常）→ 引导 PIN', async () => {
     mockVoiceLogin.mockRejectedValue(new Error('expired'))
     render(<VoiceLoginOverlay mode="verify" onComplete={vi.fn()} onCancel={vi.fn()} />)
     await act(async () => { await vi.advanceTimersByTimeAsync(30000) })
-    expect(screen.getByText(/登录钥匙过期啦/)).toBeTruthy()
+    expect(screen.getByText(/声音登录暂时打不开/)).toBeTruthy()
   })
 
   it('remote 模式 verify：租户信息缺失 → 引导重录（AUD-001）', async () => {

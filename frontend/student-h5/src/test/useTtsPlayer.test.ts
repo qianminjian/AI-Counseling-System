@@ -334,6 +334,12 @@ describe('hooks/useTtsPlayer', () => {
         setTimeout(() => mockAudioInstance.onerror?.(), 5)
         return Promise.resolve()
       })
+      // FA-11 链补全：onerror → playBlob 失败信号 → playSentence 降级 browserSpeak，
+      // 需让 utter.onend 触发（旧实现直接 setEngine('none') 不走 browserSpeak，无需此 mock）
+      const mockSpeak = window.speechSynthesis.speak as any
+      mockSpeak.mockImplementation((utter: any) => {
+        setTimeout(() => utter.onend?.(), 5)
+      })
       const mockBlob = new Blob(['bad'], { type: 'audio/mp3' })
       mockFetchTtsSynthesize.mockResolvedValue({
         ok: true,
@@ -346,11 +352,18 @@ describe('hooks/useTtsPlayer', () => {
         await result.current.speak('测试。')
         await new Promise(r => setTimeout(r, 50))
       })
+      // 降级链验证：音频加载失败后 speechSynthesis 接管出声（不再静默 setEngine('none')）
+      expect(mockSpeak).toHaveBeenCalled()
       expect(result.current.playing).toBe(false)
     })
 
     it('audio.play() 被拒绝时正常结束', async () => {
       mockAudioInstance.play = vi.fn(() => Promise.reject(new DOMException('NotAllowedError')))
+      // 同上：play 被拒 → playSentence 降级 browserSpeak，utter.onend 需触发
+      const mockSpeak = window.speechSynthesis.speak as any
+      mockSpeak.mockImplementation((utter: any) => {
+        setTimeout(() => utter.onend?.(), 5)
+      })
       const mockBlob = new Blob(['audio'], { type: 'audio/mp3' })
       mockFetchTtsSynthesize.mockResolvedValue({
         ok: true,
@@ -363,6 +376,7 @@ describe('hooks/useTtsPlayer', () => {
         await result.current.speak('测试。')
         await new Promise(r => setTimeout(r, 50))
       })
+      expect(mockSpeak).toHaveBeenCalled()
       expect(result.current.playing).toBe(false)
     })
   })
