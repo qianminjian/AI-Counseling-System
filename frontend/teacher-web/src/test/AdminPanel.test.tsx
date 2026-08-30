@@ -28,11 +28,15 @@ vi.mock('../api', () => ({
 
 import AdminPanel from '../components/teacher/AdminPanel';
 
+// 邀请码显示状态依赖「过期时间 vs 当前时间」比较（AdminPanel effectiveStatus），
+// fixture 必须用相对日期——硬编码日历日期会在跨过该日期后引爆测试（c-1 曾硬编码
+// 2026-08-30，当日 00:00 起该用例永久失败卡死 CI 门禁）
+const futureDate = (days: number) => new Date(Date.now() + days * 86400000).toISOString();
 const codes = [
-  { codeId: 'c-1', code: 'ABC12345', usedCount: 3, maxUses: 10, status: 'active', expiresAt: '2026-08-30T00:00:00', createdAt: '2026-07-01T00:00:00' },
+  { codeId: 'c-1', code: 'ABC12345', usedCount: 3, maxUses: 10, status: 'active', expiresAt: futureDate(7), createdAt: '2026-07-01T00:00:00' },
   { codeId: 'c-2', code: 'XYZ67890', usedCount: 0, maxUses: 5, status: 'disabled', expiresAt: null, createdAt: '2026-06-01T00:00:00' },
   // active 但已过期 → 显示「已过期」
-  { codeId: 'c-3', code: 'OLD00001', usedCount: 2, maxUses: 20, status: 'active', expiresAt: '2026-01-01T00:00:00', createdAt: '2026-01-01T00:00:00' },
+  { codeId: 'c-3', code: 'OLD00001', usedCount: 2, maxUses: 20, status: 'active', expiresAt: futureDate(-30), createdAt: '2026-01-01T00:00:00' },
 ];
 const auditLogs = [
   { auditLogId: 'a-1', tenantId: 't-1', userId: 'u-12345678', action: 'CREATE_INVITE_CODE', resourceType: 'INVITE_CODE', detail: '生成邀请码', createdAt: '2026-07-28T09:00:00' },
