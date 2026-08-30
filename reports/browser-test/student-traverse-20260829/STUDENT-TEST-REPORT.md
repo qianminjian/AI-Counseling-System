@@ -167,17 +167,34 @@ ConsentGate（8 节条款+复选框门控）→ 空表单校验 → 年龄 9 触
 #### OBS-TTS-01（P3，已修复）— 降级/无声失败终态无提示（真相修正）
 - **真相修正**：ChatRoom L116-120 原本已有 `engine==='none'` 顶部提示；静默的真正原因是两条缝隙叠加——①受控环境降级终态是 `engine='browser'`（headless 的 speechSynthesis.speak 调用成功返回 ok，不进 none 分支），提示永不触发；②playBlob 无声失败（onerror）只 console.warn 不改 engine
 - **修复**：①useTtsPlayer playBlob onerror 置 `engine='none'`（诚实语义：无法出声=不可用；下次合成成功自然恢复 backend）②ChatRoom 提示 effect 加 30s 防抖（避免逐句失败刷屏）
-- 状态：已修复（前端 959/959 + build ✓），行为验证待部署后复测
+- 状态：已修复并**线上复测通过**（见 7.3c：受控环境 blob 拒绝触发提示弹出，snapshot 文本×2 + retest2-03 截图）
 
 #### OBS-TTS-02（P3，已修复）— 打字发送新消息时旧朗读延迟打断
 - onBeforeSend（ChatRoom.tsx）仅重置重播高亮+释放麦克风不调 tts.stop()，旧播放在新回复流式开始时才被打断（残留窗口=发送→LLM 首字节），与「按住说话即停读」行为不一致
 - **修复**：onBeforeSend 补 tts.stop() 对齐
-- 状态：已修复（同上）
+- 状态：已修复并**线上探针验证通过**（见 7.3c：发送时刻 pause 1→4，stop 链路触发；播放中打断的主观体验待真机听测）
 
 ### 7.3b 本轮修复记录（2026-08-30）
 - useTtsPlayer.ts playBlob：onerror 增 setEngine('none')（OBS-TTS-01 ①）
 - ChatRoom.tsx：onBeforeSend 增 tts.stop()（OBS-TTS-02）；engine='none' 提示 30s 防抖（OBS-TTS-01 ②）
-- 验证：vitest 959/959 ✓、tsc+vite build ✓；行为验证（提示弹出/发送即停读）待部署后复测
+- 验证：vitest 959/959 ✓、tsc+vite build ✓；线上复测见 7.3c
+
+### 7.3c 部署与自动化复测（2026-08-30，commit 8bb794d4 + c2136ada）
+
+**部署链插曲——CI 门禁被时间炸弹引爆（与本次修复无关）**：首次 push 后 run 33296065538 failure，定位为 teacher-web `AdminPanel.test.tsx` fixture 硬编码 `expiresAt='2026-08-30T00:00:00'`（恰好当日 00:00 起 c-1 被组件判定已过期，「有效」计数 0≠1 永久失败，卡死所有后续 CI）；fixture 改相对日期（+7 天/-30 天）时间无关化（c2136ada），本地 teacher-web 221/221 ✓ 后 re-push，run 33296308570 success；deploy.sh 32s SUCCESS（变更检测精准命中 student+teacher），部署审计 P1 仍为历史窗口统计噪声、P2/P3 审计脚本趋势方向判断与明细数据相反（3340→1205ms 实为下降），留观。
+
+**线上自动化复测（agent-browser 探针：HTMLMediaElement.play/pause + speechSynthesis 埋点）**：
+
+| 复测项 | 结果 | 证据 |
+|--------|------|------|
+| OBS-TTS-01 提示弹出 | ✓ | 受控环境 blob 拒绝触发 `engine='none'` → 「当前浏览器不支持语音播放」提示弹出（snapshot 文本×2 轮 + retest2-03 截图可见提示条）；engine 停留 none 时不重复弹（none→none 不触发 effect），符合防抖设计意图 |
+| OBS-TTS-02 发送即停读 | ✓ | 发送前 pause=1 → 点击发送后 1s pause=4（+3：onBeforeSend stop + 流式 startStreaming 内 stop），修复前该时刻无任何 pause 调用 |
+| TTS 自动播放回归 | ✓ | greeting 3 句 + AI 回复 5 句流式合成自动播放（play 计数 3→8） |
+| 对话链路冒烟 | ✓ | 发送→CBT 式回复（情绪确认+追问）正常；LLM 再次短暂故障，降级话术无标题元描述（BUG-S-002 复测再证，retest2-01 截图第 3 条气泡） |
+| BUG-S-007 | 符合改判预期 | 受控环境 blob 拒绝照旧复现（环境假象，非产品缺陷）；产品侧已由 OBS-TTS-01 修复保证用户可感知，真机听测为最终判据 |
+
+- 截图索引（tts-deep/）：retest2-01（降级话术气泡）/ retest2-03（提示条渲染，被唤醒弹窗部分遮挡）/ retest2-04（弹窗关闭后对话页）
+- 验证限制：受控环境 blob 加载被拒（BUG-S-007 假象）导致无真实出声，「播放中打断」的主观体验与提示 6s 全视觉留影需真机/正常 Chrome 复核
 
 ### 7.4 人工听测清单（自动化盲区）
 - 方言口音正确性：重点 Instruct 实现 6 种（东北/四川/河南/山东/湖南/陕西）是否真带乡音 vs 仅普通话变调
@@ -188,4 +205,4 @@ ConsentGate（8 节条款+复选框门控）→ 空表单校验 → 年龄 9 触
 ### 7.5 测试过程观察（方法论文档）
 - idle 5 分钟登出会打断长观察测试（本轮 3 次重新登录）；eval fetch 不重置 idle 计时器
 - agent-browser click 对视口外按钮静默不触达（OBS-T-01）在重播按钮上再次复现，实验前必须 scrollIntoView
-- 截图索引：tts-01~06（对话入口/降级话术/播放诊断/复测/中断与恢复终态）、retest-01~12（复测闭环）；方言样本与深度实测证据随 tts-deep/ 目录归档
+- 截图索引：tts-01~06（对话入口/降级话术/播放诊断/复测/中断与恢复终态）、retest-01~12（复测闭环）、retest2-01~04（线上修复复测）；方言样本与深度实测证据随 tts-deep/ 目录归档
