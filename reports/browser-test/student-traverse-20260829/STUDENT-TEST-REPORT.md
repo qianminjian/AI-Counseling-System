@@ -109,3 +109,74 @@ ConsentGate（8 节条款+复选框门控）→ 空表单校验 → 年龄 9 触
    - S7 设置面板：完成按钮固定底栏可见，点击直接关闭
    - 回归：登录→对话→日记→成就主链路冒烟
 3. 遗留跟踪：BUG-S-004 真机复核；OBS-S-01 留观
+
+---
+
+## 六、修复部署与复测闭环（2026-08-30）
+
+### 部署记录
+- 提交链：2d544766 fix(student)（BUG-S-002 后端剥离标题 + BUG-S-006 前端固定底栏）→ dd6c2d93 test(browser)（本报告归档）
+- CI：push 触发 run 33257840199 与 workflow_dispatch run 33259735941 均卡 voice-service build（runner 网络黑洞，分别 43min/28min 后取消）；第三次 run 33261042171 甄别为慢速下载（torch ~185MB @ ~200KB/s）28min 自然完成，conclusion=success，head_sha=dd6c2d93=origin/main
+- deploy.sh：3m17s SUCCESS，组件 backend/student/tts/voice 全量更新，E2E 冒烟 32/32，nginx 路径校验通过
+- 部署审计 P1（历史成功率 30%）为历史窗口统计含门禁拦截失败，非本次回归；P2-P4 耗时趋势与明细矛盾，留观
+
+### 复测结果
+| 复测项 | 结果 |
+|--------|------|
+| BUG-S-002 降级话术 | ✓ **线上真实触发验证**：复测期间 LLM 服务实际故障一次，AI 气泡输出「波波现在有点忙不过来……」——无 `#` 标题、无「降级话术」元描述，正文完整（tts-02-after-reply.png） |
+| BUG-S-006 完成按钮 | ✓ 三项验证：初始打开 y=557 在视口内（visible=true）；内容区滚动到底（910px）按钮纹丝不动（固定底栏）；点击正常关闭面板 |
+| 回归冒烟 | ✓ 登录→对话（LLM 正常回复+满意度评价闭环）→日记（记录成功，趋势 1→2 条）→成就（8 徽章就地展开 1/8）→设置面板全链路正常 |
+| 风格检查 | ✓ 新版设置面板 flex-col 布局渲染正常，无回归 |
+
+---
+
+## 七、TTS 语音播放深度测试（2026-08-30 重点加测）
+
+测试范围：对话界面语音播放全链路、7 音色、8 方言、播放速度、延迟、异常路径（用户重点指令）。
+
+### 7.1 后端合成矩阵（分层诊断法先行）
+- **7 音色全部通过**：xiaoxing/bobo/yueliang/xiaotaiyang/dashu/doudou/qiqiu 均 HTTP 200 + audio/mpeg（62-87KB/句）
+- **8 方言全部通过**（qiqiu persona + dialect 参数）：cantonese/minnan（原生音色）+ northeastern/sichuan/henan/shandong/hunan/shaanxi（Instruct 实现）均 200（36-63KB/句）
+- **音频有效性**：字节头 ID3v2.3 ✓；decodeAudioData 成功（3.9s/48kHz/单声道，文本「你好呀，今天想和你一起玩游戏。」时长合理）
+- **稳态延迟**：0.9-1.8s/句；**首轮冷启动 4.1-5.3s**（cosyvoice-cloud 引擎/连接建立，用户首句可感知，记录为优化候选）
+- 样本落盘 `/tmp/tts-samples/{cantonese,minnan,northeastern,shaanxi}.mp3` 供人工听测
+
+### 7.2 播放链路 hook 级诊断（Audio/fetch/createObjectURL 全埋点）
+- **正常时段自动播放实证工作**：LLM 流式回复完成后 TTS 自动启动，4 句回复逐句播放（play-ok ×4），合成-播放编排（预取窗口 3 句）按设计运行
+- **语速性别化**：ChatRoom.tsx L82 speed 按学生性别微调（男 1.05/女 0.95/未知 1.0），代码+请求体透传实证 ✓
+- **降级设计完备**：后端连续失败 2 次 → 浏览器 speechSynthesis 降级（30s 恢复窗口）；204 合法空结果不计失败（P2-2）
+
+### 7.2b 播放状态机深度实测（hook 级埋点：fetch/Audio.play/pause/createObjectURL/speechSynthesis）
+- **流式连续播放链**：4 句回复逐句合成（815-2004ms/句），第 1、2 句请求间隔仅 34ms（滑动预取窗口 P1-2 生效），播放链串行推进；全程 blob URL 创建/回收 12/12 平衡（无泄漏）
+- **中断行为**：发送新消息 → 流式开始时 startStreaming() 内部 stop() → audio.pause() 实证触发（按住说话/结束对话/重播/静音四路径源码确认均有 stop）；发送至 LLM 首字节间旧朗读继续（见 OBS-TTS-02）
+- **气泡重播**：stop 旧播放（pause +1）→ 消息重新分句并发合成（间隔 219ms）→ 逐句播放 ✓
+- **静音路径**：muted 下发送消息 TTS 全链路零请求零播放，文本回复正常 ✓
+- **异常路径全链**（模拟后端 500）：第 1、2 句真实请求失败（backendFailCount 1→2）→ 第 3 句起 30s 窗口短路不再发请求（请求计数器实证 hits=2）→ browserSpeak 逐句接管（speechSynthesis hook 记录）→ 窗口过期自动恢复（后端重新合成 857-896ms/句并进播放链）✓
+- **意外验证 A**：冷场暖场机制（design/28 §2.3）真实触发——25s 沉默后端决策暖场「我叫波波…」「我听着。开心，我在呢！…」并 TTS 朗读，连续上限 2 次（MAX_CONSECUTIVE_NUDGES）生效
+- **意外验证 B**：深度实测期间 LLM 服务真实故障一次，4 句回复中后 2 句为降级话术（无标题正文），均被完整合成（1517/1551ms）并进入播放链——降级路径语音播报实证工作
+
+### 7.3 发现问题
+
+#### BUG-S-007（P1，受控环境复现/真机待验）— 播放 blob URL 被 Chrome「URL safety check」拒绝且失败完全静默
+- **现象**：页面 useTtsPlayer 创建的 blob URL（blob:https://yun.gxjugu.com/…，blob 本体 audio/mpeg 62KB 完好）赋给 Audio 元素后加载被拒：`MEDIA_ELEMENT_ERROR: Media load rejected by URL safety check`（error code 4），NotSupportedError；同一 URL 在测试侧 fresh Audio 上可正常播放。**拒绝呈间歇性**：跨会话/同批 URL 成败交替（一次 4/4 成功、一次 1 挂起+3 拒绝、一次 2 挂起+2 拒绝），error code 4 时 play() promise 悬挂不 settle（onerror 路径正常收尾，播放链不阻塞）
+- **影响**：该状态下自动播放与气泡重播全部无声，**用户侧零反馈**（无提示/无引擎状态变化），console 仅开发向 warn
+- **环境说明**：仅在 CDP 受控 Chrome 复现；真实手机/桌面浏览器待真机复核（BUG-S-004 的精确定性问题——修正原「无编解码器」猜测：受控 Chrome 实际能解码该 mp3，拒绝发生在 blob URL 安全检查层）
+- **修复方向**：①playBlob onerror 增加用户可感知的引擎状态反馈（复用左侧「语音引擎未就绪」通道）②真机复验若复现，排查 blob URL partitioning（改用 MediaSource/data URL 方案绕行）
+- **状态**：待真机验证定级（若真机复现升 P0——语音交互为本产品核心通道）
+
+#### OBS-TTS-01（P3 改进项）— 降级链终态无提示
+- 后端不可用+浏览器无 TTS 引擎时（engine='none'），播放链静默结束，左侧状态区未同步（「语音引擎未就绪」仅在唤醒引擎加载失败时出现）；建议 engine='none' 时同步状态区文案
+
+#### OBS-TTS-02（P3 体验一致性）— 打字发送新消息时旧朗读延迟打断
+- onBeforeSend（ChatRoom.tsx L94-98）仅重置重播高亮+释放麦克风，不调 tts.stop()；旧播放在新回复流式开始（startStreaming→stop）时才被打断，残留窗口=发送→LLM 首字节（1-10s），期间新旧语音内容衔接突兀。与「按住说话立即停读」（L211）行为不一致；建议 onBeforeSend 补 tts.stop() 对齐
+
+### 7.4 人工听测清单（自动化盲区）
+- 方言口音正确性：重点 Instruct 实现 6 种（东北/四川/河南/山东/湖南/陕西）是否真带乡音 vs 仅普通话变调
+- 原生音色 2 种（粤语/闽南话）与 Instruct 的听感差异
+- 音色相似度：7 persona 与设计人设（邻家姐姐/女老师/大叔叔等）匹配度
+- 播放语速主观感受（男 1.05/女 0.95 是否偏快/偏慢）
+
+### 7.5 测试过程观察（方法论文档）
+- idle 5 分钟登出会打断长观察测试（本轮 3 次重新登录）；eval fetch 不重置 idle 计时器
+- agent-browser click 对视口外按钮静默不触达（OBS-T-01）在重播按钮上再次复现，实验前必须 scrollIntoView
+- 截图索引：tts-01~06（对话入口/降级话术/播放诊断/复测/中断与恢复终态）、retest-01~12（复测闭环）；方言样本与深度实测证据随 tts-deep/ 目录归档
