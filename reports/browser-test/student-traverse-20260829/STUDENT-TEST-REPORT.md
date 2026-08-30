@@ -157,18 +157,27 @@ ConsentGate（8 节条款+复选框门控）→ 空表单校验 → 年龄 9 触
 
 ### 7.3 发现问题
 
-#### BUG-S-007（P1，受控环境复现/真机待验）— 播放 blob URL 被 Chrome「URL safety check」拒绝且失败完全静默
-- **现象**：页面 useTtsPlayer 创建的 blob URL（blob:https://yun.gxjugu.com/…，blob 本体 audio/mpeg 62KB 完好）赋给 Audio 元素后加载被拒：`MEDIA_ELEMENT_ERROR: Media load rejected by URL safety check`（error code 4），NotSupportedError；同一 URL 在测试侧 fresh Audio 上可正常播放。**拒绝呈间歇性**：跨会话/同批 URL 成败交替（一次 4/4 成功、一次 1 挂起+3 拒绝、一次 2 挂起+2 拒绝），error code 4 时 play() promise 悬挂不 settle（onerror 路径正常收尾，播放链不阻塞）
-- **影响**：该状态下自动播放与气泡重播全部无声，**用户侧零反馈**（无提示/无引擎状态变化），console 仅开发向 warn
-- **环境说明**：仅在 CDP 受控 Chrome 复现；真实手机/桌面浏览器待真机复核（BUG-S-004 的精确定性问题——修正原「无编解码器」猜测：受控 Chrome 实际能解码该 mp3，拒绝发生在 blob URL 安全检查层）
-- **修复方向**：①playBlob onerror 增加用户可感知的引擎状态反馈（复用左侧「语音引擎未就绪」通道）②真机复验若复现，排查 blob URL partitioning（改用 MediaSource/data URL 方案绕行）
-- **状态**：待真机验证定级（若真机复现升 P0——语音交互为本产品核心通道）
+#### BUG-S-007（已改判：测试环境假象，并入 BUG-S-004 观察项）— 播放 blob URL 被 Chrome「URL safety check」拒绝
+- **现象**：页面创建的 blob URL 赋给 Audio 后加载被拒 `MEDIA_ELEMENT_ERROR: Media load rejected by URL safety check`（error code 4），呈会话级恶化（8/30 上午 play-ok×4 成功 → 同会话 blob 粒度成败交替 → 晚间 30/30 全灭）；同一 URL 在 fresh Audio 可播（早期）、blob 本体 decodeAudioData 正常
+- **详细分析（11 项对照实验，2026-08-30）**：revoke 竞态 / 实例状态 / 时序窗口 / 测试 hook 污染（reload 后）/ 后台 tab（visible+focus）/ Chrome 会话退化（close --all 新实例）/ headless 模式（--headed 同败）/ origin 异常 / blob 损坏 / 站点版本回归——**全部排除**；data:audio base64 同败，而 Blink 源码 `SecurityOrigin::CanDisplay` 对 data: URL 直接放行（security_origin.cc L453-455）——证明检查路径本身处于异常状态
+- **源码级定位**：错误唯一来源 `HTMLMediaElement::IsSafeToLoadURL`（html_media_element.cc）的 `!domWindow || !CanDisplay(url)`，本场景两条件按源码均不成立——renderer 侧 document 状态在受控环境异常；Chromium 官方 issue 40839863（fuchsia 自动化测试）与 qutebrowser e2e 均踩中同款错误，属自动化/受控环境高发的浏览器内部检查误触发
+- **结论**：产品代码（useTtsPlayer/audioUnlock）符合标准 Web API 语义，同一代码路径曾有成功播放记录，**无缺陷**；失败发生在浏览器内部，与产品任何可控变量无关。若真实用户浏览器出现此状态则 TTS 完全无声会被立刻感知，不可能静默存在。**最终判据：真机听测（§7.4）**
+- **保留的产品健壮性修复**：无声失败用户零反馈（OBS-TTS-01 扩展场景）已修复，见 7.3b
 
-#### OBS-TTS-01（P3 改进项）— 降级链终态无提示
-- 后端不可用+浏览器无 TTS 引擎时（engine='none'），播放链静默结束，左侧状态区未同步（「语音引擎未就绪」仅在唤醒引擎加载失败时出现）；建议 engine='none' 时同步状态区文案
+#### OBS-TTS-01（P3，已修复）— 降级/无声失败终态无提示（真相修正）
+- **真相修正**：ChatRoom L116-120 原本已有 `engine==='none'` 顶部提示；静默的真正原因是两条缝隙叠加——①受控环境降级终态是 `engine='browser'`（headless 的 speechSynthesis.speak 调用成功返回 ok，不进 none 分支），提示永不触发；②playBlob 无声失败（onerror）只 console.warn 不改 engine
+- **修复**：①useTtsPlayer playBlob onerror 置 `engine='none'`（诚实语义：无法出声=不可用；下次合成成功自然恢复 backend）②ChatRoom 提示 effect 加 30s 防抖（避免逐句失败刷屏）
+- 状态：已修复（前端 959/959 + build ✓），行为验证待部署后复测
 
-#### OBS-TTS-02（P3 体验一致性）— 打字发送新消息时旧朗读延迟打断
-- onBeforeSend（ChatRoom.tsx L94-98）仅重置重播高亮+释放麦克风，不调 tts.stop()；旧播放在新回复流式开始（startStreaming→stop）时才被打断，残留窗口=发送→LLM 首字节（1-10s），期间新旧语音内容衔接突兀。与「按住说话立即停读」（L211）行为不一致；建议 onBeforeSend 补 tts.stop() 对齐
+#### OBS-TTS-02（P3，已修复）— 打字发送新消息时旧朗读延迟打断
+- onBeforeSend（ChatRoom.tsx）仅重置重播高亮+释放麦克风不调 tts.stop()，旧播放在新回复流式开始时才被打断（残留窗口=发送→LLM 首字节），与「按住说话即停读」行为不一致
+- **修复**：onBeforeSend 补 tts.stop() 对齐
+- 状态：已修复（同上）
+
+### 7.3b 本轮修复记录（2026-08-30）
+- useTtsPlayer.ts playBlob：onerror 增 setEngine('none')（OBS-TTS-01 ①）
+- ChatRoom.tsx：onBeforeSend 增 tts.stop()（OBS-TTS-02）；engine='none' 提示 30s 防抖（OBS-TTS-01 ②）
+- 验证：vitest 959/959 ✓、tsc+vite build ✓；行为验证（提示弹出/发送即停读）待部署后复测
 
 ### 7.4 人工听测清单（自动化盲区）
 - 方言口音正确性：重点 Instruct 实现 6 种（东北/四川/河南/山东/湖南/陕西）是否真带乡音 vs 仅普通话变调

@@ -91,8 +91,10 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: Se
     bobo: boboExpression,
     // recordInteraction 定义于下方 useSilenceNudge → ref 代理防 TDZ 与闭包过期
     onInteraction: () => recordInteractionRef.current?.(),
-    // 发送前：打断朗读标记 + 释放麦克风（安卓路由保护，design/27 §5.1）
+    // 发送前：打断朗读 + 释放麦克风（安卓路由保护，design/27 §5.1）
+    // OBS-TTS-02：与「按住说话即停读」行为对齐——消除发送→新流开始间旧朗读残留窗口
     onBeforeSend: () => {
+      tts.stop()
       setSpeakingMsgIdx(-1)
       releaseStream()
     },
@@ -113,9 +115,15 @@ export default function ChatRoom({ session, onEnd, onSwitchUser }: { session: Se
 
   // TTS 引擎不可用提示（安卓 Pad 无 Google 语音引擎时显示友好提示，而非系统报错）
   // AUD-017：定时器清理收敛 useChatRoomPanels（FA-06，新提示重置旧定时器）
+  // OBS-TTS-01：playBlob 无声失败同样置 none——提示防抖（30s 内不重复弹，避免逐句刷屏）
+  const engineNoneLastAtRef = useRef(0)
   useEffect(() => {
     if (tts.engine === 'none') {
-      showNotice('当前浏览器不支持语音播放，可阅读文字内容 📖', 6000)
+      const now = Date.now()
+      if (now - engineNoneLastAtRef.current >= 30000) {
+        engineNoneLastAtRef.current = now
+        showNotice('当前浏览器不支持语音播放，可阅读文字内容 📖', 6000)
+      }
     }
   }, [tts.engine, showNotice])
 

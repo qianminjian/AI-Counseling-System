@@ -214,6 +214,9 @@ export function useTtsPlayer({ persona = 'xiaoxing', emotion = 'neutral', speed 
       audio.onended = () => { cleanup(); resolve(undefined) }
       audio.onerror = () => {
         console.warn('[TTS] 音频解码失败（MIME 不匹配？）', blob.type, blob.size)
+        // OBS-TTS-01：无声失败必须用户可感知——音频加载/解码失败视为播放引擎不可用，
+        // 置 none 触发 ChatRoom 顶部提示（下一次合成成功自然恢复 'backend'）
+        setEngine('none')
         cleanup(); resolve(undefined)
       }
       audio.src = url
