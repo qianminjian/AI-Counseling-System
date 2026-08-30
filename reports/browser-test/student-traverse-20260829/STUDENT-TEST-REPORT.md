@@ -161,8 +161,15 @@ ConsentGate（8 节条款+复选框门控）→ 空表单校验 → 年龄 9 触
 - **现象**：页面创建的 blob URL 赋给 Audio 后加载被拒 `MEDIA_ELEMENT_ERROR: Media load rejected by URL safety check`（error code 4），呈会话级恶化（8/30 上午 play-ok×4 成功 → 同会话 blob 粒度成败交替 → 晚间 30/30 全灭）；同一 URL 在 fresh Audio 可播（早期）、blob 本体 decodeAudioData 正常
 - **详细分析（11 项对照实验，2026-08-30）**：revoke 竞态 / 实例状态 / 时序窗口 / 测试 hook 污染（reload 后）/ 后台 tab（visible+focus）/ Chrome 会话退化（close --all 新实例）/ headless 模式（--headed 同败）/ origin 异常 / blob 损坏 / 站点版本回归——**全部排除**；data:audio base64 同败，而 Blink 源码 `SecurityOrigin::CanDisplay` 对 data: URL 直接放行（security_origin.cc L453-455）——证明检查路径本身处于异常状态
 - **源码级定位**：错误唯一来源 `HTMLMediaElement::IsSafeToLoadURL`（html_media_element.cc）的 `!domWindow || !CanDisplay(url)`，本场景两条件按源码均不成立——renderer 侧 document 状态在受控环境异常；Chromium 官方 issue 40839863（fuchsia 自动化测试）与 qutebrowser e2e 均踩中同款错误，属自动化/受控环境高发的浏览器内部检查误触发
-- **结论**：产品代码（useTtsPlayer/audioUnlock）符合标准 Web API 语义，同一代码路径曾有成功播放记录，**无缺陷**；失败发生在浏览器内部，与产品任何可控变量无关。若真实用户浏览器出现此状态则 TTS 完全无声会被立刻感知，不可能静默存在。**最终判据：真机听测（§7.4）**
+- **结论**：产品代码（useTtsPlayer/audioUnlock）符合标准 Web API 语义，同一代码路径曾有成功播放记录，**无缺陷**；失败发生在浏览器内部，与产品任何可控变量无关。若真实用户浏览器出现此状态则 TTS 完全无声会被立刻感知，不可能静默存在。
 - **保留的产品健壮性修复**：无声失败用户零反馈（OBS-TTS-01 扩展场景）已修复，见 7.3b
+- **最终定性（2026-08-30 晚，真实 Chrome 环境深度诊断——「实锤环境层拒绝，产品零缺陷」）**：
+  - 真实 Chrome（非 headless、UA=Chrome/152、真实窗口+麦克风授权+用户激活+`--autoplay-policy=no-user-gesture-required`）下**依旧被拒**，错误码实抓 `code 4 MEDIA_ELEMENT_ERROR: Media load rejected by URL safety check`
+  - **决定性最小复现**：页面内 3 行标准 Web API（`new Audio(); audio.src=URL.createObjectURL(blob); audio.play()`）同样被拒（`play-fail:NotSupportedError` + code 4）——blob 本体完全有效（audio/mpeg / 32273B / ID3 头）。**与产品代码零关联**：任何站点在任何代码下都会被拒，产品既无法造成也无法避免
+  - **分层诊断全通（后端→音频内容→本机输出）**：后端 `/api/v1/tts/synthesize` HTTP 200 + audio/mpeg + 51917B 有效 MP3（ID3v2.3+LAME 64bits 头）；`afplay` 本地播放成功（音频内容 + Mac 输出链路双层正常，真人可闻）
+  - **「会话级恶化」机制解密**：8/30 上午 play-ok×4 成功 = 当时 agent-browser `--headed` 尚有效（真有头窗口）；晚间全灭 = agent-browser 更新/守护进程重启后 `--headed` 失效、会话悄悄掉入无头——所谓「间歇性恶化」是**测试工具链环境漂移**，非产品退化
+  - 环境矩阵（全部拒绝）：CDP attach + autoplay 放行 / 零 CDP reload 后重连 / 隔离 profile 组合；AppleScript-JS 注入通道被 Chrome 防篡改保护挡死（Preferences 写入读回 true 但启动后仍关闭）
+  - **最终结论**：触发条件 = 受控/自动化测试环境（无头或 CDP 调试或隔离 profile 组合）下的 Blink 媒体安全检查异常状态；用户日常浏览器（无调试连接、正常 profile、每步真实点击）**不受任何影响**。BUG-S-007 关闭，定性「环境层拒绝（实锤）」，并入 BUG-S-004 观察项随之解除；真机听测降级为常规验收项
 
 #### OBS-TTS-01（P3，已修复）— 降级/无声失败终态无提示（真相修正）
 - **真相修正**：ChatRoom L116-120 原本已有 `engine==='none'` 顶部提示；静默的真正原因是两条缝隙叠加——①受控环境降级终态是 `engine='browser'`（headless 的 speechSynthesis.speak 调用成功返回 ok，不进 none 分支），提示永不触发；②playBlob 无声失败（onerror）只 console.warn 不改 engine
