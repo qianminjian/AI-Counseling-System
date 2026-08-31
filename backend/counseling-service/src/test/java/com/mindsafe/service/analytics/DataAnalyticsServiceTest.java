@@ -10,6 +10,7 @@ import com.mindsafe.domain.mapper.CounselingSessionMapper;
 import com.mindsafe.domain.mapper.MessageSummaryMapper;
 import com.mindsafe.domain.mapper.QualityScoreMapper;
 import com.mindsafe.domain.mapper.RiskEventMapper;
+import com.mindsafe.service.common.CounselingTimeZone;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.apache.ibatis.type.ObjectTypeHandler;
 import org.junit.jupiter.api.BeforeEach;
@@ -42,6 +43,11 @@ class DataAnalyticsServiceTest {
 
     private final UUID tenantId = UUID.randomUUID();
     private final UUID studentUserId = UUID.randomUUID();
+
+    // 周聚合测试固定参考点：2026-07-15（周三）上海 12:00——时间戳相对它构造，与运行日期解耦。
+    // 曾用 Instant.now() 回溯 10~14h，运行时刻落在上海周日凌晨附近时跨周界 → 周聚合出 2 组（CI 周一 flaky）。
+    private static final Instant FIXED_NOW =
+            LocalDate.of(2026, 7, 15).atStartOfDay(CounselingTimeZone.SHANGHAI).plusHours(12).toInstant();
 
     @BeforeEach
     void setUp() {
@@ -162,7 +168,7 @@ class DataAnalyticsServiceTest {
     @Test
     @DisplayName("growthTrajectory 10 会话 + 已解决风险 → 里程碑完整")
     void growthTrajectory_fullData() {
-        Instant now = Instant.now();
+        Instant now = FIXED_NOW;
         List<CounselingSession> sessions = new ArrayList<>();
         for (int i = 0; i < 10; i++) {
             sessions.add(session(now.minusSeconds((10 - i) * 3600), 4, 6, i == 1 ? "calm" : "neutral"));
@@ -221,7 +227,7 @@ class DataAnalyticsServiceTest {
     @Test
     @DisplayName("schoolReport 完整数据 → 概览/风险分布/处置率/满意度/AI质量/周趋势")
     void schoolReport_fullData() {
-        Instant now = Instant.now();
+        Instant now = FIXED_NOW;
         when(sessionMapper.selectList(any())).thenReturn(List.of(
                 session(now.minusSeconds(50000), 5, 8, "calm"),
                 session(now.minusSeconds(20000), 3, 6, "neutral")));
