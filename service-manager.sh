@@ -160,6 +160,36 @@ wait_healthy() {
   return 1
 }
 
+# 宿主 nginx 健康探测（start_service / up_service 共用，DA-13：compose nginx 服务已删）
+nginx_probe() {
+  if wait_healthy nginx; then
+    log_info "nginx 健康检查通过 ✓（宿主 nginx）"
+    return 0
+  fi
+  log_error "nginx 健康检查失败（宿主 nginx 443 未监听或站点异常）"
+  return 1
+}
+
+# 健康检查 + 自动补偿（start_service / up_service 共用，DRY 提取）
+ensure_healthy() {
+  local svc="$1"
+  local attempt=1
+  while [ $attempt -le $HEALTH_MAX_RETRIES ]; do
+    if wait_healthy "$svc"; then
+      log_info "$svc 健康检查通过 ✓"
+      return 0
+    fi
+    log_warn "$svc 健康检查失败（第 $attempt/$HEALTH_MAX_RETRIES 次），尝试重启..."
+    # 补偿：重启容器
+    cd "$COMPOSE_DIR"
+    docker compose -f docker-compose.prod.yml restart "${COMPOSE_NAME[$svc]}" 2>/dev/null
+    attempt=$((attempt + 1))
+  done
+
+  log_error "$svc 启动失败（$HEALTH_MAX_RETRIES 次重试后仍不健康）"
+  return 1
+}
+
 # ===== 启动单个服务 =====
 start_service() {
   local svc="$1"
@@ -181,33 +211,35 @@ start_service() {
   # compose nginx 服务已删除（DA-13 议决 a+b）；不执行 compose up（避免 443 bind 冲突），
   # 直接健康探测宿主 443
   if [ "$svc" = "nginx" ]; then
-    if wait_healthy nginx; then
-      log_info "nginx 健康检查通过 ✓（宿主 nginx）"
-      return 0
-    fi
-    log_error "nginx 健康检查失败（宿主 nginx 443 未监听或站点异常）"
-    return 1
+    nginx_probe
+    return $?
   fi
 
   cd "$COMPOSE_DIR"
   docker compose -f docker-compose.prod.yml up -d "$compose_svc" 2>&1 | tail -3
 
-  # 健康检查 + 自动补偿
-  local attempt=1
-  while [ $attempt -le $HEALTH_MAX_RETRIES ]; do
-    if wait_healthy "$svc"; then
-      log_info "$svc 健康检查通过 ✓"
-      return 0
-    fi
-    log_warn "$svc 健康检查失败（第 $attempt/$HEALTH_MAX_RETRIES 次），尝试重启..."
-    # 补偿：重启容器
-    cd "$COMPOSE_DIR"
-    docker compose -f docker-compose.prod.yml restart "$compose_svc" 2>/dev/null
-    attempt=$((attempt + 1))
-  done
+  ensure_healthy "$svc"
+}
 
-  log_error "$svc 启动失败（$HEALTH_MAX_RETRIES 次重试后仍不健康）"
-  return 1
+# ===== 滚动更新单服务（P0-3，2026-08-31）=====
+# compose up -d 自行判定是否重建：仅镜像 ID 或 service 定义变化的容器被重建，
+# 未变更容器 no-op——替代「stop→up」硬重启（当日部署实证：镜像 sha 未变的 tts/voice
+# 也被重启，voice 模型无谓重载 ~1min 语音中断）
+up_service() {
+  local svc="$1"
+  local compose_svc="${COMPOSE_NAME[$svc]}"
+
+  # nginx 特判（同 start_service）：宿主 nginx 非 compose 管理，仅健康探测
+  if [ "$svc" = "nginx" ]; then
+    nginx_probe
+    return $?
+  fi
+
+  log_info "滚动更新 $svc（compose 判定是否重建）..."
+  cd "$COMPOSE_DIR"
+  docker compose -f docker-compose.prod.yml up -d "$compose_svc" 2>&1 | tail -3
+
+  ensure_healthy "$svc"
 }
 
 # ===== 停止单个服务 =====
@@ -358,6 +390,35 @@ cmd_restart() {
   return $failed
 }
 
+# P0-3（2026-08-31）：滚动更新命令——deploy.sh 发布通道专用。
+# 与 restart 的区别：不先 stop。镜像/配置未变的容器被 compose 跳过（零中断零模型重载），
+# 变化的容器自动重建。显式强制重启场景仍用 restart（保留 stop→up 语义）。
+cmd_up() {
+  local services
+  services=$(parse_services "${START_ORDER[@]}")
+
+  # AUD-034：目标含 nginx 时先校验前端 dist（缺失即 fail-fast，不更新）
+  if echo "$services" | grep -q 'nginx'; then
+    if ! check_frontend_dist; then
+      return 1
+    fi
+  fi
+
+  log_info "=== 滚动更新服务（up：未变更容器自动跳过）==="
+  local failed=0
+  for svc in $services; do
+    if ! up_service "$svc"; then
+      failed=1
+      log_error "服务 $svc 更新失败，中止后续更新"
+      break
+    fi
+  done
+  if [ $failed -eq 0 ]; then
+    log_info "=== 滚动更新完成 ==="
+  fi
+  return $failed
+}
+
 cmd_status() {
   echo ""
   printf "%-12s %-28s %-12s %-8s\n" "SERVICE" "CONTAINER" "STATE" "HEALTH"
@@ -409,14 +470,16 @@ case "$ACTION" in
   start)   cmd_start ;;
   stop)    cmd_stop ;;
   restart) cmd_restart ;;
+  up)      cmd_up ;;
   status)  cmd_status ;;
   health)  cmd_health ;;
   *)
-    echo "用法: $0 {start|stop|restart|status|health} [service...]"
+    echo "用法: $0 {start|stop|restart|up|status|health} [service...]"
     echo "服务: postgres redis tts voice backend nginx"
     echo "示例:"
     echo "  $0 start              # 启动全部"
-    echo "  $0 restart backend    # 仅重启后端"
+    echo "  $0 restart backend    # 仅重启后端（强制 stop→up）"
+    echo "  $0 up backend         # 滚动更新（compose 判定是否重建，未变更容器跳过）"
     echo "  $0 stop nginx backend # 停止 nginx 和后端"
     echo "  $0 status             # 查看状态"
     exit 1

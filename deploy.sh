@@ -529,18 +529,22 @@ if [ -n "$BUILD_TARGETS" ]; then
   echo "✅ 镜像构建完成"
 fi
 
-# ===== 选择性重启（通过 service-manager.sh 统一管理） =====
+# ===== 选择性滚动更新（P0-3，2026-08-31：service-manager up，compose 判定是否重建） =====
+# 原 restart（stop→up）对镜像未变的组件也硬重启，voice 模型无谓重载 ~1min（当日部署实证）。
+# 改 up 语义：仅镜像/配置变化的容器被 compose 重建，未变更容器零中断零模型重载。
+# 强制重启场景仍可用 service-manager.sh restart（保留 stop→up 语义）。
 RESTART_TARGETS=""
 $DEPLOY_BACKEND && RESTART_TARGETS="$RESTART_TARGETS backend"
 $DEPLOY_TTS && RESTART_TARGETS="$RESTART_TARGETS tts"
 $DEPLOY_VOICE && RESTART_TARGETS="$RESTART_TARGETS voice"
-# 前端 dist 由【宿主 nginx】直接 alias 提供（compose nginx 服务已删，DA-13）；静态文件更新后无需 reload
+# 前端 dist 由【宿主 nginx】直接 alias 提供（compose nginx 服务已删，DA-13）；
+# 静态文件更新后无需 reload，up 对 nginx 仅健康探测
 { $DEPLOY_STUDENT || $DEPLOY_TEACHER || $DEPLOY_PARENT; } && RESTART_TARGETS="$RESTART_TARGETS nginx"
 
 if [ -n "$RESTART_TARGETS" ]; then
-  echo "🔄 重启服务:$RESTART_TARGETS"
+  echo "🔄 滚动更新服务:$RESTART_TARGETS"
   dm_start restart
-  if ! ssh "${SSH_OPTS[@]}" "$SERVER" "cd $REMOTE_DIR && bash service-manager.sh restart $RESTART_TARGETS"; then
+  if ! ssh "${SSH_OPTS[@]}" "$SERVER" "cd $REMOTE_DIR && bash service-manager.sh up $RESTART_TARGETS"; then
     # DEPLOY-OPT-2（2026-08-11）：失败自动抓取容器日志定位（不再只提示手工检查）
     echo "❌ 服务重启失败，自动抓取容器日志定位："
     for svc in $RESTART_TARGETS; do
@@ -552,9 +556,9 @@ if [ -n "$RESTART_TARGETS" ]; then
     exit 1
   fi
   dm_end restart
-  echo "✅ 服务重启 + 健康检查通过"
+  echo "✅ 服务滚动更新 + 健康检查通过"
 else
-  echo "ℹ️  仅前端变更时也应重载 nginx（已纳入重启目标）"
+  echo "ℹ️  未需更新的服务组件"
 fi
 
 # ===== 发布后置冒烟（DA-04 议决：方案 B——deploy 现场 E2E 门禁，恢复 309909ed 冒烟能力） =====

@@ -39,6 +39,29 @@ env:
   MAVEN_OPTS: '-Xmx1024m'
 
 jobs:
+  # P0-1（2026-08-31）：Docker/Python job 变更感知——voice/tts 相关文件零变更时跳过无效构建
+  # （当日实证：两次 push 的 voice job 均为 30min+/47min 无效构建，gha 缓存逐出后 torch 层重下极慢）。
+  # skipped job 不影响 run conclusion，deploy.sh CI 门禁兼容。
+  # workflow_dispatch（文档提交门禁死锁解法）不判变更，全量跑（手动触发即明确验证意图）。
+  changes:
+    name: Detect Service Changes
+    runs-on: ubuntu-latest
+    outputs:
+      tts-service: ${{ steps.filter.outputs.tts-service }}
+      voice-service: ${{ steps.filter.outputs.voice-service }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            tts-service:
+              - 'backend/tts-service/**'
+              - 'backend/py-common/**'
+            voice-service:
+              - 'backend/voice-service/**'
+              - 'backend/py-common/**'
+
   backend-build-test:
     name: Backend Build & Test
     runs-on: ubuntu-latest
@@ -191,6 +214,9 @@ jobs:
     # 失败即阻断合并（与 backend-build-test 同级门禁）
     name: Python Services Test (tts/voice)
     runs-on: ubuntu-latest
+    # P0-1：零变更服务跳过（workflow_dispatch 不判变更全量跑）
+    needs: changes
+    if: github.event_name == 'workflow_dispatch' || needs.changes.outputs[matrix.service] == 'true'
     strategy:
       matrix:
         service: [tts-service, voice-service]
@@ -255,6 +281,10 @@ jobs:
     # 只 build 不推送；构建后容器内 import 冒烟，镜像缺陷在 CI 暴露而非部署现场
     name: Docker Build Smoke (tts/voice)
     runs-on: ubuntu-latest
+    # P0-1：零变更服务跳过；P0-2：历史缓存未命中成功先例 26m45s，35min 超时即止损（卡死可感知可重试）
+    needs: changes
+    if: github.event_name == 'workflow_dispatch' || needs.changes.outputs[matrix.service] == 'true'
+    timeout-minutes: 35
     strategy:
       matrix:
         service: [tts-service, voice-service]
@@ -277,8 +307,10 @@ jobs:
           push: false
           load: true
           tags: mindsafe/${{ matrix.service }}:smoke
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # P1-5（2026-08-31）：按服务隔离缓存空间（scope）——此前双 matrix 共享默认 scope，
+          # mode=max 全层导出碎片互逐（94 条缓存竞逐 10GB LRU），torch 大层易被挤占
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
 
       # DA-01/DA-03 验收：镜像内模块可导入（voice 有 ENTRYPOINT，需 --entrypoint 覆盖）
       # OPS-004（doing/95）：import 清单覆盖 app.py 全部直接依赖模块（含 ser_engines，
@@ -365,3 +397,28 @@ jobs:
       # vitest.config 中的 thresholds 从未被强制执行；现统一跑 test:coverage（四端均已配置阈值）
       - name: Test (with coverage gate)
         run: npm run test:coverage
+
+  # P2-6（2026-08-31）：CI 失败企微通知——CI 侧监控此前完全空白（无超时无通知，
+  # voice job 曾卡 47min 无人知），对齐部署侧 ALERT_WECOM 基建。
+  # secret 未配置时静默跳过；通知失败不产生新 failure（curl 前缀 || true 语义）。
+  notify-failure:
+    name: WeCom Notify on Failure
+    runs-on: ubuntu-latest
+    needs: [changes, backend-build-test, jdk25-smoke, python-services-test, shell-tools-test, docker-build-smoke, dependency-scan, frontend-build]
+    if: failure() && !cancelled()
+    steps:
+      - name: Send WeCom notification
+        env:
+          WECOM_WEBHOOK: ${{ secrets.CI_WECOM_WEBHOOK_URL }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          BRANCH: ${{ github.ref_name }}
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+        run: |
+          if [ -z "$WECOM_WEBHOOK" ]; then
+            echo "ℹ️ 未配置 CI_WECOM_WEBHOOK_URL secret，跳过通知"
+            exit 0
+          fi
+          NOTICE=$(printf '❌ **MindSafe CI 失败**\n> 分支: %s\n> 说明: %s\n> [查看 run](%s)' "$BRANCH" "${COMMIT_MSG:-（手动触发）}" "$RUN_URL")
+          PAYLOAD=$(jq -n --arg c "$NOTICE" '{msgtype:"markdown",markdown:{content:$c}}')
+          curl -sf -X POST "$WECOM_WEBHOOK" -H 'Content-Type: application/json' -d "$PAYLOAD" \
+            || echo "⚠️ 企微通知发送失败（不影响 CI 结论）"
