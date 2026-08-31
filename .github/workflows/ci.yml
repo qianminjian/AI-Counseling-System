@@ -236,8 +236,12 @@ jobs:
     # 失败即阻断合并（与 backend-build-test 同级门禁）
     name: Python Services Test (tts/voice)
     runs-on: ubuntu-latest
-    # P0-1：动态 matrix——仅变更服务进入矩阵（空数组 → job skipped）
+    # P0-1：动态 matrix——仅变更服务进入矩阵。
+    # 注意：空数组不能直接喂 matrix——GitHub 对零实例 matrix 按 failure 计
+    # （run failure + 下游 failure() 误真 → notify 误报，run 33346212171 实证）。
+    # job 级 if 引用 needs 属 context 白名单（仅 matrix 被禁），空数组 → job 显式 skipped。
     needs: changes
+    if: needs.changes.outputs.services != '[]'
     strategy:
       matrix:
         service: ${{ fromJSON(needs.changes.outputs.services) }}
@@ -302,9 +306,11 @@ jobs:
     # 只 build 不推送；构建后容器内 import 冒烟，镜像缺陷在 CI 暴露而非部署现场
     name: Docker Build Smoke (tts/voice)
     runs-on: ubuntu-latest
-    # P0-1：动态 matrix——仅变更服务进入矩阵（空数组 → job skipped）；
+    # P0-1：动态 matrix——仅变更服务进入矩阵；空数组不能直接喂 matrix（零实例按 failure 计，
+    # run 33346212171 实证），if 排除后 job 显式 skipped；
     # P0-2：历史缓存未命中成功先例 26m45s，35min 超时即止损（卡死可感知可重试）
     needs: changes
+    if: needs.changes.outputs.services != '[]'
     timeout-minutes: 35
     strategy:
       matrix:
