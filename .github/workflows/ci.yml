@@ -41,18 +41,21 @@ env:
 jobs:
   # P0-1（2026-08-31）：Docker/Python job 变更感知——voice/tts 相关文件零变更时跳过无效构建
   # （当日实证：两次 push 的 voice job 均为 30min+/47min 无效构建，gha 缓存逐出后 torch 层重下极慢）。
-  # skipped job 不影响 run conclusion，deploy.sh CI 门禁兼容。
-  # workflow_dispatch（文档提交门禁死锁解法）不判变更，全量跑（手动触发即明确验证意图）。
+  # 实现：dorny/paths-filter 匹配 filter 名列表 → jq 转 JSON 数组 → 下游 job 动态 matrix；
+  # 零变更时空数组 → 下游 job 被标记 skipped（GitHub 2022-11 行为），不影响 run conclusion，
+  # deploy.sh CI 门禁兼容。workflow_dispatch（文档提交门禁死锁解法）不判变更全量跑。
+  # ⚠️ 下游 job 级 if 不能引用 matrix（context 白名单仅 github/needs/vars/inputs，
+  #    违规导致 workflow 解析失败 startup_failure——33345286867 实证），故用动态 matrix。
   changes:
     name: Detect Service Changes
     runs-on: ubuntu-latest
     outputs:
-      tts-service: ${{ steps.filter.outputs.tts-service }}
-      voice-service: ${{ steps.filter.outputs.voice-service }}
+      services: ${{ steps.services.outputs.services }}
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@v3
         id: filter
+        if: github.event_name != 'workflow_dispatch'
         with:
           filters: |
             tts-service:
@@ -61,6 +64,25 @@ jobs:
             voice-service:
               - 'backend/voice-service/**'
               - 'backend/py-common/**'
+      # P0-1 实现细节：dorny v3 仅提供逐 filter 的 true/false 输出（无聚合 changes 变量），
+      # 此处手工构造 JSON 数组供下游动态 matrix；通过 env 引用防表达式注入（dorny README 安全提示）
+      - name: Build services matrix
+        id: services
+        env:
+          TTS_CHANGED: ${{ steps.filter.outputs.tts-service }}
+          VOICE_CHANGED: ${{ steps.filter.outputs.voice-service }}
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo 'services=["tts-service","voice-service"]' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          services=""
+          [ "$TTS_CHANGED" = "true" ] && services='"tts-service"'
+          if [ "$VOICE_CHANGED" = "true" ]; then
+            [ -n "$services" ] && services="${services},"
+            services="${services}\"voice-service\""
+          fi
+          echo "services=[${services}]" >> "$GITHUB_OUTPUT"
 
   backend-build-test:
     name: Backend Build & Test
@@ -214,12 +236,11 @@ jobs:
     # 失败即阻断合并（与 backend-build-test 同级门禁）
     name: Python Services Test (tts/voice)
     runs-on: ubuntu-latest
-    # P0-1：零变更服务跳过（workflow_dispatch 不判变更全量跑）
+    # P0-1：动态 matrix——仅变更服务进入矩阵（空数组 → job skipped）
     needs: changes
-    if: github.event_name == 'workflow_dispatch' || needs.changes.outputs[matrix.service] == 'true'
     strategy:
       matrix:
-        service: [tts-service, voice-service]
+        service: ${{ fromJSON(needs.changes.outputs.services) }}
     defaults:
       run:
         working-directory: backend/${{ matrix.service }}
@@ -281,13 +302,13 @@ jobs:
     # 只 build 不推送；构建后容器内 import 冒烟，镜像缺陷在 CI 暴露而非部署现场
     name: Docker Build Smoke (tts/voice)
     runs-on: ubuntu-latest
-    # P0-1：零变更服务跳过；P0-2：历史缓存未命中成功先例 26m45s，35min 超时即止损（卡死可感知可重试）
+    # P0-1：动态 matrix——仅变更服务进入矩阵（空数组 → job skipped）；
+    # P0-2：历史缓存未命中成功先例 26m45s，35min 超时即止损（卡死可感知可重试）
     needs: changes
-    if: github.event_name == 'workflow_dispatch' || needs.changes.outputs[matrix.service] == 'true'
     timeout-minutes: 35
     strategy:
       matrix:
-        service: [tts-service, voice-service]
+        service: ${{ fromJSON(needs.changes.outputs.services) }}
 
     steps:
       - uses: actions/checkout@v4
